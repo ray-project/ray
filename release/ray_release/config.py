@@ -42,7 +42,7 @@ RELEASE_TEST_SCHEMA_FILE = os.path.join(
 )
 
 DEFAULT_CORE_RUN_TYPE = "sdk_command"
-DEFAULT_CORE_ENV_TYPE = "prod_v1"
+DEFAULT_CORE_ENV_TYPE = "staging_v1"
 
 
 def read_and_validate_release_test_collection(
