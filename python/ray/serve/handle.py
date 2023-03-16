@@ -3,7 +3,7 @@ import asyncio
 import threading
 import concurrent.futures
 from dataclasses import dataclass
-from typing import Dict, Optional, Union, Tuple
+from typing import Dict, Optional, Union, Tuple, Coroutine
 
 import ray
 from ray._private.utils import get_or_create_event_loop
@@ -198,12 +198,12 @@ class RayServeHandle:
 
     def _craft_and_assign_request(
         self, deployment_name, handle_options, args, kwargs
-    ) -> Tuple[ray.ObjectRef, str]:
+    ) -> Tuple[Coroutine, str]:
         """Creates a request and assigns it to a replica.
 
         Return:
             Tuple containing
-                1. A Ray object reference pointing to the request's result
+                1. The assignment coroutine
                 2. The replica tag of the replica that was assigned the request
         """
         request_metadata = RequestMetadata(
@@ -212,10 +212,10 @@ class RayServeHandle:
             call_method=handle_options.method_name,
             http_arg_is_pickled=self._pickled_http_request,
         )
-        result_ref, replica_tag = self.router.assign_request(
+        assignment_task_ref, replica_tag = self.router.assign_request(
             request_metadata, *args, **kwargs
         )
-        return result_ref, replica_tag
+        return assignment_task_ref, replica_tag
 
     def _internal_remote(self, *args, **kwargs) -> Tuple[ray.ObjectRef, str]:
         """Issue an asynchronous request to the deployment.

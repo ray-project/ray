@@ -58,7 +58,7 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     )
 
 
-async def _send_request_to_handle(handle, scope, receive, send) -> str:
+async def _send_request_to_handle(handle: RayServeHandle, scope, receive, send) -> str:
     http_body_bytes = await receive_http_body(scope, receive, send)
 
     # NOTE(edoakes): it's important that we defer building the starlette
@@ -77,7 +77,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
     while retries < MAX_REPLICA_FAILURE_RETRIES:
-        assignment_task: asyncio.Task = handle.remote(request)
+        (assignment_task, replica_tag): Tuple[asyncio.Task, str] = handle._internal_remote(request)
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task],
             return_when=FIRST_COMPLETED,

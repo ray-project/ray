@@ -231,7 +231,7 @@ class ReplicaSet:
 
     async def assign_replica(self, query: Query) -> Tuple[ray.ObjectRef, ReplicaTag]:
         """Given a query, submit it to a replica and return the object ref.
-        This method will keep track of the in flight queries for each replicas
+        This method will keep track of the in flight queries for each replica
         and only send a query to available replicas (determined by the
         max_concurrent_quries value.)
 
