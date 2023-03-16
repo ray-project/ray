@@ -13,11 +13,10 @@ from ray.train.tests.lightning_test_utils import (
 
 @pytest.fixture
 def ray_start_6_cpus_2_gpus():
-    # address_info = ray.init(num_cpus=6, num_gpus=2)
-    # yield address_info
-    # # The code after the yield will run as teardown code.
-    # ray.shutdown()
-    yield 0
+    address_info = ray.init(num_cpus=6, num_gpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 def test_config_builder():

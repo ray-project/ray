@@ -1,3 +1,4 @@
+import os
 import ray
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
@@ -439,6 +440,7 @@ def _lightning_train_loop_per_worker(config):
 
     # AIR needs a RayModelCheckpoint for metircs logging anyway.
     trainer_config["enable_checkpointing"] = True
+    os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "1"
     trainer_config["callbacks"] = trainer_config.get("callbacks", []) + [
         RayModelCheckpoint(**model_checkpoint_config)
     ]
