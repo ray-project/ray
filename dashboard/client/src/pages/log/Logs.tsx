@@ -38,10 +38,9 @@ const useStyles = makeStyles((theme) => ({
 
 type LogsProps = {
   theme?: "dark" | "light";
-  newIA?: boolean;
 };
 
-const useLogs = ({ theme, newIA }: LogsProps) => {
+const useLogs = ({ theme }: LogsProps) => {
   const { search: urlSearch } = useLocation();
   const { host, path } = useParams();
   const searchMap = new URLSearchParams(urlSearch);
@@ -129,8 +128,7 @@ const Logs = (props: LogsProps) => {
     endTime,
     setEnd,
   } = useLogs(props);
-  const { newIA } = props;
-  let href = newIA ? "#/new/logs/" : "#/log/";
+  let href = "#/logs/";
 
   if (origin) {
     if (path) {
@@ -183,15 +181,9 @@ const Logs = (props: LogsProps) => {
                 .map((e: { [key: string]: string }) => (
                   <ListItem key={e.name}>
                     <a
-                      href={
-                        newIA
-                          ? `#/new/logs/${
-                              origin ? `${encodeURIComponent(origin)}/` : ""
-                            }${encodeURIComponent(e.href)}`
-                          : `#/log/${
-                              origin ? `${encodeURIComponent(origin)}/` : ""
-                            }${encodeURIComponent(e.href)}`
-                      }
+                      href={`#/logs/${
+                        origin ? `${encodeURIComponent(origin)}/` : ""
+                      }${encodeURIComponent(e.href)}`}
                     >
                       {e.name}
                     </a>
@@ -328,11 +320,11 @@ const Logs = (props: LogsProps) => {
 /**
  * Logs page for the new information architecture
  */
-export const NewIALogsPage = () => {
+export const LogsLayout = () => {
   return (
     <React.Fragment>
       <MainNavPageInfo
-        pageInfo={{ title: "Logs", id: "logs", path: "/new/logs" }}
+        pageInfo={{ title: "Logs", id: "logs", path: "/logs" }}
       />
       <Outlet />
     </React.Fragment>
