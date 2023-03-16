@@ -393,7 +393,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "run": {"type": "job"},
                 }
             ),
-            Test({"name": "other_3", "frequency": "disabled", "team": "team_2"}),
+            Test({"name": "other_3", "frequency": "manual", "team": "team_2"}),
             Test({"name": "test_3", "frequency": "nightly", "team": "team_2"}),
         ]
 
@@ -405,6 +405,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 ("test_2", False),
                 ("other_1", False),
                 ("other_2", False),
+                ("other_3", False),
                 ("test_3", False),
             ],
         )
@@ -421,6 +422,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 ("test_2", True),
                 ("other_1", False),
                 ("other_2", True),
+                ("other_3", False),
                 ("test_3", False),
             ],
         )

@@ -657,7 +657,7 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         assert (
             data_size >= 6_000_000 and data_size <= 10_000_000
         ), "estimated data size is out of expected bound"
-        data_size = ds.fully_executed().size_bytes()
+        data_size = ds.cache().size_bytes()
         assert (
             data_size >= 7_000_000 and data_size <= 10_000_000
         ), "actual data size is out of expected bound"
@@ -685,7 +685,7 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         assert (
             data_size >= 1_000_000 and data_size <= 2_000_000
         ), "estimated data size is out of expected bound"
-        data_size = ds.fully_executed().size_bytes()
+        data_size = ds.cache().size_bytes()
         assert (
             data_size >= 1_000_000 and data_size <= 2_000_000
         ), "actual data size is out of expected bound"
