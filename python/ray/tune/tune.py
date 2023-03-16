@@ -799,14 +799,6 @@ def run(
     all_trials = runner.get_trials()
     experiment_checkpoint = runner.checkpoint_file
 
-    # Wait for syncing to finish
-    for callback in callbacks:
-        if isinstance(callback, SyncerCallback):
-            try:
-                callback.wait_for_all()
-            except TuneError as e:
-                logger.error(e)
-
     runner.cleanup()
 
     incomplete_trials = []
