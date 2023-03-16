@@ -318,7 +318,7 @@ class _ResourceUpdater:
                 status += f" ({customs})"
             return status
         else:
-            return "Logical Resource Usage: ?"
+            return "Logical resource usage: ?"
 
     def get_num_cpus(self) -> int:
         self.update_avail_resources()
