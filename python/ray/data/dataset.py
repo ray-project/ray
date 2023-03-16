@@ -2962,7 +2962,7 @@ class Dataset(Generic[T]):
             )
 
         return self.iterator().iter_batches(
-            prefetch_blocks=prefetch_blocks,
+            prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,

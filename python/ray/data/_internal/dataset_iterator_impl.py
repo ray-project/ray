@@ -31,6 +31,7 @@ class DatasetIteratorImpl(DatasetIterator):
     def iter_batches(
         self,
         *,
+        prefetch_batches: int = 0,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
         batch_format: str = "default",
@@ -48,7 +49,7 @@ class DatasetIteratorImpl(DatasetIterator):
         yield from batch_block_refs(
             block_iterator,
             stats=stats,
-            prefetch_blocks=prefetch_blocks,
+            prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,

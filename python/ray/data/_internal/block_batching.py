@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 import collections
 import itertools
 import queue
@@ -98,29 +99,59 @@ def batch_block_refs(
         prefetcher = WaitBlockPrefetcher()
 
     if prefetch_batches > 0:
-        block_ref_iter = _prefetch_batch(block_ref_iter=block_refs, prefetcher=prefetcher, stats=stats, batch_size=batch_size)
+        def computations(base_iterator):
+             yield from batch_blocks(
+                _resolve_blocks(
+                    _prefetch_batch_locally(
+                        base_iterator,
+                        prefetcher=prefetcher,
+                        stats=stats,
+                        batch_size=batch_size
+                    ),
+                    clear_block_after_read=clear_block_after_read,
+                    stats=stats,
+                ),
+                batch_size=batch_size,
+                batch_format=batch_format,
+                drop_last=drop_last,
+                collate_fn=collate_fn,
+                shuffle_buffer_min_size=shuffle_buffer_min_size,
+                shuffle_seed=shuffle_seed,
+                ensure_copy=ensure_copy,
+                prefetch_batches=0,
+                stats=stats,
+             )
+
+        yield from _make_async_gen_threadpool(block_refs, max_workers=prefetch_batches, computations=computations, stats=stats)
+
     else:
-        def block_ref_iter() -> Iterator[ObjectRef[Block]]:
-            for block_ref in block_refs:
-                yield block_ref[0]        
+        with stats.thread_total_time_s.timer():
+            if prefetch_batches > 0:
+                block_ref_iter = _prefetch_batch_locally(block_ref_iter=block_refs, prefetcher=prefetcher, stats=stats, batch_size=batch_size)
+            else:
+                def block_ref_gen() -> Iterator[ObjectRef[Block]]:
+                    for block_ref in block_refs:
+                        yield block_ref[0]   
 
-    block_iter = _resolve_blocks(block_ref_iter,
-        clear_block_after_read=clear_block_after_read,
-        stats=stats,
-    )
+                block_ref_iter = block_ref_gen()     
 
-    yield from batch_blocks(
-        block_iter,
-        stats=stats,
-        batch_size=batch_size,
-        batch_format=batch_format,
-        drop_last=drop_last,
-        collate_fn=collate_fn,
-        shuffle_buffer_min_size=shuffle_buffer_min_size,
-        shuffle_seed=shuffle_seed,
-        ensure_copy=ensure_copy,
-        prefetch_batches=prefetch_batches,
-    )
+            block_iter = _resolve_blocks(block_ref_iter,
+                clear_block_after_read=clear_block_after_read,
+                stats=stats,
+            )
+
+            yield from batch_blocks(
+                block_iter,
+                stats=stats,
+                batch_size=batch_size,
+                batch_format=batch_format,
+                drop_last=drop_last,
+                collate_fn=collate_fn,
+                shuffle_buffer_min_size=shuffle_buffer_min_size,
+                shuffle_seed=shuffle_seed,
+                ensure_copy=ensure_copy,
+                prefetch_batches=prefetch_batches,
+            )
 
 
 def batch_blocks(
@@ -161,12 +192,15 @@ def batch_blocks(
 
         def batch_fn_iter(iterator: Iterator[DataBatch]) -> Iterator[DataBatch]:
             for batch in iterator:
-                yield collate_fn(batch)
+                with stats.iter_collate_batch_s.timer():
+                    output = collate_fn(batch)
+                yield output
 
         batch_iter = batch_fn_iter(batch_iter)
 
     if prefetch_batches > 0:
-        batch_iter = _make_async_gen(batch_iter, prefetch_buffer_size=prefetch_batches)
+        batch_iter = _make_async_gen_threadpool(batch_iter, max_workers=prefetch_batches)
+        #batch_iter = _make_async_gen(batch_iter, prefetch_batches)
 
     for formatted_batch in batch_iter:
         user_timer = stats.iter_user_s.timer() if stats else nullcontext()
@@ -221,6 +255,105 @@ def _make_async_gen(
     fetch_thread.join()
 
 
+def _make_async_gen_threadpool(base_iterator: Iterator[T], max_workers: int = 1, computations=None, stats=None):
+    """Returns a new iterator with elements fetched from the base_iterator
+    in an async fashion using a threadpool.
+
+    All the threads in the threadpool will fetch data from the base_iterator, triggering the base iterator's execution.
+
+    Args:
+        base_iterator: The iterator to asynchronously fetch from.
+        max_workers: The maximum number of threads to use in the threadpool.
+
+    Returns:
+        An iterator with the same elements as the base_iterator.
+    """
+
+    def convert_to_threadsafe_iterator(base_iterator):
+        class ThreadSafeIterator:
+            def __init__(self, it):
+                self.lock = threading.Lock()
+                self.it = it
+            
+            def __next__(self):
+                with self.lock:
+                    return next(self.it)
+        
+        return ThreadSafeIterator(base_iterator)
+    
+    thread_safe_generator = convert_to_threadsafe_iterator(base_iterator)
+
+    # class Sentinel:
+    #     def __init__()
+    sentinel = object()
+
+    fetch_queue = queue.Queue()
+    semaphore = threading.Semaphore(0)
+    
+    def execute():
+        with stats.thread_total_time_s.timer():
+            for item in computations(thread_safe_generator):
+                fetch_queue.put(item, block=True)
+            #semaphore.release()
+            fetch_queue.put(sentinel, block=True)
+            
+        # try:
+        #     return next(thread_safe_generator)
+        # except StopIteration:
+        #     return sentinel
+    
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+
+    ordered_futures = collections.deque()
+    for i in range(max_workers):
+        ordered_futures.append(executor.submit(execute))
+
+    # finished = False
+    # while not finished:
+    #     next_result = ordered_futures.popleft().result()
+    #     if next_result is sentinel:
+    #         finished = True
+    #     else:
+    #         ordered_futures.append(executor.submit(execute))
+    #         yield next_result
+    
+    # for future in ordered_futures:
+    #     output = future.result()
+    #     if output is not sentinel:
+    #         yield output
+
+    # while True:
+    #     num_threads_finished = 0
+    #     try:
+    #         next_item = fetch_queue.get(timeout=0.01)
+    #         yield next_item
+    #         fetch_queue.task_done()
+    #     except queue.Empty:
+    #         pass
+    #     if semaphore.acquire(blocking=False):
+    #         num_threads_finished += 1
+    #     if num_threads_finished >= max_workers:
+    #         break
+
+    # while True:
+    #     try:
+    #         next_item = fetch_queue.get(block=False)
+    #         yield next_item
+    #     except queue.Empty:
+    #         break
+
+    num_threads_finished = 0
+    while True:
+        next_item = fetch_queue.get(block=True)
+        if next_item is not sentinel:
+            yield next_item
+        else:
+            print("Thread finished")
+            num_threads_finished += 1
+        if num_threads_finished >= max_workers:
+            break
+
+
 def _resolve_blocks(
     block_ref_iter: Iterator[ObjectRef[Block]],
     clear_block_after_read: bool = False, 
@@ -273,12 +406,12 @@ def _resolve_blocks(
             yield block
 
     if stats:
-        stats.iter_blocks_local = hit
-        stats.iter_blocks_remote = miss
-        stats.iter_unknown_location = unknown
+        stats.iter_blocks_local += hit
+        stats.iter_blocks_remote += miss
+        stats.iter_unknown_location += unknown
 
 
-def _prefetch_batch(
+def _prefetch_batch_locally(
     block_ref_iter: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     prefetcher: "BlockPrefetcher",
     batch_size: int,
@@ -299,37 +432,41 @@ def _prefetch_batch(
         """Returns the block refs comprising the next batch of the dataset."""
         blocks_for_batch = collections.deque()
         num_rows_counter = 0
-        while num_rows_counter < batch_size:
+        if batch_size is None:
             try:
-                next_block_ref, next_metadata = next(block_ref_iter)
-                blocks_for_batch.append(next_block_ref)
-                if next_metadata.num_rows is None:
-                    # If the number of rows for this block is not known, then
-                    # assume 1 block ==  1 batch.
-                    break
-                else:
-                    num_rows_counter += next_metadata.num_rows
+                return [next(block_ref_iter)]
             except StopIteration:
-                break
-        return blocks_for_batch
+                return []
+        else:
+            while num_rows_counter < batch_size:
+                try:
+                    next_block_ref, next_metadata = next(block_ref_iter)
+                    blocks_for_batch.append(next_block_ref)
+                    if next_metadata.num_rows is None:
+                        # If the number of rows for this block is not known, then
+                        # assume 1 block ==  1 batch.
+                        break
+                    else:
+                        num_rows_counter += next_metadata.num_rows
+                except StopIteration:
+                    break
+            return blocks_for_batch
 
     # Create the initial set of blocks to prefetch.
-    sliding_window = bundle_batch()
+    blocks_for_batch = bundle_batch()
     with stats.iter_wait_s.timer() if stats else nullcontext():
-        prefetcher.prefetch_blocks(list(sliding_window))
+        prefetcher.prefetch_blocks(list(blocks_for_batch))
 
-    fetched_next_batch = False
-
-    while sliding_window:
-        block_ref = sliding_window.popleft()
-        try:
-            if not fetched_next_batch:
-                next_sliding_window = bundle_batch()
-                with stats.iter_wait_s.timer() if stats else nullcontext():
-                    prefetcher.prefetch_blocks(list(next_sliding_window))
-        except StopIteration:
-            pass
-        yield block_ref
+    while len(blocks_for_batch) > 0:
+        current_block = blocks_for_batch.popleft()
+        if len(blocks_for_batch) == 0:
+            # Prefetch the next batch while batch formatting and collation is happening
+            # on the current batch.
+            blocks_for_batch = bundle_batch()
+            with stats.iter_wait_s.timer() if stats else nullcontext():
+                prefetcher.prefetch_blocks(list(blocks_for_batch))
+            
+        yield current_block
 
 def _blocks_to_batches(
     block_iter: Iterator[Block],

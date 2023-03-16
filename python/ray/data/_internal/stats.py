@@ -28,12 +28,14 @@ def fmt(seconds: float) -> str:
     else:
         return str(round(seconds * 1000 * 1000, 2)) + "us"
 
-
+import threading
+from collections import defaultdict
 class Timer:
     """Helper class for tracking accumulated time (in seconds)."""
 
     def __init__(self):
         self._value: float = 0
+        self._thread_values: Dict[int, float] = defaultdict(int)
 
     @contextmanager
     def timer(self) -> None:
@@ -41,7 +43,12 @@ class Timer:
         try:
             yield
         finally:
-            self._value += time.perf_counter() - time_start
+            value = time.perf_counter() - time_start
+            self._value += value
+            if threading.current_thread() != threading.main_thread():
+                self._thread_values[threading.get_ident()] += value
+            else:
+                self._thread_values["main_thread"] += value
 
     def add(self, value: float) -> None:
         self._value += value
@@ -221,8 +228,10 @@ class DatasetStats:
         self.iter_get_s: Timer = Timer()
         self.iter_next_batch_s: Timer = Timer()
         self.iter_format_batch_s: Timer = Timer()
+        self.iter_collate_batch_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
+        self.thread_total_time_s: Timer = Timer()
         self.extra_metrics = {}
 
         # Block fetch stats during iteration.
@@ -289,8 +298,10 @@ class DatasetStats:
             self.iter_get_s,
             self.iter_next_batch_s,
             self.iter_format_batch_s,
+            self.iter_collate_batch_s,
             self.iter_user_s,
             self.iter_total_s,
+            self.thread_total_time_s,
             self.iter_blocks_local,
             self.iter_blocks_remote,
             self.iter_unknown_location,
@@ -627,10 +638,16 @@ class IterStatsSummary:
     next_time: Timer
     # Time spent in `_format_batch_()`, in seconds
     format_time: Timer
+
+    collate_time: Timer
+
     # Time spent in user code, in seconds
     user_time: Timer
     # Total time taken by Dataset iterator, in seconds
     total_time: Timer
+
+    thread_total_time: Timer
+
     # Num of blocks that are in local object store
     iter_blocks_local: int
     # Num of blocks that are in remote node and have to fetch locally
@@ -640,6 +657,18 @@ class IterStatsSummary:
 
     def __str__(self) -> str:
         out = ""
+        out += "\nDataset iterator time breakdown:\n"
+        _thread_ids = self.next_time._thread_values.keys()
+        for thread_id in _thread_ids:
+            out += "\n Thread {}:\n".format(thread_id)
+            out += "* In ray.wait(): {}\n".format(fmt(self.wait_time._thread_values[thread_id]))
+            out += "* In ray.get(): {}\n".format(fmt(self.get_time._thread_values[thread_id]))
+            out += "* In next_batch(): {}\n".format(fmt(self.next_time._thread_values[thread_id]))
+            out += "* In format_batch(): {}\n".format(fmt(self.format_time._thread_values[thread_id]))
+            out += "* In collate_fn(): {}\n".format(fmt(self.collate_time._thread_values[thread_id]))
+            out += "* Total time for this thread: {}\n".format(fmt(self.thread_total_time._thread_values[thread_id]))
+
+        out += "\n"
         if (
             self.total_time.get()
             or self.wait_time.get()
@@ -647,16 +676,16 @@ class IterStatsSummary:
             or self.format_time.get()
             or self.get_time.get()
         ):
-            out += "\nDataset iterator time breakdown:\n"
-            out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
-            out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
+            
+            # out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
+            # out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
             out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
             out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
             out += "* Num blocks unknown location: {}\n".format(
                 self.iter_unknown_location
             )
-            out += "* In next_batch(): {}\n".format(fmt(self.next_time.get()))
-            out += "* In format_batch(): {}\n".format(fmt(self.format_time.get()))
+            # out += "* In next_batch(): {}\n".format(fmt(self.next_time.get()))
+            # out += "* In format_batch(): {}\n".format(fmt(self.format_time.get()))
             out += "* In user code: {}\n".format(fmt(self.user_time.get()))
             out += "* Total time: {}\n".format(fmt(self.total_time.get()))
         return out

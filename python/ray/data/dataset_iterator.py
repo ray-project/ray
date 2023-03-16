@@ -59,6 +59,7 @@ class DatasetIterator(abc.ABC):
     def iter_batches(
         self,
         *,
+        prefetch_batches: int = 0,
         prefetch_blocks: int = 0,
         batch_size: int = 256,
         batch_format: Literal["default", "numpy", "pandas"] = "default",
