@@ -92,9 +92,6 @@ def method(*args, **kwargs):
 class ActorMethod:
     """A class used to invoke an actor method.
 
-    Note: This class only keeps a weak ref to the actor, unless it has been
-    passed to a remote function. This avoids delays in GC of the actor.
-
     Attributes:
         _actor_ref: A weakref handle to the actor.
         _method_name: The name of the actor method.
@@ -1091,6 +1088,7 @@ class ActorHandle:
                     method_name,
                     self._ray_method_num_returns[method_name],
                     decorator=self._ray_method_decorators.get(method_name),
+                    hardref=True,
                 )
                 setattr(self, method_name, method)
 

@@ -924,6 +924,16 @@ def test_actor_namespace(ray_start_regular_shared):
     del a
 
 
+def test_call_named_actor_inline(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def f(self):
+            return "ok"
+
+    Actor.options(name="foo").remote()
+    assert ray.get(ray.get_actor(name="foo").f.remote()) == "ok"
+
+
 def test_named_actor_cache(ray_start_regular_shared):
     """Verify that named actor cache works well."""
 
