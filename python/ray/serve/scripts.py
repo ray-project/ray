@@ -215,7 +215,7 @@ def deploy(config_file_name: str, address: str):
         "Ctrl-C the command, it will tear down the app."
     ),
 )
-@click.argument("config_or_import_path", nargs=-1, required=True)
+@click.argument("config_or_import_paths", nargs=-1, required=True)
 @click.option(
     "--runtime-env",
     type=str,
@@ -298,7 +298,7 @@ def deploy(config_file_name: str, address: str):
     ),
 )
 def run(
-    config_or_import_path: Tuple[str],
+    config_or_import_paths: Tuple[str],
     runtime_env: str,
     runtime_env_json: str,
     working_dir: str,
@@ -318,14 +318,22 @@ def run(
         working_dir=working_dir,
     )
 
-    if pathlib.Path(config_or_import_path[0]).is_file():
-        if multi_app:
+    if pathlib.Path(config_or_import_paths[0]).is_file():
+        if len(config_or_import_paths) > 1:
             raise click.ClickException(
                 "Got more than one config file. `serve run` only accepts one config "
                 "file."
             )
+        if multi_app:
+            raise click.ClickException(
+                "The feature flag `--multi-app` is only valid for specifying multiple "
+                "import paths. To run multiple applications with using configs, add "
+                "all applications into one config file with the format "
+                "`ServeDeploySchema`."
+            )
 
-        config_path = config_or_import_path[0]
+
+        config_path = config_or_import_paths[0]
         cli_logger.print(f'Deploying from config file: "{config_path}".')
 
         with open(config_path, "r") as config_file:
@@ -353,15 +361,10 @@ def run(
 
         is_config = True
     else:
-        if not multi_app and len(config_or_import_path) > 1:
+        if not multi_app and len(config_or_import_paths) > 1:
             raise click.ClickException(
                 "Got more than one import path. If you want to run multiple deployment "
                 "nodes, please rerun the command with the feature flag `--multi-app`."
-            )
-        if multi_app and gradio:
-            raise click.ClickException(
-                "The gradio visualization feature of `serve run` does not yet have "
-                "support for multiple applications."
             )
 
         if host is None:
@@ -372,12 +375,18 @@ def run(
 
         # application name -> ingress deployment node
         apps = {}
-        for index, import_path in enumerate(config_or_import_path):
-            name = f"app{index+1}" if len(config_or_import_path) > 1 else ""
+        for index, import_path in enumerate(config_or_import_paths):
+            name = f"app{index+1}" if len(config_or_import_paths) > 1 else ""
             cli_logger.print(
                 f'Deploying application "{name}" from import path: "{import_path}".'
             )
             apps[name] = import_attr(import_path)
+
+    if gradio and (multi_app or isinstance(config, ServeDeploySchema)):
+        raise click.ClickException(
+            "The gradio visualization feature of `serve run` does not yet have "
+            "support for multiple applications."
+        )
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
