@@ -661,6 +661,7 @@ class Policy(metaclass=ABCMeta):
         prev_action_batch: Optional[Union[List[TensorType], TensorType]] = None,
         prev_reward_batch: Optional[Union[List[TensorType], TensorType]] = None,
         actions_normalized: bool = True,
+        in_training: bool = True,
     ) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
@@ -679,7 +680,8 @@ class Policy(metaclass=ABCMeta):
                 (between -1.0 and 1.0) or not? If not and
                 `normalize_actions=True`, we need to normalize the given
                 actions first, before calculating log likelihoods.
-
+            in_training: Whether to use the forward_train() or forward_exploration() of
+                the underlying RLModule.
         Returns:
             Batch of log probs/likelihoods, with shape: [BATCH_SIZE].
         """
@@ -1348,7 +1350,10 @@ class Policy(metaclass=ABCMeta):
         # Save for later so that loss init does not change global timestep
         global_ts_before_init = int(convert_to_numpy(self.global_timestep))
 
-        sample_batch_size = max(self.batch_divisibility_req * 4, 32)
+        sample_batch_size = min(
+            max(self.batch_divisibility_req * 4, 32),
+            self.config["train_batch_size"],  # Don't go over the asked batch size.
+        )
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size
         )
