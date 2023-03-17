@@ -3072,6 +3072,27 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
+- name: benchmark_worker_startup
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: benchmark-worker-startup
+  stable: false
+
+  python: "3.9"
+
+  cluster:
+    cluster_env: app_config_gpu.yaml
+    cluster_compute: only_head_node_1gpu_64cpu.yaml
+
+  run:
+    timeout: 7200
+    script: python benchmark_worker_startup.py
+        --num_cpus_in_cluster 64
+        --num_gpus_in_cluster 64
+        --num_tasks_or_actors_per_run 64
+        --num_measurements_per_configuration 5
+
 - name: dask_on_ray_100gb_sort
   group: core-daily-test
   working_dir: nightly_tests
@@ -3667,7 +3688,7 @@
       num_nodes: 15
 
 
-- name: pipelined_data_ingest_benchmark
+- name: pipelined_data_ingest_benchmark_1tb
   group: data-tests
   working_dir: nightly_tests/dataset
 
@@ -3679,7 +3700,24 @@
 
   run:
     timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=200 --num-workers=20 --streaming
+    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --streaming
+    wait_for_nodes:
+      num_nodes: 20
+
+
+- name: streaming_data_ingest_benchmark_1tb
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_ingest_benchmark_compute.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --new_streaming
     wait_for_nodes:
       num_nodes: 20
 
