@@ -91,7 +91,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
     def testTrialDataframe(self):
         checkpoints = self.ea._checkpoints_and_paths
         idx = random.randint(0, len(checkpoints) - 1)
-        logdir_from_trial = self.ea.trials[idx].logdir
+        logdir_from_trial = self.ea.trials[idx].local_path
         trial_df = self.ea.trial_dataframes[logdir_from_trial]
 
         self.assertTrue(isinstance(trial_df, pd.DataFrame))
@@ -308,7 +308,7 @@ class ExperimentAnalysisPropertySuite(unittest.TestCase):
 
         self.assertEqual(ea.best_trial, trials[2])
         self.assertEqual(ea.best_config, trials[2].config)
-        self.assertEqual(ea.best_logdir, trials[2].logdir)
+        self.assertEqual(ea.best_logdir, trials[2].local_path)
         self.assertEqual(
             ea.best_checkpoint._local_path, trials[2].checkpoint.dir_or_data
         )

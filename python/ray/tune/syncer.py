@@ -726,10 +726,10 @@ class SyncerCallback(Callback):
         self._sync_times[trial.trial_id] = time.time()
 
     def _local_trial_logdir(self, trial: "Trial"):
-        return trial.logdir
+        return trial.local_path
 
     def _remote_trial_logdir(self, trial: "Trial"):
-        return trial.logdir
+        return trial.local_path
 
     def _sync_trial_dir(
         self, trial: "Trial", force: bool = False, wait: bool = True

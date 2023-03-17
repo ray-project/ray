@@ -653,7 +653,7 @@ class WandbLoggerCallback(LoggerCallback):
             actor_options={"num_cpus": 0, **_force_on_current_node()}
         )
         self._trial_logging_actors[trial] = self._remote_logger_class.remote(
-            logdir=trial.logdir,
+            logdir=trial.local_path,
             queue=self._trial_queues[trial],
             exclude=exclude_results,
             to_config=self.AUTO_CONFIG_KEYS,

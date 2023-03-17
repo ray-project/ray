@@ -666,7 +666,9 @@ class PopulationBasedTraining(FIFOScheduler):
         trial_name, trial_to_clone_name = (trial_state.orig_tag, new_state.orig_tag)
         trial_id = trial.trial_id
         trial_to_clone_id = trial_to_clone.trial_id
-        trial_path = os.path.join(trial.local_dir, "pbt_policy_" + trial_id + ".txt")
+        trial_path = os.path.join(
+            trial.local_experiment_path, "pbt_policy_" + trial_id + ".txt"
+        )
         trial_to_clone_path = os.path.join(
             trial_to_clone.local_dir, "pbt_policy_" + trial_to_clone_id + ".txt"
         )
@@ -679,7 +681,9 @@ class PopulationBasedTraining(FIFOScheduler):
             new_config,
         ]
         # Log to global file.
-        with open(os.path.join(trial.local_dir, "pbt_global.txt"), "a+") as f:
+        with open(
+            os.path.join(trial.local_experiment_path, "pbt_global.txt"), "a+"
+        ) as f:
             print(json.dumps(policy, cls=SafeFallbackEncoder), file=f)
         # Overwrite state in target trial from trial_to_clone.
         if os.path.exists(trial_to_clone_path):
