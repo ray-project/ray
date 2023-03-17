@@ -364,7 +364,7 @@ def rmsprop_optimizer(
 
 SlateQTFPolicy = build_tf_policy(
     name="SlateQTFPolicy",
-    get_default_config=lambda: ray.rllib.algorithms.slateq.slateq.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.slateq.slateq.SlateQConfig(),
     # Build model, loss functions, and optimizers
     make_model=build_slateq_model,
     loss_fn=build_slateq_losses,

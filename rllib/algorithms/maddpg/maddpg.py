@@ -17,7 +17,7 @@ from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.maddpg.maddpg_tf_policy import MADDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.annotations import Deprecated, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
@@ -310,20 +310,3 @@ class MADDPG(DQN):
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         return MADDPGTFPolicy
-
-
-# Deprecated: Use ray.rllib.algorithms.maddpg.MADDPG instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(MADDPGConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.maddpg.maddpg.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.maddpg.maddpg.MADDPGConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

@@ -36,7 +36,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
-    Deprecated,
     deprecation_warning,
 )
 from ray.rllib.utils.metrics import (
@@ -1159,20 +1158,3 @@ class AggregatorWorker(FaultAwareApply):
 
     def get_host(self) -> str:
         return platform.node()
-
-
-# Deprecated: Use ray.rllib.algorithms.impala.ImpalaConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(ImpalaConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.impala.impala::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.impala.impala::IMPALAConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

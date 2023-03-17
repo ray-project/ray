@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
+from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -13,14 +13,14 @@ class LocalModeTest(unittest.TestCase):
         ray.shutdown()
 
     def test_local(self):
-        cf = DEFAULT_CONFIG.copy()
-        cf["model"]["fcnet_hiddens"] = [10]
-        cf["num_workers"] = 2
+        cf = PGConfig().environment("CartPole-v1")
+        cf.model["fcnet_hiddens"] = [10]
+        cf.num_rollout_workers = 2
 
         for _ in framework_iterator(cf):
-            agent = PG(cf, "CartPole-v1")
-            print(agent.train())
-            agent.stop()
+            algo = cf.build()
+            print(algo.train())
+            algo.stop()
 
 
 if __name__ == "__main__":

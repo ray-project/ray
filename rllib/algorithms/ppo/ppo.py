@@ -30,7 +30,6 @@ from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
-    Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
 )
@@ -215,7 +214,7 @@ class PPOConfig(PGConfig):
         """
         if vf_share_layers != DEPRECATED_VALUE:
             deprecation_warning(
-                old="ppo.DEFAULT_CONFIG['vf_share_layers']",
+                old="PPOConfig().vf_share_layers",
                 new="PPOConfig().training(model={'vf_share_layers': ...})",
                 error=True,
             )
@@ -517,20 +516,3 @@ class PPO(Algorithm):
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.ppo.PPOConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(PPOConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.ppo.ppo::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.ppo.ppo::PPOConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
