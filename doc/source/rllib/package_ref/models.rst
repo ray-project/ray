@@ -23,7 +23,6 @@ Feed Forward methods
 
     ~modelv2.ModelV2.forward
     ~modelv2.ModelV2.value_function
-    ~modelv2.ModelV2.base_model
     ~modelv2.ModelV2.last_output
 
 Recurrent Models API
