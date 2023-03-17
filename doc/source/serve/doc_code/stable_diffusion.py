@@ -1,9 +1,10 @@
+# __example_code_start__
 from io import BytesIO
-
-from ray import serve
 from fastapi import FastAPI
 from fastapi.responses import Response
 import torch
+
+from ray import serve
 
 
 app = FastAPI()
@@ -55,4 +56,25 @@ class StableDiffusionV2:
         return image
 
 
-entrypoint = APIIngress.bind(StableDiffusionV2.bind())
+my_first_deployment = APIIngress.bind(StableDiffusionV2.bind())
+
+# __example_code_end__
+
+if __name__ == "__main__":
+    import ray
+    import os
+
+    handle = serve.run(my_first_deployment)
+
+    ray.get(handle.generate.remote("hi"))
+
+    import requests
+
+    prompt = "a cute cat is dancing on the grass."
+    prompt_query = "%20".join(prompt.split(" "))
+    resp = requests.get(f"http://127.0.0.1:8000/imagine?prompt={prompt_query}")
+
+    with open("output.png", "wb") as f:
+        f.write(resp.content)
+
+    assert os.exists("output.png")

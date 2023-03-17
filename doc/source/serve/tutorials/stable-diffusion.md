@@ -13,6 +13,9 @@ This example uses the [stabilityai/stable-diffusion-2](https://huggingface.co/st
 
 The Serve code is as follows:
 ```{literalinclude} ../doc_code/stable_diffusion.py
+:language: python
+:start-after: __example_code_start__
+:end-before: __example_code_end__
 ```
 
 Use `serve run stable_diffusion:entrypoint` to start the serve application.
