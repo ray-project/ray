@@ -133,7 +133,6 @@ def run_release_test(
     os.chdir(new_wd)
 
     start_time = time.monotonic()
-
     run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
 
     # Workaround while Anyscale Jobs don't support leaving cluster alive
