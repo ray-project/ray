@@ -7,7 +7,7 @@ import sys
 import threading
 from logging.handlers import RotatingFileHandler
 import time
-from typing import Callable, Dict, List, Set
+from typing import Callable, Dict, List, Set, Tuple
 
 import ray
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
@@ -263,30 +263,53 @@ class WorkerStandardStreamDispatcher:
 global_worker_stdstream_dispatcher = WorkerStandardStreamDispatcher()
 
 
+# Regex for canonicalizing log lines.
 NUMBERS = re.compile(r"(\d+[\.\d+]*|0x[0-9a-fA-F]+)")
+
+# How many seconds of messages to buffer for log deduplicatoin.
 AGGREGATION_WINDOW_S = 3.0
 
 
-def canonicalise_log_line(line):
-    # remove words containing numbers or hex, since those tend to differ between workers
+def _canonicalise_log_line(line):
+    # Remove words containing numbers or hex, since those tend to differ between
+    # workers.
     return " ".join(x for x in line.split() if not NUMBERS.search(x))
 
 
 @dataclass
 class DedupState:
+    # Timestamp of the earliest log message seen of this pattern.
     timestamp: int
+
+    # The number of un-printed occurrances for this pattern.
     count: int
+
+    # Latest instance of this log pattern.
     line: int
+
+    # Latest metadata dict for this log pattern.
     metadata: dict
-    sources: Set[str]
+
+    # Set of (ip, pid) sources which have emitted this pattern.
+    sources: Set[Tuple[str, int]]
 
 
 class LogDeduplicator:
     def __init__(self):
         # Buffer of up to AGGREGATION_WINDOW_S recent log patterns.
+        # This buffer is cleared if the pattern isn't seen within the window.
         self.recent: Dict[str, DedupState] = {}
 
     def deduplicate(self, lines: List[str], metadata: dict) -> List[str]:
+        """Rewrite a batch of lines to reduce duplicate log messages.
+
+        Args:
+            lines: The batch of lines from a single source.
+            metadata: Dict describing the data source.
+
+        Returns:
+            Batch of deduplicated lines.
+        """
         global _log_dedup_warned
         if not RAY_DEDUP_LOGS:
             return lines
@@ -294,11 +317,13 @@ class LogDeduplicator:
         source = (metadata.get("ip"), metadata.get("pid"))
         now = time.time()
         output = []
+
+        # Decide which lines to emit and which to buffer.
         for line in lines:
             if RAY_TQDM_MAGIC in line:
                 output.append(line)
                 continue
-            dedup_key = canonicalise_log_line(line)
+            dedup_key = _canonicalise_log_line(line)
             if dedup_key in self.recent:
                 sources = self.recent[dedup_key].sources
                 sources.add(source)
@@ -317,6 +342,8 @@ class LogDeduplicator:
             else:
                 self.recent[dedup_key] = DedupState(now, 0, line, metadata, {source})
                 output.append(line)
+
+        # Flush patterns from the buffer that are older than the aggregation window.
         while self.recent:
             if now - next(iter(self.recent.values())).timestamp > AGGREGATION_WINDOW_S:
                 dedup_key = next(iter(self.recent))
@@ -339,9 +366,15 @@ class LogDeduplicator:
                     output.append(line)
             else:
                 break
+
         return output
 
     def flush(self) -> List[dict]:
+        """Return all buffered log messages and clear the buffer.
+
+        Returns:
+            List of log batches to print.
+        """
         output = []
         for state in self.recent.values():
             if state.count > 1:

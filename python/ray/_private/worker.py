@@ -1697,14 +1697,15 @@ sys.excepthook = custom_excepthook
 
 
 def print_to_stdstream(data):
+    should_dedup = data.get("pid") not in ["autoscaler", "raylet"]
     metadata = data.copy()
     del metadata["lines"]
     if data["is_err"]:
-        if data.get("pid") != "autoscaler":
+        if should_dedup:
             data["lines"] = stderr_deduplicator.deduplicate(data["lines"], metadata)
         print_worker_logs(data, sys.stderr)
     else:
-        if data.get("pid") != "autoscaler":
+        if should_dedup:
             data["lines"] = stdout_deduplicator.deduplicate(data["lines"], metadata)
         print_worker_logs(data, sys.stdout)
 
