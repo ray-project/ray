@@ -100,7 +100,12 @@ bool TaskProfileEvent::ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) {
       RayConfig::instance().task_events_max_num_profile_events_for_task();
   if (profile_event_max_num >= 0 &&
       profile_events->events_size() >= profile_event_max_num) {
-    // Data loss.
+    // Data loss. We are dropping the newly reported profile event.
+    // This will likely happen on a driver task since the driver has a fixed placeholder
+    // driver task id and it could generate large number of profile events when submitting
+    // many tasks.
+    // We are only dropping this TaskEvent (which corresponds to a single profile event),
+    // rather than others. We will likely change the GC logic in the future as well.
     RAY_LOG_EVERY_N(WARNING, 100000)
         << "Dropping profiling events for task: " << task_id_
         << ", set a higher value for RAY_task_events_max_num_profile_events_for_task("
