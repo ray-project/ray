@@ -157,8 +157,6 @@ language = None
 # directories to ignore when looking for source files.
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
-    "workflows/api/doc/ray.workflow.*",
-    "serve/api/doc/ray.serve.*",
     "templates/*",
 ]
 
