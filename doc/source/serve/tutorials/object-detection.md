@@ -13,6 +13,9 @@ This example uses the [ultralytics/yolov5](https://github.com/ultralytics/yolov5
 
 Use the following Serve code:
 ```{literalinclude} ../doc_code/object_detection.py
+:language: python
+:start-after: __example_code_start__
+:end-before: __example_code_end__
 ```
 
 Use `serve run object_detection:entrypoint` to start the serve application.

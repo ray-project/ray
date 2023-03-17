@@ -1,10 +1,13 @@
+# __example_code_start__
 import torch
 from PIL import Image
 import numpy as np
 from io import BytesIO
 from fastapi.responses import Response
-from ray import serve
 from fastapi import FastAPI
+
+from ray import serve
+
 
 app = FastAPI()
 
@@ -32,7 +35,7 @@ class APIIngress:
     ray_actor_options={"num_gpus": 1},
     autoscaling_config={"min_replicas": 1, "max_replicas": 2},
 )
-class ObjectDection:
+class ObjectDetection:
     def __init__(self):
         self.model = torch.hub.load("ultralytics/yolov5", "yolov5s")
         self.model.cuda()
@@ -42,4 +45,21 @@ class ObjectDection:
         return Image.fromarray(result_im.render()[0].astype(np.uint8))
 
 
-entrypoint = APIIngress.bind(ObjectDection.bind())
+entrypoint = APIIngress.bind(ObjectDetection.bind())
+
+
+# __example_code_end__
+
+if __name__ == "__main__":
+    handle = serve.run(entrypoint)
+
+    import requests
+    import os
+
+    image_url = "https://ultralytics.com/images/zidane.jpg"
+    resp = requests.get(f"http://127.0.0.1:8000/detect?image_url={image_url}")
+
+    with open("output.jpeg", "wb") as f:
+        f.write(resp.content)
+
+    assert os.exists("output.png")

@@ -1,3 +1,4 @@
+# __example_code_start__
 from transformers import pipeline
 from fastapi import FastAPI
 from ray import serve
@@ -28,8 +29,8 @@ class DistilBertModel:
     def __init__(self):
         self.classifier = pipeline(
             "sentiment-analysis",
-            model="stevhliu/my_awesome_model",
-            device=torch.device("cuda:0"),
+            model="distilbert-base-uncased",
+            device=torch.device("cuda"),
         )
 
     def classify(self, sentence: str):
@@ -37,3 +38,21 @@ class DistilBertModel:
 
 
 entrypoint = APIIngress.bind(DistilBertModel.bind())
+
+# __example_code_end__
+
+if __name__ == "__main__":
+    handle = serve.run(entrypoint)
+
+    import requests
+
+    prompt = (
+        "This was a masterpiece. Not completely faithful to the books, but enthralling "
+        "from beginning to end. Might be my favorite of the three."
+    )
+    input = "%20".join(prompt.split(" "))
+    resp = requests.get(f"http://127.0.0.1:8000/classify?sentence={prompt}")
+    print(resp.status_code, resp.json())
+
+    assert resp.status_code == 200
+    assert resp.json()["label"] == "LABEL_1"

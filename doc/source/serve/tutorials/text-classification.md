@@ -13,6 +13,9 @@ This example uses the [distilbert-base-uncased](https://huggingface.co/docs/tran
 
 Use the following Serve code:
 ```{literalinclude} ../doc_code/distilbert.py
+:language: python
+:start-after: __example_code_start__
+:end-before: __example_code_end__
 ```
 
 Use `serve run distilbert_app:entrypoint` to start the serve application.
