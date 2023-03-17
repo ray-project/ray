@@ -1,7 +1,7 @@
 import { memoryConverter } from "./converter";
 
 describe("memoryConverter", () => {
-  const tests: { name: string; input: number; expected: string }[] = [
+  const table: { name: string; input: number; expected: string }[] = [
     {
       name: "convert to Bytes",
       input: 4,
@@ -34,9 +34,7 @@ describe("memoryConverter", () => {
     },
   ];
 
-  tests.forEach((test) => {
-    it(test.name, () => {
-      expect(memoryConverter(test.input)).toEqual(test.expected);
-    });
+  test.each(table)("$name", ({ input, expected }) => {
+    expect(memoryConverter(input)).toEqual(expected);
   });
 });
