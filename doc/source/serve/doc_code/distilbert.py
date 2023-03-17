@@ -57,7 +57,7 @@ def serve_session(deployment):
 
 if __name__ == "__main__":
     import requests
-
+    import ray
     ray.init(runtime_env={"pip": ["transformers==4.27.1"]})
 
     with serve_session(entrypoint):
