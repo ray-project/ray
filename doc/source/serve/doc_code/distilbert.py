@@ -58,11 +58,8 @@ def serve_session(deployment):
 if __name__ == "__main__":
     import requests
 
-    entrypoint = APIIngress.bind(
-        DistilBertModel.options(
-            autoscaling_config={"min_replicas": 1, "max_replicas": 2}
-        ).bind()
-    )
+    ray.init(runtime_env={"pip": ["transformers==4.27.1"]})
+
     with serve_session(entrypoint):
         prompt = (
             "This was a masterpiece. Not completely faithful to the books, but enthralling "

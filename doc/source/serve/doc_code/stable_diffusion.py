@@ -80,14 +80,13 @@ if __name__ == "__main__":
 
     ray.init(
         runtime_env={
-            "pip": ["transformers==4.25.1", "accelerate==0.16.0", "numpy==1.23.4"]
+            "pip": [
+                "diffusers==0.14.0",
+                "transformers==4.25.1",
+                "accelerate==0.16.0",
+                "numpy==1.23.4"
+            ]
         }
-    )
-
-    my_first_deployment = APIIngress.bind(
-        StableDiffusionV2.options(
-            autoscaling_config={"min_replicas": 1, "max_replicas": 2}
-        ).bind()
     )
 
     with serve_session(my_first_deployment) as handle:
