@@ -32,3 +32,5 @@ pong-appo:
         model:
           dim: 42
         _profile_rollout_worker_memory: true
+        _kill_rollout_workers_t_offset: 20
+        _kill_rollout_workers_scale: 20

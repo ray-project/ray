@@ -936,7 +936,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         if t_offset >= 0 and uptime > t_offset:
             scale = self.config._kill_rollout_workers_scale
             # as uptime increases, prob reaches to one
-            prob = 1 - math.exp(-(uptime - t_offset) / scale)
+            prob = 0.1 * (1 - math.exp(-(uptime - t_offset) / scale))
             if random.random() < prob:
                 print(f"Killing rollout worker {os.getpid()} due to excessive uptime.")
                 sys.exit(1)
