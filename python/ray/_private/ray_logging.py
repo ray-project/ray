@@ -263,7 +263,7 @@ class WorkerStandardStreamDispatcher:
 global_worker_stdstream_dispatcher = WorkerStandardStreamDispatcher()
 
 
-NUMBERS = re.compile(r"(\d+|0x[0-9a-fA-F]+)")
+NUMBERS = re.compile(r"(\d+[\.\d+]*|0x[0-9a-fA-F]+)")
 AGGREGATION_WINDOW_S = 3.0
 
 
@@ -303,12 +303,6 @@ class LogDeduplicator:
                 sources = self.recent[dedup_key].sources
                 sources.add(source)
                 if len(sources) > 1:
-                    if log_once("log_dedup_warning"):
-                        output.append(
-                            "Notice: Ray is deduplicating repetitive log messages "
-                            "across the cluster. This may delay log output by up to "
-                            "a few seconds. Set RAY_DEDUP_LOGS=0 to disable."
-                        )
                     state = self.recent[dedup_key]
                     self.recent[dedup_key] = DedupState(
                         state.timestamp,
@@ -334,6 +328,7 @@ class LogDeduplicator:
                     output.append(
                         state.line
                         + self._color(f" [repeated {state.count}x across cluster] ")
+                        + self._warn_once()
                     )
                     # Continue aggregating for this key but reset timestamp and count.
                     state.timestamp = now
@@ -358,6 +353,7 @@ class LogDeduplicator:
                                 state.line
                                 + self._color(
                                     f" [repeated {state.count}x across cluster]"
+                                    + self._warn_once()
                                 )
                             ]
                         },
@@ -368,8 +364,14 @@ class LogDeduplicator:
         self.recent.clear()
         return output
 
+    def _warn_once(self) -> str:
+        if log_once("log_dedup_warning"):
+            return " (set RAY_DEDUP_LOGS=0 to disable log deduplication)"
+        else:
+            return ""
+
     def _color(self, msg: str) -> str:
-        return "{}{}{}".format(colorama.Style.DIM, msg, colorama.Style.RESET_ALL)
+        return "{}{}{}".format(colorama.Fore.YELLOW, msg, colorama.Style.RESET_ALL)
 
 
 stdout_deduplicator = LogDeduplicator()
