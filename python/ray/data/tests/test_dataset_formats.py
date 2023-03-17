@@ -340,7 +340,7 @@ def test_get_read_tasks(ray_start_cluster):
     head_node_id = ray.get_runtime_context().get_node_id()
 
     # Issue read so `_get_read_tasks` being executed.
-    ray.data.range(10).fully_executed()
+    ray.data.range(10).cache()
 
     # Verify `_get_read_tasks` being executed on same node (head node).
     def verify_get_read_tasks():

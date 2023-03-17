@@ -7,7 +7,6 @@ from ray.rllib.algorithms.r2d2.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.algorithms.r2d2.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
@@ -221,20 +220,3 @@ class R2D2(DQN):
             return R2D2TorchPolicy
         else:
             return R2D2TFPolicy
-
-
-# Deprecated: Use ray.rllib.algorithms.r2d2.r2d2.R2D2Config instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(R2D2Config().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.dqn.r2d2::R2D2_DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.r2d2.r2d2::R2D2Config(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-R2D2_DEFAULT_CONFIG = _deprecated_default_config()
