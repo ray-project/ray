@@ -29,3 +29,11 @@ worker_node_types:
       resources:
         custom_resources:
           node: 1
+
+aws:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 300
+            VolumeType: gp2
