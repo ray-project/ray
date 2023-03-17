@@ -991,6 +991,7 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
         retry_interval_ms=500,
     )
 
+
 def check_file(type, task_name, expected_log, expect_no_end=False):
     """Check file of type = 'out'/'err'"""
 
@@ -1122,7 +1123,6 @@ def test_task_logs_info_running_task(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
     import os
 
     if os.environ.get("PARALLEL_CI"):

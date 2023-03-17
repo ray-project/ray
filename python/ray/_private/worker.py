@@ -536,6 +536,7 @@ class Worker:
         self._out_file = out_file
 
     def record_task_log_start(self):
+        """Record the task log info when task starts executing"""
         self.core_worker.record_task_log_start(
             self.get_out_file_path(),
             self.get_err_file_path(),
@@ -544,6 +545,7 @@ class Worker:
         )
 
     def record_task_log_end(self):
+        """Record the task log info when task finishes executing"""
         self.core_worker.record_task_log_end(
             self.get_current_out_offset(), self.get_current_err_offset()
         )
