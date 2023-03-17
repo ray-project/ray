@@ -240,7 +240,7 @@ def test_result_grid_repr():
         Result(
             metrics={"loss": 1.0},
             checkpoint=Checkpoint(data_dict={"weight": 1.0}),
-            local_path=str(Path("./log_1")),
+            _local_path=str(Path("./log_1")),
             error=None,
             metrics_dataframe=None,
             best_checkpoints=None,
@@ -248,7 +248,7 @@ def test_result_grid_repr():
         Result(
             metrics={"loss": 2.0},
             checkpoint=Checkpoint(data_dict={"weight": 2.0}),
-            local_path=str(Path("./log_2")),
+            _local_path=str(Path("./log_2")),
             error=RuntimeError(),
             metrics_dataframe=None,
             best_checkpoints=None,

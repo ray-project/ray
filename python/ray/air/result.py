@@ -29,9 +29,7 @@ class Result:
         metrics: The final metrics as reported by an Trainable.
         checkpoint: The final checkpoint of the Trainable.
         error: The execution error of the Trainable run, if the trial finishes in error.
-        local_path: Path pointing to the experiment directory on the local disk.
-        remote_path: Path pointing to the experiment directory on remote storage,
-            if configured.
+        path: Path pointing to the result directory on persistent storage.
         metrics_dataframe: The full result dataframe of the Trainable.
             The dataframe is indexed by iterations and contains reported
             metrics.
@@ -45,10 +43,10 @@ class Result:
     metrics: Optional[Dict[str, Any]]
     checkpoint: Optional[Checkpoint]
     error: Optional[Exception]
-    local_path: Optional[str]
-    remote_path: Optional[str] = None
     metrics_dataframe: Optional["pd.DataFrame"] = None
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]] = None
+    _local_path: Optional[str] = None
+    _remote_path: Optional[str] = None
     _items_to_repr = ["error", "metrics", "path", "checkpoint"]
     # Deprecate: raise in 2.5, remove in 2.6
     log_dir: Optional[Path] = None
@@ -76,12 +74,12 @@ class Result:
 
     @property
     def path(self) -> str:
-        """Path pointing to the experiment directory.
+        """Path pointing to the result directory on persistent storage.
 
-        If remote storage is configured, will point to the ``remote_path``.
-        Otherwise, will point to the ``local_path``.
+        This can point to a remote storage location (e.g. S3) or to a local
+        location (path on the head node).
         """
-        return self.remote_path or self.local_path
+        return self._remote_path or self._local_path
 
     def _repr(self, indent: int = 0) -> str:
         """Construct the representation with specified number of space indent."""

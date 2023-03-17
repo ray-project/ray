@@ -247,6 +247,21 @@ class Checkpoint:
             setattr(self, attr, value)
 
     @property
+    def path(self) -> Optional[str]:
+        """Return path to persistent storage location of the checkpoint.
+
+        This can point to a remote storage location (e.g. S3) or to a local
+        location (path on the head node).
+        """
+        if self._uri:
+            return self._uri
+
+        if self._local_path:
+            return self._local_path
+
+        return None
+
+    @property
     def uri(self) -> Optional[str]:
         """Return checkpoint URI, if available.
 
