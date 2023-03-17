@@ -307,7 +307,7 @@ def test_push_based_shuffle_stats(ray_start_cluster):
 
         parallelism = 100
         ds = ray.data.range(1000, parallelism=parallelism).random_shuffle()
-        ds = ds.fully_executed()
+        ds = ds.cache()
         assert "RandomShuffleMerge" in ds.stats()
         # Check all nodes used.
         assert "2 nodes used" in ds.stats()
