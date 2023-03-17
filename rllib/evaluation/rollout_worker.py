@@ -6,6 +6,9 @@ import logging
 import numpy as np
 import os
 import random
+import math
+import time
+import sys
 import platform
 import threading
 import tree  # pip install dm_tree
@@ -866,6 +869,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 self.async_env, self.env, self.policy_map
             )
         )
+        
+        self._creation_time = time.time()
 
     @DeveloperAPI
     def assert_healthy(self):
@@ -904,9 +909,16 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             >>> print(worker.sample()) # doctest: +SKIP
             SampleBatch({"obs": [...], "action": [...], ...})
         """
-        if self.config._rollout_worker_random_kill_rate > 0:
-            if random.random() < self.config._rollout_worker_random_kill_rate:
-                exit() 
+        
+        t_offset = self.config._kill_rollout_workers_t_offset
+        uptime = time.time() - self._creation_time
+        
+        if t_offset >= 0 and uptime > t_offset:
+            scale = self.config._kill_rollout_workers_scale 
+            # as uptime increases, prob reaches to one
+            prob = 1 - math.exp(-(uptime - t_offset) / scale)
+            if random.random() < prob:
+                sys.exit(1)
             
         if self.config.fake_sampler and self.last_batch is not None:
             return self.last_batch

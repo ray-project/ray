@@ -408,7 +408,8 @@ class AlgorithmConfig(_Config):
         self.fake_sampler = False
         self.seed = None
         self.worker_cls = None
-        self._rollout_worker_random_kill_rate = -1.
+        self._kill_rollout_workers_t_offset = -1
+        self._kill_rollout_workers_scale = 1.0
 
         # `self.fault_tolerance()`
         self.ignore_worker_failures = False
@@ -2208,7 +2209,8 @@ class AlgorithmConfig(_Config):
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
         worker_cls: Optional[Type[RolloutWorker]] = NotProvided,
-        _rollout_worker_random_kill_rate: Optional[float] = NotProvided,
+        _kill_rollout_workers_t_offset: Optional[float] = NotProvided,
+        _kill_rollout_workers_scale: Optional[float] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -2230,6 +2232,13 @@ class AlgorithmConfig(_Config):
                 seed of each worker, so that identically configured trials will have
                 identical results. This makes experiments reproducible.
             worker_cls: Use a custom RolloutWorker type for unit testing purpose.
+            _kill_rollout_workers_t_offset: For debugging only. If set, rollout workers
+                will start to die after this many seconds.
+            _kill_rollout_workers_scale: For debugging only. If set, rollout workers
+                will start to exponentially die with this scale factor in seconds. 
+                Precisely, the probability of a worker dying at time t is given by 1 - 
+                exp(- (t - offset) / scale), where offset and scale are the values of 
+                the two arguments.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2248,10 +2257,10 @@ class AlgorithmConfig(_Config):
             self.seed = seed
         if worker_cls is not NotProvided:
             self.worker_cls = worker_cls
-        if _rollout_worker_random_kill_rate is not NotProvided:
-            self._rollout_worker_random_kill_rate = (
-                _rollout_worker_random_kill_rate
-            )
+        if _kill_rollout_workers_t_offset is not NotProvided:
+            self._kill_rollout_workers_t_offset = _kill_rollout_workers_t_offset
+        if _kill_rollout_workers_scale is not NotProvided:
+            self._kill_rollout_workers_scale = _kill_rollout_workers_scale
 
         return self
 
