@@ -938,6 +938,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             # as uptime increases, prob reaches to one
             prob = 1 - math.exp(-(uptime - t_offset) / scale)
             if random.random() < prob:
+                print(f"Killing rollout worker {os.getpid()} due to excessive uptime.")
                 sys.exit(1)
 
         if self.config.fake_sampler and self.last_batch is not None:
@@ -1969,7 +1970,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
     def __del__(self):
         """If this worker is deleted, clears all resources used by it."""
 
-        if self.memray_tracker is not None:
+        if getattr(self, "memray_tracker") is not None:
             self.memray_tracker.__exit__()
 
         # In case we have-an AsyncSampler, kill its sampling thread.

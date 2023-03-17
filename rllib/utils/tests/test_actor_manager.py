@@ -366,11 +366,10 @@ class TestActorManager(unittest.TestCase):
 
         manager.foreach_actor_async(lambda w: w.ping(), tag="pingpong")
         manager.foreach_actor_async(lambda w: w.call(), tag="call")
-        time.sleep(1)
         results_ping_pong = manager.fetch_ready_async_reqs(
-            tags="pingpong", timeout_seconds=5
+            tags="pingpong", timeout_seconds=None,
         )
-        results_call = manager.fetch_ready_async_reqs(tags="call", timeout_seconds=5)
+        results_call = manager.fetch_ready_async_reqs(tags="call", timeout_seconds=None)
         self.assertEquals(len(list(results_ping_pong)), 4)
         self.assertEquals(len(list(results_call)), 4)
         for result in results_ping_pong:
@@ -385,8 +384,7 @@ class TestActorManager(unittest.TestCase):
         # test with default tag
         manager.foreach_actor_async(lambda w: w.ping())
         manager.foreach_actor_async(lambda w: w.call())
-        time.sleep(1)
-        results = manager.fetch_ready_async_reqs(timeout_seconds=5)
+        results = manager.fetch_ready_async_reqs(timeout_seconds=None)
         self.assertEquals(len(list(results)), 8)
         for result in results:
             data = result.get()
