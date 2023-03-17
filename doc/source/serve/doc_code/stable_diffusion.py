@@ -84,7 +84,7 @@ if __name__ == "__main__":
                 "diffusers==0.14.0",
                 "transformers==4.25.1",
                 "accelerate==0.16.0",
-                "numpy==1.23.4"
+                "numpy==1.23.4",
             ]
         }
     )
