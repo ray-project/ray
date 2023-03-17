@@ -686,9 +686,9 @@ class Impala(Algorithm):
                 timeout_seconds=self.config.worker_health_probe_timeout_s,
                 mark_healthy=True,
             )
-        if not train_results:
-            # adding this allows results to be properly logged by ray tune.
-            time.sleep(1e-1)
+        # if not train_results:
+        #     # adding this allows results to be properly logged by ray tune.
+        #     time.sleep(1e-1)
         return train_results
 
     @classmethod
@@ -865,6 +865,7 @@ class Impala(Algorithm):
                 reduce_fn=_reduce_impala_results,
                 block=blocking,
                 num_iters=self.config.num_sgd_iter,
+                # minibatch_size=(2 * self.config.rollout_fragment_length)
             )
         else:
             lg_results = None

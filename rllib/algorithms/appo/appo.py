@@ -262,33 +262,38 @@ class APPO(Impala):
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
 
         if self.config._enable_learner_api:
-            if train_results:
-                # using steps trained here instead of sampled ... I'm not sure why the
-                # other implemenetation uses sampled.
-                # to be quite frank, im not sure if I understand how their target update
-                # freq would work. The difference in steps sampled/trained is pretty
-                # much always going to be larger than self.config.num_sgd_iter *
-                # self.config.minibatch_buffer_size unless the number of steps collected
-                # is really small. The thing is that the default rollout fragment length
-                # is 50, so the minibatch buffer size * num_sgd_iter is going to be
-                # have to be 50 to even meet the threshold of having delayed target
-                # updates.
-                # we should instead have the target / kl threshold update be based off
-                # of the train_batch_size * some target update frequency * num_sgd_iter.
-                cur_ts = self._counters[
-                    NUM_ENV_STEPS_TRAINED
-                    if self.config.count_steps_by == "env_steps"
-                    else NUM_AGENT_STEPS_TRAINED
-                ]
-                target_update_steps_freq = (
-                    self.config.num_sgd_iter
-                    * self.config.train_batch_size
-                    * self.config.target_update_frequency
-                )
-                if cur_ts - last_update > target_update_steps_freq:
-                    self._counters[NUM_TARGET_UPDATES] += 1
-                    self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
-                    self.learner_group.additional_update()
+            # using steps trained here instead of sampled ... I'm not sure why the
+            # other implemenetation uses sampled.
+            # to be quite frank, im not sure if I understand how their target update
+            # freq would work. The difference in steps sampled/trained is pretty
+            # much always going to be larger than self.config.num_sgd_iter *
+            # self.config.minibatch_buffer_size unless the number of steps collected
+            # is really small. The thing is that the default rollout fragment length
+            # is 50, so the minibatch buffer size * num_sgd_iter is going to be
+            # have to be 50 to even meet the threshold of having delayed target
+            # updates.
+            # we should instead have the target / kl threshold update be based off
+            # of the train_batch_size * some target update frequency * num_sgd_iter.
+            # cur_ts = self._counters[
+            #     NUM_ENV_STEPS_TRAINED
+            #     if self.config.count_steps_by == "env_steps"
+            #     else NUM_AGENT_STEPS_TRAINED
+            # ]
+            # target_update_steps_freq = (
+            #     self.config.num_sgd_iter
+            #     * self.config.train_batch_size
+            #     * self.config.target_update_frequency
+            # )
+            cur_ts = self._counters[
+                NUM_AGENT_STEPS_SAMPLED
+                if self.config.count_steps_by == "agent_steps"
+                else NUM_ENV_STEPS_SAMPLED
+            ]
+            target_update_steps_freq = 1
+            if cur_ts - last_update > target_update_steps_freq:
+                self._counters[NUM_TARGET_UPDATES] += 1
+                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+                self.learner_group.additional_update()
 
         else:
             cur_ts = self._counters[
@@ -374,6 +379,8 @@ class APPO(Impala):
                 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 
                 return EagerTFPolicyV2
+                # from ray.rllib.algorithms.appo.tf.appo_tf_policy_rlm import APPOTfPolicyWithRLModule
+                # return APPOTfPolicyWithRLModule
             from ray.rllib.algorithms.appo.appo_tf_policy import APPOTF2Policy
 
             return APPOTF2Policy
