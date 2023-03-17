@@ -354,8 +354,10 @@ class LogDeduplicator:
                     # (Actor pid=xxxx) [repeated 2x across cluster] ...
                     output.append(
                         state.line
-                        + self._color(f" [repeated {state.count}x across cluster] ")
-                        + self._warn_once()
+                        + self._color(
+                            f" [repeated {state.count}x across cluster] "
+                            + self._warn_once()
+                        )
                     )
                     # Continue aggregating for this key but reset timestamp and count.
                     state.timestamp = now
