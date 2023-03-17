@@ -2237,9 +2237,9 @@ class AlgorithmConfig(_Config):
             _kill_rollout_workers_t_offset: For debugging only. If set, rollout workers
                 will start to die after this many seconds.
             _kill_rollout_workers_scale: For debugging only. If set, rollout workers
-                will start to exponentially die with this scale factor in seconds. 
-                Precisely, the probability of a worker dying at time t is given by 1 - 
-                exp(- (t - offset) / scale), where offset and scale are the values of 
+                will start to exponentially die with this scale factor in seconds.
+                Precisely, the probability of a worker dying at time t is given by 1 -
+                exp(- (t - offset) / scale), where offset and scale are the values of
                 the two arguments.
             _profile_rollout_worker_memory: For debugging only. If set, rollout workers
                 will periodically dump memory usage stats to the log.
