@@ -1,7 +1,7 @@
 # Global release test configuration file.
 # All your release test configuration should go here. Adding release tests here
 # will automatically enable them in the Buildkite release testing schedules
-# (except they have frequency: disabled).
+# (except they have frequency: manual).
 # Here is an example configuration for reference:
 #- name: example_test
 #  # Tests with the same group will be grouped in the Buildkite UI
@@ -10,7 +10,7 @@
 #  working_dir: example_dir
 #
 #  # How often to run the tests.
-#  # One of [disabled, any, multi, nightly, weekly].
+#  # One of [manual, any, multi, nightly, weekly].
 #  frequency: weekly
 #  # Owning team. This field will be persisted to the database
 #  team: ml
@@ -134,7 +134,7 @@
 
 
   smoke_test:
-    frequency: disabled
+    frequency: manual
 
     run:
       timeout: 3600
@@ -184,7 +184,7 @@
 
 
   smoke_test:
-    frequency: disabled
+    frequency: manual
 
     run:
       timeout: 1800
@@ -569,6 +569,46 @@
 
     timeout: 1800
     script: bash heterogeneity_benchmark.sh 2
+
+
+#######################
+# AIR examples
+#######################
+
+
+# Test additional CPU nodes for preprocessing.
+- name: air_example_dreambooth_finetuning
+  group: AIR examples
+  working_dir: air_examples/dreambooth
+
+  stable: false
+
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: dreambooth_env.yaml
+    cluster_compute: dreambooth_compute.yaml
+
+  run:
+    timeout: 1800
+    script: bash dreambooth_run.sh
+
+
+- name: air_example_gptj_deepspeed_fine_tuning
+  group: AIR examples
+  working_dir: air_examples/gptj_deepspeed_finetuning
+
+  python: "3.9"
+
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: gptj_deepspeed_env.yaml
+    cluster_compute: gptj_deepspeed_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
 
 #######################
 # XGBoost release tests
@@ -1816,7 +1856,7 @@
     long_running: true
 
   smoke_test:
-    frequency: disabled
+    frequency: manual
     run:
       timeout: 3600
 
@@ -2070,24 +2110,24 @@
 
   alert: default
 
-- name: serve_serve_micro_benchmark_k8s
-  group: Serve tests
-  working_dir: serve_tests
+# - name: serve_serve_micro_benchmark_k8s
+#   group: Serve tests
+#   working_dir: serve_tests
 
-  # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
-  frequency: disabled
-  team: serve
+#   # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
+#   frequency: manual
+#   team: serve
 
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_single_node_k8s.yaml
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: compute_tpl_single_node_k8s.yaml
 
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_micro_benchmark.py
+#   run:
+#     timeout: 7200
+#     long_running: false
+#     script: python workloads/serve_micro_benchmark.py
 
-  alert: default
+#   alert: default
 
 
 - name: deployment_graph_long_chain
@@ -2244,6 +2284,30 @@
     wait_for_nodes:
       num_nodes: 2
 
+
+  alert: default
+
+########################
+# Alpa tests
+########################
+
+- name: alpa_opt_2_7b_sanity_check
+  group: Alpa tests
+  working_dir: alpa_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2_g4dn_12xlarge.yaml
+
+  run:
+    timeout: 3600
+    script: bash run.sh
+
+    wait_for_nodes:
+      num_nodes: 2
 
   alert: default
 
@@ -3603,7 +3667,7 @@
       num_nodes: 15
 
 
-- name: pipelined_data_ingest_benchmark
+- name: pipelined_data_ingest_benchmark_1tb
   group: data-tests
   working_dir: nightly_tests/dataset
 
@@ -3615,7 +3679,24 @@
 
   run:
     timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=200 --num-workers=20 --streaming
+    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --streaming
+    wait_for_nodes:
+      num_nodes: 20
+
+
+- name: streaming_data_ingest_benchmark_1tb
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_ingest_benchmark_compute.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --new_streaming
     wait_for_nodes:
       num_nodes: 20
 
@@ -3646,8 +3727,8 @@
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
-    # Expect the benchmark to finish less than 4 mins.
-    timeout: 300
+    # Expect the benchmark to finish in 400 seconds.
+    timeout: 400
     script: python read_parquet_benchmark.py
 
 

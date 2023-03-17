@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Un
 import ray
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.memory_tracing import trace_deallocation
+from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
@@ -216,6 +217,11 @@ class TaskContext:
     # operator.
     task_idx: int
 
+    # The dictionary of sub progress bar to update. The key is name of sub progress
+    # bar. Note this is only used on driver side.
+    # TODO(chengsu): clean it up from TaskContext with new optimizer framework.
+    sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
+
 
 # Block transform function applied by task and actor pools in MapOperator.
 MapTransformFn = Callable[[Iterable[Block], TaskContext], Iterable[Block]]
@@ -364,6 +370,15 @@ class PhysicalOperator(Operator):
         """
         return []
 
+    def throttling_disabled(self) -> bool:
+        """Whether to disable resource throttling for this operator.
+
+        This should return True for operators that only manipulate bundle metadata
+        (e.g., the OutputSplitter operator). This hints to the execution engine that
+        these operators should not be throttled based on resource usage.
+        """
+        return False
+
     def num_active_work_refs(self) -> int:
         """Return the number of active work refs.
 
@@ -439,6 +454,9 @@ class OutputIterator(Iterator[RefBundle]):
         Args:
             output_split_idx: The output split index to get results for. This arg is
                 only allowed for iterators created by `Dataset.streaming_split()`.
+
+        Raises:
+            StopIteration if there are no more outputs to return.
         """
         if output_split_idx is not None:
             raise NotImplementedError()

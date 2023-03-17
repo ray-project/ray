@@ -46,7 +46,7 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
     values = np.stack(ds.take(8))
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
     # Check that conversion task is included in stats.
-    assert "from_numpy_refs" in ds.stats()
+    assert "FromNumpyRefs" in ds.stats()
 
     # Test from single NumPy ndarray.
     if from_ref:
@@ -56,7 +56,7 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
     values = np.stack(ds.take(4))
     np.testing.assert_array_equal(values, arr1)
     # Check that conversion task is included in stats.
-    assert "from_numpy_refs" in ds.stats()
+    assert "FromNumpyRefs" in ds.stats()
 
 
 def test_from_numpy_variable_shaped(ray_start_regular_shared):
@@ -122,8 +122,11 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs)
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "Dataset(\n\tnum_blocks=2,\n\tnum_rows=?,"
-        "\n\tschema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}\n)"
+        "Dataset(\n"
+        "   num_blocks=2,\n"
+        "   num_rows=?,\n"
+        "   schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}\n"
+        ")"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -134,8 +137,11 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
-        "Dataset(\n\tnum_blocks=1,\n\tnum_rows=10,"
-        "\n\tschema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}\n)"
+        "Dataset(\n"
+        "   num_blocks=1,\n"
+        "   num_rows=10,\n"
+        "   schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}\n"
+        ")"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -147,10 +153,35 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     assert ds.num_blocks() == 1
     assert ds.count() == 10
     assert str(ds) == (
-        "Dataset(\n\tnum_blocks=1,\n\tnum_rows=10,"
-        "\n\tschema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}\n)"
+        "Dataset(\n"
+        "   num_blocks=1,\n"
+        "   num_rows=10,\n"
+        "   schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}\n"
+        ")"
     )
     assert [v.item() for v in ds.take(2)] == [0, 1]
+
+
+@pytest.mark.parametrize("ignore_missing_paths", [True, False])
+def test_numpy_read_ignore_missing_paths(
+    ray_start_regular_shared, tmp_path, ignore_missing_paths
+):
+    path = os.path.join(tmp_path, "test_np_dir")
+    os.mkdir(path)
+    np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
+
+    paths = [
+        os.path.join(path, "test.npy"),
+        "missing.npy",
+    ]
+
+    if ignore_missing_paths:
+        ds = ray.data.read_numpy(paths, ignore_missing_paths=ignore_missing_paths)
+        assert ds.input_files() == [paths[0]]
+    else:
+        with pytest.raises(FileNotFoundError):
+            ds = ray.data.read_numpy(paths, ignore_missing_paths=ignore_missing_paths)
+            ds.fully_executed()
 
 
 def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
@@ -160,8 +191,11 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     np.save(path, np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
     assert str(ds) == (
-        "Dataset(\n\tnum_blocks=1,\n\tnum_rows=10,"
-        "\n\tschema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}\n)"
+        "Dataset(\n"
+        "   num_blocks=1,\n"
+        "   num_rows=10,\n"
+        "   schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}\n"
+        ")"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 

@@ -258,7 +258,7 @@ def assert_base_partitioned_ds():
         # `ExecutionPlan.get_plan_as_string()`). Therefore, we remove whitespace
         # characters to test the string contents regardless of the string repr length.
         def _remove_whitespace(ds_str):
-            for c in ["\n", "\t", " "]:
+            for c in ["\n", "   ", " "]:
                 ds_str = ds_str.replace(c, "")
             return ds_str
 
