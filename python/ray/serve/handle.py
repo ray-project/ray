@@ -1,9 +1,11 @@
 import os
+import inspect
 import asyncio
 import threading
 import concurrent.futures
+from functools import wraps
 from dataclasses import dataclass
-from typing import Dict, Optional, Union, Tuple, Coroutine
+from typing import Dict, Optional, Union, Tuple
 
 import ray
 from ray._private.utils import get_or_create_event_loop
@@ -21,7 +23,7 @@ from ray.serve._private.utils import (
     DEFAULT,
 )
 from ray.serve._private.autoscaling_metrics import start_metrics_pusher
-from ray.serve._private.common import DeploymentInfo
+from ray.serve._private.common import DeploymentInfo, ReplicaTag
 from ray.serve._private.constants import HANDLE_METRIC_PUSH_INTERVAL_S
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve._private.router import Router, RequestMetadata
@@ -36,6 +38,19 @@ _global_async_loop = None
 FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC = (
     os.environ.get(SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY, "0") == "1"
 )
+
+
+def _wrap_into_async_task(async_func):
+    """Wrap an async function so it returns async task instead of coroutine
+    This makes the returned value awaitable more than once.
+    """
+    assert inspect.iscoroutinefunction(async_func)
+
+    @wraps(async_func)
+    def wrapper(*args, **kwargs):
+        return asyncio.ensure_future(async_func(*args, **kwargs))
+
+    return wrapper
 
 
 def _create_or_get_async_loop_in_thread():
@@ -196,14 +211,14 @@ class RayServeHandle:
             _internal_pickled_http_request=self._pickled_http_request,
         )
 
-    def _craft_and_assign_request(
+    async def _craft_and_assign_request(
         self, deployment_name, handle_options, args, kwargs
-    ) -> Tuple[Coroutine, Coroutine]:
+    ) -> Tuple[ray.ObjectRef, ReplicaTag]:
         """Creates a request and assigns it to a replica.
 
         Return:
             Tuple containing
-                1. The assignment coroutine
+                1. A Ray object ref pointing to the result
                 2. The replica tag of the replica that was assigned the request
         """
         request_metadata = RequestMetadata(
@@ -212,14 +227,14 @@ class RayServeHandle:
             call_method=handle_options.method_name,
             http_arg_is_pickled=self._pickled_http_request,
         )
-        replica_assignment_iterator = self.router.assign_request(
+
+        result_ref, replica_tag = await self.router.assign_request(
             request_metadata, *args, **kwargs
         )
-        assignment_coro = replica_assignment_iterator.__anext__()
-        replica_tag_coro = replica_assignment_iterator.__anext__()
-        return assignment_coro, replica_tag_coro
+        return result_ref, replica_tag
 
-    def _internal_remote(self, *args, **kwargs) -> Tuple[ray.ObjectRef, str]:
+    @_wrap_into_async_task
+    async def _internal_remote(self, *args, **kwargs) -> Tuple[ray.ObjectRef, str]:
         """Issue an asynchronous request to the deployment.
 
         Returns a asyncio task whose results can be waited for infintely or
@@ -234,17 +249,12 @@ class RayServeHandle:
         """
 
         self.request_counter.inc()
-        assignment_coro, replica_tag_coro = self._craft_and_assign_request(
+        return await self._craft_and_assign_request(
             self.deployment_name, self.handle_options, args, kwargs
         )
 
-        # Convert assignment coroutine to a task, so it's infinitely awaitable,
-        # which allows double awaits in the graph API
-        assignment_task = asyncio.ensure_future(assignment_coro)
-
-        return assignment_task, replica_tag_coro
-
-    def remote(self, *args, **kwargs):
+    @_wrap_into_async_task
+    async def remote(self, *args, **kwargs):
         """Issue an asynchronous request to the deployment.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
@@ -257,15 +267,8 @@ class RayServeHandle:
                 ``request.query_params``.
         """
 
-        # TODO (shrekris-anyscale): Make sure the async generators don't leak
-        # and get closed correctly!
-        # If you're reviewing this PR, and this TODO is still here, please
-        # leave a comment. This should be addressed before merging.
-        assignment_task, replica_tag_coro = self._internal_remote(*args, **kwargs)
-
-        replica_tag_coro.close()
-
-        return assignment_task
+        result_ref, _ = await self._internal_remote(*args, **kwargs)
+        return result_ref
 
     def embargo_replica(self, replica_tag):
         """Temporarily stop sending requests to replica_tag replica."""

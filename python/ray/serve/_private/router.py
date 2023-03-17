@@ -246,8 +246,8 @@ class ReplicaSet:
             self.num_queued_queries, tags={"endpoint": endpoint}
         )
         await query.resolve_async_tasks()
-        assigned_ref, assigned_replica_tag = self._try_assign_replica(query)
-        while assigned_ref is None:  # Can't assign a replica right now.
+        result_ref, assigned_replica_tag = self._try_assign_replica(query)
+        while result_ref is None:  # Can't assign a replica right now.
             logger.debug(
                 f"Failed to assign a replica for query {query.metadata.request_id}"
             )
@@ -266,13 +266,12 @@ class ReplicaSet:
                     self.config_updated_event.clear()
             # We are pretty sure a free replica is ready now, let's recurse and
             # assign this query a replica.
-            assigned_ref, assigned_replica_tag = self._try_assign_replica(query)
+            result_ref, assigned_replica_tag = self._try_assign_replica(query)
         self.num_queued_queries -= 1
         self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint}
         )
-        yield assigned_ref
-        yield assigned_replica_tag
+        return result_ref, assigned_replica_tag
 
     def embargo_replica(self, replica_tag: str):
         """Temporarily embargoes a replica.
@@ -336,7 +335,8 @@ class Router:
         """Assigns a query and returns an object ref representing the result."""
 
         self.num_router_requests.inc()
-        replica_assignment_iterator = self._replica_set.assign_replica(
+
+        result_ref, replica_tag = await self._replica_set.assign_replica(
             Query(
                 args=list(request_args),
                 kwargs=request_kwargs,
@@ -344,8 +344,4 @@ class Router:
             )
         )
 
-        result_ref: ray.ObjectRef = await replica_assignment_iterator.__anext__()
-        yield result_ref
-
-        replica_tag: ReplicaTag = await replica_assignment_iterator.__anext__()
-        yield replica_tag
+        return result_ref, replica_tag

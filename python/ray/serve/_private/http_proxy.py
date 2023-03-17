@@ -78,7 +78,7 @@ async def _send_request_to_handle(handle: RayServeHandle, scope, receive, send) 
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
     while retries < MAX_REPLICA_FAILURE_RETRIES:
-        assignment_task, replica_tag_coro = handle._internal_remote(request)
+        assignment_task = handle._internal_remote(request)
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task],
             return_when=FIRST_COMPLETED,
@@ -96,8 +96,7 @@ async def _send_request_to_handle(handle: RayServeHandle, scope, receive, send) 
             # This will make the .result() to raise cancelled error.
             assignment_task.cancel()
         try:
-            object_ref = await assignment_task
-            replica_tag = await replica_tag_coro
+            object_ref, replica_tag = await assignment_task
 
             # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
             # some replicas crash simultaneously (e.g. if the head node crashes),
