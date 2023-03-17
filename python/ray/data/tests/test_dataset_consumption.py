@@ -8,10 +8,12 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from unittest.mock import patch
 
 import ray
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.pandas_block import PandasRow
 from ray.data.block import BlockAccessor, BlockMetadata
@@ -162,19 +164,19 @@ def test_empty_dataset(ray_start_regular_shared):
 
     ds = ray.data.range(1)
     ds = ds.filter(lambda x: x > 1)
-    ds.fully_executed()
+    ds.cache()
     assert str(ds) == "Dataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
 
     # Test map on empty dataset.
     ds = ray.data.from_items([])
     ds = ds.map(lambda x: x)
-    ds.fully_executed()
+    ds.cache()
     assert ds.count() == 0
 
     # Test filter on empty dataset.
     ds = ray.data.from_items([])
     ds = ds.filter(lambda: True)
-    ds.fully_executed()
+    ds.cache()
     assert ds.count() == 0
 
 
@@ -182,9 +184,9 @@ def test_schema(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
     ds2 = ray.data.range_table(10, parallelism=10)
     ds3 = ds2.repartition(5)
-    ds3.fully_executed()
+    ds3.cache()
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
-    ds4.fully_executed()
+    ds4.cache()
     assert str(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
     assert str(ds3) == "Dataset(num_blocks=5, num_rows=10, schema={value: int64})"
@@ -259,7 +261,7 @@ def test_dataset_repr(ray_start_regular_shared):
         "   +- MapBatches(<lambda>)\n"
         "      +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     )
-    ds.fully_executed()
+    ds.cache()
     assert repr(ds) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
@@ -297,7 +299,7 @@ def test_dataset_repr(ray_start_regular_shared):
 def test_limit(ray_start_regular_shared, lazy):
     ds = ray.data.range(100, parallelism=20)
     if not lazy:
-        ds = ds.fully_executed()
+        ds = ds.cache()
     for i in range(100):
         assert ds.limit(i).take(200) == list(range(i))
 
@@ -1387,15 +1389,15 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
     # Read/write from Ray Client will result in error.
     ray.init(address)
     with pytest.raises(ValueError):
-        ds = ray.data.read_parquet("local://" + path).fully_executed()
+        ds = ray.data.read_parquet("local://" + path).cache()
     ds = ray.data.from_pandas(df)
     with pytest.raises(ValueError):
-        ds.write_parquet("local://" + data_path).fully_executed()
+        ds.write_parquet("local://" + data_path).cache()
 
 
 def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplog):
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
-        ray.data.range(5000, parallelism=5000).fully_executed()
+        ray.data.range(5000, parallelism=5000).cache()
     assert (
         "The requested parallelism of 5000 is "
         "more than 4x the number of available CPU slots in the cluster" in caplog.text
@@ -1441,17 +1443,17 @@ def test_read_write_local_node(ray_start_cluster):
 
     local_path = "local://" + data_path
     # Plain read.
-    ds = ray.data.read_parquet(local_path).fully_executed()
+    ds = ray.data.read_parquet(local_path).cache()
     check_dataset_is_local(ds)
 
     # SPREAD scheduling got overridden when read local scheme.
     ds = ray.data.read_parquet(
         local_path, ray_remote_args={"scheduling_strategy": "SPREAD"}
-    ).fully_executed()
+    ).cache()
     check_dataset_is_local(ds)
 
     # With fusion.
-    ds = ray.data.read_parquet(local_path).map(lambda x: x).fully_executed()
+    ds = ray.data.read_parquet(local_path).map(lambda x: x).cache()
     check_dataset_is_local(ds)
 
     # Write back to local scheme.
@@ -1464,15 +1466,15 @@ def test_read_write_local_node(ray_start_cluster):
     with pytest.raises(ValueError):
         ds = ray.data.read_parquet(
             [local_path + "/test1.parquet", data_path + "/test2.parquet"]
-        ).fully_executed()
+        ).cache()
     with pytest.raises(ValueError):
         ds = ray.data.read_parquet(
             [local_path + "/test1.parquet", "example://iris.parquet"]
-        ).fully_executed()
+        ).cache()
     with pytest.raises(ValueError):
         ds = ray.data.read_parquet(
             ["example://iris.parquet", local_path + "/test1.parquet"]
-        ).fully_executed()
+        ).cache()
 
 
 @ray.remote
@@ -1578,7 +1580,7 @@ def test_polars_lazy_import(shutdown_only):
             ray.data.from_pandas(dfs)
             .map_batches(lambda t: t, batch_format="pyarrow", batch_size=None)
             .sort(key="a")
-            .fully_executed()
+            .cache()
         )
         assert any(ray.get([f.remote(True) for _ in range(parallelism)]))
 
@@ -1611,21 +1613,57 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
     assert schema == ds.schema()
 
 
-# TODO: re-enable the followed tests once they pass in CI consistently.
-"""
+def test_dataset_plan_as_string(ray_start_cluster):
+    ds = ray.data.read_parquet("example://iris.parquet")
+    assert ds._plan.get_plan_as_string() == (
+        "Dataset(\n"
+        "   num_blocks=1,\n"
+        "   num_rows=150,\n"
+        "   schema={\n"
+        "      sepal.length: double,\n"
+        "      sepal.width: double,\n"
+        "      petal.length: double,\n"
+        "      petal.width: double,\n"
+        "      variety: string\n"
+        "   }\n"
+        ")"
+    )
+    for _ in range(5):
+        ds = ds.map_batches(lambda x: x)
+    assert ds._plan.get_plan_as_string() == (
+        "MapBatches(<lambda>)\n"
+        "+- MapBatches(<lambda>)\n"
+        "   +- MapBatches(<lambda>)\n"
+        "      +- MapBatches(<lambda>)\n"
+        "         +- MapBatches(<lambda>)\n"
+        "            +- Dataset(\n"
+        "                  num_blocks=1,\n"
+        "                  num_rows=150,\n"
+        "                  schema={\n"
+        "                     sepal.length: double,\n"
+        "                     sepal.width: double,\n"
+        "                     petal.length: double,\n"
+        "                     petal.width: double,\n"
+        "                     variety: string\n"
+        "                  }\n"
+        "               )"
+    )
+
+
 class LoggerWarningCalled(Exception):
-    Custom exception used in test_warning_execute_with_no_cpu() and
+    """Custom exception used in test_warning_execute_with_no_cpu() and
     test_nowarning_execute_with_cpu(). Raised when the `logger.warning` method
     is called, so that we can kick out of `plan.execute()` by catching this Exception
-    and check logging was done properly.
+    and check logging was done properly."""
 
     pass
 
 
 def test_warning_execute_with_no_cpu(ray_start_cluster):
-    Tests ExecutionPlan.execute() to ensure a warning is logged
-    when no CPU resources are available.
+    """Tests ExecutionPlan.execute() to ensure a warning is logged
+    when no CPU resources are available."""
     # Create one node with no CPUs to trigger the Dataset warning
+    ray.init(ray_start_cluster.address)
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
 
@@ -1654,11 +1692,11 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
                 )
 
 
-def test_nowarning_execute_with_cpu(ray_start_cluster_init):
-    Tests ExecutionPlan.execute() to ensure no warning is logged
-    when there are available CPU resources.
+def test_nowarning_execute_with_cpu(ray_start_cluster):
+    """Tests ExecutionPlan.execute() to ensure no warning is logged
+    when there are available CPU resources."""
     # Create one node with CPUs to avoid triggering the Dataset warning
-    ray.init(ray_start_cluster_init.address)
+    ray.init(ray_start_cluster.address)
 
     logger = DatasetLogger("ray.data._internal.plan").get_logger()
     with patch.object(
@@ -1670,7 +1708,6 @@ def test_nowarning_execute_with_cpu(ray_start_cluster_init):
         ds = ds.map_batches(lambda x: x)
         ds.take()
         mock_logger.assert_not_called()
-"""
 
 
 if __name__ == "__main__":

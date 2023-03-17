@@ -36,8 +36,8 @@ class ModelConfig(abc.ABC):
         output_dims: The output dimensions of the network.
     """
 
-    input_dims: Union[List, Tuple] = None
-    output_dims: Union[List, Tuple] = None
+    input_dims: Union[List[int], Tuple[int]] = None
+    output_dims: Union[List[int], Tuple[int]] = None
 
     @abc.abstractmethod
     def build(self, framework: str):

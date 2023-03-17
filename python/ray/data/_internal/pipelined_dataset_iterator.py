@@ -57,16 +57,19 @@ class PipelinedDatasetIterator(DatasetIterator):
 
     def __getattr__(self, name):
         if name == "_base_dataset_pipeline":
-            return None
+            raise AttributeError
 
-        # Warning for backwards compatibility. TODO: remove this method in 2.5.
-        warnings.warn(
-            "session.get_dataset_shard returns a ray.data.DatasetIterator "
-            "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
-            "Use iter_torch_batches(), to_tf(), or iter_batches() to "
-            "iterate over one epoch. See "
-            "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
-            "for full DatasetIterator docs."
-        )
+        if hasattr(self._base_dataset_pipeline, name):
+            # Warning for backwards compatibility. TODO: remove this method in 2.5.
+            warnings.warn(
+                "session.get_dataset_shard returns a ray.data.DatasetIterator "
+                "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
+                "Use iter_torch_batches(), to_tf(), or iter_batches() to "
+                "iterate over one epoch. See "
+                "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
+                "for full DatasetIterator docs."
+            )
 
-        return getattr(self._base_dataset_pipeline, name)
+            return getattr(self._base_dataset_pipeline, name)
+        else:
+            return super().__getattr__(name)

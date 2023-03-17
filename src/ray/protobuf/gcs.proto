@@ -215,6 +215,8 @@ message TaskStateUpdate {
   optional int64 failed_ts = 7;
   // Worker that runs the task.
   optional bytes worker_id = 8;
+  // Task faulure info.
+  optional ErrorType error_type = 9;
 }
 
 // Represents events and state changes from a single task run.

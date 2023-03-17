@@ -7,7 +7,7 @@ import math
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Deque, Union
+from typing import Dict, List, Optional, Deque, Tuple, Union
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -16,6 +16,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     ExecutionOptions,
 )
+from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
 
@@ -101,11 +102,26 @@ class OpState:
         self.num_completed_tasks = 0
         self.inputs_done_called = False
 
-    def initialize_progress_bar(self, index: int) -> None:
-        """Create a progress bar at the given index (line offset in console)."""
+    def initialize_progress_bars(self, index: int) -> int:
+        """Create progress bars at the given index (line offset in console).
+
+        For AllToAllOperator, zero or more sub progress bar would be created.
+        Return the number of progress bars created for this operator.
+        """
         self.progress_bar = ProgressBar(
             self.op.name, self.op.num_outputs_total() or 1, index
         )
+        num_bars = 1
+        if isinstance(self.op, AllToAllOperator):
+            num_bars += self.op.initialize_sub_progress_bars(index + 1)
+        return num_bars
+
+    def close_progress_bars(self):
+        """Close all progress bars for this operator."""
+        if self.progress_bar:
+            self.progress_bar.close()
+            if isinstance(self.op, AllToAllOperator):
+                self.op.close_sub_progress_bars()
 
     def num_queued(self) -> int:
         """Return the number of queued bundles across all inqueues."""
@@ -159,11 +175,11 @@ class OpState:
                 # Scan the queue and look for outputs tagged for the given index.
                 for i in range(len(self.outqueue)):
                     bundle = self.outqueue[i]
-                    if bundle is None:
+                    if bundle is None or isinstance(bundle, Exception):
                         # End of stream for this index! Note that we
                         # do not remove the None, so that it can act
                         # as the termination signal for all indices.
-                        return None
+                        return bundle
                     elif bundle.output_split_idx == output_split_idx:
                         self.outqueue.remove(bundle)
                         return bundle
@@ -194,7 +210,7 @@ class OpState:
 
 def build_streaming_topology(
     dag: PhysicalOperator, options: ExecutionOptions
-) -> Topology:
+) -> Tuple[Topology, int]:
     """Instantiate the streaming operator state topology for the given DAG.
 
     This involves creating the operator state for each operator in the DAG,
@@ -207,6 +223,7 @@ def build_streaming_topology(
 
     Returns:
         The topology dict holding the streaming execution state.
+        The number of progress bars initialized so far.
     """
 
     topology: Topology = {}
@@ -236,10 +253,9 @@ def build_streaming_topology(
     i = 1
     for op_state in list(topology.values()):
         if not isinstance(op_state.op, InputDataBuffer):
-            op_state.initialize_progress_bar(i)
-            i += 1
+            i += op_state.initialize_progress_bars(i)
 
-    return topology
+    return (topology, i)
 
 
 def process_completed_tasks(topology: Topology) -> None:
@@ -324,9 +340,14 @@ def select_operator_to_run(
     if not ops:
         return None
 
-    # Equally penalize outqueue length and num bundles processing for backpressure.
+    # Run metadata-only operators first. After that, equally penalize outqueue length
+    # and num bundles processing for backpressure.
     return min(
-        ops, key=lambda op: len(topology[op].outqueue) + topology[op].num_processing()
+        ops,
+        key=lambda op: (
+            not op.throttling_disabled(),
+            len(topology[op].outqueue) + topology[op].num_processing(),
+        ),
     )
 
 
@@ -353,6 +374,10 @@ def _execution_allowed(
     Returns:
         Whether the op is allowed to run.
     """
+
+    if op.throttling_disabled():
+        return True
+
     assert isinstance(global_usage, TopologyResourceUsage), global_usage
     # To avoid starvation problems when dealing with fractional resource types,
     # convert all quantities to integer (0 or 1) for deciding admissibility. This

@@ -2,6 +2,7 @@ from collections import deque
 import copy
 import json
 import logging
+from functools import partial
 from numbers import Number
 import os
 from pathlib import Path
@@ -21,6 +22,7 @@ from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
 from ray.tune.error import _TuneRestoreError
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
+from ray.tune.logger import NoopLogger
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -34,6 +36,9 @@ from ray.tune.result import (
     TRAINING_ITERATION,
     TRIAL_ID,
     DEBUG_METRICS,
+    TRIAL_INFO,
+    STDOUT_FILE,
+    STDERR_FILE,
 )
 from ray.tune.syncer import SyncConfig
 from ray.tune.execution.placement_groups import (
@@ -184,6 +189,56 @@ def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
             f"trial dirname '{relative_logdir_old}' already exists."
         )
     return relative_logdir
+
+
+def _noop_logger_creator(
+    config: Dict[str, Any], logdir: str, should_chdir: bool = True
+):
+    # Upon remote process setup, record the actor's original working dir before
+    # changing to the Tune logdir
+    os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
+
+    os.makedirs(logdir, exist_ok=True)
+    if should_chdir:
+        # Set the working dir to the trial directory in the remote process,
+        # for user file writes
+        if not ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
+            os.chdir(logdir)
+    return NoopLogger(config, logdir)
+
+
+def _get_trainable_kwargs(
+    trial: "Trial",
+    additional_kwargs: Optional[Dict[str, Any]] = None,
+    should_chdir: bool = False,
+) -> Dict[str, Any]:
+    trial.init_logdir()
+
+    logger_creator = partial(
+        _noop_logger_creator,
+        logdir=trial.logdir,
+        should_chdir=should_chdir,
+    )
+
+    trial_config = copy.deepcopy(trial.config)
+    trial_config[TRIAL_INFO] = _TrialInfo(trial)
+    stdout_file, stderr_file = trial.log_to_file
+    trial_config[STDOUT_FILE] = stdout_file
+    trial_config[STDERR_FILE] = stderr_file
+
+    kwargs = {
+        "config": trial_config,
+        "logger_creator": logger_creator,
+    }
+
+    if trial.uses_cloud_checkpointing:
+        kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
+        kwargs["sync_config"] = trial.sync_config
+
+        if additional_kwargs:
+            kwargs.update(additional_kwargs)
+
+    return kwargs
 
 
 @DeveloperAPI
