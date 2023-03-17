@@ -3,6 +3,7 @@ import numpy as np
 
 import ray
 from ray.train.lightning import LightningConfigBuilder, LightningTrainer
+from ray.train.constants import MODEL_KEY
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
 from ray.train.tests.lightning_test_utils import (
     LinearModule,
@@ -56,41 +57,6 @@ def test_config_builder():
     assert config["_trainer_init_config"]["log_every_n_steps"] == 100
     assert not config["_ddp_strategy_config"]
     assert not config["_model_checkpoint_config"]
-
-
-def test_create_air_checkpoint_config():
-    trainer = LightningTrainer()
-    # Check monitored checkpoint config
-    lightning_ckpt_config = {
-        "monitor": "eval_loss",
-        "save_top_k": 3,
-    }
-    air_ckpt_config = trainer._create_air_checkpoint_config(lightning_ckpt_config)
-    assert air_ckpt_config.num_to_keep == 3
-    assert air_ckpt_config.checkpoint_score_attribute == "eval_loss"
-    assert air_ckpt_config.checkpoint_score_order == "min"
-
-    # Check non-monitored checkpoint config
-    lightning_ckpt_config = {
-        "every_n_epochs": 3,
-    }
-    air_ckpt_config = trainer._create_air_checkpoint_config(lightning_ckpt_config)
-    assert air_ckpt_config.num_to_keep == 1
-    assert air_ckpt_config.checkpoint_score_attribute is None
-    assert air_ckpt_config.checkpoint_score_order == "min"
-
-    # Check corner cases
-    lightning_ckpt_config = {}
-    air_ckpt_config = trainer._create_air_checkpoint_config(lightning_ckpt_config)
-    assert air_ckpt_config.num_to_keep == 1
-    assert air_ckpt_config.checkpoint_score_attribute is None
-    assert air_ckpt_config.checkpoint_score_order == "min"
-
-    lightning_ckpt_config = {"monitor": "eval_acc", "mode": "max"}
-    air_ckpt_config = trainer._create_air_checkpoint_config(lightning_ckpt_config)
-    assert air_ckpt_config.num_to_keep == 1
-    assert air_ckpt_config.checkpoint_score_attribute == "eval_acc"
-    assert air_ckpt_config.checkpoint_score_order == "max"
 
 
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
@@ -213,6 +179,70 @@ def test_trainer_with_categorical_ray_data(ray_start_6_cpus_2_gpus, accelerator)
     )
 
     results = trainer.fit()
+    assert results.metrics["epoch"] == num_epochs - 1
+    assert (
+        results.metrics["step"] == num_epochs * dataset_size / num_workers / batch_size
+    )
+    assert "loss" in results.metrics
+    assert "val_loss" in results.metrics
+    assert results.checkpoint
+
+
+def test_resume_from_checkpoint(ray_start_6_cpus):
+    num_epochs = 2
+    batch_size = 8
+    num_workers = 2
+    dataset_size = 64
+
+    # Create simple categorical ray dataset
+    input_1 = np.random.rand(dataset_size, 32).astype(np.float32)
+    input_2 = np.random.rand(dataset_size, 32).astype(np.float32)
+    pd = convert_batch_type_to_pandas({"input_1": input_1, "input_2": input_2})
+    train_dataset = ray.data.from_pandas(pd)
+    val_dataset = ray.data.from_pandas(pd)
+
+    config_builder = (
+        LightningConfigBuilder()
+        .module(
+            DoubleLinearModule,
+            input_dim_1=32,
+            input_dim_2=32,
+            output_dim=4,
+        )
+        .trainer(max_epochs=num_epochs, accelerator="cpu")
+    )
+
+    lightning_config = config_builder.build()
+
+    scaling_config = ray.air.ScalingConfig(num_workers=num_workers, use_gpu=False)
+
+    trainer = LightningTrainer(
+        lightning_config=lightning_config,
+        scaling_config=scaling_config,
+        datasets={"train": train_dataset, "val": val_dataset},
+        datasets_iter_config={"batch_size": batch_size},
+    )
+    results = trainer.fit()
+
+    # Resume training for another 2 epochs
+    num_epochs += 2
+    ckpt_dir = results.checkpoint.uri[7:]
+    ckpt_path = f"{ckpt_dir}/{MODEL_KEY}"
+
+    lightning_config = (
+        config_builder.fit_params(ckpt_path=ckpt_path)
+        .trainer(max_epochs=num_epochs)
+        .build()
+    )
+
+    trainer = LightningTrainer(
+        lightning_config=lightning_config,
+        scaling_config=scaling_config,
+        datasets={"train": train_dataset, "val": val_dataset},
+        datasets_iter_config={"batch_size": batch_size},
+    )
+    results = trainer.fit()
+
     assert results.metrics["epoch"] == num_epochs - 1
     assert (
         results.metrics["step"] == num_epochs * dataset_size / num_workers / batch_size

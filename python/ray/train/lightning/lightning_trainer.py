@@ -7,13 +7,13 @@ from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 from ray.air import session
 from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingConfig
+from ray.air.constants import MODEL_KEY
 from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
 from ray.train.trainer import GenDataset
 from ray.train.torch import TorchTrainer
 from ray.train.torch.config import TorchConfig
 from ray.util import PublicAPI
-from ray.util.annotations import DeveloperAPI
 from ray.train.lightning._lightning_utils import (
     RayDDPStrategy,
     RayEnvironment,
@@ -309,15 +309,16 @@ class LightningTrainer(TorchTrainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        if not lightning_config:
-            lightning_config = LightningConfigBuilder().build()
+        run_config = run_config or RunConfig()
+        lightning_config = lightning_config or LightningConfigBuilder().build()
 
-        if not run_config:
-            run_config = RunConfig()
-
-        run_config.checkpoint_config = self._create_air_checkpoint_config(
-            lightning_config["_model_checkpoint_config"]
+        self._check_checkpoint_configs(
+            ptl_ckpt_config=lightning_config["_model_checkpoint_config"],
+            air_ckpt_config=run_config.checkpoint_config,
         )
+
+        # Disable strict checking to allow metric reporting at different frequencies
+        os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "1"
 
         train_loop_config = {
             "lightning_config": lightning_config,
@@ -336,35 +337,48 @@ class LightningTrainer(TorchTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-    @DeveloperAPI
-    def _create_air_checkpoint_config(
-        self, lightning_checkpoint_config: Optional[Dict] = None
-    ) -> CheckpointConfig:
-        """
-        Generate AIR CheckpointConfig based on provided Lightning checkpoint config.
+    def _check_checkpoint_configs(
+        self, ptl_ckpt_config: Dict, air_ckpt_config: CheckpointConfig
+    ):
+        """Check if configs are set correctly"""
+        ptl_ckpt_metric = ptl_ckpt_config.get("monitor", None)
+        air_ckpt_metric = air_ckpt_config.checkpoint_score_attribute
 
-        PTL checkpointing logic:
-            no monitor + no save_top_k:  default = 1, only save last one
-            no monitor +    save_top_k:  if save_top_k != 1, save all
-               monitor + no save_top_k:  default = 1, save the best checkpoint
-               monitor +    save_top_k:  n/a
-        """
+        if ptl_ckpt_metric and air_ckpt_metric and ptl_ckpt_metric != air_ckpt_metric:
+            logger.warning(
+                "You have specified different metrics to track in AIR "
+                "`CheckpointConfig` and Lightning ModelCheckpoint. "
+                "Make sure that you have logged both metrics before "
+                "a checkpoint is created."
+            )
 
-        if not lightning_checkpoint_config:
-            lightning_checkpoint_config = {}
+        if (
+            air_ckpt_config.checkpoint_frequency != 0
+            or air_ckpt_config.checkpoint_at_end
+        ):
+            logger.warning(
+                "Attrributes `checkpoint_frequency` and `checkpoint_at_end` will not "
+                "be used in `LightningTrainer`! Please set up checkpoint frequency "
+                "through `LightningConfigBuilder.checkpointing()`."
+            )
 
-        mode = lightning_checkpoint_config.get("mode", "min")
-        monitor = lightning_checkpoint_config.get("monitor", None)
-        num_to_keep = lightning_checkpoint_config.get("save_top_k", 1)
-        if not monitor and num_to_keep != 1:
-            num_to_keep = None
-
-        air_checkpoint_config = CheckpointConfig(
-            num_to_keep=num_to_keep,
-            checkpoint_score_attribute=monitor,
-            checkpoint_score_order=mode,
+    @PublicAPI(stability="alpha")
+    @classmethod
+    def restore(
+        cls: Type["LightningTrainer"],
+        path: str,
+        datasets: Optional[Dict[str, GenDataset]] = None,
+        preprocessor: Optional["Preprocessor"] = None,
+        scaling_config: Optional[ScalingConfig] = None,
+        **kwargs,
+    ) -> "LightningTrainer":
+        return super(LightningTrainer, cls).restore(
+            path=path,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            scaling_config=scaling_config,
+            **kwargs,
         )
-        return air_checkpoint_config
 
 
 def _lightning_train_loop_per_worker(config):
@@ -385,7 +399,6 @@ def _lightning_train_loop_per_worker(config):
     # Prepare data
     datamodule = trainer_fit_params.get("datamodule", None)
     train_dataloaders = trainer_fit_params.get("train_dataloaders", None)
-    val_dataloaders = trainer_fit_params.get("val_dataloaders", None)
 
     train_ray_dataset = session.get_dataset_shard("train")
     val_ray_dataset = session.get_dataset_shard("val")
@@ -403,7 +416,7 @@ def _lightning_train_loop_per_worker(config):
                 "'LightningConfig.trainer_fit_params' is ignored!"
             )
 
-        datamodule = RayDataModule(
+        trainer_fit_params["datamodule"] = RayDataModule(
             dataset_iter_config=datasets_iter_config,
             train_dataset=train_ray_dataset,
             val_dataset=val_ray_dataset,
@@ -438,18 +451,20 @@ def _lightning_train_loop_per_worker(config):
         )
     trainer_config["strategy"] = RayDDPStrategy(**ddp_strategy_config)
 
-    # AIR needs a RayModelCheckpoint for metircs logging anyway.
+    # LightningTrainer always requires checkpointing
     trainer_config["enable_checkpointing"] = True
-    os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "1"
+    model_checkpoint_config["save_last"] = True
+
     trainer_config["callbacks"] = trainer_config.get("callbacks", []) + [
         RayModelCheckpoint(**model_checkpoint_config)
     ]
 
     trainer = pl.Trainer(**trainer_config)
 
-    trainer.fit(
-        lightning_module,
-        datamodule=datamodule,
-        train_dataloaders=train_dataloaders,
-        val_dataloaders=val_dataloaders,
-    )
+    checkpoint = session.get_checkpoint()
+    if checkpoint and "ckpt_path" not in trainer_fit_params:
+        with checkpoint.as_directory() as ckpt_dir:
+            trainer_fit_params["ckpt_path"] = f"{ckpt_dir}/{MODEL_KEY}"
+            trainer.fit(lightning_module, **trainer_fit_params)
+    else:
+        trainer.fit(lightning_module, **trainer_fit_params)
