@@ -34,7 +34,10 @@ import ray
 
 default_role = "py:obj"
 
+sys.path.append(os.path.abspath("./_ext"))
+
 extensions = [
+    "callouts",  # custom extension from _ext folder
     "sphinx_panels",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
