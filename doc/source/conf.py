@@ -58,7 +58,40 @@ extensions = [
     "sphinxcontrib.autodoc_pydantic",
     "sphinxcontrib.redoc",
     "sphinx_tabs.tabs",
+    "sphinx_remove_toctrees",
 ]
+
+# Prune deep toc-trees on demand for smaller html and faster builds.
+# This only effects the navigation bar, not the content.
+if os.getenv("FAST", False):
+    remove_from_toctrees = [
+        "data/api/doc/*",
+        "ray-air/api/doc/*",
+        "ray-core/api/doc/*",
+        "ray-observability/api/state/doc/*",
+        "serve/api/doc/*",
+        "train/api/doc/*",
+        "tune/api/doc/*",
+        "workflows/api/doc/*",
+        "cluster/running-applications/job-submission/doc/*",
+        "serve/production-guide/*",
+        "serve/tutorials/deployment-graph-patterns/*",
+        "rllib/package_ref/env/*",
+        "rllib/package_ref/policy/*",
+        "rllib/package_ref/evaluation/*",
+        "rllib/package_ref/utils/*",
+        "workflows/api/*",
+        "cluster/kubernetes/user-guides/*",
+        "cluster/kubernetes/examples/*",
+        "cluster/vms/user-guides/*",
+        "cluster/running-applications/job-submission/*",
+        "ray-core/actors/*",
+        "ray-core/objects/*",
+        "ray-core/scheduling/*",
+        "ray-core/tasks/*",
+        "ray-core/patterns/*",
+        "tune/examples/*",
+    ]
 
 myst_enable_extensions = [
     "dollarmath",
@@ -232,11 +265,10 @@ html_theme_options = {
     "use_issues_button": True,
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
-    "home_page_in_toc": False,
+    "home_page_in_toc": True,
     "show_navbar_depth": 1,
     "launch_buttons": {
         "notebook_interface": "jupyterlab",
-        "binderhub_url": "https://mybinder.org",
         "colab_url": "https://colab.research.google.com",
     },
     "announcement": "<div class='topnav'></div>",

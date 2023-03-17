@@ -520,3 +520,28 @@ span.rst-current-version > span.fa.fa-book {
 .rst-versions {
     z-index: 1200 !important;
 }
+
+.image-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 0;
+    gap: 16px;
+    margin-bottom: 1em;
+    margin-top: 1em;
+}
+
+.info-box {
+    box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+}
+
+.bold-link {
+    color: #000000 !important;
+    font-weight: 700;
+}
+
+.community-box {
+    border: 1px solid #D2DCE6;
+    border-radius: 8px;
+}
