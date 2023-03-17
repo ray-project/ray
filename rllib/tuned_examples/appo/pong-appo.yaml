@@ -18,7 +18,7 @@ pong-appo:
         use_kl_loss: False
         rollout_fragment_length: 50
         train_batch_size: 750
-        num_workers: 32
+        num_workers: 6
         broadcast_interval: 1
         max_sample_requests_in_flight_per_worker: 1
         num_multi_gpu_tower_stacks: 1
@@ -27,7 +27,8 @@ pong-appo:
         num_sgd_iter: 2
         vf_loss_coeff: 1.0
         clip_param: 0.3
-        num_gpus: 1
+        num_gpus: 0
         grad_clip: 10
         model:
           dim: 42
+        _rollout_worker_random_kill_rate: 1.0

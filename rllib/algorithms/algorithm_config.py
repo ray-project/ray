@@ -408,6 +408,7 @@ class AlgorithmConfig(_Config):
         self.fake_sampler = False
         self.seed = None
         self.worker_cls = None
+        self._rollout_worker_random_kill_rate = -1.
 
         # `self.fault_tolerance()`
         self.ignore_worker_failures = False
@@ -2207,6 +2208,7 @@ class AlgorithmConfig(_Config):
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
         worker_cls: Optional[Type[RolloutWorker]] = NotProvided,
+        _rollout_worker_random_kill_rate: Optional[float] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -2246,6 +2248,10 @@ class AlgorithmConfig(_Config):
             self.seed = seed
         if worker_cls is not NotProvided:
             self.worker_cls = worker_cls
+        if _rollout_worker_random_kill_rate is not NotProvided:
+            self._rollout_worker_random_kill_rate = (
+                _rollout_worker_random_kill_rate
+            )
 
         return self
 

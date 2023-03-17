@@ -5,6 +5,7 @@ import importlib.util
 import logging
 import numpy as np
 import os
+import random
 import platform
 import threading
 import tree  # pip install dm_tree
@@ -903,6 +904,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             >>> print(worker.sample()) # doctest: +SKIP
             SampleBatch({"obs": [...], "action": [...], ...})
         """
+        if self.config._rollout_worker_random_kill_rate > 0:
+            if random.random() < self.config._rollout_worker_random_kill_rate:
+                exit() 
+            
         if self.config.fake_sampler and self.last_batch is not None:
             return self.last_batch
         elif self.input_reader is None:
