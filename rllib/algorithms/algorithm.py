@@ -102,7 +102,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
-from ray.rllib.utils.serialization import deserialize_type
+from ray.rllib.utils.serialization import deserialize_type, NOT_SERIALIZABLE
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,
@@ -271,7 +271,9 @@ class Algorithm(Trainable):
 
         # This is a msgpack checkpoint.
         if checkpoint_info["format"] == "msgpack":
-            # User did not provide unserializable functions with this call.
+            # User did not provide unserializable function with this call
+            # (`policy_mapping_fn`). Note that if `policies_to_train` is None, it
+            # defaults to training all policies (so it's ok to not provide this here).
             if policy_mapping_fn is None:
                 # Only DEFAULT_POLICY_ID present in this algorithm, provide default
                 # implementations of these two functions.
@@ -285,8 +287,9 @@ class Algorithm(Trainable):
                         "`policy_mapping_fn` or `policies_to_train` "
                         "functions! Make sure that when using the "
                         "`Algorithm.from_checkpoint()` utility, you also pass the "
-                        "args: `policy_mapping_fn` AND `policies_to_train` with your "
-                        "call."
+                        "args: `policy_mapping_fn` and `policies_to_train` with your "
+                        "call. You might leave `policies_to_train=None` in case "
+                        "you would like to train all policies anyways."
                     )
 
         state = Algorithm._checkpoint_info_to_algorithm_state(
@@ -2737,11 +2740,16 @@ class Algorithm(Trainable):
                     else:
                         worker_state["policy_states"][pid] = pickle.load(f)
 
+            # These two functions are never serialized in a msgpack checkpoint (which
+            # does not store code, unlike a cloudpickle checkpoint). Hence the user has
+            # to provide them with the `Algorithm.from_checkpoint()` call.
             if policy_mapping_fn is not None:
                 worker_state["policy_mapping_fn"] = policy_mapping_fn
             if (
                 policies_to_train is not None
-                or worker_state["is_policy_to_train"] == "__not_serializable__"
+                # `policies_to_train` might be left None in case all policies should be
+                # trained.
+                or worker_state["is_policy_to_train"] == NOT_SERIALIZABLE
             ):
                 worker_state["is_policy_to_train"] = policies_to_train
 

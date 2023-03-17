@@ -52,7 +52,11 @@ from ray.rllib.utils.gym import (
     try_import_gymnasium_and_gym,
 )
 from ray.rllib.utils.policy import validate_policy_id
-from ray.rllib.utils.serialization import deserialize_type, serialize_type
+from ray.rllib.utils.serialization import (
+    deserialize_type,
+    NOT_SERIALIZABLE,
+    serialize_type,
+)
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
@@ -493,7 +497,8 @@ class AlgorithmConfig(_Config):
         # Setup legacy multi-agent sub-dict:
         config["multiagent"] = {}
         for k in self.multiagent.keys():
-            # convert policies dict to something human-readable
+            # Convert policies dict such that each policy ID maps to a old-style
+            # 4-tuple: class, obs-, and action space, config.
             if k == "policies" and isinstance(self.multiagent[k], dict):
                 policies_dict = {}
                 for policy_id, policy_spec in config.pop(k).items():
@@ -518,6 +523,8 @@ class AlgorithmConfig(_Config):
         config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
         config["num_workers"] = config.pop("num_rollout_workers", 0)
 
+        # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
+        # These would be useless in the returned dict anyways.
         for dep_k in [
             "monitor",
             "evaluation_num_episodes",
@@ -634,6 +641,11 @@ class AlgorithmConfig(_Config):
 
         return self
 
+    # TODO(sven): We might want to have a `deserialize` method as well. Right now,
+    #  simply using the from_dict() API works in this same (deserializing) manner,
+    #  whether the dict used is actually code-free (already serialized) or not
+    #  (i.e. a classic RLlib config dict with e.g. "callbacks" key still pointing to
+    #  a class).
     def serialize(self) -> Mapping[str, Any]:
         """Returns a mapping from str to JSON'able values representing this config.
 
@@ -3141,7 +3153,7 @@ class AlgorithmConfig(_Config):
 
         # Serialize dataclasses.
         if isinstance(config.get("_learner_hps"), LearnerHPs):
-            config["_learner_hps"] = dataclasses.asdict(config["_learner_hps"])
+            config["_learner_hps"] = config["_learner_hps"].to_dict()
 
         # List'ify `policies`, iff a set or tuple (these types are not JSON'able).
         ma_config = config.get("multiagent")
@@ -3150,9 +3162,9 @@ class AlgorithmConfig(_Config):
                 ma_config["policies"] = list(ma_config["policies"])
             # Do NOT serialize functions/lambdas.
             if ma_config.get("policy_mapping_fn"):
-                ma_config["policy_mapping_fn"] = "__not_serializable__"
+                ma_config["policy_mapping_fn"] = NOT_SERIALIZABLE
             if ma_config.get("policies_to_train"):
-                ma_config["policies_to_train"] = "__not_serializable__"
+                ma_config["policies_to_train"] = NOT_SERIALIZABLE
         return config
 
     @staticmethod

@@ -147,7 +147,7 @@ class PolicySpec:
             "action_space": space_to_dict(self.action_space),
             # Make the config dict durable by getting rid of all the fields
             # that are code (not JSON serializable).
-            "config": AlgorithmConfig._serialize_dict(self.config),
+            "config": self.config.serialize(),
         }
 
     @classmethod
@@ -1149,17 +1149,17 @@ class Policy(metaclass=ABCMeta):
                 old="Policy.export_checkpoint(filename_prefix=...)",
                 error=True,
             )
-        assert checkpoint_format in ["cloudpickle", "msgpack"], (
-            f"Value of `checkpoint_format` ({checkpoint_format}) must either be "
-            "'cloudpickle' or 'msgpack'!"
-        )
+        if checkpoint_format not in ["cloudpickle", "msgpack"]:
+            raise ValueError(
+                f"Value of `checkpoint_format` ({checkpoint_format}) must either be "
+                "'cloudpickle' or 'msgpack'!"
+            )
 
         if policy_state is None:
             policy_state = self.get_state()
 
         # Write main policy state file.
         os.makedirs(export_dir, exist_ok=True)
-        state_file = None
         if checkpoint_format == "cloudpickle":
             policy_state["checkpoint_version"] = CHECKPOINT_VERSION
             state_file = "policy_state.pkl"

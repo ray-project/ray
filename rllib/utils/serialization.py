@@ -21,6 +21,9 @@ if old_gym:
     old_gym_text_class = getattr(old_gym.spaces, "Text", None)
 
 
+NOT_SERIALIZABLE = "__not_serializable__"
+
+
 def _serialize_ndarray(array: np.ndarray) -> str:
     """Pack numpy ndarray into Base64 encoded strings for serialization.
 

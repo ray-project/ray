@@ -97,14 +97,20 @@ class TestCheckpointUtils(unittest.TestCase):
         # Create standard (pickle-based) checkpoint.
         with tempfile.TemporaryDirectory() as pickle_cp_dir:
             pickle_cp_dir = algo1.save(checkpoint_dir=pickle_cp_dir)
+            pickle_cp_info = get_checkpoint_info(pickle_cp_dir)
             # Now convert pickle checkpoint to msgpack using the provided
             # utility function.
             with tempfile.TemporaryDirectory() as msgpack_cp_dir:
                 convert_to_msgpack_checkpoint(pickle_cp_dir, msgpack_cp_dir)
+                msgpack_cp_info = get_checkpoint_info(msgpack_cp_dir)
                 # Try recreating a new algorithm object from the msgpack checkpoint.
                 algo2 = Algorithm.from_checkpoint(msgpack_cp_dir)
         # Get the state of the algorithm recovered from msgpack.
         msgpack_state = algo2.__getstate__()
+
+        # Make sure JSON info files are different.
+        self.assertTrue(pickle_cp_info["format"] == "cloudpickle")
+        self.assertTrue(msgpack_cp_info["format"] == "msgpack")
 
         # Make sure recovered-from-pickle state is the same as recovered-from-msgpack
         # state.
@@ -155,10 +161,12 @@ class TestCheckpointUtils(unittest.TestCase):
         # Create standard (pickle-based) checkpoint.
         with tempfile.TemporaryDirectory() as pickle_cp_dir:
             pickle_cp_dir = algo1.save(checkpoint_dir=pickle_cp_dir)
+            pickle_cp_info = get_checkpoint_info(pickle_cp_dir)
             # Now convert pickle checkpoint to msgpack using the provided
             # utility function.
             with tempfile.TemporaryDirectory() as msgpack_cp_dir:
                 convert_to_msgpack_checkpoint(pickle_cp_dir, msgpack_cp_dir)
+                msgpack_cp_info = get_checkpoint_info(msgpack_cp_dir)
                 # Try recreating a new algorithm object from the msgpack checkpoint.
                 algo2 = Algorithm.from_checkpoint(
                     msgpack_cp_dir,
@@ -169,6 +177,10 @@ class TestCheckpointUtils(unittest.TestCase):
                 )
         # Get the state of the algorithm recovered from msgpack.
         msgpack_state = algo2.__getstate__()
+
+        # Make sure JSON info files are different.
+        self.assertTrue(pickle_cp_info["format"] == "cloudpickle")
+        self.assertTrue(msgpack_cp_info["format"] == "msgpack")
 
         # Make sure recovered-from-pickle state is the same as recovered-from-msgpack
         # state.

@@ -11,6 +11,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.rllib.utils.serialization import serialize_type
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
+from ray.util.serialization import NOT_SERIALIZABLE
 
 logger = logging.getLogger(__name__)
 
@@ -217,9 +218,9 @@ def convert_to_msgpack_checkpoint(
         policy_states = state["worker"].pop("policy_states", {})
 
     # Policy mapping fn.
-    state["worker"]["policy_mapping_fn"] = "__not_serializable__"
+    state["worker"]["policy_mapping_fn"] = NOT_SERIALIZABLE
     # Is Policy to train function.
-    state["worker"]["is_policy_to_train"] = "__not_serializable__"
+    state["worker"]["is_policy_to_train"] = NOT_SERIALIZABLE
 
     # Add RLlib checkpoint version (as string).
     state["checkpoint_version"] = str(CHECKPOINT_VERSION)
