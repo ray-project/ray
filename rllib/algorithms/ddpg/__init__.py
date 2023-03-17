@@ -1,8 +1,7 @@
-from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig, DEFAULT_CONFIG
+from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 
 
 __all__ = [
     "DDPG",
     "DDPGConfig",
-    "DEFAULT_CONFIG",
 ]

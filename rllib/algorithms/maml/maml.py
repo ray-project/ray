@@ -20,7 +20,7 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
 from ray.util.iter import from_actors, LocalIterator
@@ -378,20 +378,3 @@ class MAML(Algorithm):
             )
         )
         return train_op
-
-
-# Deprecated: Use ray.rllib.algorithms.qmix.qmix.QMixConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(MAMLConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.maml.maml.MAMLConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
