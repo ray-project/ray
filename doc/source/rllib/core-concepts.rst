@@ -47,7 +47,7 @@ The simulation iterations of action -> reward -> next state -> train -> repeat, 
 
 
 
-Any environment type provided by you to RLlib (e.g. a user-defined `gym.Env <https://github.com/openai/gym>`_ class),
+Any environment type provided by you to RLlib (e.g. a user-defined `gym.Env <https://github.com/Farama-Foundation/Gymnasium>`_ class),
 is converted internally into the :py:class:`~ray.rllib.env.base_env.BaseEnv` API, whose main methods are ``poll()`` and ``send_actions()``:
 
 .. https://docs.google.com/drawings/d/1NtbVk-Mo89liTRx-sHu_7fqi3Kn7Hjdf3i6jIMbxGlY/edit
@@ -77,7 +77,7 @@ However, you may also conveniently sub-class any of the other supported RLlib-sp
 environment types. The automated paths from those env types (or callables returning instances of those types) to
 an RLlib :py:class:`~ray.rllib.env.base_env.BaseEnv` is as follows:
 
-- User provides a custom :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` (is-a `gym.Env <https://github.com/openai/gym>`_) -> :py:class:`~ray.rllib.env.vector_env.VectorEnv` -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
+- User provides a custom :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` (is-a `gym.Env <https://github.com/Farama-Foundation/Gymnasium>`_) -> :py:class:`~ray.rllib.env.vector_env.VectorEnv` -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
 - User uses a policy client (via an external simulator) -> :py:class:`~ray.rllib.env.external_env.ExternalEnv` | :py:class:`~ray.rllib.env.external_multi_agent_env.ExternalMultiAgentEnv` -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
 - User provides a custom :py:class:`~ray.rllib.env.vector_env.VectorEnv` -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
 - User provides a custom :py:class:`~ray.rllib.env.base_env.BaseEnv` -> do nothing

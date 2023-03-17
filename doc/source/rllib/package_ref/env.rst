@@ -4,7 +4,7 @@ Environments
 ============
 
 BaseEnv class API
------------
+-----------------
 
 .. currentmodule:: ray.rllib.env
 
@@ -51,7 +51,7 @@ Utilities
    ~base_env.BaseEnv.observation_space_sample
 
 VectorEnv class API
--------------
+-------------------
 
 Constructor
 ~~~~~~~~~~~
