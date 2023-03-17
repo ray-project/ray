@@ -8,10 +8,9 @@ from typing import Any, Dict, Union
 
 import ray
 from ray.air.checkpoint import Checkpoint
-from ray.rllib.utils.serialization import serialize_type
+from ray.rllib.utils.serialization import NOT_SERIALIZABLE, serialize_type
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
-from ray.util.serialization import NOT_SERIALIZABLE
 
 logger = logging.getLogger(__name__)
 
