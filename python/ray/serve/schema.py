@@ -706,9 +706,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
             '- "NoServer": disable HTTP server.'
         ),
     )
-    http_options: Optional[HTTPOptionsSchema] = Field(
-        description="HTTP Proxy options."
-    )
+    http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
     )
