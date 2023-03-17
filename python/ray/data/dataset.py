@@ -1159,10 +1159,20 @@ class Dataset(Generic[T]):
         be used to read disjoint subsets of the dataset in parallel.
 
         This method is the recommended way to consume Datasets from multiple processes
-        (e.g., for distributed training). It requires streaming execution mode.
+        (e.g., for distributed training), and requires streaming execution mode.
 
-        The returned iterators are Ray-serializable and can be freely passed to any
-        Ray task or actor.
+        It works by delegating the execution of this Dataset to a coordinator actor.
+        The coordinator pulls block references from the executed stream, and
+        divides those blocks among the `n` output iterators. Iterators pull blocks
+        from the coordinator actor to return to their caller on `next`.
+
+        The returned iterators are also repeatable; each iteration will trigger a
+        new execution of the Dataset. There is an implicit barrier at the start of
+        each iteration, which means that `next` must be called on all iterators before
+        the iteration starts.
+
+        Warning: because iterators are pulling blocks from the same Dataset execution,
+        if one iterator falls behind other iterators may be stalled.
 
         Examples:
             >>> import ray
@@ -1178,10 +1188,13 @@ class Dataset(Generic[T]):
                 slightly more or less rows than other, but no data will be dropped.
             locality_hints: Specify the node ids corresponding to each iterator
                 location. Datasets will try to minimize data movement based on the
-                iterator output locations. This list must have length ``n``.
+                iterator output locations. This list must have length ``n``. You can
+                get the current node id of a task or actor by calling
+                ``ray.get_runtime_context().get_node_id()``.
 
         Returns:
-            The output iterator splits.
+            The output iterator splits. These iterators are Ray-serializable and can
+            be freely passed to any Ray task or actor.
         """
         return StreamSplitDatasetIterator.create(self, n, equal, locality_hints)
 
