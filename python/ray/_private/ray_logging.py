@@ -406,7 +406,7 @@ class LogDeduplicator:
             return ""
 
     def _color(self, msg: str) -> str:
-        return "{}{}{}".format(colorama.Fore.YELLOW, msg, colorama.Style.RESET_ALL)
+        return "{}{}{}".format(colorama.Fore.GREEN, msg, colorama.Style.RESET_ALL)
 
 
 stdout_deduplicator = LogDeduplicator()
