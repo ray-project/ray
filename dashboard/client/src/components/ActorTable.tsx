@@ -39,6 +39,38 @@ export type ActorTableProps = {
   detailPathPrefix?: string;
 };
 
+type StateOrder = {
+  [key in ActorEnum]: number;
+};
+const stateOrder: StateOrder = {
+  [ActorEnum.ALIVE]: 0,
+  [ActorEnum.PENDING]: 1,
+  [ActorEnum.RECONSTRUCTING]:2,
+  [ActorEnum.DEAD]: 4, 
+};
+//type predicate for ActorEnum
+const isActorEnum = (state: unknown): state is ActorEnum => {
+  return Object.values(ActorEnum).includes(state as ActorEnum);
+};
+
+// We sort the actorsList so that the "Alive" actors appear at first and "Dead" actors appear in the end.
+const sortActors = (actorList: Actor[]) => {
+  const sortedActors = [...actorList];
+  sortedActors.sort((actor1, actor2) => {
+    const actorOrder1 = isActorEnum(actor1.state) ? stateOrder[actor1.state] : 0;
+    const actorOrder2 =isActorEnum(actor2.state) ? stateOrder[actor2.state] : 0;
+
+    const actorTime1 = actor1.startTime || 0;
+    const actorTime2 = actor2.startTime || 0;
+
+    if (actorOrder1 !== actorOrder2) {
+      return actorOrder1 - actorOrder2;
+    }else {// When the state is equal, we sort by startTime, in order to provide a determined order for users no matter the backend API changes
+      return  actorTime1 - actorTime2;
+    }
+  });
+  return sortedActors;
+}
 const ActorTable = ({
   actors = {},
   workers = [],
@@ -61,34 +93,18 @@ const ActorTable = ({
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState(10);
   const { ipLogMap } = useContext(GlobalContext);
+
+
   const actorList = Object.values(actors || {}).filter(filterFunc);
   
-  // We sort the actorsList so that the "Alive" actors appear at first and "Dead" actors appear in the end.
-  const sortActors = useCallback(() => {
-    type StateOrder = {
-      [key in ActorEnum]: number;
-    } & {
-      DEFAULT: number;
-    };
-    const stateOrder: StateOrder = {
-      [ActorEnum.ALIVE]: 0,
-      [ActorEnum.PENDING]: 1,
-      [ActorEnum.RECONSTRUCTING]:2,
-      "DEFAULT": 3, // For more actorEnum to come in the future, we make them appear before dead actors
-      [ActorEnum.DEAD]: 4, 
-    };
-
-    const sortedActors = [...actorList].sort((actor1, actor2) => {
-      const actor1Order = stateOrder[actor1.state as ActorEnum ]|| stateOrder.DEFAULT; // set the default status
-      const actor2Order = stateOrder[actor2.state as ActorEnum ] || stateOrder.DEFAULT;
-      return actor1Order - actor2Order;
-    });
+  const sortActorsCallback = useCallback(() => {
+    const sortedActors = sortActors(actorList)
     setSortedActors(sortedActors);
   }, [actorList]);
 
   useEffect(() => {
-    sortActors();
-  }, [sortActors]);
+    sortActorsCallback();
+  }, [sortActorsCallback]);
 
   const list = sortedActors.slice((pageNo - 1) * pageSize, pageNo * pageSize);
   const classes = rowStyles();
