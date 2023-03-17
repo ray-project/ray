@@ -124,6 +124,16 @@ def test_webdataset_write(ray_start_2_cpus, tmp_path):
             assert tf.extractfile(f"{i}.b").read().decode("utf-8") == str(i**2)
 
 
+def custom_decoder(sample):
+    for key, value in sample.items():
+        if key == "png":
+            # check that images have already been decoded
+            assert not isinstance(value, bytes)
+        elif key.endswith("custom"):
+            sample[key] = "custom-value"
+    return sample
+
+
 def test_webdataset_coding(ray_start_2_cpus, tmp_path):
     import numpy as np
     import torch
@@ -141,6 +151,8 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
         "mp": dstruct,
         "json": dstruct,
         "pt": ttensor,
+        "und": b"undecoded",
+        "custom": b"nothing",
     }
 
     # write the encoded data using the default encoder
@@ -156,7 +168,7 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
     ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1)
     samples = ds.take(1)
     assert len(samples) == 1
-    for i, sample in enumerate(samples):
+    for sample in samples:
         assert isinstance(sample, dict), sample
         assert sample["__key__"] == "foo"
         assert isinstance(sample["jpg"], np.ndarray)
@@ -171,15 +183,18 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
         assert isinstance(sample["pt"], torch.Tensor)
         assert sample["pt"].tolist() == [1, 2, 3]
 
-    # test the format argument to the default decoder
-    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1, decoder="PIL")
+    # test the format argument to the default decoder and multiple decoders
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1, decoder=["PIL", custom_decoder])
     samples = ds.take(1)
     assert len(samples) == 1
-    for i, sample in enumerate(samples):
+    for sample in samples:
         assert isinstance(sample, dict), sample
         assert sample["__key__"] == "foo"
         assert isinstance(sample["jpg"], PIL.Image.Image)
         assert isinstance(sample["gray.png"], PIL.Image.Image)
+        assert isinstance(sample["und"], bytes)
+        assert sample["und"] == b"undecoded"
+        assert sample["custom"] == "custom-value"
 
 
 if __name__ == "__main__":
