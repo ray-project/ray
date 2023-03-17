@@ -76,7 +76,7 @@ class DatasetIteratorImpl(DatasetIterator):
         if name == "_base_dataset":
             raise AttributeError()
 
-        if hasattr(self._base_dataset, name):
+        if hasattr(self._base_dataset, name) and not name.startswith("_"):
             # Warning for backwards compatibility. TODO: remove this method in 2.5.
             warnings.warn(
                 "session.get_dataset_shard returns a ray.data.DatasetIterator "

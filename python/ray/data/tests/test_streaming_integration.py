@@ -6,6 +6,7 @@ import time
 from typing import List, Any
 
 import ray
+from ray import cloudpickle
 from ray.data.context import DatasetContext
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -433,6 +434,19 @@ def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_dataset_context)
         compute=ray.data.ActorPoolStrategy(1, 2),
         batch_size=None,
     ).map_batches(lambda x: x, batch_size=None, num_cpus=2).take_all()
+
+
+def test_can_pickle(ray_start_10_cpus_shared, restore_dataset_context):
+    DatasetContext.get_current().new_execution_backend = True
+    DatasetContext.get_current().use_streaming_executor = True
+
+    ds = ray.data.range(1000000)
+    it = ds.iter_batches()
+    next(it)
+
+    # Should work even if a streaming exec is in progress.
+    ds2 = cloudpickle.loads(cloudpickle.dumps(ds))
+    assert ds2.count() == 1000000
 
 
 if __name__ == "__main__":
