@@ -64,7 +64,6 @@ from ray.includes.common cimport (
     CTaskArgByReference,
     CTaskArgByValue,
     CTaskType,
-    CTaskLogInfo,
     CPlacementStrategy,
     CSchedulingStrategy,
     CPlacementGroupSchedulingStrategy,
@@ -721,8 +720,7 @@ cdef void execute_task(
         c_bool is_reattempt,
         execution_info,
         title,
-        task_name,
-        CTaskLogInfo &task_log_info) except *:
+        task_name) except *:
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
@@ -857,11 +855,7 @@ cdef void execute_task(
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
 
-            task_log_info.set_stdout_file(worker.get_out_file_path())
-            task_log_info.set_stdout_start(worker.get_current_out_offset())
-
-            task_log_info.set_stderr_file(worker.get_err_file_path())
-            task_log_info.set_stderr_start(worker.get_current_err_offset())
+            worker.record_task_log_start()
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
@@ -919,8 +913,7 @@ cdef void execute_task(
                 finally:
                     # Record the task logs end offsets regardless of
                     # task execution results.
-                    task_log_info.set_stdout_end(worker.get_current_out_offset())
-                    task_log_info.set_stderr_end(worker.get_current_err_offset())
+                    worker.record_task_log_end()
 
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
@@ -1020,8 +1013,7 @@ cdef execute_task_with_cancellation_handler(
         # the concurrency groups of this actor.
         const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
         const c_string c_name_of_concurrency_group_to_execute,
-        c_bool is_reattempt,
-        CTaskLogInfo &task_log_info):
+        c_bool is_reattempt):
 
     is_application_error[0] = False
     is_retryable_error[0] = False
@@ -1107,7 +1099,7 @@ cdef execute_task_with_cancellation_handler(
                      is_application_error,
                      c_defined_concurrency_groups,
                      c_name_of_concurrency_group_to_execute,
-                     is_reattempt, execution_info, title, task_name, task_log_info)
+                     is_reattempt, execution_info, title, task_name)
 
         # Check for cancellation.
         PyErr_CheckSignals()
@@ -1174,8 +1166,7 @@ cdef CRayStatus task_execution_handler(
         c_bool *is_application_error,
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute,
-        c_bool is_reattempt,
-        CTaskLogInfo &task_log_info) nogil:
+        c_bool is_reattempt) nogil:
 
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
@@ -1200,8 +1191,7 @@ cdef CRayStatus task_execution_handler(
                         is_application_error,
                         defined_concurrency_groups,
                         name_of_concurrency_group_to_execute,
-                        is_reattempt,
-                        task_log_info)
+                        is_reattempt)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
@@ -2791,6 +2781,16 @@ cdef class CoreWorker:
                     CCoreWorkerProcess.GetCoreWorker().GetNumLeasesRequested())
 
         return (num_tasks_submitted, num_leases_requested)
+
+    def record_task_log_start(self, stdout_path, stderr_path,
+                              int64_t out_start_offset, int64_t err_start_offset):
+        CCoreWorkerProcess.GetCoreWorker() \
+            .RecordTaskLogStart(stdout_path, stderr_path,
+                                out_start_offset, err_start_offset)
+
+    def record_task_log_end(self, int64_t out_end_offset, int64_t err_end_offset):
+        CCoreWorkerProcess.GetCoreWorker() \
+            .RecordTaskLogEnd(out_end_offset, err_end_offset)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

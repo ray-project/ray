@@ -34,7 +34,6 @@ from ray.includes.common cimport (
     CRayStatus,
     CTaskArg,
     CTaskOptions,
-    CTaskLogInfo,
     CTaskType,
     CWorkerType,
     CLanguage,
@@ -261,6 +260,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         unordered_map[c_string, c_vector[int64_t]] GetActorCallStats() const
 
+        void RecordTaskLogStart(
+            const c_string& stdout_path,
+            const c_string& stderr_path,
+            int64_t stdout_start_offset,
+            int64_t stderr_start_offset) const
+
+        void RecordTaskLogEnd(int64_t stdout_end_offset,
+                              int64_t stderr_end_offset) const
+
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type
         CLanguage language
@@ -296,8 +304,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool *is_application_error,
             const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
             const c_string name_of_concurrency_group_to_execute,
-            c_bool is_reattempt,
-            CTaskLogInfo &task_log_info) nogil
+            c_bool is_reattempt) nogil
          ) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals

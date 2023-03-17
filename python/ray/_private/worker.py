@@ -535,6 +535,19 @@ class Worker:
         """Set the worker's out file where stdout is redirected to"""
         self._out_file = out_file
 
+    def record_task_log_start(self):
+        self.core_worker.record_task_log_start(
+            self.get_out_file_path(),
+            self.get_err_file_path(),
+            self.get_current_out_offset(),
+            self.get_current_err_offset(),
+        )
+
+    def record_task_log_end(self):
+        self.core_worker.record_task_log_end(
+            self.get_current_out_offset(), self.get_current_err_offset()
+        )
+
     def get_err_file_path(self) -> str:
         """Get the err log file path"""
         return self._err_file.name if self._err_file is not None else ""

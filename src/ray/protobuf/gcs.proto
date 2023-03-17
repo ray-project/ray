@@ -199,18 +199,18 @@ message ProfileEvents {
 
 // Represents the info of a worker's log file for which executes the task.
 message TaskLogInfo {
-  // stdout log file path.
-  string stdout_file = 1;
-  // stderr log file path.
-  string stderr_file = 2;
+  // stdout log file absolute path.
+  optional string stdout_file = 1;
+  // stderr log file absolute path.
+  optional string stderr_file = 2;
   // Start offset of stdout when task starts.
-  int32 stdout_start = 3;
+  optional int32 stdout_start = 3;
   // End offset of stdout when task finishes.
-  int32 stdout_end = 4;
+  optional int32 stdout_end = 4;
   // Start offset of stderr when task starts.
-  int32 stderr_start = 5;
+  optional int32 stderr_start = 5;
   // End offset of stderr when task finishes.
-  int32 stderr_end = 6;
+  optional int32 stderr_end = 6;
 }
 
 // Represents task states which could be changed during task execution.

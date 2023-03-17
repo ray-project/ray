@@ -868,6 +868,34 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
     )
 
 
+def check_file(type, task_name, expected_log, expect_no_end=False):
+    """Check file of type = 'out'/'err'"""
+
+    def _read_file(filepath, start, end):
+        with open(filepath, "r") as f:
+            f.seek(start, 0)
+            if end is None:
+                return f.read()
+            return f.read(end - start)
+
+    tasks = list_tasks(filters=[("name", "=", f"{task_name}")], detail=True)
+    assert len(tasks) == 1
+    task = tasks[0]
+    assert task["task_log_info"] is not None
+    log_info = task["task_log_info"]
+
+    file = log_info.get(f"std{type}_file", None)
+    start_offset = log_info.get(f"std{type}_start", None)
+    end_offset = log_info.get(f"std{type}_end", None)
+    if not expect_no_end:
+        assert end_offset >= start_offset
+    else:
+        assert end_offset is None
+    assert start_offset > 0, "offsets should be > 0 with magical log prefix"
+    actual_log = _read_file(file, start_offset, end_offset)
+    assert actual_log == expected_log
+
+
 def test_task_logs_info_basic(shutdown_only):
     """Test tasks (normal tasks/actor tasks) execution logging
     to files have the correct task log info
@@ -911,35 +939,13 @@ def test_task_logs_info_basic(shutdown_only):
         expected_logs[f"normal-task-{j}-out"] = exp_task_out
         expected_logs[f"normal-task-{j}-err"] = exp_task_err
 
-    def _read_file(filepath, start, end):
-        with open(filepath, "r") as f:
-            f.seek(start, 0)
-            return f.read(end - start)
-
     def verify():
         # verify logs
-        def check_file(type, task_name):
-            """Check file of type = 'out'/'err'"""
-            tasks = list_tasks(filters=[("name", "=", f"{task_name}")], detail=True)
-            assert len(tasks) == 1
-            task = tasks[0]
-            assert task["task_log_info"] is not None
-            log_info = task["task_log_info"]
-
-            file = log_info[f"std{type}_file"]
-            start_offset = log_info[f"std{type}_start"]
-            end_offset = log_info[f"std{type}_end"]
-            assert end_offset >= start_offset
-            assert start_offset > 0, "offsets should be > 0 with magical log prefix"
-            actual_log = _read_file(file, start_offset, end_offset)
-            assert actual_log == expected_logs[f"{task_name}-{type}"]
-
         for j in range(3):
-            check_file("out", f"normal-task-{j}")
-            check_file("err", f"normal-task-{j}")
-            check_file("out", f"actor-task-{j}")
-            check_file("err", f"actor-task-{j}")
-
+            check_file("out", f"normal-task-{j}", expected_logs[f"normal-task-{j}-out"])
+            check_file("err", f"normal-task-{j}", expected_logs[f"normal-task-{j}-err"])
+            check_file("out", f"actor-task-{j}", expected_logs[f"actor-task-{j}-out"])
+            check_file("err", f"actor-task-{j}", expected_logs[f"actor-task-{j}-err"])
             return True
 
     wait_for_condition(verify)
@@ -968,3 +974,25 @@ def test_task_logs_info_disabled(shutdown_only, monkeypatch):
             return True
 
         wait_for_condition(verify)
+
+
+def test_task_logs_info_running_task(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def do_print_sleep(out_msg, err_msg):
+        print(out_msg, end="", file=sys.stdout)
+        print(err_msg, end="", file=sys.stderr)
+        time.sleep(999)
+
+    err_msg = "this is log line to stderr before sleeping\n"
+    out_msg = "this is log line to stdout before sleeping\n"
+    task_name = "log-running-task"
+    do_print_sleep.options(name=task_name).remote(out_msg, err_msg)
+
+    def verify():
+        check_file("err", task_name, err_msg, expect_no_end=True)
+        check_file("out", task_name, out_msg, expect_no_end=True)
+        return True
+
+    wait_for_condition(verify)
