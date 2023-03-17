@@ -147,7 +147,11 @@ class PolicySpec:
             "action_space": space_to_dict(self.action_space),
             # Make the config dict durable by getting rid of all the fields
             # that are code (not JSON serializable).
-            "config": self.config.serialize(),
+            "config": (
+                AlgorithmConfig._serialize_dict(self.config)
+                if isinstance(self.config, dict)
+                else self.config.serialize()
+            ),
         }
 
     @classmethod
