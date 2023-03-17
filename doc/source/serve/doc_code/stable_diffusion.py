@@ -78,7 +78,11 @@ if __name__ == "__main__":
     import os
     import requests
 
-    ray.init(runtime_env={"pip": ["diffusers==0.14.0", "transformers==4.27.1"]})
+    ray.init(
+        runtime_env={
+            "pip": ["transformers==4.25.1", "accelerate==0.16.0", "numpy==1.23.4"]
+        }
+    )
 
     my_first_deployment = APIIngress.bind(
         StableDiffusionV2.options(
