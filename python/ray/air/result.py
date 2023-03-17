@@ -1,9 +1,11 @@
+import warnings
 from typing import TYPE_CHECKING
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.air.checkpoint import Checkpoint
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -27,7 +29,7 @@ class Result:
         metrics: The final metrics as reported by an Trainable.
         checkpoint: The final checkpoint of the Trainable.
         error: The execution error of the Trainable run, if the trial finishes in error.
-        log_dir: Directory where the trial logs are saved.
+        local_path: Directory where the trial logs are saved.
         metrics_dataframe: The full result dataframe of the Trainable.
             The dataframe is indexed by iterations and contains reported
             metrics.
@@ -41,10 +43,24 @@ class Result:
     metrics: Optional[Dict[str, Any]]
     checkpoint: Optional[Checkpoint]
     error: Optional[Exception]
-    log_dir: Optional[Path]
+    local_path: Optional[Path]
     metrics_dataframe: Optional["pd.DataFrame"]
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]]
     _items_to_repr = ["error", "metrics", "log_dir", "checkpoint"]
+    remote_path: Optional[str] = None
+    # Deprecate: raise in 2.5, remove in 2.6
+    log_dir: Optional[Path] = None
+
+    def __post_init__(self):
+        if self.log_dir and log_once("result_log_dir_deprecated"):
+            warnings.warn(
+                "The `Result.log_dir` property is deprecated. "
+                "Use `local_path` instead."
+            )
+            self.local_path = self.log_dir
+
+        # Duplicate for retrieval
+        self.log_dir = self.local_path
 
     @property
     def config(self) -> Optional[Dict[str, Any]]:
@@ -52,6 +68,10 @@ class Result:
         if not self.metrics:
             return None
         return self.metrics.get("config", None)
+
+    @property
+    def path(self) -> str:
+        return self.remote_path or str(self.local_path)
 
     def _repr(self, indent: int = 0) -> str:
         """Construct the representation with specified number of space indent."""
