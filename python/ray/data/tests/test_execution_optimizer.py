@@ -12,7 +12,6 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_arrow_operator import (
     FromArrowRefs,
     FromHuggingFace,
-    FromSpark,
 )
 from ray.data._internal.logical.operators.from_items_operator import (
     FromItems,
@@ -22,7 +21,6 @@ from ray.data._internal.logical.operators.from_items_operator import (
 from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
 from ray.data._internal.logical.operators.from_pandas_operator import (
     FromDask,
-    FromMARS,
     FromModin,
     FromPandasRefs,
 )
@@ -721,89 +719,33 @@ def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
 
 
-def test_from_mars_operator(ray_start_regular_shared, enable_optimizer):
-    import mars
-    import mars.dataframe as md
+@pytest.mark.parametrize("enable_pandas_block", [False, True])
+def test_from_modin_operator(
+    ray_start_regular_shared,
+    enable_optimizer,
+    enable_pandas_block,
+):
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_enable_pandas_block = ctx.enable_pandas_block
+    ctx.enable_pandas_block = enable_pandas_block
+    try:
+        import modin.pandas as mopd
 
-    cluster = mars.new_cluster_in_ray(worker_num=2, worker_cpu=1)
+        df = pd.DataFrame(
+            {"one": list(range(100)), "two": list(range(100))},
+        )
+        modf = mopd.DataFrame(df)
 
-    n = 10000
-    df = pd.DataFrame({"a": list(range(n)), "b": list(range(n, 2 * n))})
-    mdf = md.DataFrame(df)
+        planner = Planner()
+        from_modin_op = FromModin(modf)
+        plan = LogicalPlan(from_modin_op)
+        physical_op = planner.plan(plan).dag
 
-    planner = Planner()
-    from_mars_op = FromMARS(mdf)
-    plan = LogicalPlan(from_mars_op)
-    physical_op = planner.plan(plan).dag
-
-    assert from_mars_op.name == "FromMARS"
-    assert isinstance(physical_op, InputDataBuffer)
-    assert len(physical_op.input_dependencies) == 0
-
-    cluster.stop()
-
-
-def test_from_mars_e2e(ray_start_regular_shared, enable_optimizer):
-    import mars
-    import mars.dataframe as md
-    import pyarrow as pa
-
-    cluster = mars.new_cluster_in_ray(worker_num=2, worker_cpu=1)
-
-    n = 10000
-    df = pd.DataFrame({"a": list(range(n)), "b": list(range(n, 2 * n))})
-    mdf = md.DataFrame(df)
-
-    # Convert mars dataframe to ray dataset
-    ds = ray.data.from_mars(mdf)
-    pd.testing.assert_frame_equal(ds.to_pandas(), mdf.to_pandas())
-    ds2 = ds.filter(lambda row: row["a"] % 2 == 0)
-    assert ds2.take(5) == [{"a": 2 * i, "b": n + 2 * i} for i in range(5)]
-
-    # Convert ray dataset to mars dataframe
-    mdf2 = ds2.to_mars()
-    pd.testing.assert_frame_equal(
-        mdf2.head(5).to_pandas(),
-        pd.DataFrame({"a": list(range(0, 10, 2)), "b": list(range(n, n + 10, 2))}),
-    )
-
-    # Test Arrow Dataset
-    df2 = pd.DataFrame({c: range(5) for c in "abc"})
-    ds3 = ray.data.from_arrow([pa.Table.from_pandas(df2) for _ in range(3)])
-    df3 = ds3.to_mars()
-    pd.testing.assert_frame_equal(
-        df3.head(5).to_pandas(),
-        df2,
-    )
-
-    # Test simple datasets
-    with pytest.raises(NotImplementedError):
-        ray.data.range(10).to_mars()
-
-    # Check that metadata fetch is included in stats.
-    assert "FromPandasRefs" in ds.stats()
-    # Underlying implementation uses `FromPandasRefs` operator
-    assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
-
-    cluster.stop()
-
-
-def test_from_modin_operator(ray_start_regular_shared, enable_optimizer):
-    import modin.pandas as mopd
-
-    df = pd.DataFrame(
-        {"one": list(range(100)), "two": list(range(100))},
-    )
-    modf = mopd.DataFrame(df)
-
-    planner = Planner()
-    from_modin_op = FromModin(modf)
-    plan = LogicalPlan(from_modin_op)
-    physical_op = planner.plan(plan).dag
-
-    assert from_modin_op.name == "FromModin"
-    assert isinstance(physical_op, InputDataBuffer)
-    assert len(physical_op.input_dependencies) == 0
+        assert from_modin_op.name == "FromModin"
+        assert isinstance(physical_op, InputDataBuffer)
+        assert len(physical_op.input_dependencies) == 0
+    finally:
+        ctx.enable_pandas_block = old_enable_pandas_block
 
 
 def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
@@ -865,6 +807,15 @@ def test_from_pandas_refs_e2e(
         assert values == rows
         # Check that metadata fetch is included in stats.
         assert "FromPandasRefs" in ds.stats()
+        assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
+
+        # Test chaining multiple operations
+        ds2 = ds.map_batches(lambda x: x)
+        values = [(r["one"], r["two"]) for r in ds2.take(6)]
+        assert values == rows
+        assert "MapBatches" in ds2.stats()
+        assert "FromPandasRefs" in ds2.stats()
+        assert ds2._plan._logical_plan.dag.name == "MapBatches"
 
         # test from single pandas dataframe
         ds = ray.data.from_pandas_refs(ray.put(df1))
@@ -910,6 +861,14 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
     # Check that conversion task is included in stats.
     assert "FromNumpyRefs" in ds.stats()
     assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
+
+    # Test chaining multiple operations
+    ds2 = ds.map_batches(lambda x: x)
+    values = np.stack(ds2.take(8))
+    np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
+    assert "MapBatches" in ds2.stats()
+    assert "FromNumpyRefs" in ds2.stats()
+    assert ds2._plan._logical_plan.dag.name == "MapBatches"
 
     # Test from single NumPy ndarray.
     ds = ray.data.from_numpy_refs(ray.put(arr1))
@@ -967,36 +926,6 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
     assert values == rows
     # Check that conversion task is included in stats.
     assert "FromArrowRefs" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
-
-
-def test_from_spark_operator(
-    enable_optimizer,
-    spark,
-):
-    spark_df = spark.createDataFrame([(1, "a"), (2, "b"), (3, "c")], ["one", "two"])
-
-    planner = Planner()
-    from_spark_op = FromSpark(spark_df)
-    plan = LogicalPlan(from_spark_op)
-    physical_op = planner.plan(plan).dag
-
-    assert from_spark_op.name == "FromSpark"
-    assert isinstance(physical_op, InputDataBuffer)
-    assert len(physical_op.input_dependencies) == 0
-
-
-def test_from_spark_e2e(enable_optimizer, spark):
-    spark_df = spark.createDataFrame([(1, "a"), (2, "b"), (3, "c")], ["one", "two"])
-
-    rows = [(r.one, r.two) for r in spark_df.take(3)]
-    ds = ray.data.from_spark(spark_df)
-    values = [(r["one"], r["two"]) for r in ds.take(6)]
-    assert values == rows
-
-    # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
-    # Underlying implementation uses `FromArrowRefs` operator
     assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
 
 

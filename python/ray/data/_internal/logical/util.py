@@ -26,6 +26,13 @@ _op_name_white_list = [
     "ReadTFRecord",
     "ReadBinary",
     "ReadCustom",
+    # From
+    "FromItems",
+    "FromPandasRefs",
+    "FromDask",
+    "FromModin",
+    "FromNumpyRefs",
+    "FromArrowRefs",
     # Write
     "WriteParquet",
     "WriteJSON",

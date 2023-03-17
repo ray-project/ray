@@ -9,16 +9,22 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.logical.operators.from_pandas_operator import (
     FromPandasRefs,
     FromDask,
-    FromMARS,
     FromModin,
 )
-from ray.data.block import BlockAccessor, BlockExecStats
 from ray.data.context import DatasetContext
-from ray.types import ObjectRef
+from ray import ObjectRef
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.util import (
+    _df_to_block,
+    _get_metadata,
+)
+
+get_metadata = cached_remote_fn(_get_metadata)
+df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
 
 
 def _plan_from_pandas_refs_op(
-    op: Union[FromPandasRefs, FromDask, FromMARS, FromModin]
+    op: Union[FromPandasRefs, FromDask, FromModin]
 ) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for FromPandasRefs.
 
@@ -49,11 +55,6 @@ def _plan_from_pandas_refs_op(
             to_ref(next(iter(part.dask.values()))) for part in persisted_partitions
         ]
 
-    def _init_data_from_mars(op: FromMARS):
-        from mars.dataframe.contrib.raydataset import get_chunk_refs
-
-        op._dfs = get_chunk_refs(op._df)
-
     def _init_data_from_modin(op: FromModin):
         from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
@@ -62,14 +63,11 @@ def _plan_from_pandas_refs_op(
     def get_input_data() -> List[RefBundle]:
         if isinstance(op, FromDask):
             _init_data_from_dask(op)
-        elif isinstance(op, FromMARS):
-            _init_data_from_mars(op)
         elif isinstance(op, FromModin):
             _init_data_from_modin(op)
 
-        ref_bundles: List[RefBundle] = []
-
         context = DatasetContext.get_current()
+        ref_bundles: List[RefBundle] = []
         for idx, df_ref in enumerate(op._dfs):
             if not isinstance(df_ref, ObjectRef):
                 op._dfs[idx] = ray.put(df_ref)
@@ -77,17 +75,11 @@ def _plan_from_pandas_refs_op(
 
             if context.enable_pandas_block:
                 block = df_ref
+                block_metadata = get_metadata.remote(df_ref)
             else:
-                import pyarrow as pa
-
-                block = pa.table(df_ref)
-
-            stats = BlockExecStats.builder()
-            block_metadata = BlockAccessor.for_block(block).get_metadata(
-                input_files=None, exec_stats=stats.build()
-            )
+                block, block_metadata = df_to_block.remote(df_ref)
             ref_bundles.append(
-                RefBundle([ray.put(block), block_metadata], owns_blocks=True)
+                RefBundle([(block, ray.get(block_metadata))], owns_blocks=True)
             )
         return ref_bundles
 

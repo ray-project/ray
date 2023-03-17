@@ -7,8 +7,12 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
-from ray.data.block import BlockAccessor, BlockExecStats
-from ray.types import ObjectRef
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray import ObjectRef
+from ray.data._internal.util import _ndarray_to_block
+
+
+ndarray_to_block = cached_remote_fn(_ndarray_to_block, num_returns=2)
 
 
 def _plan_from_numpy_refs_op(op: FromNumpyRefs) -> PhysicalOperator:
@@ -24,13 +28,9 @@ def _plan_from_numpy_refs_op(op: FromNumpyRefs) -> PhysicalOperator:
             if not isinstance(arr_ref, ObjectRef):
                 op._ndarrays[idx] = ray.put(arr_ref)
                 arr_ref = op._ndarrays[idx]
-            stats = BlockExecStats.builder()
-            block = BlockAccessor.batch_to_block(arr_ref)
-            block_metadata = BlockAccessor.for_block(block).get_metadata(
-                input_files=None, exec_stats=stats.build()
-            )
+            block, block_metadata = ndarray_to_block.remote(arr_ref)
             ref_bundles.append(
-                RefBundle([ray.put(block), block_metadata], owns_blocks=True)
+                RefBundle([(block, ray.get(block_metadata))], owns_blocks=True)
             )
         return ref_bundles
 

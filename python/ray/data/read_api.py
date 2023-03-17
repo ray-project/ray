@@ -23,6 +23,9 @@ from ray.data._internal.util import (
     _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
     _is_local_scheme,
+    _df_to_block,
+    _ndarray_to_block,
+    _get_metadata,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
@@ -1660,35 +1663,6 @@ def from_torch(
         A :class:`Dataset` that contains the samples stored in the Torch dataset.
     """
     return from_items(list(dataset))
-
-
-def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
-    stats = BlockExecStats.builder()
-    import pyarrow as pa
-
-    block = pa.table(df)
-    return (
-        block,
-        BlockAccessor.for_block(block).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        ),
-    )
-
-
-def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
-    stats = BlockExecStats.builder()
-    block = BlockAccessor.batch_to_block(ndarray)
-    metadata = BlockAccessor.for_block(block).get_metadata(
-        input_files=None, exec_stats=stats.build()
-    )
-    return block, metadata
-
-
-def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMetadata:
-    stats = BlockExecStats.builder()
-    return BlockAccessor.for_block(table).get_metadata(
-        input_files=None, exec_stats=stats.build()
-    )
 
 
 def _get_read_tasks(

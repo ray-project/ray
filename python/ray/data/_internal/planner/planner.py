@@ -9,16 +9,12 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.operators.all_to_all_operator import AbstractAllToAll
 from ray.data._internal.logical.operators.n_ary_operator import Zip
-from ray.data._internal.logical.operators.from_arrow_operator import (
-    FromArrowRefs,
-    FromSpark,
-)
+from ray.data._internal.logical.operators.from_arrow_operator import FromArrowRefs
 from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
 from ray.data._internal.logical.operators.from_pandas_operator import (
     FromPandasRefs,
     FromDask,
-    FromMARS,
     FromModin,
 )
 from ray.data._internal.logical.operators.read_operator import Read
@@ -64,13 +60,13 @@ class Planner:
         elif isinstance(logical_op, FromItems):
             assert not physical_children
             physical_op = _plan_from_items_op(logical_op)
-        elif isinstance(logical_op, (FromPandasRefs, FromDask, FromMARS, FromModin)):
+        elif isinstance(logical_op, (FromPandasRefs, FromDask, FromModin)):
             assert not physical_children
             physical_op = _plan_from_pandas_refs_op(logical_op)
         elif isinstance(logical_op, FromNumpyRefs):
             assert not physical_children
             physical_op = _plan_from_numpy_refs_op(logical_op)
-        elif isinstance(logical_op, (FromArrowRefs, FromSpark, FromMARS)):
+        elif isinstance(logical_op, FromArrowRefs):
             assert not physical_children
             physical_op = _plan_from_arrow_refs_op(logical_op)
         elif isinstance(logical_op, AbstractUDFMap):

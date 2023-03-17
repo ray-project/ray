@@ -22,6 +22,10 @@ if TYPE_CHECKING:
     from ray.data.dataset import Dataset
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
+    import pyarrow
+    import pandas
+    from ray.data._internal.arrow_block import ArrowRow
+    from ray.data.block import Block, BlockMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -453,3 +457,38 @@ def capitalize(s: str):
         Capitalized string with no underscores.
     """
     return "".join(capfirst(x) for x in s.split("_"))
+
+
+def _df_to_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
+    from ray.data.block import BlockAccessor, BlockExecStats
+
+    stats = BlockExecStats.builder()
+    import pyarrow as pa
+
+    block = pa.table(df)
+    return (
+        block,
+        BlockAccessor.for_block(block).get_metadata(
+            input_files=None, exec_stats=stats.build()
+        ),
+    )
+
+
+def _ndarray_to_block(ndarray: np.ndarray) -> "Block[np.ndarray]":
+    from ray.data.block import BlockAccessor, BlockExecStats
+
+    stats = BlockExecStats.builder()
+    block = BlockAccessor.batch_to_block(ndarray)
+    metadata = BlockAccessor.for_block(block).get_metadata(
+        input_files=None, exec_stats=stats.build()
+    )
+    return block, metadata
+
+
+def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> "BlockMetadata":
+    from ray.data.block import BlockAccessor, BlockExecStats
+
+    stats = BlockExecStats.builder()
+    return BlockAccessor.for_block(table).get_metadata(
+        input_files=None, exec_stats=stats.build()
+    )

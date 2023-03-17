@@ -7,7 +7,6 @@ if TYPE_CHECKING:
     import pandas
     import dask
     import modin
-    import mars
 
 
 class FromPandasRefs(LogicalOperator):
@@ -20,17 +19,6 @@ class FromPandasRefs(LogicalOperator):
     ):
         super().__init__(op_name, [])
         self._dfs = dfs
-
-
-class FromMARS(LogicalOperator):
-    """Logical operator for `from_mars`."""
-
-    def __init__(
-        self,
-        df: "mars.DataFrame",
-    ):
-        self._df = df
-        super().__init__("FromMARS", [])
 
 
 class FromDask(LogicalOperator):
