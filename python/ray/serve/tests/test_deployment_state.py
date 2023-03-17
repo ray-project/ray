@@ -14,6 +14,7 @@ from ray.serve._private.common import (
     ReplicaConfig,
     ReplicaTag,
     ReplicaName,
+    ReplicaState,
 )
 from ray.serve._private.deployment_state import (
     DeploymentState,
@@ -22,7 +23,6 @@ from ray.serve._private.deployment_state import (
     DeploymentVersion,
     DeploymentReplica,
     ReplicaStartupStatus,
-    ReplicaState,
     ReplicaStateContainer,
     VersionedReplica,
     rank_replicas_for_stopping,

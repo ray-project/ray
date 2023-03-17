@@ -15,7 +15,7 @@ from ray.serve._private.autoscaling_policy import (
     calculate_desired_num_replicas,
 )
 from ray.serve._private.common import DeploymentInfo
-from ray.serve._private.deployment_state import ReplicaState
+from ray.serve._private.common import ReplicaState
 from ray.serve.config import AutoscalingConfig
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.controller import ServeController
