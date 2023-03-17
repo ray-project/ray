@@ -3153,7 +3153,7 @@ class AlgorithmConfig(_Config):
 
         # Serialize dataclasses.
         if isinstance(config.get("_learner_hps"), LearnerHPs):
-            config["_learner_hps"] = config["_learner_hps"].to_dict()
+            config["_learner_hps"] = dataclasses.asdict(config["_learner_hps"])
 
         # List'ify `policies`, iff a set or tuple (these types are not JSON'able).
         ma_config = config.get("multiagent")
