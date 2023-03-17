@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 
-def base_plus_ext(path):
+def base_plus_ext(path: str):
     """Split off all file extensions.
 
     Returns base, allext.
@@ -36,7 +36,7 @@ def base_plus_ext(path):
     return match.group(1), match.group(2)
 
 
-def valid_sample(sample):
+def valid_sample(sample: Dict[str, Any]):
     """Check whether a sample is valid.
 
     Args:
@@ -134,7 +134,7 @@ def tar_file_iterator(
 
 
 def group_by_keys(
-    data,
+    data: List[Dict[str, Any]],
     keys: callable = base_plus_ext,
     suffixes: Optional[Union[list, callable]] = None,
     meta: dict = None,
@@ -174,7 +174,7 @@ def group_by_keys(
         yield current_sample
 
 
-def default_decoder(sample: Dict[str, Any], format=True):
+def default_decoder(sample: Dict[str, Any], format: Optional[Union[bool, str]] = True):
     """A default decoder for webdataset.
 
     This handles common file extensions: .txt, .cls, .cls2,
@@ -228,7 +228,7 @@ def default_decoder(sample: Dict[str, Any], format=True):
 extension_to_format = {"jpg": "jpeg"}
 
 
-def default_encoder(sample: Dict[str, Any], format=True):
+def default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] = True):
     """A default encoder for webdataset.
 
     This handles common file extensions: .txt, .cls, .cls2, .jpg,
@@ -289,7 +289,7 @@ def default_encoder(sample: Dict[str, Any], format=True):
     return sample
 
 
-def make_iterable(block):
+def make_iterable(block: BlockAccessor):
     """Make a block iterable.
 
     This is a placeholder for dealing with more complex blocks.

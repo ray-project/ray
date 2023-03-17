@@ -184,7 +184,9 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
         assert sample["pt"].tolist() == [1, 2, 3]
 
     # test the format argument to the default decoder and multiple decoders
-    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1, decoder=["PIL", custom_decoder])
+    ds = ray.data.read_webdataset(
+        paths=[str(tmp_path)], parallelism=1, decoder=["PIL", custom_decoder]
+    )
     samples = ds.take(1)
     assert len(samples) == 1
     for sample in samples:
