@@ -296,8 +296,8 @@ class LogDeduplicator:
                 if len(sources) > 1:
                     if log_once("log_dedup_warning"):
                         output.append(
-                            "Warning: Ray is deduplicating repetitive log messages "
-                            "across the cluster. This may delay log output by "
+                            "FYI: Ray is deduplicating repetitive log messages "
+                            "across the cluster. This may delay log output by up to "
                             "a few seconds. Set RAY_DEDUP_LOGS=0 to disable."
                         )
                     timestamp, count, _, _, _ = self.recent[dedup_key]
