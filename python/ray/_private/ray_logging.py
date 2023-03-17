@@ -2,7 +2,7 @@ import colorama
 from dataclasses import dataclass
 import logging
 import os
-import regex as re
+import re
 import sys
 import threading
 from logging.handlers import RotatingFileHandler
