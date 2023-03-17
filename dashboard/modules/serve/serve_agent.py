@@ -12,6 +12,7 @@ from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
 )
+from ray.exceptions import RayTaskError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -230,9 +231,15 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 ),
             )
 
-        client.deploy_apps(config)
-
-        return Response()
+        try:
+            client.deploy_apps(config)
+        except RayTaskError as e:
+            return Response(
+                status=400,
+                text=str(e),
+            )
+        else:
+            return Response()
 
     async def get_serve_controller(self):
         """Gets the ServeController to the this cluster's Serve app.
