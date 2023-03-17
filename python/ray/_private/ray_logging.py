@@ -355,7 +355,7 @@ class LogDeduplicator:
                     output.append(
                         state.line
                         + self._color(
-                            f" [repeated {state.count}x across cluster] "
+                            f" [repeated {state.count}x across cluster]"
                             + self._warn_once()
                         )
                     )
