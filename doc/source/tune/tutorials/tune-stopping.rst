@@ -1,81 +1,29 @@
 .. _tune-stopping-guide:
 
-Stopping and Resuming a Tune Run
-================================
+How to Define Stopping Criteria for a Tune Experiment
+=====================================================
 
-There are a few ways that Tune runs can be stopped:
+When running a Tune experiment, it is important to define stopping criteria to ensure that the experiment ends in a timely and efficient manner. In this user guide, we will discuss how to define stopping criteria for a Tune experiment.
 
-1. The script gets manually interrupted (Ctrl+C)
-2. The script errors out on the driver process (different from trial-level errors)
-3. All trials terminate based on some stopping criteria (e.g. programmatic stopping conditions, ``FailureConfig(fail_fast=True)``, ``TuneConfig(time_budget_s)``, etc.)
-
-Ray Tune periodically checkpoints the run state so that it can be restarted when it fails or is manually interrupted.
+Stopping a Tune Experiment Manually
+-----------------------------------
 
 If you send a SIGINT signal to the process running ``Tuner.fit()`` (which is
 usually what happens when you press Ctrl+C in the console), Ray Tune shuts
-down training gracefully and saves a final experiment-level checkpoint.
+down training gracefully and saves the final experiment state.
 
 Ray Tune also accepts the SIGUSR1 signal to interrupt training gracefully. This
 should be used when running Ray Tune in a remote Ray task
 as Ray will filter out SIGINT and SIGTERM signals per default.
 
-How to resume a Tune run?
--------------------------
-
-If you've stopped a run and and want to resume from where you left off,
-you can then call ``Tuner.restore()`` like this:
-
-.. code-block:: python
-
-    tuner = Tuner.restore(
-        path="~/ray_results/my_experiment"
-    )
-    tuner.fit()
-
-There are a few options for restoring an experiment:
-``resume_unfinished``, ``resume_errored`` and ``restart_errored``.
-Please see the documentation of
-:meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>` for more details.
-
-``path`` here is determined by the ``air.RunConfig.name`` you supplied to your ``Tuner()``.
-If you didn't supply name to ``Tuner``, it is likely that your ``path`` looks something like:
-"~/ray_results/my_trainable_2021-01-29_10-16-44".
-
-You can see which name you need to pass by taking a look at the results table
-of your original tuning run:
-
-.. code-block::
-    :emphasize-lines: 5
-
-    == Status ==
-    Memory usage on this node: 11.0/16.0 GiB
-    Using FIFO scheduling algorithm.
-    Resources requested: 1/16 CPUs, 0/0 GPUs, 0.0/4.69 GiB heap, 0.0/1.61 GiB objects
-    Result logdir: /Users/ray/ray_results/my_trainable_2021-01-29_10-16-44
-    Number of trials: 1/1 (1 RUNNING)
-
-What's happening under the hood in a Tune run?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-:ref:`Here <tune-persisted-experiment-data>`, we describe the two types of Tune checkpoints:
-experiment-level and trial-level checkpoints.
-
-Upon resuming an interrupted/errored Tune run:
-
-#. Tune first looks at the experiment-level checkpoint to find the list of trials at the time of the interruption.
-
-#. Tune then locates and restores from the trial-level checkpoint of each trial.
-
-#. Depending on the specified resume option (``resume_unfinished``, ``resume_errored``, ``restart_errored``), Tune decides whether to restore a given unfinished trial from its latest available checkpoint or to start from scratch.
-
 .. _tune-stopping-ref:
 
-How to stop Tune runs programmatically?
----------------------------------------
+Stop Programmatically with Metric-based Criteria
+------------------------------------------------
 
-We've just covered the case in which you manually interrupt a Tune run.
-But you can also control when trials are stopped early by passing the ``stop`` argument to ``Tuner``.
-This argument takes, a dictionary, a function, or a :class:`Stopper <ray.tune.stopper.Stopper>` class as an argument.
+In addition to manual stopping, Tune provides several ways to stop experiments programmatically. The simplest way is to use a static condition. A static condition is a fixed set of rules that determine when the experiment should stop. Here are a few ways to use static conditions:
+
+You can implement the stopping criteria using either a dictionary, a function, or a custom :class:`Stopper <ray.tune.stopper.Stopper>`.
 
 If a dictionary is passed in, the keys may be any field in the return result of ``session.report`` in the
 Function API or ``step()`` (including the results from ``step`` and auto-filled metrics).
@@ -104,7 +52,7 @@ If a function is passed in, it must take ``(trial_id, result)`` as arguments and
 
 .. code-block:: python
 
-    def stopper(trial_id, result):
+    def stopper(trial_id: str, result: dict):
         return result["mean_accuracy"] / result["training_iteration"] > 5
 
     tune.Tuner(my_trainable, run_config=air.RunConfig(stop=stopper)).fit()
@@ -141,14 +89,21 @@ once their current iterations are complete.
 Ray Tune comes with a set of out-of-the-box stopper classes. See the :ref:`Stopper <tune-stoppers>` documentation.
 
 
-Stopping a ``Tuner`` after the first failure
---------------------------------------------
+Stop on Trial Failures
+----------------------
 
-By default, ``Tuner.fit()`` will continue executing until all trials have terminated or errored.
-To stop the entire Tune run as soon as **any** trial errors:
+In addition to stopping trials based on their performance, you can also stop the entire experiment if any trial encounters a runtime error. To do this, you can use the FailureConfig class. Here is an example:
+
+With this configuration, if any trial encounters an error, the entire experiment will stop immediately.
 
 .. code-block:: python
 
     tune.Tuner(trainable, run_config=air.RunConfig(failure_config=air.FailureConfig(fail_fast=True))).fit()
 
-This is useful when you are trying to setup a large hyperparameter experiment.
+This is useful when you are debugging a Tune experiment with many trials.
+
+
+Early stopping with Tune schedulers
+-----------------------------------
+
+Another way to stop Tune experiments is to use early stopping schedulers. These schedulers monitor the performance of trials and stop them early if they are not making sufficient progress. Tune currently supports two schedulers: ASHA and BOHB.
