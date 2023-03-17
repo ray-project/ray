@@ -19,7 +19,6 @@ from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -384,20 +383,3 @@ class APPO(Impala):
             from ray.rllib.algorithms.appo.appo_tf_policy import APPOTF2Policy
 
             return APPOTF2Policy
-
-
-# Deprecated: Use ray.rllib.algorithms.appo.APPOConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(APPOConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.ppo.appo::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.appo.appo::APPOConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
