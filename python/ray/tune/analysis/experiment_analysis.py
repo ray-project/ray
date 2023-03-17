@@ -100,8 +100,7 @@ class ExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        self._local_base_dir = self._checkpoints_and_paths[0][1].parent
-
+        self._local_experiment_path = self._checkpoints_and_paths[0][1]
         if not pd:
             logger.warning(
                 "pandas not installed. Run `pip install pandas` for "
@@ -110,15 +109,19 @@ class ExperimentAnalysis:
         else:
             self.fetch_trial_dataframes()
 
-        self._sync_config = sync_config
+        remote_storage_path = None
+        if sync_config and sync_config.upload_dir:
+            remote_storage_path = sync_config.upload_dir
+
+        self._remote_storage_path = remote_storage_path
 
     def _parse_cloud_path(self, local_path: str):
         """Convert local path into cloud storage path"""
-        if not self._sync_config or not self._sync_config.upload_dir:
+        if not self._remote_storage_path:
             return None
 
         return local_path.replace(
-            str(self._local_base_dir), self._sync_config.upload_dir
+            str(Path(self._local_experiment_path).parent), self._remote_storage_path
         )
 
     def _load_checkpoints(self, experiment_checkpoint_path: str) -> List[str]:
@@ -686,7 +689,7 @@ class ExperimentAnalysis:
                 based on `mode`, and compare trials based on `mode=[min,max]`.
         """
         best_trial = self.get_best_trial(metric, mode, scope)
-        return best_trial.logdir if best_trial else None
+        return best_trial.local_path if best_trial else None
 
     def get_last_checkpoint(self, trial=None, metric="training_iteration", mode="max"):
         """Gets the last persistent checkpoint path of the provided trial,
@@ -783,8 +786,8 @@ class ExperimentAnalysis:
     def _get_trial_paths(self) -> List[str]:
         if self.trials:
             # We do not need to set the relative path here
-            # Maybe assert that t.logdir is in local_base_path?
-            _trial_paths = [str(t.logdir) for t in self.trials]
+            # Maybe assert that t.local_path is in local_base_path?
+            _trial_paths = [str(t.local_path) for t in self.trials]
         else:
             logger.info(
                 "No `self.trials`. Drawing logdirs from checkpoint "
@@ -795,7 +798,7 @@ class ExperimentAnalysis:
             for trial_json_state, path in self._checkpoints_and_paths:
                 try:
                     trial = Trial.from_json_state(trial_json_state, stub=True)
-                    trial.local_dir = str(path)
+                    trial.local_experiment_path = str(path)
                 except Exception:
                     logger.warning(
                         f"Could not load trials from experiment checkpoint. "
@@ -808,7 +811,7 @@ class ExperimentAnalysis:
                 self.trials.append(trial)
 
             self.trials.sort(key=lambda trial: trial.trial_id)
-            _trial_paths = [str(trial.logdir) for trial in self.trials]
+            _trial_paths = [str(trial.local_path) for trial in self.trials]
 
         if not _trial_paths:
             raise TuneError("No trials found.")

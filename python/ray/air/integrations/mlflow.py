@@ -310,7 +310,7 @@ class MLflowLoggerCallback(LoggerCallback):
 
         # Log the artifact if set_artifact is set to True.
         if self.should_save_artifact:
-            self.mlflow_util.save_artifacts(run_id=run_id, dir=trial.logdir)
+            self.mlflow_util.save_artifacts(run_id=run_id, dir=trial.local_path)
 
         # Stop the run once trial finishes.
         status = "FINISHED" if not failed else "FAILED"

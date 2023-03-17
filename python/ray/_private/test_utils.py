@@ -1595,6 +1595,12 @@ def simulate_storage(
     elif storage_type == "s3":
         from moto.server import ThreadedMotoServer
 
+        old_env = os.environ
+        os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+        os.environ["AWS_SECURITY_TOKEN"] = "testing"
+        os.environ["AWS_SESSION_TOKEN"] = "testing"
+
         root = root or uuid.uuid4().hex
         s3_server = f"http://localhost:{port}"
         server = ThreadedMotoServer(port=port)
@@ -1602,6 +1608,9 @@ def simulate_storage(
         url = f"s3://{root}?region={region}&endpoint_override={s3_server}"
         yield url
         server.stop()
+
+        os.environ = old_env
+
     else:
         raise NotImplementedError(f"Unknown storage type: {storage_type}")
 

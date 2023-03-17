@@ -1,5 +1,6 @@
 import copy
 import datetime
+import warnings
 from functools import partial
 import grpc
 import logging
@@ -29,8 +30,9 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import date_str
+from ray.util import log_once
 
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, Deprecated
 
 if TYPE_CHECKING:
     from ray.tune.experiment import Trial
@@ -133,7 +135,7 @@ class Experiment:
             None, Mapping[str, Union[float, int, Mapping]], "PlacementGroupFactory"
         ] = None,
         num_samples: int = 1,
-        local_dir: Optional[str] = None,
+        storage_path: Optional[str] = None,
         _experiment_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[Union[SyncConfig, dict]] = None,
         checkpoint_config: Optional[Union[CheckpointConfig, dict]] = None,
@@ -143,26 +145,57 @@ class Experiment:
         export_formats: Optional[Sequence] = None,
         max_failures: int = 0,
         restore: Optional[str] = None,
+        # Deprecated
+        local_dir: Optional[str] = None,
     ):
-
-        local_dir = _get_local_dir_with_expand_user(local_dir)
-        # `_experiment_checkpoint_dir` is for internal use only for better
-        # support of Tuner API.
-        # If set, it should be a subpath under `local_dir`. Also deduce `dir_name`.
-        self._experiment_checkpoint_dir = _experiment_checkpoint_dir
-        if _experiment_checkpoint_dir:
-            experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
-            local_dir_path = Path(local_dir)
-            assert local_dir_path in experiment_checkpoint_dir_path.parents
-            # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
-            self.dir_name = os.path.relpath(_experiment_checkpoint_dir, local_dir)
-
-        config = config or {}
-
         if isinstance(sync_config, dict):
             sync_config = SyncConfig(**sync_config)
         else:
             sync_config = sync_config or SyncConfig()
+
+        self.sync_config = sync_config
+
+        local_storage_path = storage_path
+        remote_storage_path = self.sync_config.upload_dir
+
+        if local_dir:
+            if local_storage_path:
+                raise ValueError(
+                    "Only one of `local_dir` and `storage_path` can be passed to "
+                    "``Experiment().` Since `local_dir` is deprecated, pass "
+                    "only `storage_path` instead."
+                )
+
+            if log_once("tune_experiment_local_dir"):
+                warnings.warn(
+                    "The `local_dir` argument of `Experiment is deprecated. "
+                    "Use `storage_path` or set the `TUNE_RESULT_DIR` "
+                    "environment variable instead."
+                )
+
+            local_storage_path = local_dir
+
+        full_local_storage_path = _get_local_dir_with_expand_user(local_storage_path)
+
+        # `_experiment_checkpoint_dir` is for internal use only for better
+        # support of Tuner API.
+        # If set, it should be a subpath under `local_dir`. Also deduce `dir_name`.
+        if _experiment_checkpoint_dir:
+            experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
+            local_dir_path = Path(full_local_storage_path)
+            assert local_dir_path in experiment_checkpoint_dir_path.parents, (
+                local_dir_path,
+                str(list(experiment_checkpoint_dir_path.parents)),
+            )
+            # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
+            self.dir_name = os.path.relpath(
+                _experiment_checkpoint_dir, full_local_storage_path
+            )
+
+        self._local_storage_path = full_local_storage_path
+        self._remote_storage_path = remote_storage_path
+
+        config = config or {}
 
         if isinstance(checkpoint_config, dict):
             checkpoint_config = CheckpointConfig(**checkpoint_config)
@@ -201,8 +234,6 @@ class Experiment:
                 raise e
 
         self.name = name or self._run_identifier
-
-        self.sync_config = sync_config
 
         if not _experiment_checkpoint_dir:
             self.dir_name = _get_dir_name(run, name, self.name)
@@ -259,7 +290,7 @@ class Experiment:
             "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
-            "local_dir": local_dir,
+            "experiment_path": self.local_path,
             "experiment_dir_name": self.dir_name,
             "sync_config": sync_config,
             "checkpoint_config": checkpoint_config,
@@ -425,27 +456,43 @@ class Experiment:
         return self._stopper
 
     @property
+    def local_path(self) -> Optional[str]:
+        if not self._local_storage_path:
+            return None
+        return str(Path(self._local_storage_path) / self.dir_name)
+
+    @property
+    @Deprecated("Replaced by `local_path`")
     def local_dir(self):
-        return self.spec.get("local_dir")
+        # Deprecate: Raise in 2.5, Remove in 2.6
+        return self.local_path
+
+    @property
+    def remote_path(self) -> Optional[str]:
+        if not self._remote_storage_path:
+            return None
+        return str(URI(self._remote_storage_path) / self.dir_name)
+
+    @property
+    def path(self) -> Optional[str]:
+        return self.remote_path or self.local_path
 
     @property
     def checkpoint_config(self):
         return self.spec.get("checkpoint_config")
 
     @property
+    @Deprecated("Replaced by `checkpoint_dir`")
     def checkpoint_dir(self):
+        # Deprecate: Raise in 2.5, Remove in 2.6
         # Provided when initializing Experiment, if so, return directly.
-        if self._experiment_checkpoint_dir:
-            return self._experiment_checkpoint_dir
-        assert self.local_dir
-        return os.path.join(self.local_dir, self.dir_name)
+        return self.local_path
 
     @property
+    @Deprecated("Replaced by `remote_path`")
     def remote_checkpoint_dir(self) -> Optional[str]:
-        if not self.sync_config.upload_dir or not self.dir_name:
-            return None
-        uri = URI(self.sync_config.upload_dir)
-        return str(uri / self.dir_name)
+        # Deprecate: Raise in 2.5, Remove in 2.6
+        return self.remote_path
 
     @property
     def run_identifier(self):

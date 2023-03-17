@@ -20,7 +20,7 @@ class Trial(
             "trial_name",
             "experiment_dir_name",
             "placement_group_factory",
-            "logdir",
+            "local_path",
         ],
     )
 ):

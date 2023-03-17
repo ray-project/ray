@@ -49,9 +49,9 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         trial = Trial(trainable_name="rel_logdir", local_dir=local_dir)
 
         with self.assertRaises(ValueError):
-            trial.logdir = "/tmp/test_rel/../dots"
+            trial.local_path = "/tmp/test_rel/../dots"
         with self.assertRaises(ValueError):
-            trial.logdir = local_dir + "/../"
+            trial.local_path = local_dir + "/../"
 
         if shutil.rmtree.avoids_symlink_attacks:
             if local_dir_path.exists():
@@ -266,7 +266,7 @@ def test_load_trial_from_json_state(tmpdir):
     trial.init_logdir()
     trial.status = Trial.TERMINATED
 
-    checkpoint_logdir = os.path.join(trial.logdir, "checkpoint_00000")
+    checkpoint_logdir = os.path.join(trial.local_path, "checkpoint_00000")
     trial.checkpoint_manager.on_checkpoint(
         _TrackedCheckpoint(
             dir_or_data=checkpoint_logdir,
@@ -288,7 +288,7 @@ def test_change_trial_local_dir(tmpdir):
     trial.init_logdir()
     trial.status = Trial.TERMINATED
 
-    checkpoint_logdir = os.path.join(trial.logdir, "checkpoint_00000")
+    checkpoint_logdir = os.path.join(trial.local_path, "checkpoint_00000")
     trial.checkpoint_manager.on_checkpoint(
         _TrackedCheckpoint(
             dir_or_data=checkpoint_logdir,
@@ -297,14 +297,14 @@ def test_change_trial_local_dir(tmpdir):
         )
     )
 
-    assert trial.logdir.startswith(str(tmpdir))
+    assert trial.local_path.startswith(str(tmpdir))
     assert trial.get_trial_checkpoints()[0].dir_or_data.startswith(str(tmpdir))
 
     # Specify a new local dir, and the logdir/checkpoint path should be updated
     with tempfile.TemporaryDirectory() as new_local_dir:
-        trial.local_dir = new_local_dir
+        trial.local_experiment_path = new_local_dir
 
-        assert trial.logdir.startswith(new_local_dir)
+        assert trial.local_path.startswith(new_local_dir)
         assert trial.get_trial_checkpoints()[0].dir_or_data.startswith(new_local_dir)
 
 

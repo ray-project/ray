@@ -784,7 +784,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         def num_checkpoints(trial):
             return sum(
-                item.startswith("checkpoint_") for item in os.listdir(trial.logdir)
+                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
             )
 
         ray.init(num_cpus=2)
@@ -821,7 +821,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         def num_checkpoints(trial):
             return sum(
-                item.startswith("checkpoint_") for item in os.listdir(trial.logdir)
+                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
             )
 
         ray.init(num_cpus=2)
@@ -918,7 +918,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         def num_checkpoints(trial):
             return sum(
-                item.startswith("checkpoint_") for item in os.listdir(trial.logdir)
+                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
             )
 
         ray.init(num_cpus=3)
