@@ -119,25 +119,25 @@ METRICS_GAUGES = {
         "node_gpus_available",
         "Total GPUs available on a ray node",
         "percentage",
-        ["ip", "SessionName"],
+        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gpus_utilization": Gauge(
         "node_gpus_utilization",
         "Total GPUs usage on a ray node",
         "percentage",
-        ["ip", "SessionName"],
+        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gram_used": Gauge(
         "node_gram_used",
         "Total GPU RAM usage on a ray node",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gram_available": Gauge(
         "node_gram_available",
         "Total GPU RAM available on a ray node",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_disk_io_read": Gauge(
         "node_disk_io_read", "Total read from disk", "bytes", ["ip", "SessionName"]
@@ -857,9 +857,9 @@ class ReporterAgent(
                 gram_available = gram_total - gram_used
 
                 if gpu_index is not None:
-                    gpu_tags = {"ip": ip, "gpu_index": gpu_index}
+                    gpu_tags = {"ip": ip, "GpuIndex": gpu_index}
                     if gpu_name:
-                        gpu_tags["gpu_name"] = gpu_name
+                        gpu_tags["GpuDeviceName"] = gpu_name
 
                     # There's only 1 GPU per each index, so we record 1 here.
                     gpus_available_record = Record(
