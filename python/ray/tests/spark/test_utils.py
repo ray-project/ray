@@ -1,5 +1,6 @@
 from unittest.mock import patch
 import os
+import re
 import sys
 
 import pytest
@@ -106,7 +107,7 @@ def test_verify_node_options():
 
     with pytest.raises(
         ValueError,
-        match=(
+        match=re.compile(
             "Setting the option 'node_ip_address' for head nodes is not allowed.*"
             "This option is controlled by Ray on Spark"
         ),
@@ -119,7 +120,7 @@ def test_verify_node_options():
 
     with pytest.raises(
         ValueError,
-        match=(
+        match=re.compile(
             "Setting the option 'not_permitted' for worker nodes is not allowed.*"
             "You should set the 'permitted' option instead",
         ),
