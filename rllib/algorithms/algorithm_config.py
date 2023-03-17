@@ -410,6 +410,7 @@ class AlgorithmConfig(_Config):
         self.worker_cls = None
         self._kill_rollout_workers_t_offset = -1
         self._kill_rollout_workers_scale = 1.0
+        self._profile_rollout_worker_memory = False
 
         # `self.fault_tolerance()`
         self.ignore_worker_failures = False
@@ -2211,6 +2212,7 @@ class AlgorithmConfig(_Config):
         worker_cls: Optional[Type[RolloutWorker]] = NotProvided,
         _kill_rollout_workers_t_offset: Optional[float] = NotProvided,
         _kill_rollout_workers_scale: Optional[float] = NotProvided,
+        _profile_rollout_worker_memory: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -2239,6 +2241,8 @@ class AlgorithmConfig(_Config):
                 Precisely, the probability of a worker dying at time t is given by 1 - 
                 exp(- (t - offset) / scale), where offset and scale are the values of 
                 the two arguments.
+            _profile_rollout_worker_memory: For debugging only. If set, rollout workers
+                will periodically dump memory usage stats to the log.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2261,6 +2265,8 @@ class AlgorithmConfig(_Config):
             self._kill_rollout_workers_t_offset = _kill_rollout_workers_t_offset
         if _kill_rollout_workers_scale is not NotProvided:
             self._kill_rollout_workers_scale = _kill_rollout_workers_scale
+        if _profile_rollout_worker_memory is not NotProvided:
+            self._profile_rollout_worker_memory = _profile_rollout_worker_memory
 
         return self
 

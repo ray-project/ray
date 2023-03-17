@@ -9,6 +9,7 @@ import random
 import math
 import time
 import sys
+from pathlib import Path
 import platform
 import threading
 import tree  # pip install dm_tree
@@ -324,6 +325,23 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
         """
+        
+        if config._profile_rollout_worker_memory:
+            import memray
+            pid = os.getpid()
+            node_ip = ray.util.get_node_ip_address()
+            
+            file_name = f"{self.__class__.__name__}_{pid}_mem_profile.bin"
+            memray_dir = Path("memray")
+            memray_dir.mkdir(exist_ok=True)
+            fpath = memray_dir / file_name
+            
+            print(
+                f"Starting memory profiling for {self.__class__.__name__} "
+                f"with pid {pid} on node {node_ip}"
+            )
+            print(f"Saving memory profile to {str(fpath.absolute())}...")
+            memray.Tracker(str(fpath)).__enter__()
         # Deprecated args.
         if policy != DEPRECATED_VALUE:
             deprecation_warning("policy", "policy_spec", error=True)

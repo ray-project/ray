@@ -31,3 +31,4 @@ pong-appo:
         grad_clip: 10
         model:
           dim: 42
+        _profile_rollout_worker_memory: true
