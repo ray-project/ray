@@ -1,4 +1,5 @@
 import colorama
+from dataclasses import dataclass
 import logging
 import os
 import regex as re
@@ -6,7 +7,7 @@ import sys
 import threading
 from logging.handlers import RotatingFileHandler
 import time
-from typing import Callable, Dict, Tuple, List
+from typing import Callable, Dict, List, Set
 
 import ray
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
@@ -271,11 +272,19 @@ def canonicalise_log_line(line):
     return " ".join(x for x in line.split() if not NUMBERS.search(x))
 
 
+@dataclass
+class DedupState:
+    timestamp: int
+    count: int
+    line: int
+    metadata: dict
+    sources: Set[str]
+
+
 class LogDeduplicator:
     def __init__(self):
-        # TODO: make dataclass
-        # Map of dedup_key -> (timestamp, count, instance, metadata, sources).
-        self.recent: Dict[str, Tuple[int, int, str, dict, set]] = {}
+        # Buffer of up to AGGREGATION_WINDOW_S recent log patterns.
+        self.recent: Dict[str, DedupState] = {}
 
     def deduplicate(self, lines: List[str], metadata: dict) -> List[str]:
         global _log_dedup_warned
@@ -300,10 +309,10 @@ class LogDeduplicator:
                             "across the cluster. This may delay log output by up to "
                             "a few seconds. Set RAY_DEDUP_LOGS=0 to disable."
                         )
-                    timestamp, count, _, _, _ = self.recent[dedup_key]
-                    self.recent[dedup_key] = (
-                        timestamp,
-                        count + 1,
+                    state = self.recent[dedup_key]
+                    self.recent[dedup_key] = DedupState(
+                        state.timestamp,
+                        state.count + 1,
                         line,
                         metadata,
                         sources,
@@ -312,22 +321,25 @@ class LogDeduplicator:
                     # Don't dedup messages from the same source, just print.
                     output.append(line)
             else:
-                self.recent[dedup_key] = (now, 0, line, metadata, {source})
+                self.recent[dedup_key] = DedupState(now, 0, line, metadata, {source})
                 output.append(line)
         while self.recent:
-            if now - next(iter(self.recent.values()))[0] > AGGREGATION_WINDOW_S:
+            if now - next(iter(self.recent.values())).timestamp > AGGREGATION_WINDOW_S:
                 dedup_key = next(iter(self.recent))
-                _, count, line, metadata, sources = self.recent.pop(dedup_key)
+                state = self.recent.pop(dedup_key)
                 # we already logged an instance of this line immediately when received,
                 # so don't log for count == 0
-                if count > 1:
+                if state.count > 1:
                     # (Actor pid=xxxx) [repeated 2x across cluster] ...
                     output.append(
-                        line + self._color(f" [repeated {count}x across cluster] ")
+                        state.line
+                        + self._color(f" [repeated {state.count}x across cluster] ")
                     )
                     # Continue aggregating for this key but reset timestamp and count.
-                    self.recent[dedup_key] = (now, 0, line, metadata, sources)
-                elif count > 0:
+                    state.timestamp = now
+                    state.count = 0
+                    self.recent[dedup_key] = state
+                elif state.count > 0:
                     # Aggregation wasn't fruitful, print the line and stop aggregating.
                     output.append(line)
             else:
@@ -336,21 +348,23 @@ class LogDeduplicator:
 
     def flush(self) -> List[dict]:
         output = []
-        for _, count, line, metadata, _ in self.recent.values():
-            if count > 1:
+        for state in self.recent.values():
+            if state.count > 1:
                 output.append(
                     dict(
-                        metadata,
+                        state.metadata,
                         **{
                             "lines": [
-                                line
-                                + self._color(f" [repeated {count}x across cluster]")
+                                state.line
+                                + self._color(
+                                    f" [repeated {state.count}x across cluster]"
+                                )
                             ]
                         },
                     )
                 )
-            elif count > 0:
-                output.append(dict(metadata, **{"lines": [line]}))
+            elif state.count > 0:
+                output.append(dict(state.metadata, **{"lines": [state.line]}))
         self.recent.clear()
         return output
 
