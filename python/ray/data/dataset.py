@@ -4449,6 +4449,7 @@ class Dataset(Generic[T]):
         self._epoch = state["epoch"]
         self._lazy = state["lazy"]
         self._logical_plan = state["logical_plan"]
+        self._current_executor = None
 
 
 def _get_size_bytes(block: Block) -> int:
