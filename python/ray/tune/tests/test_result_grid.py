@@ -265,13 +265,13 @@ def test_result_grid_repr():
     expected_repr = """ResultGrid<[
   Result(
     metrics={'loss': 1.0},
-    local_path='log_1',
+    path='log_1',
     checkpoint=Checkpoint(data_dict={'weight': 1.0})
   ),
   Result(
     error='RuntimeError',
     metrics={'loss': 2.0},
-    local_path='log_2',
+    path='log_2',
     checkpoint=Checkpoint(data_dict={'weight': 2.0})
   )
 ]>"""

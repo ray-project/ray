@@ -49,7 +49,7 @@ class Result:
     remote_path: Optional[str] = None
     metrics_dataframe: Optional["pd.DataFrame"] = None
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]] = None
-    _items_to_repr = ["error", "metrics", "log_dir", "checkpoint"]
+    _items_to_repr = ["error", "metrics", "path", "checkpoint"]
     # Deprecate: raise in 2.5, remove in 2.6
     log_dir: Optional[Path] = None
 
@@ -62,10 +62,10 @@ class Result:
             self.local_path = str(self.log_dir)
 
         # Duplicate for retrieval
-        self.log_dir = Path(self.local_path)
+        self.log_dir = Path(self.local_path) if self.local_path else None
         # Backwards compatibility: Make sure to cast Path to string
         # Deprecate: Remove this line after 2.6
-        self.local_path = str(self.local_path)
+        self.local_path = str(self.local_path) if self.local_path else None
 
     @property
     def config(self) -> Optional[Dict[str, Any]]:
@@ -87,7 +87,7 @@ class Result:
         """Construct the representation with specified number of space indent."""
         from ray.tune.result import AUTO_RESULT_KEYS
 
-        shown_attributes = {k: self.__dict__[k] for k in self._items_to_repr}
+        shown_attributes = {k: getattr(self, k) for k in self._items_to_repr}
         if self.error:
             shown_attributes["error"] = type(self.error).__name__
         else:
