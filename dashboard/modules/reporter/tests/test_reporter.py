@@ -395,16 +395,17 @@ def test_report_stats_gpu():
             gpu_records[record.gauge.name].append(record)
 
     for name, records in gpu_records.items():
-        records.sort(key=lambda e: e.tags["gpu_index"])
+        records.sort(key=lambda e: e.tags["GpuIndex"])
         index = 0
         for record in records:
-            if record.tags["gpu_index"] == 3:
-                assert record.tags == {"ip": ip, "gpu_index": 3}
+            if record.tags["GpuIndex"] == "3":
+                assert record.tags == {"ip": ip, "GpuIndex": "3"}
             else:
                 assert record.tags == {
                     "ip": ip,
-                    "gpu_index": index,
-                    "gpu_name": "NVIDIA A10G",
+                    # The tag value must be string for prometheus.
+                    "GpuIndex": str(index),
+                    "GpuDeviceName": "NVIDIA A10G",
                 }
 
             if name == "node_gram_available":

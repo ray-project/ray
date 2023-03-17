@@ -851,13 +851,13 @@ class ReporterAgent(
                     gpus_utilization += gpu["utilization_gpu"]
                 gram_used += gpu["memory_used"]
                 gram_total += gpu["memory_total"]
-                gpu_index = str(gpu.get("index"))
+                gpu_index = gpu.get("index")
                 gpu_name = gpu.get("name")
 
                 gram_available = gram_total - gram_used
 
                 if gpu_index is not None:
-                    gpu_tags = {"ip": ip, "GpuIndex": gpu_index}
+                    gpu_tags = {"ip": ip, "GpuIndex": str(gpu_index)}
                     if gpu_name:
                         gpu_tags["GpuDeviceName"] = gpu_name
 
