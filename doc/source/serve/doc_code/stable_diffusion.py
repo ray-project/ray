@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 # __example_code_start__
 
 from io import BytesIO
@@ -61,22 +63,30 @@ my_first_deployment = APIIngress.bind(StableDiffusionV2.bind())
 
 # __example_code_end__
 
+@contextmanager
+def serve_session(deployment):
+    handle = serve.run(deployment)
+    try:
+        yield handle
+    finally:
+        serve.shutdown()
+
 if __name__ == "__main__":
     import ray
     import os
     import requests
 
-    ray.init(runtime_env={"pip": ["diffusers"]})
+    ray.init(runtime_env={"pip": ["diffusers==0.14.0", "transformers==4.27.1"]})
 
-    handle = serve.run(my_first_deployment)
+    with serve_session(my_first_deployment) as handle:
+        ray.get(handle.generate.remote("hi"))
 
-    ray.get(handle.generate.remote("hi"))
+        prompt = "a cute cat is dancing on the grass."
+        prompt_query = "%20".join(prompt.split(" "))
+        resp = requests.get(f"http://127.0.0.1:8000/imagine?prompt={prompt_query}")
 
-    prompt = "a cute cat is dancing on the grass."
-    prompt_query = "%20".join(prompt.split(" "))
-    resp = requests.get(f"http://127.0.0.1:8000/imagine?prompt={prompt_query}")
+        with open("output.png", "wb") as f:
+            f.write(resp.content)
 
-    with open("output.png", "wb") as f:
-        f.write(resp.content)
-
-    assert os.exists("output.png")
+        assert os.path.exists("output.png")
+        os.remove("output.png")

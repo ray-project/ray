@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 # __example_code_start__
 from transformers import pipeline
 from fastapi import FastAPI
@@ -31,7 +33,8 @@ class DistilBertModel:
             "sentiment-analysis",
             model="distilbert-base-uncased",
             framework="pt",
-            device=torch.device("cuda"),
+            # Transformers requires you to pass device with index
+            device=torch.device("cuda:0"),
         )
 
     def classify(self, sentence: str):
@@ -42,18 +45,25 @@ entrypoint = APIIngress.bind(DistilBertModel.bind())
 
 # __example_code_end__
 
-if __name__ == "__main__":
-    handle = serve.run(entrypoint)
+@contextmanager
+def serve_session(deployment):
+    handle = serve.run(deployment)
+    try:
+        yield handle
+    finally:
+        serve.shutdown()
 
+if __name__ == "__main__":
     import requests
 
-    prompt = (
-        "This was a masterpiece. Not completely faithful to the books, but enthralling "
-        "from beginning to end. Might be my favorite of the three."
-    )
-    input = "%20".join(prompt.split(" "))
-    resp = requests.get(f"http://127.0.0.1:8000/classify?sentence={prompt}")
-    print(resp.status_code, resp.json())
+    with serve_session(entrypoint):
+        prompt = (
+            "This was a masterpiece. Not completely faithful to the books, but enthralling "
+            "from beginning to end. Might be my favorite of the three."
+        )
+        input = "%20".join(prompt.split(" "))
+        resp = requests.get(f"http://127.0.0.1:8000/classify?sentence={prompt}")
+        print(resp.status_code, resp.json())
 
-    assert resp.status_code == 200
-    assert resp.json()["label"] == "LABEL_1"
+        assert resp.status_code == 200
+

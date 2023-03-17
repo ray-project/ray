@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 # __example_code_start__
 import torch
 from PIL import Image
@@ -50,6 +52,15 @@ entrypoint = APIIngress.bind(ObjectDetection.bind())
 
 # __example_code_end__
 
+@contextmanager
+def serve_session(deployment):
+    handle = serve.run(deployment)
+    try:
+        yield handle
+    finally:
+        serve.shutdown()
+
+
 if __name__ == "__main__":
     import ray
     import requests
@@ -59,14 +70,17 @@ if __name__ == "__main__":
         "https://raw.githubusercontent.com/ultralytics/yolov5/master/requirements.txt"
     )
 
-    ray.init(runtime_env={"pip": [req_txt]})
+    r = requests.get(req_txt)
+    with open("requirements.txt" , 'wb') as f:
+        f.write(r.content)
 
-    handle = serve.run(entrypoint)
+    ray.init(runtime_env={"pip": "requirements.txt"})
 
-    image_url = "https://ultralytics.com/images/zidane.jpg"
-    resp = requests.get(f"http://127.0.0.1:8000/detect?image_url={image_url}")
+    with serve_session(entrypoint):
+        image_url = "https://ultralytics.com/images/zidane.jpg"
+        resp = requests.get(f"http://127.0.0.1:8000/detect?image_url={image_url}")
 
-    with open("output.jpeg", "wb") as f:
-        f.write(resp.content)
+        with open("output.jpeg", "wb") as f:
+            f.write(resp.content)
 
-    assert os.exists("output.png")
+        assert os.path.exists("output.png")
