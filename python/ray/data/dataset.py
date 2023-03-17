@@ -4433,6 +4433,23 @@ class Dataset(Generic[T]):
             self._current_executor.shutdown()
             self._current_executor = None
 
+    def __getstate__(self):
+        # Note: excludes _current_executor which is not serializable.
+        return {
+            "plan": self._plan,
+            "uuid": self._uuid,
+            "epoch": self._epoch,
+            "lazy": self._lazy,
+            "logical_plan": self._logical_plan,
+        }
+
+    def __setstate__(self, state):
+        self._plan = state["plan"]
+        self._uuid = state["uuid"]
+        self._epoch = state["epoch"]
+        self._lazy = state["lazy"]
+        self._logical_plan = state["logical_plan"]
+
 
 def _get_size_bytes(block: Block) -> int:
     block = BlockAccessor.for_block(block)
