@@ -88,14 +88,13 @@ MultiAgentEnv class API
 
 Extends the `gym.Env` API to support multi-agent.
 
-.. currentmodule:: ray.rllib.env.multi_agent_env
 
 Public methods
 ~~~~~~~~~~~~~~
 .. autosummary::
    :toctree: doc/
 
-   make_multi_agent
+   ~multi_agent_env.make_multi_agent
 
 Constructor
 ~~~~~~~~~~~
@@ -103,7 +102,7 @@ Constructor
    :toctree: doc/
    :template: autosummary/class_with_autosummary.rst
 
-   MultiAgentEnv
+   ~multi_agent_env.MultiAgentEnv
 
 
 Environment conversion
@@ -111,17 +110,17 @@ Environment conversion
 .. autosummary::
    :toctree: doc/
 
-   ~MultiAgentEnv.to_base_env
+   ~multi_agent_env.MultiAgentEnv.to_base_env
    
 Environment interactions
 ~~~~~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
    :toctree: doc/
 
-   ~MultiAgentEnv.reset
-   ~MultiAgentEnv.step
-   ~MultiAgentEnv.close
-   ~MultiAgentEnv.render
+   ~multi_agent_env.MultiAgentEnv.reset
+   ~multi_agent_env.MultiAgentEnv.step
+   ~multi_agent_env.MultiAgentEnv.close
+   ~multi_agent_env.MultiAgentEnv.render
 
 Utilities
 ~~~~~~~~~
@@ -129,11 +128,11 @@ Utilities
 .. autosummary::
    :toctree: doc/
 
-   ~MultiAgentEnv.get_agent_ids
-   ~MultiAgentEnv.action_space_contains
-   ~MultiAgentEnv.observation_space_contains
-   ~MultiAgentEnv.action_space_sample
-   ~MultiAgentEnv.observation_space_sample
+   ~multi_agent_env.MultiAgentEnv.get_agent_ids
+   ~multi_agent_env.MultiAgentEnv.action_space_contains
+   ~multi_agent_env.MultiAgentEnv.observation_space_contains
+   ~multi_agent_env.MultiAgentEnv.action_space_sample
+   ~multi_agent_env.MultiAgentEnv.observation_space_sample
 
 
 External Application API
