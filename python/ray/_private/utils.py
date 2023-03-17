@@ -1271,9 +1271,7 @@ def get_wheel_filename(
     assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
 
     py_version_str = "".join(map(str, py_version))
-    if py_version_str in ["36", "37"]:
-        darwin_os_string = "macosx_10_15_intel"
-    elif py_version_str in ["38", "39"]:
+    if py_version_str in ["36", "37", "38", "39"]:
         darwin_os_string = "macosx_10_15_x86_64"
     else:
         darwin_os_string = "macosx_10_15_universal2"
