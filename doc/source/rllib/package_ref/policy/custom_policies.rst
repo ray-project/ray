@@ -1,4 +1,3 @@
-.. _custom-policies-reference-docs:
 
 Building Custom Policy Classes
 ------------------------------
