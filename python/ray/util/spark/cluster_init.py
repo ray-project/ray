@@ -738,7 +738,6 @@ _head_node_option_block_keys = {
     "port": None,
     "num_cpus": None,
     "num_gpus": None,
-    "memory": None,
     "dashboard_host": None,
     "dashboard_agent_listen_port": None,
 }
