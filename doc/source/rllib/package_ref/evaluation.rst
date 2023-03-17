@@ -130,6 +130,8 @@ Miscellaneous
     ~RolloutWorker.assert_healthy
 
 
+.. _workerset-reference-docs:
+
 WorkerSet API
 -------------
 
@@ -229,7 +231,7 @@ Synchronous Sampler API
 
 
 Asynchronous Sampler API
-~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. currentmodule:: ray.rllib.evaluation.sampler
 
@@ -261,7 +263,6 @@ JSON reader API
     :template: autosummary/class_with_autosummary.rst
 
     JsonReader
-    JsonReader.next
     JsonReader.read_all_files
 
 .. currentmodule:: ray.rllib.offline.mixed_input
@@ -273,7 +274,6 @@ Mixed input reader
     :template: autosummary/class_with_autosummary.rst
 
     MixedInput
-    MixedInput.next
 
 .. currentmodule:: ray.rllib.offline.d4rl_reader
 
@@ -284,7 +284,6 @@ D4RL reader
     :template: autosummary/class_with_autosummary.rst
 
     D4RLReader
-    D4RLReader.next
 
 .. currentmodule:: ray.rllib.offline.io_context
 
@@ -300,7 +299,7 @@ IOContext
 
 
 Policy Map API
--------------
+--------------
 
 .. currentmodule:: ray.rllib.policy.policy_map
 
@@ -354,7 +353,6 @@ MultiAgent batch API
     :template: autosummary/class_with_autosummary.rst
 
     MultiAgentBatch
-    MultiAgentBatch.policy_batches
     MultiAgentBatch.env_steps
     MultiAgentBatch.agent_steps
 
