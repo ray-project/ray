@@ -329,7 +329,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         if config._profile_rollout_worker_memory:
             import memray
             pid = os.getpid()
-            node_ip = ray.util.get_node_ip_address()
             
             file_name = f"{self.__class__.__name__}_{pid}_mem_profile.bin"
             memray_dir = Path("memray")
@@ -338,7 +337,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             
             print(
                 f"Starting memory profiling for {self.__class__.__name__} "
-                f"with pid {pid} on node {node_ip}"
+                f"with pid {pid}"
             )
             print(f"Saving memory profile to {str(fpath.absolute())}...")
             memray.Tracker(str(fpath)).__enter__()
