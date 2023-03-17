@@ -83,7 +83,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
         self.assertIsNone(trial.error_file)
         self.assertEqual(trial.local_dir, exp_dir)
-        self.assertEqual(trial.logdir, abs_trial_dir)
+        self.assertEqual(trial.local_path, abs_trial_dir)
 
         self.assertTrue(os.path.isdir(absolute_local_dir), absolute_local_dir)
         self.assertTrue(os.path.isdir(exp_dir))
