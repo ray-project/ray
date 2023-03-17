@@ -1,4 +1,10 @@
-import { createStyles, Link, makeStyles, Typography } from "@material-ui/core";
+import {
+  Card,
+  createStyles,
+  Link,
+  makeStyles,
+  Typography,
+} from "@material-ui/core";
 import yaml from "js-yaml";
 import React, { useState } from "react";
 import DialogWithTitle from "../DialogWithTitle";
@@ -9,7 +15,7 @@ const useStyles = makeStyles((theme) =>
       whiteSpace: "pre",
       fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
       padding: theme.spacing(2),
-      borderRadius: theme.spacing(1),
+      // borderRadius: theme.spacing(1),
     },
   }),
 );
@@ -57,9 +63,11 @@ export const CodeDialogButton = ({
             setShowConfigDialog(false);
           }}
         >
-          <Typography className={classes.configText}>
-            {typeof code === "string" ? code : yaml.dump(code, { indent: 4 })}
-          </Typography>
+          <Card variant="outlined">
+            <Typography className={classes.configText}>
+              {typeof code === "string" ? code : yaml.dump(code, { indent: 2 })}
+            </Typography>
+          </Card>
         </DialogWithTitle>
       )}
     </React.Fragment>
@@ -96,7 +104,7 @@ export const CodeDialogButtonWithPreview = ({
   const classes = useCodeDialogButtonWithPreviewStyles();
 
   const codeText =
-    typeof code === "string" ? code : yaml.dump(code, { indent: 4 });
+    typeof code === "string" ? code : yaml.dump(code, { indent: 2 });
 
   const buttonTextToPass = buttonText ?? "Expand";
 
