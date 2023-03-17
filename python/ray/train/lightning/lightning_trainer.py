@@ -372,6 +372,14 @@ class LightningTrainer(TorchTrainer):
         scaling_config: Optional[ScalingConfig] = None,
         **kwargs,
     ) -> "LightningTrainer":
+        """Restores a LightningTrainer from a previously interrupted/failed run.
+
+        See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
+        for descriptions of the arguments.
+
+        Returns:
+            LightningTrainer: A restored instance of `LightningTrainer`
+        """
         return super(LightningTrainer, cls).restore(
             path=path,
             datasets=datasets,
@@ -461,6 +469,7 @@ def _lightning_train_loop_per_worker(config):
 
     trainer = pl.Trainer(**trainer_config)
 
+    # Restore from a previously failed run
     checkpoint = session.get_checkpoint()
     if checkpoint and "ckpt_path" not in trainer_fit_params:
         with checkpoint.as_directory() as ckpt_dir:
