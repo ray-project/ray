@@ -264,7 +264,7 @@ global_worker_stdstream_dispatcher = WorkerStandardStreamDispatcher()
 
 
 # Regex for canonicalizing log lines.
-NUMBERS = re.compile(r"(\d+[\.\d+]*|0x[0-9a-fA-F]+)")
+NUMBERS = re.compile(r"(\d+|0x[0-9a-fA-F]+)")
 
 # How many seconds of messages to buffer for log deduplicatoin.
 AGGREGATION_WINDOW_S = 3.0
