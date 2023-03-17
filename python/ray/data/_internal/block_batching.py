@@ -411,10 +411,11 @@ def _resolve_blocks(
         stats.iter_unknown_location += unknown
 
 
-def _prefetch_batch_locally(
+def _prefetch_batches_locally(
     block_ref_iter: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     prefetcher: "BlockPrefetcher",
     batch_size: int,
+    num_batches_to_prefetch: int,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterable of Block Object References and their corresponding metadata, returns an iterator over these object reference while prefetching a batch in advance.
