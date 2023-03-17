@@ -450,6 +450,9 @@ class _ActorPool:
     ):
         # We start with 1 task in flight, then ramp up to `max_tasks_in_flight`
         # after the `max_tasks_rampup_threshold` actors have been created.
+        # This is to ensure we don't overschedule tasks to certain actors
+        # when the dataset has a small number of partitions. We first prioritize
+        # even sharding across min_workers actors.
         self._max_tasks_in_flight_final = max_tasks_in_flight
         self._max_tasks_in_flight = 1
         self._max_tasks_rampup_threshold = max_tasks_rampup_threshold
