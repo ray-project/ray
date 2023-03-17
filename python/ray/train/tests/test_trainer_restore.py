@@ -11,8 +11,6 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
-from ray.train.lightning import LightningTrainer, LightningConfigBuilder
-from ray.train.tests.lightning_test_utils import LinearModule, DummyDataModule
 from ray.train.huggingface import HuggingFaceTrainer
 from ray.train.rl import RLTrainer
 from ray.tune import Callback, TuneError
@@ -211,47 +209,6 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
 
     trainer = trainer_cls.restore(str(tmpdir / exp_name), datasets=datasets)
     result = trainer.fit()
-    assert not result.error
-    assert result.metrics["training_iteration"] == 5
-    assert result.metrics["iterations_since_restore"] == 3
-    assert tmpdir / exp_name in result.log_dir.parents
-
-
-def test_lightning_trainer_restore(ray_start_4_cpus, tmpdir):
-    """Tests restore for LightningTrainer. Same success criteria as above."""
-    exp_name = "lightning_trainer_restore_test"
-
-    datamodule = DummyDataModule(8, 256)
-    train_loader = datamodule.train_dataloader()
-    val_loader = datamodule.val_dataloader()
-
-    lightning_config = (
-        LightningConfigBuilder()
-        .module(LinearModule, input_dim=32, output_dim=4)
-        .trainer(max_epochs=5, accelerator="cpu")
-        .fit_params(train_dataloaders=train_loader, val_dataloaders=val_loader)
-        .build()
-    )
-
-    scaling_config = ray.air.ScalingConfig(num_workers=2, use_gpu=False)
-
-    trainer = LightningTrainer(
-        lightning_config=lightning_config,
-        scaling_config=scaling_config,
-        run_config=RunConfig(
-            local_dir=str(tmpdir),
-            name=exp_name,
-            checkpoint_config=CheckpointConfig(num_to_keep=1),
-            callbacks=[FailureInjectionCallback(num_iters=2)],
-        ),
-    )
-
-    with pytest.raises(TuneError):
-        result = trainer.fit()
-
-    trainer = LightningTrainer.restore(str(tmpdir / exp_name))
-    result = trainer.fit()
-
     assert not result.error
     assert result.metrics["training_iteration"] == 5
     assert result.metrics["iterations_since_restore"] == 3

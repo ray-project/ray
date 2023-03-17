@@ -18,6 +18,8 @@ from ray.data.dataset import DatasetIterator
 
 logger = logging.getLogger(__name__)
 
+LIGHTNING_REPORT_STAGE_KEY = "__report_on"
+
 
 class RayDDPStrategy(DDPStrategy):
     """Subclass of DDPStrategy to ensure compatibility with Ray orchestration."""
@@ -50,9 +52,11 @@ class RayEnvironment(LightningEnvironment):
         return session.get_node_rank()
 
     def set_world_size(self, size: int) -> None:
+        # Disable it since `world_size()` directly returns data from AIR session.
         pass
 
     def set_global_rank(self, rank: int) -> None:
+        # Disable it since `global_rank()` directly returns data from AIR session.
         pass
 
     def teardown(self):
@@ -124,14 +128,8 @@ class RayModelCheckpoint(ModelCheckpoint):
             return
 
         # Report latest logged metrics
-        metrics = {"report_on": stage}
+        metrics = {LIGHTNING_REPORT_STAGE_KEY: stage}
         for k, v in self._monitor_candidates(trainer).items():
-            if k == "report_on":
-                logger.warning(
-                    "'report_on' is a reserved key in AIR report metrics. "
-                    "Original values are overwritten!"
-                )
-                continue
             if isinstance(v, torch.Tensor):
                 metrics[k] = v.item()
 
