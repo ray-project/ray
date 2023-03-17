@@ -865,7 +865,6 @@ class Impala(Algorithm):
                 reduce_fn=_reduce_impala_results,
                 block=blocking,
                 num_iters=self.config.num_sgd_iter,
-                # minibatch_size=(2 * self.config.rollout_fragment_length)
             )
         else:
             lg_results = None
