@@ -29,7 +29,9 @@ class Result:
         metrics: The final metrics as reported by an Trainable.
         checkpoint: The final checkpoint of the Trainable.
         error: The execution error of the Trainable run, if the trial finishes in error.
-        local_path: Directory where the trial logs are saved.
+        local_path: Path pointing to the experiment directory on the local disk.
+        remote_path: Path pointing to the experiment directory on remote storage,
+            if configured.
         metrics_dataframe: The full result dataframe of the Trainable.
             The dataframe is indexed by iterations and contains reported
             metrics.
@@ -43,11 +45,11 @@ class Result:
     metrics: Optional[Dict[str, Any]]
     checkpoint: Optional[Checkpoint]
     error: Optional[Exception]
-    local_path: Optional[Path]
-    metrics_dataframe: Optional["pd.DataFrame"]
-    best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]]
-    _items_to_repr = ["error", "metrics", "log_dir", "checkpoint"]
+    local_path: Optional[str]
     remote_path: Optional[str] = None
+    metrics_dataframe: Optional["pd.DataFrame"] = None
+    best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]] = None
+    _items_to_repr = ["error", "metrics", "log_dir", "checkpoint"]
     # Deprecate: raise in 2.5, remove in 2.6
     log_dir: Optional[Path] = None
 
@@ -57,10 +59,13 @@ class Result:
                 "The `Result.log_dir` property is deprecated. "
                 "Use `local_path` instead."
             )
-            self.local_path = self.log_dir
+            self.local_path = str(self.log_dir)
 
         # Duplicate for retrieval
-        self.log_dir = self.local_path
+        self.log_dir = Path(self.local_path)
+        # Backwards compatibility: Make sure to cast Path to string
+        # Deprecate: Remove this line after 2.6
+        self.local_path = str(self.local_path)
 
     @property
     def config(self) -> Optional[Dict[str, Any]]:
@@ -71,7 +76,12 @@ class Result:
 
     @property
     def path(self) -> str:
-        return self.remote_path or str(self.local_path)
+        """Path pointing to the experiment directory.
+
+        If remote storage is configured, will point to the ``remote_path``.
+        Otherwise, will point to the ``local_path``.
+        """
+        return self.remote_path or self.local_path
 
     def _repr(self, indent: int = 0) -> str:
         """Construct the representation with specified number of space indent."""

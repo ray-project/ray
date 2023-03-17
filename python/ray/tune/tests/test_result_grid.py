@@ -240,7 +240,7 @@ def test_result_grid_repr():
         Result(
             metrics={"loss": 1.0},
             checkpoint=Checkpoint(data_dict={"weight": 1.0}),
-            log_dir=Path("./log_1"),
+            local_path=str(Path("./log_1")),
             error=None,
             metrics_dataframe=None,
             best_checkpoints=None,
@@ -248,7 +248,7 @@ def test_result_grid_repr():
         Result(
             metrics={"loss": 2.0},
             checkpoint=Checkpoint(data_dict={"weight": 2.0}),
-            log_dir=Path("./log_2"),
+            local_path=str(Path("./log_2")),
             error=RuntimeError(),
             metrics_dataframe=None,
             best_checkpoints=None,
@@ -265,13 +265,13 @@ def test_result_grid_repr():
     expected_repr = """ResultGrid<[
   Result(
     metrics={'loss': 1.0},
-    log_dir=PosixPath('log_1'),
+    local_path='log_1',
     checkpoint=Checkpoint(data_dict={'weight': 1.0})
   ),
   Result(
     error='RuntimeError',
     metrics={'loss': 2.0},
-    log_dir=PosixPath('log_2'),
+    local_path='log_2',
     checkpoint=Checkpoint(data_dict={'weight': 2.0})
   )
 ]>"""
@@ -412,9 +412,22 @@ def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
     for (checkpoint, _) in result_grid[0].best_checkpoints:
         assert checkpoint
         assert "moved_ray_results" in checkpoint._local_path
+        assert checkpoint._local_path.startswith(result_grid.local_path)
+
         checkpoint_data.append(checkpoint.to_dict()["it"])
     assert set(checkpoint_data) == {5, 6}
+
+    # Check local_path property
     assert Path(result_grid.local_path).parent.name == "moved_ray_results"
+
+    # No upload path, so path should point to local_path
+    assert result_grid.local_path == result_grid.path
+
+    # Check Result objects
+    for result in result_grid:
+        assert result.local_path.startswith(result_grid.local_path)
+        assert result.local_path == result.path
+        assert result.checkpoint._local_path.startswith(result.local_path)
 
 
 def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
@@ -444,6 +457,20 @@ def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
         best_checkpoint.get_internal_representation()
         == results._experiment_analysis.best_checkpoint.get_internal_representation()
     )
+
+    # Check .remote_path property
+    assert results.remote_path.startswith("s3://bucket")
+    assert best_checkpoint.uri.startswith(results.remote_path)
+
+    # Upload path, so path should point to local_path
+    assert results.remote_path == results.path
+
+    # Check Result objects
+    for result in results:
+        assert result.local_path.startswith(results.local_path)
+        assert result.remote_path.startswith(results.remote_path)
+        assert result.remote_path == result.path
+        assert result.checkpoint.uri.startswith(result.remote_path)
 
 
 if __name__ == "__main__":

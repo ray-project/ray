@@ -75,14 +75,21 @@ class ResultGrid:
 
     @property
     def local_path(self) -> str:
+        """Return path pointing to the experiment directory on the local disk."""
         return self._experiment_analysis.local_path
 
     @property
     def remote_path(self) -> Optional[str]:
+        """Return path pointing to the experiment directory on remote storage."""
         return self._experiment_analysis.remote_path
 
     @property
     def path(self) -> str:
+        """Path pointing to the experiment directory.
+
+        If remote storage is configured, will point to the ``remote_path``.
+        Otherwise, will point to the ``local_path``.
+        """
         return self.remote_path or self.local_path
 
     def get_best_result(
@@ -244,7 +251,7 @@ class ResultGrid:
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
-            local_path=Path(trial.local_path) if trial.local_path else None,
+            local_path=str(Path(trial.local_path)) if trial.local_path else None,
             remote_path=trial.remote_path,
             metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
                 trial.local_path
