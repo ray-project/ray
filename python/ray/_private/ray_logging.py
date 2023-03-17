@@ -300,12 +300,12 @@ class LogDeduplicator:
                 continue
             dedup_key = canonicalise_log_line(line)
             if dedup_key in self.recent:
-                sources = self.recent[dedup_key][4]
+                sources = self.recent[dedup_key].sources
                 sources.add(source)
                 if len(sources) > 1:
                     if log_once("log_dedup_warning"):
                         output.append(
-                            "FYI: Ray is deduplicating repetitive log messages "
+                            "Notice: Ray is deduplicating repetitive log messages "
                             "across the cluster. This may delay log output by up to "
                             "a few seconds. Set RAY_DEDUP_LOGS=0 to disable."
                         )
