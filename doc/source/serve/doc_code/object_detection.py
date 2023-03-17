@@ -52,6 +52,7 @@ entrypoint = APIIngress.bind(ObjectDetection.bind())
 
 # __example_code_end__
 
+
 @contextmanager
 def serve_session(deployment):
     handle = serve.run(deployment)

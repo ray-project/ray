@@ -63,6 +63,7 @@ my_first_deployment = APIIngress.bind(StableDiffusionV2.bind())
 
 # __example_code_end__
 
+
 @contextmanager
 def serve_session(deployment):
     handle = serve.run(deployment)
@@ -71,12 +72,19 @@ def serve_session(deployment):
     finally:
         serve.shutdown()
 
+
 if __name__ == "__main__":
     import ray
     import os
     import requests
 
     ray.init(runtime_env={"pip": ["diffusers==0.14.0", "transformers==4.27.1"]})
+
+    my_first_deployment = APIIngress.bind(
+        StableDiffusionV2.options(
+            autoscaling_config={"min_replicas": 1, "max_replicas": 2}
+        ).bind()
+    )
 
     with serve_session(my_first_deployment) as handle:
         ray.get(handle.generate.remote("hi"))

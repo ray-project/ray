@@ -45,6 +45,7 @@ entrypoint = APIIngress.bind(DistilBertModel.bind())
 
 # __example_code_end__
 
+
 @contextmanager
 def serve_session(deployment):
     handle = serve.run(deployment)
@@ -53,9 +54,15 @@ def serve_session(deployment):
     finally:
         serve.shutdown()
 
+
 if __name__ == "__main__":
     import requests
 
+    entrypoint = APIIngress.bind(
+        DistilBertModel.options(
+            autoscaling_config={"min_replicas": 1, "max_replicas": 2}
+        ).bind()
+    )
     with serve_session(entrypoint):
         prompt = (
             "This was a masterpiece. Not completely faithful to the books, but enthralling "
@@ -66,4 +73,3 @@ if __name__ == "__main__":
         print(resp.status_code, resp.json())
 
         assert resp.status_code == 200
-
