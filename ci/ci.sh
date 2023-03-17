@@ -815,6 +815,7 @@ run_minimal_test() {
 
 test_minimal() {
   ./ci/env/install-minimal.sh "$1"
+  echo "Installed minimal dependencies."
   ./ci/env/env_info.sh
   python ./ci/env/check_minimal_install.py
   run_minimal_test "$1"
@@ -823,8 +824,11 @@ test_minimal() {
 
 test_latest_core_dependencies() {
   ./ci/env/install-minimal.sh "$1"
+  echo "Installed minimal dependencies."
   ./ci/env/env_info.sh
   ./ci/env/install-core-prerelease-dependencies.sh
+  echo "Installed Core prerelease dependencies."
+  ./ci/env/env_info.sh
   run_minimal_test "$1"
 }
 
