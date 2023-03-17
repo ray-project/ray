@@ -21,9 +21,9 @@ class LocalModeTest(unittest.TestCase):
         )
 
         for _ in framework_iterator(config):
-            agent = config.build()
-            print(agent.train())
-            agent.stop()
+            algo = config.build()
+            print(algo.train())
+            algo.stop()
 
 
 if __name__ == "__main__":
