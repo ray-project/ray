@@ -44,6 +44,7 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ApplicationDetails,
     ServeInstanceDetails,
+    HTTPOptionsSchema,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
@@ -686,8 +687,11 @@ class ServeController:
         # route_prefix is set instead in each application.
         # Eventually we want to remove route_prefix from DeploymentSchema.
         return ServeInstanceDetails(
-            host=http_config.host,
-            port=http_config.port,
+            proxy_location=http_config.location,
+            http_options=HTTPOptionsSchema(
+                host=http_config.host,
+                port=http_config.port,
+            ),
             applications=applications,
         ).dict(exclude_unset=True)
 

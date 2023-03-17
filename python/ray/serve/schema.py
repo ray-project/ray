@@ -698,11 +698,16 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
 
 @PublicAPI(stability="alpha")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
-    host: Optional[str] = Field(
-        description="The host on which the HTTP server is listening for requests."
+    proxy_location: Optional[DeploymentMode] = Field(
+        description=(
+            "The location of HTTP servers.\n"
+            '- "EveryNode": start one HTTP server per node.\n'
+            '- "HeadOnly": start one HTTP server on the head node.\n'
+            '- "NoServer": disable HTTP server.'
+        ),
     )
-    port: Optional[int] = Field(
-        description="The port on which the HTTP server is listening for requests."
+    http_options: Optional[HTTPOptionsSchema] = Field(
+        description="HTTP Proxy options."
     )
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."

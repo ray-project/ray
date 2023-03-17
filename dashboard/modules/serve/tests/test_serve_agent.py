@@ -112,8 +112,10 @@ def test_put_get_multi_app(ray_start_stop):
     )
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     config1 = {
-        "host": "127.0.0.1",
-        "port": 8000,
+        "http_options": {
+            "host": "127.0.0.1",
+            "port": 8000,
+        },
         "applications": [
             {
                 "name": "app1",
@@ -215,8 +217,6 @@ def test_put_duplicate_apps(ray_start_stop):
     """
 
     config = {
-        "host": "127.0.0.1",
-        "port": 8000,
         "applications": [
             {
                 "name": "app1",
@@ -241,8 +241,6 @@ def test_put_duplicate_routes(ray_start_stop):
     """
 
     config = {
-        "host": "127.0.0.1",
-        "port": 8000,
         "applications": [
             {
                 "name": "app1",
@@ -333,8 +331,6 @@ def test_delete_multi_app(ray_start_stop):
         "aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
     )
     config = {
-        "host": "127.0.0.1",
-        "port": 8000,
         "applications": [
             {
                 "name": "app1",
@@ -468,8 +464,11 @@ def test_get_serve_instance_details(ray_start_stop):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
     config1 = {
-        "host": "127.0.0.1",
-        "port": 8000,
+        "proxy_location": "HeadOnly",
+        "http_options": {
+            "host": "127.0.0.1",
+            "port": 8005,
+        },
         "applications": [
             {
                 "name": "app1",
@@ -506,10 +505,11 @@ def test_get_serve_instance_details(ray_start_stop):
     print("All applications are in a RUNNING state.")
 
     serve_details = ServeInstanceDetails(**requests.get(GET_OR_PUT_URL_V2).json())
-    # CHECK: host and port
-    assert serve_details.host == "127.0.0.1"
-    assert serve_details.port == 8000
-    print('Confirmed fetched host and port metadata are "127.0.0.1" and "8000".')
+    # CHECK: location, host, and port
+    assert serve_details.proxy_location == "HeadOnly"
+    assert serve_details.http_options.host == "127.0.0.1"
+    assert serve_details.http_options.port == 8005
+    print("Confirmed fetched proxy location, host and port metadata correct.")
 
     app_details = serve_details.applications
 
