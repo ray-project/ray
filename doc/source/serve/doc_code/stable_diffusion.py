@@ -1,4 +1,5 @@
 # __example_code_start__
+
 from io import BytesIO
 from fastapi import FastAPI
 from fastapi.responses import Response
@@ -63,12 +64,13 @@ my_first_deployment = APIIngress.bind(StableDiffusionV2.bind())
 if __name__ == "__main__":
     import ray
     import os
+    import requests
+
+    ray.init(runtime_env={"pip": ["diffusers"]})
 
     handle = serve.run(my_first_deployment)
 
     ray.get(handle.generate.remote("hi"))
-
-    import requests
 
     prompt = "a cute cat is dancing on the grass."
     prompt_query = "%20".join(prompt.split(" "))

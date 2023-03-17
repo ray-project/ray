@@ -30,6 +30,7 @@ class DistilBertModel:
         self.classifier = pipeline(
             "sentiment-analysis",
             model="distilbert-base-uncased",
+            framework="pt",
             device=torch.device("cuda"),
         )
 

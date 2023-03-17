@@ -51,10 +51,17 @@ entrypoint = APIIngress.bind(ObjectDetection.bind())
 # __example_code_end__
 
 if __name__ == "__main__":
-    handle = serve.run(entrypoint)
-
+    import ray
     import requests
     import os
+
+    req_txt = (
+        "https://raw.githubusercontent.com/ultralytics/yolov5/master/requirements.txt"
+    )
+
+    ray.init(runtime_env={"pip": [req_txt]})
+
+    handle = serve.run(entrypoint)
 
     image_url = "https://ultralytics.com/images/zidane.jpg"
     resp = requests.get(f"http://127.0.0.1:8000/detect?image_url={image_url}")
