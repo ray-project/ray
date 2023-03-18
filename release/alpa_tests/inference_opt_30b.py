@@ -24,9 +24,7 @@ def run(args):
 
     # Generation.
     encoded = tokenizer(prompts, return_tensors="pt")
-    output = model.generate(
-        **encoded, max_length=args.max_length, do_sample=True
-    )
+    output = model.generate(**encoded, max_length=args.max_length, do_sample=True)
     decoded = tokenizer.batch_decode(output, skip_special_tokens=True)
 
     for response in decoded:
