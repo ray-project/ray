@@ -12,6 +12,7 @@ from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
 )
+from ray.exceptions import RayTaskError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -208,9 +209,15 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 ),
             )
 
-        client.deploy_apps(config)
-
-        return Response()
+        try:
+            client.deploy_apps(config)
+        except RayTaskError as e:
+            return Response(
+                status=400,
+                text=str(e),
+            )
+        else:
+            return Response()
 
     @routes.put("/api/serve/applications/")
     @optional_utils.init_ray_and_catch_exceptions()

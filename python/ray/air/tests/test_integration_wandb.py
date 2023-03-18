@@ -334,7 +334,7 @@ class TestWandbLogger:
             trial_name="trial_0",
             experiment_dir_name="trainable",
             placement_group_factory=PlacementGroupFactory([{"CPU": 1}]),
-            logdir=tempfile.gettempdir(),
+            local_path=tempfile.gettempdir(),
         )
         logger = WandbTestExperimentLogger(
             project="test_project",

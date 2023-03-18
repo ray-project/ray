@@ -13,7 +13,7 @@ from ray.experimental.state.api import list_actors
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.serve.schema import ServeInstanceDetails
-from ray.serve._private.common import ApplicationStatus, DeploymentStatus
+from ray.serve._private.common import ApplicationStatus, DeploymentStatus, ReplicaState
 
 GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
@@ -547,14 +547,124 @@ def test_get_serve_instance_details(ray_start_stop):
     # CHECK: application details
     for app in ["app1", "app2"]:
         assert app_details[app].route_prefix == f"/{app}"
-        for dep_details in app_details[app].deployments.values():
-            assert dep_details.status == DeploymentStatus.HEALTHY
-
+        for deployment in app_details[app].deployments.values():
+            assert deployment.status == DeploymentStatus.HEALTHY
             # Route prefix should be app level options eventually
-            assert "route_prefix" not in dep_details.deployment_config.dict(
+            assert "route_prefix" not in deployment.deployment_config.dict(
                 exclude_unset=True
             )
+            assert len(deployment.replicas) == deployment.deployment_config.num_replicas
+
+            for replica in deployment.replicas:
+                assert replica.state == ReplicaState.RUNNING
+                assert (
+                    deployment.name in replica.replica_id
+                    and deployment.name in replica.actor_name
+                )
+                assert replica.actor_id and replica.node_id and replica.node_ip
+                assert replica.start_time_s > app_details[app].last_deployed_time_s
+
     print("Finished checking application details.")
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_deploy_single_then_multi(ray_start_stop):
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+    multi_app_config = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": world_import_path,
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": pizza_import_path,
+            },
+        ],
+    }
+    single_app_config = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "import_path": world_import_path,
+    }
+
+    def check_app():
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/").text == "wonderful world",
+            timeout=15,
+        )
+
+    # Deploy single app config
+    deploy_and_check_config(single_app_config)
+    check_app()
+
+    # Deploying multi app config afterwards should fail
+    put_response = requests.put(GET_OR_PUT_URL_V2, json=multi_app_config, timeout=5)
+    assert put_response.status_code == 400
+    print(put_response.text)
+
+    # The original application should still be up and running
+    check_app()
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_deploy_multi_then_single(ray_start_stop):
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+    multi_app_config = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": world_import_path,
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": pizza_import_path,
+            },
+        ],
+    }
+    single_app_config = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "import_path": world_import_path,
+    }
+
+    def check_apps():
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").text
+            == "wonderful world",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "4 pizzas please!",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+            == "6 pizzas please!",
+            timeout=15,
+        )
+
+    # Deploy multi app config
+    deploy_config_multi_app(multi_app_config)
+    check_apps()
+
+    # Deploying single app config afterwards should fail
+    put_response = requests.put(GET_OR_PUT_URL, json=single_app_config, timeout=5)
+    assert put_response.status_code == 400
+
+    # The original applications should still be up and running
+    check_apps()
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")

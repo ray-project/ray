@@ -9,6 +9,7 @@ from ray.serve._private.common import (
     DeploymentStatus,
     StatusOverview,
     DeploymentInfo,
+    ReplicaState,
 )
 from ray.serve.config import DeploymentMode
 from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
@@ -584,7 +585,35 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class DeploymentDetails(BaseModel, extra=Extra.forbid):
+class ReplicaDetails(BaseModel, extra=Extra.forbid, frozen=True):
+    replica_id: str = Field(
+        description=(
+            "Unique ID for the replica. By default, this will be "
+            '"<deployment name>#<replica suffix>", where the replica suffix is a '
+            "randomly generated unique string."
+        )
+    )
+    state: ReplicaState = Field(description="Current state of the replica.")
+    pid: Optional[int] = Field(description="PID of the replica actor process.")
+    actor_name: str = Field(description="Name of the replica actor.")
+    actor_id: Optional[str] = Field(description="ID of the replica actor.")
+    node_id: Optional[str] = Field(
+        description="ID of the node that the replica actor is running on."
+    )
+    node_ip: Optional[str] = Field(
+        description="IP address of the node that the replica actor is running on."
+    )
+    start_time_s: float = Field(
+        description=(
+            "The time at which the replica actor was started. If the controller dies, "
+            "this is the time at which the controller recovers and retrieves replica "
+            "state from the running replica actor."
+        )
+    )
+
+
+@PublicAPI(stability="alpha")
+class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     name: str = Field(description="Deployment name.")
     status: DeploymentStatus = Field(
         description="The current status of the deployment."
@@ -602,6 +631,9 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid):
             "options, or Serve default values."
         )
     )
+    replicas: List[ReplicaDetails] = Field(
+        description="Details about the live replicas of this deployment."
+    )
 
     @validator("deployment_config")
     def deployment_route_prefix_not_set(cls, v: DeploymentSchema):
@@ -618,7 +650,7 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class ApplicationDetails(BaseModel, extra=Extra.forbid):
+class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     name: str = Field(description="Application name.")
     route_prefix: Optional[str] = Field(
         ...,
