@@ -19,6 +19,7 @@ post_build_cmds:
   # TODO(jungong) : pip install alpa after next release.
   - git clone https://github.com/alpa-projects/alpa.git
   - pip3 install -e alpa
+  - pip3 install -e alpa/examples
   # Install custom built jaxlib.
   - pip install jaxlib==0.3.22+cuda113.cudnn820 -f https://alpa-projects.github.io/wheels.html
   # Install nvidia dependencies.
