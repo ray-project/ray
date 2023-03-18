@@ -54,7 +54,7 @@ const isActorEnum = (state: unknown): state is ActorEnum => {
 };
 
 // We sort the actorsList so that the "Alive" actors appear at first and "Dead" actors appear in the end.
-const sortActors = (actorList: Actor[]) => {
+export const sortActors = (actorList: Actor[]) => {
   const sortedActors = [...actorList];
   sortedActors.sort((actor1, actor2) => {
     const actorOrder1 = isActorEnum(actor1.state) ? stateOrder[actor1.state] : 0;
@@ -65,7 +65,9 @@ const sortActors = (actorList: Actor[]) => {
 
     if (actorOrder1 !== actorOrder2) {
       return actorOrder1 - actorOrder2;
-    }else {// When the state is equal, we sort by startTime, in order to provide a determined order for users no matter the backend API changes
+    }else {
+      // When the state is equal, we sort by startTime
+      // in order to provide a determined order for users no matter the backend API changes
       return  actorTime1 - actorTime2;
     }
   });
