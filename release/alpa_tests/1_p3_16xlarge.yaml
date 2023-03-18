@@ -8,6 +8,12 @@ head_node_type:
     instance_type: p3.16xlarge
 
 worker_node_types:
+    - name: worker_node
+      instance_type: p3.16xlarge
+      # We don't need worker node for this test.
+      min_workers: 0
+      max_workers: 0
+      use_spot: false
 
 aws:
     BlockDeviceMappings:
