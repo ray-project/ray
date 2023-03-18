@@ -1,6 +1,6 @@
 # flake8: noqa E501
 
-from ray.dashboard.modules.metrics.dashboards.common import GridPos, Panel, Target
+from ray.dashboard.modules.metrics.dashboards.common import DashboardConfig, GridPos, Panel, Target
 
 SERVE_GRAFANA_PANELS = [
     Panel(
@@ -45,51 +45,6 @@ SERVE_GRAFANA_PANELS = [
         grid_pos=GridPos(0, 0, 8, 8),
     ),
     Panel(
-        id=1,
-        title="Request QPS",
-        description="Total number of requests and errored requests per second across selected routes.",
-        unit="qps",
-        targets=[
-            Target(
-                expr='sum(rate(ray_serve_num_http_requests{{route=~"$Route",{global_filters}}}[5m]))',
-                legend="Total QPS",
-            ),
-            Target(
-                expr='sum(rate(ray_serve_num_http_error_requests{{route=~"$Route", {global_filters}}}[5m]))',
-                legend="Error QPS",
-            ),
-        ],
-        fill=1,
-        linewidth=2,
-        stack=False,
-        grid_pos=GridPos(8, 0, 8, 8),
-    ),
-    # TODO(aguo): replace this with HTTP proxy latency metrics
-    Panel(
-        id=12,
-        title="Request latency",
-        description="P50, P90, P99 latency across selected routes.",
-        unit="ms",
-        targets=[
-            Target(
-                expr='sum(histogram_quantile(0.5, rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])))',
-                legend="P50",
-            ),
-            Target(
-                expr='sum(histogram_quantile(0.9, rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])))',
-                legend="P90",
-            ),
-            Target(
-                expr='sum(histogram_quantile(0.99, rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])))',
-                legend="P99",
-            ),
-        ],
-        fill=1,
-        linewidth=2,
-        stack=False,
-        grid_pos=GridPos(16, 0, 8, 8),
-    ),
-    Panel(
         id=7,
         title="QPS per route",
         description="QPS for each selected route.",
@@ -100,9 +55,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{endpoint}}",
             ),
         ],
-        fill=0,
-        stack=False,
-        grid_pos=GridPos(0, 1, 12, 8),
+        grid_pos=GridPos(8, 0, 8, 8),
     ),
     Panel(
         id=8,
@@ -115,9 +68,64 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{endpoint}}",
             ),
         ],
+        grid_pos=GridPos(16, 0, 8, 8),
+    ),
+    Panel(
+        id=12,
+        title="P50 latency per route",
+        description="P50 latency for selected routes.",
+        unit="ms",
+        targets=[
+            Target(
+                expr='histogram_quantile(0.5, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (route, le))',
+                legend="{{route}}",
+            ),
+            Target(
+                expr='histogram_quantile(0.5, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
+                legend="Total",
+            ),
+        ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(12, 1, 12, 8),
+        grid_pos=GridPos(0, 1, 8, 8),
+    ),
+    Panel(
+        id=15,
+        title="P90 latency per route",
+        description="P90 latency for selected routes.",
+        unit="ms",
+        targets=[
+            Target(
+                expr='histogram_quantile(0.9, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (route, le))',
+                legend="{{route}}",
+            ),
+            Target(
+                expr='histogram_quantile(0.9, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
+                legend="Total",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(8, 1, 8, 8),
+    ),
+    Panel(
+        id=16,
+        title="P99 latency per route",
+        description="P99 latency for selected routes.",
+        unit="ms",
+        targets=[
+            Target(
+                expr='histogram_quantile(0.99, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (route, le))',
+                legend="{{route}}",
+            ),
+            Target(
+                expr='histogram_quantile(0.99, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
+                legend="Total",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(16, 1, 8, 8),
     ),
     Panel(
         id=2,
@@ -143,8 +151,6 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{deployment}}",
             ),
         ],
-        fill=0,
-        stack=False,
         grid_pos=GridPos(8, 2, 8, 8),
     ),
     Panel(
@@ -158,9 +164,64 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{deployment}}",
             ),
         ],
+        grid_pos=GridPos(16, 2, 8, 8),
+    ),
+    Panel(
+        id=9,
+        title="P50 latency per deployment",
+        description='P50 latency per deployment. Ignores "Route" variable.',
+        unit="ms",
+        targets=[
+            Target(
+                expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (deployment, le))',
+                legend="{{deployment}}",
+            ),
+            Target(
+                expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
+                legend="Total",
+            ),
+        ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(16, 2, 8, 8),
+        grid_pos=GridPos(0, 3, 8, 8),
+    ),
+    Panel(
+        id=10,
+        title="P90 latency per deployment",
+        description='P90 latency per deployment. Ignores "Route" variable.',
+        unit="ms",
+        targets=[
+            Target(
+                expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (deployment, le))',
+                legend="{{deployment}}",
+            ),
+            Target(
+                expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
+                legend="Total",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(8, 3, 8, 8),
+    ),
+    Panel(
+        id=11,
+        title="P99 latency per deployment",
+        description='P99 latency per route. Ignores "Route" variable.',
+        unit="ms",
+        targets=[
+            Target(
+                expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (deployment, le))',
+                legend="{{deployment}}",
+            ),
+            Target(
+                expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
+                legend="Total",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(16, 3, 8, 8),
     ),
     Panel(
         id=3,
@@ -175,7 +236,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(0, 3, 8, 8),
+        grid_pos=GridPos(0, 4, 8, 8),
     ),
     Panel(
         id=4,
@@ -197,7 +258,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="Pending Nodes: {{node_type}}",
             ),
         ],
-        grid_pos=GridPos(8, 3, 8, 8),
+        grid_pos=GridPos(8, 4, 8, 8),
     ),
     Panel(
         id=6,
@@ -217,51 +278,6 @@ SERVE_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(16, 3, 8, 8),
-    ),
-    Panel(
-        id=9,
-        title="P50 latency",
-        description='P50 latency per deployment. Ignores "Route" variable.',
-        unit="ms",
-        targets=[
-            Target(
-                expr='sum(histogram_quantile(0.5, rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m]))) by (deployment)',
-                legend="{{deployment}}",
-            ),
-        ],
-        fill=0,
-        stack=False,
-        grid_pos=GridPos(0, 4, 8, 8),
-    ),
-    Panel(
-        id=10,
-        title="P90 latency",
-        description='P90 latency per deployment. Ignores "Route" variable.',
-        unit="ms",
-        targets=[
-            Target(
-                expr='sum(histogram_quantile(0.9, rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m]))) by (deployment)',
-                legend="{{deployment}}",
-            ),
-        ],
-        fill=0,
-        stack=False,
-        grid_pos=GridPos(8, 4, 8, 8),
-    ),
-    Panel(
-        id=11,
-        title="P99 latency",
-        description='P99 latency per route. Ignores "Route" variable.',
-        unit="ms",
-        targets=[
-            Target(
-                expr='sum(histogram_quantile(0.99, rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m]))) by (deployment)',
-                legend="{{deployment}}",
-            ),
-        ],
-        fill=0,
-        stack=False,
         grid_pos=GridPos(16, 4, 8, 8),
     ),
 ]
@@ -272,3 +288,8 @@ for panel in SERVE_GRAFANA_PANELS:
 assert len(ids) == len(
     set(ids)
 ), f"Duplicated id found. Use unique id for each panel. {ids}"
+
+serve_dashboard_config = DashboardConfig(
+    panels=SERVE_GRAFANA_PANELS,
+    global_filters=[],
+)

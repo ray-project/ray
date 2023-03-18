@@ -54,3 +54,9 @@ class Panel:
     stack: bool = True
     linewidth: int = 1
     grid_pos: Optional[GridPos] = None
+
+
+@dataclass
+class DashboardConfig:
+    panels: List[Panel]
+    global_filters: List[str]

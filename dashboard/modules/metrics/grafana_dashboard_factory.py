@@ -5,12 +5,12 @@ import os
 from typing import List, Optional
 
 import ray
-from ray.dashboard.modules.metrics.dashboards.common import Panel
+from ray.dashboard.modules.metrics.dashboards.common import DashboardConfig, Panel
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
-    DEFAULT_GRAFANA_PANELS,
+    default_dashboard_config,
 )
 from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
-    SERVE_GRAFANA_PANELS,
+    serve_dashboard_config,
 )
 
 
@@ -131,7 +131,7 @@ PANEL_TEMPLATE = {
 
 
 def generate_default_grafana_dashboard(override_uid: Optional[str] = None) -> str:
-    panels = _generate_grafana_panels(DEFAULT_GRAFANA_PANELS)
+    panels = _generate_grafana_panels(default_dashboard_config)
     return _generate_grafana_dashboard(
         "default_grafana_dashboard_base.json", panels, override_uid=override_uid
     )
@@ -140,7 +140,7 @@ def generate_default_grafana_dashboard(override_uid: Optional[str] = None) -> st
 def generate_serve_grafana_dashboard(override_uid: Optional[str] = None) -> str:
     import logging
 
-    panels = _generate_grafana_panels(SERVE_GRAFANA_PANELS)
+    panels = _generate_grafana_panels(serve_dashboard_config)
     logger = logging.getLogger(__name__)
     logger.info(f"panels: {panels}")
     return _generate_grafana_dashboard(
@@ -163,16 +163,16 @@ def _generate_grafana_dashboard(
     return json.dumps(base_json, indent=4)
 
 
-def _generate_grafana_panels(panels: List[Panel]) -> List[dict]:
+def _generate_grafana_panels(config: DashboardConfig) -> List[dict]:
     out = []
-    for i, panel in enumerate(panels):
+    for i, panel in enumerate(config.panels):
         template = copy.deepcopy(PANEL_TEMPLATE)
         template.update(
             {
                 "title": panel.title,
                 "description": panel.description,
                 "id": panel.id,
-                "targets": _generate_targets(panel),
+                "targets": _generate_targets(config, panel),
             }
         )
         if panel.grid_pos:
@@ -188,17 +188,14 @@ def _generate_grafana_panels(panels: List[Panel]) -> List[dict]:
     return out
 
 
-GLOBAL_FILTERS = ['SessionName="$SessionName"']
-
-
 def gen_incrementing_alphabets(length):
     assert 65 + length < 96, "we only support up to 26 targets at a time."
     # 65: ascii code of 'A'.
     return list(map(chr, range(65, 65 + length)))
 
 
-def _generate_targets(panel: Panel) -> List[dict]:
-    global_filters = ",".join(GLOBAL_FILTERS)
+def _generate_targets(config: DashboardConfig, panel: Panel) -> List[dict]:
+    global_filters = ",".join(config.global_filters)
     targets = []
     for target, ref_id in zip(
         panel.targets, gen_incrementing_alphabets(len(panel.targets))
