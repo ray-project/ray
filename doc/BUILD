@@ -145,7 +145,6 @@ py_test_run_all_subdirectory(
     include = ["source/serve/doc_code/**/*.py"],
     exclude = [
         "source/serve/doc_code/distilbert.py",
-        "source/serve/doc_code/object_detection.py",
         "source/serve/doc_code/stable_diffusion.py",
     ],
     extra_srcs = [],
