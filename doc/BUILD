@@ -156,7 +156,6 @@ py_test_run_all_subdirectory(
     size = "medium",
     include = [
         "source/serve/doc_code/distilbert.py",
-        # "source/serve/doc_code/object_detection.py",  # DISABLED FOR NOW
         "source/serve/doc_code/stable_diffusion.py",
     ],
     exclude = [],
