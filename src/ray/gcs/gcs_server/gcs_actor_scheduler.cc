@@ -444,19 +444,20 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
   RAY_LOG(INFO) << "Start creating actor " << actor->GetActorID() << " on worker "
                 << worker->GetWorkerID() << " at node " << actor->GetNodeID()
                 << ", job id = " << actor->GetActorID().JobId();
-  std::unique_ptr<rpc::PushTaskRequest> request(new rpc::PushTaskRequest());
-  request->set_intended_worker_id(worker->GetWorkerID().Binary());
-  request->mutable_task_spec()->CopyFrom(
-      actor->GetCreationTaskSpecification().GetMessage());
-  google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> resources;
-  for (auto resource : worker->GetLeasedResources()) {
-    resources.Add(std::move(resource));
-  }
-  request->mutable_resource_mapping()->CopyFrom(resources);
+  using google::protobuf::Arena;
+  Arena arena;
+  auto request = Arena::CreateMessage<rpc::PushTaskRequest>(&arena);
 
+  request->set_intended_worker_id(worker->GetWorkerID().Binary());
+  request->unsafe_arena_set_allocated_task_spec(
+      const_cast<rpc::TaskSpec*>(&actor->GetCreationTaskSpecification().GetMessage()));
+
+  for (const auto& resource : worker->GetLeasedResources()) {
+    request->mutable_resource_mapping()->UnsafeArenaAddAllocated(const_cast<rpc::ResourceMapEntry*>(&resource));
+  }
   auto client = core_worker_clients_.GetOrConnect(worker->GetAddress());
   client->PushNormalTask(
-      std::move(request),
+      std::move(*request),
       [this, actor, worker](Status status, const rpc::PushTaskReply &reply) {
         // If the actor is still in the creating map and the status is ok, remove the
         // actor from the creating map and invoke the schedule_success_handler_.

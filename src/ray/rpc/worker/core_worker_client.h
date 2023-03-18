@@ -115,7 +115,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
 
   /// Similar to PushActorTask, but sets no ordering constraint. This is used to
   /// push non-actor tasks directly to a worker.
-  virtual void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
+  virtual void PushNormalTask(PushTaskRequest&& request,
                               const ClientCallback<PushTaskReply> &callback) {}
 
   /// Notify a wait has completed for direct actor call arguments.
@@ -219,7 +219,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       : addr_(address) {
     grpc_client_ = std::make_unique<GrpcClient<CoreWorkerService>>(
         addr_.ip_address(), addr_.port(), client_call_manager);
-  };
+  }
 
   const rpc::Address &Addr() const override { return addr_; }
 
@@ -366,13 +366,13 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     SendRequests();
   }
 
-  void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
+  void PushNormalTask(PushTaskRequest&& request,
                       const ClientCallback<PushTaskReply> &callback) override {
-    request->set_sequence_number(-1);
-    request->set_client_processed_up_to(-1);
+    request.set_sequence_number(-1);
+    request.set_client_processed_up_to(-1);
     INVOKE_RPC_CALL(CoreWorkerService,
                     PushTask,
-                    *request,
+                    request,
                     callback,
                     grpc_client_,
                     /*method_timeout_ms*/ -1);

@@ -574,19 +574,25 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   RAY_LOG(DEBUG) << "Pushing task " << task_spec.TaskId() << " to worker "
                  << addr.worker_id << " of raylet " << addr.raylet_id;
   auto task_id = task_spec.TaskId();
-  auto request = std::make_unique<rpc::PushTaskRequest>();
+  using google::protobuf::Arena;
+  Arena arena;
+  auto request = Arena::CreateMessage<rpc::PushTaskRequest>(&arena);
+
   bool is_actor = task_spec.IsActorTask();
   bool is_actor_creation = task_spec.IsActorCreationTask();
 
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
-  request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
-  request->mutable_resource_mapping()->CopyFrom(assigned_resources);
+  request->unsafe_arena_set_allocated_task_spec(
+      const_cast<rpc::TaskSpec*>(&task_spec.GetMessage()));
+  for(const auto& resource : assigned_resources) {
+    request->mutable_resource_mapping()->UnsafeArenaAddAllocated(const_cast<rpc::ResourceMapEntry*>(&resource));
+  }
   request->set_intended_worker_id(addr.worker_id.Binary());
   task_finisher_->MarkTaskWaitingForExecution(task_id, addr.raylet_id, addr.worker_id);
   client.PushNormalTask(
-      std::move(request),
+      std::move(*request),
       [this,
        task_spec,
        task_id,
