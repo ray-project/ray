@@ -408,6 +408,7 @@ class AlgorithmConfig(_Config):
         self.fake_sampler = False
         self.seed = None
         self.worker_cls = None
+        self._profile_rollout_worker_memory = False
 
         # `self.fault_tolerance()`
         self.ignore_worker_failures = False
@@ -2184,6 +2185,7 @@ class AlgorithmConfig(_Config):
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
         worker_cls: Optional[Type[RolloutWorker]] = NotProvided,
+        _profile_rollout_worker_memory: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -2205,6 +2207,8 @@ class AlgorithmConfig(_Config):
                 seed of each worker, so that identically configured trials will have
                 identical results. This makes experiments reproducible.
             worker_cls: Use a custom RolloutWorker type for unit testing purpose.
+            _profile_rollout_worker_memory: For debugging only. If set, rollout workers
+                will periodically dump memory usage stats to the log.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2223,6 +2227,8 @@ class AlgorithmConfig(_Config):
             self.seed = seed
         if worker_cls is not NotProvided:
             self.worker_cls = worker_cls
+        if _profile_rollout_worker_memory is not NotProvided:
+            self._profile_rollout_worker_memory = _profile_rollout_worker_memory
 
         return self
 

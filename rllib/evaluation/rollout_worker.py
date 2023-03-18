@@ -5,6 +5,7 @@ import importlib.util
 import logging
 import numpy as np
 import os
+from pathlib import Path
 import platform
 import threading
 import tree  # pip install dm_tree
@@ -320,6 +321,26 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
         """
+        self.memray_tracker = None
+        if config._profile_rollout_worker_memory:
+            import memray
+
+            pid = os.getpid()
+
+            file_name = f"{self.__class__.__name__}_{pid}_mem_profile.bin"
+            memray_dir = Path("memray")
+            memray_dir.mkdir(exist_ok=True)
+            fpath = memray_dir / file_name
+
+            print(
+                f"Starting memory profiling for {self.__class__.__name__} "
+                f"with pid {pid}"
+            )
+            print(f"Saving memory profile to {str(fpath.absolute())}...")
+
+            self.memray_tracker = memray.Tracker(str(fpath))
+            self.memray_tracker.__enter__()
+
         # Deprecated args.
         if policy != DEPRECATED_VALUE:
             deprecation_warning("policy", "policy_spec", error=True)
@@ -1931,6 +1952,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
     def __del__(self):
         """If this worker is deleted, clears all resources used by it."""
+        if getattr(self, "memray_tracker") is not None:
+            self.memray_tracker.__exit__()
 
         # In case we have-an AsyncSampler, kill its sampling thread.
         if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
