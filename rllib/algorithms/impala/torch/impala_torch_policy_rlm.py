@@ -1,14 +1,19 @@
 import logging
-from typing import Dict
+from typing import Dict, List, Union
 
+from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
+    make_time_major,
+    vtrace_torch,
+)
 from ray.rllib.algorithms.ppo.ppo_torch_policy import validate_config
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
     LearningRateSchedule,
 )
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, Deprecated
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
     explained_variance,
@@ -34,6 +39,110 @@ class ImpalaTorchPolicyWithRLModule(
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
         )
+
+    @Deprecated(new="ImpalaTorchLearner.compute_loss_per_module()", error=False)
+    @override(TorchPolicyV2)
+    def loss(
+        self,
+        model: PPOTorchRLModule,
+        dist_class,
+        train_batch: SampleBatch,
+    ) -> Union[TensorType, List[TensorType]]:
+        train_batch[SampleBatch.ACTIONS]
+        train_batch[SampleBatch.ACTION_LOGP]
+        train_batch[SampleBatch.REWARDS]
+        train_batch[SampleBatch.TERMINATEDS]
+
+        seqs_len = train_batch.get(SampleBatch.SEQ_LENS)
+        rollout_frag_or_episode_len = (
+            self.config["rollout_fragment_length"] if not seqs_len else None
+        )
+        drop_last = self.config["vtrace_drop_last_ts"]
+
+        fwd_out = model.forward_train(train_batch)
+
+        values = fwd_out[SampleBatch.VF_PREDS]
+        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
+
+        # this is probably a horribly inefficient way to do this. I should be able to
+        # compute this in a batch fashion
+        behaviour_actions_logp = train_batch[SampleBatch.ACTION_LOGP]
+        target_actions_logp = target_policy_dist.logp(train_batch[SampleBatch.ACTIONS])
+        behaviour_actions_logp_time_major = make_time_major(
+            behaviour_actions_logp,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=seqs_len,
+            drop_last=drop_last,
+        )
+        target_actions_logp_time_major = make_time_major(
+            target_actions_logp,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=seqs_len,
+            drop_last=drop_last,
+        )
+        values_time_major = make_time_major(
+            values,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=seqs_len,
+            drop_last=drop_last,
+        )
+        bootstrap_value = values_time_major[-1]
+        rewards_time_major = make_time_major(
+            train_batch[SampleBatch.REWARDS],
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=seqs_len,
+            drop_last=drop_last,
+        )
+
+        # how to compute discouts?
+        # should they be pre computed?
+        discounts_time_major = (
+            1.0
+            - make_time_major(
+                train_batch[SampleBatch.TERMINATEDS],
+                trajectory_len=self.rollout_frag_or_episode_len,
+                recurrent_seq_len=self.recurrent_seq_len,
+                drop_last=self.vtrace_drop_last_ts,
+            ).type(dtype=torch.float32)
+        ) * self.config["gamma"]
+        vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
+            target_action_log_probs=target_actions_logp_time_major,
+            behaviour_action_log_probs=behaviour_actions_logp_time_major,
+            rewards=rewards_time_major,
+            values=values_time_major,
+            bootstrap_value=bootstrap_value,
+            clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"],
+            clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
+            discounts=discounts_time_major,
+        )
+
+        # The policy gradients loss.
+        pi_loss = -torch.sum(target_actions_logp_time_major * pg_advantages)
+        mean_pi_loss = pi_loss
+
+        # The baseline loss.
+        delta = values_time_major - vtrace_adjusted_target_values
+        vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
+        mean_vf_loss = vf_loss
+
+        # The entropy loss.
+        entropy_loss = -torch.sum(target_actions_logp_time_major)
+
+        # The summed weighted loss.
+        total_loss = (
+            pi_loss
+            + vf_loss * self.config["vf_loss_coeff"]
+            + entropy_loss * self.entropy_coeff
+        )
+        self.stats = {
+            "total_loss": total_loss,
+            "pi_loss": mean_pi_loss,
+            "vf_loss": mean_vf_loss,
+            "values": values_time_major,
+            "entropy_loss": entropy_loss,
+            "vtrace_adjusted_target_values": vtrace_adjusted_target_values,
+        }
+        return total_loss
 
     @override(TorchPolicyV2)
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:

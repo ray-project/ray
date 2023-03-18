@@ -1,4 +1,5 @@
 import unittest
+
 import numpy as np
 
 import ray
@@ -6,6 +7,8 @@ from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
+from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.test_utils import framework_iterator
 
 torch, nn = try_import_torch()
@@ -73,9 +76,17 @@ class TestImpalaLearner(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, frameworks=["tf2", "torch"]):
+        for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
             trainer = config.build()
             policy = trainer.get_policy()
+
+            if fw == "tf2":
+                train_batch = tf.nest.map_structure(
+                    lambda x: tf.convert_to_tensor(x), FAKE_BATCH
+                )
+            else:
+                train_batch = SampleBatch(FAKE_BATCH)
+            policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
 
             train_batch = SampleBatch(FAKE_BATCH)
             algo_config = config.copy(copy_frozen=False)
@@ -94,7 +105,11 @@ class TestImpalaLearner(unittest.TestCase):
             learner_group_config.num_learner_workers = 0
             learner_group = learner_group_config.build()
             learner_group.set_weights(trainer.get_weights())
-            learner_group.update(train_batch.as_multi_agent())
+            results = learner_group.update(train_batch.as_multi_agent())
+
+            learner_group_loss = results[ALL_MODULES]["total_loss"]
+
+            check(learner_group_loss, policy_loss)
 
 
 if __name__ == "__main__":
