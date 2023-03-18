@@ -28,14 +28,12 @@ py_test(
 )
 
 py_test(
-    name = "big_data_ingestion",
+    name = "tensor",
     size = "small",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    args = ["--path", "doc/source/data/examples/big_data_ingestion.ipynb"],
-    data = ["//doc/source/data/examples:data_examples"],
-    tags = ["exclusive", "team:core", "py37"]
+    srcs = ["source/data/doc_code/tensor.py"],
+    tags = ["exclusive", "team:ml"]
 )
+
 
 py_test(
     name = "datasets_train",

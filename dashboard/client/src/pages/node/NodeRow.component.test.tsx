@@ -68,14 +68,14 @@ describe("NodeRow", () => {
     // CPU Usage
     expect(screen.getByText(/15%/)).toBeVisible();
     // Memory Usage
-    expect(screen.getByText(/5\.0000KB\/100\.0000KB\(5\.0%\)/)).toBeVisible();
+    expect(screen.getByText(/5\.0000B\/100\.0000B\(5\.0%\)/)).toBeVisible();
     // Disk Usage
     expect(screen.getByText(/19\.07MB\/190\.73MB\(10\.0%\)/)).toBeVisible();
     // Object store memory
-    expect(screen.getByText(/10\.0000KB\/50\.0000KB\(20\.0%\)/)).toBeVisible();
+    expect(screen.getByText(/10\.0000B\/50\.0000B\(20\.0%\)/)).toBeVisible();
     // Network usage
-    expect(screen.getByText(/5.0000KB\/s/)).toBeVisible();
-    expect(screen.getByText(/10.0000KB\/s/)).toBeVisible();
+    expect(screen.getByText(/5.0000B\/s/)).toBeVisible();
+    expect(screen.getByText(/10.0000B\/s/)).toBeVisible();
   });
 });
 
@@ -151,6 +151,6 @@ describe("WorkerRow", () => {
     // CPU Usage
     expect(screen.getByText(/14%/)).toBeVisible();
     // Memory Usage
-    expect(screen.getByText(/75\.0000KB\/100\.0000KB\(75\.0%\)/)).toBeVisible();
+    expect(screen.getByText(/75\.0000B\/100\.0000B\(75\.0%\)/)).toBeVisible();
   });
 });

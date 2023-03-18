@@ -16,12 +16,13 @@ Merging: a merge task would receive a block from every worker that consists
 of items in a certain range. It then merges the sorted blocks into one sorted
 block and becomes part of the new, sorted dataset.
 """
-from typing import Any, Callable, List, Tuple, TypeVar, Union
+from typing import Any, Callable, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -78,7 +79,10 @@ class PushBasedSortOp(_SortOp, PushBasedShufflePlan):
 
 
 def sample_boundaries(
-    blocks: List[ObjectRef[Block]], key: SortKeyT, num_reducers: int
+    blocks: List[ObjectRef[Block]],
+    key: SortKeyT,
+    num_reducers: int,
+    ctx: Optional[TaskContext] = None,
 ) -> List[T]:
     """
     Return (num_reducers - 1) items in ascending order from the blocks that
@@ -93,9 +97,20 @@ def sample_boundaries(
     sample_block = cached_remote_fn(_sample_block)
 
     sample_results = [sample_block.remote(block, n_samples, key) for block in blocks]
-    sample_bar = ProgressBar("Sort Sample", len(sample_results))
+
+    should_close_bar = True
+    if ctx is not None and ctx.sub_progress_bar_dict is not None:
+        bar_name = "SortSample"
+        assert bar_name in ctx.sub_progress_bar_dict, ctx.sub_progress_bar_dict
+        sample_bar = ctx.sub_progress_bar_dict[bar_name]
+        should_close_bar = False
+    else:
+        sample_bar = ProgressBar("Sort Sample", len(sample_results))
+
     samples = sample_bar.fetch_until_complete(sample_results)
-    sample_bar.close()
+
+    if should_close_bar:
+        sample_bar.close()
     del sample_results
     samples = [s for s in samples if len(s) > 0]
     # The dataset is empty
@@ -118,7 +133,11 @@ def sample_boundaries(
 # Note: currently the map_groups() API relies on this implementation
 # to partition the same key into the same block.
 def sort_impl(
-    blocks: BlockList, clear_input_blocks: bool, key: SortKeyT, descending: bool = False
+    blocks: BlockList,
+    clear_input_blocks: bool,
+    key: SortKeyT,
+    descending: bool = False,
+    ctx: Optional[TaskContext] = None,
 ) -> Tuple[BlockList, dict]:
     stage_info = {}
     blocks_list = blocks.get_blocks()
@@ -135,7 +154,7 @@ def sort_impl(
     # Use same number of output partitions.
     num_reducers = num_mappers
     # TODO(swang): sample_boundaries could be fused with a previous stage.
-    boundaries = sample_boundaries(blocks_list, key, num_reducers)
+    boundaries = sample_boundaries(blocks_list, key, num_reducers, ctx)
     if descending:
         boundaries.reverse()
 
