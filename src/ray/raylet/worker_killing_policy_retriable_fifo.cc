@@ -61,7 +61,8 @@ RetriableFIFOWorkerKillingPolicy::SelectWorkerToKill(
 
   const static int32_t max_to_print = 10;
   RAY_LOG(INFO) << "The top 10 workers to be killed based on the worker killing policy:\n"
-                << WorkerKillingPolicy::WorkersDebugString(sorted, max_to_print, system_memory);
+                << WorkerKillingPolicy::WorkersDebugString(
+                       sorted, max_to_print, system_memory);
 
   return std::make_pair(sorted.front(), /*should retry*/ true);
 }

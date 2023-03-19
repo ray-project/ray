@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_killing_policy_retriable_fifo.h"
 
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/test/util.h"
+#include "ray/raylet/worker_killing_policy.h"
 
 namespace ray {
 
@@ -62,12 +62,13 @@ TEST_F(WorkerKillerTest, TestEmptyWorkerPoolSelectsNullWorker) {
 TEST_F(WorkerKillerTest,
        TestPreferRetriableOverNonRetriableAndOrderByTimestampAscending) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  auto first_submitted = WorkerKillerTest::CreateActorCreationWorker(0 /* max_restarts */);
+  auto first_submitted =
+      WorkerKillerTest::CreateActorCreationWorker(0 /* max_restarts */);
   auto second_submitted =
       WorkerKillerTest::CreateActorCreationWorker(5 /* max_restarts */);
   auto third_submitted = WorkerKillerTest::CreateTaskWorker(0 /* max_restarts */);
   auto fourth_submitted = WorkerKillerTest::CreateTaskWorker(11 /* max_restarts */);
-  
+
   workers.push_back(first_submitted);
   workers.push_back(second_submitted);
   workers.push_back(third_submitted);
@@ -75,25 +76,25 @@ TEST_F(WorkerKillerTest,
 
   MemorySnapshot memory_snapshot;
   auto worker_to_kill =
-        worker_killing_policy_.SelectWorkerToKill(workers, memory_snapshot).first;
+      worker_killing_policy_.SelectWorkerToKill(workers, memory_snapshot).first;
   ASSERT_EQ(worker_to_kill->WorkerId(), second_submitted->WorkerId());
   workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
-                  workers.end());
+                workers.end());
 
   worker_to_kill =
-        worker_killing_policy_.SelectWorkerToKill(workers, memory_snapshot).first;
+      worker_killing_policy_.SelectWorkerToKill(workers, memory_snapshot).first;
   ASSERT_EQ(worker_to_kill->WorkerId(), fourth_submitted->WorkerId());
   workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
-                  workers.end());
+                workers.end());
 
   worker_to_kill =
-        worker_killing_policy_.SelectWorkerToKill(workers, memory_snapshot).first;
+      worker_killing_policy_.SelectWorkerToKill(workers, memory_snapshot).first;
   ASSERT_EQ(worker_to_kill->WorkerId(), first_submitted->WorkerId());
   workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
-                  workers.end());
+                workers.end());
 
   worker_to_kill =
-        worker_killing_policy_.SelectWorkerToKill(workers, memory_snapshot).first;
+      worker_killing_policy_.SelectWorkerToKill(workers, memory_snapshot).first;
   ASSERT_EQ(worker_to_kill->WorkerId(), third_submitted->WorkerId());
 }
 
