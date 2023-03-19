@@ -272,8 +272,15 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         if location_conflict is not None:
             return location_conflict
 
-        client.deploy_apps(config)
-        return Response()
+        try:
+            client.deploy_apps(config)
+        except RayTaskError as e:
+            return Response(
+                status=400,
+                text=str(e),
+            )
+        else:
+            return Response()
 
     def check_http_options(self, option: str, old: str, new: str):
         http_mismatch_message = (

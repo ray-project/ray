@@ -572,8 +572,6 @@ def test_deploy_single_then_multi(ray_start_stop):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     multi_app_config = {
-        "host": "127.0.0.1",
-        "port": 8000,
         "applications": [
             {
                 "name": "app1",
@@ -587,11 +585,7 @@ def test_deploy_single_then_multi(ray_start_stop):
             },
         ],
     }
-    single_app_config = {
-        "host": "127.0.0.1",
-        "port": 8000,
-        "import_path": world_import_path,
-    }
+    single_app_config = {"import_path": world_import_path}
 
     def check_app():
         wait_for_condition(
@@ -617,8 +611,6 @@ def test_deploy_multi_then_single(ray_start_stop):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     multi_app_config = {
-        "host": "127.0.0.1",
-        "port": 8000,
         "applications": [
             {
                 "name": "app1",
@@ -632,11 +624,7 @@ def test_deploy_multi_then_single(ray_start_stop):
             },
         ],
     }
-    single_app_config = {
-        "host": "127.0.0.1",
-        "port": 8000,
-        "import_path": world_import_path,
-    }
+    single_app_config = {"import_path": world_import_path}
 
     def check_apps():
         wait_for_condition(
