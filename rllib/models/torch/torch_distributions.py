@@ -354,7 +354,7 @@ class TorchMultiActionDistribution(Distribution):
 
     def __init__(
         self,
-        inputs: torch.Tensor,
+        logits: torch.Tensor,
         child_distribution_cls_struct: Union[Mapping, Iterable],
         input_lens: List[int],
         space: gym.Space,
@@ -362,14 +362,14 @@ class TorchMultiActionDistribution(Distribution):
         """Initializes a TorchMultiActionDistribution object.
 
         Args:
-            inputs: A single tensor of shape [BATCH, size].
+            logits: A single tensor of shape [BATCH, size].
             child_distribution_cls_struct: Any struct
                 that contains the child distribution classes to use to
-                instantiate the child distributions from `inputs`. This could
+                instantiate the child distributions from `logits`. This could
                 be an already flattened list or a struct according to
                 `action_space`.
             input_lens (any[int]): A flat list or a nested struct of input
-                split lengths used to split `inputs`.
+                split lengths used to split `logits`.
             space (Union[gym.spaces.Dict,gym.spaces.Tuple]): The complex
                 and possibly nested output space.
         """
@@ -378,12 +378,42 @@ class TorchMultiActionDistribution(Distribution):
 
         self.input_lens = tree.flatten(input_lens)
         child_distribution_cls_list = tree.flatten(child_distribution_cls_struct)
-        split_inputs = torch.split(inputs, self.input_lens, dim=1)
+        split_logits = torch.split(logits, self.input_lens, dim=1)
         self.child_distribution_list = tree.map_structure(
             lambda dist, input_: dist.from_logits(input_),
             child_distribution_cls_list,
-            list(split_inputs),
+            list(split_logits),
         )
+
+    @override(Distribution)
+    def rsample(
+        self,
+        *,
+        sample_shape: Tuple[int, ...] = None,
+        return_logp: bool = False,
+        **kwargs,
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        rsamples = []
+        logps = []
+        for dist in self.flat_child_distributions:
+            rsample_logp = dist.rsample(
+                sample_shape=sample_shape, return_logp=return_logp, **kwargs
+            )
+            if return_logp:
+                rsample, logp = rsample_logp
+                logps.append(logp)
+                rsamples.append(rsample)
+            else:
+                rsample = rsample_logp
+                rsamples.append(rsample)
+
+        rsamples = tree.unflatten_as(self.action_space_struct, rsamples)
+
+        if return_logp:
+            logps = tree.unflatten_as(self.action_space_struct, logps)
+            return rsamples, logps
+        else:
+            return rsamples
 
     @override(Distribution)
     def logp(self, value: TensorType) -> TensorType:
@@ -435,10 +465,10 @@ class TorchMultiActionDistribution(Distribution):
 
     @override(Distribution)
     def sample(self):
-        child_distributions = tree.unflatten_as(
-            self.space_struct, self.flat_child_distributions
+        child_distributions_struct = tree.unflatten_as(
+            self.space_struct, self.child_distribution_list
         )
-        return tree.map_structure(lambda s: s.sample(), child_distributions)
+        return tree.map_structure(lambda s: s.sample(), child_distributions_struct)
 
     @staticmethod
     @override(Distribution)

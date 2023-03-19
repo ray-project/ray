@@ -170,14 +170,16 @@ class Distribution(abc.ABC):
         raise NotImplementedError
 
     @classmethod
-    def get_partial_dist_cls(cls: "Distribution", **partial_kwargs) -> "Distribution":
+    def get_partial_dist_cls(
+        parent_cls: "Distribution", **partial_kwargs
+    ) -> "Distribution":
         """Returns a partial child of TorchMultiActionDistribution.
 
         This is useful if inputs needed to instantiate the Distribution from logits
         are available, but the logits are not.
         """
 
-        class DistributionPartial(cls):
+        class DistributionPartial(parent_cls):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
@@ -195,22 +197,23 @@ class Distribution(abc.ABC):
                 return merged_kwargs
 
             @classmethod
-            @override(Distribution)
+            @override(parent_cls)
             def required_input_dim(cls, space: gym.Space, **kwargs) -> int:
                 merged_kwargs = cls._merge_kwargs(**kwargs)
-                return cls.required_input_dim(space, **merged_kwargs)
+                assert space == merged_kwargs["space"]
+                return parent_cls.required_input_dim(**merged_kwargs)
 
             @classmethod
-            @override(Distribution)
+            @override(parent_cls)
             def from_logits(
                 cls,
                 logits: TensorType,
                 **kwargs,
             ) -> "DistributionPartial":
                 merged_kwargs = cls._merge_kwargs(**kwargs)
-                return cls.from_logits(logits, **merged_kwargs)
+                return parent_cls.from_logits(logits, **merged_kwargs)
 
         # Substitute name of this partial class to match the original class.
-        DistributionPartial.__name__ = f"{cls}Partial"
+        DistributionPartial.__name__ = f"{parent_cls}Partial"
 
         return DistributionPartial

@@ -10,6 +10,7 @@ from gymnasium.spaces import Box, Discrete, Dict, Tuple, MultiDiscrete
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.core.models.torch.base import TorchModel
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.core.models.base import ModelConfig, Encoder
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
@@ -378,7 +379,11 @@ class TestCatalog(unittest.TestCase):
                 dist = dist_cls.from_logits(logits=logits)
                 self.assertTrue(isinstance(dist, expected_cls_dict[framework]))
                 actions = dist.sample()
-                self.assertTrue(action_space.contains(actions.numpy()[0]))
+
+                # For any array of actions in a possibly nested space, convert to
+                # numpy and pick the first one to check if it is in the action space.
+                action = tree.map_structure(lambda a: convert_to_numpy(a)[0], actions)
+                self.assertTrue(action_space.contains(action))
 
     def test_customize_catalog_from_algorithm_config(self):
         """Test if we can pass catalog to algorithm config and it ends up inside
