@@ -94,6 +94,7 @@ def main(
 
     measure_disk_speed()
 
+
 @ray.remote(num_cpus=0)
 class MetricsActor:
     """
@@ -121,12 +122,12 @@ class MetricsActor:
 
     @staticmethod
     def create_results_dict_from_measurements(
-        measurements, expected_measurements_per_test
+        all_measurements, expected_measurements_per_test
     ):
         results = {}
         perf_metrics = []
 
-        for test_name, measurements in measurements.items():
+        for test_name, measurements in all_measurements.items():
             test_summary = {
                 "measurements": measurements,
             }
@@ -152,8 +153,10 @@ def print_disk_config():
     print("Getting disk sizes via df -h")
     subprocess.check_call("df -h", shell=True)
 
+
 def measure_disk_speed():
     subprocess.check_call("sudo hdparm -t /dev/nvme0n1", shell=True)
+
 
 def generate_test_matrix(
     num_cpus_in_cluster: int,
@@ -233,12 +236,14 @@ class TestConfiguration:
 
         return "-".join(
             [
-                f"seconds_to_{cold_or_warm_start}_start_{self.num_tasks_or_actors_per_run}_{executable_unit}",
+                f"seconds_to_{cold_or_warm_start}_start_"
+                f"{self.num_tasks_or_actors_per_run}_{executable_unit}",
                 import_torch_or_none,
                 with_gpu_str,
                 single_node_or_multi_node,
                 with_runtime_env_str,
-                f"{self.num_cpus_in_cluster}_CPU_{self.num_gpus_in_cluster}_GPU_cluster",
+                f"{self.num_cpus_in_cluster}_CPU_{self.num_gpus_in_cluster}"
+                "_GPU_cluster",
             ]
         )
 
