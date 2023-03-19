@@ -71,18 +71,19 @@ def vtrace_tf2(
     clip_rho_threshold: Union[float, "tf.Tensor"] = 1.0,
     clip_pg_rho_threshold: Union[float, "tf.Tensor"] = 1.0,
 ):
-    r"""V-trace for softmax policies written in tensorflow.
+    r"""V-trace for softmax policies implemented with tensorflow.
 
     Calculates V-trace actor critic targets for softmax polices as described in
     "IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner
     Architectures" by Espeholt, Soyer, Munos et al. (https://arxiv.org/abs/1802.01561)
 
-    This implementation of V-trace matches the one written in Google Deepmind's
-    scalable-agent repo (https://github.com/deepmind/scalable_agent).
-    It is an implementation that is optimized for reducing the number of FLOPs per
-    V-Trace calculation via dynamic programming. When reading through it, be aware
-    that the math in this implementation looks nothing like the math in the IMPALA
-    paper.
+    The V-trace implementation used here closely resembles the one found in the
+    scalable-agent repository by Google DeepMind, available at
+    https://github.com/deepmind/scalable_agent. This version has been optimized to
+    minimize the number of floating-point operations required per V-Trace
+    calculation, achieved through the use of dynamic programming techniques. It's
+    important to note that the mathematical expressions used in this implementation
+    may appear quite different from those presented in the IMPALA paper.
 
     The following terminology applies:
         - `target policy` refers to the policy we are interested in improving.

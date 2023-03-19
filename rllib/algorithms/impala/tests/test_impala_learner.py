@@ -52,7 +52,7 @@ class TestImpalaLearner(unittest.TestCase):
         ray.shutdown()
 
     def test_impala_loss(self):
-        """Test if we can compute the impala learner loss.
+        """Test that impala_policy_rlm loss matches the impala learner loss.
 
         Correctness of V-Trance is tested in test_vtrace_v2.py.
         """
