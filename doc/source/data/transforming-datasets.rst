@@ -105,7 +105,7 @@ Types of UDFs
 =============
 There are three types of UDFs that you can use with Ray Data: Function UDFs, Callable Class UDFs, and Generator UDFs.
 
-.. tabbed:: "Function UDFs"
+.. tabbed:: Function UDFs
 
   The most basic UDFs are functions that take in a batch or row as input, and returns a batch or row as output. See :ref:`transform_datasets_batch_formats` for the supported batch formats.
 
@@ -114,7 +114,7 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
     :start-after: __writing_default_udfs_tabular_begin__
     :end-before: __writing_default_udfs_tabular_end__
 
-.. tabbed:: "Callable Class UDFs"
+.. tabbed:: Callable Class UDFs
 
   With the actor compute strategy, you can use per-row and per-batch UDFs
   *callable classes*, i.e., classes that implement the ``__call__`` magic method. You
@@ -132,7 +132,7 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
     :start-after: __writing_callable_classes_udfs_begin__
     :end-before: __writing_callable_classes_udfs_end__
 
-.. tabbed:: "Generator UDFs"
+.. tabbed:: Generator UDFs
 
   UDFs can also be written as Python generators, yielding multiple outputs for a batch or row instead of a single item. Generator UDFs are useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks to avoid excessive heap memory usage.
 
@@ -229,11 +229,14 @@ Here is an overview of the available batch formats:
     :language: python
     :start-after: __writing_numpy_udfs_begin__
     :end-before: __writing_numpy_udfs_end__
+    
+.. tabbed:: "zero-copy"
 
+  
 Converting between the underlying Datasets data representations (Arrow, Pandas, and
 Python lists) and the requested batch format (``"default"``, ``"pandas"``,
-``"pyarrow"``, ``"numpy"``) may incur data copies; which conversions cause data copying
-is given in the below table:
+``"pyarrow"``, ``"numpy"``) may incur data copies. You can specify ``"zero-copy"`` to always guarantee no extra copies when constructing the batches. 
+Which conversions cause data copying is given in the below table:
 
 
 .. list-table:: Data Format Conversion Costs
@@ -245,21 +248,25 @@ is given in the below table:
      - ``"pandas"``
      - ``"numpy"``
      - ``"pyarrow"``
+     - ``"zero-copy"``
    * - ``"pandas"``
      - Zero-copy
      - Zero-copy
      - Copy*
      - Copy*
+     - Zero-copy
    * - ``"arrow"``
      - Copy*
      - Copy*
      - Zero-copy*
+     - Zero-copy
      - Zero-copy
    * - ``"simple"``
      - Zero-copy
      - Copy
      - Copy
      - Copy
+     - Zero-copy
 
 .. note::
   \* No copies occur when converting between Arrow, Pandas, and NumPy formats for columns

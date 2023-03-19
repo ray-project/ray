@@ -322,10 +322,11 @@ class GroupedDataset(Generic[T]):
                 batch of zero or more records, similar to map_batches().
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
-            batch_format: Specify "default" to use the default block format
-                (promotes Arrow to pandas), "pandas" to select
-                ``pandas.DataFrame`` as the batch format,
-                or "pyarrow" to select ``pyarrow.Table``.
+            batch_format: Specify ``"default"`` to use the default block format
+                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
+                ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
+                ``Dict[str, numpy.ndarray]`` for tabular datasets, or ``"zero-copy"`` to return the underlying block exactly as is with no additional formatting. Default is "default".
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
