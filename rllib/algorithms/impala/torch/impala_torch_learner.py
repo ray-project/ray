@@ -32,7 +32,7 @@ class ImpalaTorchLearner(TorchLearner, ImpalaBaseLearner):
         values = fwd_out[SampleBatch.VF_PREDS]
 
         # TODO(Artur): Why are we missing batch[SampleBatch.ACTION_LOGP] here?
-        behaviour_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
+        behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
         target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
 
         # TODO(Artur): In the old impala code, actions were unsqueezed if they were

@@ -8,6 +8,7 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
 from ray.rllib.algorithms.ppo.ppo_torch_policy import validate_config
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
     LearningRateSchedule,
@@ -53,9 +54,9 @@ class ImpalaTorchPolicyWithRLModule(
         train_batch[SampleBatch.REWARDS]
         train_batch[SampleBatch.TERMINATEDS]
 
-        seqs_len = train_batch.get(SampleBatch.SEQ_LENS)
+        seq_len = train_batch.get(SampleBatch.SEQ_LENS)
         rollout_frag_or_episode_len = (
-            self.config["rollout_fragment_length"] if not seqs_len else None
+            self.config["rollout_fragment_length"] if not seq_len else None
         )
         drop_last = self.config["vtrace_drop_last_ts"]
 
@@ -71,26 +72,26 @@ class ImpalaTorchPolicyWithRLModule(
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
             trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=seqs_len,
+            recurrent_seq_len=seq_len,
             drop_last=drop_last,
         )
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
             trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=seqs_len,
+            recurrent_seq_len=seq_len,
             drop_last=drop_last,
         )
         values_time_major = make_time_major(
             values,
             trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=seqs_len,
+            recurrent_seq_len=seq_len,
             drop_last=drop_last,
         )
         bootstrap_value = values_time_major[-1]
         rewards_time_major = make_time_major(
             train_batch[SampleBatch.REWARDS],
             trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=seqs_len,
+            recurrent_seq_len=seq_len,
             drop_last=drop_last,
         )
 
@@ -100,9 +101,9 @@ class ImpalaTorchPolicyWithRLModule(
             1.0
             - make_time_major(
                 train_batch[SampleBatch.TERMINATEDS],
-                trajectory_len=self.rollout_frag_or_episode_len,
-                recurrent_seq_len=self.recurrent_seq_len,
-                drop_last=self.vtrace_drop_last_ts,
+                trajectory_len=rollout_frag_or_episode_len,
+                recurrent_seq_len=seq_len,
+                drop_last=drop_last,
             ).type(dtype=torch.float32)
         ) * self.config["gamma"]
         vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
@@ -147,11 +148,13 @@ class ImpalaTorchPolicyWithRLModule(
     @override(TorchPolicyV2)
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         return {
-            "cur_lr": self.cur_lr.type(torch.float64),
+            "cur_lr": convert_to_torch_tensor(self.cur_lr).type(torch.float64),
             "policy_loss": self.stats["pi_loss"],
             "entropy": self.stats["entropy_loss"],
-            "entropy_coeff": self.entropy_coeff.type(torch.float64),
-            "var_gnorm": global_norm(self.model.trainable_variables),
+            "entropy_coeff": convert_to_torch_tensor(self.entropy_coeff).type(
+                torch.float64
+            ),
+            "var_gnorm": global_norm(self.model.parameters()),
             "vf_loss": self.stats["vf_loss"],
             "vf_explained_var": explained_variance(
                 torch.reshape(self.stats["vtrace_adjusted_target_values"], [-1]),

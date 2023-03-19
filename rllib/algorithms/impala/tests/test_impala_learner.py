@@ -10,10 +10,12 @@ from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, nn = try_import_torch()
 tf1, tf, _ = try_import_tf()
 tf1.enable_eager_execution()
+
 
 frag_length = 32
 
@@ -84,8 +86,9 @@ class TestImpalaLearner(unittest.TestCase):
                 train_batch = tf.nest.map_structure(
                     lambda x: tf.convert_to_tensor(x), FAKE_BATCH
                 )
-            else:
-                train_batch = SampleBatch(FAKE_BATCH)
+            elif fw == "torch":
+                train_batch = convert_to_torch_tensor(SampleBatch(FAKE_BATCH))
+
             policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
 
             train_batch = SampleBatch(FAKE_BATCH)
