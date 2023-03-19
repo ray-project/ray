@@ -45,8 +45,8 @@ type StateOrder = {
 const stateOrder: StateOrder = {
   [ActorEnum.ALIVE]: 0,
   [ActorEnum.PENDING]: 1,
-  [ActorEnum.RECONSTRUCTING]:2,
-  [ActorEnum.DEAD]: 3, 
+  [ActorEnum.RECONSTRUCTING]: 2,
+  [ActorEnum.DEAD]: 3,
 };
 //type predicate for ActorEnum
 const isActorEnum = (state: unknown): state is ActorEnum => {
@@ -57,22 +57,26 @@ const isActorEnum = (state: unknown): state is ActorEnum => {
 export const sortActors = (actorList: Actor[]) => {
   const sortedActors = [...actorList];
   sortedActors.sort((actor1, actor2) => {
-    const actorOrder1 = isActorEnum(actor1.state) ? stateOrder[actor1.state] : 0;
-    const actorOrder2 = isActorEnum(actor2.state) ? stateOrder[actor2.state] : 0;
+    const actorOrder1 = isActorEnum(actor1.state)
+      ? stateOrder[actor1.state]
+      : 0;
+    const actorOrder2 = isActorEnum(actor2.state)
+      ? stateOrder[actor2.state]
+      : 0;
 
     const actorTime1 = actor1.startTime || 0;
     const actorTime2 = actor2.startTime || 0;
 
     if (actorOrder1 !== actorOrder2) {
       return actorOrder1 - actorOrder2;
-    }else {
+    } else {
       // When the state is equal, we sort by startTime
       // in order to provide a determined order for users no matter the backend API changes
-      return  actorTime1 - actorTime2;
+      return actorTime1 - actorTime2;
     }
   });
   return sortedActors;
-}
+};
 const ActorTable = ({
   actors = {},
   workers = [],
@@ -82,7 +86,6 @@ const ActorTable = ({
   onFilterChange,
   detailPathPrefix = "",
 }: ActorTableProps) => {
-  
   const [pageNo, setPageNo] = useState(1);
   const [sortedActors, setSortedActors] = useState<Actor[]>([]);
   const { changeFilter, filterFunc } = useFilter<string>({
@@ -96,11 +99,10 @@ const ActorTable = ({
   const [pageSize, setPageSize] = useState(10);
   const { ipLogMap } = useContext(GlobalContext);
 
-
   const actorList = Object.values(actors || {}).filter(filterFunc);
-  
+
   const sortActorsCallback = useCallback(() => {
-    const sortedActors = sortActors(actorList)
+    const sortedActors = sortActors(actorList);
     setSortedActors(sortedActors);
   }, [actorList]);
 
