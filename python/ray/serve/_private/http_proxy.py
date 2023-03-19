@@ -36,13 +36,11 @@ from ray.serve._private.logging_utils import access_log_msg, configure_component
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-MAX_REPLICA_FAILURE_RETRIES = int(
-    os.environ.get("RAY_SERVE_HTTP_MAX_REPLICA_FAILURE_RETRIES", 10)
-)
-assert MAX_REPLICA_FAILURE_RETRIES >= 0, (
-    f"Got unexpected value {MAX_REPLICA_FAILURE_RETRIES} for "
-    "MAX_REPLICA_FAILURE_RETRIES environment variable. "
-    "MAX_REPLICA_FAILURE_RETRIES cannot be negative."
+HTTP_REQUEST_MAX_RETRIES = int(os.environ.get("RAY_SERVE_HTTP_REQUEST_MAX_RETRIES", 10))
+assert HTTP_REQUEST_MAX_RETRIES >= 0, (
+    f"Got unexpected value {HTTP_REQUEST_MAX_RETRIES} for "
+    "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES environment variable. "
+    "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES cannot be negative."
 )
 
 DISCONNECT_ERROR_CODE = "disconnection"
@@ -84,7 +82,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     # We have received all the http request conent. The next `receive`
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
-    while retries < MAX_REPLICA_FAILURE_RETRIES + 1:
+    while retries < HTTP_REQUEST_MAX_RETRIES + 1:
         assignment_task: asyncio.Task = handle.remote(request)
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task],
@@ -139,7 +137,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
         except RayActorError:
             logger.debug(
                 "Request failed due to replica failure. There are "
-                f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
+                f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
                 "remaining."
             )
             backoff = True
@@ -152,7 +150,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             retries += 1
             backoff = False
     else:
-        error_message = f"Task failed with {MAX_REPLICA_FAILURE_RETRIES} retries."
+        error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
         await Response(error_message, status_code=500).send(scope, receive, send)
         return "500"
 

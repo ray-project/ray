@@ -1422,12 +1422,13 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     [
         {
             "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
-            "RAY_SERVE_HTTP_MAX_REPLICA_FAILURE_RETRIES": "5",
+            "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES": "5",
         },
     ],
     indirect=True,
 )
-def test_http_request_number_of_retries(ray_instance):
+@pytest.mark.parametrize("crash", [True, False])
+def test_http_request_number_of_retries(ray_instance, crash):
     """Test HTTP proxy retry requests."""
 
     signal_actor = SignalActor.remote()
@@ -1435,6 +1436,9 @@ def test_http_request_number_of_retries(ray_instance):
     @serve.deployment
     class Model:
         async def __call__(self):
+            if crash:
+                # Trigger Actor Error
+                os._exit(0)
             await signal_actor.wait.remote()
             return "hello"
 
