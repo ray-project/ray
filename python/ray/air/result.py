@@ -57,13 +57,13 @@ class Result:
                 "The `Result.log_dir` property is deprecated. "
                 "Use `local_path` instead."
             )
-            self.local_path = str(self.log_dir)
+            self._local_path = str(self.log_dir)
 
         # Duplicate for retrieval
-        self.log_dir = Path(self.local_path) if self.local_path else None
+        self.log_dir = Path(self._local_path) if self._local_path else None
         # Backwards compatibility: Make sure to cast Path to string
         # Deprecate: Remove this line after 2.6
-        self.local_path = str(self.local_path) if self.local_path else None
+        self._local_path = str(self._local_path) if self._local_path else None
 
     @property
     def config(self) -> Optional[Dict[str, Any]]:
