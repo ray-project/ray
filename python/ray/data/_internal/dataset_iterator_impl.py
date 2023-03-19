@@ -32,14 +32,18 @@ class DatasetIteratorImpl(DatasetIterator):
         self,
         *,
         prefetch_batches: int = 0,
-        prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
         batch_format: str = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        # Deprecated.
+        prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
+        
+        if prefetch_blocks > 0:
+            raise DeprecationWarning("`prefetch_blocks` arg is deprecated in Ray 2.4. Use the `prefetch_batches` arg instead to specify the amount of prefetching in terms of batches instead of blocks.")
 
         ds = self._base_dataset
         block_iterator, stats, executor = ds._plan.execute_to_iterator()

@@ -60,13 +60,14 @@ class DatasetIterator(abc.ABC):
         self,
         *,
         prefetch_batches: int = 0,
-        prefetch_blocks: int = 0,
         batch_size: int = 256,
         batch_format: Literal["default", "numpy", "pandas"] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        # Deprecated.
+        prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the dataset.
 
@@ -80,8 +81,9 @@ class DatasetIterator(abc.ABC):
         Time complexity: O(1)
 
         Args:
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch the objects to the local node, format the batches, and apply the collate_fn. Defaults to 0 (no prefetching enabled.)
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -128,8 +130,11 @@ class DatasetIterator(abc.ABC):
             An iterator over rows of the dataset.
         """
         target_format = self._default_batch_format()
+
+        # Since we do not specify a batch size, `prefetch_batches` is exactly
+        # equivalent to `prefetch_blocks`.
         for batch in self.iter_batches(
-            batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=target_format
+            batch_size=None, prefetch_batches=prefetch_blocks, batch_format=target_format
         ):
             batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
             for row in batch.iter_rows():
@@ -148,7 +153,7 @@ class DatasetIterator(abc.ABC):
     def iter_torch_batches(
         self,
         *,
-        prefetch_blocks: int = 0,
+        prefetch_batches: int = 0,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
@@ -158,6 +163,8 @@ class DatasetIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        # Deprecated.
+        prefetch_blocks: int = 0,
     ) -> Iterator["TorchTensorBatchType"]:
         """Return a local batched iterator of Torch Tensors over the dataset.
 
@@ -176,8 +183,9 @@ class DatasetIterator(abc.ABC):
         Time complexity: O(1)
 
         Args:
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch the objects to the local node, format the batches, and apply the collate_fn. Defaults to 0 (no prefetching enabled.)
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -234,6 +242,7 @@ class DatasetIterator(abc.ABC):
                 )
 
         yield from self.iter_batches(
+            prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format="numpy",
@@ -246,12 +255,14 @@ class DatasetIterator(abc.ABC):
     def iter_tf_batches(
         self,
         *,
-        prefetch_blocks: int = 0,
+        prefetch_batches: int = 0,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["tf.dtypes.DType", Dict[str, "tf.dtypes.DType"]]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        # Deprecated.
+        prefetch_blocks: int = 0,
     ) -> Iterator["TensorFlowTensorBatchType"]:
         """Return a local batched iterator of TensorFlow Tensors over the dataset.
 
@@ -277,8 +288,9 @@ class DatasetIterator(abc.ABC):
         Time complexity: O(1)
 
         Args:
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch the objects to the local node, format the batches, and apply the collate_fn. Defaults to 0 (no prefetching enabled.)
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -304,6 +316,7 @@ class DatasetIterator(abc.ABC):
         )
 
         for batch in self.iter_batches(
+            prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format="numpy",
