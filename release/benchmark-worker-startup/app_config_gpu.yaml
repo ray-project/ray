@@ -4,8 +4,7 @@ debian_packages:
     - hdparm
 
 python:
-  pip_packages:
-    - botocore==1.29.94
+  pip_packages: []
   conda_packages: []
 
 post_build_cmds:
