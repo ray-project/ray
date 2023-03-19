@@ -12,7 +12,9 @@ cartpole-appo:
                 - 3
         num_gpus: 0
         observation_filter: MeanStdFilter
-        num_sgd_iter: 6
+        num_sgd_iter: 
+            grid_search:
+                - 6
         vf_loss_coeff: 0.01
         vtrace: True
 
@@ -29,7 +31,7 @@ cartpole-appo:
         seed:
             grid_search:
                 - 1
-                - 2
-                - 3
-                - 4
-                - 5
+                # - 2
+                # - 3
+                # - 4
+                # - 5

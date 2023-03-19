@@ -147,9 +147,13 @@ class APPOTfLearner(ImpalaTfLearner):
         )
 
         # The policy gradients loss.
-        is_ratio = tf.clip_by_value(tf.math.exp(
-            behaviour_actions_logp_time_major - old_actions_logp_time_major
-        ), 0.0, 2.0)
+        is_ratio = tf.clip_by_value(
+            tf.math.exp(
+                behaviour_actions_logp_time_major - old_actions_logp_time_major
+            ),
+            0.0,
+            2.0,
+        )
         logp_ratio = is_ratio * tf.math.exp(
             target_actions_logp_time_major - behaviour_actions_logp_time_major
         )

@@ -24,8 +24,6 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
-    NUM_AGENT_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
@@ -378,7 +376,9 @@ class APPO(Impala):
                 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 
                 return EagerTFPolicyV2
-                # from ray.rllib.algorithms.appo.tf.appo_tf_policy_rlm import APPOTfPolicyWithRLModule
+                # TODO(avnishn): This policy class doesn't work just yet
+                # from ray.rllib.algorithms.appo.tf.appo_tf_policy_rlm import(
+                #   ) APPOTfPolicyWithRLModule
                 # return APPOTfPolicyWithRLModule
             from ray.rllib.algorithms.appo.appo_tf_policy import APPOTF2Policy
 
