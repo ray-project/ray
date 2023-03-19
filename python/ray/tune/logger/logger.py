@@ -175,12 +175,12 @@ class LegacyLoggerCallback(LoggerCallback):
         self._class_trial_loggers: Dict[Type[Logger], Dict["Trial", Logger]] = {}
 
     def log_trial_start(self, trial: "Trial"):
-        trial.init_logdir()
+        trial.init_local_path()
 
         for logger_class in self.logger_classes:
             trial_loggers = self._class_trial_loggers.get(logger_class, {})
             if trial not in trial_loggers:
-                logger = logger_class(trial.config, trial.logdir, trial)
+                logger = logger_class(trial.config, trial.local_path, trial)
                 trial_loggers[trial] = logger
             self._class_trial_loggers[logger_class] = trial_loggers
 

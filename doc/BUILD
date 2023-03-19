@@ -34,15 +34,6 @@ py_test(
     tags = ["exclusive", "team:ml"]
 )
 
-py_test(
-    name = "big_data_ingestion",
-    size = "small",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    args = ["--path", "doc/source/data/examples/big_data_ingestion.ipynb"],
-    data = ["//doc/source/data/examples:data_examples"],
-    tags = ["exclusive", "team:core", "py37"]
-)
 
 py_test(
     name = "datasets_train",
@@ -152,9 +143,23 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/serve/doc_code/**/*.py"],
-    exclude = [],
+    exclude = [
+        "source/serve/doc_code/distilbert.py",
+        "source/serve/doc_code/stable_diffusion.py",
+    ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
+)
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = [
+        "source/serve/doc_code/distilbert.py",
+        "source/serve/doc_code/stable_diffusion.py",
+    ],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:serve", "gpu"],
 )
 
 

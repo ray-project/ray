@@ -75,7 +75,7 @@ to stage fusion optimizations and aggressive garbage collection of intermediate 
 Dataset creation and transformation APIs are lazy, with execution only triggered via "sink"
 APIs, such as consuming (:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`),
 writing (:meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`), or manually triggering via
-:meth:`ds.fully_executed() <ray.data.Dataset.fully_executed>`. There are a few
+:meth:`ds.cache() <ray.data.Dataset.cache>`. There are a few
 exceptions to this rule, where transformations such as :meth:`ds.union()
 <ray.data.Dataset.union>` and
 :meth:`ds.limit() <ray.data.Dataset.limit>` trigger execution; we plan to make these

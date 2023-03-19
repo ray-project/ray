@@ -217,6 +217,29 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         fs.delete_dir(_unwrap_protocol(path))
 
 
+@pytest.mark.parametrize("ignore_missing_paths", [True, False])
+def test_csv_ignore_missing_paths(
+    ray_start_regular_shared, local_path, ignore_missing_paths
+):
+    # Single file.
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(local_path, "test1.csv")
+    df1.to_csv(path1, index=False)
+
+    paths = [
+        path1,
+        "missing.csv",
+    ]
+
+    if ignore_missing_paths:
+        ds = ray.data.read_csv(paths, ignore_missing_paths=ignore_missing_paths)
+        assert ds.input_files() == [path1]
+    else:
+        with pytest.raises(FileNotFoundError):
+            ds = ray.data.read_csv(paths, ignore_missing_paths=ignore_missing_paths)
+            ds.fully_executed()
+
+
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
