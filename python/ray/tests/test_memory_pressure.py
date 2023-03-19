@@ -523,7 +523,7 @@ def test_one_actor_max_fifo_kill_previous_actor(shutdown_only):
             "worker_killing_policy": "retriable_fifo",
             "memory_usage_threshold": 0.4,
         },
-    ) as addr:
+    ):
         bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.3)
 
         first_actor = Leaker.options(name="first_actor").remote()
