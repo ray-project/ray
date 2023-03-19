@@ -3,15 +3,6 @@ env_vars: {}
 debian_packages:
     - hdparm
 
-aws:
-    # Fix the volume size so that IOPS is constant even if the default changes.
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-            DeleteOnTermination: true
-            # 150GB is the default in Anyscale.
-            VolumeSize: 150
-
 python:
   pip_packages: []
   conda_packages: []

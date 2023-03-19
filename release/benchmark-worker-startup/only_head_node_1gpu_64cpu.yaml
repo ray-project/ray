@@ -11,3 +11,13 @@ head_node_type:
         gpu: 64
 
 worker_node_types: []
+
+
+aws:
+    # Fix the volume size so that IOPS is constant even if the default changes.
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            # 150GB is the default in Anyscale.
+            VolumeSize: 150
