@@ -373,13 +373,15 @@ class APPO(Impala):
             return APPOTF1Policy
         else:
             if config._enable_rl_module_api:
-                from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+                # from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 
-                return EagerTFPolicyV2
+                # return EagerTFPolicyV2
                 # TODO(avnishn): This policy class doesn't work just yet
-                # from ray.rllib.algorithms.appo.tf.appo_tf_policy_rlm import(
-                #   ) APPOTfPolicyWithRLModule
-                # return APPOTfPolicyWithRLModule
+                from ray.rllib.algorithms.appo.tf.appo_tf_policy_rlm import (
+                    APPOTfPolicyWithRLModule,
+                )
+
+                return APPOTfPolicyWithRLModule
             from ray.rllib.algorithms.appo.appo_tf_policy import APPOTF2Policy
 
             return APPOTF2Policy
