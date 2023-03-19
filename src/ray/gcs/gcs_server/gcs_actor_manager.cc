@@ -184,10 +184,10 @@ std::string GcsActor::GetRayNamespace() const {
   return actor_table_data_.ray_namespace();
 }
 
-TaskSpecification GcsActor::GetCreationTaskSpecification() const {
+const TaskSpecification& GcsActor::GetCreationTaskSpecification() const {
   // The task spec is not available when the actor is dead.
   RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
-  return TaskSpecification(*task_spec_);
+  return task_spec_;
 }
 
 const rpc::ActorTableData &GcsActor::GetActorTableData() const {
@@ -196,7 +196,7 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
-rpc::TaskSpec *GcsActor::GetMutableTaskSpec() { return task_spec_.get(); }
+rpc::TaskSpec *GcsActor::GetMutableTaskSpec() { return &task_spec_.GetMutableMessage(); }
 
 const ResourceRequest &GcsActor::GetAcquiredResources() const {
   return acquired_resources_;

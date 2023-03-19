@@ -64,7 +64,7 @@ class GcsActor {
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter)
       : actor_table_data_(std::move(actor_table_data)),
-        task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)),
+        task_spec_(std::move(task_spec)),
         counter_(counter) {
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
     RefreshMetrics();
@@ -76,12 +76,12 @@ class GcsActor {
   /// \param ray_namespace Namespace of the actor.
   /// \param counter The counter to report metrics to.
   explicit GcsActor(
-      const ray::rpc::TaskSpec &task_spec,
+      ray::rpc::TaskSpec _task_spec,
       std::string ray_namespace,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter)
-      : task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)), counter_(counter) {
-    RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
+      : task_spec_(std::move(_task_spec)), counter_(counter) {
+    auto& task_spec = task_spec_.GetMessage();
     const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
     actor_table_data_.set_job_id(task_spec.job_id());
@@ -183,7 +183,7 @@ class GcsActor {
   /// Get the namespace of this actor.
   std::string GetRayNamespace() const;
   /// Get the task specification of this actor.
-  TaskSpecification GetCreationTaskSpecification() const;
+  const TaskSpecification& GetCreationTaskSpecification() const;
 
   /// Get the immutable ActorTableData of this actor.
   const rpc::ActorTableData &GetActorTableData() const;
@@ -218,8 +218,9 @@ class GcsActor {
 
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).
+
   rpc::ActorTableData actor_table_data_;
-  const std::unique_ptr<rpc::TaskSpec> task_spec_;
+  TaskSpecification task_spec_;
   /// Resources acquired by this actor.
   ResourceRequest acquired_resources_;
   /// Reference to the counter to use for actor state metrics tracking.

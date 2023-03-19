@@ -34,14 +34,7 @@ class MessageWrapper {
   /// Construct an empty message wrapper. This should not be used directly.
   MessageWrapper() : message_(std::make_shared<Message>()) {}
 
-  /// Construct from a protobuf message object.
-  /// The input message will be **copied** into this object.
-  ///
-  /// \param message The protobuf message.
-  explicit MessageWrapper(const Message &message)
-      : message_(std::make_shared<Message>(message)) {}
-
-  explicit MessageWrapper(Message &&message)
+  explicit MessageWrapper(Message message)
       : message_(std::make_shared<Message>(std::move(message))) {}
 
   /// Construct from a protobuf message shared_ptr.

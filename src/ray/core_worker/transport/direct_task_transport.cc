@@ -574,6 +574,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   RAY_LOG(DEBUG) << "Pushing task " << task_spec.TaskId() << " to worker "
                  << addr.worker_id << " of raylet " << addr.raylet_id;
   auto task_id = task_spec.TaskId();
+
   using google::protobuf::Arena;
   Arena arena;
   auto request = Arena::CreateMessage<rpc::PushTaskRequest>(&arena);
@@ -586,13 +587,14 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   // access the task.
   request->unsafe_arena_set_allocated_task_spec(
       const_cast<rpc::TaskSpec*>(&task_spec.GetMessage()));
+
   for(const auto& resource : assigned_resources) {
     request->mutable_resource_mapping()->UnsafeArenaAddAllocated(const_cast<rpc::ResourceMapEntry*>(&resource));
   }
   request->set_intended_worker_id(addr.worker_id.Binary());
   task_finisher_->MarkTaskWaitingForExecution(task_id, addr.raylet_id, addr.worker_id);
   client.PushNormalTask(
-      std::move(*request),
+      *request,
       [this,
        task_spec,
        task_id,
