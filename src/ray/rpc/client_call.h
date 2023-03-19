@@ -206,6 +206,7 @@ class ClientCallManager {
     for (auto &cq : cqs_) {
       cq->Shutdown();
     }
+    RAY_LOG(INFO) << "Drain all requests";
     for (auto &polling_thread : polling_threads_) {
       polling_thread.join();
     }

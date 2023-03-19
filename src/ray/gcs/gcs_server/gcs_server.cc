@@ -14,6 +14,9 @@
 
 #include "ray/gcs/gcs_server/gcs_server.h"
 
+#include <unistd.h>
+
+#include <filesystem>
 #include <fstream>
 
 #include "ray/common/asio/asio_util.h"
@@ -191,6 +194,20 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       [this] {
         RAY_LOG(INFO) << GetDebugState();
         PrintAsioStats();
+        PrintNullarCBMetrics();
+        auto pid = getpid();
+        std::stringstream ss;
+        ss << "/proc/" << pid << "/fd";
+        auto p = std::filesystem::path(ss.str());
+        size_t n = 0;
+        size_t total = 0;
+        for (auto &f : std::filesystem::directory_iterator(p)) {
+          total += 1;
+          if (f.is_socket()) {
+            n += 1;
+          }
+        }
+        RAY_LOG(INFO) << "File Opened == Total: " << total << ", Socket: " << n;
       },
       /*ms*/ RayConfig::instance().event_stats_print_interval_ms(),
       "GCSServer.deadline_timer.debug_state_event_stats_print");

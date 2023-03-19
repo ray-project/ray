@@ -23,6 +23,10 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
+#define S1(x) #x
+#define S2(x) S1(x)
+#define LOCATION __FILE__ " : " S2(__LINE__)
+
 namespace ray {
 namespace gcs {
 
@@ -39,6 +43,36 @@ using rpc::ScheduleData;
 using rpc::StoredConfig;
 using rpc::TaskSpec;
 using rpc::WorkerTableData;
+
+void RecordNullarCBMetrics(const std::string &key, size_t time);
+void PrintNullarCBMetrics();
+
+template <typename... Args>
+struct NullaryCB {
+  using F = std::function<void(Args...)>;
+  template <typename C>
+  NullaryCB(C _f) : NullaryCB(std::move(_f), "") {}
+
+  template <typename C>
+  NullaryCB(C _f, const char *_name) : f(std::move(_f)), name(_name) {}
+
+  template <typename C>
+  NullaryCB(C _f, std::string _name) : f(std::move(_f)), name(std::move(_name)) {}
+
+  void operator()(Args... args) const {
+    auto now = absl::Now();
+    f(std::move(args)...);
+    auto end = absl::Now();
+    auto ns_spent = absl::ToInt64Nanoseconds(end - now);
+    RecordNullarCBMetrics(table_name + "@" + name, ns_spent);
+  }
+
+  operator bool() const { return f != nullptr; }
+
+  F f;
+  std::string name;
+  std::string table_name;
+};
 
 /// \class GcsTable
 ///
@@ -60,14 +94,14 @@ class GcsTable {
   /// \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  virtual Status Put(const Key &key, const Data &value, const StatusCallback &callback);
+  virtual Status Put(const Key &key, const Data &value, NullaryCB<Status> callback);
 
   /// Get data from the table asynchronously.
   ///
   /// \param key The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
-  Status Get(const Key &key, const OptionalItemCallback<Data> &callback);
+  Status Get(const Key &key, NullaryCB<Status, const boost::optional<Data>> callback);
 
   /// Get all data from the table asynchronously.
   ///
@@ -117,7 +151,7 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  Status Put(const Key &key, const Data &value, const StatusCallback &callback) override;
+  Status Put(const Key &key, const Data &value, NullaryCB<Status> callback) override;
 
   /// Get all the data of the specified job id from the table asynchronously.
   ///

@@ -114,7 +114,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
 
   // Init GCS subscriber instance.
   gcs_subscriber_ = std::make_unique<GcsSubscriber>(gcs_address, std::move(subscriber));
-
   job_accessor_ = std::make_unique<JobInfoAccessor>(this);
   actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);
   node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
@@ -133,6 +132,7 @@ void GcsClient::Disconnect() {
   if (gcs_rpc_client_) {
     gcs_rpc_client_->Shutdown();
   }
+  gcs_subscriber_.reset();
 }
 
 std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {

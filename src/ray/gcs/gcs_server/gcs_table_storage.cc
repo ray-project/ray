@@ -11,9 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 
+#include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/callback.h"
@@ -21,15 +21,43 @@
 namespace ray {
 namespace gcs {
 
+static absl::Mutex mutex;
+static absl::flat_hash_map<std::string, std::pair<size_t, size_t>> stats;
+
+void PrintNullarCBMetrics() {
+  absl::MutexLock _(&mutex);
+  RAY_LOG(INFO) << "=== NullarCBMetrics Starts ===";
+  for (auto &item : stats) {
+    // auto e = item.second;
+    // RAY_LOG(INFO) << "Readed: " << key << ", " << e.first << ", " << e.second;
+
+    auto [cnt, total] = item.second;
+    RAY_CHECK(cnt != 0);
+    RAY_LOG(INFO) << "\t" << item.first << " cnt: " << cnt
+                  << " total_time_ms: " << (total / 1000000UL)
+                  << " avg: " << (total / cnt) / 1000000UL;
+  }
+  RAY_LOG(INFO) << "=== NullarCBMetrics Ends ===";
+}
+
+void RecordNullarCBMetrics(const std::string &key, size_t time) {
+  absl::MutexLock _(&mutex);
+  auto &e = stats[key];
+  e.first += 1;
+  e.second += time;
+  // RAY_LOG(INFO) << "Recorded: " << key << ", " << e.first << ", " << e.second;
+}
+
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Put(const Key &key,
                                 const Data &value,
-                                const StatusCallback &callback) {
+                                NullaryCB<Status> callback) {
+  callback.table_name = table_name_ + ".Put";
   return store_client_->AsyncPut(table_name_,
                                  key.Binary(),
                                  value.SerializeAsString(),
                                  /*overwrite*/ true,
-                                 [callback](auto) {
+                                 [callback = std::move(callback)](auto) {
                                    if (callback) {
                                      callback(Status::OK());
                                    }
@@ -38,9 +66,10 @@ Status GcsTable<Key, Data>::Put(const Key &key,
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Get(const Key &key,
-                                const OptionalItemCallback<Data> &callback) {
-  auto on_done = [callback](const Status &status,
-                            const boost::optional<std::string> &result) {
+                                NullaryCB<Status, const boost::optional<Data>> callback) {
+  callback.table_name = table_name_ + ".Get";
+  auto on_done = [callback = std::move(callback)](
+                     const Status &status, const boost::optional<std::string> &result) {
     if (!callback) {
       return;
     }
@@ -100,16 +129,17 @@ Status GcsTable<Key, Data>::BatchDelete(const std::vector<Key> &keys,
 template <typename Key, typename Data>
 Status GcsTableWithJobId<Key, Data>::Put(const Key &key,
                                          const Data &value,
-                                         const StatusCallback &callback) {
+                                         NullaryCB<Status> callback) {
   {
     absl::MutexLock lock(&mutex_);
     index_[GetJobIdFromKey(key)].insert(key);
   }
+  callback.table_name = this->table_name_ + ".JPut";
   return this->store_client_->AsyncPut(this->table_name_,
                                        key.Binary(),
                                        value.SerializeAsString(),
                                        /*overwrite*/ true,
-                                       [callback](auto) {
+                                       [callback = std::move(callback)](auto) {
                                          if (!callback) {
                                            return;
                                          }
