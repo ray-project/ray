@@ -60,35 +60,30 @@ KeyFn = Union[None, str, Callable[[T], Any]]
 
 def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
     """Check the key function is valid on the given dataset."""
-    try:
-        fmt = ds.dataset_format()
-    except ValueError:
-        # Dataset is empty/cleared, validation not possible.
-        return
+    schema = ds.schema(fetch_if_missing=True)
+    is_simple_format = isinstance(schema, type)
     if isinstance(key, str):
-        if fmt == "simple":
+        if is_simple_format:
             raise ValueError(
                 "String key '{}' requires dataset format to be "
-                "'arrow' or 'pandas', was '{}'.".format(key, fmt)
+                "'arrow' or 'pandas', was 'simple'.".format(key)
             )
-        # Raises KeyError if key is not present in the schema.
-        schema = ds.schema(fetch_if_missing=True)
         if len(schema.names) > 0 and key not in schema.names:
             raise ValueError(
                 "The column '{}' does not exist in the "
                 "schema '{}'.".format(key, schema)
             )
     elif key is None:
-        if fmt != "simple":
+        if not is_simple_format:
             raise ValueError(
                 "The `None` key '{}' requires dataset format to be "
-                "'simple', was '{}'.".format(key, fmt)
+                "'simple'.".format(key)
             )
     elif callable(key):
-        if fmt != "simple":
+        if not is_simple_format:
             raise ValueError(
                 "Callable key '{}' requires dataset format to be "
-                "'simple', was '{}'.".format(key, fmt)
+                "'simple'".format(key)
             )
     else:
         raise TypeError("Invalid key type {} ({}).".format(key, type(key)))

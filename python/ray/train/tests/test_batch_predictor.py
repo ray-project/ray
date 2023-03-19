@@ -283,8 +283,15 @@ def test_batch_prediction_various_combination():
             8.0,
             12.0,
         ]
-
-        assert ds.dataset_format() == dataset_format, test_case
+        block = ray.get(ds.get_internal_block_refs()[0])
+        if dataset_format == "pandas":
+            assert isinstance(block, pd.DataFrame)
+        elif dataset_format == "arrow":
+            assert isinstance(block, pa.Table)
+        else:
+            raise ValueError(
+                f"Unsupported test case with dataset format: {dataset_format}"
+            )
 
 
 def test_batch_prediction_fs():

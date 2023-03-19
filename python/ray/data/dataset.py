@@ -3608,15 +3608,12 @@ class Dataset(Generic[T]):
         Returns:
             A list of remote Arrow tables created from this dataset.
         """
-        blocks: List[ObjectRef[Block]] = self.get_internal_block_refs()
+        # Convert into Arrow blocks.
+        arrow_ds = self.map_batches(lambda x: x, batch_format="pyarrow")
+        blocks: List[ObjectRef["pyarrow.Table"]] = arrow_ds.get_internal_block_refs()
+        return blocks
 
-        if self.dataset_format() == BlockFormat.ARROW:
-            # Zero-copy path.
-            return blocks
-
-        block_to_arrow = cached_remote_fn(_block_to_arrow)
-        return [block_to_arrow.remote(block) for block in blocks]
-
+    @Deprecated
     @ConsumptionAPI(pattern="Args:")
     def to_random_access_dataset(
         self,
@@ -3643,6 +3640,11 @@ class Dataset(Generic[T]):
                 to provide ~3000 records / second via ``get_async()``, and
                 ~10000 records / second via ``multiget()``.
         """
+        ctx = DatasetContext.get_current()
+        if ctx.use_streaming_executor:
+            raise DeprecationWarning(
+                "`to_random_access_dataset` is not supported with streaming execution."
+            )
         if num_workers is None:
             num_workers = 4 * len(ray.nodes())
         return RandomAccessDataset(self, key, num_workers=num_workers)
@@ -4201,6 +4203,7 @@ class Dataset(Generic[T]):
                 return np.ndarray
             return pd.DataFrame
 
+    @Deprecated
     @ConsumptionAPI(
         if_more_than_read=True,
         datasource_metadata="schema",
@@ -4214,6 +4217,12 @@ class Dataset(Generic[T]):
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
         """
+        ctx = DatasetContext.get_current()
+        if ctx.use_streaming_executor:
+            raise DeprecationWarning(
+                "`dataset_format` is not supported with streaming execution."
+            )
+
         # We need schema to properly validate, so synchronously
         # fetch it if necessary.
         schema = self.schema(fetch_if_missing=True)

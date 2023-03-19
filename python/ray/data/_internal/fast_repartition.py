@@ -25,7 +25,6 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
     )
     # Compute the (n-1) indices needed for an equal split of the data.
     count = wrapped_ds.count()
-    dataset_format = wrapped_ds.dataset_format()
     indices = []
     cur_idx = 0
     for _ in range(num_blocks - 1):
@@ -71,17 +70,10 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
 
     # Handle empty blocks.
     if len(new_blocks) < num_blocks:
-        from ray.data._internal.arrow_block import ArrowBlockBuilder
-        from ray.data._internal.pandas_block import PandasBlockBuilder
-        from ray.data._internal.simple_block import SimpleBlockBuilder
+        from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 
         num_empties = num_blocks - len(new_blocks)
-        if dataset_format == "arrow":
-            builder = ArrowBlockBuilder()
-        elif dataset_format == "pandas":
-            builder = PandasBlockBuilder()
-        else:
-            builder = SimpleBlockBuilder()
+        builder = DelegatingBlockBuilder()
         empty_block = builder.build()
         empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
             input_files=None, exec_stats=None
