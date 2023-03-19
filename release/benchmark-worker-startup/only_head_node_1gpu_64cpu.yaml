@@ -19,5 +19,8 @@ aws:
         - DeviceName: /dev/sda1
           Ebs:
             DeleteOnTermination: true
-            # 150GB is the default in Anyscale.
+            # This is the default configuration in our infra layer.
             VolumeSize: 150
+            VolumeType: gp3
+            Iops: 3000
+            Throughput: 500
