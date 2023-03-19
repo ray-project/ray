@@ -15,7 +15,7 @@ import { orange } from "@material-ui/core/colors";
 import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
-import React, { useContext, useState, useEffect, useCallback } from "react";
+import React, { useCallback, useContext, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import { DurationText } from "../common/DurationText";
@@ -46,7 +46,7 @@ const stateOrder: StateOrder = {
   [ActorEnum.ALIVE]: 0,
   [ActorEnum.PENDING]: 1,
   [ActorEnum.RECONSTRUCTING]:2,
-  [ActorEnum.DEAD]: 4, 
+  [ActorEnum.DEAD]: 3, 
 };
 //type predicate for ActorEnum
 const isActorEnum = (state: unknown): state is ActorEnum => {
