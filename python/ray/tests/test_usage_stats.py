@@ -1165,6 +1165,13 @@ provider:
         assert payload["python_version"] == python_version
         assert payload["schema_version"] == "0.1"
         assert payload["os"] == sys.platform
+        if sys.platform == "linux":
+            assert "glibc" not in payload
+        else:
+            import platform
+
+            assert payload["glibc"] == platform.libc_ver()[1]
+
         assert payload["source"] == "OSS"
         assert payload["cloud_provider"] == "aws"
         assert payload["min_workers"] is None

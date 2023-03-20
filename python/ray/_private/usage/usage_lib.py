@@ -45,6 +45,7 @@ import json
 import logging
 import threading
 import os
+import platform
 import sys
 import time
 import uuid
@@ -356,6 +357,9 @@ def _generate_cluster_metadata():
                 "session_start_timestamp_ms": int(time.time() * 1000),
             }
         )
+        if sys.platform == "linux":
+            # Record glibc version
+            metadata.update({"glibc": platform.libc_ver()[1]})
     return metadata
 
 
