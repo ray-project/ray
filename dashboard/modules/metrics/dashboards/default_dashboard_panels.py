@@ -1,6 +1,10 @@
 # flake8: noqa E501
 
-from ray.dashboard.modules.metrics.dashboards.common import DashboardConfig, Panel, Target
+from ray.dashboard.modules.metrics.dashboards.common import (
+    DashboardConfig,
+    Panel,
+    Target,
+)
 
 """
 Queries for autoscaler resources.
@@ -361,6 +365,5 @@ assert len(ids) == len(
 ), f"Duplicated id found. Use unique id for each panel. {ids}"
 
 default_dashboard_config = DashboardConfig(
-    panels=DEFAULT_GRAFANA_PANELS,
-    global_filters=['SessionName="$SessionName"']
+    panels=DEFAULT_GRAFANA_PANELS, global_filters=['SessionName="$SessionName"']
 )

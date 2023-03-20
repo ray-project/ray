@@ -1,6 +1,11 @@
 # flake8: noqa E501
 
-from ray.dashboard.modules.metrics.dashboards.common import DashboardConfig, GridPos, Panel, Target
+from ray.dashboard.modules.metrics.dashboards.common import (
+    DashboardConfig,
+    GridPos,
+    Panel,
+    Target,
+)
 
 SERVE_GRAFANA_PANELS = [
     Panel(
