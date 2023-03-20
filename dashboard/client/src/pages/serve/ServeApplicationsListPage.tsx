@@ -69,7 +69,7 @@ export const ServeApplicationsListPage = () => {
 
   return (
     <div>
-      <CollapsibleSection title="Serve details" startExpanded>
+      <CollapsibleSection title="Config" startExpanded>
         {serveDetails.host && serveDetails.port ? (
           <MetadataSection
             metadataList={[
@@ -91,8 +91,7 @@ export const ServeApplicationsListPage = () => {
           />
         ) : (
           <Alert className={classes.serveInstanceWarning} severity="warning">
-            Serve instance not started yet. Please deploy a serve application
-            first.
+            Serve not started. Please deploy a serve application first.
           </Alert>
         )}
       </CollapsibleSection>
