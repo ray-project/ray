@@ -478,6 +478,11 @@ PANEL_TEMPLATE = {
             "hiddenSeries": True,
         },
         {
+            "$$hashKey": "object:79",
+            "alias": "/Failed Nodes:/",
+            "hiddenSeries": True,
+        },
+        {
             "$$hashKey": "object:2987",
             "alias": "MAX + PENDING",
             "dashes": True,
