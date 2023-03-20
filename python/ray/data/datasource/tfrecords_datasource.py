@@ -157,28 +157,27 @@ def _get_feature_value(
     if schema_feature_type is not None:
         try:
             from tensorflow_metadata.proto.v0 import schema_pb2
-
-            # If a schema is specified, compare to the underlying type
-            specified_feature_type = {
-                "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES,
-                "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
-                "int": schema_feature_type == schema_pb2.FeatureType.INT,
-            }
-            und_type = _get_single_true_type(underlying_feature_type)
-            spec_type = _get_single_true_type(specified_feature_type)
-            if und_type is not None and und_type != spec_type:
-                raise ValueError(
-                    "Schema field type mismatch during read: specified type is "
-                    f"{spec_type}, but underlying type is {und_type}",
-                )
-            # Override the underlying value type with the type
-            # in the user-specified schema.
-            underlying_feature_type = specified_feature_type
         except ModuleNotFoundError:
             raise ModuleNotFoundError(
                 "To use TensorFlow schemas, please install "
                 "the tensorflow-metadata package."
             )
+        # If a schema is specified, compare to the underlying type
+        specified_feature_type = {
+            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES,
+            "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
+            "int": schema_feature_type == schema_pb2.FeatureType.INT,
+        }
+        und_type = _get_single_true_type(underlying_feature_type)
+        spec_type = _get_single_true_type(specified_feature_type)
+        if und_type is not None and und_type != spec_type:
+            raise ValueError(
+                "Schema field type mismatch during read: specified type is "
+                f"{spec_type}, but underlying type is {und_type}",
+            )
+        # Override the underlying value type with the type
+        # in the user-specified schema.
+        underlying_feature_type = specified_feature_type
 
     if underlying_feature_type["bytes"]:
         value = feature.bytes_list.value
@@ -239,28 +238,28 @@ def _value_to_feature(
     if schema_feature_type is not None:
         try:
             from tensorflow_metadata.proto.v0 import schema_pb2
-
-            specified_feature_type = {
-                "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES,
-                "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
-                "int": schema_feature_type == schema_pb2.FeatureType.INT,
-            }
-
-            und_type = _get_single_true_type(underlying_value_type)
-            spec_type = _get_single_true_type(specified_feature_type)
-            if und_type is not None and und_type != spec_type:
-                raise ValueError(
-                    "Schema field type mismatch during write: specified type is "
-                    f"{spec_type}, but underlying type is {und_type}",
-                )
-            # Override the underlying value type with the type
-            # in the user-specified schema.
-            underlying_value_type = specified_feature_type
         except ModuleNotFoundError:
             raise ModuleNotFoundError(
                 "To use TensorFlow schemas, please install "
                 "the tensorflow-metadata package."
             )
+        specified_feature_type = {
+            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES,
+            "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
+            "int": schema_feature_type == schema_pb2.FeatureType.INT,
+        }
+
+        und_type = _get_single_true_type(underlying_value_type)
+        spec_type = _get_single_true_type(specified_feature_type)
+        if und_type is not None and und_type != spec_type:
+            raise ValueError(
+                "Schema field type mismatch during write: specified type is "
+                f"{spec_type}, but underlying type is {und_type}",
+            )
+        # Override the underlying value type with the type
+        # in the user-specified schema.
+        underlying_value_type = specified_feature_type
+
     if underlying_value_type["int"]:
         return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
     if underlying_value_type["float"]:
