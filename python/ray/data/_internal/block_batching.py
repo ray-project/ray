@@ -219,14 +219,15 @@ class LogicalBatch(NamedTuple):
             maintain ordering.
         block_refs: The list of block object references for this batch.
         starting_block_idx: The index of the first block where this batch starts.
-        ending_block_idx: The index of the last block where this batch ends.
+        ending_block_idx: The index of the last block where this batch ends. This can
+            also be None, meaning the entirety of the last block is included in this batch. If this value is None, this allows us to eagerly clear the last block in this batch after reading, since the last block is not included in any other batches.
         num_rows: The number of rows in this batch. This should be equivalent to the
             provided batch size, except for the final batch.
     """
     batch_idx: int
     block_refs: List[ObjectRef[Block]]
     starting_block_idx: int
-    ending_block_idx: int
+    ending_block_idx: Optional[int]
     num_rows: int
 
     @classmethod
@@ -274,7 +275,7 @@ def _bundle_block_refs_to_logical_batches(
 
     if batch_size is None:
         for block_ref, metadata in block_ref_iterator:
-            yield LogicalBatch(global_index, [block_ref], 0, metadata.num_rows, metadata.num_rows)
+            yield LogicalBatch(global_index, [block_ref], 0, None, metadata.num_rows)
             global_index += 1
     else:
         while True:
@@ -291,7 +292,7 @@ def _bundle_block_refs_to_logical_batches(
             
             if buffer_size == batch_size:
                 # If equal to batch size, then yield the full buffer.
-                yield LogicalBatch(global_index, batch_buffer, starting_index, num_rows_in_last_block, buffer_size)
+                yield LogicalBatch(global_index, batch_buffer, starting_index, None, buffer_size)
                 batch_buffer = []
                 buffer_size = 0
                 starting_index = 0
@@ -320,7 +321,7 @@ def _bundle_block_refs_to_logical_batches(
     # Yield any leftover batches if necessary.
     if buffer_size > 0 and not drop_last:
         assert buffer_size < batch_size
-        yield LogicalBatch(global_index, batch_buffer, starting_index, buffer_size, buffer_size)
+        yield LogicalBatch(global_index, batch_buffer, starting_index, None, buffer_size)
         global_index += 1
 
 def _local_shuffle_logical_batches(
@@ -377,6 +378,7 @@ def _prefetch_batches_locally(
                 next_batches.append(next(logical_batch_iter))
                 if len(next_batches) == num_batches_to_prefetch:
                     yield next_batches
+                    next_batches = []
             except StopIteration:
                 break
         
@@ -391,13 +393,13 @@ def _prefetch_batches_locally(
         return
 
     with stats.iter_wait_s.timer() if stats else nullcontext():
-        block_refs = [block_ref for batch in batches for block_ref in batch.blocks_refs]
+        block_refs = [block_ref for batch in batches for block_ref in batch.block_refs]
         prefetcher.prefetch_blocks(block_refs)
     
     for next_batches in batch_iterator:
         # Prefetch the next batches.
         with stats.iter_wait_s.timer() if stats else nullcontext():
-            block_refs = [block_ref for batch in next_batches for block_ref in batch.blocks_refs]
+            block_refs = [block_ref for batch in next_batches for block_ref in batch.block_refs]
             prefetcher.prefetch_blocks(block_refs)
         
         for batch in batches:
@@ -458,11 +460,11 @@ def _resolve_blocks(
                 block_ref = block_refs[i]
                 # Don't eagerly free the first block if stating_block_idx is set, since
                 # this block may be in another logical batch.
-                if i == 0 and logical_batch.starting_block_idx:
+                if i == 0 and logical_batch.starting_block_idx > 0:
                     free = False
                 # Don't eagerly free the last block if ending_block_idx is set, since
                 # this block may be in another logical batch.
-                elif i == len(block_refs) - 1 and logical_batch.ending_block_idx:
+                elif i == len(block_refs) - 1 and logical_batch.ending_block_idx is not None:
                     free = False
                 else:
                     free = eager_free
@@ -482,6 +484,86 @@ def _resolve_blocks(
         stats.iter_blocks_local += hit
         stats.iter_blocks_remote += miss
         stats.iter_unknown_location += unknown
+
+def _blocks_to_batches(
+    resolved_logical_batch_iter: Iterator[ResolvedLogicalBatch],
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
+    ensure_copy: bool = False,
+) -> Iterator[Tuple[int, Block]]:
+    """Given an iterator over logical batches, returns an iterator over actual constructed batches.
+
+    Args:
+        resolved_logical_batch_iter: An iterator over resolved logical batches.
+        stats: Dataset stats object used to store block batching time.
+        ensure_copy: Whether batches are always copied from the underlying base
+            blocks (not zero-copy views).
+
+    Returns:
+        An iterator over batch index and batches of the given size.
+    """
+    def get_iter_next_batch_s_timer():
+        return stats.iter_next_batch_s.timer() if stats else nullcontext()
+
+    for logical_batch in resolved_logical_batch_iter:
+        with get_iter_next_batch_s_timer():
+            output = DelegatingBlockBuilder()
+            slice_indices = [[0, None] for _ in range(len(logical_batch.blocks))]
+            if logical_batch.starting_block_idx > 0:
+                slice_indices[0][0] = logical_batch.starting_block_idx
+            if logical_batch.ending_block_idx is not None:
+                slice_indices[-1][1] = logical_batch.ending_block_idx
+            
+            for i, block in enumerate(logical_batch.blocks):
+                accessor = BlockAccessor.for_block(block)
+                slice_index = slice_indices[i]
+                output.add_block(
+                    accessor.slice(
+                        slice_index[0],
+                        slice_index[1] if slice_index[1] is not None else accessor.num_rows(),
+                        copy=False,
+                    )
+                )
+            
+            batch = output.build()
+            assert len(batch) == logical_batch.num_rows, (len(batch), logical_batch.num_rows)
+            if ensure_copy:
+                # Need to ensure that the batch is a fresh copy.
+                batch = BlockAccessor.for_block(batch)
+                batch = batch.slice(0, batch.num_rows(), copy=True)
+        
+        yield logical_batch.batch_idx, batch
+
+def _format_batches(
+    block_iter: Iterator[Tuple[int, Block]],
+    batch_format: str,
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
+) -> Iterator[Tuple[int, DataBatch]]:
+    """Given an iterator of blocks, returns an iterator of formatted batches.
+
+    Args:
+        block_iter: An iterator over blocks.
+        batch_format: The batch format to use.
+        stats: An optional stats object to record formatting times.
+
+    Returns:
+        An iterator over batch index and the formatted batch.
+    """
+    for idx, block in block_iter:
+        with stats.iter_format_batch_s.timer() if stats else nullcontext():
+            batch = BlockAccessor.for_block(block).to_batch_format(batch_format)
+        yield idx, batch
+
+def _collate(batch_iter: Iterator[Tuple[int, DataBatch]], collate_fn: Optional[Callable[[DataBatch], Any]], stats: Optional[Union[DatasetStats, DatasetPipelineStats]]=None) -> Iterator[Tuple[int, Any]]:
+    """Returns an iterator with the provided collate_fn applied to items of the batch iterator.
+
+    Args:
+        batch_iter: An iterator over formatted batches.
+        stats: An optional stats object to record collation time.
+    """
+    for idx, batch in batch_iter:
+        with stats.iter_collate_batch_s.timer() if stats else nullcontext():
+            output = collate_fn(batch)
+        yield idx, output
 
 def _make_async_gen(
     base_iterator: Iterator[T], prefetch_buffer_size: int = 1
@@ -627,80 +709,6 @@ def _make_async_gen_threadpool(base_iterator: Iterator[T], max_workers: int = 1,
             num_threads_finished += 1
         if num_threads_finished >= max_workers:
             break
-
-def _blocks_to_batches(
-    resolved_logical_batch_iter: Iterator[ResolvedLogicalBatch],
-    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
-    ensure_copy: bool = False,
-) -> Iterator[Tuple[int, Block]]:
-    """Given an iterator over logical batches, returns an iterator over actual constructed batches.
-
-    Args:
-        resolved_logical_batch_iter: An iterator over resolved logical batches.
-        stats: Dataset stats object used to store block batching time.
-        ensure_copy: Whether batches are always copied from the underlying base
-            blocks (not zero-copy views).
-
-    Returns:
-        An iterator over batch index and batches of the given size.
-    """
-    def get_iter_next_batch_s_timer():
-        return stats.iter_next_batch_s.timer() if stats else nullcontext()
-
-    for logical_batch in resolved_logical_batch_iter:
-        with get_iter_next_batch_s_timer():
-            blocks = [BlockAccessor.for_block(block) for block in logical_batch.blocks]
-            output = DelegatingBlockBuilder()
-
-            # Perform slicing if necessary to get exact batches from the list of blocks.
-            if logical_batch.starting_block_idx:
-                blocks[0] = blocks[0].slice(logical_batch.starting_block_idx, blocks[0].num_rows(), copy=False)
-            if logical_batch.ending_block_idx:
-                blocks[-1] = blocks[-1].slice(0, logical_batch.ending_block_idx, copy=False)
-            
-            for block in blocks:
-                output.add_block(block)
-            
-            batch = output.build()
-            if ensure_copy:
-                # Need to ensure that the batch is a fresh copy.
-                batch = BlockAccessor.for_block(batch)
-                batch = batch.slice(0, batch.num_rows(), copy=True)
-        
-        yield logical_batch.batch_idx, batch
-
-
-def _format_batches(
-    block_iter: Iterator[Tuple[int, Block]],
-    batch_format: str,
-    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
-) -> Iterator[Tuple[int, DataBatch]]:
-    """Given an iterator of blocks, returns an iterator of formatted batches.
-
-    Args:
-        block_iter: An iterator over blocks.
-        batch_format: The batch format to use.
-        stats: An optional stats object to record formatting times.
-
-    Returns:
-        An iterator over batch index and the formatted batch.
-    """
-    for idx, block in block_iter:
-        with stats.iter_format_batch_s.timer() if stats else nullcontext():
-            batch = BlockAccessor.for_block(block).to_batch_format(batch_format)
-        yield idx, batch
-
-def _collate(batch_iter: Iterator[Tuple[int, DataBatch]], collate_fn: Optional[Callable[[DataBatch], Any]], stats: Optional[Union[DatasetStats, DatasetPipelineStats]]) -> Iterator[Tuple[int, Any]]:
-    """Returns an iterator with the provided collate_fn applied to items of the batch iterator.
-
-    Args:
-        batch_iter: An iterator over formatted batches.
-        stats: An optional stats object to record collation time.
-    """
-    for idx, batch in batch_iter:
-        with stats.iter_collate_batch_s.timer() if stats else nullcontext():
-            output = collate_fn(batch)
-        yield idx, output
 
 class BlockPrefetcher:
     """Interface for prefetching blocks."""
