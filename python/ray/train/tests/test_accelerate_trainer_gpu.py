@@ -163,7 +163,6 @@ def ray_start_4_cpus():
 
 
 def linear_train_func(accelerator: Accelerator, config):
-    # Has to be imported here because it required deepspeed to be installed
     from accelerate.utils import DummyOptim
     from deepspeed.ops.adam import DeepSpeedCPUAdam
 
