@@ -5,10 +5,9 @@ already be familiar with.
 """
 import gymnasium as gym
 import functools
-from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 import tree
 import numpy as np
-from typing import Optional, List, Mapping, Iterable
+from typing import Optional, List, Mapping, Iterable, Dict
 import abc
 
 
@@ -291,23 +290,13 @@ class TfDeterministic(Distribution):
 class TfMultiCategorical(Distribution):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
 
+    @override(Distribution)
     def __init__(
         self,
-        inputs: TensorType,
-        input_lens: List[int],
-        temperatures: List[float] = None,
+        categoricals: List[TfCategorical],
     ):
         super().__init__()
-        if not temperatures:
-            # If temperatures are not provided, use 1.0 for all actions.
-            temperatures = [1.0] * len(input_lens)
-
-        self.cats = [
-            TfCategorical(logits=logits, temperature=temperature)
-            for logits, temperature in zip(
-                tf.split(inputs, input_lens, axis=1), temperatures
-            )
-        ]
+        self.cats = categoricals
 
     @override(Distribution)
     def sample(self) -> TensorType:
@@ -348,19 +337,38 @@ class TfMultiCategorical(Distribution):
     @override(Distribution)
     def from_logits(
         cls,
-        inputs: TensorType,
+        logits: tf.Tensor,
         input_lens: List[int],
+        temperatures: List[float] = None,
         **kwargs,
     ) -> "TfMultiCategorical":
         """Creates this Distribution from logits (and additional arguments).
 
         If you wish to create this distribution from logits only, please refer to
         `Distribution.get_partial_dist_cls()`.
+
+        Args:
+            logits: The tensor containing logits to be separated by logit_lens.
+                child_distribution_cls_struct: A struct of Distribution classes that can
+                be instantiated from the given logits.
+            input_lens: A list of integers that indicate the length of the logits
+                vectors to be passed into each child distribution.
+            temperatures: A list of floats representing the temperature to use for
+                each Categorical distribution. If not provided, 1.0 is used for all.
+            **kwargs: Forward compatibility kwargs.
         """
-        return TfMultiCategorical(
-            inputs=inputs,
-            input_lens=input_lens,
-        )
+        if not temperatures:
+            # If temperatures are not provided, use 1.0 for all actions.
+            temperatures = [1.0] * len(input_lens)
+
+        categoricals = [
+            TfCategorical(logits=logits, temperature=temperature)
+            for logits, temperature in zip(
+                tf.split(logits, input_lens, axis=1), temperatures
+            )
+        ]
+
+        return TfMultiCategorical(categoricals=categoricals)
 
 
 @DeveloperAPI
@@ -369,36 +377,18 @@ class TfMultiActionDistribution(Distribution):
 
     def __init__(
         self,
-        logits: tf.Tensor,
-        child_distribution_cls_struct: Union[Mapping, Iterable],
-        input_lens: List[int],
-        space: gym.Space,
+        child_distribution_struct: Union[Tuple, List, Dict],
     ):
-        """Initializes a TfMultiActionDistribution object.
+        """Initializes a TorchMultiActionDistribution object.
 
         Args:
-            logits: A single tensor of shape [BATCH, size].
-            child_distribution_cls_struct: Any struct
+            child_distribution_struct: Any struct
                 that contains the child distribution classes to use to
-                instantiate the child distributions from `logits`. This could
-                be an already flattened list or a struct according to
-                `action_space`.
-            input_lens (any[int]): A flat list or a nested struct of input
-                split lengths used to split `logits`.
-            space (Union[gym.spaces.Dict,gym.spaces.Tuple]): The complex
-                and possibly nested output space.
+                instantiate the child distributions from `logits`.
         """
         super().__init__()
-        self.space_struct = get_base_struct_from_space(space)
-
-        self.input_lens = tree.flatten(input_lens)
-        child_distribution_cls_list = tree.flatten(child_distribution_cls_struct)
-        split_logits = tf.split(logits, self.input_lens, axis=1)
-        self.child_distribution_list = tree.map_structure(
-            lambda dist, input_: dist.from_logits(input_),
-            child_distribution_cls_list,
-            list(split_logits),
-        )
+        self.original_struct = child_distribution_struct
+        self.flat_child_distributions = tree.flatten(child_distribution_struct)
 
     @override(Distribution)
     def rsample(
@@ -422,10 +412,10 @@ class TfMultiActionDistribution(Distribution):
                 rsample = rsample_logp
                 rsamples.append(rsample)
 
-        rsamples = tree.unflatten_as(self.action_space_struct, rsamples)
+        rsamples = tree.unflatten_as(self.original_struct, rsamples)
 
         if return_logp:
-            logps = tree.unflatten_as(self.action_space_struct, logps)
+            logps = tree.unflatten_as(self.original_struct, logps)
             return rsamples, logps
         else:
             return rsamples
@@ -487,22 +477,22 @@ class TfMultiActionDistribution(Distribution):
     @override(Distribution)
     def sample(self):
         child_distributions_struct = tree.unflatten_as(
-            self.space_struct, self.child_distribution_list
+            self.original_struct, self.flat_child_distributions
         )
         return tree.map_structure(lambda s: s.sample(), child_distributions_struct)
 
     @staticmethod
     @override(Distribution)
     def required_input_dim(space: gym.Space, input_lens: List[int], **kwargs) -> int:
-        return np.sum(input_lens, dtype=np.int32)
+        return sum(input_lens)
 
     @classmethod
     @override(Distribution)
     def from_logits(
         cls,
-        logits: TensorType,
+        logits: tf.Tensor,
         child_distribution_cls_struct: Union[Mapping, Iterable],
-        input_lens: List[int],
+        input_lens: Union[Dict, List[int]],
         space: gym.Space,
         **kwargs,
     ) -> "TfMultiActionDistribution":
@@ -510,11 +500,36 @@ class TfMultiActionDistribution(Distribution):
 
         If you wish to create this distribution from logits only, please refer to
         `Distribution.get_partial_dist_cls()`.
+
+        Args:
+            logits: The tensor containing logits to be separated by `input_lens`.
+                child_distribution_cls_struct: A struct of Distribution classes that can
+                be instantiated from the given logits.
+            child_distribution_cls_struct: A struct of Distribution classes that can
+                be instantiated from the given logits.
+            input_lens: A list or dict of integers that indicate the length of each
+                logit. If this is given as a dict, the structure should match the
+                structure of child_distribution_cls_struct.
+            space: The possibly nested output space.
+            **kwargs: Forward compatibility kwargs.
+
+        Returns:
+            A TorchMultiActionDistribution object.
         """
+        logit_lens = tree.flatten(input_lens)
+        child_distribution_cls_list = tree.flatten(child_distribution_cls_struct)
+        split_logits = tf.split(logits, logit_lens, axis=1)
+
+        child_distribution_list = tree.map_structure(
+            lambda dist, input_: dist.from_logits(input_),
+            child_distribution_cls_list,
+            list(split_logits),
+        )
+
+        child_distribution_struct = tree.unflatten_as(
+            child_distribution_cls_struct, child_distribution_list
+        )
 
         return TfMultiActionDistribution(
-            logits=logits,
-            child_distribution_cls_struct=child_distribution_cls_struct,
-            input_lens=input_lens,
-            space=space,
+            child_distribution_struct=child_distribution_struct,
         )

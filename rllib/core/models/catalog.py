@@ -52,7 +52,7 @@ def _multi_action_dist_partial_helper(
     )
     flat_distribution_clses = tree.flatten(child_distribution_cls_struct)
 
-    input_lens = [
+    logit_lens = [
         int(dist_cls.required_input_dim(space))
         for dist_cls, space in zip(flat_distribution_clses, flat_action_space)
     ]
@@ -73,7 +73,7 @@ def _multi_action_dist_partial_helper(
     partial_dist_cls = multi_action_dist_cls.get_partial_dist_cls(
         space=action_space,
         child_distribution_cls_struct=child_distribution_cls_struct,
-        input_lens=input_lens,
+        input_lens=logit_lens,
     )
     return partial_dist_cls
 
