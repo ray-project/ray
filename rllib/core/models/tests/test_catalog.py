@@ -257,7 +257,7 @@ class TestCatalog(unittest.TestCase):
                 False,
                 {
                     "torch": TorchMultiActionDistribution,
-                    "tf": TorchMultiActionDistribution,
+                    "tf": TfMultiActionDistribution,
                 },
             ),
             # Tuple nested inside Dict
@@ -377,7 +377,11 @@ class TestCatalog(unittest.TestCase):
                     logits = tf.convert_to_tensor(logits)
                 # We don't need a model if we input tensors
                 dist = dist_cls.from_logits(logits=logits)
-                self.assertTrue(isinstance(dist, expected_cls_dict[framework]))
+                self.assertTrue(
+                    isinstance(dist, expected_cls_dict[framework]),
+                    msg=f"Expected {expected_cls_dict[framework]}, "
+                    f"got {type(dist)}",
+                )
                 actions = dist.sample()
 
                 # For any array of actions in a possibly nested space, convert to

@@ -312,8 +312,13 @@ class TfMultiCategorical(Distribution):
     @override(Distribution)
     def sample(self) -> TensorType:
         arr = [cat.sample() for cat in self.cats]
-        sample_ = tf.stack(arr, dim=1)
+        sample_ = tf.stack(arr, axis=1)
         return sample_
+
+    @override(Distribution)
+    def rsample(self, sample_shape=()):
+        # TODO (Kourosh) Implement Categorical sampling using grad-passthrough trick.
+        raise NotImplementedError
 
     @override(Distribution)
     def logp(self, value: tf.Tensor) -> TensorType:

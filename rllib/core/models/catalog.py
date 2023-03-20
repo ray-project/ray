@@ -106,7 +106,7 @@ def _multi_categorical_dist_partial_helper(
         raise ValueError(f"Unsupported framework: {framework}")
 
     partial_dist_cls = multi_categorical_dist_cls.get_partial_dist_cls(
-        space=action_space, input_lens=action_space.nvec
+        space=action_space, input_lens=list(action_space.nvec)
     )
 
     return partial_dist_cls

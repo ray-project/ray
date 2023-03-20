@@ -291,7 +291,7 @@ class TorchMultiCategorical(Distribution):
         self.cats = [
             TorchCategorical(logits=logits, temperature=temperature)
             for logits, temperature in zip(
-                torch.split(inputs, input_lens, axis=1), temperatures
+                torch.split(inputs, input_lens, dim=1), temperatures
             )
         ]
 
@@ -300,6 +300,11 @@ class TorchMultiCategorical(Distribution):
         arr = [cat.sample() for cat in self.cats]
         sample_ = torch.stack(arr, dim=1)
         return sample_
+
+    @override(Distribution)
+    def rsample(self, sample_shape=()):
+        # TODO (Kourosh) Implement Categorical sampling using grad-passthrough trick.
+        raise NotImplementedError
 
     @override(Distribution)
     def logp(self, value: torch.Tensor) -> TensorType:
