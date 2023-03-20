@@ -409,7 +409,7 @@ ds.show(3)
 # fmt: off
 # __read_binary_begin__
 from io import BytesIO
-import PIL
+import PIL.Image
 
 # Create a tabular Dataset by reading a binary file.
 ds = ray.data.read_binary_files("example://mnist_subset_partitioned/0/1.png")
