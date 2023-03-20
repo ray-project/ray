@@ -19,7 +19,7 @@ aws:
         - DeviceName: /dev/sda1
           Ebs:
             DeleteOnTermination: true
-            # This is the default configuration in our infra layer.
+            # Testing 300 to get apples-to-apples comparison on old stack vs new stack
             VolumeSize: 300
             VolumeType: gp3
             Iops: 3000
