@@ -54,7 +54,7 @@ class TrialRunnerTest(unittest.TestCase):
                 if not trial:
                     break
                 trial_executor.start_trial(trial)
-                self.assertLessEqual(len(os.path.basename(trial.logdir)), 200)
+                self.assertLessEqual(len(os.path.basename(trial.local_path)), 200)
                 trial_executor.stop_trial(trial)
 
     def testExtraResources(self):
