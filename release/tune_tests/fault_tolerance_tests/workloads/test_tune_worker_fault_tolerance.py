@@ -19,6 +19,7 @@ Test owner: Yard1 (Antoni)
 
 """
 
+import os
 import argparse
 import time
 import random
@@ -55,7 +56,7 @@ def objective(config):
 
 
 def main(bucket_uri: str):
-    ray.init(log_to_driver=True)
+    ray.init(log_to_driver=True, runtime_env={"working_dir": os.path.dirname(__file__)})
     num_samples = int(ray.cluster_resources()["CPU"])
 
     tuner = Tuner(
