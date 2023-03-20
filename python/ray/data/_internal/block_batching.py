@@ -19,6 +19,7 @@ from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 T = TypeVar("T")
+U = TypeVar("U")
 
 if sys.version_info >= (3, 7):
     from contextlib import nullcontext
@@ -100,6 +101,7 @@ def batch_block_refs(
         prefetcher = WaitBlockPrefetcher()
 
     if prefetch_batches > 0:
+        with stats.thread_total_time_s.timer():
         def computations(base_iterator):
              yield from batch_blocks(
                 _resolve_blocks(
@@ -612,11 +614,11 @@ def _make_async_gen(
     fetch_thread.join()
 
 
-def _make_async_gen_threadpool(base_iterator: Iterator[T], max_workers: int = 1, computations=None, stats=None):
+def _make_async_gen_threadpool(base_iterator: Iterator[T], computation: Callable[[Iterator[T]], Iterator[U]], max_workers: int = 1, stats=None) -> Iterator[U]:
     """Returns a new iterator with elements fetched from the base_iterator
     in an async fashion using a threadpool.
 
-    All the threads in the threadpool will fetch data from the base_iterator, triggering the base iterator's execution.
+    Each thread in the threadpool will fetch data from the base_iterator in a thread-safe fashion, and apply the provided computation.  triggering the base iterator's execution.
 
     Args:
         base_iterator: The iterator to asynchronously fetch from.
@@ -626,7 +628,7 @@ def _make_async_gen_threadpool(base_iterator: Iterator[T], max_workers: int = 1,
         An iterator with the same elements as the base_iterator.
     """
 
-    def convert_to_threadsafe_iterator(base_iterator):
+    def convert_to_threadsafe_iterator(base_iterator: Iterator[T]) -> Iterator[T]:
         class ThreadSafeIterator:
             def __init__(self, it):
                 self.lock = threading.Lock()
@@ -644,11 +646,18 @@ def _make_async_gen_threadpool(base_iterator: Iterator[T], max_workers: int = 1,
     #     def __init__()
     sentinel = object()
 
+    class Sentinel:
+        thread_index = -1
+
     fetch_queue = queue.Queue()
     semaphore = threading.Semaphore(0)
+
+    def execute_computation(thread_index: int):
+        for item in computation(thread_safe_generator):
+            fetch_queue.put(item, block=True)
     
     def execute():
-        with stats.thread_total_time_s.timer():
+        
             for item in computations(thread_safe_generator):
                 fetch_queue.put(item, block=True)
             #semaphore.release()
