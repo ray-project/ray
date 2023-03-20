@@ -4204,12 +4204,6 @@ class Dataset(Generic[T]):
             return pd.DataFrame
 
     @Deprecated
-    @ConsumptionAPI(
-        if_more_than_read=True,
-        datasource_metadata="schema",
-        pattern="for the first block.",
-        insert_after=True,
-    )
     def dataset_format(self) -> BlockFormat:
         """The format of the dataset's underlying data blocks. Possible values
         are: "arrow", "pandas" and "simple".
@@ -4217,33 +4211,7 @@ class Dataset(Generic[T]):
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
         """
-        ctx = DatasetContext.get_current()
-        if ctx.use_streaming_executor:
-            raise DeprecationWarning(
-                "`dataset_format` is not supported with streaming execution."
-            )
-
-        # We need schema to properly validate, so synchronously
-        # fetch it if necessary.
-        schema = self.schema(fetch_if_missing=True)
-        if schema is None:
-            raise ValueError(
-                "Dataset is empty or cleared, can't determine the format of "
-                "the dataset."
-            )
-
-        try:
-            import pyarrow as pa
-
-            if isinstance(schema, pa.Schema):
-                return BlockFormat.ARROW
-        except ModuleNotFoundError:
-            pass
-        from ray.data._internal.pandas_block import PandasBlockSchema
-
-        if isinstance(schema, PandasBlockSchema):
-            return BlockFormat.PANDAS
-        return BlockFormat.SIMPLE
+        raise DeprecationWarning("`dataset_format` is deprecated in Ray 2.4.")
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[KeyFn, List[KeyFn]]], *args, **kwargs
