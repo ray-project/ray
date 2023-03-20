@@ -70,10 +70,9 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
 
     # Handle empty blocks.
     if len(new_blocks) < num_blocks:
-        from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-
         num_empties = num_blocks - len(new_blocks)
-        builder = DelegatingBlockBuilder()
+        # Create a builder of the same type as the existing block.
+        builder = type(BlockAccessor.for_block(new_blocks[0])).builder()
         empty_block = builder.build()
         empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
             input_files=None, exec_stats=None
