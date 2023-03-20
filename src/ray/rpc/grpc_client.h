@@ -120,9 +120,7 @@ class GrpcClient {
 
     channel_ = BuildChannel(address, port, argument);
   }
-  ~GrpcClient() {
-    stub_.release();
-  }
+  ~GrpcClient() { stub_.release(); }
   /// Create a new `ClientCall` and send request.
   ///
   /// \tparam Request Type of the request message.
@@ -154,9 +152,7 @@ class GrpcClient {
     RAY_CHECK(call != nullptr);
   }
 
-  std::shared_ptr<grpc::Channel> Channel() const {
-    return channel_;
-  }
+  std::shared_ptr<grpc::Channel> Channel() const { return channel_; }
 
  private:
   ClientCallManager &client_call_manager_;
