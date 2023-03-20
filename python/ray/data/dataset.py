@@ -2628,6 +2628,7 @@ class Dataset(Generic[T]):
             block_path_provider=block_path_provider,
         )
 
+    @PublicAPI(stability="alpha")
     @ConsumptionAPI
     def write_webdataset(
         self,
