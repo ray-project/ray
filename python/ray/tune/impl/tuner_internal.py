@@ -355,7 +355,7 @@ class TunerInternal:
             # Update local_dir to use the parent of the experiment path
             # provided to `Tuner.restore`
             experiment_path = Path(self._experiment_checkpoint_dir)
-            self._run_config.local_dir = str(experiment_path.parent)
+            self._run_config.storage_path = str(experiment_path.parent)
             self._run_config.name = experiment_path.name
         else:
             # Set the experiment `name` and `storage_path` according to the URI
