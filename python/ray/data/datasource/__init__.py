@@ -9,7 +9,6 @@ from ray.data.datasource.datasource import (
     Reader,
     WriteResult,
 )
-from ray.data.datasource.dbapi2_datasource import Connection, DBAPI2Datasource
 from ray.data.datasource.mongo_datasource import MongoDatasource
 
 from ray.data.datasource.file_based_datasource import (
@@ -39,6 +38,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionParser,
     Partitioning,
 )
+from ray.data.datasource.sql_datasource import Connection, SQLDatasource
 from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data.datasource.text_datasource import TextDatasource
 
@@ -49,7 +49,7 @@ __all__ = [
     "Connection",
     "CSVDatasource",
     "Datasource",
-    "DBAPI2Datasource",
+    "SQLDatasource",
     "DefaultBlockWritePathProvider",
     "DefaultFileMetadataProvider",
     "DefaultParquetMetadataProvider",

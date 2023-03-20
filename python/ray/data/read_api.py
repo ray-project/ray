@@ -40,7 +40,7 @@ from ray.data.datasource import (
     Connection,
     CSVDatasource,
     Datasource,
-    DBAPI2Datasource,
+    SQLDatasource,
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
@@ -1270,7 +1270,7 @@ def read_sql(
     Returns:
         A :class:`Dataset` containing the queried data.
     """
-    datasource = DBAPI2Datasource(connection_factory)
+    datasource = SQLDatasource(connection_factory)
     return read_datasource(
         datasource,
         sql=sql,
