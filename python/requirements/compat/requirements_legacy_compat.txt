@@ -10,7 +10,7 @@
 # run the pipeline job in `Ray Python legacy dependency ML compatibility tests` with these dependencies installed.
 
 # ML libraries
-torch==1.9.0
+torch==1.13.1
 tensorflow==2.7.0
 tensorflow-probability==0.14.1
 keras==2.7.0

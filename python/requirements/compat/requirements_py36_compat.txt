@@ -8,7 +8,7 @@
 # for good.
 
 # ML libraries
-torch==1.7.0
+torch==1.13.1
 tensorflow==2.6.0
 keras==2.6.0
 
