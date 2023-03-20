@@ -225,7 +225,7 @@ SERVE_GRAFANA_PANELS = [
     ),
     Panel(
         id=3,
-        title="Queue size",
+        title="Queue size per deployment",
         description="Number of requests queued per deployment",
         unit="requests",
         targets=[
