@@ -8,7 +8,7 @@ tblib
 --extra-index-url https://download.pytorch.org/whl/cu116  # for GPU versions of torch, torchvision
 --find-links https://data.pyg.org/whl/torch-1.13.0+cu116.html  # for GPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
 # specifying explicit plus-notation below so pip overwrites the existing cpu verisons
-torch==1.13.0+cu116
+torch==1.13.0+cpu
 torchvision==0.14.0+cu116
 torch-scatter==2.1.0+pt113cu116
 torch-sparse==0.6.15+pt113cu116
