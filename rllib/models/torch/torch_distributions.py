@@ -361,7 +361,7 @@ class TorchMultiCategorical(Distribution):
 
 
 @DeveloperAPI
-class TorchMultiActionDistribution(Distribution):
+class TorchMultiDistribution(Distribution):
     """Action distribution that operates on multiple, possibly nested actions."""
 
     def __init__(
@@ -478,7 +478,7 @@ class TorchMultiActionDistribution(Distribution):
         input_lens: Union[Dict, List[int]],
         space: gym.Space,
         **kwargs,
-    ) -> "TorchMultiActionDistribution":
+    ) -> "TorchMultiDistribution":
         """Creates this Distribution from logits (and additional arguments).
 
         If you wish to create this distribution from logits only, please refer to
@@ -513,6 +513,6 @@ class TorchMultiActionDistribution(Distribution):
             child_distribution_cls_struct, child_distribution_list
         )
 
-        return TorchMultiActionDistribution(
+        return TorchMultiDistribution(
             child_distribution_struct=child_distribution_struct,
         )

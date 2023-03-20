@@ -59,14 +59,14 @@ def _multi_action_dist_partial_helper(
 
     if framework == "torch":
         from ray.rllib.models.torch.torch_distributions import (
-            TorchMultiActionDistribution,
+            TorchMultiDistribution,
         )
 
-        multi_action_dist_cls = TorchMultiActionDistribution
+        multi_action_dist_cls = TorchMultiDistribution
     elif framework == "tf":
-        from ray.rllib.models.tf.tf_distributions import TfMultiActionDistribution
+        from ray.rllib.models.tf.tf_distributions import TfMultiDistribution
 
-        multi_action_dist_cls = TfMultiActionDistribution
+        multi_action_dist_cls = TfMultiDistribution
     else:
         raise ValueError(f"Unsupported framework: {framework}")
 

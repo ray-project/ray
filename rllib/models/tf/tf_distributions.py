@@ -372,7 +372,7 @@ class TfMultiCategorical(Distribution):
 
 
 @DeveloperAPI
-class TfMultiActionDistribution(Distribution):
+class TfMultiDistribution(Distribution):
     """Action distribution that operates on multiple, possibly nested actions."""
 
     def __init__(
@@ -495,7 +495,7 @@ class TfMultiActionDistribution(Distribution):
         input_lens: Union[Dict, List[int]],
         space: gym.Space,
         **kwargs,
-    ) -> "TfMultiActionDistribution":
+    ) -> "TfMultiDistribution":
         """Creates this Distribution from logits (and additional arguments).
 
         If you wish to create this distribution from logits only, please refer to
@@ -530,6 +530,6 @@ class TfMultiActionDistribution(Distribution):
             child_distribution_cls_struct, child_distribution_list
         )
 
-        return TfMultiActionDistribution(
+        return TfMultiDistribution(
             child_distribution_struct=child_distribution_struct,
         )

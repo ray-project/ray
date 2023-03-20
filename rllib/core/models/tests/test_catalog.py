@@ -28,14 +28,14 @@ from ray.rllib.models.tf.tf_distributions import (
     TfDeterministic,
     TfDiagGaussian,
     TfMultiCategorical,
-    TfMultiActionDistribution,
+    TfMultiDistribution,
 )
 from ray.rllib.models.torch.torch_distributions import (
     TorchCategorical,
     TorchDeterministic,
     TorchDiagGaussian,
     TorchMultiCategorical,
-    TorchMultiActionDistribution,
+    TorchMultiDistribution,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
@@ -242,8 +242,8 @@ class TestCatalog(unittest.TestCase):
                 ),
                 False,
                 {
-                    "torch": TorchMultiActionDistribution,
-                    "tf": TfMultiActionDistribution,
+                    "torch": TorchMultiDistribution,
+                    "tf": TfMultiDistribution,
                 },
             ),
             # Nested Tuple
@@ -256,8 +256,8 @@ class TestCatalog(unittest.TestCase):
                 ),
                 False,
                 {
-                    "torch": TorchMultiActionDistribution,
-                    "tf": TfMultiActionDistribution,
+                    "torch": TorchMultiDistribution,
+                    "tf": TfMultiDistribution,
                 },
             ),
             # Tuple nested inside Dict
@@ -279,8 +279,8 @@ class TestCatalog(unittest.TestCase):
                 ),
                 False,
                 {
-                    "torch": TorchMultiActionDistribution,
-                    "tf": TfMultiActionDistribution,
+                    "torch": TorchMultiDistribution,
+                    "tf": TfMultiDistribution,
                 },
             ),
             # Dict nested inside Tuple
@@ -305,8 +305,8 @@ class TestCatalog(unittest.TestCase):
                 ),
                 False,
                 {
-                    "torch": TorchMultiActionDistribution,
-                    "tf": TfMultiActionDistribution,
+                    "torch": TorchMultiDistribution,
+                    "tf": TfMultiDistribution,
                 },
             ),
             # MultiDiscrete
@@ -346,8 +346,8 @@ class TestCatalog(unittest.TestCase):
                 # Check if we can query the required input dimensions
                 expected_cls = expected_cls_dict[framework]
                 if (
-                    expected_cls is TorchMultiActionDistribution
-                    or expected_cls is TfMultiActionDistribution
+                    expected_cls is TorchMultiDistribution
+                    or expected_cls is TfMultiDistribution
                 ):
                     # For these special cases, we need to create partials of the
                     # expected classes so that we can calculate the required inputs
