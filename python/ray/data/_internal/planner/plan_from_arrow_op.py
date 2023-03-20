@@ -31,7 +31,7 @@ def _plan_from_arrow_refs_op(op: FromArrowRefs) -> PhysicalOperator:
             block_metadata = get_metadata.remote(table_ref)
             ref_bundles.append(
                 RefBundle(
-                    [table_ref, ray.get(block_metadata)],
+                    [(table_ref, ray.get(block_metadata))],
                     owns_blocks=True,
                 )
             )
