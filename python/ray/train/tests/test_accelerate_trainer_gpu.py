@@ -165,6 +165,7 @@ def ray_start_4_cpus():
 def linear_train_func(accelerator: Accelerator, config):
     # Has to be imported here because it required deepspeed to be installed
     from accelerate.utils import DummyOptim
+    from deepspeed.ops.adam import DeepSpeedCPUAdam
 
     data_size = config.get("data_size", 1000)
     val_size = config.get("val_size", 400)
@@ -181,12 +182,16 @@ def linear_train_func(accelerator: Accelerator, config):
     model = nn.Linear(1, hidden_size)
 
     loss_fn = nn.MSELoss()
-    optimizer_cls = (
-        torch.optim.SGD
-        if accelerator.state.deepspeed_plugin is None
-        or "optimizer" not in accelerator.state.deepspeed_plugin.deepspeed_config
-        else DummyOptim
-    )
+    if (
+        accelerator.state.deepspeed_plugin
+        and "optimizer" in accelerator.state.deepspeed_plugin.deepspeed_config
+    ):
+        optimizer_cls = DummyOptim
+    elif accelerator.state.deepspeed_plugin:
+        optimizer_cls = DeepSpeedCPUAdam
+    else:
+        optimizer_cls = torch.optim.SGD
+
     # Accelerate boilerplate
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
