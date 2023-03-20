@@ -14,7 +14,8 @@ import time
 
 from ray._private.dict import unflattened_lookup
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
-from ray.tune import Callback
+from ray.tune.callback import Callback
+from ray.tune.logger import pretty_print
 from ray.tune.result import (
     AUTO_RESULT_KEYS,
     EPISODE_REWARD_MEAN,
@@ -24,7 +25,7 @@ from ray.tune.result import (
     TIMESTEPS_TOTAL,
     TRAINING_ITERATION,
 )
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 
 # defines the mapping of the key in result and the key to be printed in table.
 # Note this is ordered!
@@ -54,6 +55,9 @@ class AirVerbosity(Enum):
     SILENT = 0
     DEFAULT = 1
     VERBOSE = 2
+
+    def __lt__(self, b):
+        return self.value < b.value
 
 
 try:
@@ -370,7 +374,7 @@ class TuneReporterBase(ProgressReporter):
 
     def _get_overall_trial_progress_str(self, trials):
         trial_status = _get_trials_by_state(trials)
-        num_finished = len(trial_status.get(Trial.Terminated, [])) + len(
+        num_finished = len(trial_status.get(Trial.TERMINATED, [])) + len(
             trial_status.get(Trial.ERROR, [])
         )
         return "Trial status: {:.2%} finished".format(
@@ -463,15 +467,35 @@ class TrainReporter(ProgressReporter):
         print(self._get_heartbeat(trials))
 
 
+# These keys are blacklisted for printing out training/tuning intermediate/final result!
+BLACKLISTED_KEYS = {
+    "date",
+    "done",
+    "hostname",
+    "iterations_since_restore",
+    "node_ip",
+    "pid",
+    "time_since_restore",
+    "timestamp",
+    "trial_id",
+    "experiment_tag",
+    "should_checkpoint",
+}
+
+
 class AirResultProgressCallback(Callback):
+    # to be filled in by subclasses.
+    _start_end_verbosity = AirVerbosity.DEFAULT
+    _intermediate_result_verbosity = AirVerbosity.DEFAULT
+
     def __init__(self, verbosity):
         self._verbosity = verbosity
 
     def _print_result(self, trial, result=None):
-        print(result or trial.last_result)
+        print(pretty_print(result or trial.last_result, BLACKLISTED_KEYS))
 
     def _print_config(self, trial):
-        print(trial.config)
+        print(pretty_print(trial.config))
 
     def on_trial_result(
         self,
@@ -502,7 +526,7 @@ class AirResultProgressCallback(Callback):
     ):
         if self._verbosity < self._intermediate_result_verbosity:
             return
-        ckpt_msg = f"Trial {trial} checkpoint saved at {checkpoint.dir_or_data}"
+        ckpt_msg = f"!!!!!!!!!!!!Trial {trial} checkpoint saved at {checkpoint.dir_or_data}!!!!!!!!!!!!!"
         print(ckpt_msg)
 
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
@@ -523,5 +547,11 @@ class TrainResultProgressCallback(AirResultProgressCallback):
     _start_end_verbosity = AirVerbosity.DEFAULT
 
 
-def _detect_result_progress_callback(verbosity: AirVerbosity, is_tuning: bool):
-    return
+def _detect_result_progress_callback(
+    verbosity: AirVerbosity, is_tuning: bool
+) -> AirResultProgressCallback:
+    return (
+        TuneResultProgressCallback(verbosity)
+        if is_tuning
+        else TrainResultProgressCallback(verbosity)
+    )

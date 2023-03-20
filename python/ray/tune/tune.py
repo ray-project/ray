@@ -179,7 +179,7 @@ def _report_air_progress(runner: TrialRunner, reporter: "AirProgressReporter"):
     reporter_args = []
     executor_debug_str = runner.trial_executor.debug_string()
     reporter_args.append(executor_debug_str)
-    reporter.report(trials, *reporter_args)
+    reporter.print_heartbeat(trials, *reporter_args)
 
 
 def _setup_signal_catching() -> threading.Event:
@@ -852,17 +852,16 @@ def run(
         )
     else:
         air_progress_reporter = _detect_air_reporter(
-            start_time=tune_start,
-            total_samples=search_alg.total_samples,
-            metric=metric,
-            mode=mode,
-            air_verbosity=air_verbosity,
+            air_verbosity, search_alg.total_samples
         )
 
     while not runner.is_finished() and not experiment_interrupted_event.is_set():
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter)
+
+        if air_verbosity:
+            _report_air_progress(runner, air_progress_reporter)
 
     tune_taken = time.time() - tune_start
 
@@ -873,9 +872,9 @@ def run(
 
     if has_verbosity(Verbosity.V1_EXPERIMENT):
         _report_progress(runner, progress_reporter, done=True)
-        if air_verbosity:
-            # to be implemented
-            _report_air_progress(runner, air_progress_reporter)
+
+    if air_verbosity:
+        _report_air_progress(runner, air_progress_reporter)
 
     all_trials = runner.get_trials()
     experiment_checkpoint = runner.checkpoint_file
