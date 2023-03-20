@@ -7,11 +7,13 @@ from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
 from ray.rllib.core.models.base import ModelConfig
 from ray.rllib.core.models.base import Encoder
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.core.models.configs import (
     MLPEncoderConfig,
     LSTMEncoderConfig,
     CNNEncoderConfig,
 )
+from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -409,3 +411,46 @@ class Catalog:
         # Unknown type -> Error.
         else:
             raise NotImplementedError(f"Unsupported action space: `{action_space}`")
+
+    @staticmethod
+    def get_preprocessor_for_space(
+        observation_space: gym.Space, options: dict = None
+    ) -> Preprocessor:
+        """Returns a suitable preprocessor for the given observation space.
+
+        Args:
+            observation_space: The input observation space.
+            options: Options to pass to the preprocessor. This is deprecated.
+
+        Returns:
+            preprocessor: Preprocessor for the observations.
+        """
+        # TODO(Artur): Since preprocessors have long been @PublicAPI with the options
+        #  kwarg as part of their constructor, we fade out support for this,
+        #  beginning with this entrypoint.
+        # Next, we should deprecate the `options` kwarg from the Preprocessor itself,
+        # after deprecating the old catalog and other components that still pass this.
+        if options is not None:
+            deprecation_warning(
+                old="get_preprocessor_for_space(..., options={...})",
+                help="Override `Catalog.get_preprocessor_for_space()` "
+                "in order to implement custom behaviour.",
+                error=False,
+            )
+
+        if options.get("custom_preprocessor"):
+            deprecation_warning(
+                old="model_config['custom_preprocessor']",
+                help="Custom preprocessors are deprecated, "
+                "since they sometimes conflict with the built-in "
+                "preprocessors for handling complex observation spaces. "
+                "Please use wrapper classes around your environment "
+                "instead.",
+                error=True,
+            )
+        else:
+            # TODO(Artur): Inline the get_preprocessor() call here once we have
+            #  deprecated the old model catalog.
+            cls = get_preprocessor(observation_space)
+            prep = cls(observation_space, options)
+            return prep

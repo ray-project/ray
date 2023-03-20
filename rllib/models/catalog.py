@@ -8,7 +8,6 @@ from typing import List, Optional, Type, Union
 
 from ray.tune.registry import (
     RLLIB_MODEL,
-    RLLIB_PREPROCESSOR,
     RLLIB_ACTION_DIST,
     _global_registry,
 )
@@ -32,7 +31,6 @@ from ray.rllib.models.torch.torch_action_dist import (
 )
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import (
-    Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
 )
@@ -770,22 +768,8 @@ class ModelCatalog:
                     )
                 )
 
-        if options.get("custom_preprocessor"):
-            preprocessor = options["custom_preprocessor"]
-            logger.info("Using custom preprocessor {}".format(preprocessor))
-            logger.warning(
-                "DeprecationWarning: Custom preprocessors are deprecated, "
-                "since they sometimes conflict with the built-in "
-                "preprocessors for handling complex observation spaces. "
-                "Please use wrapper classes around your environment "
-                "instead of preprocessors."
-            )
-            prep = _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
-                observation_space, options
-            )
-        else:
-            cls = get_preprocessor(observation_space)
-            prep = cls(observation_space, options)
+        cls = get_preprocessor(observation_space)
+        prep = cls(observation_space, options)
 
         if prep is not None:
             logger.debug(
@@ -794,24 +778,6 @@ class ModelCatalog:
                 )
             )
         return prep
-
-    @staticmethod
-    @Deprecated(error=True)
-    def register_custom_preprocessor(
-        preprocessor_name: str, preprocessor_class: type
-    ) -> None:
-        """Register a custom preprocessor class by name.
-
-        The preprocessor can be later used by specifying
-        {"custom_preprocessor": preprocesor_name} in the model config.
-
-        Args:
-            preprocessor_name: Name to register the preprocessor under.
-            preprocessor_class: Python class of the preprocessor.
-        """
-        _global_registry.register(
-            RLLIB_PREPROCESSOR, preprocessor_name, preprocessor_class
-        )
 
     @staticmethod
     @PublicAPI

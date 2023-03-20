@@ -626,11 +626,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     return env
 
             # Atari type env and "deepmind" preprocessor pref.
-            elif (
-                is_atari(self.env)
-                and not self.config.model.get("custom_preprocessor")
-                and self.config.preprocessor_pref == "deepmind"
-            ):
+            elif is_atari(self.env) and self.config.preprocessor_pref == "deepmind":
                 # Deepmind wrappers already handle all preprocessing.
                 self.preprocessing_enabled = False
 
@@ -651,10 +647,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     )
                     return env
 
-            elif (
-                not self.config.model.get("custom_preprocessor")
-                and self.config.preprocessor_pref is None
-            ):
+            elif self.config.preprocessor_pref is None:
                 # Only turn off preprocessing
                 self.preprocessing_enabled = False
 
