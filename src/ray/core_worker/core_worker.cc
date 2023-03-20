@@ -3827,6 +3827,9 @@ void CoreWorker::RecordTaskLogStart(const std::string &stdout_path,
                                     const std::string &stderr_path,
                                     int64_t stdout_start_offset,
                                     int64_t stderr_start_offset) const {
+  if (options_.is_local_mode) {
+    return;
+  }
   rpc::TaskLogInfo task_log_info;
   task_log_info.set_stdout_file(stdout_path);
   task_log_info.set_stderr_file(stderr_path);
@@ -3846,6 +3849,9 @@ void CoreWorker::RecordTaskLogStart(const std::string &stdout_path,
 
 void CoreWorker::RecordTaskLogEnd(int64_t stdout_end_offset,
                                   int64_t stderr_end_offset) const {
+  if (options_.is_local_mode) {
+    return;
+  }
   rpc::TaskLogInfo task_log_info;
   task_log_info.set_stdout_end(stdout_end_offset);
   task_log_info.set_stderr_end(stderr_end_offset);

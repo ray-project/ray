@@ -1121,6 +1121,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Add task log info for a task when it starts executing.
   ///
+  /// It's an no-op in local mode.
+  ///
   /// \param stdout_path Path to stdout log file.
   /// \param stderr_path Path to stderr log file.
   /// \param stdout_start_offset Start offset of the stdout for this task.
@@ -1131,6 +1133,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                           int64_t stderr_start_offset) const;
 
   /// Add task log info for a task when it finishes executing.
+  ///
+  /// It's an no-op in local mode.
   ///
   /// \param stdout_end_offset End offset of the stdout for this task.
   /// \param stderr_end_offset End offset of the stderr for this task.
