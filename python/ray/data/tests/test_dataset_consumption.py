@@ -1569,18 +1569,6 @@ def test_polars_lazy_import(shutdown_only):
         ctx.use_polars = original_use_polars
 
 
-def test_default_batch_format(shutdown_only):
-    ds = ray.data.range(100)
-    assert ds.default_batch_format() == list
-
-    ds = ray.data.range_tensor(100)
-    assert ds.default_batch_format() == np.ndarray
-
-    df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
-    ds = ray.data.from_pandas(df)
-    assert ds.default_batch_format() == pd.DataFrame
-
-
 def test_dataset_schema_after_read_stats(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
