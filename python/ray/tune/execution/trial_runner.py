@@ -1229,6 +1229,8 @@ class TrialRunner(_TuneControllerBase):
 
             experiment_path = local_checkpoint_dir
 
+        self.trial_executor = trial_executor or RayTrialExecutor()
+
         super().__init__(
             search_alg=search_alg,
             placeholder_resolvers=placeholder_resolvers,
@@ -1245,7 +1247,6 @@ class TrialRunner(_TuneControllerBase):
             metric=metric,
             trial_checkpoint_config=trial_checkpoint_config,
         )
-        self.trial_executor = trial_executor or RayTrialExecutor()
 
         self.trial_executor.setup(
             max_pending_trials=self._max_pending_trials,
