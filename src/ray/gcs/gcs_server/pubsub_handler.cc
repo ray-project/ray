@@ -94,6 +94,7 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
     return;
   }
   const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
+
   // If the sender_id field is not set, subscriber_id will be used instead.
   auto sender_id = request.sender_id();
   if (sender_id.empty()) {
@@ -113,9 +114,6 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
       iter->second.erase(subscriber_id);
     } else if (command.has_subscribe_message()) {
-      RAY_LOG(INFO) << "ReceiveSubscriberCmd: sender_id.size()=" << sender_id.size();
-      RAY_LOG(INFO) << "Registering: " << subscriber_id
-                    << " type: " << command.channel_type();
       gcs_publisher_->GetPublisher()->RegisterSubscription(
           command.channel_type(),
           subscriber_id,
