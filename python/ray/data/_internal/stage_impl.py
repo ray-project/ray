@@ -59,23 +59,38 @@ class RepartitionStage(AllToAllStage):
                     clear_input_blocks,
                     map_ray_remote_args=remote_args,
                     reduce_ray_remote_args=remote_args,
+                    ctx=ctx,
                 )
 
             super().__init__(
-                "repartition", num_blocks, do_shuffle, supports_block_udf=True
+                "Repartition",
+                num_blocks,
+                do_shuffle,
+                supports_block_udf=True,
+                sub_stage_names=["ShuffleMap", "ShuffleReduce"],
             )
 
         else:
 
-            def do_fast_repartition(block_list, clear_input_blocks: bool, *_):
+            def do_fast_repartition(
+                block_list,
+                ctx: TaskContext,
+                clear_input_blocks: bool,
+                *_,
+            ):
                 if clear_input_blocks:
                     blocks = block_list.copy()
                     block_list.clear()
                 else:
                     blocks = block_list
-                return fast_repartition(blocks, num_blocks)
+                return fast_repartition(blocks, num_blocks, ctx)
 
-            super().__init__("repartition", num_blocks, do_fast_repartition)
+            super().__init__(
+                "Repartition",
+                num_blocks,
+                do_fast_repartition,
+                sub_stage_names=["Repartition"],
+            )
 
 
 class RandomizeBlocksStage(AllToAllStage):
@@ -84,7 +99,7 @@ class RandomizeBlocksStage(AllToAllStage):
     def __init__(self, seed: Optional[int]):
         self._seed = seed
 
-        super().__init__("randomize_block_order", None, self.do_randomize)
+        super().__init__("RandomizeBlockOrder", None, self.do_randomize)
 
     def do_randomize(self, block_list, *_):
         num_blocks = block_list.initial_num_blocks()
@@ -136,14 +151,16 @@ class RandomShuffleStage(AllToAllStage):
                 clear_input_blocks,
                 map_ray_remote_args=remote_args,
                 reduce_ray_remote_args=remote_args,
+                ctx=ctx,
             )
 
         super().__init__(
-            "random_shuffle",
+            "RandomShuffle",
             output_num_blocks,
             do_shuffle,
             supports_block_udf=True,
             remote_args=remote_args,
+            sub_stage_names=["ShuffleMap", "ShuffleReduce"],
         )
 
 
@@ -241,7 +258,7 @@ class ZipStage(AllToAllStage):
             )
             return blocks, {}
 
-        super().__init__("zip", None, do_zip_all)
+        super().__init__("Zip", None, do_zip_all)
 
 
 def _calculate_blocks_rows_and_bytes(
@@ -295,7 +312,12 @@ class SortStage(AllToAllStage):
     """Implementation of `Dataset.sort()`."""
 
     def __init__(self, ds: "Dataset", key: Optional[KeyFn], descending: bool):
-        def do_sort(block_list, clear_input_blocks: bool, *_):
+        def do_sort(
+            block_list,
+            ctx: TaskContext,
+            clear_input_blocks: bool,
+            *_,
+        ):
             # Handle empty dataset.
             if block_list.initial_num_blocks() == 0:
                 return block_list, {}
@@ -311,6 +333,11 @@ class SortStage(AllToAllStage):
                     _validate_key_fn(ds, subkey)
             else:
                 _validate_key_fn(ds, key)
-            return sort_impl(blocks, clear_input_blocks, key, descending)
+            return sort_impl(blocks, clear_input_blocks, key, descending, ctx)
 
-        super().__init__("sort", None, do_sort)
+        super().__init__(
+            "Sort",
+            None,
+            do_sort,
+            sub_stage_names=["SortSample", "ShuffleMap", "ShuffleReduce"],
+        )
