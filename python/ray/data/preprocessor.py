@@ -324,7 +324,7 @@ class Preprocessor(abc.ABC):
         The preferred batch format to use if both `_transform_pandas` and
         `_transform_numpy` are implemented. Defaults to Pandas.
 
-        Can be overriden by Preprocessor classes depending on the with transform
+        Can be overriden by Preprocessor classes depending on which transform
         path is the most optimal.
         """
         return BatchFormat.PANDAS
