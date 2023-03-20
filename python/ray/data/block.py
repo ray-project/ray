@@ -61,6 +61,9 @@ KeyFn = Union[None, str, Callable[[T], Any]]
 def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
     """Check the key function is valid on the given dataset."""
     schema = ds.schema(fetch_if_missing=True)
+    if schema is None:
+        # Dataset is empty/cleared, validation not possible.
+        return
     is_simple_format = isinstance(schema, type)
     if isinstance(key, str):
         if is_simple_format:

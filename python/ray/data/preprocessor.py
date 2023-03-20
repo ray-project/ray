@@ -290,7 +290,7 @@ class Preprocessor(abc.ABC):
         except ImportError:
             pyarrow = None
 
-        if isinstance(data, (pd.DataFrame, pyarrow.Table, dict, np.ndarray)):
+        if not isinstance(data, (pd.DataFrame, pyarrow.Table, dict, np.ndarray)):
             raise ValueError(
                 "`transform_batch` is currently only implemented for Pandas "
                 "DataFrames, pyarrow Tables, NumPy ndarray and dictionary of "
