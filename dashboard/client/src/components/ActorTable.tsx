@@ -15,7 +15,7 @@ import { orange } from "@material-ui/core/colors";
 import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
-import React, { useCallback, useContext, useEffect, useState } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import { DurationText } from "../common/DurationText";
@@ -77,6 +77,7 @@ export const sortActors = (actorList: Actor[]) => {
   });
   return sortedActors;
 };
+
 const ActorTable = ({
   actors = {},
   workers = [],
@@ -87,7 +88,6 @@ const ActorTable = ({
   detailPathPrefix = "",
 }: ActorTableProps) => {
   const [pageNo, setPageNo] = useState(1);
-  const [sortedActors, setSortedActors] = useState<Actor[]>([]);
   const { changeFilter, filterFunc } = useFilter<string>({
     overrideFilters:
       filterToActorId !== undefined
@@ -99,18 +99,14 @@ const ActorTable = ({
   const [pageSize, setPageSize] = useState(10);
   const { ipLogMap } = useContext(GlobalContext);
 
-  const actorList = Object.values(actors || {}).filter(filterFunc);
-
-  const sortActorsCallback = useCallback(() => {
-    const sortedActors = sortActors(actorList);
-    setSortedActors(sortedActors);
-  }, [actorList]);
-
-  useEffect(() => {
-    sortActorsCallback();
-  }, [sortActorsCallback]);
+  //We get a filtered and sorted actor list to render from prop actors
+  const sortedActors = useMemo(() => {
+    const actorList = Object.values(actors || {}).filter(filterFunc);
+    return sortActors(actorList);
+  }, [actors, filterFunc]);
 
   const list = sortedActors.slice((pageNo - 1) * pageSize, pageNo * pageSize);
+
   const classes = rowStyles();
 
   const columns = [
@@ -324,11 +320,11 @@ const ActorTable = ({
           <Pagination
             page={pageNo}
             onChange={(e, num) => setPageNo(num)}
-            count={Math.ceil(actorList.length / pageSize)}
+            count={Math.ceil(sortedActors.length / pageSize)}
           />
         </div>
         <div>
-          <StateCounter type="actor" list={actorList} />
+          <StateCounter type="actor" list={sortedActors} />
         </div>
       </div>
       <div className={classes.tableContainer}>
