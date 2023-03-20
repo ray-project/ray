@@ -5,42 +5,31 @@ import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import ActorDetailPage from "./pages/actor/ActorDetail";
-import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
-import JobList, { NewIAJobsPage } from "./pages/job";
+import JobList, { JobsLayout } from "./pages/job";
 import { JobDetailChartsPage } from "./pages/job/JobDetail";
 import { JobDetailActorsPage } from "./pages/job/JobDetailActorPage";
 import { JobDetailInfoPage } from "./pages/job/JobDetailInfoPage";
 import { JobDetailLayout } from "./pages/job/JobDetailLayout";
-import { DEFAULT_VALUE, MainNavContext } from "./pages/layout/mainNavContext";
 import { MainNavLayout } from "./pages/layout/MainNavLayout";
 import { SideTabPage } from "./pages/layout/SideTabLayout";
-import { NewIALogsPage } from "./pages/log/Logs";
+import { LogsLayout } from "./pages/log/Logs";
 import { Metrics } from "./pages/metrics";
 import { getMetricsInfo } from "./pages/metrics/utils";
-import Nodes, { NewIAClusterPage } from "./pages/node";
+import Nodes, { ClusterMainPageLayout } from "./pages/node";
 import { ClusterDetailInfoPage } from "./pages/node/ClusterDetailInfoPage";
 import { ClusterLayout } from "./pages/node/ClusterLayout";
 import NodeDetailPage from "./pages/node/NodeDetail";
 import { OverviewPage } from "./pages/overview/OverviewPage";
 import { getNodeList } from "./service/node";
-import { darkTheme, lightTheme } from "./theme";
-import { getLocalStorage, setLocalStorage } from "./util/localData";
+import { lightTheme } from "./theme";
 
 dayjs.extend(duration);
 
 // lazy loading fro prevent loading too much code at once
 const Actors = React.lazy(() => import("./pages/actor"));
 const CMDResult = React.lazy(() => import("./pages/cmd/CMDResult"));
-const Index = React.lazy(() => import("./pages/index/Index"));
-const Job = React.lazy(() => import("./pages/job"));
-const BasicLayout = React.lazy(() => import("./pages/layout"));
 const Logs = React.lazy(() => import("./pages/log/Logs"));
-const Node = React.lazy(() => import("./pages/node"));
-const NodeDetail = React.lazy(() => import("./pages/node/NodeDetail"));
-
-// key to store theme in local storage
-const RAY_DASHBOARD_THEME_KEY = "ray-dashboard-theme";
 
 // a global map for relations
 type GlobalContextType = {
@@ -77,13 +66,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   sessionName: undefined,
 });
 
-export const getDefaultTheme = () =>
-  getLocalStorage<string>(RAY_DASHBOARD_THEME_KEY) || "light";
-export const setLocalTheme = (theme: string) =>
-  setLocalStorage(RAY_DASHBOARD_THEME_KEY, theme);
-
 const App = () => {
-  const [theme, _setTheme] = useState(getDefaultTheme());
   const [context, setContext] = useState<GlobalContextType>({
     nodeMap: {},
     nodeMapByIp: {},
@@ -94,19 +77,6 @@ const App = () => {
     prometheusHealth: undefined,
     sessionName: undefined,
   });
-  const getTheme = (name: string) => {
-    switch (name) {
-      case "dark":
-        return darkTheme;
-      case "light":
-      default:
-        return lightTheme;
-    }
-  };
-  const setTheme = (name: string) => {
-    setLocalTheme(name);
-    _setTheme(name);
-  };
   useEffect(() => {
     getNodeList().then((res) => {
       if (res?.data?.data?.summary) {
@@ -150,116 +120,82 @@ const App = () => {
   }, []);
 
   return (
-    <ThemeProvider theme={getTheme(theme)}>
+    <ThemeProvider theme={lightTheme}>
       <Suspense fallback={Loading}>
         <GlobalContext.Provider value={context}>
           <CssBaseline />
           <HashRouter>
-            {/* Dummy MainNavContext so we can re-use existing pages in new layout */}
-            <MainNavContext.Provider value={DEFAULT_VALUE}>
-              <Routes>
-                <Route element={<Navigate replace to="/new" />} path="/" />
-                <Route
-                  element={<BasicLayout setTheme={setTheme} theme={theme} />}
-                >
-                  <Route element={<Index />} path="/summary" />
-                  <Route element={<Job />} path="/job" />
-                  <Route element={<Node />} path="/node" />
-                  <Route element={<Actors />} path="/actors" />
-                  <Route element={<Events />} path="/events" />
-                  <Route element={<Metrics />} path="/metrics" />
+            <Routes>
+              {/* Redirect people hitting the /new path to root. TODO(aguo): Delete this redirect in ray 2.5 */}
+              <Route element={<Navigate replace to="/" />} path="/new" />
+              <Route element={<MainNavLayout />} path="/">
+                <Route element={<Navigate replace to="overview" />} path="" />
+                <Route element={<OverviewPage />} path="overview" />
+                <Route element={<ClusterMainPageLayout />} path="cluster">
+                  <Route element={<ClusterLayout />} path="">
+                    <Route
+                      element={
+                        <SideTabPage tabId="info">
+                          <ClusterDetailInfoPage />
+                        </SideTabPage>
+                      }
+                      path="info"
+                    />
+                    <Route
+                      element={
+                        <SideTabPage tabId="table">
+                          <Nodes />
+                        </SideTabPage>
+                      }
+                      path=""
+                    />
+                    <Route element={<NodeDetailPage />} path="nodes/:id" />
+                  </Route>
+                </Route>
+                <Route element={<JobsLayout />} path="jobs">
+                  <Route element={<JobList />} path="" />
+                  <Route element={<JobDetailLayout />} path=":id">
+                    <Route
+                      element={
+                        <SideTabPage tabId="info">
+                          <JobDetailInfoPage />
+                        </SideTabPage>
+                      }
+                      path="info"
+                    />
+                    <Route
+                      element={
+                        <SideTabPage tabId="charts">
+                          <JobDetailChartsPage />
+                        </SideTabPage>
+                      }
+                      path=""
+                    />
+                    <Route
+                      element={
+                        <SideTabPage tabId="actors">
+                          <JobDetailActorsPage />
+                        </SideTabPage>
+                      }
+                      path="actors"
+                    />
+                    <Route element={<ActorDetailPage />} path="actors/:id" />
+                  </Route>
+                </Route>
+                <Route element={<Actors />} path="actors" />
+                <Route element={<ActorDetailPage />} path="actors/:id" />
+                <Route element={<Metrics />} path="metrics" />
+                <Route element={<LogsLayout />} path="logs">
                   {/* TODO(aguo): Refactor Logs component to use optional query
-                      params since react-router 6 doesn't support optional path params... */}
-                  <Route
-                    element={<Logs theme={theme as "light" | "dark"} />}
-                    path="/log"
-                  />
-                  <Route
-                    element={<Logs theme={theme as "light" | "dark"} />}
-                    path="/log/:host"
-                  />
-                  <Route
-                    element={<Logs theme={theme as "light" | "dark"} />}
-                    path="/log/:host/:path"
-                  />
-                  <Route element={<NodeDetail />} path="/node/:id" />
-                  <Route element={<JobDetailChartsPage />} path="/job/:id" />
-                  <Route element={<ActorDetailPage />} path="/actors/:id" />
-                  <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />
-                  <Route element={<Loading />} path="/loading" />
-                </Route>
-                {/* New IA routes below! */}
-                <Route element={<MainNavLayout />} path="/new">
-                  <Route element={<Navigate replace to="overview" />} path="" />
-                  <Route element={<OverviewPage />} path="overview" />
-                  <Route element={<NewIAClusterPage />} path="cluster">
-                    <Route element={<ClusterLayout />} path="">
-                      <Route
-                        element={
-                          <SideTabPage tabId="info">
-                            <ClusterDetailInfoPage />
-                          </SideTabPage>
-                        }
-                        path="info"
-                      />
-                      <Route
-                        element={
-                          <SideTabPage tabId="table">
-                            <Nodes newIA />
-                          </SideTabPage>
-                        }
-                        path=""
-                      />
-                      <Route
-                        element={<NodeDetailPage newIA />}
-                        path="nodes/:id"
-                      />
-                    </Route>
-                  </Route>
-                  <Route element={<NewIAJobsPage />} path="jobs">
-                    <Route element={<JobList newIA />} path="" />
-                    <Route element={<JobDetailLayout />} path=":id">
-                      <Route
-                        element={
-                          <SideTabPage tabId="info">
-                            <JobDetailInfoPage />
-                          </SideTabPage>
-                        }
-                        path="info"
-                      />
-                      <Route
-                        element={
-                          <SideTabPage tabId="charts">
-                            <JobDetailChartsPage newIA />
-                          </SideTabPage>
-                        }
-                        path=""
-                      />
-                      <Route
-                        element={
-                          <SideTabPage tabId="actors">
-                            <JobDetailActorsPage />
-                          </SideTabPage>
-                        }
-                        path="actors"
-                      />
-                      <Route element={<ActorDetailPage />} path="actors/:id" />
-                    </Route>
-                  </Route>
-                  <Route element={<Actors newIA />} path="actors" />
-                  <Route element={<ActorDetailPage />} path="actors/:id" />
-                  <Route element={<Metrics newIA />} path="metrics" />
-                  <Route element={<NewIALogsPage />} path="logs">
-                    {/* TODO(aguo): Refactor Logs component to use optional query
                         params since react-router 6 doesn't support optional path params... */}
-                    <Route element={<Logs newIA />} path="" />
-                    <Route element={<Logs newIA />} path=":host">
-                      <Route element={<Logs newIA />} path=":path" />
-                    </Route>
+                  <Route element={<Logs />} path="" />
+                  <Route element={<Logs />} path=":host">
+                    <Route element={<Logs />} path=":path" />
                   </Route>
                 </Route>
-              </Routes>
-            </MainNavContext.Provider>
+              </Route>
+              <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />
+            </Routes>
           </HashRouter>
         </GlobalContext.Provider>
       </Suspense>

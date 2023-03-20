@@ -51,8 +51,9 @@ def test_build_streaming_topology():
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
     o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
-    topo = build_streaming_topology(o3, ExecutionOptions())
+    topo, num_progress_bars = build_streaming_topology(o3, ExecutionOptions())
     assert len(topo) == 3, topo
+    assert num_progress_bars == 3, num_progress_bars
     assert o1 in topo, topo
     assert not topo[o1].inqueues, topo
     assert topo[o1].outqueue == topo[o2].inqueues[0], topo
@@ -75,7 +76,7 @@ def test_process_completed_tasks():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
-    topo = build_streaming_topology(o2, ExecutionOptions())
+    topo, _ = build_streaming_topology(o2, ExecutionOptions())
 
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo
@@ -109,7 +110,7 @@ def test_select_operator_to_run():
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
     o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
-    topo = build_streaming_topology(o3, opt)
+    topo, _ = build_streaming_topology(o3, opt)
 
     # Test empty.
     assert (
@@ -213,7 +214,7 @@ def test_debug_dump_topology():
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
     o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
-    topo = build_streaming_topology(o3, opt)
+    topo, _ = build_streaming_topology(o3, opt)
     # Just a sanity check to ensure it doesn't crash.
     _debug_dump_topology(topo)
 
@@ -232,7 +233,7 @@ def test_validate_topology():
         o2,
         compute_strategy=ray.data.ActorPoolStrategy(4, 4),
     )
-    topo = build_streaming_topology(o3, opt)
+    topo, _ = build_streaming_topology(o3, opt)
     _validate_topology(topo, ExecutionResources())
     _validate_topology(topo, ExecutionResources(cpu=20))
     _validate_topology(topo, ExecutionResources(gpu=0))
@@ -385,7 +386,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
     )
-    topo = build_streaming_topology(o3, opt)
+    topo, _ = build_streaming_topology(o3, opt)
     topo[o2].outqueue.append("dummy1")
     o1.num_active_work_refs = MagicMock(return_value=2)
     assert (
@@ -476,7 +477,7 @@ def test_calculate_topology_usage():
     o3.current_resource_usage = MagicMock(
         return_value=ExecutionResources(cpu=10, object_store_memory=1000)
     )
-    topo = build_streaming_topology(o3, ExecutionOptions())
+    topo, _ = build_streaming_topology(o3, ExecutionOptions())
     inputs[0].size_bytes = MagicMock(return_value=200)
     topo[o2].outqueue = [inputs[0]]
     usage = TopologyResourceUsage.of(topo)

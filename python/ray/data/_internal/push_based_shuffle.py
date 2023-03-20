@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle import ShuffleOp
@@ -369,6 +370,7 @@ class PushBasedShufflePlan(ShuffleOp):
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         merge_factor: int = 2,
+        ctx: Optional[TaskContext] = None,
     ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
         logger.info("Using experimental push-based shuffle.")
         # TODO(swang): For jobs whose reduce work is heavier than the map work,
@@ -426,7 +428,18 @@ class PushBasedShufflePlan(ShuffleOp):
             shuffle_map,
             [output_num_blocks, stage.merge_schedule, *self._map_args],
         )
-        map_bar = ProgressBar("Shuffle Map", position=0, total=len(input_blocks_list))
+
+        should_close_bar = True
+        if ctx is not None and ctx.sub_progress_bar_dict is not None:
+            bar_name = "ShuffleMap"
+            assert bar_name in ctx.sub_progress_bar_dict, ctx.sub_progress_bar_dict
+            map_bar = ctx.sub_progress_bar_dict[bar_name]
+            should_close_bar = False
+        else:
+            map_bar = ProgressBar(
+                "Shuffle Map", position=0, total=len(input_blocks_list)
+            )
+
         map_stage_executor = _PipelinedStageExecutor(
             map_stage_iter, stage.num_map_tasks_per_round, progress_bar=map_bar
         )
@@ -460,11 +473,20 @@ class PushBasedShufflePlan(ShuffleOp):
                 merge_done = True
                 break
 
-        map_bar.close()
+        if should_close_bar:
+            map_bar.close()
         all_merge_results = merge_stage_iter.pop_merge_results()
 
         # Execute and wait for the reduce stage.
-        reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
+        should_close_bar = True
+        if ctx is not None and ctx.sub_progress_bar_dict is not None:
+            bar_name = "ShuffleReduce"
+            assert bar_name in ctx.sub_progress_bar_dict, ctx.sub_progress_bar_dict
+            reduce_bar = ctx.sub_progress_bar_dict[bar_name]
+            should_close_bar = False
+        else:
+            reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
+
         shuffle_reduce = cached_remote_fn(self.reduce)
         reduce_stage_iter = _ReduceStageIterator(
             stage,
@@ -508,7 +530,9 @@ class PushBasedShufflePlan(ShuffleOp):
         assert (
             len(new_blocks) == output_num_blocks
         ), f"Expected {output_num_blocks} outputs, produced {len(new_blocks)}"
-        reduce_bar.close()
+
+        if should_close_bar:
+            reduce_bar.close()
 
         stats = {
             "map": map_stage_metadata,

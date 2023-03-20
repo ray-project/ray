@@ -63,12 +63,22 @@ def test_input_data_buffer(ray_start_regular_shared):
 
 def test_all_to_all_operator():
     def dummy_all_transform(bundles: List[RefBundle], ctx):
+        assert len(ctx.sub_progress_bar_dict) == 2
+        assert list(ctx.sub_progress_bar_dict.keys()) == ["Test1", "Test2"]
         return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
 
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     op = AllToAllOperator(
-        dummy_all_transform, input_op=input_op, num_outputs=2, name="TestAll"
+        dummy_all_transform,
+        input_op=input_op,
+        num_outputs=2,
+        sub_progress_bar_names=["Test1", "Test2"],
+        name="TestAll",
     )
+
+    # Initialize progress bar.
+    num_bars = op.initialize_sub_progress_bars(0)
+    assert num_bars == 2, num_bars
 
     # Feed data.
     op.start(ExecutionOptions())
@@ -82,6 +92,7 @@ def test_all_to_all_operator():
     stats = op.get_stats()
     assert "FooStats" in stats
     assert op.completed()
+    op.close_sub_progress_bars()
 
 
 def test_num_outputs_total():
