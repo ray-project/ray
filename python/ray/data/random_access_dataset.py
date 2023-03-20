@@ -39,9 +39,6 @@ class RandomAccessDataset(Generic[T]):
         The constructor is a private API. Use ``dataset.to_random_access_dataset()``
         to construct a RandomAccessDataset.
         """
-        ctx = DatasetContext.get_current()
-        assert not ctx.use_streaming_executor
-
         schema = dataset.schema(fetch_if_missing=True)
         if schema is None or isinstance(schema, type):
             raise ValueError("RandomAccessDataset only supports Arrow-format datasets.")
