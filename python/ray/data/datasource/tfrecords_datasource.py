@@ -175,8 +175,7 @@ def _get_feature_value(
                 "Schema field type mismatch during read: specified type is "
                 f"{spec_type}, but underlying type is {und_type}",
             )
-        # Override the underlying value type with the type
-        # in the user-specified schema.
+        # Override the underlying value type with the type in the user-specified schema.
         underlying_feature_type = specified_feature_type
 
     if underlying_feature_type["bytes"]:
@@ -256,8 +255,7 @@ def _value_to_feature(
                 "Schema field type mismatch during write: specified type is "
                 f"{spec_type}, but underlying type is {und_type}",
             )
-        # Override the underlying value type with the type
-        # in the user-specified schema.
+        # Override the underlying value type with the type in the user-specified schema.
         underlying_value_type = specified_feature_type
 
     if underlying_value_type["int"]:
