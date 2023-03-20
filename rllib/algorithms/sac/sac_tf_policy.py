@@ -777,7 +777,7 @@ def validate_spaces(
 # above.
 SACTFPolicy = build_tf_policy(
     name="SACTFPolicy",
-    get_default_config=lambda: ray.rllib.algorithms.sac.sac.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.sac.sac.SACConfig(),
     make_model=build_sac_model,
     postprocess_fn=postprocess_trajectory,
     action_distribution_fn=get_distribution_inputs_and_class,
