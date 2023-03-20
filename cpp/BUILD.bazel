@@ -347,6 +347,49 @@ cc_binary(
     ],
 )
 
+cc_test(
+    name = "metric_example",
+    srcs = glob([
+        "src/ray/test/examples/metric_example.cc",
+    ]),
+    args = [
+        "--ray_code_search_path $(location metric_example.so)",
+    ],
+    data = [
+        "metric_example.so",
+    ],
+    linkstatic = True,
+    tags = ["team:serverless"],
+    deps = [
+        "ray_cpp_lib",
+        "@boost//:callable_traits",
+        "@boost//:optional",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@msgpack",
+        "@nlohmann_json",
+    ],
+)
+
+cc_binary(
+    name = "metric_example.so",
+    testonly = True,
+    srcs = glob([
+        "src/ray/test/examples/metric_example.cc",
+    ]),
+    linkopts = ["-shared"],
+    linkstatic = True,
+    deps = [
+        "ray_cpp_lib",
+        "@boost//:callable_traits",
+        "@boost//:optional",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@msgpack",
+        "@nlohmann_json",
+    ],
+)
+
 load("//bazel:python.bzl", "py_test_module_list")
 
 py_test_module_list(

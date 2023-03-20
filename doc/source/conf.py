@@ -34,7 +34,10 @@ import ray
 
 default_role = "py:obj"
 
+sys.path.append(os.path.abspath("./_ext"))
+
 extensions = [
+    "callouts",  # custom extension from _ext folder
     "sphinx_panels",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
@@ -154,9 +157,7 @@ language = None
 # directories to ignore when looking for source files.
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
-    "_build",
-    "source/workflows/api/doc/ray.workflow.*",
-    "source/serve/api/doc/ray.serve.*",
+    "templates/*",
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.

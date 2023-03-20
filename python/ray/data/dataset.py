@@ -125,7 +125,7 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI, Deprecated
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import ensure_notebook_deps, fallback_if_colab
@@ -150,6 +150,7 @@ if TYPE_CHECKING:
     from ray.data.grouped_dataset import GroupedDataset
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
+    from tensorflow_metadata.proto.v0 import schema_pb2
 
 
 logger = logging.getLogger(__name__)
@@ -353,7 +354,7 @@ class Dataset(Generic[T]):
 
         plan = self._plan.with_stage(
             OneToOneStage(
-                "map",
+                "Map",
                 transform_fn,
                 compute,
                 ray_remote_args,
@@ -804,10 +805,10 @@ class Dataset(Generic[T]):
             >>> ds
             MapBatches(<lambda>)
             +- Dataset(
-                num_blocks=10,
-                num_rows=10,
-                schema={col1: int64, col2: int64, col3: int64}
-            )
+                  num_blocks=10,
+                  num_rows=10,
+                  schema={col1: int64, col2: int64, col3: int64}
+               )
 
 
         Time complexity: O(dataset size / parallelism)
@@ -891,7 +892,7 @@ class Dataset(Generic[T]):
         transform_fn = generate_flat_map_fn()
 
         plan = self._plan.with_stage(
-            OneToOneStage("flat_map", transform_fn, compute, ray_remote_args, fn=fn)
+            OneToOneStage("FlatMap", transform_fn, compute, ray_remote_args, fn=fn)
         )
 
         logical_plan = self._logical_plan
@@ -957,7 +958,7 @@ class Dataset(Generic[T]):
         transform_fn = generate_filter_fn()
 
         plan = self._plan.with_stage(
-            OneToOneStage("filter", transform_fn, compute, ray_remote_args, fn=fn)
+            OneToOneStage("Filter", transform_fn, compute, ray_remote_args, fn=fn)
         )
 
         logical_plan = self._logical_plan
@@ -1154,8 +1155,8 @@ class Dataset(Generic[T]):
         equal: bool = False,
         locality_hints: Optional[List["NodeIdStr"]] = None,
     ) -> List[DatasetIterator]:
-        """Returns ``n`` :class:`~ray.data.DatasetIterator`s that can be used to read
-        disjoint subsets of the dataset in parallel.
+        """Returns ``n`` :class:`DatasetIterators <ray.data.DatasetIterator>` that can
+        be used to read disjoint subsets of the dataset in parallel.
 
         This method is the recommended way to consume Datasets from multiple processes
         (e.g., for distributed training). It requires streaming execution mode.
@@ -1435,7 +1436,7 @@ class Dataset(Generic[T]):
         parent_stats = self._plan.stats()
         splits = []
         for bs, ms in zip(blocks, metadata):
-            stats = DatasetStats(stages={"split": ms}, parent=parent_stats)
+            stats = DatasetStats(stages={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
             splits.append(
                 Dataset(
@@ -1657,7 +1658,7 @@ class Dataset(Generic[T]):
                     "be shown again.".format(set(epochs), max_epoch)
                 )
         dataset_stats = DatasetStats(
-            stages={"union": []},
+            stages={"Union": []},
             parent=[d._plan.stats() for d in datasets],
         )
         dataset_stats.time_total_s = time.perf_counter() - start_time
@@ -2190,7 +2191,7 @@ class Dataset(Generic[T]):
             for m in metadata
         ]
         dataset_stats = DatasetStats(
-            stages={"limit": meta_for_stats},
+            stages={"Limit": meta_for_stats},
             parent=self._plan.stats(),
         )
         dataset_stats.time_total_s = split_duration
@@ -2568,6 +2569,7 @@ class Dataset(Generic[T]):
         self,
         path: str,
         *,
+        tf_schema: Optional["schema_pb2.Schema"] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -2626,6 +2628,7 @@ class Dataset(Generic[T]):
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
+            tf_schema=tf_schema,
         )
 
     @ConsumptionAPI
@@ -2790,7 +2793,7 @@ class Dataset(Generic[T]):
 
             plan = self._plan.with_stage(
                 OneToOneStage(
-                    "write",
+                    "Write",
                     write_fn_wrapper,
                     "tasks",
                     ray_remote_args,
@@ -2811,7 +2814,7 @@ class Dataset(Generic[T]):
             try:
                 self._write_ds = Dataset(
                     plan, self._epoch, self._lazy, logical_plan
-                ).fully_executed()
+                ).cache()
                 datasource.on_write_complete(
                     ray.get(self._write_ds._plan.execute().get_blocks())
                 )
@@ -2895,33 +2898,8 @@ class Dataset(Generic[T]):
         Returns:
             A local iterator over the entire dataset.
         """
-        # During row-based ops, we also choose a batch format that lines up with the
-        # current dataset format in order to eliminate unnecessary copies and type
-        # conversions.
-        ctx = DatasetContext.get_current()
-        if ctx.use_streaming_executor:
-            # TODO: calling dataset_format() triggers bulk execution.
-            batch_format = "default"
-        else:
-            try:
-                dataset_format = self.dataset_format()
-            except ValueError:
-                # Dataset is empty or cleared, so fall back to "default".
-                batch_format = "default"
-            else:
-                batch_format = (
-                    "pyarrow"
-                    if dataset_format == BlockFormat.ARROW
-                    else "pandas"
-                    if dataset_format == BlockFormat.PANDAS
-                    else "default"
-                )
-        for batch in self.iter_batches(
-            batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
-        ):
-            batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
-            for row in batch.iter_rows():
-                yield row
+
+        return self.iterator().iter_rows(prefetch_blocks=prefetch_blocks)
 
     @ConsumptionAPI
     def iter_batches(
@@ -3305,16 +3283,16 @@ class Dataset(Generic[T]):
             >>> ds
             Concatenator
             +- Dataset(
-               num_blocks=1,
-               num_rows=150,
-               schema={
-                  sepal length (cm): double,
-                  sepal width (cm): double,
-                  petal length (cm): double,
-                  petal width (cm): double,
-                  target: int64
-               }
-            )
+                  num_blocks=1,
+                  num_rows=150,
+                  schema={
+                     sepal length (cm): double,
+                     sepal width (cm): double,
+                     petal length (cm): double,
+                     petal width (cm): double,
+                     target: int64
+                  }
+               )
             >>> ds.to_tf("features", "target")  # doctest: +SKIP
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
@@ -3951,8 +3929,33 @@ class Dataset(Generic[T]):
             )
         return pipe
 
+    @Deprecated(message="Use `Dataset.cache()` instead.")
     def fully_executed(self) -> "Dataset[T]":
-        """Force full evaluation of the blocks of this dataset.
+        warnings.warn(
+            "The 'fully_executed' call has been renamed to 'cache'.",
+            DeprecationWarning,
+        )
+        return self.cache()
+
+    @Deprecated(message="Use `Dataset.is_cached()` instead.")
+    def is_fully_executed(self) -> bool:
+        warnings.warn(
+            "The 'is_fully_executed' call has been renamed to 'is_cached'.",
+            DeprecationWarning,
+        )
+        return self.is_cached()
+
+    def is_cached(self) -> bool:
+        """Returns whether this Dataset has been cached in memory.
+
+        This will return False if the output of its final stage hasn't been computed
+        yet.
+        """
+        return self._plan.has_computed_output()
+
+    @ConsumptionAPI(pattern="store memory.", insert_after=True)
+    def cache(self) -> "Dataset[T]":
+        """Evaluate and cache the blocks of this Dataset in object store memory.
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
@@ -3963,17 +3966,13 @@ class Dataset(Generic[T]):
         self._plan.execute(force_read=True)
         return self
 
-    def is_fully_executed(self) -> bool:
-        """Returns whether this Dataset has been fully executed.
-
-        This will return False if the output of its final stage hasn't been computed
-        yet.
-        """
-        return self._plan.has_computed_output()
-
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
     def stats(self) -> str:
-        """Returns a string containing execution timing information."""
+        """Returns a string containing execution timing information.
+
+        Note that this does not trigger execution, so if the Dataset has not yet
+        executed, an empty string will be returned.
+        """
         return self._get_stats_summary().to_string()
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
@@ -4005,7 +4004,7 @@ class Dataset(Generic[T]):
         The returned dataset is a lazy dataset, where all subsequent operations on the
         dataset won't be executed until the dataset is consumed (e.g. ``.take()``,
         ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.) or execution is
-        manually triggered via ``.fully_executed()``.
+        manually triggered via ``.cache()``.
         """
         ds = Dataset(
             self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
@@ -4433,6 +4432,24 @@ class Dataset(Generic[T]):
         if self._current_executor:
             self._current_executor.shutdown()
             self._current_executor = None
+
+    def __getstate__(self):
+        # Note: excludes _current_executor which is not serializable.
+        return {
+            "plan": self._plan,
+            "uuid": self._uuid,
+            "epoch": self._epoch,
+            "lazy": self._lazy,
+            "logical_plan": self._logical_plan,
+        }
+
+    def __setstate__(self, state):
+        self._plan = state["plan"]
+        self._uuid = state["uuid"]
+        self._epoch = state["epoch"]
+        self._lazy = state["lazy"]
+        self._logical_plan = state["logical_plan"]
+        self._current_executor = None
 
 
 def _get_size_bytes(block: Block) -> int:
