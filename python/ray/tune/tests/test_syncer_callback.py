@@ -64,12 +64,17 @@ def temp_data_dirs():
 
 @pytest.fixture
 def syncer_callback_test_setup(ray_start_2_cpus, temp_data_dirs):
-    """Harness that sets up a sync directory and syncs one file to start with."""
+    """Harness that sets up a sync directory and syncs one file (level0.txt) to start.
+    This test also writes another file (level0_new.txt) and advances time such that
+    the next `on_trial_result` will happen after the `sync_period` and start a new
+    sync process.
+    """
     tmp_source, tmp_target = temp_data_dirs
 
+    sync_period = 60
     with freeze_time() as frozen:
         syncer_callback = TestSyncerCallback(
-            sync_period=60, local_logdir_override=tmp_target
+            sync_period=sync_period, local_logdir_override=tmp_target
         )
 
         trial1 = MockTrial(trial_id="a", logdir=tmp_source)
@@ -86,7 +91,7 @@ def syncer_callback_test_setup(ray_start_2_cpus, temp_data_dirs):
 
         assert_file(False, tmp_target, "level0_new.txt")
 
-        frozen.tick(60)
+        frozen.tick(sync_period)
 
         expected_filenames = ["level0.txt", "level0_new.txt"]
         expected_files_after_sync = [
@@ -356,7 +361,6 @@ def test_syncer_callback_force_on_hooks(syncer_callback_test_setup, on):
         syncer_callback.on_trial_result(
             iteration=2, trials=[trial], trial=trial, result={}
         )
-        # syncer_callback.on_trial_complete(iteration=2, trials=[trial], trial=trial)
         syncer_callback.on_experiment_end(trials=[trial])
 
     # Assert that all expected files have been synced.
