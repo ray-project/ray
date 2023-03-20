@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, Tuple, Any
+from typing import List, Dict, Optional, Tuple, Any, TYPE_CHECKING
 
 import collections
 from dataclasses import dataclass
@@ -26,6 +26,9 @@ from ray.tune.result import (
     TRAINING_ITERATION,
 )
 from ray.tune.experiment.trial import Trial
+
+if TYPE_CHECKING:
+    from ray.tune.stopper import Stopper
 
 # defines the mapping of the key in result and the key to be printed in table.
 # Note this is ordered!
@@ -68,7 +71,9 @@ except NameError:
 
 
 def get_air_verbosity() -> Optional[AirVerbosity]:
-    return os.environ.get("AIR_VERBOSITY", None)
+    verbosity = os.environ.get("AIR_VERBOSITY", None)
+    if verbosity:
+        return AirVerbosity(int(verbosity)) if verbosity else None
 
 
 def _get_current_time():
@@ -318,7 +323,7 @@ class ProgressReporter:
     # TODO: Make this configurable
     _heartbeat_freq = 30  # every 30 sec
     # to be updated by subclasses.
-    _heartbeat_threshold = AirVerbosity.DEFAULT
+    _heartbeat_threshold = None
 
     def __init__(self, verbosity: AirVerbosity):
         """
@@ -483,10 +488,36 @@ BLACKLISTED_KEYS = {
 }
 
 
+class AirResultCallbackWrapper(Callback):
+    # This is only to bypass the issue that by the time default callbacks
+    # are added, there is no information on `num_samples` yet.
+    def __init__(self, verbosity):
+        self._verbosity = verbosity
+
+    def setup(
+        self,
+        stop: Optional["Stopper"] = None,
+        num_samples: Optional[int] = None,
+        total_num_samples: Optional[int] = None,
+        **info,
+    ):
+        self._callback = (
+            TuneResultProgressCallback(self._verbosity)
+            if total_num_samples > 1
+            else TrainResultProgressCallback(self._verbosity)
+        )
+
+    # everything ELSE is just passing through..
+    def __getattr__(self, attr):
+        if attr == "setup":
+            return getattr(self, attr)
+        return getattr(self._callback, attr)
+
+
 class AirResultProgressCallback(Callback):
     # to be filled in by subclasses.
-    _start_end_verbosity = AirVerbosity.DEFAULT
-    _intermediate_result_verbosity = AirVerbosity.DEFAULT
+    _start_end_verbosity = None
+    _intermediate_result_verbosity = None
 
     def __init__(self, verbosity):
         self._verbosity = verbosity
@@ -545,13 +576,3 @@ class TuneResultProgressCallback(AirResultProgressCallback):
 class TrainResultProgressCallback(AirResultProgressCallback):
     _intermediate_result_verbosity = AirVerbosity.DEFAULT
     _start_end_verbosity = AirVerbosity.DEFAULT
-
-
-def _detect_result_progress_callback(
-    verbosity: AirVerbosity, is_tuning: bool
-) -> AirResultProgressCallback:
-    return (
-        TuneResultProgressCallback(verbosity)
-        if is_tuning
-        else TrainResultProgressCallback(verbosity)
-    )

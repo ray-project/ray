@@ -20,7 +20,7 @@ from ray.tune.syncer import SyncerCallback
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ray.tune.experimental.output import AirVerbosity
+    from ray.tune.experimental.output import AirVerbosity, AirResultCallbackWrapper
 
 DEFAULT_CALLBACK_CLASSES = (
     CSVLoggerCallback,
@@ -44,7 +44,6 @@ def _create_default_callbacks(
     *,
     sync_config: SyncConfig,
     air_verbosity: Optional["AirVerbosity"],
-    is_tuning: bool,
     metric: Optional[str] = None,
     progress_metrics: Optional[List[str]] = None,
 ):
@@ -92,9 +91,7 @@ def _create_default_callbacks(
         ]
         callbacks = new_callbacks
     if air_verbosity:  # new flow
-        from ray.tune.experimental.output import _detect_result_progress_callback
-
-        callbacks.append(_detect_result_progress_callback(air_verbosity, is_tuning))
+        callbacks.append(AirResultCallbackWrapper(air_verbosity))
     elif not has_trial_progress_callback:  # old flow
         trial_progress_callback = TrialProgressCallback(
             metric=metric, progress_metrics=progress_metrics

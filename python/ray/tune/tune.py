@@ -765,7 +765,6 @@ def run(
         callbacks,
         sync_config=sync_config,
         air_verbosity=air_verbosity,
-        is_tuning=search_alg.total_samples > 1,
         metric=metric,
         progress_metrics=progress_metrics,
     )
