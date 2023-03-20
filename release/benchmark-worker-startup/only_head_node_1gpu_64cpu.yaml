@@ -19,8 +19,8 @@ aws:
         - DeviceName: /dev/sda1
           Ebs:
             DeleteOnTermination: true
-            # Testing 300 to get apples-to-apples comparison on old stack vs new stack
-            VolumeSize: 300
+            # Testing 400 to get apples-to-apples comparison on old stack vs new stack
+            VolumeSize: 400
             VolumeType: gp3
             Iops: 3000
             Throughput: 500
