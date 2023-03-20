@@ -6,14 +6,17 @@ from collections import defaultdict
 import numpy as np
 from typing import List, Any, Generic, Optional, TYPE_CHECKING
 
-import pyarrow as pa
-
 import ray
 from ray.types import ObjectRef
 from ray.data.block import T, BlockAccessor
 from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.util.annotations import PublicAPI
+
+try:
+    import pyarrow as pa
+except ImportError:
+    pa = None
 
 if TYPE_CHECKING:
     from ray.data import Dataset
