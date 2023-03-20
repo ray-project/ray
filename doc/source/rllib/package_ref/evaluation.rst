@@ -311,8 +311,6 @@ Policy Map API
     PolicyMap.items
     PolicyMap.keys
     PolicyMap.values
-    PolicyMap.update
-    PolicyMap.get
 
 Sample batch API
 ----------------
