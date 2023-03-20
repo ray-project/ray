@@ -520,14 +520,17 @@ def run(
         assert local_path == local_dir
         warnings.warn(
             "Passing a `local_dir` is deprecated and will be removed "
-            "in the future. Set `RunConfig.storage_path` instead or set the"
-            "`TUNE_RESULTS_DIR` environment variable instead."
+            "in the future. Pass `storage_path` instead or set the"
+            "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
         )
+        local_path = local_dir
 
     sync_config.validate_upload_dir(remote_path)
 
     if not local_path:
         local_path = _get_defaults_results_dir()
+
+    storage_path = storage_path or remote_path or local_path
 
     checkpoint_score_attr = checkpoint_score_attr or ""
     if checkpoint_score_attr.startswith("min-"):
