@@ -1,8 +1,7 @@
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union, Iterator
 import warnings
 
-from ray.data.block import DataBatch, T
-from ray.data.row import TableRow
+from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
 
 if TYPE_CHECKING:
@@ -50,12 +49,6 @@ class PipelinedDatasetIterator(DatasetIterator):
             _collate_fn=_collate_fn,
         )
 
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
-        ds = self._get_next_dataset()
-        return ds.iter_rows(
-            prefetch_blocks=prefetch_blocks,
-        )
-
     def stats(self) -> str:
         return self._base_dataset_pipeline.stats()
 
@@ -66,7 +59,7 @@ class PipelinedDatasetIterator(DatasetIterator):
         if name == "_base_dataset_pipeline":
             raise AttributeError
 
-        if hasattr(self._base_dataset_pipeline, name):
+        if hasattr(self._base_dataset_pipeline, name) and not name.startswith("_"):
             # Warning for backwards compatibility. TODO: remove this method in 2.5.
             warnings.warn(
                 "session.get_dataset_shard returns a ray.data.DatasetIterator "

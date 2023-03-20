@@ -263,12 +263,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Subscribes to resource changes.
   std::function<void(const NodeResources &)> resource_change_subscriber_;
 
-  // Specify predefine resources that consists of unit-size instances.
-  std::unordered_set<int64_t> predefined_unit_instance_resources_{};
-
-  // Specify custom resources that consists of unit-size instances.
-  std::unordered_set<int64_t> custom_unit_instance_resources_{};
-
   // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;
 

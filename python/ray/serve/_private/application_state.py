@@ -7,6 +7,7 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     ApplicationStatusInfo,
 )
+from ray.serve.schema import DeploymentDetails
 import time
 from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 import logging
@@ -213,6 +214,13 @@ class ApplicationState:
             deployment_timestamp=self.deployment_timestamp,
         )
 
+    def list_deployment_details(self) -> Dict[str, DeploymentDetails]:
+        """Gets detailed info on all deployments in this application."""
+        return {
+            name: self.deployment_state_manager.get_deployment_details(name)
+            for name in self.get_all_deployments()
+        }
+
 
 class ApplicationStateManager:
     def __init__(self, deployment_state_manager):
@@ -286,12 +294,21 @@ class ApplicationStateManager:
     def get_docs_path(self, app_name: str):
         return self._application_states[app_name].docs_path
 
+    def get_route_prefix(self, name: str) -> str:
+        return self._application_states[name].route_prefix
+
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}"""
         return {
             name: self._application_states[name].get_application_status_info()
             for name in self._application_states
         }
+
+    def list_deployment_details(self, name: str) -> Dict[str, DeploymentDetails]:
+        """Gets detailed info on all deployments in specified application."""
+        if name not in self._application_states:
+            return {}
+        return self._application_states[name].list_deployment_details()
 
     def create_application_state(
         self, name: str, deploy_obj_ref: ObjectRef, deployment_time: float = 0
