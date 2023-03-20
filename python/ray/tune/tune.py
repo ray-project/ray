@@ -532,6 +532,9 @@ def run(
 
     storage_path = storage_path or remote_path or local_path
 
+    if storage_path != local_path and local_path:
+        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
+
     checkpoint_score_attr = checkpoint_score_attr or ""
     if checkpoint_score_attr.startswith("min-"):
         checkpoint_score_attr = checkpoint_score_attr[4:]

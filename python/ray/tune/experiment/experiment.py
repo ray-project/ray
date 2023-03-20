@@ -162,13 +162,6 @@ class Experiment:
         )
 
         if local_dir:
-            if local_storage_path:
-                raise ValueError(
-                    "Only one of `local_dir` and `storage_path` can be passed to "
-                    "``Experiment().` Since `local_dir` is deprecated, pass "
-                    "only `storage_path` instead."
-                )
-
             if log_once("tune_experiment_local_dir"):
                 warnings.warn(
                     "The `local_dir` argument of `Experiment is deprecated. "
