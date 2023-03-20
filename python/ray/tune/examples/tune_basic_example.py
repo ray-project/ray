@@ -44,8 +44,7 @@ if __name__ == "__main__":
         tune_config=tune.TuneConfig(
             metric="mean_loss",
             mode="min",
-            num_samples=12 if args.smoke_test else 50,
-            reuse_actors=True,
+            num_samples=5 if args.smoke_test else 50,
         ),
         param_space={
             "steps": 5 if args.smoke_test else 100,
