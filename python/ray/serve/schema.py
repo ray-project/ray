@@ -11,6 +11,7 @@ from ray.serve._private.common import (
     DeploymentInfo,
     ReplicaState,
 )
+from ray.serve.config import DeploymentMode
 from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -475,16 +476,9 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         return ServeApplicationSchema.parse_obj(app_config)
 
-    def to_deploy_schema(self):
-        return ServeDeploySchema(
-            host=self.host,
-            port=self.port,
-            applications=[self],
-        )
-
 
 @PublicAPI(stability="alpha")
-class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
     host: str = Field(
         default="0.0.0.0",
         description=(
@@ -501,6 +495,29 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
             "Serve has started running. Serve must be shut down and restarted "
             "with the new port instead."
         ),
+    )
+    root_path: str = Field(
+        default="",
+        description=(
+            'Root path to mount the serve application (for example, "/serve"). All '
+            'deployment routes will be prefixed with this path. Defaults to "".'
+        ),
+    )
+
+
+@PublicAPI(stability="alpha")
+class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+    proxy_location: DeploymentMode = Field(
+        default=DeploymentMode.EveryNode,
+        description=(
+            "The location of HTTP servers.\n"
+            '- "EveryNode" (default): start one HTTP server per node.\n'
+            '- "HeadOnly": start one HTTP server on the head node.\n'
+            '- "NoServer": disable HTTP server.'
+        ),
+    )
+    http_options: HTTPOptionsSchema = Field(
+        default=HTTPOptionsSchema(), description="Options to start the HTTP Proxy with."
     )
     applications: List[ServeApplicationSchema] = Field(
         default=[],
@@ -535,6 +552,27 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
                 "application's route_prefix is unique."
             )
         return v
+
+    @root_validator
+    def nested_host_and_port(cls, values):
+        # TODO (zcin): ServeApplicationSchema still needs to have host and port
+        # fields to support single-app mode, but in multi-app mode the host and port
+        # fields at the top-level deploy config is used instead. Eventually, after
+        # migration, we should remove these fields from ServeApplicationSchema.
+        for app_config in values.get("applications"):
+            if "host" in app_config.dict(exclude_unset=True):
+                raise ValueError(
+                    f'Host "{app_config.host}" is set in the config for application '
+                    f"`{app_config.name}`. Please remove it and set host in the top "
+                    "level deploy config only."
+                )
+            if "port" in app_config.dict(exclude_unset=True):
+                raise ValueError(
+                    f"Port {app_config.port} is set in the config for application "
+                    f"`{app_config.name}`. Please remove it and set port in the top "
+                    "level deploy config only."
+                )
+        return values
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:
@@ -691,13 +729,16 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 
 @PublicAPI(stability="alpha")
-class ServeInstanceDetails(BaseModel, extra=Extra.forbid, frozen=True):
-    host: Optional[str] = Field(
-        description="The host on which the HTTP server is listening for requests."
+class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
+    proxy_location: Optional[DeploymentMode] = Field(
+        description=(
+            "The location of HTTP servers.\n"
+            '- "EveryNode": start one HTTP server per node.\n'
+            '- "HeadOnly": start one HTTP server on the head node.\n'
+            '- "NoServer": disable HTTP server.'
+        ),
     )
-    port: Optional[int] = Field(
-        description="The port on which the HTTP server is listening for requests."
-    )
+    http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
     )

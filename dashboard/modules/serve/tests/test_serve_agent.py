@@ -112,8 +112,10 @@ def test_put_get_multi_app(ray_start_stop):
     )
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     config1 = {
-        "host": "127.0.0.1",
-        "port": 8000,
+        "http_options": {
+            "host": "127.0.0.1",
+            "port": 8000,
+        },
         "applications": [
             {
                 "name": "app1",
@@ -215,8 +217,6 @@ def test_put_duplicate_apps(ray_start_stop):
     """
 
     config = {
-        "host": "127.0.0.1",
-        "port": 8000,
         "applications": [
             {
                 "name": "app1",
@@ -241,8 +241,6 @@ def test_put_duplicate_routes(ray_start_stop):
     """
 
     config = {
-        "host": "127.0.0.1",
-        "port": 8000,
         "applications": [
             {
                 "name": "app1",
@@ -333,8 +331,6 @@ def test_delete_multi_app(ray_start_stop):
         "aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
     )
     config = {
-        "host": "127.0.0.1",
-        "port": 8000,
         "applications": [
             {
                 "name": "app1",
@@ -468,8 +464,11 @@ def test_get_serve_instance_details(ray_start_stop):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
     config1 = {
-        "host": "127.0.0.1",
-        "port": 8000,
+        "proxy_location": "HeadOnly",
+        "http_options": {
+            "host": "127.0.0.1",
+            "port": 8005,
+        },
         "applications": [
             {
                 "name": "app1",
@@ -506,10 +505,11 @@ def test_get_serve_instance_details(ray_start_stop):
     print("All applications are in a RUNNING state.")
 
     serve_details = ServeInstanceDetails(**requests.get(GET_OR_PUT_URL_V2).json())
-    # CHECK: host and port
-    assert serve_details.host == "127.0.0.1"
-    assert serve_details.port == 8000
-    print('Confirmed fetched host and port metadata are "127.0.0.1" and "8000".')
+    # CHECK: location, host, and port
+    assert serve_details.proxy_location == "HeadOnly"
+    assert serve_details.http_options.host == "127.0.0.1"
+    assert serve_details.http_options.port == 8005
+    print("Confirmed fetched proxy location, host and port metadata correct.")
 
     app_details = serve_details.applications
 
@@ -572,8 +572,6 @@ def test_deploy_single_then_multi(ray_start_stop):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     multi_app_config = {
-        "host": "127.0.0.1",
-        "port": 8000,
         "applications": [
             {
                 "name": "app1",
@@ -587,11 +585,7 @@ def test_deploy_single_then_multi(ray_start_stop):
             },
         ],
     }
-    single_app_config = {
-        "host": "127.0.0.1",
-        "port": 8000,
-        "import_path": world_import_path,
-    }
+    single_app_config = {"import_path": world_import_path}
 
     def check_app():
         wait_for_condition(
@@ -617,8 +611,6 @@ def test_deploy_multi_then_single(ray_start_stop):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     multi_app_config = {
-        "host": "127.0.0.1",
-        "port": 8000,
         "applications": [
             {
                 "name": "app1",
@@ -632,11 +624,7 @@ def test_deploy_multi_then_single(ray_start_stop):
             },
         ],
     }
-    single_app_config = {
-        "host": "127.0.0.1",
-        "port": 8000,
-        "import_path": world_import_path,
-    }
+    single_app_config = {"import_path": world_import_path}
 
     def check_apps():
         wait_for_condition(
@@ -697,6 +685,76 @@ def test_serve_namespace(ray_start_stop):
     print("Successfully retrieved deployment statuses with Python API.")
     print("Shutting down Python API.")
     serve.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.parametrize(
+    "option,override",
+    [
+        ("proxy_location", "HeadOnly"),
+        ("http_options", {"host": "127.0.0.2"}),
+        ("http_options", {"port": 8000}),
+        ("http_options", {"root_path": "/serve_updated"}),
+    ],
+)
+def test_put_with_http_options(ray_start_stop, option, override):
+    """Submits a config with HTTP options specified.
+
+    Trying to submit a config to the serve agent with the HTTP options modified should
+    fail, since users are required to shutdown Serve and restart it if they want to
+    change HTTP options.
+    """
+
+    pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    original_config = {
+        "proxy_location": "EveryNode",
+        "http_options": {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "root_path": "/serve",
+        },
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": pizza_import_path,
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": world_import_path,
+            },
+        ],
+    }
+    deploy_config_multi_app(original_config)
+
+    # Wait for deployments to be up
+    wait_for_condition(
+        lambda: requests.post(
+            "http://localhost:8000/serve/app1", json=["ADD", 2]
+        ).json()
+        == "4 pizzas please!",
+        timeout=15,
+    )
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/serve/app2").text
+        == "wonderful world",
+        timeout=15,
+    )
+
+    modified_config = copy.deepcopy(original_config)
+    modified_config[option] = override
+
+    put_response = requests.put(GET_OR_PUT_URL_V2, json=modified_config, timeout=5)
+    assert put_response.status_code == 400
+
+    # Deployments should still be up
+    assert (
+        requests.post("http://localhost:8000/serve/app1", json=["ADD", 2]).json()
+        == "4 pizzas please!"
+    )
+    assert requests.post("http://localhost:8000/serve/app2").text == "wonderful world"
 
 
 def test_default_dashboard_agent_listen_port():

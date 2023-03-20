@@ -154,6 +154,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def put_all_deployments(self, req: Request) -> Response:
+        from ray.serve._private.api import serve_start
         from ray.serve.schema import ServeApplicationSchema
         from pydantic import ValidationError
 
@@ -164,27 +165,6 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 status=400,
                 text=repr(e),
             )
-
-        return self.submit_config(config)
-
-    @routes.put("/api/serve/applications/")
-    @optional_utils.init_ray_and_catch_exceptions()
-    async def put_all_applications(self, req: Request) -> Response:
-        from ray.serve.schema import ServeDeploySchema
-        from pydantic import ValidationError
-
-        try:
-            config = ServeDeploySchema.parse_obj(await req.json())
-        except ValidationError as e:
-            return Response(
-                status=400,
-                text=repr(e),
-            )
-
-        return self.submit_config(config)
-
-    def submit_config(self, config):
-        from ray.serve._private.api import serve_start
 
         client = serve_start(
             detached=True,
@@ -238,6 +218,86 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             )
         else:
             return Response()
+
+    @routes.put("/api/serve/applications/")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def put_all_applications(self, req: Request) -> Response:
+        from ray.serve._private.api import serve_start
+        from ray.serve.schema import ServeDeploySchema
+        from pydantic import ValidationError
+
+        try:
+            config = ServeDeploySchema.parse_obj(await req.json())
+        except ValidationError as e:
+            return Response(
+                status=400,
+                text=repr(e),
+            )
+
+        client = serve_start(
+            detached=True,
+            http_options={
+                "host": config.http_options.host,
+                "port": config.http_options.port,
+                "root_path": config.http_options.root_path,
+                "location": config.proxy_location,
+            },
+        )
+
+        # Check HTTP Host
+        host_conflict = self.check_http_options(
+            "host", client.http_config.host, config.http_options.host
+        )
+        if host_conflict is not None:
+            return host_conflict
+
+        # Check HTTP Port
+        port_conflict = self.check_http_options(
+            "port", client.http_config.port, config.http_options.port
+        )
+        if port_conflict is not None:
+            return port_conflict
+
+        # Check HTTP root path
+        root_path_conflict = self.check_http_options(
+            "root path", client.http_config.root_path, config.http_options.root_path
+        )
+        if root_path_conflict is not None:
+            return root_path_conflict
+
+        # Check HTTP location
+        location_conflict = self.check_http_options(
+            "location", client.http_config.location, config.proxy_location
+        )
+        if location_conflict is not None:
+            return location_conflict
+
+        try:
+            client.deploy_apps(config)
+        except RayTaskError as e:
+            return Response(
+                status=400,
+                text=str(e),
+            )
+        else:
+            return Response()
+
+    def check_http_options(self, option: str, old: str, new: str):
+        http_mismatch_message = (
+            "Serve is already running on this Ray cluster. Its HTTP {option} is set to "
+            '"{old}". However, the requested {option} is "{new}". The requested '
+            "{option} must match the running Serve instance's HTTP {option}. To change "
+            "the Serve HTTP {option}, shut down Serve on this Ray cluster using "
+            "the `serve shutdown` CLI command or by sending a DELETE request to the "
+            '"/api/serve/applications/" endpoint. CAUTION: shutting down Serve will '
+            "also shut down all Serve applications."
+        )
+
+        if not old == new:
+            return Response(
+                status=400,
+                text=http_mismatch_message.format(option=option, old=old, new=new),
+            )
 
     async def get_serve_controller(self):
         """Gets the ServeController to the this cluster's Serve app.
