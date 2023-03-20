@@ -402,7 +402,7 @@ def test_syncer_callback_min_thresholds(ray_start_2_cpus, temp_data_dirs, thresh
     assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
 
     # Also trigger delayed syncer process removal
-    syncer_callback._remove_trial_sync_process(trial=trial1)
+    syncer_callback._remove_trial_sync_process(trial_id=trial1.trial_id)
     assert trial1.trial_id in syncer_callback._trial_sync_processes_to_remove
 
     # Syncing finished so syncer should be removed now
