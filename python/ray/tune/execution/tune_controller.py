@@ -108,7 +108,7 @@ class TuneController(_TuneControllerBase):
         self._staged_trials: Set[Trial] = set()
 
         # Reuse actors
-        self._reuse_actors = False  # reuse_actors
+        self._reuse_actors = reuse_actors  # reuse_actors
         self._actor_cache = _ObjectCache(may_keep_one=True)
 
         # General trial behavior
@@ -274,6 +274,8 @@ class TuneController(_TuneControllerBase):
                 self._staged_trials.add(trial_to_run)
                 self._actor_cache.increase_max(trial_to_run.placement_group_factory)
                 self._schedule_trial_actor(trial_to_run)
+            else:
+                self._maybe_reuse_cached_actor(trial_to_run)
 
         def _maybe_add_actors(candidates: List[Trial]):
             while candidates:
@@ -286,6 +288,7 @@ class TuneController(_TuneControllerBase):
                     continue
 
                 if trial in self._staged_trials:
+                    self._maybe_reuse_cached_actor(trial)
                     continue
 
                 self._staged_trials.add(trial)
@@ -295,37 +298,46 @@ class TuneController(_TuneControllerBase):
         _maybe_add_actors(self._pending_trials_list)
         _maybe_add_actors(self._paused_trials_list)
 
+    def _maybe_reuse_cached_actor(self, trial: Trial) -> bool:
+        if trial in self._resetting_trials:
+            return True
+
+        resource_request = trial.placement_group_factory
+
+        if not self._actor_cache.has_cached_object(resource_request):
+            return False
+
+        cached_actor = self._actor_cache.pop_cached_object(resource_request)
+        logger.debug(f"Reusing ACTOR for trial {trial}: {cached_actor}")
+
+        self._trial_to_actor[trial] = cached_actor
+        self._actor_to_trial[cached_actor] = trial
+
+        # Todo: get rid of Trial.runner
+        ray_actor = self._actor_manager._live_actors_to_ray_actors_resources[
+            cached_actor
+        ][0]
+        trial.set_runner(ray_actor)
+
+        self._schedule_trial_reset(trial, trial.config, trial.experiment_tag)
+
+        return True
+
     def _schedule_trial_actor(self, trial: Trial):
         self._set_trial_status(trial, Trial.PENDING)
 
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
         self._mark_trial_to_checkpoint(trial)
+
+        if self._maybe_reuse_cached_actor(trial):
+            return
+
         logger_creator = partial(
             _noop_logger_creator,
             logdir=trial.logdir,
             should_chdir=self._chdir_to_trial_dir,
         )
-
-        resource_request = trial.placement_group_factory
-        if self._actor_cache.has_cached_object(resource_request):
-            cached_actor = self._actor_cache.pop_cached_object(resource_request)
-            logger.debug(f"Reusing ACTOR for trial {trial}: {cached_actor}")
-
-            self._trial_to_actor[trial] = cached_actor
-            self._actor_to_trial[cached_actor] = trial
-
-            # Todo: get rid of Trial.runner
-            ray_actor = self._actor_manager._live_actors_to_ray_actors_resources[
-                cached_actor
-            ][0]
-            trial.set_runner(ray_actor)
-
-            self._resetting_trials.add(trial)
-            self._schedule_trial_reset(
-                trial, trial.config, trial.experiment_tag, logger_creator
-            )
-            return
 
         trainable_cls = trial.get_trainable_cls()
         if not trainable_cls:
@@ -707,7 +719,6 @@ class TuneController(_TuneControllerBase):
         trial: Trial,
         new_config: Dict,
         new_experiment_tag: str,
-        logger_creator: Optional[Callable[[Dict], "ray.tune.Logger"]] = None,
     ):
         trial.set_experiment_tag(new_experiment_tag)
         trial.set_config(new_config)
@@ -720,6 +731,13 @@ class TuneController(_TuneControllerBase):
         extra_config[STDOUT_FILE] = stdout_file
         extra_config[STDERR_FILE] = stderr_file
 
+        logger_creator = partial(
+            _noop_logger_creator,
+            logdir=trial.logdir,
+            should_chdir=self._chdir_to_trial_dir,
+        )
+
+        self._resetting_trials.add(trial)
         self._schedule_trial_task(
             trial=trial,
             method_name="reset",
@@ -733,14 +751,17 @@ class TuneController(_TuneControllerBase):
         )
 
     def _on_trial_reset(self, trial: Trial, success: bool):
-        if not trial:
+        self._resetting_trials.remove(trial)
+
+        if not success:
             exception = _AbortTrialExecution(
                 "Trainable runner reuse requires reset_config() to be "
                 "implemented and return True."
             )
             return self._process_trial_failure(trial=trial, exception=exception)
 
-        # Todo: continue
+        tracked_actor = self._trial_to_actor[trial]
+        self._actor_started(tracked_actor)
 
     def __getstate__(self):
         state = super().__getstate__()

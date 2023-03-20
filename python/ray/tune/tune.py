@@ -762,6 +762,7 @@ def run(
     if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "1"))):
         trial_runner_cls = TuneController
         runner_kwargs.pop("trial_executor")
+        runner_kwargs["reuse_actors"] = reuse_actors
     else:
         trial_runner_cls = TrialRunner
 

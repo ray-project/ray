@@ -355,7 +355,7 @@ class RayTrialExecutor:
             resource_request
         )
 
-        logger.debug(f"Trial {trial}: Reusing cached actor " f"{actor}")
+        logger.debug(f"Trial {trial}: Reusing cached actor {actor}")
 
         trial.set_runner(actor)
 

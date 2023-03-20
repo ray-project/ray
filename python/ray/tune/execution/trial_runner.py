@@ -1256,7 +1256,9 @@ class TrialRunner(_TuneControllerBase):
         )
 
     def _wrapped(self):
-        return TrialRunnerWrapper(self, runner_whitelist_attr={"search_alg"})
+        return TrialRunnerWrapper(
+            self, self.trial_executor, runner_whitelist_attr={"search_alg"}
+        )
 
     def _used_resources_string(self) -> str:
         return self.trial_executor.debug_string()
@@ -1437,7 +1439,7 @@ class TrialRunner(_TuneControllerBase):
 
     def _schedule_trial_stop(self, trial: Trial, exception: Optional[Exception] = None):
         return self.trial_executor.stop_trial(
-            trial, error=bool(exception), exc=Exception
+            trial, error=bool(exception), exc=exception
         )
 
     def _schedule_trial_pause(self, trial: Trial, should_checkpoint: bool = True):
