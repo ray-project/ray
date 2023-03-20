@@ -165,7 +165,7 @@ class LightningTrainer(TorchTrainer):
     The training function ran on every Actor will first initialize an instance
     of the user-provided ``lightning_module`` class, which is a subclass of
     ``pytorch_lightning.LightningModule`` using the arguments provided in
-    ``lightning_module_init_config``.
+    ``LightningConfigBuilder.module()``.
 
     For data ingestion, the LightningTrainer will then either convert the Ray Dataset
     shards to a ``pytorch_lightning.LightningDataModule``, or directly use the
@@ -175,9 +175,13 @@ class LightningTrainer(TorchTrainer):
     provided in ``model_checkpoint_config``. Notice that all the other ModelCheckpoint
     callbacks specified in ``lightning_trainer_config`` will be ignored.
 
+    For logging, users can continue to use Lightning's native loggers, such as
+    WandbLogger, TensorboardLogger, etc. LightningTrainer will also log the latest
+    metrics to the trail directory whenever a new checkpoint is saved.
+
     Then, the training function will initialize an instance of ``pl.Trainer``
-    using the arguments provided in ``trainer_init_config`` and then run
-    ``pytorch_lightning.Trainer.fit``.
+    using the arguments provided in ``LightningConfigBuilder.fit_params()`` and then
+    run ``pytorch_lightning.Trainer.fit``.
 
     TODO(yunxuanx): make this example testable
 
@@ -317,7 +321,11 @@ class LightningTrainer(TorchTrainer):
             air_ckpt_config=run_config.checkpoint_config,
         )
 
-        # Disable strict checking to allow metric reporting at different frequencies
+        # Disable strict checking to prevent validation errors against metrics that
+        # are reported at different frequencies. This works here because the Trainer
+        # is always constructed on the same host as the Tuner.
+        # TODO(yunxuanxiao): find a long term solution that doesn't involve setting a
+        # environment variable globally.
         os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "1"
 
         train_loop_config = {

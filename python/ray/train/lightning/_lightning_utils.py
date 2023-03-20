@@ -18,7 +18,7 @@ from ray.data.dataset import DatasetIterator
 
 logger = logging.getLogger(__name__)
 
-LIGHTNING_REPORT_STAGE_KEY = "__report_on"
+LIGHTNING_REPORT_STAGE_KEY = "_report_on"
 
 
 class RayDDPStrategy(DDPStrategy):
