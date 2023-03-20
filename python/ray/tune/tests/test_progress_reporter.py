@@ -439,7 +439,7 @@ class ProgressReporterTest(unittest.TestCase):
             else:
                 t.status = "RUNNING"
             t.trial_id = "%05d" % i
-            t.local_dir = "/foo"
+            t.local_experiment_path = "/foo"
             t.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
             t.evaluated_params = {"a": i, "b": i * 2, "n/k/0": i, "n/k/1": 2 * i}
@@ -569,7 +569,7 @@ class ProgressReporterTest(unittest.TestCase):
             t = Mock()
             t.status = "RUNNING"
             t.trial_id = "%05d" % i
-            t.local_dir = "/foo"
+            t.local_experiment_path = "/foo"
             t.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
             t.evaluated_params = {"a": i}
@@ -603,7 +603,7 @@ class ProgressReporterTest(unittest.TestCase):
             else:
                 t.status = "RUNNING"
             t.trial_id = "%05d" % i
-            t.local_dir = "/foo"
+            t.local_experiment_path = "/foo"
             t.location = "here"
             t.config = {"a": i}
             t.evaluated_params = {"a": i}
@@ -795,7 +795,7 @@ class ProgressReporterTest(unittest.TestCase):
             t = Mock()
             t.status = "TERMINATED"
             t.trial_id = "%05d" % i
-            t.local_dir = "/foo"
+            t.local_experiment_path = "/foo"
             t.location = "here"
             t.config = {"verylong" * 20: i}
             t.evaluated_params = {"verylong" * 20: i}
