@@ -2,7 +2,7 @@ import functools
 import os
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Tuple, Union
 
 try:
     from packaging.version import Version
@@ -38,15 +38,6 @@ except ImportError as e:
     AccelerateDefaultNamespace = None
     AccelerateConfigWrapper = None
     load_accelerate_config = None
-
-TRAIN_LOOP_PER_WORKER_KEY = "_train_loop_per_worker"
-ACCELERATE_CONFIG_RAW_KEY = "_accelerate_config_raw"
-DEEPSPEED_CONFIG_RAW_KEY = "_deepspeed_config_file_raw"
-RESERVED_KEYS = {
-    TRAIN_LOOP_PER_WORKER_KEY,
-    ACCELERATE_CONFIG_RAW_KEY,
-    DEEPSPEED_CONFIG_RAW_KEY,
-}
 
 
 class AccelerateTrainer(TorchTrainer):
@@ -293,16 +284,11 @@ class AccelerateTrainer(TorchTrainer):
             )
 
         self.accelerate_config = accelerate_config
-        if isinstance(self.accelerate_config, AccelerateConfigWrapper):
-            self._accelerate_config_raw = self.accelerate_config.config_raw
-            self._deepspeed_config_file_raw = (
-                self.accelerate_config.deepspeed_config_raw
-            )
-        else:
-            (
-                self._accelerate_config_raw,
-                self._deepspeed_config_file_raw,
-            ) = load_accelerate_config(self.accelerate_config)
+        (
+            self._accelerate_config_raw,
+            self._deepspeed_config_file_raw,
+        ) = self._unwrap_accelerate_config_if_needed(accelerate_config)
+
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
             train_loop_config=train_loop_config,
@@ -314,6 +300,29 @@ class AccelerateTrainer(TorchTrainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+    def _unwrap_accelerate_config_if_needed(
+        self,
+        accelerate_config: Optional[
+            Union[dict, str, Path, os.PathLike, AccelerateConfigWrapper]
+        ],
+    ) -> Tuple[str, Optional[str]]:
+        # The AccelerateConfigWrapper is used to deal with the issue of the
+        # Trainer being initialized twice (by the user and by us in the Trainable).
+        # If it's initialized by the user, accelerate_config will not be an instance
+        # of AccelerateConfigWrapper. This means we should read the config file from
+        # given path.
+        # If accelerate_config is an instance of AccelerateConfigWrapper, that means
+        # we are dealing with a file that was already read, and we should instead use
+        # the string in the wrapper as the raw contents of the file. This should
+        # only happen internally, during initialization of this class in the Trainable.
+        if isinstance(accelerate_config, AccelerateConfigWrapper):
+            return (
+                accelerate_config.config_raw,
+                accelerate_config.deepspeed_config_raw,
+            )
+        else:
+            return load_accelerate_config(accelerate_config)
 
     def as_trainable(self) -> Type["Trainable"]:
         # We want to load the config when the Trainer is first instantiated,
