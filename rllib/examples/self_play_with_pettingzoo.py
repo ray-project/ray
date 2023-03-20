@@ -13,7 +13,6 @@ policy_mapping_fn to make new matches of "main" vs any of the previous
 versions of "main" (including the just added one).
 After training for n iterations, a configurable number of episodes can
 be played by the user against the "main" agent on the command line.
-Requires: PettingZoo==1.15.0, SuperSuit==3.3.3
 """
 
 import argparse
