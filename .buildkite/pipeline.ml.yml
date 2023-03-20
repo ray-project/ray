@@ -298,7 +298,7 @@
     - sudo service mongodb stop
     - sudo apt-get purge -y mongodb*
 
-- label: "Dataset tests (streaming executor)"
+- label: "Dataset tests (bulk executor)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
   instance_size: medium
   commands:
@@ -306,8 +306,8 @@
     - ./ci/env/install-java.sh
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=7.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --action_env=RAY_DATASET_USE_STREAMING_EXECUTOR=1 --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --action_env=RAY_DATASET_USE_STREAMING_EXECUTOR=1 --build_tests_only --test_tag_filters=ray_data python/ray/air/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --action_env=RAY_DATASET_USE_STREAMING_EXECUTOR=0 --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --action_env=RAY_DATASET_USE_STREAMING_EXECUTOR=0 --build_tests_only --test_tag_filters=ray_data python/ray/air/...
 
 - label: "Dataset tests (Arrow nightly)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
