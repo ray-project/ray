@@ -3613,7 +3613,6 @@ class Dataset(Generic[T]):
         blocks: List[ObjectRef["pyarrow.Table"]] = arrow_ds.get_internal_block_refs()
         return blocks
 
-    @Deprecated
     @ConsumptionAPI(pattern="Args:")
     def to_random_access_dataset(
         self,
@@ -3640,11 +3639,6 @@ class Dataset(Generic[T]):
                 to provide ~3000 records / second via ``get_async()``, and
                 ~10000 records / second via ``multiget()``.
         """
-        ctx = DatasetContext.get_current()
-        if ctx.use_streaming_executor:
-            raise DeprecationWarning(
-                "`to_random_access_dataset` is not supported with streaming execution."
-            )
         if num_workers is None:
             num_workers = 4 * len(ray.nodes())
         return RandomAccessDataset(self, key, num_workers=num_workers)
