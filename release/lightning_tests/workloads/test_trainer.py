@@ -115,7 +115,7 @@ if __name__ == "__main__":
     )
 
     scaling_config = ScalingConfig(
-        num_workers=6, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 1}
+        num_workers=3, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 1}
     )
 
     trainer = LightningTrainer(
