@@ -13,7 +13,7 @@ from ray_release.anyscale_util import LAST_LOGS_LENGTH
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
-    ResultsError,
+    FetchResultError,
     LocalEnvSetupError,
     ClusterNodesWaitTimeout,
     CommandTimeout,
@@ -46,6 +46,7 @@ class ClientRunner(CommandRunner):
         cluster_manager: ClusterManager,
         file_manager: FileManager,
         working_dir: str,
+        artifact_path: Optional[str] = None,
     ):
         super(ClientRunner, self).__init__(cluster_manager, file_manager, working_dir)
 
@@ -121,7 +122,7 @@ class ClientRunner(CommandRunner):
             with open(path, "rt") as fp:
                 return json.load(fp)
         except Exception as e:
-            raise ResultsError(
+            raise FetchResultError(
                 f"Could not load local results from client command: {e}"
             ) from e
 
@@ -131,8 +132,15 @@ class ClientRunner(CommandRunner):
     def fetch_metrics(self) -> Dict[str, Any]:
         return self._fetch_json(self.metrics_output_json)
 
+    def fetch_artifact(self):
+        raise NotImplementedError
+
     def run_command(
-        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+        self,
+        command: str,
+        env: Optional[Dict] = None,
+        timeout: float = 3600.0,
+        raise_on_timeout: bool = True,
     ) -> float:
         logger.info(
             f"Running command using Ray client on cluster "

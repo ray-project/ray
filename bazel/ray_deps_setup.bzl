@@ -156,21 +156,15 @@ def ray_deps_setup():
         # declaring it here allows us to avoid patching the latter.
         name = "boost",
         build_file = "@com_github_nelhage_rules_boost//:BUILD.boost",
-        sha256 = "83bfc1507731a0906e387fc28b7ef5417d591429e51e788417fe9ff025e116b1",
-        url = "https://boostorg.jfrog.io/artifactory/main/release/1.74.0/source/boost_1_74_0.tar.bz2",
-        patches = [
-            "@com_github_ray_project_ray//thirdparty/patches:boost-exception-no_warn_typeid_evaluated.patch",
-        ],
+        sha256 = "71feeed900fbccca04a3b4f2f84a7c217186f28a940ed8b7ed4725986baf99fa",
+        url = "https://boostorg.jfrog.io/artifactory/main/release/1.81.0/source/boost_1_81_0.tar.bz2",
     )
 
     auto_http_archive(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
-        url = "https://github.com/nelhage/rules_boost/archive/652b21e35e4eeed5579e696da0facbe8dba52b1f.tar.gz",
-        sha256 = "c1b8b2adc3b4201683cf94dda7eef3fc0f4f4c0ea5caa3ed3feffe07e1fb5b15",
-        patches = [
-            "@com_github_ray_project_ray//thirdparty/patches:rules_boost-windows-linkopts.patch",
-        ],
+        url = "https://github.com/nelhage/rules_boost/archive/57c99395e15720e287471d79178d36a85b64d6f6.tar.gz",
+        sha256 = "490d11425393eed068966a4990ead1ff07c658f823fd982fddac67006ccc44ab",
     )
 
     auto_http_archive(
@@ -180,9 +174,8 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
-        name = "com_google_googletest",
-        url = "https://github.com/google/googletest/archive/refs/tags/release-1.12.1.tar.gz",
-        sha256 = "81964fe578e9bd7c94dfdb09c8e4d6e6759e19967e397dbea48d1c10e45d0df2",
+        url = "https://github.com/google/googletest/archive/refs/tags/v1.13.0.tar.gz",
+        sha256 = "ad7fdba11ea011c1d925b3289cf4af2c66a352e18d4c7264392fead75e919363",
     )
 
     auto_http_archive(
@@ -206,12 +199,13 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "io_opencensus_cpp",
-        url = "https://github.com/census-instrumentation/opencensus-cpp/archive/b14a5c0dcc2da8a7fc438fab637845c73438b703.zip",
-        sha256 = "6592e07672e7f7980687f6c1abda81974d8d379e273fea3b54b6c4d855489b9d",
+        url = "https://github.com/census-instrumentation/opencensus-cpp/archive/5e5f2632c84e2230fb7ccb8e336f603d2ec6aa1b.zip",
+        sha256 = "1b88d6663f05c6a56c1604eb2afad22831d5f28a76f6fab8f37187f1e4ace425",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
             "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
         ],
+        patch_args = ["-p1"],        
     )
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
@@ -238,8 +232,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.45.2.tar.gz",
-        sha256 = "e18b16f7976aab9a36c14c38180f042bb0fd196b75c9fd6a20a2b5f934876ad6",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.46.6.tar.gz",
+        sha256 = "6514b3e6eab9e9c7017304512d4420387a47b1a9c5caa986643692977ed44e8a",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
             "@com_github_ray_project_ray//thirdparty/patches:grpc-python.patch",
@@ -282,11 +276,11 @@ def ray_deps_setup():
         # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
         # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
         name = "boringssl",
-        sha256 = "e168777eb0fc14ea5a65749a2f53c095935a6ea65f38899a289808fb0c221dc4",
-        strip_prefix = "boringssl-4fb158925f7753d80fb858cb0239dff893ef9f15",
+        sha256 = "534fa658bd845fd974b50b10f444d392dfd0d93768c4a51b61263fd37d851c40",
+        strip_prefix = "boringssl-b9232f9e27e5668bc0414879dcdedb2a59ea75f2",
         urls = [
-            "https://storage.googleapis.com/grpc-bazel-mirror/github.com/google/boringssl/archive/4fb158925f7753d80fb858cb0239dff893ef9f15.tar.gz",
-            "https://github.com/google/boringssl/archive/4fb158925f7753d80fb858cb0239dff893ef9f15.tar.gz",
+            "https://storage.googleapis.com/grpc-bazel-mirror/github.com/google/boringssl/archive/b9232f9e27e5668bc0414879dcdedb2a59ea75f2.tar.gz",
+            "https://github.com/google/boringssl/archive/b9232f9e27e5668bc0414879dcdedb2a59ea75f2.tar.gz",
         ],
     )
 

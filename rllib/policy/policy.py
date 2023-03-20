@@ -164,28 +164,84 @@ class PolicySpec:
 
 @DeveloperAPI
 class Policy(metaclass=ABCMeta):
-    """Policy base class: Calculates actions, losses, and holds NN models.
+    """RLlib's base class for all Policy implementations.
 
     Policy is the abstract superclass for all DL-framework specific sub-classes
     (e.g. TFPolicy or TorchPolicy). It exposes APIs to
 
-    1) Compute actions from observation (and possibly other) inputs.
-    2) Manage the Policy's NN model(s), like exporting and loading their
-       weights.
-    3) Postprocess a given trajectory from the environment or other input
-       via the `postprocess_trajectory` method.
-    4) Compute losses from a train batch.
-    5) Perform updates from a train batch on the NN-models (this normally
-       includes loss calculations) either a) in one monolithic step
-       (`train_on_batch`) or b) via batch pre-loading, then n steps of actual
-       loss computations and updates (`load_batch_into_buffer` +
-       `learn_on_loaded_batch`).
+    1. Compute actions from observation (and possibly other) inputs.
 
-    Note: It is not recommended to sub-class Policy directly, but rather use
-    one of the following two convenience methods:
-    `rllib.policy.policy_template::build_policy_class` (PyTorch) or
-    `rllib.policy.tf_policy_template::build_tf_policy_class` (TF).
+    2. Manage the Policy's NN model(s), like exporting and loading their weights.
+
+    3. Postprocess a given trajectory from the environment or other input via the
+        `postprocess_trajectory` method.
+
+    4. Compute losses from a train batch.
+
+    5. Perform updates from a train batch on the NN-models (this normally includes loss
+        calculations) either:
+
+        a. in one monolithic step (`learn_on_batch`)
+
+        b. via batch pre-loading, then n steps of actual loss computations  and updates
+            (`load_batch_into_buffer` + `learn_on_loaded_batch`).
     """
+
+    @DeveloperAPI
+    def __init__(
+        self,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        config: AlgorithmConfigDict,
+    ):
+        """Initializes a Policy instance.
+
+        Args:
+            observation_space: Observation space of the policy.
+            action_space: Action space of the policy.
+            config: A complete Algorithm/Policy config dict. For the default
+                config keys and values, see rllib/trainer/trainer.py.
+        """
+        self.observation_space: gym.Space = observation_space
+        self.action_space: gym.Space = action_space
+        # the policy id in the global context.
+        self.__policy_id = config.get("__policy_id")
+        # The base struct of the observation/action spaces.
+        # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
+        # action_space_struct = {"a": Discrete(2)}
+        self.observation_space_struct = get_base_struct_from_space(observation_space)
+        self.action_space_struct = get_base_struct_from_space(action_space)
+
+        self.config: AlgorithmConfigDict = config
+        self.framework = self.config.get("framework")
+        # Create the callbacks object to use for handling custom callbacks.
+        if self.config.get("callbacks"):
+            self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
+        else:
+            from ray.rllib.algorithms.callbacks import DefaultCallbacks
+
+            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
+
+        # The global timestep, broadcast down from time to time from the
+        # local worker to all remote workers.
+        self.global_timestep: int = 0
+        # The number of gradient updates this policy has undergone.
+        self.num_grad_updates: int = 0
+
+        # The action distribution class to use for action sampling, if any.
+        # Child classes may set this.
+        self.dist_class: Optional[Type] = None
+
+        # Initialize view requirements.
+        self.init_view_requirements()
+
+        # Whether the Model's initial state (method) has been added
+        # automatically based on the given view requirements of the model.
+        self._model_init_state_automatically_added = False
+
+        # Connectors.
+        self.agent_connectors = None
+        self.action_connectors = None
 
     @staticmethod
     def from_checkpoint(
@@ -317,73 +373,38 @@ class Policy(metaclass=ABCMeta):
         # Return the new policy.
         return new_policy
 
-    @DeveloperAPI
-    def __init__(
-        self,
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        config: AlgorithmConfigDict,
-    ):
-        """Initializes a Policy instance.
-
-        Args:
-            observation_space: Observation space of the policy.
-            action_space: Action space of the policy.
-            config: A complete Algorithm/Policy config dict. For the default
-                config keys and values, see rllib/trainer/trainer.py.
-        """
-        self.observation_space: gym.Space = observation_space
-        self.action_space: gym.Space = action_space
-        # The base struct of the observation/action spaces.
-        # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
-        # action_space_struct = {"a": Discrete(2)}
-        self.observation_space_struct = get_base_struct_from_space(observation_space)
-        self.action_space_struct = get_base_struct_from_space(action_space)
-
-        self.config: AlgorithmConfigDict = config
-        self.framework = self.config.get("framework")
-        # Create the callbacks object to use for handling custom callbacks.
-        if self.config.get("callbacks"):
-            self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
-        else:
-            from ray.rllib.algorithms.callbacks import DefaultCallbacks
-
-            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
-
-        # The global timestep, broadcast down from time to time from the
-        # local worker to all remote workers.
-        self.global_timestep: int = 0
-        # The number of gradient updates this policy has undergone.
-        self.num_grad_updates: int = 0
-
-        # The action distribution class to use for action sampling, if any.
-        # Child classes may set this.
-        self.dist_class: Optional[Type] = None
-
-        # Initialize view requirements.
-        self.init_view_requirements()
-
-        # Whether the Model's initial state (method) has been added
-        # automatically based on the given view requirements of the model.
-        self._model_init_state_automatically_added = False
-
-        # Connectors.
-        self.agent_connectors = None
-        self.action_connectors = None
-
     @ExperimentalAPI
     @OverrideToImplementCustomLogic
     def make_rl_module(self) -> "RLModule":
-        """Returns the RL Module.
+        """Returns the RL Module (only for when RLModule API is enabled.)
 
         If RLModule API is enabled (self.config.rl_module(_enable_rl_module_api=True),
         this method should be implemented and should return the RLModule instance to
         use for this Policy. Otherwise, RLlib will error out.
         """
-        module_class: RLModule = self.config["rl_module_class"]
-        return module_class.from_model_config(
-            self.observation_space, self.action_space, model_config=self.config["model"]
-        )
+        # if imported on top it creates circular dependency
+        from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+
+        if self.__policy_id is None:
+            raise ValueError(
+                "When using RLModule API, `policy_id` within the policies must be "
+                "set. This should have happened automatically. If you see this "
+                "bug, please file a github issue."
+            )
+
+        spec = self.config["__marl_module_spec"]
+        if isinstance(spec, SingleAgentRLModuleSpec):
+            module = spec.build()
+        else:
+            # filter the module_spec to only contain the policy_id of this policy
+            marl_spec = type(spec)(
+                marl_module_class=spec.marl_module_class,
+                module_specs={self.__policy_id: spec.module_specs[self.__policy_id]},
+            )
+            marl_module = marl_spec.build()
+            module = marl_module[self.__policy_id]
+
+        return module
 
     @DeveloperAPI
     def init_view_requirements(self):
@@ -535,7 +556,7 @@ class Policy(metaclass=ABCMeta):
     def compute_actions_from_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
-        explore: bool = None,
+        explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         episodes: Optional[List["Episode"]] = None,
         **kwargs,
@@ -640,6 +661,7 @@ class Policy(metaclass=ABCMeta):
         prev_action_batch: Optional[Union[List[TensorType], TensorType]] = None,
         prev_reward_batch: Optional[Union[List[TensorType], TensorType]] = None,
         actions_normalized: bool = True,
+        in_training: bool = True,
     ) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
@@ -658,7 +680,8 @@ class Policy(metaclass=ABCMeta):
                 (between -1.0 and 1.0) or not? If not and
                 `normalize_actions=True`, we need to normalize the given
                 actions first, before calculating log likelihoods.
-
+            in_training: Whether to use the forward_train() or forward_exploration() of
+                the underlying RLModule.
         Returns:
             Batch of log probs/likelihoods, with shape: [BATCH_SIZE].
         """
@@ -1193,6 +1216,7 @@ class Policy(metaclass=ABCMeta):
         """
         worker_idx = self.config.get("worker_index", 0)
         fake_gpus = self.config.get("_fake_gpus", False)
+
         if (
             ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
             and not fake_gpus
@@ -1200,8 +1224,14 @@ class Policy(metaclass=ABCMeta):
             # If in local debugging mode, and _fake_gpus is not on.
             num_gpus = 0
         elif worker_idx == 0:
-            # If head node, take num_gpus.
-            num_gpus = self.config["num_gpus"]
+            # if we are in the new rl trainer world num_gpus is deprecated.
+            # so use num_gpus_per_worker for policy sampling
+            # we need this .get() syntax here to ensure backwards compatibility.
+            if self.config.get("_enable_learner_api", False):
+                num_gpus = self.config["num_gpus_per_worker"]
+            else:
+                # If head node, take num_gpus.
+                num_gpus = self.config["num_gpus"]
         else:
             # If worker node, take num_gpus_per_worker
             num_gpus = self.config["num_gpus_per_worker"]
@@ -1320,7 +1350,10 @@ class Policy(metaclass=ABCMeta):
         # Save for later so that loss init does not change global timestep
         global_ts_before_init = int(convert_to_numpy(self.global_timestep))
 
-        sample_batch_size = max(self.batch_divisibility_req * 4, 32)
+        sample_batch_size = min(
+            max(self.batch_divisibility_req * 4, 32),
+            self.config["train_batch_size"],  # Don't go over the asked batch size.
+        )
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size
         )

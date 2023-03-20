@@ -9,6 +9,7 @@ import pprint
 import time
 import traceback
 from typing import Callable, Dict, List, Optional
+from ray.experimental.state.api import list_tasks
 import ray
 from ray.actor import ActorHandle
 from ray.experimental.state.api import list_workers
@@ -337,3 +338,16 @@ def summarize_worker_startup_time():
     print("=======================")
     print("Time to initialize workers")
     print_latencies(time_to_initialize)
+
+
+def verify_failed_task(name: str, error_type: str) -> bool:
+    """
+    Check if a task with 'name' has failed with the exact error type 'error_type'
+    """
+    tasks = list_tasks(filters=[("name", "=", name)])
+    assert len(tasks) == 1, tasks
+    t = tasks[0]
+    assert t["state"] == "FAILED", t
+    assert t["error_type"] == error_type, t
+    return True
+

@@ -6,9 +6,10 @@ import torch.utils.data
 import torchvision
 from torchvision import transforms, datasets
 
+from ray.air import session
 from ray.air.config import ScalingConfig
 import ray.train as train
-from ray.air import session
+from ray.tune.result import TRAINING_ITERATION
 
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
@@ -89,7 +90,7 @@ def test_mosaic_cifar10(ray_start_4_cpus):
     assert result["epoch"][result.index[-1]] == 4
 
     # check train_iterations
-    assert result["_training_iteration"][result.index[-1]] == 5
+    assert result[TRAINING_ITERATION][result.index[-1]] == 5
 
     # check metrics/train/Accuracy has increased
     acc = list(result["metrics/train/Accuracy"])
@@ -257,7 +258,7 @@ def test_monitor_callbacks(ray_start_4_cpus):
     from ray.train.mosaic import MosaicTrainer
 
     # Test Callbacks involving logging (SpeedMonitor, LRMonitor)
-    from composer.callbacks import SpeedMonitor, LRMonitor, GradMonitor
+    from composer.callbacks import SpeedMonitor, LRMonitor
 
     trainer_init_config = {
         "max_duration": "1ep",
@@ -269,7 +270,6 @@ def test_monitor_callbacks(ray_start_4_cpus):
     trainer_init_config["callbacks"] = [
         SpeedMonitor(window_size=3),
         LRMonitor(),
-        GradMonitor(),
     ]
 
     trainer = MosaicTrainer(
@@ -288,7 +288,6 @@ def test_monitor_callbacks(ray_start_4_cpus):
         "wall_clock/val",
         "wall_clock/total",
         "lr-DecoupledSGDW/group0",
-        "grad_l2_norm/step",
     ]
     for column in columns_to_check:
         assert column in metrics_columns, column + " is not found"

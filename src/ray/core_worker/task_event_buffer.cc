@@ -14,15 +14,125 @@
 
 #include "ray/core_worker/task_event_buffer.h"
 
+#include "ray/gcs/pb_util.h"
+
 namespace ray {
 namespace core {
 
 namespace worker {
 
+TaskEvent::TaskEvent(TaskID task_id, JobID job_id, int32_t attempt_number)
+    : task_id_(task_id), job_id_(job_id), attempt_number_(attempt_number) {}
+
+TaskStatusEvent::TaskStatusEvent(
+    TaskID task_id,
+    JobID job_id,
+    int32_t attempt_number,
+    const rpc::TaskStatus &task_status,
+    int64_t timestamp,
+    const std::shared_ptr<const TaskSpecification> &task_spec,
+    absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update)
+    : TaskEvent(task_id, job_id, attempt_number),
+      task_status_(task_status),
+      timestamp_(timestamp),
+      task_spec_(task_spec),
+      state_update_(state_update) {}
+
+TaskProfileEvent::TaskProfileEvent(TaskID task_id,
+                                   JobID job_id,
+                                   int32_t attempt_number,
+                                   const std::string &component_type,
+                                   const std::string &component_id,
+                                   const std::string &node_ip_address,
+                                   const std::string &event_name,
+                                   int64_t start_time)
+    : TaskEvent(task_id, job_id, attempt_number),
+      component_type_(component_type),
+      component_id_(component_id),
+      node_ip_address_(node_ip_address),
+      event_name_(event_name),
+      start_time_(start_time) {}
+
+bool TaskStatusEvent::ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) {
+  // Base fields
+  rpc_task_events->set_task_id(task_id_.Binary());
+  rpc_task_events->set_job_id(job_id_.Binary());
+  rpc_task_events->set_attempt_number(attempt_number_);
+
+  // Task info.
+  if (task_spec_) {
+    gcs::FillTaskInfo(rpc_task_events->mutable_task_info(), *task_spec_);
+  }
+
+  // Task status update.
+  auto dst_state_update = rpc_task_events->mutable_state_updates();
+  gcs::FillTaskStatusUpdateTime(task_status_, timestamp_, dst_state_update);
+
+  if (!state_update_.has_value()) {
+    return false;
+  }
+
+  if (state_update_->node_id_.has_value()) {
+    RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
+        << "Node ID should be included when task status changes to "
+           "SUBMITTED_TO_WORKER.";
+    dst_state_update->set_node_id(state_update_->node_id_->Binary());
+  }
+
+  if (state_update_->worker_id_.has_value()) {
+    RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
+        << "Worker ID should be included when task status changes to "
+           "SUBMITTED_TO_WORKER.";
+    dst_state_update->set_worker_id(state_update_->worker_id_->Binary());
+  }
+
+  if (state_update_->error_info_.has_value()) {
+    dst_state_update->set_error_type(state_update_->error_info_->error_type());
+  }
+  return false;
+}
+
+bool TaskProfileEvent::ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) {
+  // Rate limit on the number of profiling events from the task. This is especially the
+  // case if a driver has many profiling events when submitting tasks
+  auto profile_events = rpc_task_events->mutable_profile_events();
+  auto profile_event_max_num =
+      RayConfig::instance().task_events_max_num_profile_events_for_task();
+  if (profile_event_max_num >= 0 &&
+      profile_events->events_size() >= profile_event_max_num) {
+    // Data loss. We are dropping the newly reported profile event.
+    // This will likely happen on a driver task since the driver has a fixed placeholder
+    // driver task id and it could generate large number of profile events when submitting
+    // many tasks.
+    // We are only dropping this TaskEvent (which corresponds to a single profile event),
+    // rather than others. We will likely change the GC logic in the future as well.
+    RAY_LOG_EVERY_N(WARNING, 100000)
+        << "Dropping profiling events for task: " << task_id_
+        << ", set a higher value for RAY_task_events_max_num_profile_events_for_task("
+        << profile_event_max_num << ").";
+    return true;
+  }
+
+  // Base fields
+  rpc_task_events->set_task_id(task_id_.Binary());
+  rpc_task_events->set_job_id(job_id_.Binary());
+  rpc_task_events->set_attempt_number(attempt_number_);
+  profile_events->set_component_type(std::move(component_type_));
+  profile_events->set_component_id(std::move(component_id_));
+  profile_events->set_node_ip_address(std::move(node_ip_address_));
+  auto event_entry = profile_events->add_events();
+  event_entry->set_event_name(std::move(event_name_));
+  event_entry->set_start_time(start_time_);
+  event_entry->set_end_time(end_time_);
+  event_entry->set_extra_data(std::move(extra_data_));
+  return false;
+}
+
 TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(io_service_),
-      gcs_client_(std::move(gcs_client)) {}
+      gcs_client_(std::move(gcs_client)),
+      buffer_() {}
 
 Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
@@ -30,8 +140,7 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
 
-  buffer_.reserve(RayConfig::instance().task_events_max_num_task_events_in_buffer());
-
+  buffer_.set_capacity(RayConfig::instance().task_events_max_buffer_size());
   // Reporting to GCS, set up gcs client and and events flushing.
   auto status = gcs_client_->Connect(io_service_);
   if (!status.ok()) {
@@ -93,45 +202,47 @@ void TaskEventBufferImpl::Stop() {
 
 bool TaskEventBufferImpl::Enabled() const { return enabled_; }
 
-void TaskEventBufferImpl::AddTaskEvent(rpc::TaskEvents task_events) {
+void TaskEventBufferImpl::AddTaskEvent(std::unique_ptr<TaskEvent> task_event) {
   if (!enabled_) {
     return;
   }
+  size_t num_profile_events_dropped = 0;
+  size_t num_status_events_dropped = 0;
+  size_t num_add = 0;
+
   absl::MutexLock lock(&mutex_);
-
-  auto limit = RayConfig::instance().task_events_max_num_task_events_in_buffer();
-  if (limit > 0 && buffer_.size() >= static_cast<size_t>(limit)) {
-    // Too many task events, start overriding older ones.
-    if (buffer_[next_idx_to_overwrite_].has_profile_events()) {
-      num_profile_task_events_dropped_++;
-    } else {
-      num_status_task_events_dropped_++;
+  size_t prev_size = buffer_.size();
+  {
+    if (buffer_.full()) {
+      const auto &to_evict = buffer_.front();
+      if (to_evict->IsProfileEvent()) {
+        num_profile_events_dropped++;
+      } else {
+        num_status_events_dropped++;
+      }
     }
-
-    buffer_[next_idx_to_overwrite_] = std::move(task_events);
-    next_idx_to_overwrite_ = (next_idx_to_overwrite_ + 1) % limit;
-    return;
+    buffer_.push_back(std::move(task_event));
+    num_add = buffer_.size() - prev_size;
   }
-  buffer_.push_back(std::move(task_events));
+
+  stats_counter_.Increment(
+      TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush,
+      num_profile_events_dropped);
+  stats_counter_.Increment(
+      TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush,
+      num_status_events_dropped);
+  stats_counter_.Increment(TaskEventBufferCounter::kNumTaskEventsStored, num_add);
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
   if (!enabled_) {
     return;
   }
-  std::vector<rpc::TaskEvents> task_events;
-  size_t num_status_task_events_dropped = 0;
-  size_t num_profile_task_events_dropped = 0;
+  std::vector<std::unique_ptr<TaskEvent>> to_send;
+  to_send.reserve(RayConfig::instance().task_events_send_batch_size());
+
   {
     absl::MutexLock lock(&mutex_);
-
-    RAY_LOG_EVERY_MS(INFO, 15000)
-        << "Pushed task state events to GCS. [total_bytes="
-        << (1.0 * total_events_bytes_) / 1024 / 1024
-        << "MiB][total_count=" << total_num_events_
-        << "][total_status_task_events_dropped=" << num_status_task_events_dropped_
-        << "][total_profile_task_events_dropped=" << num_profile_task_events_dropped_
-        << "][cur_buffer_size=" << buffer_.size() << "].";
 
     // Skip if GCS hasn't finished processing the previous message.
     if (grpc_in_progress_ && !forced) {
@@ -143,72 +254,96 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
       return;
     }
 
-    if (buffer_.size() == 0) {
+    // No data to send.
+    if (buffer_.empty()) {
       return;
     }
 
-    task_events.reserve(
-        RayConfig::instance().task_events_max_num_task_events_in_buffer());
-    buffer_.swap(task_events);
-    next_idx_to_overwrite_ = 0;
-
-    num_profile_task_events_dropped = num_profile_task_events_dropped_;
-    num_profile_task_events_dropped_ = 0;
-
-    num_status_task_events_dropped = num_status_task_events_dropped_;
-    num_status_task_events_dropped_ = 0;
+    size_t num_to_send =
+        std::min(static_cast<size_t>(RayConfig::instance().task_events_send_batch_size()),
+                 static_cast<size_t>(buffer_.size()));
+    to_send.insert(to_send.end(),
+                   std::make_move_iterator(buffer_.begin()),
+                   std::make_move_iterator(buffer_.begin() + num_to_send));
+    buffer_.erase(buffer_.begin(), buffer_.begin() + num_to_send);
   }
 
-  // Merge multiple events from a single task attempt run into one task event.
-  absl::flat_hash_map<std::pair<std::string, int>, rpc::TaskEvents> task_events_map;
-
-  size_t num_profile_event_to_send = 0;
-  size_t num_status_event_to_send = 0;
-  for (auto event : task_events) {
-    if (event.has_profile_events()) {
-      num_profile_event_to_send++;
-    } else {
-      num_status_event_to_send++;
+  // Aggregate
+  absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> agg_task_events;
+  auto to_rpc_event_fn = [this, &agg_task_events](std::unique_ptr<TaskEvent> &event) {
+    if (!agg_task_events.count(event->GetTaskAttempt())) {
+      auto inserted =
+          agg_task_events.insert({event->GetTaskAttempt(), rpc::TaskEvents()});
+      RAY_CHECK(inserted.second);
     }
-    auto &task_events_itr =
-        task_events_map[std::make_pair(event.task_id(), event.attempt_number())];
-    task_events_itr.MergeFrom(event);
-  }
+
+    auto itr = agg_task_events.find(event->GetTaskAttempt());
+
+    if (event->ToRpcTaskEventsOrDrop(&(itr->second))) {
+      RAY_CHECK(event->IsProfileEvent());
+      stats_counter_.Increment(
+          TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush);
+    }
+  };
+  std::for_each(to_send.begin(), to_send.end(), to_rpc_event_fn);
 
   // Convert to rpc::TaskEventsData
   auto data = std::make_unique<rpc::TaskEventData>();
+  size_t num_task_events = to_send.size();
+  size_t num_profile_event_to_send = 0;
+  size_t num_status_event_to_send = 0;
+  for (auto &[_task_attempt, task_event] : agg_task_events) {
+    auto events_by_task = data->add_events_by_task();
+    if (task_event.has_profile_events()) {
+      num_profile_event_to_send++;
+    }
+    if (task_event.has_state_updates()) {
+      num_status_event_to_send++;
+    }
+    *events_by_task = std::move(task_event);
+  }
+
+  // Send and reset the counters
+  stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskEventsStored, to_send.size());
+  size_t num_profile_task_events_dropped = stats_counter_.Get(
+      TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush);
+  stats_counter_.Decrement(
+      TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush,
+      num_profile_task_events_dropped);
+  stats_counter_.Increment(TaskEventBufferCounter::kTotalNumTaskProfileEventDropped,
+                           num_profile_task_events_dropped);
+
+  size_t num_status_task_events_dropped = stats_counter_.Get(
+      TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
+  stats_counter_.Decrement(
+      TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush,
+      num_status_task_events_dropped);
+  stats_counter_.Increment(TaskEventBufferCounter::kTotalNumTaskStatusEventDropped,
+                           num_status_task_events_dropped);
+
   data->set_num_profile_task_events_dropped(num_profile_task_events_dropped);
   data->set_num_status_task_events_dropped(num_status_task_events_dropped);
 
-  auto num_task_events = task_events_map.size();
-  for (auto itr : task_events_map) {
-    auto events_by_task = data->add_events_by_task();
-    events_by_task->Swap(&itr.second);
-  }
-
+  gcs::TaskInfoAccessor *task_accessor;
   {
     // Sending the protobuf to GCS.
     absl::MutexLock lock(&mutex_);
-    // Some debug tracking.
-    total_num_events_ += num_task_events;
-    total_events_bytes_ += data->ByteSizeLong();
-
-    auto on_complete = [this, num_task_events](const Status &status) {
-      absl::MutexLock lock(&mutex_);
-      if (!status.ok()) {
-        RAY_LOG(WARNING) << "Failed to push " << num_task_events
-                         << " task state events to GCS. Data will be lost. [status="
-                         << status.ToString() << "]";
-      } else {
-        RAY_LOG(DEBUG) << "Push " << num_task_events << " task state events to GCS.";
-      }
-      grpc_in_progress_ = false;
-    };
-
     // The flag should be unset when on_complete is invoked.
-    grpc_in_progress_ = true;
-    auto status =
-        gcs_client_->Tasks().AsyncAddTaskEventData(std::move(data), on_complete);
+    task_accessor = &gcs_client_->Tasks();
+  }
+
+  grpc_in_progress_ = true;
+  auto on_complete = [this, num_task_events](const Status &status) {
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Failed to push " << num_task_events
+                       << " task state events to GCS. Data will be lost. [status="
+                       << status.ToString() << "]";
+    }
+    grpc_in_progress_ = false;
+  };
+
+  auto status = task_accessor->AsyncAddTaskEventData(std::move(data), on_complete);
+  {
     if (!status.ok()) {
       // If we couldn't even send the data by invoking client side callbacks, there's
       // something seriously wrong, and losing data in this case should not be too
@@ -219,10 +354,40 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
       grpc_in_progress_ = false;
 
       // Fail to send, currently dropping events.
-      num_status_task_events_dropped_ += num_status_event_to_send;
-      num_profile_task_events_dropped_ += num_profile_event_to_send;
+      stats_counter_.Increment(TaskEventBufferCounter::kTotalNumTaskProfileEventDropped,
+                               num_profile_event_to_send);
+      stats_counter_.Increment(TaskEventBufferCounter::kTotalNumTaskStatusEventDropped,
+                               num_status_event_to_send);
     }
   }
+}
+
+const std::string TaskEventBufferImpl::DebugString() {
+  std::stringstream ss;
+
+  if (!Enabled()) {
+    ss << "Task Event Buffer is disabled.";
+    return ss.str();
+  }
+
+  auto stats = stats_counter_.GetAll();
+  ss << "\nIO Service Stats:\n";
+  ss << io_service_.stats().StatsString();
+  ss << "\nOther Stats:"
+     << "\n\tgrpc_in_progress:" << grpc_in_progress_
+     << "\n\tcurrent number of task events in buffer: "
+     << stats[TaskEventBufferCounter::kNumTaskEventsStored]
+     << "\n\ttotal task events sent: "
+     << 1.0 * stats[TaskEventBufferCounter::kTotalTaskEventsBytesReported] / 1024 / 1024
+     << " MiB"
+     << "\n\ttotal number of task events sent: "
+     << stats[TaskEventBufferCounter::kTotalTaskEventsReported]
+     << "\n\tnum status task events dropped: "
+     << stats[TaskEventBufferCounter::kTotalNumTaskProfileEventDropped]
+     << "\n\tnum profile task events dropped: "
+     << stats[TaskEventBufferCounter::kTotalNumTaskStatusEventDropped] << "\n";
+
+  return ss.str();
 }
 
 }  // namespace worker

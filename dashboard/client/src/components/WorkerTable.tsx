@@ -101,7 +101,7 @@ const WorkerDetailTable = ({
 
   return (
     <TableContainer>
-      <ActorTable actors={actors} />
+      <ActorTable actors={actors} detailPathPrefix="/actors" />
     </TableContainer>
   );
 };
@@ -231,7 +231,7 @@ const RayletWorkerTable = ({
                         <Grid item>
                           <Link
                             target="_blank"
-                            to={`/log/${encodeURIComponent(
+                            to={`/logs/${encodeURIComponent(
                               ipLogMap[coreWorkerStats[0]?.ipAddress],
                             )}?fileName=${
                               coreWorkerStats[0].jobId || ""

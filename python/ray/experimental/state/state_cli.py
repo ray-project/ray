@@ -27,6 +27,7 @@ from ray.experimental.state.common import (
     StateResource,
     StateSchema,
     SupportedFilterType,
+    TaskState,
     resource_to_schema,
 )
 from ray.experimental.state.exception import RayStateApiException
@@ -282,9 +283,17 @@ def format_get_api_output(
     schema: StateSchema,
     format: AvailableFormat = AvailableFormat.YAML,
 ) -> str:
+
     if not state_data or len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
 
+    if schema == TaskState and format == AvailableFormat.YAML:
+        augmented_task_state_data = [
+            {("task_id: " + state["task_id"]): state} for state in state_data
+        ]
+        return output_with_format(
+            augmented_task_state_data, schema=schema, format=format
+        )
     return output_with_format(state_data, schema=schema, format=format)
 
 
@@ -296,6 +305,13 @@ def format_list_api_output(
 ) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
+    if schema == TaskState and format == AvailableFormat.YAML:
+        augmented_task_state_data = [
+            {("task_id: " + state["task_id"]): state} for state in state_data
+        ]
+        return output_with_format(
+            augmented_task_state_data, schema=schema, format=format
+        )
     return output_with_format(state_data, schema=schema, format=format)
 
 
@@ -353,7 +369,7 @@ def ray_get(
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray get tasks <task-id>` is
-    :ref:`ray.experimental.state.common.TaskState <state-api-schema-task>`.
+    :class:`~ray.experimental.state.common.TaskState`.
 
     Usage:
 
@@ -378,9 +394,9 @@ def ray_get(
         id: The id of the resource.
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-    """
+    """  # noqa: E501
     # All resource names use '_' rather than '-'. But users options have '-'
     resource = StateResource(resource.replace("-", "_"))
 
@@ -466,7 +482,7 @@ def ray_list(
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray list tasks` is
-    :ref:`ray.experimental.state.common.TaskState <state-api-schema-task>`.
+    :class:`~ray.experimental.state.common.TaskState`.
 
     Usage:
 
@@ -517,9 +533,9 @@ def ray_list(
         resource: The type of the resource to query.
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-    """
+    """  # noqa: E501
     # All resource names use '_' rather than '-'. But users options have '-'
     resource = StateResource(resource.replace("-", "_"))
     format = AvailableFormat(format)
@@ -581,12 +597,12 @@ def task_summary(ctx, timeout: float, address: str):
     task function names.
 
     The output schema is
-    :ref:`ray.experimental.state.common.TaskSummaries <state-api-schema-task-summary>`.
+    :class:`~ray.experimental.state.common.TaskSummaries`.
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-    """
+    """  # noqa: E501
     print(
         format_summary_output(
             summarize_tasks(
@@ -612,13 +628,13 @@ def actor_summary(ctx, timeout: float, address: str):
     actor class names.
 
     The output schema is
-    :ref:`ray.experimental.state.common.ActorSummaries
-    <state-api-schema-actor-summary>`.
+    :class:`ray.experimental.state.common.ActorSummaries
+    <ray.experimental.state.common.ActorSummaries>`.
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-    """
+    """  # noqa: E501
     print(
         format_summary_output(
             summarize_actors(
@@ -663,13 +679,13 @@ def object_summary(ctx, timeout: float, address: str):
         ```
 
     The output schema is
-    :ref:`ray.experimental.state.common.ObjectSummaries
-    <state-api-schema-object-summary>`.
+    :class:`ray.experimental.state.common.ObjectSummaries
+    <ray.experimental.state.common.ObjectSummaries>`.
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-    """
+    """  # noqa: E501
     print(
         format_object_summary_output(
             summarize_objects(
@@ -920,9 +936,9 @@ def log_cluster(
         ```
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             is failed to query the data.
-    """
+    """  # noqa: E501
 
     if node_id is None and node_ip is None:
         node_ip = _get_head_node_ip(address)
@@ -1029,10 +1045,10 @@ def log_actor(
         ```
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
         MissingParameter if inputs are missing.
-    """
+    """  # noqa: E501
 
     if pid is None and id is None:
         raise click.MissingParameter(
@@ -1102,10 +1118,10 @@ def log_worker(
         ```
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
         MissingParameter if inputs are missing.
-    """
+    """  # noqa: E501
 
     _print_log(
         address=address,

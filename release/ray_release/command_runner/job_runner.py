@@ -11,7 +11,7 @@ from ray_release.exception import (
     CommandTimeout,
     LocalEnvSetupError,
     LogsError,
-    ResultsError,
+    FetchResultError,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.job_manager import JobManager
@@ -30,6 +30,7 @@ class JobRunner(CommandRunner):
         file_manager: FileManager,
         working_dir: str,
         sdk: Optional["AnyscaleSDK"] = None,
+        artifact_path: Optional[str] = None,
     ):
         super(JobRunner, self).__init__(
             cluster_manager=cluster_manager,
@@ -91,7 +92,11 @@ class JobRunner(CommandRunner):
         )
 
     def run_command(
-        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+        self,
+        command: str,
+        env: Optional[Dict] = None,
+        timeout: float = 3600.0,
+        raise_on_timeout: bool = True,
     ) -> float:
         full_env = self.get_full_command_env(env)
 
@@ -138,10 +143,13 @@ class JobRunner(CommandRunner):
             os.unlink(tmpfile)
             return data
         except Exception as e:
-            raise ResultsError(f"Could not fetch results from session: {e}") from e
+            raise FetchResultError(f"Could not fetch results from session: {e}") from e
 
     def fetch_results(self) -> Dict[str, Any]:
-        return self._fetch_json(self.result_output_json)
+        return self._fetch_json(self._RESULT_OUTPUT_JSON)
 
     def fetch_metrics(self) -> Dict[str, Any]:
-        return self._fetch_json(self.metrics_output_json)
+        return self._fetch_json(self._METRICS_OUTPUT_JSON)
+
+    def fetch_artifact(self):
+        raise NotImplementedError

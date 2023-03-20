@@ -20,7 +20,7 @@ export const JobDetailActorsPage = () => {
     ? {
         title: "Actors",
         id: "actors",
-        path: job.job_id ? `/new/jobs/${job.job_id}/actors` : undefined,
+        path: job.job_id ? `/jobs/${job.job_id}/actors` : undefined,
       }
     : {
         title: "Actors",
@@ -31,7 +31,9 @@ export const JobDetailActorsPage = () => {
   return (
     <div className={classes.root}>
       <MainNavPageInfo pageInfo={pageInfo} />
-      <TitleCard title="Actors">{<ActorList jobId={params.id} />}</TitleCard>
+      <TitleCard title="Actors">
+        <ActorList jobId={params.id} />
+      </TitleCard>
     </div>
   );
 };

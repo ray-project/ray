@@ -55,7 +55,7 @@ const NodeDetailPage = () => {
         pageInfo={{
           title: `Node: ${params.id}`,
           id: "node-detail",
-          path: `/new/cluster/nodes/${params.id}`,
+          path: `/cluster/nodes/${params.id}`,
         }}
       />
       <Loading loading={msg.startsWith("Loading")} />
@@ -184,7 +184,7 @@ const NodeDetailPage = () => {
             <Grid container spacing={2}>
               <Grid item xs>
                 <div className={classes.label}>Logs</div>{" "}
-                <Link to={`/log/${encodeURIComponent(nodeDetail.logUrl)}`}>
+                <Link to={`/logs/${encodeURIComponent(nodeDetail.logUrl)}`}>
                   log
                 </Link>
               </Grid>
@@ -235,6 +235,7 @@ const NodeDetailPage = () => {
               <ActorTable
                 actors={nodeDetail.actors}
                 workers={nodeDetail?.workers}
+                detailPathPrefix="/actors"
               />
             </TableContainer>
           </React.Fragment>

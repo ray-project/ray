@@ -22,9 +22,10 @@ ds.show(3)
 
 # Repartition the dataset to 5 blocks.
 ds = ds.repartition(5)
-# Dataset(num_blocks=5, num_rows=150,
-#         schema={sepal.length: double, sepal.width: double,
-#                 petal.length: double, petal.width: double, variety: string})
+# -> Repartition
+#    +- Dataset(num_blocks=1, num_rows=150,
+#               schema={sepal.length: float64, sepal.width: float64,
+#                       petal.length: float64, petal.width: float64, variety: object})
 
 # Find rows with sepal.length < 5.5 and petal.length > 3.5.
 def transform_batch(df: pandas.DataFrame) -> pandas.DataFrame:
@@ -224,12 +225,10 @@ def normalize(arr: np.ndarray) -> np.ndarray:
     range_[idx] = 1
     return (arr - mins) / range_
 
-ds.map_batches(normalize, batch_format="numpy")
-# -> Dataset(
-#        num_blocks=1,
-#        num_rows=3,
-#        schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=double>}
-#    )
+ds = ds.map_batches(normalize, batch_format="numpy")
+# -> MapBatches(normalize)
+#    +- Dataset(num_blocks=1, num_rows=3,
+#               schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=double>})
 # __writing_numpy_udfs_end__
 # fmt: on
 
@@ -261,6 +260,25 @@ ds.map_batches(ModelUDF, compute="actors").show(2)
 # fmt: on
 
 # fmt: off
+# __writing_generator_udfs_begin__
+import ray
+from typing import Iterator
+
+# Load dataset.
+ds = ray.data.read_csv("example://iris.csv")
+
+# UDF to repeat the dataframe 100 times, in chunks of 20.
+def repeat_dataframe(df: pd.DataFrame) -> Iterator[pd.DataFrame]:
+    for _ in range(5):
+        yield pd.concat([df]*20)
+
+ds.map_batches(repeat_dataframe).show(2)
+# -> {'sepal.length': 5.1, 'sepal.width': 3.5, 'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
+# -> {'sepal.length': 4.9, 'sepal.width': 3.0, 'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
+# __writing_generator_udfs_end__
+# fmt: on
+
+# fmt: off
 # __writing_pandas_out_udfs_begin__
 import ray
 import pandas as pd
@@ -275,7 +293,8 @@ def convert_to_pandas(text: List[str]) -> pd.DataFrame:
     return pd.DataFrame({"text": text})
 
 ds = ds.map_batches(convert_to_pandas)
-# -> Dataset(num_blocks=1, num_rows=10, schema={text: object})
+# -> MapBatches(convert_to_pandas)
+#    +- Dataset(num_blocks=1, num_rows=10, schema={text: string})
 
 ds.show(2)
 # -> {
@@ -303,7 +322,8 @@ def convert_to_arrow(text: List[str]) -> pa.Table:
     return pa.table({"text": text})
 
 ds = ds.map_batches(convert_to_arrow)
-# -> Dataset(num_blocks=1, num_rows=10, schema={text: object})
+# -> MapBatches(convert_to_arrow)
+#    +- Dataset(num_blocks=1, num_rows=10, schema={text: string})
 
 ds.show(2)
 # -> {
@@ -342,11 +362,18 @@ def convert_to_numpy(df: pd.DataFrame) -> np.ndarray:
     return df[["sepal.length", "sepal.width"]].to_numpy()
 
 ds = ds.map_batches(convert_to_numpy)
-# -> Dataset(
-#        num_blocks=1,
-#        num_rows=150,
-#        schema={__value__: <ArrowTensorType: shape=(2,), dtype=double>},
-#    )
+# -> MapBatches(convert_to_numpy)
+#    +- Dataset(
+#           num_blocks=1,
+#           num_rows=150,
+#           schema={
+#               sepal.length: double,
+#               sepal.width: double,
+#               petal.length: double,
+#               petal.width: double,
+#               variety: string,
+#           },
+#      )
 
 ds.show(2)
 # -> [5.1 3.5]
@@ -384,15 +411,18 @@ def convert_to_numpy(df: pd.DataFrame) -> Dict[str, np.ndarray]:
     }
 
 ds = ds.map_batches(convert_to_numpy)
-# -> Dataset(
-#        num_blocks=1,
-#        num_rows=150,
-#        schema={
-#            sepal_len_and_width: <ArrowTensorType: shape=(2,), dtype=double>,
-#            petal_len: double,
-#            petal_width: double,
-#        },
-#    )
+# -> MapBatches(convert_to_numpy)
+#    +- Dataset(
+#           num_blocks=1,
+#           num_rows=150,
+#           schema={
+#               sepal.length: double,
+#               sepal.width: double,
+#               petal.length: double,
+#               petal.width: double,
+#               variety: string,
+#           },
+#      )
 
 ds.show(2)
 # -> {'sepal_len_and_width': array([5.1, 3.5]), 'petal_len': 1.4, 'petal_width': 0.2}
@@ -425,7 +455,18 @@ def convert_to_list(df: pd.DataFrame) -> List[dict]:
     return df.to_dict("records")
 
 ds = ds.map_batches(convert_to_list)
-# -> Dataset(num_blocks=1, num_rows=150, schema=<class 'dict'>)
+# -> MapBatches(convert_to_list)
+#    +- Dataset(
+#           num_blocks=1,
+#           num_rows=150,
+#           schema={
+#               sepal.length: double,
+#               sepal.width: double,
+#               petal.length: double,
+#               petal.width: double,
+#               variety: string,
+#           },
+#      )
 
 ds.show(2)
 # -> {'sepal.length': 5.1, 'sepal.width': 3.5, 'petal.length': 1.4, 'petal.width': 0.2,
@@ -450,7 +491,8 @@ def row_to_dict(row: int) -> Dict[str, int]:
     return {"foo": row}
 
 ds = ds.map(row_to_dict)
-# -> Dataset(num_blocks=10, num_rows=10, schema={foo: int64})
+# -> Map
+#    +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)
 
 ds.show(2)
 # -> {'foo': 0}
@@ -461,6 +503,7 @@ ds.show(2)
 # fmt: off
 # __writing_table_row_out_row_udfs_begin__
 import ray
+from ray.data.row import TableRow
 import pandas as pd
 from typing import Dict
 
@@ -485,18 +528,18 @@ def map_row(row: TableRow) -> TableRow:
     return row
 
 ds = ds.map(map_row)
-# -> Dataset(
-#        num_blocks=1,
-#        num_rows=150,
-#        schema={
-#            sepal.length: double,
-#            sepal.width: double,
-#            petal.length: double,
-#            petal.width: double,
-#            variety: string,
-#            sepal.area: double,
-#        },
-#   )
+# -> Map
+#    +- Dataset(
+#           num_blocks=1,
+#           num_rows=150,
+#           schema={
+#               sepal.length: double,
+#               sepal.width: double,
+#               petal.length: double,
+#               petal.width: double,
+#               variety: string,
+#           },
+#      )
 
 ds.show(2)
 # -> {'sepal.length': 5.1, 'sepal.width': 3.5, 'petal.length': 1.4, 'petal.width': 0.2,
@@ -521,11 +564,8 @@ def row_to_numpy(row: int) -> np.ndarray:
     return np.full(shape=(2, 2), fill_value=row)
 
 ds = ds.map(row_to_numpy)
-# -> Dataset(
-#        num_blocks=10,
-#        num_rows=10,
-#        schema={__value__: <ArrowTensorType: shape=(2, 2), dtype=int64>},
-#    )
+# -> Map
+#    +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)
 
 ds.show(2)
 # -> [[0 0]
@@ -538,6 +578,7 @@ ds.show(2)
 # fmt: off
 # __writing_simple_out_row_udfs_begin__
 import ray
+from ray.data.row import TableRow
 from typing import List
 
 # Load dataset.
@@ -559,7 +600,18 @@ def map_row(row: TableRow) -> tuple:
     return tuple(row.items())
 
 ds = ds.map(map_row)
-# -> Dataset(num_blocks=1, num_rows=150, schema=<class 'tuple'>)
+# -> Map
+#    +- Dataset(
+#           num_blocks=1,
+#           num_rows=150,
+#           schema={
+#               sepal.length: double,
+#               sepal.width: double,
+#               petal.length: double,
+#               petal.width: double,
+#               variety: string,
+#          },
+#     )
 
 ds.show(2)
 # -> (('sepal.length', 5.1), ('sepal.width', 3.5), ('petal.length', 1.4),
@@ -589,6 +641,18 @@ def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
 
 # Have each batch that pandas_transform receives contain 10 rows.
 ds = ds.map_batches(pandas_transform, batch_size=10)
+# -> MapBatches(pandas_transform)
+#    +- Dataset(
+#           num_blocks=1,
+#           num_rows=150,
+#           schema={
+#               sepal.length: double,
+#               sepal.width: double,
+#               petal.length: double,
+#               petal.width: double,
+#               variety: string,
+#           },
+#      )
 
 ds.show(2)
 # -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,

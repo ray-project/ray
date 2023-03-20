@@ -261,6 +261,45 @@ ALGORITHMS = {
 }
 
 
+ALGORITHMS_CLASS_TO_NAME = {
+    "A2C": "A2C",
+    "A3C": "A3C",
+    "AlphaZero": "AlphaZero",
+    "ApexDQN": "APEX",
+    "ApexDDPG": "APEX_DDPG",
+    "ARS": "ARS",
+    "BanditLinTS": "BanditLinTS",
+    "BanditLinUCB": "BanditLinUCB",
+    "BC": "BC",
+    "CQL": "CQL",
+    "CRR": "CRR",
+    "ES": "ES",
+    "DDPG": "DDPG",
+    "DDPPO": "DDPPO",
+    "DQN": "DQN",
+    "Dreamer": "Dreamer",
+    "DT": "DT",
+    "Impala": "IMPALA",
+    "APPO": "APPO",
+    "AlphaStar": "AlphaStar",
+    "MADDPG": "MADDPG",
+    "MAML": "MAML",
+    "MARWIL": "MARWIL",
+    "MBMPO": "MBMPO",
+    "PG": "PG",
+    "PPO": "PPO",
+    "QMix": "QMIX",
+    "R2D2": "R2D2",
+    "RandomAgent": "Random",
+    "RNNSAC": "RNNSAC",
+    "SAC": "SAC",
+    "SimpleQ": "SimpleQ",
+    "SlateQ": "SlateQ",
+    "TD3": "TD3",
+    "LeelaChessZero": "LeelaChessZero",
+}
+
+
 @Deprecated(
     new="ray.tune.registry.get_trainable_cls([algo name], return_config=False) and cls="
     "ray.tune.registry.get_trainable_cls([algo name]); cls.get_default_config();",

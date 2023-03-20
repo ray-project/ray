@@ -1,6 +1,8 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data.aggregate import AggregateFn
+from ray.data.block import KeyFn
 
 
 class AbstractAllToAll(LogicalOperator):
@@ -79,3 +81,37 @@ class Repartition(AbstractAllToAll):
             num_outputs=num_outputs,
         )
         self._shuffle = shuffle
+
+
+class Sort(AbstractAllToAll):
+    """Logical operator for sort."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        key: Optional[KeyFn],
+        descending: bool,
+    ):
+        super().__init__(
+            "Sort",
+            input_op,
+        )
+        self._key = key
+        self._descending = descending
+
+
+class Aggregate(AbstractAllToAll):
+    """Logical operator for aggregate."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        key: Optional[KeyFn],
+        aggs: List[AggregateFn],
+    ):
+        super().__init__(
+            "Aggregate",
+            input_op,
+        )
+        self._key = key
+        self._aggs = aggs

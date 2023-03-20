@@ -17,12 +17,6 @@ Next steps
     import ray
     ray\.init\(address='auto'\)
 
-  To connect to this Ray runtime from outside of the cluster, for example to
-  connect to a remote cluster from your laptop directly, use the following
-  Python code:
-    import ray
-    ray\.init\(address='ray://.*'\)
-
   To see the status of the cluster, use
     ray status
   To monitor and debug Ray, view the dashboard at 

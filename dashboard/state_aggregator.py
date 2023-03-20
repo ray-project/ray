@@ -253,7 +253,7 @@ class StateAPIManager:
 
             data = self._message_to_dict(
                 message=message,
-                fields_to_decode=["placement_group_id", "creator_job_id"],
+                fields_to_decode=["placement_group_id", "creator_job_id", "node_id"],
             )
             result.append(data)
         num_after_truncation = len(result)
@@ -423,7 +423,7 @@ class StateAPIManager:
                     ],
                 ),
                 (task_attempt, ["task_id", "attempt_number", "job_id"]),
-                (state_updates, ["node_id", "worker_id"]),
+                (state_updates, ["node_id", "worker_id", "error_type"]),
             ]
             for src, keys in mappings:
                 for key in keys:

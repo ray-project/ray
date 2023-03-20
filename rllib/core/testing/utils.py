@@ -1,9 +1,11 @@
 from typing import Type, Union, TYPE_CHECKING
+
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
-
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
+from ray.rllib.core.learner.learner_group import LearnerGroup
+from ray.rllib.core.learner.learner import LearnerSpec, FrameworkHPs
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
@@ -11,12 +13,13 @@ from ray.rllib.core.rl_module.marl_module import (
 )
 from ray.rllib.core.rl_module.tests.test_marl_module import DEFAULT_POLICY_ID
 
+
 if TYPE_CHECKING:
     import gymnasium as gym
     import torch
     import tensorflow as tf
 
-    from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
+    from ray.rllib.core.learner.learner import Learner
     from ray.rllib.core.rl_module import RLModule
 
 
@@ -24,15 +27,15 @@ Optimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
 
 
 @DeveloperAPI
-def get_trainer_class(framework: str) -> Type["RLTrainer"]:
+def get_learner_class(framework: str) -> Type["Learner"]:
     if framework == "tf":
-        from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
+        from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 
-        return BCTfRLTrainer
+        return BCTfLearner
     elif framework == "torch":
-        from ray.rllib.core.testing.torch.bc_rl_trainer import BCTorchRLTrainer
+        from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
 
-        return BCTorchRLTrainer
+        return BCTorchLearner
     else:
         raise ValueError(f"Unsupported framework: {framework}")
 
@@ -58,7 +61,7 @@ def get_module_spec(framework: str, env: "gym.Env", is_multi_agent: bool = False
         module_class=get_module_class(framework),
         observation_space=env.observation_space,
         action_space=env.action_space,
-        model_config={"hidden_dim": 32},
+        model_config_dict={"fcnet_hiddens": [32]},
     )
 
     if is_multi_agent:
@@ -86,44 +89,66 @@ def get_optimizer_default_class(framework: str) -> Type[Optimizer]:
 
 
 @DeveloperAPI
-def get_rl_trainer(
+def get_learner(
     framework: str,
     env: "gym.Env",
     is_multi_agent: bool = False,
-) -> "RLTrainer":
+) -> "Learner":
 
-    _cls = get_trainer_class(framework)
+    _cls = get_learner_class(framework)
     spec = get_module_spec(framework=framework, env=env, is_multi_agent=is_multi_agent)
     return _cls(module_spec=spec, optimizer_config={"lr": 0.1})
 
 
 @DeveloperAPI
-def get_trainer_runner(
+def get_learner_group(
     framework: str,
     env: "gym.Env",
-    compute_config: dict,
+    scaling_config: LearnerGroupScalingConfig,
     is_multi_agent: bool = False,
-) -> TrainerRunner:
-    trainer_class = get_trainer_class(framework)
-    trainer_cfg = dict(
+    eager_tracing: bool = False,
+) -> LearnerGroup:
+    """Construct a learner_group for testing.
+
+    Args:
+        framework: The framework used for training.
+        env: The environment to train on.
+        scaling_config: A config for the amount and types of resources to use for
+            training.
+        is_multi_agent: Whether to construct a multi agent rl module.
+        eager_tracing: TF Specific. Whether to use tf.function for tracing
+            optimizations.
+
+    Returns:
+        A learner_group.
+
+    """
+    if framework == "tf":
+        learner_hps = FrameworkHPs(eager_tracing=eager_tracing)
+    else:
+        learner_hps = None
+    learner_spec = LearnerSpec(
+        learner_class=get_learner_class(framework),
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
         optimizer_config={"lr": 0.1},
+        learner_scaling_config=scaling_config,
+        learner_hyperparameters=learner_hps,
     )
-    runner = TrainerRunner(trainer_class, trainer_cfg, compute_config=compute_config)
+    lg = LearnerGroup(learner_spec)
 
-    return runner
+    return lg
 
 
 @DeveloperAPI
-def add_module_to_runner_or_trainer(
+def add_module_to_learner_or_learner_group(
     framework: str,
     env: "gym.Env",
     module_id: str,
-    runner_or_trainer: Union[TrainerRunner, "RLTrainer"],
+    learner_group_or_learner: Union[LearnerGroup, "Learner"],
 ):
-    runner_or_trainer.add_module(
+    learner_group_or_learner.add_module(
         module_id=module_id,
         module_spec=get_module_spec(framework, env, is_multi_agent=False),
         optimizer_cls=get_optimizer_default_class(framework),

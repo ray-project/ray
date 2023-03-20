@@ -214,7 +214,7 @@ message RayErrorInfo {
     string error_message = 4;
   }
   // The type of error that caused the exception.
-  optional ErrorType error_type = 11;
+  ErrorType error_type = 11;
 }
 
 message OutOfMemoryErrorContext {
@@ -261,6 +261,7 @@ message ActorDeathCause {
     RuntimeEnvFailedContext runtime_env_failed_context = 2;
     ActorDiedErrorContext actor_died_error_context = 3;
     ActorUnschedulableContext actor_unschedulable_context = 4;
+    OomContext oom_context = 5;
   }
 }
 // ---Actor death contexts start----
@@ -296,6 +297,16 @@ message ActorDiedErrorContext {
   // before scheduling had completed.
   bool never_started = 10;
 }
+
+// Context for task OOM.
+message OomContext {
+  // The error message
+  string error_message = 1;
+
+  // Whether the task / actor should fail immediately and not be retried.
+  bool fail_immediately = 2;
+}
+
 // ---Actor death contexts end----
 
 message JobConfig {
@@ -401,6 +412,12 @@ message TaskSpec {
   repeated bytes dynamic_return_ids = 31;
   // Job config for the task. Only set for normal task or actor creation task.
   optional JobConfig job_config = 32;
+  // TODO(rickyx): Remove this once we figure out a way to handle task ids
+  // across multiple threads properly.
+  // The task id of the CoreWorker's main thread from which the task is submitted.
+  // This will be the actor creation task's task id for concurrent actors. Or
+  // the main thread's task id for other cases.
+  bytes submitter_task_id = 33;
 }
 
 message TaskInfoEntry {

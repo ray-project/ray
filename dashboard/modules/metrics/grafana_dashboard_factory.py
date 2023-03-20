@@ -4,8 +4,9 @@ import copy
 import json
 import os
 from dataclasses import dataclass
+from typing import List, Dict, Optional
 
-from typing import List, Dict
+import ray
 
 
 @dataclass
@@ -162,14 +163,14 @@ GRAFANA_PANELS = [
         id=29,
         title="Object Store Memory",
         description="Object store memory usage by location. The dotted line indicates the object store memory capacity.\n\nLocation: where the memory was allocated, which is MMAP_SHM or MMAP_DISK to indicate memory-mapped page, SPILLED to indicate spillage to disk, and WORKER_HEAP for objects small enough to be inlined in worker memory. Refer to metric_defs.cc for more information.",
-        unit="gbytes",
+        unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_object_store_memory{{{global_filters}}} / 1e9) by (Location)",
+                expr="sum(ray_object_store_memory{{{global_filters}}}) by (Location)",
                 legend="{{Location}}",
             ),
             Target(
-                expr='sum(ray_resources{{Name="object_store_memory",{global_filters}}} / 1e9)',
+                expr='sum(ray_resources{{Name="object_store_memory",{global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -527,11 +528,16 @@ PANEL_TEMPLATE = {
 }
 
 
-def generate_grafana_dashboard() -> str:
+def generate_grafana_dashboard(override_uid: Optional[str] = None) -> str:
     base_json = json.load(
         open(os.path.join(os.path.dirname(__file__), "grafana_dashboard_base.json"))
     )
     base_json["panels"] = _generate_grafana_panels()
+    tags = base_json.get("tags", []) or []
+    tags.append(f"rayVersion:{ray.__version__}")
+    base_json["tags"] = tags
+    if override_uid:
+        base_json["uid"] = override_uid
     return json.dumps(base_json, indent=4)
 
 

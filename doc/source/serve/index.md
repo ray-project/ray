@@ -4,7 +4,7 @@
 
 (rayserve)=
 
-# Serve: Scalable and Programmable Serving
+# Ray Serve: Scalable and Programmable Serving
 
 :::{tip}
 [Get in touch with us](https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU) if you're using or considering using Ray Serve.
