@@ -142,6 +142,8 @@ class GBDTTrainer(BaseTrainer):
     _tune_callback_checkpoint_cls: type
     _default_ray_params: Dict[str, Any] = {"checkpoint_frequency": 1}
     _init_model_arg_name: str
+    _num_iterations_argument: str = "num_boost_round"
+    _default_num_iterations: int = 10
 
     def __init__(
         self,
@@ -296,6 +298,16 @@ class GBDTTrainer(BaseTrainer):
             config["callbacks"] += [callback]
 
         config[self._init_model_arg_name] = init_model
+
+        if init_model:
+            last_iteration = self._model_iteration(init_model)
+            num_iterations = config.get(
+                self._num_iterations_argument, self._default_num_iterations
+            )
+            print(
+                f"last_iteration {last_iteration} num_iterations {num_iterations} rem {num_iterations - last_iteration}"
+            )
+            config[self._num_iterations_argument] = num_iterations - last_iteration
 
         model = self._train(
             params=self.params,
