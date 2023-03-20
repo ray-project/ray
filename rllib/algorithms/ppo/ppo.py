@@ -16,7 +16,8 @@ from ray.util.debug import log_once
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.pg import PGConfig
-from ray.rllib.algorithms.ppo.ppo_rl_trainer_config import PPORLTrainerHPs
+from ray.rllib.algorithms.ppo.ppo_learner_config import PPOLearnerHPs
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -29,7 +30,6 @@ from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
-    Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
 )
@@ -41,10 +41,11 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
+    ALL_MODULES,
 )
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
+    from ray.rllib.core.learner.learner import Learner
 
 
 logger = logging.getLogger(__name__)
@@ -93,7 +94,7 @@ class PPOConfig(PGConfig):
         # fmt: off
         # __sphinx_doc_begin__
         # PPO specific settings:
-        self._rl_trainer_hps = PPORLTrainerHPs()
+        self._learner_hps = PPOLearnerHPs()
         self.use_critic = True
         self.use_gae = True
         self.lambda_ = 1.0
@@ -128,22 +129,30 @@ class PPOConfig(PGConfig):
                 PPOTorchRLModule,
             )
 
-            return SingleAgentRLModuleSpec(module_class=PPOTorchRLModule)
+            return SingleAgentRLModuleSpec(
+                module_class=PPOTorchRLModule, catalog_class=PPOCatalog
+            )
         elif self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
-            return SingleAgentRLModuleSpec(module_class=PPOTfRLModule)
+            return SingleAgentRLModuleSpec(
+                module_class=PPOTfRLModule, catalog_class=PPOCatalog
+            )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
     @override(AlgorithmConfig)
-    def get_default_rl_trainer_class(self) -> Union[Type["RLTrainer"], str]:
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_trainer import (
-                PPOTorchRLTrainer,
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import (
+                PPOTorchLearner,
             )
 
-            return PPOTorchRLTrainer
+            return PPOTorchLearner
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.ppo.tf.ppo_tf_learner import PPOTfLearner
+
+            return PPOTfLearner
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
@@ -205,7 +214,7 @@ class PPOConfig(PGConfig):
         """
         if vf_share_layers != DEPRECATED_VALUE:
             deprecation_warning(
-                old="ppo.DEFAULT_CONFIG['vf_share_layers']",
+                old="PPOConfig().vf_share_layers",
                 new="PPOConfig().training(model={'vf_share_layers': ...})",
                 error=True,
             )
@@ -217,16 +226,14 @@ class PPOConfig(PGConfig):
             self.lr_schedule = lr_schedule
         if use_critic is not NotProvided:
             self.use_critic = use_critic
-            # TODO (Kourosh) This is experimental. Set rl_trainer_hps parameters as
+            # TODO (Kourosh) This is experimental. Set learner_hps parameters as
             # well. Don't forget to remove .use_critic from algorithm config.
-            self._rl_trainer_hps.use_critic = use_critic
         if use_gae is not NotProvided:
             self.use_gae = use_gae
         if lambda_ is not NotProvided:
             self.lambda_ = lambda_
         if kl_coeff is not NotProvided:
             self.kl_coeff = kl_coeff
-            self._rl_trainer_hps.kl_coeff = kl_coeff
         if sgd_minibatch_size is not NotProvided:
             self.sgd_minibatch_size = sgd_minibatch_size
         if num_sgd_iter is not NotProvided:
@@ -235,29 +242,24 @@ class PPOConfig(PGConfig):
             self.shuffle_sequences = shuffle_sequences
         if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
-            self._rl_trainer_hps.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
             self.entropy_coeff = entropy_coeff
-            self._rl_trainer_hps.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
-            self._rl_trainer_hps.entropy_coeff_schedule = entropy_coeff_schedule
         if clip_param is not NotProvided:
             self.clip_param = clip_param
-            self._rl_trainer_hps.clip_param = clip_param
         if vf_clip_param is not NotProvided:
             self.vf_clip_param = vf_clip_param
-            self._rl_trainer_hps.vf_clip_param = vf_clip_param
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
         if kl_target is not NotProvided:
             self.kl_target = kl_target
-            self._rl_trainer_hps.kl_target = kl_target
 
         return self
 
     @override(AlgorithmConfig)
     def validate(self) -> None:
+
         # Call super's validation method.
         super().validate()
 
@@ -294,6 +296,17 @@ class PPOConfig(PGConfig):
         # Check `entropy_coeff` for correctness.
         if self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
+        # learner hps need to be updated inside of config.validate in order to have
+        # the correct values for when a user starts an experiment from a dict. This is
+        # as oppposed to assigning the values inthe builder functions such as `training`
+        self._learner_hps.use_critic = self.use_critic
+        self._learner_hps.kl_coeff = self.kl_coeff
+        self._learner_hps.vf_loss_coeff = self.vf_loss_coeff
+        self._learner_hps.entropy_coeff = self.entropy_coeff
+        self._learner_hps.entropy_coeff_schedule = self.entropy_coeff_schedule
+        self._learner_hps.clip_param = self.clip_param
+        self._learner_hps.vf_clip_param = self.vf_clip_param
+        self._learner_hps.kl_target = self.kl_target
 
 
 class UpdateKL:
@@ -356,11 +369,6 @@ class PPO(Algorithm):
             return PPOTF1Policy
         else:
             if config._enable_rl_module_api:
-                if config.eager_tracing:
-                    raise ValueError(
-                        "The TensorFlow PPO with RLModule does not support "
-                        "eager tracing yet."
-                    )
                 from ray.rllib.algorithms.ppo.tf.ppo_tf_policy_rlm import (
                     PPOTfPolicyWithRLModule,
                 )
@@ -393,15 +401,16 @@ class PPO(Algorithm):
         # Standardize advantages
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
-        if self.config._enable_rl_trainer_api:
+        if self.config._enable_learner_api:
             # TODO (Kourosh) Clearly define what train_batch_size
             # vs. sgd_minibatch_size and num_sgd_iter is in the config.
             # TODO (Kourosh) Do this inside the RL Trainer so
             # that we don't have to do this back and forth
             # communication between driver and the remote
             # trainer workers
-
-            train_results = self.trainer_runner.update(
+            is_module_trainable = self.workers.local_worker().is_policy_to_train
+            self.learner_group.set_is_module_trainable(is_module_trainable)
+            train_results = self.learner_group.update(
                 train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,
                 num_iters=self.config.num_sgd_iter,
@@ -412,16 +421,14 @@ class PPO(Algorithm):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
-        if self.config._enable_rl_trainer_api:
+        if self.config._enable_learner_api:
             # the train results's loss keys are pids to their loss values. But we also
             # return a total_loss key at the same level as the pid keys. So we need to
             # subtract that to get the total set of pids to update.
-            # TODO (Kourosh): We need to make a better design for the hierarchy of the
-            # train results, so that all the policy ids end up in the same level.
             # TODO (Kourosh): We should also not be using train_results as a message
             # passing medium to infer whcih policies to update. We could use
             # policies_to_train variable that is given by the user to infer this.
-            policies_to_update = set(train_results["loss"].keys()) - {"total_loss"}
+            policies_to_update = set(train_results.keys()) - {ALL_MODULES}
         else:
             policies_to_update = list(train_results.keys())
 
@@ -440,28 +447,29 @@ class PPO(Algorithm):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.workers.num_remote_workers() > 0:
                 from_worker_or_trainer = None
-                if self.config._enable_rl_trainer_api:
-                    # sync weights from trainer_runner to all rollout workers
-                    from_worker_or_trainer = self.trainer_runner
+                if self.config._enable_learner_api:
+                    # sync weights from learner_group to all rollout workers
+                    from_worker_or_trainer = self.learner_group
                 self.workers.sync_weights(
                     from_worker_or_trainer=from_worker_or_trainer,
                     policies=policies_to_update,
                     global_vars=global_vars,
                 )
-            elif self.config._enable_rl_trainer_api:
-                weights = self.trainer_runner.get_weights()
+            elif self.config._enable_learner_api:
+                weights = self.learner_group.get_weights()
                 self.workers.local_worker().set_weights(weights)
 
-        if self.config._enable_rl_trainer_api:
+        if self.config._enable_learner_api:
             kl_dict = {
                 # TODO (Kourosh): Train results don't match the old format. The thing
                 # that used to be under `kl` is now under `mean_kl_loss`. Fix this. Do
                 # we need get here?
-                pid: train_results["loss"][pid].get("mean_kl_loss")
+                pid: train_results[pid][LEARNER_STATS_KEY].get("mean_kl_loss")
                 for pid in policies_to_update
             }
             # triggers a special update method on RLOptimizer to update the KL values.
-            self.trainer_runner.additional_update(
+            self.learner_group.additional_update(
+                module_ids_to_update=policies_to_update,
                 sampled_kl_values=kl_dict,
                 timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
             )
@@ -511,20 +519,3 @@ class PPO(Algorithm):
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.ppo.PPOConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(PPOConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.ppo.ppo::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.ppo.ppo::PPOConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

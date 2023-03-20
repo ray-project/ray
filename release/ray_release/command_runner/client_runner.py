@@ -46,6 +46,7 @@ class ClientRunner(CommandRunner):
         cluster_manager: ClusterManager,
         file_manager: FileManager,
         working_dir: str,
+        artifact_path: Optional[str] = None,
     ):
         super(ClientRunner, self).__init__(cluster_manager, file_manager, working_dir)
 
@@ -131,8 +132,15 @@ class ClientRunner(CommandRunner):
     def fetch_metrics(self) -> Dict[str, Any]:
         return self._fetch_json(self.metrics_output_json)
 
+    def fetch_artifact(self):
+        raise NotImplementedError
+
     def run_command(
-        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+        self,
+        command: str,
+        env: Optional[Dict] = None,
+        timeout: float = 3600.0,
+        raise_on_timeout: bool = True,
     ) -> float:
         logger.info(
             f"Running command using Ray client on cluster "

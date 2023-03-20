@@ -1,5 +1,10 @@
 load("//bazel:python.bzl", "py_test_module_list")
 
+py_library(
+    name = "conftest",
+    srcs = ["tests/conftest.py"]
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all tests starting with `test_`.
@@ -20,7 +25,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_actor_reuse.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":tune_lib"],
+    deps = [":tune_lib", ":conftest"],
 )
 
 py_test(
@@ -169,6 +174,17 @@ py_test(
 )
 
 py_test(
+    name = "test_multi_tenancy",
+    size = "medium",
+    srcs = [
+        "tests/test_multi_tenancy.py",
+        "tests/_test_multi_tenancy_run.py"
+    ],
+    deps = [":tune_lib"],
+    tags = ["team:ml"],
+)
+
+py_test(
     name = "test_multinode_sync",
     size = "large",
     srcs = ["tests/test_multinode_sync.py"],
@@ -276,6 +292,14 @@ py_test(
     name = "test_util_file_transfer",
     size = "medium",
     srcs = ["tests/test_util_file_transfer.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
+    name = "test_util_object_cache",
+    size = "small",
+    srcs = ["tests/test_util_object_cache.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )

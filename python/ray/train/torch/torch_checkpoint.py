@@ -76,7 +76,7 @@ class TorchCheckpoint(Checkpoint):
         return super().__getstate__()
 
     def __setstate__(self, state: dict):
-        if "_data_dict" in state:
+        if "_data_dict" in state and state["_data_dict"]:
             state = state.copy()
             state["_data_dict"] = self._decode_data_dict(state["_data_dict"])
         super().__setstate__(state)

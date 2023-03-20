@@ -31,7 +31,7 @@ If all nodes are infeasible, the task or actor cannot be scheduled until feasibl
 Scheduling Strategies
 ---------------------
 
-Tasks or actors support a :ref:`scheduling_strategy <ray-remote-ref>` option to specify the strategy used to decide the best node among feasible nodes.
+Tasks or actors support a :func:`scheduling_strategy <ray.remote>` option to specify the strategy used to decide the best node among feasible nodes.
 Currently the supported strategies are the followings.
 
 "DEFAULT"

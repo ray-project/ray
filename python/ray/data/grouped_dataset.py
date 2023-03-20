@@ -3,6 +3,9 @@ from typing import Any, Callable, Generic, List, Tuple, Union
 from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
 from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
@@ -178,7 +181,7 @@ class GroupedDataset(Generic[T]):
             If groupby key is ``None`` then the key part of return is omitted.
         """
 
-        def do_agg(blocks, clear_input_blocks: bool, *_):
+        def do_agg(blocks, task_ctx: TaskContext, clear_input_blocks: bool, *_):
             # TODO: implement clear_input_blocks
             stage_info = {}
             if len(aggs) == 0:
@@ -201,6 +204,7 @@ class GroupedDataset(Generic[T]):
                     if isinstance(self._key, str)
                     else self._key,
                     num_reducers,
+                    task_ctx,
                 )
             ctx = DatasetContext.get_current()
             if ctx.use_push_based_shuffle:
@@ -214,13 +218,31 @@ class GroupedDataset(Generic[T]):
                 blocks,
                 num_reducers,
                 clear_input_blocks,
+                ctx=task_ctx,
             )
 
-        plan = self._dataset._plan.with_stage(AllToAllStage("aggregate", None, do_agg))
+        plan = self._dataset._plan.with_stage(
+            AllToAllStage(
+                "Aggregate",
+                None,
+                do_agg,
+                sub_stage_names=["SortSample", "ShuffleMap", "ShuffleReduce"],
+            )
+        )
+
+        logical_plan = self._dataset._logical_plan
+        if logical_plan is not None:
+            op = Aggregate(
+                logical_plan.dag,
+                key=self._key,
+                aggs=aggs,
+            )
+            logical_plan = LogicalPlan(op)
         return Dataset(
             plan,
             self._dataset._epoch,
             self._dataset._lazy,
+            logical_plan,
         )
 
     def _aggregate_on(

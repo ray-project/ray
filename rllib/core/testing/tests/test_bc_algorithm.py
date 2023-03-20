@@ -4,21 +4,22 @@ import gymnasium as gym
 import ray
 from ray.rllib.core.testing.torch.bc_module import (
     DiscreteBCTorchModule,
-    BCTorchMultiAgentSpec,
     BCTorchRLModuleWithSharedGlobalEncoder,
+    BCTorchMultiAgentModuleWithSharedEncoder,
 )
 from ray.rllib.core.testing.tf.bc_module import (
     DiscreteBCTFModule,
-    BCTfMultiAgentSpec,
     BCTfRLModuleWithSharedGlobalEncoder,
+    BCTfMultiAgentModuleWithSharedEncoder,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.testing.bc_algorithm import BCConfigTest
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 
 
-class TestRLTrainer(unittest.TestCase):
+class TestLearner(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -33,7 +34,7 @@ class TestRLTrainer(unittest.TestCase):
         config = (
             BCConfigTest()
             .rl_module(_enable_rl_module_api=True)
-            .training(_enable_rl_trainer_api=True, model={"fcnet_hiddens": [32, 32]})
+            .training(_enable_learner_api=True, model={"fcnet_hiddens": [32, 32]})
         )
 
         # TODO (Kourosh): Add tf2 support
@@ -54,7 +55,7 @@ class TestRLTrainer(unittest.TestCase):
         config = (
             BCConfigTest()
             .rl_module(_enable_rl_module_api=True)
-            .training(_enable_rl_trainer_api=True, model={"fcnet_hiddens": [32, 32]})
+            .training(_enable_learner_api=True, model={"fcnet_hiddens": [32, 32]})
             .multi_agent(
                 policies=policies,
                 policy_mapping_fn=lambda agent_id, **kwargs: list(policies)[agent_id],
@@ -79,16 +80,18 @@ class TestRLTrainer(unittest.TestCase):
 
         for fw in ["torch"]:
             if fw == "torch":
-                spec = BCTorchMultiAgentSpec(
+                spec = MultiAgentRLModuleSpec(
+                    marl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
                     module_specs=SingleAgentRLModuleSpec(
                         module_class=BCTorchRLModuleWithSharedGlobalEncoder
-                    )
+                    ),
                 )
             else:
-                spec = BCTfMultiAgentSpec(
+                spec = MultiAgentRLModuleSpec(
+                    marl_module_class=BCTfMultiAgentModuleWithSharedEncoder,
                     module_specs=SingleAgentRLModuleSpec(
                         module_class=BCTfRLModuleWithSharedGlobalEncoder
-                    )
+                    ),
                 )
 
             policies = {"policy_1", "policy_2"}
@@ -97,7 +100,7 @@ class TestRLTrainer(unittest.TestCase):
                 .framework(fw)
                 .rl_module(_enable_rl_module_api=True, rl_module_spec=spec)
                 .training(
-                    _enable_rl_trainer_api=True,
+                    _enable_learner_api=True,
                     model={"fcnet_hiddens": [32, 32]},
                 )
                 .multi_agent(

@@ -52,6 +52,8 @@ are :ref:`not tunable <air-tuner-search-space>`.
     :start-after: __failure_config_start__
     :end-before: __failure_config_end__
 
+.. _train-config-sync:
+
 Sync configurations in Train (``SyncConfig``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

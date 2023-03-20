@@ -348,7 +348,7 @@ def rmsprop_optimizer(
         return tf.keras.optimizers.RMSprop(
             learning_rate=policy.cur_lr,
             epsilon=config["rmsprop_epsilon"],
-            decay=0.95,
+            weight_decay=0.95,
             momentum=0.0,
             centered=True,
         )
@@ -364,7 +364,7 @@ def rmsprop_optimizer(
 
 SlateQTFPolicy = build_tf_policy(
     name="SlateQTFPolicy",
-    get_default_config=lambda: ray.rllib.algorithms.slateq.slateq.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.slateq.slateq.SlateQConfig(),
     # Build model, loss functions, and optimizers
     make_model=build_slateq_model,
     loss_fn=build_slateq_losses,

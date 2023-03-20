@@ -1,3 +1,4 @@
+import abc
 import copy
 import datetime
 import logging
@@ -60,6 +61,7 @@ from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
+
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +173,12 @@ def _setup_signal_catching() -> threading.Event:
             signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
 
     return experiment_interrupted_event
+
+
+class _Config(abc.ABC):
+    def to_dict(self) -> dict:
+        """Converts this configuration to a dict format."""
+        raise NotImplementedError
 
 
 @PublicAPI
@@ -477,6 +485,14 @@ def run(
     set_verbosity(verbose)
 
     config = config or {}
+    if isinstance(config, _Config):
+        config = config.to_dict()
+    if not isinstance(config, dict):
+        raise ValueError(
+            "The `config` passed to `tune.run()` must be a dict. "
+            f"Got '{type(config)}' instead."
+        )
+
     sync_config = sync_config or SyncConfig()
     sync_config.validate_upload_dir()
 
@@ -729,7 +745,7 @@ def run(
         search_alg=search_alg,
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
-        local_checkpoint_dir=experiments[0].checkpoint_dir,
+        experiment_path=experiments[0].local_path,
         experiment_dir_name=experiments[0].dir_name,
         sync_config=sync_config,
         stopper=experiments[0].stopper,
@@ -781,7 +797,7 @@ def run(
         _report_progress(runner, progress_reporter, done=True)
 
     all_trials = runner.get_trials()
-    experiment_checkpoint = runner.checkpoint_file
+    experiment_checkpoint = runner.experiment_state_path
 
     # Wait for syncing to finish
     for callback in callbacks:

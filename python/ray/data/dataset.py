@@ -1,7 +1,6 @@
 import collections
 import itertools
 import logging
-import os
 import sys
 import time
 import html
@@ -36,6 +35,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
+from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
@@ -43,14 +43,16 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
     MapBatches,
 )
+from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.planner.filter import generate_filter_fn
 from ray.data._internal.planner.flat_map import generate_flat_map_fn
 from ray.data._internal.planner.map_batches import generate_map_batches_fn
 from ray.data._internal.planner.map_rows import generate_map_rows_fn
+from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
-from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.bulk_dataset_iterator import BulkDatasetIterator
+from ray.data._internal.dataset_iterator_impl import DatasetIteratorImpl
+from ray.data._internal.stream_split_dataset_iterator import StreamSplitDatasetIterator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -63,7 +65,6 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.util import (
     _estimate_available_parallelism,
     _is_local_scheme,
-    _is_tensor_schema,
     ConsumptionAPI,
 )
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -91,6 +92,7 @@ from ray.data.block import (
     BlockMetadata,
     BlockPartition,
     DataBatch,
+    FlatMapUDF,
     KeyFn,
     RowUDF,
     T,
@@ -123,10 +125,10 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI, Deprecated
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
-from ray.widgets.util import ensure_notebook_deps
+from ray.widgets.util import ensure_notebook_deps, fallback_if_colab
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -146,7 +148,9 @@ if TYPE_CHECKING:
 
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_dataset import GroupedDataset
+    from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
+    from tensorflow_metadata.proto.v0 import schema_pb2
 
 
 logger = logging.getLogger(__name__)
@@ -254,6 +258,9 @@ class Dataset(Generic[T]):
         if not lazy:
             self._plan.execute(allow_clear_input_blocks=False)
 
+        # Handle to currently running executor for this Dataset.
+        self._current_executor: Optional["Executor"] = None
+
     @staticmethod
     def copy(dataset: "Dataset[T]") -> "Dataset[T]":
         return Dataset(dataset._plan, dataset._epoch, dataset._lazy)
@@ -282,7 +289,7 @@ class Dataset(Generic[T]):
             ...     [{"value": i} for i in range(1000)])
             >>> ds.map(lambda record: {"v2": record["value"] * 2})
             Map
-            +- Dataset(num_blocks=..., num_rows=1000, schema={value: int64})
+            +- Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
             >>> init_model = ... # doctest: +SKIP
@@ -347,7 +354,7 @@ class Dataset(Generic[T]):
 
         plan = self._plan.with_stage(
             OneToOneStage(
-                "map",
+                "Map",
                 transform_fn,
                 compute,
                 ray_remote_args,
@@ -500,8 +507,21 @@ class Dataset(Generic[T]):
             ...     num_gpus=1,
             ... ) # doctest: +SKIP
 
+            ``fn`` can also be a generator, yielding multiple batches in a single invocation. This is useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks.
+
+            >>> from typing import Iterator
+            >>> def map_fn_with_large_output(batch: List[int]) -> Iterator[List[int]]:
+            ...     for i in range(3):
+            ...         yield batch * 100
+            >>> ds = ray.data.from_items([1])
+            >>> ds = ds.map_batches(map_fn_with_large_output)
+            >>> ds
+            MapBatches(map_fn_with_large_output)
+            +- Dataset(num_blocks=1, num_rows=1, schema=<class 'int'>)
+
+
         Args:
-            fn: The function to apply to each record batch, or a class type
+            fn: The function or generator to apply to each record batch, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy. Note ``fn`` must be
                 pickle-able.
@@ -784,7 +804,11 @@ class Dataset(Generic[T]):
             >>> ds = ds.select_columns(cols=["col1", "col2"])
             >>> ds
             MapBatches(<lambda>)
-            +- Dataset(num_blocks=10, num_rows=10, schema={col1: int64, col2: int64, col3: int64})
+            +- Dataset(
+                  num_blocks=10,
+                  num_rows=10,
+                  schema={col1: int64, col2: int64, col3: int64}
+               )
 
 
         Time complexity: O(dataset size / parallelism)
@@ -806,7 +830,7 @@ class Dataset(Generic[T]):
 
     def flat_map(
         self,
-        fn: RowUDF[T, U],
+        fn: FlatMapUDF[T, U],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -826,7 +850,7 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            fn: The function to apply to each record, or a class type
+            fn: The function or generator to apply to each record, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
@@ -868,7 +892,7 @@ class Dataset(Generic[T]):
         transform_fn = generate_flat_map_fn()
 
         plan = self._plan.with_stage(
-            OneToOneStage("flat_map", transform_fn, compute, ray_remote_args, fn=fn)
+            OneToOneStage("FlatMap", transform_fn, compute, ray_remote_args, fn=fn)
         )
 
         logical_plan = self._logical_plan
@@ -934,7 +958,7 @@ class Dataset(Generic[T]):
         transform_fn = generate_filter_fn()
 
         plan = self._plan.with_stage(
-            OneToOneStage("filter", transform_fn, compute, ray_remote_args, fn=fn)
+            OneToOneStage("Filter", transform_fn, compute, ray_remote_args, fn=fn)
         )
 
         logical_plan = self._logical_plan
@@ -1124,6 +1148,44 @@ class Dataset(Generic[T]):
         return self.map_batches(process_batch)
 
     @ConsumptionAPI
+    def streaming_split(
+        self,
+        n: int,
+        *,
+        equal: bool = False,
+        locality_hints: Optional[List["NodeIdStr"]] = None,
+    ) -> List[DatasetIterator]:
+        """Returns ``n`` :class:`DatasetIterators <ray.data.DatasetIterator>` that can
+        be used to read disjoint subsets of the dataset in parallel.
+
+        This method is the recommended way to consume Datasets from multiple processes
+        (e.g., for distributed training). It requires streaming execution mode.
+
+        The returned iterators are Ray-serializable and can be freely passed to any
+        Ray task or actor.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(1000000)
+            >>> it1, it2 = ds.streaming_split(2, equal=True)
+            >>> list(it1.iter_batches())  # doctest: +SKIP
+            >>> list(it2.iter_batches())  # doctest: +SKIP
+
+        Args:
+            n: Number of output iterators to return.
+            equal: If True, each output iterator will see an exactly equal number
+                of rows, dropping data if necessary. If False, some iterators may see
+                slightly more or less rows than other, but no data will be dropped.
+            locality_hints: Specify the node ids corresponding to each iterator
+                location. Datasets will try to minimize data movement based on the
+                iterator output locations. This list must have length ``n``.
+
+        Returns:
+            The output iterator splits.
+        """
+        return StreamSplitDatasetIterator.create(self, n, equal, locality_hints)
+
+    @ConsumptionAPI
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
     ) -> List["Dataset[T]"]:
@@ -1143,7 +1205,8 @@ class Dataset(Generic[T]):
 
         Time complexity: O(1)
 
-        See also: ``Dataset.split_at_indices``, ``Dataset.split_proportionately``
+        See also: ``Dataset.split_at_indices``, ``Dataset.split_proportionately``,
+            and ``Dataset.streaming_split``.
 
         Args:
             n: Number of child datasets to return.
@@ -1344,7 +1407,8 @@ class Dataset(Generic[T]):
 
         Time complexity: O(num splits)
 
-        See also: ``Dataset.split``, ``Dataset.split_proportionately``
+        See also: ``Dataset.split_at_indices``, ``Dataset.split_proportionately``,
+            and ``Dataset.streaming_split``.
 
         Args:
             indices: List of sorted integers which indicate where the dataset
@@ -1363,12 +1427,16 @@ class Dataset(Generic[T]):
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
         block_list = self._plan.execute()
-        blocks, metadata = _split_at_indices(block_list, indices)
+        blocks, metadata = _split_at_indices(
+            block_list.get_blocks_with_metadata(),
+            indices,
+            block_list._owned_by_consumer,
+        )
         split_duration = time.perf_counter() - start_time
         parent_stats = self._plan.stats()
         splits = []
         for bs, ms in zip(blocks, metadata):
-            stats = DatasetStats(stages={"split": ms}, parent=parent_stats)
+            stats = DatasetStats(stages={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
             splits.append(
                 Dataset(
@@ -1556,12 +1624,24 @@ class Dataset(Generic[T]):
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
             block_partition_meta_refs: List[ObjectRef[BlockMetadata]] = []
+
+            # Gather read task names from input blocks of unioned Datasets,
+            # and concat them before passing to resulting LazyBlockList
+            read_task_names = []
+            self_read_name = self._plan._in_blocks._read_stage_name or "Read"
+            read_task_names.append(self_read_name)
+            other_read_names = [
+                o._plan._in_blocks._read_stage_name or "Read" for o in other
+            ]
+            read_task_names.extend(other_read_names)
+
             for bl in bls:
                 tasks.extend(bl._tasks)
                 block_partition_refs.extend(bl._block_partition_refs)
                 block_partition_meta_refs.extend(bl._block_partition_meta_refs)
             blocklist = LazyBlockList(
                 tasks,
+                f"Union({','.join(read_task_names)})",
                 block_partition_refs,
                 block_partition_meta_refs,
                 owned_by_consumer=owned_by_consumer,
@@ -1578,7 +1658,7 @@ class Dataset(Generic[T]):
                     "be shown again.".format(set(epochs), max_epoch)
                 )
         dataset_stats = DatasetStats(
-            stages={"union": []},
+            stages={"Union": []},
             parent=[d._plan.stats() for d in datasets],
         )
         dataset_stats.time_total_s = time.perf_counter() - start_time
@@ -1996,7 +2076,7 @@ class Dataset(Generic[T]):
             ...     [{"value": i} for i in range(1000)])
             >>> ds.sort("value", descending=True)
             Sort
-            +- Dataset(num_blocks=..., num_rows=1000, schema={value: int64})
+            +- Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["value"]) # doctest: +SKIP
 
@@ -2029,33 +2109,48 @@ class Dataset(Generic[T]):
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
 
-        The datasets must have identical num rows, block types, and block sizes,
-        e.g. one was produced from a :meth:`~.map` of another. For Arrow
-        blocks, the schema will be concatenated, and any duplicate column
-        names disambiguated with _1, _2, etc. suffixes.
+        The datasets must have the same number of rows. For tabular datasets, the
+        datasets will be concatenated horizontally; namely, their column sets will be
+        merged, and any duplicate column names disambiguated with _1, _2, etc. suffixes.
+
+        .. note::
+            The smaller of the two datasets will be repartitioned to align the number of
+            rows per block with the larger dataset.
 
         .. note::
             Zipped datasets are not lineage-serializable, i.e. they can not be used as a
             tunable hyperparameter in Ray Tune.
+
+        Examples:
+            >>> import ray
+            >>> ds1 = ray.data.range(5)
+            >>> ds2 = ray.data.range(5, parallelism=2).map(lambda x: x + 1)
+            >>> ds1.zip(ds2).take()
+            [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             other: The dataset to zip with on the right hand side.
 
-        Examples:
-            >>> import ray
-            >>> ds = ray.data.range(5)
-            >>> ds.zip(ds).take()
-            [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
-
         Returns:
-            A Dataset with (k, v) pairs (or concatenated Arrow schema) where k
-            comes from the first dataset and v comes from the second.
+            If the inputs are simple datasets, this returns a ``Dataset`` containing
+            (k, v) pairs, where k comes from the first dataset and v comes from the
+            second.
+            If the inputs are tabular datasets, this returns a ``Dataset`` containing
+            the columns of the second dataset concatenated horizontally with the columns
+            of the first dataset, with duplicate column names disambiguated with _1, _2,
+            etc. suffixes.
         """
 
         plan = self._plan.with_stage(ZipStage(other))
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        other_logical_plan = other._logical_plan
+        if logical_plan is not None and other_logical_plan is not None:
+            op = Zip(logical_plan.dag, other_logical_plan.dag)
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     @ConsumptionAPI
     def limit(self, limit: int) -> "Dataset[T]":
@@ -2096,7 +2191,7 @@ class Dataset(Generic[T]):
             for m in metadata
         ]
         dataset_stats = DatasetStats(
-            stages={"limit": meta_for_stats},
+            stages={"Limit": meta_for_stats},
             parent=self._plan.stats(),
         )
         dataset_stats.time_total_s = split_duration
@@ -2135,6 +2230,7 @@ class Dataset(Generic[T]):
             output.append(row)
             if len(output) >= limit:
                 break
+        self._synchronize_progress_bar()
         return output
 
     @ConsumptionAPI(pattern="Time complexity:")
@@ -2162,6 +2258,7 @@ class Dataset(Generic[T]):
                         limit
                     )
                 )
+        self._synchronize_progress_bar()
         return output
 
     @ConsumptionAPI(pattern="Time complexity:")
@@ -2472,6 +2569,7 @@ class Dataset(Generic[T]):
         self,
         path: str,
         *,
+        tf_schema: Optional["schema_pb2.Schema"] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -2530,6 +2628,7 @@ class Dataset(Generic[T]):
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
+            tf_schema=tf_schema,
         )
 
     @ConsumptionAPI
@@ -2686,25 +2785,36 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        if hasattr(datasource, "write"):
-            # If the write operator succeeds, the resulting Dataset is a list of
-            # WriteResult (one element per write task). Otherwise, an error will
-            # be raised. The Datasource can handle execution outcomes with the
-            # on_write_complete() and on_write_failed().
-            def transform(blocks: Iterable[Block], ctx, fn) -> Iterable[Block]:
-                return [[datasource.write(blocks, ctx, **write_args)]]
+        if type(datasource).write != Datasource.write:
+            write_fn = generate_write_fn(datasource, **write_args)
+
+            def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
+                return write_fn(blocks, ctx)
 
             plan = self._plan.with_stage(
                 OneToOneStage(
-                    "write",
-                    transform,
+                    "Write",
+                    write_fn_wrapper,
                     "tasks",
                     ray_remote_args,
                     fn=lambda x: x,
                 )
             )
+
+            logical_plan = self._logical_plan
+            if logical_plan is not None:
+                write_op = Write(
+                    logical_plan.dag,
+                    datasource,
+                    ray_remote_args=ray_remote_args,
+                    **write_args,
+                )
+                logical_plan = LogicalPlan(write_op)
+
             try:
-                self._write_ds = Dataset(plan, self._epoch, self._lazy).fully_executed()
+                self._write_ds = Dataset(
+                    plan, self._epoch, self._lazy, logical_plan
+                ).cache()
                 datasource.on_write_complete(
                     ray.get(self._write_ds._plan.execute().get_blocks())
                 )
@@ -2712,35 +2822,27 @@ class Dataset(Generic[T]):
                 datasource.on_write_failed([], e)
                 raise
         else:
+            logger.warning(
+                "The Datasource.do_write() is deprecated in "
+                "Ray 2.4 and will be removed in future release. Use "
+                "Datasource.write() instead."
+            )
+
             ctx = DatasetContext.get_current()
             blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
-
-            # TODO(ekl) remove this feature flag.
-            if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
-                write_results: List[ObjectRef[WriteResult]] = datasource.do_write(
-                    blocks, metadata, ray_remote_args=ray_remote_args, **write_args
+            # Prepare write in a remote task so that in Ray client mode, we
+            # don't do metadata resolution from the client machine.
+            do_write = cached_remote_fn(_do_write, retry_exceptions=False, num_cpus=0)
+            write_results: List[ObjectRef[WriteResult]] = ray.get(
+                do_write.remote(
+                    datasource,
+                    ctx,
+                    blocks,
+                    metadata,
+                    ray_remote_args,
+                    _wrap_arrow_serialization_workaround(write_args),
                 )
-            else:
-                logger.warning(
-                    "The Datasource.do_write() is deprecated in "
-                    "Ray 2.4 and will be removed in future release. Use "
-                    "Datasource.write() instead."
-                )
-                # Prepare write in a remote task so that in Ray client mode, we
-                # don't do metadata resolution from the client machine.
-                do_write = cached_remote_fn(
-                    _do_write, retry_exceptions=False, num_cpus=0
-                )
-                write_results: List[ObjectRef[WriteResult]] = ray.get(
-                    do_write.remote(
-                        datasource,
-                        ctx,
-                        blocks,
-                        metadata,
-                        ray_remote_args,
-                        _wrap_arrow_serialization_workaround(write_args),
-                    )
-                )
+            )
 
             progress = ProgressBar("Write Progress", len(write_results))
             try:
@@ -2772,7 +2874,7 @@ class Dataset(Generic[T]):
             It is recommended to use ``DatasetIterator`` methods over directly
             calling methods such as ``iter_batches()``.
         """
-        return BulkDatasetIterator(self)
+        return DatasetIteratorImpl(self)
 
     @ConsumptionAPI
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
@@ -2796,33 +2898,8 @@ class Dataset(Generic[T]):
         Returns:
             A local iterator over the entire dataset.
         """
-        # During row-based ops, we also choose a batch format that lines up with the
-        # current dataset format in order to eliminate unnecessary copies and type
-        # conversions.
-        ctx = DatasetContext.get_current()
-        if ctx.use_streaming_executor:
-            # TODO: calling dataset_format() triggers bulk execution.
-            batch_format = "default"
-        else:
-            try:
-                dataset_format = self.dataset_format()
-            except ValueError:
-                # Dataset is empty or cleared, so fall back to "default".
-                batch_format = "default"
-            else:
-                batch_format = (
-                    "pyarrow"
-                    if dataset_format == BlockFormat.ARROW
-                    else "pandas"
-                    if dataset_format == BlockFormat.PANDAS
-                    else "default"
-                )
-        for batch in self.iter_batches(
-            batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
-        ):
-            batch = BlockAccessor.for_block(batch)
-            for row in batch.iter_rows():
-                yield row
+
+        return self.iterator().iter_rows(prefetch_blocks=prefetch_blocks)
 
     @ConsumptionAPI
     def iter_batches(
@@ -2834,6 +2911,7 @@ class Dataset(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the dataset.
 
@@ -2874,21 +2952,15 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        block_iterator, stats = self._plan.execute_to_iterator()
-        time_start = time.perf_counter()
-
-        yield from batch_block_refs(
-            block_iterator,
-            stats=stats,
+        return self.iterator().iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
-            shuffle_buffer_min_size=local_shuffle_buffer_size,
-            shuffle_seed=local_shuffle_seed,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+            _collate_fn=_collate_fn,
         )
-
-        stats.iter_total_s.add(time.perf_counter() - time_start)
 
     @ConsumptionAPI
     def iter_torch_batches(
@@ -2898,6 +2970,9 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
+        collate_fn: Optional[
+            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -2933,6 +3008,13 @@ class Dataset(Generic[T]):
                 will be inferred from the tensor data.
             device: The device on which the tensor should be placed; if None, the Torch
                 tensor will be constructed on the CPU.
+            collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
+                Potential use cases include collating along a dimension other than the
+                first, padding sequences of various lengths, or generally handling
+                batches of different length tensors. If not provided, the default
+                collate function is used which simply converts the batch of numpy
+                arrays to a batch of PyTorch tensors. This API is still experimental
+                and is subject to change.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -2947,23 +3029,16 @@ class Dataset(Generic[T]):
         Returns:
             An iterator over Torch Tensor batches.
         """
-        from ray.air._internal.torch_utils import (
-            convert_ndarray_batch_to_torch_tensor_batch,
-        )
-
-        for batch in self.iter_batches(
+        return self.iterator().iter_torch_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            batch_format="numpy",
+            dtypes=dtypes,
+            device=device,
+            collate_fn=collate_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
-        ):
-            yield convert_ndarray_batch_to_torch_tensor_batch(
-                batch,
-                dtypes=dtypes,
-                device=device,
-            )
+        )
 
     @ConsumptionAPI
     def iter_tf_batches(
@@ -3022,19 +3097,14 @@ class Dataset(Generic[T]):
         Returns:
             An iterator over TensorFlow Tensor batches.
         """
-        from ray.air._internal.tensorflow_utils import (
-            convert_ndarray_batch_to_tf_tensor_batch,
-        )
-
-        for batch in self.iter_batches(
+        return self.iterator().iter_tf_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            batch_format="numpy",
+            dtypes=dtypes,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
-        ):
-            yield convert_ndarray_batch_to_tf_tensor_batch(batch, dtypes=dtypes)
+        )
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_torch(
@@ -3143,88 +3213,20 @@ class Dataset(Generic[T]):
         Returns:
             A torch IterableDataset.
         """
-        import torch
 
-        from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
-        from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
-
-        # If an empty collection is passed in, treat it the same as None
-        if not feature_columns:
-            feature_columns = None
-
-        if feature_column_dtypes and not isinstance(feature_column_dtypes, torch.dtype):
-            if isinstance(feature_columns, dict):
-                if not isinstance(feature_column_dtypes, dict):
-                    raise TypeError(
-                        "If `feature_columns` is a dict, "
-                        "`feature_column_dtypes` must be None, `torch.dtype`,"
-                        f" or dict, got {type(feature_column_dtypes)}."
-                    )
-                if set(feature_columns) != set(feature_column_dtypes):
-                    raise ValueError(
-                        "`feature_columns` and `feature_column_dtypes` "
-                        "must have the same keys."
-                    )
-                if any(not subcolumns for subcolumns in feature_columns.values()):
-                    raise ValueError("column list may not be empty")
-            elif isinstance(feature_columns[0], (list, tuple)):
-                if not isinstance(feature_column_dtypes, (list, tuple)):
-                    raise TypeError(
-                        "If `feature_columns` is a list of lists, "
-                        "`feature_column_dtypes` must be None, `torch.dtype`,"
-                        f" or a sequence, got {type(feature_column_dtypes)}."
-                    )
-                if len(feature_columns) != len(feature_column_dtypes):
-                    raise ValueError(
-                        "`feature_columns` and `feature_column_dtypes` "
-                        "must have the same length."
-                    )
-                if any(not subcolumns for subcolumns in feature_columns):
-                    raise ValueError("column list may not be empty")
-
-        def make_generator():
-            for batch in self.iter_batches(
-                batch_size=batch_size,
-                batch_format="pandas",
-                prefetch_blocks=prefetch_blocks,
-                drop_last=drop_last,
-                local_shuffle_buffer_size=local_shuffle_buffer_size,
-                local_shuffle_seed=local_shuffle_seed,
-            ):
-                if label_column:
-                    label_tensor = convert_pandas_to_torch_tensor(
-                        batch,
-                        [label_column],
-                        label_column_dtype,
-                        unsqueeze=unsqueeze_label_tensor,
-                    )
-                    batch.pop(label_column)
-                else:
-                    label_tensor = None
-
-                if isinstance(feature_columns, dict):
-                    features_tensor = {
-                        key: convert_pandas_to_torch_tensor(
-                            batch,
-                            feature_columns[key],
-                            feature_column_dtypes[key]
-                            if isinstance(feature_column_dtypes, dict)
-                            else feature_column_dtypes,
-                            unsqueeze=unsqueeze_feature_tensors,
-                        )
-                        for key in feature_columns
-                    }
-                else:
-                    features_tensor = convert_pandas_to_torch_tensor(
-                        batch,
-                        columns=feature_columns,
-                        column_dtypes=feature_column_dtypes,
-                        unsqueeze=unsqueeze_feature_tensors,
-                    )
-
-                yield (features_tensor, label_tensor)
-
-        return TorchIterableDataset(make_generator)
+        return self.iterator().to_torch(
+            label_column=label_column,
+            feature_columns=feature_columns,
+            label_column_dtype=label_column_dtype,
+            feature_column_dtypes=feature_column_dtypes,
+            batch_size=batch_size,
+            prefetch_blocks=prefetch_blocks,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+            unsqueeze_label_tensor=unsqueeze_label_tensor,
+            unsqueeze_feature_tensors=unsqueeze_feature_tensors,
+        )
 
     @ConsumptionAPI
     def to_tf(
@@ -3249,7 +3251,17 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
-            Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64})
+            Dataset(
+               num_blocks=1,
+               num_rows=150,
+               schema={
+                  sepal length (cm): double,
+                  sepal width (cm): double,
+                  petal length (cm): double,
+                  petal width (cm): double,
+                  target: int64
+               }
+            )
 
             If your model accepts a single tensor as input, specify a single feature column.
 
@@ -3269,7 +3281,18 @@ class Dataset(Generic[T]):
             >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
             >>> ds = preprocessor.transform(ds)
             >>> ds
-            Dataset(num_blocks=1, num_rows=150, schema={target: int64, features: TensorDtype(shape=(4,), dtype=float64)})
+            Concatenator
+            +- Dataset(
+                  num_blocks=1,
+                  num_rows=150,
+                  schema={
+                     sepal length (cm): double,
+                     sepal width (cm): double,
+                     petal length (cm): double,
+                     petal width (cm): double,
+                     target: int64
+                  }
+               )
             >>> ds.to_tf("features", "target")  # doctest: +SKIP
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
@@ -3306,96 +3329,16 @@ class Dataset(Generic[T]):
                 Call this method if you need more flexibility.
 
         """  # noqa: E501
-        from ray.air._internal.tensorflow_utils import (
-            get_type_spec,
-            convert_ndarray_to_tf_tensor,
+
+        return self.iterator().to_tf(
+            feature_columns=feature_columns,
+            label_columns=label_columns,
+            prefetch_blocks=prefetch_blocks,
+            drop_last=drop_last,
+            batch_size=batch_size,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
         )
-
-        try:
-            import tensorflow as tf
-        except ImportError:
-            raise ValueError("tensorflow must be installed!")
-
-        if self.dataset_format() == BlockFormat.SIMPLE:
-            raise NotImplementedError(
-                "`to_tf` doesn't support simple datasets. Call `map_batches` and "
-                "convert your data to a tabular format. Alternatively, call the more-"
-                "flexible `iter_batches` in place of `to_tf`."
-            )
-
-        if self._is_tensor_dataset():
-            raise NotImplementedError(
-                "`to_tf` doesn't support single-column tensor datasets. Call the "
-                "more-flexible `iter_batches` instead."
-            )
-
-        schema = self.schema()
-        valid_columns = schema.names
-
-        def validate_column(column: str) -> None:
-            if column not in valid_columns:
-                raise ValueError(
-                    f"You specified '{column}' in `feature_columns` or "
-                    f"`label_columns`, but there's no column named '{column}' in the "
-                    f"dataset. Valid column names are: {valid_columns}."
-                )
-
-        def validate_columns(columns: Union[str, List]) -> None:
-            if isinstance(columns, list):
-                for column in columns:
-                    validate_column(column)
-            else:
-                validate_column(columns)
-
-        validate_columns(feature_columns)
-        validate_columns(label_columns)
-
-        def convert_batch_to_tensors(
-            batch: Dict[str, np.ndarray],
-            *,
-            columns: Union[str, List[str]],
-            type_spec: Union[tf.TypeSpec, Dict[str, tf.TypeSpec]],
-        ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
-            if isinstance(columns, str):
-                return convert_ndarray_to_tf_tensor(batch[columns], type_spec=type_spec)
-            return {
-                column: convert_ndarray_to_tf_tensor(
-                    batch[column], type_spec=type_spec[column]
-                )
-                for column in columns
-            }
-
-        def generator():
-            for batch in self.iter_batches(
-                prefetch_blocks=prefetch_blocks,
-                batch_size=batch_size,
-                drop_last=drop_last,
-                local_shuffle_buffer_size=local_shuffle_buffer_size,
-                local_shuffle_seed=local_shuffle_seed,
-                batch_format="numpy",
-            ):
-                assert isinstance(batch, dict)
-                features = convert_batch_to_tensors(
-                    batch, columns=feature_columns, type_spec=feature_type_spec
-                )
-                labels = convert_batch_to_tensors(
-                    batch, columns=label_columns, type_spec=label_type_spec
-                )
-                yield features, labels
-
-        feature_type_spec = get_type_spec(schema, columns=feature_columns)
-        label_type_spec = get_type_spec(schema, columns=label_columns)
-        output_signature = (feature_type_spec, label_type_spec)
-
-        dataset = tf.data.Dataset.from_generator(
-            generator, output_signature=output_signature
-        )
-
-        options = tf.data.Options()
-        options.experimental_distribute.auto_shard_policy = (
-            tf.data.experimental.AutoShardPolicy.OFF
-        )
-        return dataset.with_options(options)
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_dask(
@@ -3986,8 +3929,33 @@ class Dataset(Generic[T]):
             )
         return pipe
 
+    @Deprecated(message="Use `Dataset.cache()` instead.")
     def fully_executed(self) -> "Dataset[T]":
-        """Force full evaluation of the blocks of this dataset.
+        warnings.warn(
+            "The 'fully_executed' call has been renamed to 'cache'.",
+            DeprecationWarning,
+        )
+        return self.cache()
+
+    @Deprecated(message="Use `Dataset.is_cached()` instead.")
+    def is_fully_executed(self) -> bool:
+        warnings.warn(
+            "The 'is_fully_executed' call has been renamed to 'is_cached'.",
+            DeprecationWarning,
+        )
+        return self.is_cached()
+
+    def is_cached(self) -> bool:
+        """Returns whether this Dataset has been cached in memory.
+
+        This will return False if the output of its final stage hasn't been computed
+        yet.
+        """
+        return self._plan.has_computed_output()
+
+    @ConsumptionAPI(pattern="store memory.", insert_after=True)
+    def cache(self) -> "Dataset[T]":
+        """Evaluate and cache the blocks of this Dataset in object store memory.
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
@@ -3998,17 +3966,13 @@ class Dataset(Generic[T]):
         self._plan.execute(force_read=True)
         return self
 
-    def is_fully_executed(self) -> bool:
-        """Returns whether this Dataset has been fully executed.
-
-        This will return False if the output of its final stage hasn't been computed
-        yet.
-        """
-        return self._plan.has_computed_output()
-
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
     def stats(self) -> str:
-        """Returns a string containing execution timing information."""
+        """Returns a string containing execution timing information.
+
+        Note that this does not trigger execution, so if the Dataset has not yet
+        executed, an empty string will be returned.
+        """
         return self._get_stats_summary().to_string()
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
@@ -4027,7 +3991,9 @@ class Dataset(Generic[T]):
         Returns:
             A list of references to this dataset's blocks.
         """
-        return self._plan.execute().get_blocks()
+        blocks = self._plan.execute().get_blocks()
+        self._synchronize_progress_bar()
+        return blocks
 
     def lazy(self) -> "Dataset[T]":
         """Enable lazy evaluation.
@@ -4038,9 +4004,11 @@ class Dataset(Generic[T]):
         The returned dataset is a lazy dataset, where all subsequent operations on the
         dataset won't be executed until the dataset is consumed (e.g. ``.take()``,
         ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.) or execution is
-        manually triggered via ``.fully_executed()``.
+        manually triggered via ``.cache()``.
         """
-        ds = Dataset(self._plan, self._epoch, lazy=True)
+        ds = Dataset(
+            self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
+        )
         ds._set_uuid(self._get_uuid())
         return ds
 
@@ -4233,13 +4201,6 @@ class Dataset(Generic[T]):
                 return np.ndarray
             return pd.DataFrame
 
-    def _is_tensor_dataset(self) -> bool:
-        """Return ``True`` if this dataset is a tensor dataset."""
-        schema = self.schema()
-        if schema is None or isinstance(schema, type):
-            return False
-        return _is_tensor_schema(schema.names)
-
     @ConsumptionAPI(
         if_more_than_read=True,
         datasource_metadata="schema",
@@ -4336,6 +4297,7 @@ class Dataset(Generic[T]):
     @ensure_notebook_deps(
         ["ipywidgets", "8"],
     )
+    @fallback_if_colab
     def _ipython_display_(self):
         from ipywidgets import HTML, VBox, Layout
         from IPython.display import display
@@ -4455,6 +4417,39 @@ class Dataset(Generic[T]):
                 "The `map`, `flat_map`, and `filter` operations are unvectorized and "
                 "can be very slow. Consider using `.map_batches()` instead."
             )
+
+    def _synchronize_progress_bar(self):
+        """Flush progress bar output by shutting down the current executor.
+
+        This should be called at the end of all blocking APIs (e.g., `take`), but not
+        async APIs (e.g., `iter_batches`).
+
+        The streaming executor runs in a separate generator / thread, so it is
+        possible the shutdown logic runs even after a call to retrieve rows from the
+        dataset has finished. Explicit shutdown avoids this, which can clobber console
+        output (https://github.com/ray-project/ray/issues/32414).
+        """
+        if self._current_executor:
+            self._current_executor.shutdown()
+            self._current_executor = None
+
+    def __getstate__(self):
+        # Note: excludes _current_executor which is not serializable.
+        return {
+            "plan": self._plan,
+            "uuid": self._uuid,
+            "epoch": self._epoch,
+            "lazy": self._lazy,
+            "logical_plan": self._logical_plan,
+        }
+
+    def __setstate__(self, state):
+        self._plan = state["plan"]
+        self._uuid = state["uuid"]
+        self._epoch = state["epoch"]
+        self._lazy = state["lazy"]
+        self._logical_plan = state["logical_plan"]
+        self._current_executor = None
 
 
 def _get_size_bytes(block: Block) -> int:

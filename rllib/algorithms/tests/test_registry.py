@@ -4,6 +4,8 @@ from ray.rllib.algorithms.registry import (
     POLICIES,
     get_policy_class,
     get_policy_class_name,
+    ALGORITHMS_CLASS_TO_NAME,
+    ALGORITHMS,
 )
 
 
@@ -17,6 +19,15 @@ class TestPolicies(unittest.TestCase):
 
         traced = PPOTF2Policy.with_tracing()
         self.assertEqual(get_policy_class_name(traced), "PPOTF2Policy")
+
+    def test_registered_algorithm_names(self):
+        """All RLlib registered algorithms should have their name listed in the
+        registry dictionary."""
+
+        for class_name in ALGORITHMS_CLASS_TO_NAME.keys():
+            registered_name = ALGORITHMS_CLASS_TO_NAME[class_name]
+            algo_class, _ = ALGORITHMS[registered_name]()
+            self.assertEqual(class_name, algo_class.__name__)
 
 
 if __name__ == "__main__":
