@@ -166,7 +166,7 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
 
       reply->add_worker_table_data()->CopyFrom(data.second);
     }
-    RAY_LOG(INFO) << "Finished getting all worker info.";
+    RAY_LOG(DEBUG) << "Finished getting all worker info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
   Status status = gcs_table_storage_->WorkerTable().GetAll(on_done);
