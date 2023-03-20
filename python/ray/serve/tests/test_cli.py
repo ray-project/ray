@@ -308,8 +308,24 @@ def test_deploy_http_override(ray_start_stop):
     print('Confirmed "app2" is not reachable over HTTP at port 8010.')
 
 
+def test_deploy_bad_config(ray_start_stop):
+    """Deploys invalid config files via `serve deploy`."""
+
+    # Deploy via config file
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "bad_config.yaml"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(
+            ["serve", "deploy", config_file_name],
+            stderr=subprocess.STDOUT,
+        )
+        assert "ServeApplicationSchema" in str(e)
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_put_duplicate_apps(ray_start_stop):
+def test_deploy_duplicate_apps(ray_start_stop):
     """If a config with duplicate app names is deployed, `serve deploy` should fail.
     The response should clearly indicate a validation error.
     """
@@ -326,7 +342,7 @@ def test_put_duplicate_apps(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_put_duplicate_routes(ray_start_stop):
+def test_deploy_duplicate_routes(ray_start_stop):
     """If a config with duplicate routes is deployed, the PUT request should fail.
     The response should clearly indicate a validation error.
     """
@@ -676,7 +692,7 @@ def test_run_multi_app(ray_start_stop):
         os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
     )
 
-    print('Running config file "arithmetic.yaml".')
+    print('Running config file "pizza_world.yaml".')
     p = subprocess.Popen(["serve", "run", "--address=auto", config_file_name])
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/app1").text == "wonderful world",
@@ -702,6 +718,22 @@ def test_run_multi_app(ray_start_stop):
     with pytest.raises(requests.exceptions.ConnectionError):
         requests.post("http://localhost:8000/app2", json=["ADD", 0])
     print("Kill successful! Deployments are not reachable over HTTP.")
+
+
+def test_run_bad_config(ray_start_stop):
+    """Deploys invalid config files via `serve run`."""
+
+    # Deploy via config file
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "bad_config.yaml"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(
+            ["serve", "run", "--address=auto", config_file_name],
+            stderr=subprocess.STDOUT,
+        )
+        assert "ServeApplicationSchema" in str(e)
 
 
 @serve.deployment

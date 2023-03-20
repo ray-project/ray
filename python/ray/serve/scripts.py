@@ -298,7 +298,7 @@ def deploy(config_file_name: str, address: str):
     ),
 )
 def run(
-    config_or_import_path: Tuple[str],
+    config_or_import_path: str,
     runtime_env: str,
     runtime_env_json: str,
     working_dir: str,
