@@ -1453,11 +1453,7 @@
 
   frequency: nightly
   team: ml
-<<<<<<< HEAD
   env: gce
-=======
-  env: staging_v2
->>>>>>> d23793bbf (Make tests running on staging v2)
 
   cluster:
     cluster_env: app_config.yaml
