@@ -854,7 +854,7 @@ class _MockTrial(Trial):
         self.placement_group_factory = PlacementGroupFactory([{"CPU": 1}])
         self.custom_trial_name = None
         self.custom_dirname = None
-        self._local_dir = None
+        self._local_experiment_path = None
         self.relative_logdir = None
         self._default_result_or_future = None
         self.checkpoint_manager = _CheckpointManager(
@@ -1483,7 +1483,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trials = runner.get_trials()
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
-            trial.local_dir = tmpdir
+            trial.local_experiment_path = tmpdir
             trial.last_result = {TRAINING_ITERATION: i}
         self.on_trial_result(pbt, runner, trials[0], result(15, -100))
         self.on_trial_result(pbt, runner, trials[0], result(20, -100))
@@ -1519,7 +1519,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trials = runner.get_trials()
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
-            trial.local_dir = tmpdir
+            trial.local_experiment_path = tmpdir
             trial.last_result = {TRAINING_ITERATION: i}
             self.on_trial_result(pbt, runner, trials[i], result(10, i))
         log_files = ["pbt_global.txt", "pbt_policy_0.txt", "pbt_policy_1.txt"]
@@ -1568,7 +1568,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         trial_state = []
         for i, trial in enumerate(trials):
-            trial.local_dir = tmpdir
+            trial.local_experiment_path = tmpdir
             trial.last_result = {TRAINING_ITERATION: 0}
             trial_state.append(_TrialState(trial.config))
 
@@ -1725,7 +1725,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         trial_state = []
         for i, trial in enumerate(trials):
-            trial.local_dir = tmpdir
+            trial.local_experiment_path = tmpdir
             trial.last_result = {TRAINING_ITERATION: 0}
             trial_state.append(_TrialState(trial.config))
 
@@ -1881,7 +1881,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
-            trial.local_dir = tmpdir
+            trial.local_experiment_path = tmpdir
             trial.last_result = {}
         self.on_trial_result(
             pbt, runner, trials[1], result(1, 10), TrialScheduler.CONTINUE
@@ -1931,7 +1931,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         ever_active = set()
         active = set()
         for trial in out.trials:
-            with open(os.path.join(trial.logdir, "status.txt"), "rt") as fp:
+            with open(os.path.join(trial.local_path, "status.txt"), "rt") as fp:
                 status = fp.read()
             print(f"Status for trial {trial}: {status}")
             if "Activate" in status:
