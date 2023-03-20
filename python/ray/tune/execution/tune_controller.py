@@ -12,9 +12,14 @@ from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedChec
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
 from ray.tune.error import _AbortTrialExecution
-from ray.tune.execution.ray_trial_executor import _noop_logger_creator, _class_cache
+from ray.tune.execution.ray_trial_executor import _class_cache
 from ray.tune.execution.trial_runner import _TuneControllerBase, TrialRunnerWrapper
-from ray.tune.experiment.trial import _change_working_directory, _TrialInfo, _Location
+from ray.tune.experiment.trial import (
+    _change_working_directory,
+    _noop_logger_creator,
+    _TrialInfo,
+    _Location,
+)
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.trainable import TrainableUtil
 from ray.tune import TuneError
@@ -26,6 +31,7 @@ from ray.tune.syncer import SyncConfig
 from ray.tune.experiment import Trial
 from ray.tune.utils import warn_if_slow
 from ray.tune.utils.object_cache import _ObjectCache
+from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.util.debug import log_once
 
 
@@ -78,6 +84,9 @@ class TuneController(_TuneControllerBase):
 
         self._actor_manager = RayActorManager(resource_manager=self._resource_manager)
 
+        # Resource status
+        self._resource_updater = _ResourceUpdater(None)
+
         # Actor <-> Trial mappings
         self._actor_to_trial: Dict[TrackedActor, Trial] = {}
         self._trial_to_actor: Dict[Trial, TrackedActor] = {}
@@ -105,6 +114,10 @@ class TuneController(_TuneControllerBase):
         # General trial behavior
         self._chdir_to_trial_dir = chdir_to_trial_dir
 
+        # Trial metadata for experiment checkpoints
+        self._trials_to_cache: Set[Trial] = set()
+        self._trial_metadata: Dict[str, str] = {}
+
         # TRAINING
         self._buffer_length = int(os.getenv("TUNE_RESULT_BUFFER_LENGTH", 1))
         self._buffer_min_time_s = float(os.getenv("TUNE_RESULT_BUFFER_MIN_TIME_S", 0.0))
@@ -120,7 +133,9 @@ class TuneController(_TuneControllerBase):
         )
 
     def _used_resources_string(self):
-        return "TODO"
+        allocated_resources = self._actor_manager.get_live_actors_resources()
+
+        return self._resource_updater.debug_string(allocated_resources)
 
     def on_step_begin(self):
         pass
@@ -203,10 +218,13 @@ class TuneController(_TuneControllerBase):
         trial.set_status(status)
 
     def _get_trial_checkpoints(self) -> Dict[str, str]:
-        return {}
+        for trial in self._trials_to_cache:
+            self._trial_metadata[trial.trial_id] = trial.get_json_state()
+        self._trials_to_cache.clear()
+        return self._trial_metadata
 
     def _mark_trial_to_checkpoint(self, trial: Trial):
-        pass
+        self._trials_to_cache.add(trial)
 
     ###
     # UPDATE TRIALS
@@ -222,6 +240,11 @@ class TuneController(_TuneControllerBase):
         }
 
         status_str_map[trial.status].add(trial)
+
+        if trial.status == Trial.PAUSED:
+            self._paused_trials_list.append(trial)
+        if trial.status == Trial.PENDING:
+            self._pending_trials_list.append(trial)
 
     def _maybe_update_trial_queue(self):
         if self._search_alg.is_finished():
@@ -721,8 +744,27 @@ class TuneController(_TuneControllerBase):
 
     def __getstate__(self):
         state = super().__getstate__()
-        state.pop("_resource_manager")
-        state.pop("_actor_manager")
+        for exclude in [
+            "_resource_manager",
+            "_actor_manager",
+            "_resource_updater",
+            "_trials_to_cache",
+            "_trial_metadata",
+            "_actor_to_trial",
+            "_trial_to_actor",
+            "_pending_trials",
+            "_pending_trials_list",
+            "_running_trials",
+            "_paused_trials",
+            "_paused_trials_list",
+            "_stopped_trials",
+            "_failed_trials",
+            "_resetting_trials",
+            "_staged_trials",
+            "_actor_cache",
+        ]:
+            del state[exclude]
+
         return state
 
 
