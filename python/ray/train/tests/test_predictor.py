@@ -8,6 +8,7 @@ import numpy as np
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import PREPROCESSOR_KEY, TENSOR_COLUMN_NAME
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Preprocessor
 from ray.train.predictor import Predictor, PredictorNotSerializableException
 
@@ -37,6 +38,10 @@ class DummyWithNumpyPreprocessor(DummyPreprocessor):
         rst = np_data * self.multiplier
         self.outputs.append(rst)
         return rst
+
+    @classmethod
+    def preferred_batch_format(cls) -> BatchFormat:
+        return BatchFormat.NUMPY
 
 
 class DummyPredictor(Predictor):

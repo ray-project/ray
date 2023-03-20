@@ -179,27 +179,6 @@ def test_batch_prediction():
     ]
 
 
-def test_batch_prediction_simple():
-    """Tests that simple dataset is not supported with"""
-    batch_predictor = BatchPredictor.from_checkpoint(
-        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
-        DummyPredictor,
-    )
-
-    test_dataset = ray.data.range(4)
-
-    with pytest.raises(ValueError):
-        batch_predictor.predict(test_dataset)
-
-    test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0])
-    with pytest.raises(ValueError):
-        assert next(
-            batch_predictor.predict_pipelined(
-                test_dataset, blocks_per_window=2
-            ).iter_datasets()
-        )
-
-
 def test_batch_prediction_various_combination():
     """Dataset level predictor test against various
     - Dataset format
@@ -262,6 +241,34 @@ def test_batch_prediction_various_combination():
             DummyWithNumpyPreprocessor(),
             DummyPredictor,
             ray.data.from_arrow(pa.Table.from_pydict({"x": [1, 2, 3]})),
+            # Pandas predictor outputs Pandas dataset.
+            "pandas",
+        ),
+        (
+            DummyPreprocessor(),
+            DummyWithNumpyPredictor,
+            ray.data.from_items([1, 2, 3]),
+            # Numpy predictor outputs Arrow dataset.
+            "arrow",
+        ),
+        (
+            DummyWithNumpyPreprocessor(),
+            DummyWithNumpyPredictor,
+            ray.data.from_items([1, 2, 3]),
+            # Numpy predictor outputs Arrow dataset.
+            "arrow",
+        ),
+        (
+            DummyPreprocessor(),
+            DummyPredictor,
+            ray.data.from_items([1, 2, 3]),
+            # Pandas predictor outputs Pandas dataset.
+            "pandas",
+        ),
+        (
+            DummyWithNumpyPreprocessor(),
+            DummyPredictor,
+            ray.data.from_items([1, 2, 3]),
             # Pandas predictor outputs Pandas dataset.
             "pandas",
         ),
