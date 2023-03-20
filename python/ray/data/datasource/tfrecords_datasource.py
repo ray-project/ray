@@ -174,8 +174,8 @@ def _get_feature_value(
             # Override the underlying value type with the type
             # in the user-specified schema.
             underlying_feature_type = specified_feature_type
-        except ImportError:
-            raise ImportError(
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError(
                 "To use TensorFlow schemas, please install "
                 "the tensorflow-metadata package."
             )
@@ -256,8 +256,8 @@ def _value_to_feature(
             # Override the underlying value type with the type
             # in the user-specified schema.
             underlying_value_type = specified_feature_type
-        except ImportError:
-            raise ImportError(
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError(
                 "To use TensorFlow schemas, please install "
                 "the tensorflow-metadata package."
             )
