@@ -8,7 +8,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.operators.from_arrow_operator import FromArrowRefs
 from ray.data.block import BlockAccessor, BlockExecStats
-from ray.types import ObjectRef
+from ray import ObjectRef
 
 
 def _plan_from_arrow_refs_op(op: FromArrowRefs) -> PhysicalOperator:
