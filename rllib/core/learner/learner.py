@@ -1,6 +1,7 @@
 import abc
 from collections import defaultdict
 from dataclasses import dataclass, field
+import json
 import logging
 import numpy as np
 from typing import (
@@ -748,6 +749,32 @@ class Learner:
         self.__check_if_build_called()
         # TODO: once we figure out the optimizer format, we can set/get the state
         return {"module_state": self._module.get_state()}
+
+    def save_state(self, dir: Union[str, pathlib.Path]) -> None:
+        """Save the state of the learner to dir
+
+        Args:
+            dir: The dir to save the state to. 
+            NOTE: By default only the module state will be saved.
+
+        """
+        self.__check_if_build_called()
+        dir = pathlib.Path(dir)
+        self._module.save_state(dir)
+        with open(dir / "learner_state.json", "w") as f:
+            json.dump(self.get_state(), f)
+        
+
+    def load_state(cls, dir: Union[str, pathlib.Path]) -> None:
+        """Load the state of the learner from dir
+
+        Args:
+            dir: The dir to load the state from.
+            NOTE: By default only the module state will be loaded.
+
+        """
+        self.__check_if_build_called()
+        self._module.load_state(path)
 
     @abc.abstractmethod
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
