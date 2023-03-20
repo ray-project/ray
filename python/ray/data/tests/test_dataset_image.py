@@ -37,6 +37,27 @@ class TestReadImages:
         )
         assert ds.count() == 2
 
+    @pytest.mark.parametrize("ignore_missing_paths", [True, False])
+    def test_ignore_missing_paths(self, ray_start_regular_shared, ignore_missing_paths):
+        paths = [
+            "example://image-datasets/simple/image1.jpg",
+            "example://missing.jpg",
+            "example://image-datasets/missing/",
+        ]
+
+        if ignore_missing_paths:
+            ds = ray.data.read_images(paths, ignore_missing_paths=ignore_missing_paths)
+            # example:// directive redirects to /ray/python/ray/data/examples/data
+            assert ds.input_files() == [
+                "/ray/python/ray/data/examples/data/image-datasets/simple/image1.jpg"
+            ]
+        else:
+            with pytest.raises(FileNotFoundError):
+                ds = ray.data.read_images(
+                    paths, ignore_missing_paths=ignore_missing_paths
+                )
+                ds.fully_executed()
+
     def test_filtering(self, ray_start_regular_shared):
         # "different-extensions" contains three images and two non-images.
         ds = ray.data.read_images("example://image-datasets/different-extensions")
@@ -158,7 +179,7 @@ class TestReadImages:
 
         data_size = ds.size_bytes()
         assert data_size >= 0, "estimated data size is out of expected bound"
-        data_size = ds.fully_executed().size_bytes()
+        data_size = ds.cache().size_bytes()
         assert data_size >= 0, "actual data size is out of expected bound"
 
         reader = _ImageDatasourceReader(
@@ -189,12 +210,12 @@ class TestReadImages:
             root = "example://image-datasets/simple"
             ds = ray.data.read_images(root, parallelism=1)
             assert ds.num_blocks() == 1
-            ds.fully_executed()
+            ds.cache()
             # Verify dynamic block splitting taking effect to generate more blocks.
             assert ds.num_blocks() == 3
 
             # Test union of same datasets
-            union_ds = ds.union(ds, ds, ds).fully_executed()
+            union_ds = ds.union(ds, ds, ds).cache()
             assert union_ds.num_blocks() == 12
         finally:
             ctx.target_max_block_size = target_max_block_size

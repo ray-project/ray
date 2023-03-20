@@ -82,6 +82,8 @@ from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_reset,
 )
+from ray.experimental import tqdm_ray
+from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -1797,31 +1799,64 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
     if data.get("ip") == data.get("localhost"):
         for line in lines:
-            print(
-                "{}{}({}{}){} {}".format(
-                    colorama.Style.DIM,
-                    color_for(data, line),
-                    prefix_for(data),
-                    pid,
-                    colorama.Style.RESET_ALL,
-                    message_for(data, line),
-                ),
-                file=print_file,
-            )
+            if RAY_TQDM_MAGIC in line:
+                process_tqdm(line)
+            else:
+                hide_tqdm()
+                print(
+                    "{}{}({}{}){} {}".format(
+                        colorama.Style.DIM,
+                        color_for(data, line),
+                        prefix_for(data),
+                        pid,
+                        colorama.Style.RESET_ALL,
+                        message_for(data, line),
+                    ),
+                    file=print_file,
+                )
     else:
         for line in lines:
-            print(
-                "{}{}({}{}, ip={}){} {}".format(
-                    colorama.Style.DIM,
-                    color_for(data, line),
-                    prefix_for(data),
-                    pid,
-                    data.get("ip"),
-                    colorama.Style.RESET_ALL,
-                    message_for(data, line),
-                ),
-                file=print_file,
+            if RAY_TQDM_MAGIC in line:
+                process_tqdm(line)
+            else:
+                hide_tqdm()
+                print(
+                    "{}{}({}{}, ip={}){} {}".format(
+                        colorama.Style.DIM,
+                        color_for(data, line),
+                        prefix_for(data),
+                        pid,
+                        data.get("ip"),
+                        colorama.Style.RESET_ALL,
+                        message_for(data, line),
+                    ),
+                    file=print_file,
+                )
+    # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
+    restore_tqdm()
+
+
+def process_tqdm(line):
+    """Experimental distributed tqdm: see ray.experimental.tqdm_ray."""
+    try:
+        data = json.loads(line)
+        tqdm_ray.instance().process_state_update(data)
+    except Exception:
+        if log_once("tqdm_corruption"):
+            logger.warning(
+                f"[tqdm_ray] Failed to decode {line}, this may be due to "
+                "logging too fast. This warning will not be printed again."
             )
+
+
+def hide_tqdm():
+    """Hide distributed tqdm bars temporarily to avoid conflicts with other logs."""
+    tqdm_ray.instance().hide_bars()
+
+
+def restore_tqdm():
+    """Undo hide_tqdm()."""
+    tqdm_ray.instance().unhide_bars()
 
 
 def listen_error_messages(worker, threads_stopped):
@@ -1938,12 +1973,6 @@ def connect(
         ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
     )
     worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
-    worker.gcs_error_subscriber = GcsErrorSubscriber(address=worker.gcs_client.address)
-    worker.gcs_log_subscriber = GcsLogSubscriber(address=worker.gcs_client.address)
-    worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
-        address=worker.gcs_client.address
-    )
-
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
@@ -2092,6 +2121,16 @@ def connect(
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
+    worker_id = worker.worker_id
+    worker.gcs_error_subscriber = GcsErrorSubscriber(
+        worker_id=worker_id, address=worker.gcs_client.address
+    )
+    worker.gcs_log_subscriber = GcsLogSubscriber(
+        worker_id=worker_id, address=worker.gcs_client.address
+    )
+    worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
+        worker_id=worker_id, address=worker.gcs_client.address
+    )
 
     if driver_object_store_memory is not None:
         logger.warning(
@@ -2177,9 +2216,12 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
-        worker.gcs_function_key_subscriber.close()
-        worker.gcs_error_subscriber.close()
-        worker.gcs_log_subscriber.close()
+        if hasattr(worker, "gcs_function_key_subscriber"):
+            worker.gcs_function_key_subscriber.close()
+        if hasattr(worker, "gcs_error_subscriber"):
+            worker.gcs_error_subscriber.close()
+        if hasattr(worker, "gcs_log_subscriber"):
+            worker.gcs_log_subscriber.close()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
