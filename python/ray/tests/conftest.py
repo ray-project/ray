@@ -1137,7 +1137,6 @@ def enable_syncer_test(request, monkeypatch):
     ray._raylet.Config.initialize("")
 
 
-
 @pytest.fixture(scope="function")
 def temp_file(request):
     with tempfile.NamedTemporaryFile() as fp:

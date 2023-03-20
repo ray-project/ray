@@ -619,7 +619,7 @@ message AddTaskEventDataReply {
 
 message GetTaskEventsRequest {
   message TaskIDs {
-    repeated string vals = 1;
+    repeated bytes vals = 1;
   }
   oneof select_by {
     // Get task events from a job.

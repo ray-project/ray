@@ -1,10 +1,16 @@
+from dataclasses import dataclass
 import logging
 import re
 
 from collections import defaultdict
 from typing import List, Optional, Dict, AsyncIterable, Tuple, Callable
+from ray._raylet import TaskID
 
-from ray.experimental.state.common import GetLogOptions
+from ray.experimental.state.common import (
+    DEFAULT_RPC_TIMEOUT,
+    GetLogOptions,
+    protobuf_to_task_state_dict,
+)
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
 
@@ -15,6 +21,24 @@ from ray.dashboard.datacenter import DataSource
 logger = logging.getLogger(__name__)
 
 WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).(out|err)")
+
+
+@dataclass(init=True)
+class ResolvedFileToStream:
+    # Hex format node id where the file resides.
+    node_id: str
+    # File path relative to the log directory on the node.
+    filename: str
+    # Start offset to stream from.
+    start_offset: Optional[int] = None
+    # End offset to stream from.
+    end_offset: Optional[int] = None
+
+    def __post_init__(self):
+        if self.end_offset is not None and self.start_offset is None:
+            raise ValueError(
+                "End offset should be specified together with start offset."
+            )
 
 
 class LogsManager:
@@ -71,7 +95,7 @@ class LogsManager:
         """
         node_id = options.node_id or self.ip_to_node_id(options.node_ip)
 
-        log_file_name, node_id = await self.resolve_filename(
+        resolved_file = await self.resolve_stream_file(
             node_id=node_id,
             log_filename=options.filename,
             actor_id=options.actor_id,
@@ -80,12 +104,16 @@ class LogsManager:
             get_actor_fn=DataSource.actors.get,
             timeout=options.timeout,
             suffix=options.suffix,
+            attempt_number=options.attempt_number,
+            start_offset=options.start_offset,
+            end_offset=options.end_offset,
         )
+        logger.info(resolved_file)
 
         keep_alive = options.media_type == "stream"
         stream = await self.client.stream_log(
-            node_id=node_id,
-            log_file_name=log_file_name,
+            node_id=resolved_file.node_id,
+            log_file_name=resolved_file.filename,
             keep_alive=keep_alive,
             lines=options.lines,
             interval=options.interval,
@@ -93,6 +121,8 @@ class LogsManager:
             # otherwise the stream will be terminated forcefully
             # after the deadline is expired.
             timeout=options.timeout if not keep_alive else None,
+            start_offset=resolved_file.start_offset,
+            end_offset=resolved_file.end_offset,
         )
 
         async for streamed_log in stream:
@@ -110,18 +140,21 @@ class LogsManager:
             )
         assert node_id is not None
 
-    async def resolve_filename(
+    async def resolve_stream_file(
         self,
         *,
-        node_id: str,
-        log_filename: Optional[str],
-        actor_id: Optional[str],
-        task_id: Optional[str],
-        pid: Optional[str],
-        get_actor_fn: Callable[[str], Dict],
-        timeout: int,
-        suffix: Optional[str] = None,
-    ) -> Tuple[str, str]:
+        node_id: Optional[str] = None,
+        log_filename: Optional[str] = None,
+        actor_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+        attempt_number: Optional[int] = 0,
+        pid: Optional[str] = None,
+        get_actor_fn: Optional[Callable[[str], Dict]] = None,
+        timeout: Optional[int] = DEFAULT_RPC_TIMEOUT,
+        suffix: Optional[str] = "out",
+        start_offset: Optional[int] = None,
+        end_offset: Optional[int] = None,
+    ) -> ResolvedFileToStream:
         """Return the file name given all options.
 
         Args:
@@ -136,8 +169,9 @@ class LogsManager:
             suffix: Log suffix if no `log_filename` is provided, when
                 resolving by other ids'.
         """
+
         if suffix is None:
-            suffix = ""
+            suffix = "out"
 
         if actor_id:
             actor_data = get_actor_fn(actor_id)
@@ -174,8 +208,43 @@ class LogsManager:
                     log_filename = filename
                     break
         elif task_id:
-            raise NotImplementedError("task_id is not supported yet.")
+            reply = await self.client.get_task_info(task_id=task_id, timeout=timeout)
+            # Check if the task is found.
+            if len(reply.events_by_task) == 0:
+                raise FileNotFoundError(
+                    f"Could not find log file for task: {task_id} with suffix: {suffix}"
+                )
+            filename = ""
+            for message in reply.events_by_task:
+                task_state = protobuf_to_task_state_dict(message)
+                if task_state.get("attempt_number") == attempt_number:
+                    if task_state.get("task_log_info"):
+                        task_log_info = task_state["task_log_info"]
+                        filename = task_log_info.get(f"std{suffix}_file")
+                        # Use the provided offsets to allow streaming specific sections (e.g. pagination).
+                        if start_offset is None:
+                            start_offset = task_log_info.get(f"std{suffix}_start")
+                        if end_offset is None:
+                            end_offset = task_log_info.get(f"std{suffix}_end")
+
+                    node_id = task_state.get("node_id")
+                    if node_id is None:
+                        raise FileNotFoundError(f"Task has no associated node assigned")
+
+            if filename == "":
+                raise FileNotFoundError(
+                    f"Could not find log file for task: {task_id}, attempt number: {attempt_number}, suffix: {suffix}"
+                )
+
+            return ResolvedFileToStream(
+                filename=filename,
+                node_id=node_id,
+                start_offset=start_offset,
+                end_offset=end_offset,
+            )
+
         elif pid:
+            assert node_id is not None
             self._verify_node_registered(node_id)
             log_files = await self.list_logs(
                 node_id, timeout, glob_filter=f"*{pid}*{suffix}"
@@ -201,7 +270,12 @@ class LogsManager:
                 f"\tsuffix: {suffix}\n"
             )
 
-        return log_filename, node_id
+        return ResolvedFileToStream(
+            filename=log_filename,
+            node_id=node_id,
+            start_offset=start_offset,
+            end_offset=end_offset,
+        )
 
     def _categorize_log_files(self, log_files: List[str]) -> Dict[str, List[str]]:
         """Categorize the given log files after filterieng them out using a given glob.

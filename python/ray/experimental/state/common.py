@@ -1,3 +1,4 @@
+import json
 import logging
 import sys
 from abc import ABC
@@ -5,9 +6,11 @@ from dataclasses import dataclass, field, fields
 from enum import Enum, unique
 from typing import Dict, List, Optional, Set, Tuple, Union
 
+import ray.core.generated.common_pb2 as common_pb2
+import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskType
-from ray.core.generated.gcs_pb2 import TaskLogInfo
+from ray.core.generated.gcs_pb2 import TaskEvents, TaskLogInfo
 from ray.dashboard.modules.job.common import JobInfo
 from ray.experimental.state.custom_types import (
     TypeActorStatus,
@@ -286,8 +289,9 @@ class GetLogOptions:
     # The actor id of the log. It is used only for worker logs.
     actor_id: Optional[str] = None
     # The task id of the log. It is used only for worker logs.
-    # This is currently not working. TODO(sang): Support task log.
     task_id: Optional[str] = None
+    # The task attempt number.
+    attempt_number: Optional[int] = None
     # The pid of the log. It is used only for worker logs.
     pid: Optional[int] = None
     # Total log lines to return.
@@ -297,6 +301,10 @@ class GetLogOptions:
     interval: Optional[float] = None
     # The suffix of the log file if file resolution not through filename directly.
     suffix: Optional[str] = None
+    # The start offset to stream from.
+    start_offset: Optional[int] = None
+    # The end offset to stream til.
+    end_offset: Optional[int] = None
 
     def __post_init__(self):
         if self.pid:
@@ -304,9 +312,6 @@ class GetLogOptions:
         if self.interval:
             self.interval = float(self.interval)
         self.lines = int(self.lines)
-
-        if self.task_id:
-            raise NotImplementedError("task_id is not supported yet.")
 
         if self.media_type == "file":
             assert self.interval is None
@@ -1285,3 +1290,116 @@ def resource_to_schema(resource: StateResource) -> StateSchema:
         return ClusterEventState
     else:
         assert False, "Unreachable"
+
+
+def protobuf_message_to_dict(
+    message,
+    fields_to_decode: List[str],
+    preserving_proto_field_name: bool = True,
+) -> dict:
+    """Convert a protobuf message to dict
+
+    Args:
+        fields_to_decode: field names which will be decoded from binary to hex.
+        preserving_proto_field_name: a pass-through option for protobuf message method. See google.protobuf MessageToDict
+
+    Return:
+        Dictionary of the converted rpc protobuf.
+    """
+    return dashboard_utils.message_to_dict(
+        message,
+        fields_to_decode,
+        including_default_value_fields=True,
+        preserving_proto_field_name=preserving_proto_field_name,
+    )
+
+
+def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
+    """
+    Convert a TaskEvents to a dic repr of `TaskState`
+    """
+    task_attempt = protobuf_message_to_dict(
+        message=message,
+        fields_to_decode=[
+            "task_id",
+            "job_id",
+            "node_id",
+            "actor_id",
+            "parent_task_id",
+            "worker_id",
+            "placement_group_id",
+            "component_id",
+        ],
+    )
+
+    task_state = {}
+    task_info = task_attempt.get("task_info", {})
+    state_updates = task_attempt.get("state_updates", [])
+    profiling_data = task_attempt.get("profile_events", {})
+    if profiling_data:
+        for event in profiling_data["events"]:
+            # End/start times are recorded in ns. We convert them to ms.
+            event["end_time"] = int(event["end_time"]) / 1e6
+            event["start_time"] = int(event["start_time"]) / 1e6
+            event["extra_data"] = json.loads(event["extra_data"])
+    task_state["profiling_data"] = profiling_data
+
+    # Convert those settable fields
+    mappings = [
+        (
+            task_info,
+            [
+                "task_id",
+                "name",
+                "actor_id",
+                "type",
+                "func_or_class_name",
+                "language",
+                "required_resources",
+                "runtime_env_info",
+                "parent_task_id",
+                "placement_group_id",
+            ],
+        ),
+        (task_attempt, ["task_id", "attempt_number", "job_id"]),
+        (
+            state_updates,
+            ["node_id", "worker_id", "task_log_info", "error_type"],
+        ),
+    ]
+    for src, keys in mappings:
+        for key in keys:
+            task_state[key] = src.get(key)
+
+    task_state["creation_time_ms"] = None
+    task_state["start_time_ms"] = None
+    task_state["end_time_ms"] = None
+    events = []
+
+    for state in common_pb2.TaskStatus.keys():
+        key = f"{state.lower()}_ts"
+        if key in state_updates:
+            # timestamp is recorded as nanosecond from the backend.
+            # We need to convert it to the second.
+            ts_ms = int(state_updates[key]) // 1e6
+            events.append(
+                {
+                    "state": state,
+                    "created_ms": ts_ms,
+                }
+            )
+            if state == "PENDING_ARGS_AVAIL":
+                task_state["creation_time_ms"] = ts_ms
+            if state == "RUNNING":
+                task_state["start_time_ms"] = ts_ms
+            if state == "FINISHED" or state == "FAILED":
+                task_state["end_time_ms"] = ts_ms
+
+    task_state["events"] = events
+    if len(events) > 0:
+        latest_state = events[-1]["state"]
+    else:
+        latest_state = common_pb2.TaskStatus.Name(common_pb2.NIL)
+    task_state["state"] = latest_state
+
+    return task_state

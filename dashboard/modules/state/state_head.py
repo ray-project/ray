@@ -401,10 +401,13 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             filename=req.query.get("filename", None),
             actor_id=req.query.get("actor_id", None),
             task_id=req.query.get("task_id", None),
+            attempt_number=req.query.get("attempt_number", 0),
             pid=req.query.get("pid", None),
             lines=req.query.get("lines", DEFAULT_LOG_LIMIT),
             interval=req.query.get("interval", None),
             suffix=req.query.get("suffix", None),
+            start_offset=req.query.get("start_offset", None),
+            end_offset=req.query.get("end_offset", None),
         )
 
         response = aiohttp.web.StreamResponse()

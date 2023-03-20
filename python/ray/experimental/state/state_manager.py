@@ -10,6 +10,7 @@ from grpc.aio._call import UnaryStreamCall
 import ray
 import ray.dashboard.modules.log.log_consts as log_consts
 from ray._private import ray_constants
+from ray._raylet import TaskID
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.utils import hex_to_binary
 from ray._raylet import JobID
@@ -29,8 +30,6 @@ from ray.core.generated.gcs_service_pb2 import (
 from ray.core.generated.node_manager_pb2 import (
     GetObjectsInfoReply,
     GetObjectsInfoRequest,
-    GetTasksInfoReply,
-    GetTasksInfoRequest,
 )
 from ray.core.generated.node_manager_pb2_grpc import NodeManagerServiceStub
 from ray.core.generated.reporter_pb2 import (
@@ -307,18 +306,20 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_task_info(
-        self, node_id: str, timeout: int = None, limit: int = None
-    ) -> Optional[GetTasksInfoReply]:
+        self,
+        task_id: str,
+        timeout: int = None,
+        limit: int = None,
+    ) -> Optional[GetTaskEventsReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-
-        stub = self._raylet_stubs.get(node_id)
-        if not stub:
-            raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
-
-        reply = await stub.GetTasksInfo(
-            GetTasksInfoRequest(limit=limit), timeout=timeout
+        request = GetTaskEventsRequest(
+            task_ids=GetTaskEventsRequest.TaskIDs(
+                vals=[hex_to_binary(task_id)]
+            ),
+            limit=limit,
         )
+        reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
         return reply
 
     @handle_grpc_network_errors
@@ -375,16 +376,21 @@ class StateDataSourceClient:
         lines: int,
         interval: Optional[float],
         timeout: int,
+        start_offset: Optional[int] = None,
+        end_offset: Optional[int] = None,
     ) -> UnaryStreamCall:
         stub = self._log_agent_stub.get(node_id)
         if not stub:
             raise ValueError(f"Agent for node id: {node_id} doesn't exist.")
+
         stream = stub.StreamLog(
             StreamLogRequest(
                 keep_alive=keep_alive,
                 log_file_name=log_file_name,
                 lines=lines,
                 interval=interval,
+                start_offset=start_offset,
+                end_offset=end_offset,
             ),
             timeout=timeout,
         )

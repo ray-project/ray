@@ -5,6 +5,7 @@ from typing import List
 from unittest.mock import MagicMock
 
 import pytest
+from ray.core.generated.gcs_service_pb2 import GetTaskEventsReply
 from ray.experimental.state.state_cli import logs_state_cli_group
 import requests
 from click.testing import CliRunner
@@ -17,8 +18,13 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
-from ray.core.generated.common_pb2 import Address
-from ray.core.generated.gcs_pb2 import ActorTableData
+from ray.core.generated.common_pb2 import Address, TaskStatus
+from ray.core.generated.gcs_pb2 import (
+    ActorTableData,
+    TaskEvents,
+    TaskStateUpdate,
+    TaskLogInfo,
+)
 from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
 from ray.dashboard.modules.log.log_agent import _find_tail_start_from_last_lines
@@ -57,6 +63,29 @@ def generate_actor_data(id, node_id, worker_id):
         ),
     )
     return actor_table_data_to_dict(message)
+
+
+def generate_task_event(
+    task_id, node_id, attempt_number, out_start, out_end, err_start, err_end
+):
+    task_event = TaskEvents(
+        task_id=task_id.binary(),
+        attempt_number=attempt_number,
+        job_id=b"",
+        state_updates=TaskStateUpdate(
+            node_id=node_id.binary(),
+            task_log_info=TaskLogInfo(
+                stdout_file=f"{task_id.hex()}-{attempt_number}.out",
+                stderr_file=f"{task_id.hex()}-{attempt_number}.err",
+                stdout_start=out_start,
+                stdout_end=out_end,
+                stderr_start=err_start,
+                stderr_end=err_end,
+            ),
+        ),
+    )
+
+    return task_event
 
 
 # Unit Tests (Log Agent)
@@ -360,17 +389,17 @@ async def test_logs_manager_resolve_file(logs_manager):
     logs_client.get_all_registered_agent_ids = MagicMock()
     logs_client.get_all_registered_agent_ids.return_value = [node_id.hex()]
     expected_filename = "filename"
-    log_file_name, n = await logs_manager.resolve_filename(
+    info = await logs_manager.resolve_stream_file(
         node_id=node_id,
         log_filename=expected_filename,
-        actor_id=None,
-        task_id=None,
-        pid=None,
-        get_actor_fn=lambda _: True,
         timeout=10,
+        start_offset=100,
     )
-    assert log_file_name == expected_filename
-    assert n == node_id
+    assert info.filename == expected_filename
+    assert info.node_id == node_id
+    assert info.start_offset == 100
+    assert info.end_offset is None
+
     """
     Test actor id is given.
     """
@@ -383,7 +412,7 @@ async def test_logs_manager_resolve_file(logs_manager):
                 return None
             assert False, "Not reachable."
 
-        log_file_name, n = await logs_manager.resolve_filename(
+        info = await logs_manager.resolve_stream_file(
             node_id=node_id,
             log_filename=None,
             actor_id=actor_id,
@@ -397,7 +426,7 @@ async def test_logs_manager_resolve_file(logs_manager):
     actor_id = ActorID(b"2" * 16)
 
     with pytest.raises(ValueError):
-        log_file_name, n = await logs_manager.resolve_filename(
+        info = await logs_manager.resolve_stream_file(
             node_id=node_id,
             log_filename=None,
             actor_id=actor_id,
@@ -415,7 +444,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         "worker_out": [f"worker-{worker_id.hex()}-123-123.out"],
         "worker_err": [],
     }
-    log_file_name, n = await logs_manager.resolve_filename(
+    info = await logs_manager.resolve_stream_file(
         node_id=node_id.hex(),
         log_filename=None,
         actor_id=actor_id,
@@ -425,24 +454,65 @@ async def test_logs_manager_resolve_file(logs_manager):
         timeout=10,
     )
     logs_manager.list_logs.assert_awaited_with(
-        node_id.hex(), 10, glob_filter=f"*{worker_id.hex()}*"
+        node_id.hex(), 10, glob_filter=f"*{worker_id.hex()}*out"
     )
-    assert log_file_name == f"worker-{worker_id.hex()}-123-123.out"
-    assert n == node_id.hex()
+    assert info.filename == f"worker-{worker_id.hex()}-123-123.out"
+    assert info.node_id == node_id.hex()
 
     """
     Test task id is given.
     """
-    with pytest.raises(NotImplementedError):
-        task_id = TaskID(b"2" * 24)
-        log_file_name, n = await logs_manager.resolve_filename(
-            node_id=node_id.hex(),
-            log_filename=None,
-            actor_id=None,
-            task_id=task_id,
-            pid=None,
-            get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
-            timeout=10,
+    task_id = TaskID(b"2" * 24)
+    logs_client = logs_manager.data_source_client
+    logs_client.get_task_info = AsyncMock()
+    logs_client.get_task_info.return_value = GetTaskEventsReply(
+        events_by_task=[
+            generate_task_event(
+                task_id,
+                node_id,
+                attempt_number=1,
+                out_start=0,
+                out_end=100,
+                err_start=100,
+                err_end=200,
+            )
+        ]
+    )
+    # Expect resolved file.
+    info = await logs_manager.resolve_stream_file(task_id=task_id, attempt_number=1)
+    # Default out file. See generate_task_event() for filename
+    assert info.filename == f"{task_id.hex()}-1.out"
+    assert info.node_id == node_id.hex()
+    assert info.start_offset == 0
+    assert info.end_offset == 100
+
+    # Offsets should be overwritten if provided.
+    info = await logs_manager.resolve_stream_file(
+        task_id=task_id, attempt_number=1, start_offset=999, end_offset=999
+    )
+    # Default out file. See generate_task_event() for filename
+    assert info.filename == f"{task_id.hex()}-1.out"
+    assert info.start_offset == 999
+    assert info.end_offset == 999
+
+    # Suffix
+    info = await logs_manager.resolve_stream_file(
+        task_id=task_id, attempt_number=1, suffix="err"
+    )
+    # Default out file. See generate_task_event() for filename
+    assert info.filename == f"{task_id.hex()}-1.err"
+    assert info.start_offset == 100
+    assert info.end_offset == 200
+
+    # Wrong task attempt
+    with pytest.raises(FileNotFoundError):
+        await logs_manager.resolve_stream_file(task_id=task_id, attempt_number=0)
+
+    # No task found
+    logs_client.get_task_info.return_value = GetTaskEventsReply(events_by_task=[])
+    with pytest.raises(FileNotFoundError):
+        await logs_manager.resolve_stream_file(
+            task_id=TaskID(b"1" * 24), attempt_number=1
         )
 
     """
@@ -457,7 +527,7 @@ async def test_logs_manager_resolve_file(logs_manager):
             "worker_out": ["worker-123-123-123.out"],
             "worker_err": [],
         }
-        log_file_name = await logs_manager.resolve_filename(
+        await logs_manager.resolve_stream_file(
             node_id=node_id.hex(),
             log_filename=None,
             actor_id=None,
@@ -475,7 +545,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         "worker_out": [f"worker-123-123-{pid}.out"],
         "worker_err": [],
     }
-    log_file_name, n = await logs_manager.resolve_filename(
+    info = await logs_manager.resolve_stream_file(
         node_id=node_id.hex(),
         log_filename=None,
         actor_id=None,
@@ -485,15 +555,15 @@ async def test_logs_manager_resolve_file(logs_manager):
         timeout=10,
     )
     logs_manager.list_logs.assert_awaited_with(
-        node_id.hex(), 10, glob_filter=f"*{pid}*"
+        node_id.hex(), 10, glob_filter=f"*{pid}*out"
     )
-    assert log_file_name == f"worker-123-123-{pid}.out"
+    assert info.filename == f"worker-123-123-{pid}.out"
 
     """
     Test nothing is given.
     """
     with pytest.raises(FileNotFoundError):
-        log_file_name = await logs_manager.resolve_filename(
+        info = await logs_manager.resolve_stream_file(
             node_id=node_id.hex(),
             log_filename=None,
             actor_id=None,
@@ -512,7 +582,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         "worker_out": [f"worker-123-123-{pid}.out"],
         "worker_err": [],
     }
-    log_file_name, n = await logs_manager.resolve_filename(
+    info = await logs_manager.resolve_stream_file(
         node_id=node_id.hex(),
         log_filename=None,
         actor_id=None,
@@ -522,15 +592,15 @@ async def test_logs_manager_resolve_file(logs_manager):
         timeout=10,
     )
     logs_manager.list_logs.assert_awaited_with(
-        node_id.hex(), 10, glob_filter=f"*{pid}*"
+        node_id.hex(), 10, glob_filter=f"*{pid}*out"
     )
-    assert log_file_name == f"worker-123-123-{pid}.out"
+    assert info.filename == f"worker-123-123-{pid}.out"
 
     logs_manager.list_logs.return_value = {
         "worker_out": [],
         "worker_err": [f"worker-123-123-{pid}.err"],
     }
-    log_file_name, n = await logs_manager.resolve_filename(
+    info = await logs_manager.resolve_stream_file(
         node_id=node_id.hex(),
         log_filename=None,
         actor_id=None,
@@ -543,7 +613,7 @@ async def test_logs_manager_resolve_file(logs_manager):
     logs_manager.list_logs.assert_awaited_with(
         node_id.hex(), 10, glob_filter=f"*{pid}*err"
     )
-    assert log_file_name == f"worker-123-123-{pid}.err"
+    assert info.filename == f"worker-123-123-{pid}.err"
 
 
 @pytest.mark.skipif(
@@ -848,6 +918,7 @@ def test_log_list(ray_start_cluster):
             assert "internal" in logs
             assert "driver" in logs
             assert "autoscaler" in logs
+            assert "events/event_AUTOSCALER.log" in logs
 
             # Test glob works.
             logs = list_logs(node_id=node["node_id"], glob_filter="raylet*")
@@ -920,10 +991,6 @@ def test_log_get(ray_start_cluster):
 
     wait_for_condition(verify)
 
-    with pytest.raises(NotImplementedError):
-        for _ in get_log(task_id=123, tail=10):
-            pass
-
     del a
     """
     Test log suffix selection for worker/actor
@@ -975,6 +1042,36 @@ def test_log_get(ray_start_cluster):
 
         lines = get_log(node_ip=head_node["node_ip"], pid=pid)
         assert WORKER_LOG_LINE.format(dest="out") in "".join(lines)
+
+        return True
+
+    wait_for_condition(verify)
+
+    # Test get log by task id
+    @ray.remote
+    def task_log():
+        out_msg = "This is a test log from stdout\n"
+        print(out_msg, end="", file=sys.stdout)
+        err_msg = "THIS IS A TEST LOG FROM STDERR\n"
+        print(err_msg, end="", file=sys.stderr)
+
+        return out_msg, err_msg
+
+    # Run some other tasks before and after to make sure task log only outputs the task's log.
+
+    _prev_task = ray.get(task_log.remote())
+    task = task_log.remote()
+    expected_out, expected_err = ray.get(task)
+
+    _post_task = ray.get(task_log.remote())
+
+    def verify():
+        lines = get_log(task_id=task.task_id().hex())
+        assert expected_out == "".join(lines)
+
+        # Test suffix
+        lines = get_log(task_id=task.task_id().hex(), suffix="err")
+        assert expected_err == "".join(lines)
 
         return True
 
