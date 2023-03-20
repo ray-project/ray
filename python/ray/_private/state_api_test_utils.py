@@ -350,4 +350,3 @@ def verify_failed_task(name: str, error_type: str) -> bool:
     assert t["state"] == "FAILED", t
     assert t["error_type"] == error_type, t
     return True
-
