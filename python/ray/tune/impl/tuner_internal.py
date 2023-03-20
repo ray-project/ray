@@ -397,7 +397,7 @@ class TunerInternal:
         tuner_run_config: Optional[RunConfig],
         trainer: "BaseTrainer",
         param_space: Optional[Dict[str, Any]],
-    ) -> Optional[RunConfig]:
+    ) -> RunConfig:
         """Chooses which `RunConfig` to use when multiple can be passed in
         through a Trainer or the Tuner itself.
 
@@ -426,13 +426,13 @@ class TunerInternal:
             )
             return tuner_run_config
 
-        # No Tuner RunConfig + Trainer RunConfig --> pass Trainer config through
+        # No Tuner RunConfig -> pass the Trainer config through
+        # This returns either a user-specified config, or the default RunConfig
+        # if nothing was provided to both the Trainer or Tuner.
         if not tuner_run_config:
             return trainer.run_config
 
         # Tuner RunConfig + No Trainer RunConfig --> Use the Tuner config
-        # Neither Tuner RunConfig / Trainer RunConfig
-        #   --> pass through None for default settings
         return tuner_run_config
 
     def _process_scaling_config(self) -> None:
