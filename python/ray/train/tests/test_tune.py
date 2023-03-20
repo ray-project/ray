@@ -23,7 +23,7 @@ from ray.tune.tuner import Tuner
 from ray.tune.impl.tuner_internal import _TUNER_PKL
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4)
     yield address_info
@@ -274,7 +274,9 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
 
 @pytest.mark.parametrize("in_trainer", [True, False])
 @pytest.mark.parametrize("in_tuner", [True, False])
-def test_run_config_in_trainer_and_tuner(tmp_path, caplog, in_trainer, in_tuner):
+def test_run_config_in_trainer_and_tuner(
+    propagate_logs, tmp_path, caplog, in_trainer, in_tuner
+):
     trainer_run_config = (
         RunConfig(name="trainer", local_dir=str(tmp_path)) if in_trainer else None
     )
