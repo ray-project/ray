@@ -28,6 +28,14 @@ class EndpointInfo:
     route: str
 
 
+class ReplicaState(str, Enum):
+    STARTING = "STARTING"
+    UPDATING = "UPDATING"
+    RECOVERING = "RECOVERING"
+    RUNNING = "RUNNING"
+    STOPPING = "STOPPING"
+
+
 class ApplicationStatus(str, Enum):
     NOT_STARTED = "NOT_STARTED"
     DEPLOYING = "DEPLOYING"
@@ -311,7 +319,24 @@ class RunningReplicaInfo:
                 ]
             )
         )
+
+        # RunningReplicaInfo class set frozen=True, this is the hacky way to set
+        # new attribute for the class.
         object.__setattr__(self, "_hash", hash_val)
 
     def __hash__(self):
         return self._hash
+
+    def __eq__(self, other):
+        return all(
+            [
+                isinstance(other, RunningReplicaInfo),
+                self._hash == other._hash,
+            ]
+        )
+
+
+class ServeDeployMode(str, Enum):
+    UNSET = "UNSET"
+    SINGLE_APP = "SINGLE_APP"
+    MULTI_APP = "MULTI_APP"

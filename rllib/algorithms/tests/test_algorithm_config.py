@@ -6,6 +6,10 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModuleSpec,
+    MultiAgentRLModule,
+)
 
 
 class TestAlgorithmConfig(unittest.TestCase):
@@ -184,6 +188,262 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         config.validate()
         self.assertEqual(config.learner_class, A)
+
+    def _assertEqualMARLSpecs(self, spec1, spec2):
+        self.assertEqual(spec1.marl_module_class, spec2.marl_module_class)
+
+        self.assertEqual(set(spec1.module_specs.keys()), set(spec2.module_specs.keys()))
+        for k, module_spec1 in spec1.module_specs.items():
+            module_spec2 = spec2.module_specs[k]
+
+            self.assertEqual(module_spec1.module_class, module_spec2.module_class)
+            self.assertEqual(
+                module_spec1.observation_space, module_spec2.observation_space
+            )
+            self.assertEqual(module_spec1.action_space, module_spec2.action_space)
+            self.assertEqual(
+                module_spec1.model_config_dict, module_spec2.model_config_dict
+            )
+
+    def _get_expected_marl_spec(
+        self,
+        config: AlgorithmConfig,
+        expected_module_class: type,
+        passed_module_class: type = None,
+        expected_marl_module_class: type = None,
+    ):
+        """This is a utility function that retrieves the expected marl specs.
+
+        Args:
+            config: The algorithm config.
+            expected_module_class: This is the expected RLModule class that is going to
+                be reference in the SingleAgentRLModuleSpec parts of the
+                MultiAgentRLModuleSpec.
+            passed_module_class: This is the RLModule class that is passed into the
+                module_spec argument of get_marl_module_spec. The function is
+                designed so that it will use the passed in module_spec for the
+                SingleAgentRLModuleSpec parts of the MultiAgentRLModuleSpec.
+            expected_marl_module_class: This is the expected MultiAgentRLModule class
+                that is going to be reference in the MultiAgentRLModuleSpec.
+
+        Returns:
+            Tuple of the returned MultiAgentRLModuleSpec from config.
+            get_marl_module_spec() and the expected MultiAgentRLModuleSpec.
+        """
+        from ray.rllib.policy.policy import PolicySpec
+
+        if expected_marl_module_class is None:
+            expected_marl_module_class = MultiAgentRLModule
+
+        env = gym.make("CartPole-v1")
+        policy_spec_ph = PolicySpec(
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            config=AlgorithmConfig(),
+        )
+
+        marl_spec = config.get_marl_module_spec(
+            policy_dict={"p1": policy_spec_ph, "p2": policy_spec_ph},
+            module_spec=SingleAgentRLModuleSpec(module_class=passed_module_class)
+            if passed_module_class
+            else None,
+        )
+
+        expected_marl_spec = MultiAgentRLModuleSpec(
+            marl_module_class=expected_marl_module_class,
+            module_specs={
+                "p1": SingleAgentRLModuleSpec(
+                    module_class=expected_module_class,
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    model_config_dict=AlgorithmConfig().model,
+                ),
+                "p2": SingleAgentRLModuleSpec(
+                    module_class=expected_module_class,
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    model_config_dict=AlgorithmConfig().model,
+                ),
+            },
+        )
+
+        return marl_spec, expected_marl_spec
+
+    def test_get_marl_module_spec(self):
+        """Tests whether the get_marl_module_spec() method works properly."""
+        from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
+
+        class CustomRLModule1(DiscreteBCTorchModule):
+            pass
+
+        class CustomRLModule2(DiscreteBCTorchModule):
+            pass
+
+        class CustomRLModule3(DiscreteBCTorchModule):
+            pass
+
+        class CustomMARLModule1(MultiAgentRLModule):
+            pass
+
+        ########################################
+        # single agent
+        class SingleAgentAlgoConfig(AlgorithmConfig):
+            def get_default_rl_module_spec(self):
+                return SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule)
+
+        # multi-agent
+        class MultiAgentAlgoConfigWithNoSingleAgentSpec(AlgorithmConfig):
+            def get_default_rl_module_spec(self):
+                return MultiAgentRLModuleSpec(marl_module_class=CustomMARLModule1)
+
+        class MultiAgentAlgoConfig(AlgorithmConfig):
+            def get_default_rl_module_spec(self):
+                return MultiAgentRLModuleSpec(
+                    marl_module_class=CustomMARLModule1,
+                    module_specs=SingleAgentRLModuleSpec(
+                        module_class=DiscreteBCTorchModule
+                    ),
+                )
+
+        ########################################
+        # This is the simplest case where we have to construct the marl module based on
+        # the default specs only.
+        config = SingleAgentAlgoConfig().rl_module(_enable_rl_module_api=True)
+        config.validate()
+
+        spec, expected = self._get_expected_marl_spec(config, DiscreteBCTorchModule)
+        self._assertEqualMARLSpecs(spec, expected)
+
+        # expected module should become the passed module if we pass it in.
+        spec, expected = self._get_expected_marl_spec(
+            config, CustomRLModule2, passed_module_class=CustomRLModule2
+        )
+        self._assertEqualMARLSpecs(spec, expected)
+
+        ########################################
+        # This is the case where we pass in a multi-agent RLModuleSpec that asks the
+        # algorithm to assign a specific type of RLModule class to certain module_ids.
+        config = SingleAgentAlgoConfig().rl_module(
+            _enable_rl_module_api=True,
+            rl_module_spec=MultiAgentRLModuleSpec(
+                module_specs={
+                    "p1": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
+                    "p2": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
+                }
+            ),
+        )
+        config.validate()
+
+        spec, expected = self._get_expected_marl_spec(config, CustomRLModule1)
+        self._assertEqualMARLSpecs(spec, expected)
+
+        ########################################
+        # This is the case where we ask the algorithm to assign a specific type of
+        # RLModule class to ALL module_ids.
+        config = SingleAgentAlgoConfig().rl_module(
+            _enable_rl_module_api=True,
+            rl_module_spec=SingleAgentRLModuleSpec(module_class=CustomRLModule1),
+        )
+        config.validate()
+
+        spec, expected = self._get_expected_marl_spec(config, CustomRLModule1)
+        self._assertEqualMARLSpecs(spec, expected)
+
+        # expected module should become the passed module if we pass it in.
+        spec, expected = self._get_expected_marl_spec(
+            config, CustomRLModule2, passed_module_class=CustomRLModule2
+        )
+        self._assertEqualMARLSpecs(spec, expected)
+        ########################################
+        # This is an alternative way to ask the algorithm to assign a specific type of
+        # RLModule class to ALL module_ids.
+        config = SingleAgentAlgoConfig().rl_module(
+            _enable_rl_module_api=True,
+            rl_module_spec=MultiAgentRLModuleSpec(
+                module_specs=SingleAgentRLModuleSpec(module_class=CustomRLModule1)
+            ),
+        )
+        config.validate()
+
+        spec, expected = self._get_expected_marl_spec(config, CustomRLModule1)
+        self._assertEqualMARLSpecs(spec, expected)
+
+        # expected module should become the passed module if we pass it in.
+        spec, expected = self._get_expected_marl_spec(
+            config, CustomRLModule2, passed_module_class=CustomRLModule2
+        )
+        self._assertEqualMARLSpecs(spec, expected)
+
+        ########################################
+        # This is not only assigning a specific type of RLModule class to EACH
+        # module_id, but also defining a new custom MultiAgentRLModule class to be used
+        # in the multi-agent scenario.
+        config = SingleAgentAlgoConfig().rl_module(
+            _enable_rl_module_api=True,
+            rl_module_spec=MultiAgentRLModuleSpec(
+                marl_module_class=CustomMARLModule1,
+                module_specs={
+                    "p1": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
+                    "p2": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
+                },
+            ),
+        )
+        config.validate()
+
+        spec, expected = self._get_expected_marl_spec(
+            config, CustomRLModule1, expected_marl_module_class=CustomMARLModule1
+        )
+        self._assertEqualMARLSpecs(spec, expected)
+
+        # This is expected to return CustomRLModule1 instead of CustomRLModule3 which
+        # is passed in. Because the default for p1, p2 is to use CustomRLModule1. The
+        # passed module_spec only sets a default to fall back onto in case the
+        # module_id is not specified in the original MultiAgentRLModuleSpec. Since P1
+        # and P2 are both assigned to CustomeRLModule1, the passed module_spec will not
+        # be used. This is the expected behavior for adding a new modules to a
+        # multi-agent RLModule that is not defined in the original
+        # MultiAgentRLModuleSpec.
+        spec, expected = self._get_expected_marl_spec(
+            config,
+            CustomRLModule1,
+            passed_module_class=CustomRLModule3,
+            expected_marl_module_class=CustomMARLModule1,
+        )
+        self._assertEqualMARLSpecs(spec, expected)
+
+        ########################################
+        # This is the case where we ask the algorithm to use its default
+        # MultiAgentRLModuleSpec, but the MultiAgentRLModuleSpec has not defined its
+        # SingleAgentRLmoduleSpecs.
+        config = MultiAgentAlgoConfigWithNoSingleAgentSpec().rl_module(
+            _enable_rl_module_api=True
+        )
+
+        self.assertRaisesRegex(
+            ValueError,
+            "Module_specs cannot be None",
+            lambda: config.validate(),
+        )
+
+        ########################################
+        # This is the case where we ask the algorithm to use its default
+        # MultiAgentRLModuleSpec, and the MultiAgentRLModuleSpec has defined its
+        # SingleAgentRLmoduleSpecs.
+        config = MultiAgentAlgoConfig().rl_module(_enable_rl_module_api=True)
+        config.validate()
+
+        spec, expected = self._get_expected_marl_spec(
+            config, DiscreteBCTorchModule, expected_marl_module_class=CustomMARLModule1
+        )
+        self._assertEqualMARLSpecs(spec, expected)
+
+        spec, expected = self._get_expected_marl_spec(
+            config,
+            CustomRLModule1,
+            passed_module_class=CustomRLModule1,
+            expected_marl_module_class=CustomMARLModule1,
+        )
+        self._assertEqualMARLSpecs(spec, expected)
 
 
 if __name__ == "__main__":

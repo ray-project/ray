@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
 namespace ray {
 namespace gcs {
@@ -27,6 +28,8 @@ namespace gcs {
 
 class MockGcsPlacementGroupManager : public GcsPlacementGroupManager {
  public:
+  explicit MockGcsPlacementGroupManager(GcsResourceManager &gcs_resource_manager)
+      : GcsPlacementGroupManager(context_, gcs_resource_manager) {}
   MOCK_METHOD(void,
               HandleCreatePlacementGroup,
               (rpc::CreatePlacementGroupRequest request,
@@ -63,6 +66,8 @@ class MockGcsPlacementGroupManager : public GcsPlacementGroupManager {
                rpc::WaitPlacementGroupUntilReadyReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
+
+  instrumented_io_context context_;
 };
 
 }  // namespace gcs

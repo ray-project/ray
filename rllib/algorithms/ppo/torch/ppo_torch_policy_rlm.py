@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, List, Type, Union
 
-import ray
 from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
@@ -61,7 +60,6 @@ class PPOTorchPolicyWithRLModule(
     """
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
         # TODO: Move into Policy API, if needed at all here. Why not move this into
         #  `PPOConfig`?.
         validate_config(config)
@@ -127,8 +125,8 @@ class PPOTorchPolicyWithRLModule(
             reduce_mean_valid = torch.mean
 
         action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
-        prev_action_dist = action_dist_class(
-            **train_batch[SampleBatch.ACTION_DIST_INPUTS]
+        prev_action_dist = action_dist_class.from_logits(
+            train_batch[SampleBatch.ACTION_DIST_INPUTS]
         )
 
         logp_ratio = torch.exp(

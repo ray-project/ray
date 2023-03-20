@@ -18,6 +18,7 @@ from ray.serve.schema import (
     DeploymentSchema,
     ServeApplicationSchema,
     ServeStatusSchema,
+    ServeDeploySchema,
     serve_status_to_schema,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
@@ -617,6 +618,11 @@ class TestServeApplicationSchema:
         with pytest.raises(AssertionError):
             config.remove_app_name_from_deployment_names()
 
+    def test_serve_application_import_path_required(self):
+        # If no import path is specified, this should not parse successfully
+        with pytest.raises(ValidationError):
+            ServeApplicationSchema.parse_obj({"host": "127.0.0.1", "port": 8000})
+
 
 class TestServeDeploySchema:
     def test_serve_application_to_deploy_config(self):
@@ -646,6 +652,90 @@ class TestServeDeploySchema:
             "port": 7470,
             "applications": [app_config_dict],
         }
+
+    def test_deploy_config_duplicate_apps(self):
+        deploy_config_dict = {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/alice",
+                    "import_path": "module.graph",
+                },
+                {
+                    "name": "app2",
+                    "route_prefix": "/charlie",
+                    "import_path": "module.graph",
+                },
+            ],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
+
+        # Duplicate app1
+        deploy_config_dict["applications"].append(
+            {"name": "app1", "route_prefix": "/bob", "import_path": "module.graph"},
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "app1" in str(e.value) and "app2" not in str(e.value)
+
+        # Duplicate app2
+        deploy_config_dict["applications"].append(
+            {"name": "app2", "route_prefix": "/david", "import_path": "module.graph"}
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "app1" in str(e.value) and "app2" in str(e.value)
+
+    def test_deploy_config_duplicate_routes1(self):
+        """Test that apps with duplicate route prefixes raises validation error"""
+        deploy_config_dict = {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/alice",
+                    "import_path": "module.graph",
+                },
+                {"name": "app2", "route_prefix": "/bob", "import_path": "module.graph"},
+            ],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
+
+        # Duplicate route prefix /alice
+        deploy_config_dict["applications"].append(
+            {"name": "app3", "route_prefix": "/alice", "import_path": "module.graph"},
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "alice" in str(e.value) and "bob" not in str(e.value)
+
+        # Duplicate route prefix /bob
+        deploy_config_dict["applications"].append(
+            {"name": "app4", "route_prefix": "/bob", "import_path": "module.graph"},
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "alice" in str(e.value) and "bob" in str(e.value)
+
+    def test_deploy_config_duplicate_routes2(self):
+        """Test that multiple apps with route_prefix set to None parses with no error"""
+        deploy_config_dict = {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": "module.graph",
+                },
+                {"name": "app2", "route_prefix": None, "import_path": "module.graph"},
+                {"name": "app3", "route_prefix": None, "import_path": "module.graph"},
+            ],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
 
 
 class TestServeStatusSchema:

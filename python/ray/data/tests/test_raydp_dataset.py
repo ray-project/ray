@@ -4,6 +4,7 @@ import raydp
 import torch
 
 
+# RayDP tests require Ray Java. Make sure ray jar is built before running this test.
 @pytest.fixture(scope="function")
 def spark(request):
     ray.init(num_cpus=2, include_dashboard=False)
