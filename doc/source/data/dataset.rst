@@ -20,7 +20,7 @@ and are compatible with a variety of file formats, data sources, and distributed
 Here's an overview of the integrations with other processing frameworks, file formats, and supported operations,
 as well as a glimpse at the Ray Datasets API.
 
-Check our :ref:`compatibility matrix <data-compatibility>` to see if your favorite format
+Check the :ref:`Input/Output reference <input-output>` to see if your favorite format
 is already supported.
 
 .. image:: images/dataset.svg
@@ -172,6 +172,18 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
         :type: ref
         :text: Check Out Other Data Processing Options
         :classes: btn-outline-info btn-block
+
+------------------------
+Datasource Compatibility
+------------------------
+
+Ray Datasets supports reading and writing many file formats.
+To view supported formats, read the :ref:`Input/Output reference <input-output>`.
+
+If your use case isn't supported, reach out on `Discourse <https://discuss.ray.io/>`__ or open a feature
+request on the `Ray GitHub repo <https://github.com/ray-project/ray>`__, and check out
+our :ref:`guide for implementing a custom Datasets datasource <datasets_custom_datasource>`
+if you're interested in rolling your own integration!
 
 .. _data-talks:
 
