@@ -51,8 +51,6 @@ class ClientRunner(CommandRunner):
         super(ClientRunner, self).__init__(cluster_manager, file_manager, working_dir)
 
         self.last_logs = None
-        self.result_output_json = tempfile.mktemp()
-        self.metrics_output_json = tempfile.mktemp()
 
     def prepare_remote_env(self):
         pass
@@ -127,10 +125,10 @@ class ClientRunner(CommandRunner):
             ) from e
 
     def fetch_results(self) -> Dict[str, Any]:
-        return self._fetch_json(self.result_output_json)
+        return self._fetch_json(self._RESULT_OUTPUT_JSON)
 
     def fetch_metrics(self) -> Dict[str, Any]:
-        return self._fetch_json(self.metrics_output_json)
+        return self._fetch_json(self._METRICS_OUTPUT_JSON)
 
     def fetch_artifact(self):
         raise NotImplementedError
