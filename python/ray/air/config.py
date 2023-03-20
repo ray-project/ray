@@ -785,13 +785,13 @@ class RunConfig:
             warnings.warn(
                 "Setting a `RunConfig.local_dir` is deprecated and will be removed "
                 "in the future. Set `RunConfig.storage_path` instead or set the"
-                "`TUNE_RESULTS_DIR` environment variable instead."
+                "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
             )
 
         if remote_path:
             self.storage_path = remote_path
             if local_path:
-                os.environ["TUNE_OVERWRITE_RESULTS_DIR"] = local_path
+                os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
         elif local_path:
             self.storage_path = local_path
 

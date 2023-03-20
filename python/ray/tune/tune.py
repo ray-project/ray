@@ -27,6 +27,7 @@ from ray.tune.progress_reporter import (
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
+from ray.tune.result import _get_defaults_results_dir
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import (
@@ -525,6 +526,9 @@ def run(
 
     sync_config.validate_upload_dir(remote_path)
 
+    if not local_path:
+        local_path = _get_defaults_results_dir()
+
     checkpoint_score_attr = checkpoint_score_attr or ""
     if checkpoint_score_attr.startswith("min-"):
         checkpoint_score_attr = checkpoint_score_attr[4:]
@@ -640,7 +644,7 @@ def run(
                 config=config,
                 resources_per_trial=resources_per_trial,
                 num_samples=num_samples,
-                local_dir=local_dir,
+                storage_path=storage_path,
                 _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
                 checkpoint_config=checkpoint_config,
@@ -774,7 +778,7 @@ def run(
         search_alg=search_alg,
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
-        experiment_path=experiments[0].local_path,
+        experiment_path=experiments[0].path,
         experiment_dir_name=experiments[0].dir_name,
         sync_config=sync_config,
         stopper=experiments[0].stopper,

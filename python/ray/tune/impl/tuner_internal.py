@@ -358,10 +358,10 @@ class TunerInternal:
             self._run_config.local_dir = str(experiment_path.parent)
             self._run_config.name = experiment_path.name
         else:
-            # Set the experiment `name` and `upload_dir` according to the URI
+            # Set the experiment `name` and `storage_path` according to the URI
             uri = URI(path_or_uri)
             self._run_config.name = uri.name
-            self._run_config.sync_config.upload_dir = str(uri.parent)
+            self._run_config.storage_path = str(uri.parent)
 
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
@@ -546,7 +546,7 @@ class TunerInternal:
                 checkpoint_at_end = True
 
         return dict(
-            local_dir=self._run_config.local_dir,
+            storage_path=self._run_config.storage_path,
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,

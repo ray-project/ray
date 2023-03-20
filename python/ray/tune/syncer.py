@@ -614,12 +614,14 @@ class _DefaultSyncer(_BackgroundSyncer):
 
 
 @DeveloperAPI
-def get_node_to_storage_syncer(sync_config: SyncConfig) -> Optional[Syncer]:
+def get_node_to_storage_syncer(
+    sync_config: SyncConfig, upload_dir: Optional[str] = None
+) -> Optional[Syncer]:
     """"""
     if sync_config.syncer is None:
         return None
 
-    if not sync_config.upload_dir:
+    if not sync_config.upload_dir and not upload_dir:
         return None
 
     if sync_config.syncer == "auto":

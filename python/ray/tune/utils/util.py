@@ -202,8 +202,9 @@ def _resolve_storage_path(
     if legacy_upload_dir:
         if remote_path:
             raise ValueError(
-                "Only one of `storage_path` and `SyncConfig.upload_dir` can be passed "
-                f"to `{error_location}`. Since `SyncConfig.upload_dir` is deprecated, "
+                "Only one of a remote `storage_path` and `SyncConfig.upload_dir` "
+                f"can be passed to `{error_location}`. "
+                "Since `SyncConfig.upload_dir` is deprecated, "
                 "only pass `storage_path` instead."
             )
         remote_path = legacy_upload_dir

@@ -26,10 +26,11 @@ from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.result import _get_defaults_results_dir
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import date_str
+from ray.tune.utils.util import _resolve_storage_path
 from ray.util import log_once
 
 from ray.util.annotations import DeveloperAPI, Deprecated
@@ -70,7 +71,7 @@ def _validate_log_to_file(log_to_file):
 
 
 def _get_local_dir_with_expand_user(local_dir: Optional[str]) -> str:
-    return os.path.abspath(os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR))
+    return os.path.abspath(os.path.expanduser(local_dir or _get_defaults_results_dir()))
 
 
 def _get_dir_name(run, explicit_name: Optional[str], combined_name: str) -> str:
@@ -155,8 +156,10 @@ class Experiment:
 
         self.sync_config = sync_config
 
-        local_storage_path = storage_path
-        remote_storage_path = self.sync_config.upload_dir
+        # Resolve storage_path
+        local_storage_path, remote_storage_path = _resolve_storage_path(
+            storage_path, local_dir, sync_config.upload_dir, error_location="Experiment"
+        )
 
         if local_dir:
             if local_storage_path:
@@ -290,7 +293,7 @@ class Experiment:
             "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
-            "experiment_path": self.local_path,
+            "experiment_path": self.path,
             "experiment_dir_name": self.dir_name,
             "sync_config": sync_config,
             "checkpoint_config": checkpoint_config,
