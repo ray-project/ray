@@ -35,6 +35,14 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test(
+    name = "test_random_access",
+    size = "large",
+    srcs = ["tests/test_random_access.py"],
+    tags = ["team:data", "exclusive", "no-streaming"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 py_test_module_list(
   files = glob(
     include=["tests/test_*.py"],
@@ -42,6 +50,7 @@ py_test_module_list(
         "tests/test_preprocessors.py",
         "tests/test_dataset_formats.py",
 	"tests/test_mongo_dataset.py",
+    "tests/test_random_access.py",
     ],
   ),
   size = "large",

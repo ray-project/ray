@@ -4270,18 +4270,10 @@ class Dataset(Generic[T]):
         """Build set of aggregations for applying a single aggregation to
         multiple columns.
         """
-
         # Expand None into an aggregation for each column.
         if on is None:
-            try:
-                dataset_format = self.dataset_format()
-            except ValueError:
-                dataset_format = None
-            if dataset_format in [BlockFormat.ARROW, BlockFormat.PANDAS]:
-                # This should be cached from the .dataset_format() check, so we
-                # don't fetch and we assert that the schema is not None.
-                schema = self.schema(fetch_if_missing=False)
-                assert schema is not None
+            schema = self.schema(fetch_if_missing=True)
+            if schema is not None and not isinstance(schema, type):
                 if not skip_cols:
                     skip_cols = []
                 if len(schema.names) > 0:
