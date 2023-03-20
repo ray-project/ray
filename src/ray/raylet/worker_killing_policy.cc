@@ -20,7 +20,6 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_killing_policy_group_by_owner.h"
-#include "ray/raylet/worker_killing_policy_retriable_fifo.h"
 #include "ray/raylet/worker_pool.h"
 
 namespace ray {
@@ -100,9 +99,6 @@ std::shared_ptr<WorkerKillingPolicy> CreateWorkerKillingPolicy(
   } else if (killing_policy_str == kGroupByOwner) {
     RAY_LOG(INFO) << "Running GroupByOwner policy.";
     return std::make_shared<GroupByOwnerIdWorkerKillingPolicy>();
-  } else if (killing_policy_str == kFifoPolicy) {
-    RAY_LOG(INFO) << "Running RetriableFIFO policy.";
-    return std::make_shared<RetriableFIFOWorkerKillingPolicy>();
   } else {
     RAY_LOG(ERROR)
         << killing_policy_str
