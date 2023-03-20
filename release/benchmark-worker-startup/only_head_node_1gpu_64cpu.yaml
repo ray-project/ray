@@ -20,7 +20,7 @@ aws:
           Ebs:
             DeleteOnTermination: true
             # This is the default configuration in our infra layer.
-            VolumeSize: 150
+            VolumeSize: 300
             VolumeType: gp3
             Iops: 3000
             Throughput: 500
