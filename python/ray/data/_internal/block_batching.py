@@ -225,9 +225,23 @@ class LogicalBatch(NamedTuple):
     """
     batch_idx: int
     block_refs: List[ObjectRef[Block]]
-    starting_block_idx: Optional[int]
-    ending_block_idx: Optional[int]
+    starting_block_idx: int
+    ending_block_idx: int
     num_rows: int
+
+    @classmethod
+    def from_logical_batch(cls, logical_batch: "LogicalBatch", new_idx: int) -> "LogicalBatch":
+        """Create a logical batch from an existing logical batch, but with a new index
+        """
+        return LogicalBatch(
+                batch_idx=new_idx,
+                block_refs=logical_batch.block_refs,
+                starting_block_idx=logical_batch.starting_block_idx,
+                ending_block_idx=logical_batch.ending_block_idx,
+                num_rows=logical_batch.num_rows
+            )
+
+
 
 
 class ResolvedLogicalBatch(NamedTuple):
@@ -256,42 +270,57 @@ def _bundle_block_refs_to_logical_batches(
     starting_index = 0
 
     global_index = 0
-    for block_ref, metadata in block_ref_iterator:
-        if block_ref is not None:
-            next_block_num_rows = metadata.num_rows
-            if batch_size is None:
-                yield LogicalBatch(global_index, [block_ref], None, None, next_block_num_rows)
+    num_rows_in_last_block = 0
+
+    if batch_size is None:
+        for block_ref, metadata in block_ref_iterator:
+            yield LogicalBatch(global_index, [block_ref], 0, metadata.num_rows, metadata.num_rows)
+            global_index += 1
+    else:
+        while True:
+            if buffer_size < batch_size:
+                # Pull next block from iterator if current buffer is not enough to fill
+                # a batch.
+                try:
+                    block_ref, metadata = next(block_ref_iterator)
+                except StopIteration:
+                    break
+                batch_buffer.append(block_ref)
+                buffer_size += metadata.num_rows
+                num_rows_in_last_block = metadata.num_rows
+            
+            if buffer_size == batch_size:
+                # If equal to batch size, then yield the full buffer.
+                yield LogicalBatch(global_index, batch_buffer, starting_index, num_rows_in_last_block, buffer_size)
+                batch_buffer = []
+                buffer_size = 0
+                starting_index = 0
+                num_rows_in_last_block = 0
                 global_index += 1
-            else:
-                if buffer_size + next_block_num_rows <= batch_size:
-                    batch_buffer.append(block_ref)
-                    buffer_size += next_block_num_rows
-
-                    # Yield if exactly equal to batch size.
-                    if buffer_size == batch_size:
-                        yield LogicalBatch(global_index, batch_buffer, starting_index, None, buffer_size)
-                        batch_buffer = []
-                        buffer_size = 0
-                        starting_index = 0
-                        global_index += 1
-                else:
-                    # Add leftover for this batch.
-                    need = (buffer_size + next_block_num_rows) - batch_size
-                    assert need > 0
-                    batch_buffer.append(block_ref)
-                    buffer_size += need
-                    assert buffer_size == batch_size
-                    yield LogicalBatch(global_index, batch_buffer, starting_index, need, buffer_size)
-                    # Carry over the remainder to the next logical batch
-                    batch_buffer = [block_ref]
-                    buffer_size = next_block_num_rows - need
-                    starting_index = need
-                    global_index += 1
-
+            
+            if buffer_size > batch_size:
+                # If current buffer is greater than batch size, then yield part of the
+                # buffer, and carryover the remainder to the next batch.
+                num_rows_to_leave_behind = buffer_size - batch_size
+                ending_index = num_rows_in_last_block - num_rows_to_leave_behind
+                assert ending_index > 0, ending_index
+                yield LogicalBatch(
+                    global_index,
+                    batch_buffer,
+                    starting_index,
+                    ending_index,
+                    batch_size
+                )
+                global_index += 1
+                # Carryover to next batch.
+                batch_buffer = [batch_buffer[-1]]
+                buffer_size = num_rows_to_leave_behind
+                starting_index = ending_index
 
     # Yield any leftover batches if necessary.
     if buffer_size > 0 and not drop_last:
-        yield LogicalBatch(global_index, batch_buffer, starting_index, None, buffer_size)
+        assert buffer_size < batch_size
+        yield LogicalBatch(global_index, batch_buffer, starting_index, buffer_size, buffer_size)
         global_index += 1
 
 def _local_shuffle_logical_batches(
@@ -307,19 +336,23 @@ def _local_shuffle_logical_batches(
     
     shuffle_buffer: List[LogicalBatch] = []
     shuffle_buffer_size = 0
+    global_counter = 0
 
     for logical_batch in logical_batch_iterator:
         shuffle_buffer.append(logical_batch)
         shuffle_buffer_size += logical_batch.num_rows
 
-        while shuffle_buffer_size > shuffle_buffer_min_size:
-            output_batch = shuffle_buffer.pop(random.randint(0, len(shuffle_buffer)))
-            yield output_batch
+        while shuffle_buffer_size >= shuffle_buffer_min_size:
+            output_batch = shuffle_buffer.pop(random.randint(0, len(shuffle_buffer)-1))
+            yield LogicalBatch.from_logical_batch(output_batch, global_counter)
             shuffle_buffer_size -= output_batch.num_rows
+            global_counter += 1
 
     # Yield any leftover.
     while len(shuffle_buffer) > 0:
-        yield shuffle_buffer[random.randint(0, len(shuffle_buffer))]
+        output_batch = shuffle_buffer.pop(random.randint(0, len(shuffle_buffer)-1))
+        yield LogicalBatch.from_logical_batch(output_batch, global_counter)
+        global_counter += 1
 
 def _prefetch_batches_locally(
     logical_batch_iter: Iterator[LogicalBatch],
@@ -337,7 +370,7 @@ def _prefetch_batches_locally(
         stats: Dataset stats object used to store block wait time.
     """
     def get_next_batches() -> Iterator[List[LogicalBatch]]:
-        """Return lists of logical batches corresponding to the provided"""
+        """Return lists of logical batches corresponding to `num_batches_to_prefetch`"""
         next_batches = []
         while True:
             try:
