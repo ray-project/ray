@@ -54,8 +54,8 @@ describe("ServeApplicationsListPage", () => {
 
     const user = userEvent.setup();
 
-    await screen.findByText("Serve details");
-    expect(screen.getByText("Serve details")).toBeVisible();
+    await screen.findByText("Config");
+    expect(screen.getByText("Config")).toBeVisible();
     expect(screen.getByText("1.2.3.4")).toBeVisible();
     expect(screen.getByText("8000")).toBeVisible();
 
