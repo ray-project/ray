@@ -5,11 +5,12 @@ import logging
 import os
 import threading
 import time
+import urllib.parse
 from collections import defaultdict
 from datetime import datetime
 from numbers import Number
 from threading import Thread
-from typing import Dict, List, Union, Type, Callable, Any, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
 
 import numpy as np
 import psutil
@@ -161,6 +162,53 @@ def retry_fn(
 
     # Timed out, so return False
     return False
+
+
+def _split_remote_local_path(
+    path: str, default_local_path: Optional[str]
+) -> Tuple[Optional[str], Optional[str]]:
+    parsed = urllib.parse.urlparse(path)
+    if parsed.scheme:
+        # If a scheme is set, this means it's not a local path.
+        # Note that we also treat `file://` as a URI.
+        remote_path = path
+        local_path = default_local_path
+    else:
+        remote_path = None
+        local_path = path
+
+    return local_path, remote_path
+
+
+def _resolve_storage_path(
+    path: str,
+    legacy_local_dir: Optional[str],
+    legacy_upload_dir: Optional[str],
+    error_location: str = "air.RunConfig",
+):
+    local_path, remote_path = _split_remote_local_path(
+        path=path, default_local_path=None
+    )
+
+    if legacy_local_dir:
+        if local_path:
+            raise ValueError(
+                "Only one of `storage_path` and `local_dir` can be passed to "
+                f"`{error_location}`. Since `local_dir` is deprecated, "
+                "only pass `storage_path` instead."
+            )
+        local_path = legacy_local_dir
+
+    if legacy_upload_dir:
+        if remote_path:
+            raise ValueError(
+                "Only one of `storage_path` and `SyncConfig.upload_dir` can be passed "
+                f"to `{error_location}`. Since `SyncConfig.upload_dir` is deprecated, "
+                "only pass `storage_path` instead."
+            )
+        remote_path = legacy_upload_dir
+
+    return local_path, remote_path
 
 
 @ray.remote

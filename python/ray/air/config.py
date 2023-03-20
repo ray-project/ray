@@ -1,3 +1,6 @@
+import copy
+import os
+import warnings
 from collections import defaultdict
 from dataclasses import _MISSING_TYPE, dataclass, fields
 from typing import (
@@ -702,8 +705,10 @@ class RunConfig:
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        local_dir: Local dir to save training results to.
-            Defaults to ``~/ray_results``.
+        storage_path: Path to store results at. Can be a local directory or
+            a destination on cloud storage. If Ray storage is set up,
+            defaults to the storage location. Otherwise, this defaults to
+            the local ``~/ray_results`` directory.
         stop: Stop conditions to consider. Refer to ray.tune.stopper.Stopper
             for more info. Stoppers should be serializable.
         callbacks: Callbacks to invoke.
@@ -734,7 +739,7 @@ class RunConfig:
     """
 
     name: Optional[str] = None
-    local_dir: Optional[str] = None
+    storage_path: Optional[str] = None
     callbacks: Optional[List["Callback"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure_config: Optional[FailureConfig] = None
@@ -744,8 +749,12 @@ class RunConfig:
     verbose: Union[int, "Verbosity"] = 3
     log_to_file: Union[bool, str, Tuple[str, str]] = False
 
+    # Deprecated
+    local_dir: Optional[str] = None
+
     def __post_init__(self):
-        from ray.tune.syncer import SyncConfig
+        from ray.tune.syncer import SyncConfig, Syncer
+        from ray.tune.utils.util import _resolve_storage_path
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
@@ -755,6 +764,41 @@ class RunConfig:
 
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
+
+        local_path, remote_path = _resolve_storage_path(
+            self.storage_path, self.local_dir, self.sync_config.upload_dir
+        )
+
+        if self.sync_config.upload_dir:
+            assert remote_path == self.sync_config.upload_dir
+            warnings.warn(
+                "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
+                "in the future. Pass `RunConfig.storage_path` instead."
+            )
+            # Set upload_dir to None to avoid further downstream resolution.
+            # Copy object first to not alter user input.
+            self.sync_config = copy.copy(self.sync_config)
+            self.sync_config.upload_dir = None
+
+        if self.local_dir:
+            assert local_path == self.local_dir
+            warnings.warn(
+                "Setting a `RunConfig.local_dir` is deprecated and will be removed "
+                "in the future. Set `RunConfig.storage_path` instead or set the"
+                "`TUNE_RESULTS_DIR` environment variable instead."
+            )
+
+        if remote_path:
+            self.storage_path = remote_path
+            if local_path:
+                os.environ["TUNE_OVERWRITE_RESULTS_DIR"] = local_path
+        elif local_path:
+            self.storage_path = local_path
+
+        if isinstance(self.sync_config.syncer, Syncer) and not remote_path:
+            raise ValueError(
+                "Must specify a remote `storage_path` to use a custom `syncer`."
+            )
 
     def __repr__(self):
         from ray.tune.syncer import SyncConfig

@@ -59,6 +59,7 @@ from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.utils.util import _resolve_storage_path
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
 
@@ -195,7 +196,7 @@ def run(
         None, Mapping[str, Union[float, int, Mapping]], PlacementGroupFactory
     ] = None,
     num_samples: int = 1,
-    local_dir: Optional[str] = None,
+    storage_path: Optional[str] = None,
     search_alg: Optional[Union[Searcher, SearchAlgorithm, str]] = None,
     scheduler: Optional[Union[TrialScheduler, str]] = None,
     keep_checkpoints_num: Optional[int] = None,
@@ -221,6 +222,7 @@ def run(
     max_concurrent_trials: Optional[int] = None,
     # Deprecated
     trial_executor: Optional[RayTrialExecutor] = None,
+    local_dir: Optional[str] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
@@ -308,8 +310,10 @@ def run(
             provided as an argument, the grid will be repeated
             `num_samples` of times. If this is -1, (virtually) infinite
             samples are generated until a stopping condition is met.
-        local_dir: Local dir to save training results to.
-            Defaults to ``~/ray_results``.
+        storage_path: Path to store results at. Can be a local directory or
+            a destination on cloud storage. If Ray storage is set up,
+            defaults to the storage location. Otherwise, this defaults to
+            the local ``~/ray_results`` directory.
         search_alg: Search algorithm for
             optimization. You can also use the name of the algorithm.
         scheduler: Scheduler for executing
@@ -494,7 +498,32 @@ def run(
         )
 
     sync_config = sync_config or SyncConfig()
-    sync_config.validate_upload_dir()
+
+    # Resolve storage_path
+    local_path, remote_path = _resolve_storage_path(
+        storage_path, local_dir, sync_config.upload_dir, error_location="tune.run"
+    )
+
+    if sync_config.upload_dir:
+        assert remote_path == sync_config.upload_dir
+        warnings.warn(
+            "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
+            "in the future. Pass `RunConfig.storage_path` instead."
+        )
+        # Set upload_dir to None to avoid further downstream resolution.
+        # Copy object first to not alter user input.
+        sync_config = copy.copy(sync_config)
+        sync_config.upload_dir = None
+
+    if local_dir:
+        assert local_path == local_dir
+        warnings.warn(
+            "Passing a `local_dir` is deprecated and will be removed "
+            "in the future. Set `RunConfig.storage_path` instead or set the"
+            "`TUNE_RESULTS_DIR` environment variable instead."
+        )
+
+    sync_config.validate_upload_dir(remote_path)
 
     checkpoint_score_attr = checkpoint_score_attr or ""
     if checkpoint_score_attr.startswith("min-"):
