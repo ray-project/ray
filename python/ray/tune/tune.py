@@ -16,7 +16,6 @@ from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
-from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.progress_reporter import (
@@ -139,8 +138,8 @@ def _report_progress(
     trials = runner.get_trials()
     if reporter.should_report(trials, done=done):
         sched_debug_str = runner.scheduler_alg.debug_string()
-        used_resources_str = runner._used_resources_string()
-        reporter.report(trials, done, sched_debug_str, used_resources_str)
+        executor_debug_str = runner.trial_executor.debug_string()
+        reporter.report(trials, done, sched_debug_str, executor_debug_str)
 
 
 def _setup_signal_catching() -> threading.Event:
@@ -742,11 +741,11 @@ def run(
         result_buffer_length=result_buffer_length,
         chdir_to_trial_dir=chdir_to_trial_dir,
     )
-    runner_kwargs = dict(
+    runner = TrialRunner(
         search_alg=search_alg,
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
-        local_checkpoint_dir=experiments[0].local_path,
+        experiment_path=experiments[0].local_path,
         experiment_dir_name=experiments[0].dir_name,
         sync_config=sync_config,
         stopper=experiments[0].stopper,
@@ -758,15 +757,6 @@ def run(
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
     )
-
-    if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "1"))):
-        trial_runner_cls = TuneController
-        runner_kwargs.pop("trial_executor")
-        runner_kwargs["reuse_actors"] = reuse_actors
-    else:
-        trial_runner_cls = TrialRunner
-
-    runner = trial_runner_cls(**runner_kwargs)
 
     if not runner.resumed:
         for exp in experiments:
