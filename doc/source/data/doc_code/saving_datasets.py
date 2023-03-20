@@ -1,5 +1,10 @@
 # flake8: noqa
 
+import ray
+
+# For tfrecords
+ray.init(runtime_env={"pip": ["tensorflow_metadata"]})
+
 # fmt: off
 # __write_parquet_begin__
 import ray
@@ -91,9 +96,6 @@ ds.repartition(3).write_numpy("/tmp/multi_numpy")
 # fmt: on
 
 # fmt: off
-ray.shutdown()
-ray.init(runtime_env={"pip": ["tensorflow_metadata"]})
-
 # __write_tfrecords_begin__
 import ray
 
