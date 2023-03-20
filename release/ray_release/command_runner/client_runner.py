@@ -3,7 +3,6 @@ import os
 import shlex
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from collections import deque
