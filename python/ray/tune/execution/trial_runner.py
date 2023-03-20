@@ -131,8 +131,6 @@ class _TuneControllerBase:
         callbacks: Optional[List[Callback]] = None,
         metric: Optional[str] = None,
         trial_checkpoint_config: Optional[CheckpointConfig] = None,
-        # Deprecated
-        local_checkpoint_dir: Optional[str] = None,
     ):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._placeholder_resolvers = placeholder_resolvers
@@ -146,20 +144,6 @@ class _TuneControllerBase:
         self._sync_config = sync_config or SyncConfig()
 
         self._experiment_dir_name = experiment_dir_name
-
-        if local_checkpoint_dir:
-            if experiment_path:
-                raise ValueError(
-                    "Only one of `local_checkpoint_dir` or `experiment_path` "
-                    "can be passed to `TrialRunner()`."
-                )
-
-            warnings.warn(
-                "The `local_checkpoint_dir` argument is deprecated and will be "
-                "removed in the future. Use `experiment_path` instead."
-            )
-
-            experiment_path = local_checkpoint_dir
 
         # Rename for better code readability
         local_experiment_path = experiment_path
@@ -1179,14 +1163,14 @@ class TrialRunner(_TuneControllerBase):
         search_alg: SearchAlgorithm for generating
             Trial objects.
         scheduler: Defaults to FIFOScheduler.
-        local_checkpoint_dir: Path where global experiment state checkpoints
+        experiment_path: Path where global experiment state checkpoints
             are saved and restored from.
+        experiment_dir_name: Experiment directory name.
+            See :class:`~ray.tune.experiment.Experiment`.
         sync_config: See :class:`~ray.tune.syncer.SyncConfig`.
             Within sync config, the `upload_dir` specifies cloud storage, and
             experiment state checkpoints will be synced to the `remote_checkpoint_dir`:
             `{sync_config.upload_dir}/{experiment_name}`.
-        experiment_dir_name: Experiment directory name.
-            See :class:`~ray.tune.experiment.Experiment`.
         stopper: Custom class for stopping whole experiments. See ``Stopper``.
         resume: see `tune.py:run`.
         server_port: Port number for launching TuneServer.
@@ -1215,9 +1199,9 @@ class TrialRunner(_TuneControllerBase):
         search_alg: Optional[SearchAlgorithm] = None,
         placeholder_resolvers: Optional[Dict[Tuple, Any]] = None,
         scheduler: Optional[TrialScheduler] = None,
-        local_checkpoint_dir: Optional[str] = None,
-        sync_config: Optional[SyncConfig] = None,
+        experiment_path: Optional[str] = None,
         experiment_dir_name: Optional[str] = None,
+        sync_config: Optional[SyncConfig] = None,
         stopper: Optional[Stopper] = None,
         resume: Union[str, bool] = False,
         server_port: Optional[int] = None,
@@ -1227,14 +1211,31 @@ class TrialRunner(_TuneControllerBase):
         callbacks: Optional[List[Callback]] = None,
         metric: Optional[str] = None,
         trial_checkpoint_config: Optional[CheckpointConfig] = None,
+        # Deprecated
+        local_checkpoint_dir: Optional[str] = None,
     ):
+
+        if local_checkpoint_dir:
+            if experiment_path:
+                raise ValueError(
+                    "Only one of `local_checkpoint_dir` or `experiment_path` "
+                    "can be passed to `TrialRunner()`."
+                )
+
+            warnings.warn(
+                "The `local_checkpoint_dir` argument is deprecated and will be "
+                "removed in the future. Use `experiment_path` instead."
+            )
+
+            experiment_path = local_checkpoint_dir
+
         super().__init__(
             search_alg=search_alg,
             placeholder_resolvers=placeholder_resolvers,
             scheduler=scheduler,
-            local_checkpoint_dir=local_checkpoint_dir,
-            sync_config=sync_config,
+            experiment_path=experiment_path,
             experiment_dir_name=experiment_dir_name,
+            sync_config=sync_config,
             stopper=stopper,
             resume=resume,
             server_port=server_port,
@@ -1257,7 +1258,10 @@ class TrialRunner(_TuneControllerBase):
 
     def _wrapped(self):
         return TrialRunnerWrapper(
-            self, self.trial_executor, runner_whitelist_attr={"search_alg"}
+            self,
+            self.trial_executor,
+            runner_whitelist_attr={"search_alg", "get_trials"},
+            executor_whitelist_attr={"has_resources_for_trial"},
         )
 
     def _used_resources_string(self) -> str:
