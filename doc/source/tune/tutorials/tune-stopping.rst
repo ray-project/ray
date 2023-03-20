@@ -1,104 +1,118 @@
 .. _tune-stopping-guide:
 
-How to Define Stopping Criteria for a Tune Experiment
-=====================================================
+How to Define Stopping Criteria for a Ray Tune Experiment
+=========================================================
 
-When running a Tune experiment, it is important to define stopping criteria to ensure that the experiment ends in a timely and efficient manner. In this user guide, we will discuss how to define stopping criteria for a Tune experiment.
+When running a Tune experiment, it can be challenging to determine the ideal duration of training beforehand. Stopping criteria in Tune can be useful for terminating training based on specific conditions.
+
+For instance, one may want to set up the experiment to stop under the following circumstances:
+
+1. Set up an experiment to end after ``N`` epochs or when the reported evaluation score surpasses a particular threshold, whichever occurs first.
+2. Terminate when trials encounter runtime errors.
+3. Stop underperforming trials early by utilizing Tune's early-stopping schedulers.
+
+This user guide will illustrate how to achieve these types of stopping criteria in a Tune experiment.
+
+For all the code examples, we use the following training function for demonstration:
+
+.. literalinclude:: /tune/doc_code/stopping.py
+    :language: python
+    :start-after: __stopping_example_trainable_start__
+    :end-before: __stopping_example_trainable_end__
 
 Stopping a Tune Experiment Manually
 -----------------------------------
 
-If you send a SIGINT signal to the process running ``Tuner.fit()`` (which is
-usually what happens when you press Ctrl+C in the console), Ray Tune shuts
+If you send a ``SIGINT`` signal to the process running :meth:`Tuner.fit() <ray.tune.Tuner.fit>`
+(which is usually what happens when you press ``Ctrl+C`` in the terminal), Ray Tune shuts
 down training gracefully and saves the final experiment state.
 
-Ray Tune also accepts the SIGUSR1 signal to interrupt training gracefully. This
+.. note::
+
+    Forcefully terminating a Tune experiment, for example, through multiple ``Ctrl+C``
+    commands, will not give Tune the opportunity to snapshot the experiment state
+    one last time. If you resume the experiment in the future, this could result
+    in resuming with stale state.
+
+Ray Tune also accepts the ``SIGUSR1`` signal to interrupt training gracefully. This
 should be used when running Ray Tune in a remote Ray task
-as Ray will filter out SIGINT and SIGTERM signals per default.
+as Ray will filter out ``SIGINT`` and ``SIGTERM`` signals per default.
 
 .. _tune-stopping-ref:
 
 Stop Programmatically with Metric-based Criteria
 ------------------------------------------------
 
-In addition to manual stopping, Tune provides several ways to stop experiments programmatically. The simplest way is to use a static condition. A static condition is a fixed set of rules that determine when the experiment should stop. Here are a few ways to use static conditions:
+In addition to manual stopping, Tune provides several ways to stop experiments programmatically. The simplest way is to use metric-based criteria. These are a fixed set of thresholds that determine when the experiment should stop.
 
 You can implement the stopping criteria using either a dictionary, a function, or a custom :class:`Stopper <ray.tune.stopper.Stopper>`.
 
-If a dictionary is passed in, the keys may be any field in the return result of ``session.report`` in the
-Function API or ``step()`` (including the results from ``step`` and auto-filled metrics).
+.. tabbed:: Dictionary
 
-Stopping Tune runs with a dictionary
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    If a dictionary is passed in, the keys may be any field in the return result of ``session.report`` in the
+    Function API or ``step()`` in the Class API.
 
-In the example below, each trial will be stopped either when it completes ``10`` iterations or when it
-reaches a mean accuracy of ``0.98``.
-These metrics are assumed to be **increasing**.
+    .. note::
 
-.. code-block:: python
+        This includes :ref:`auto-filled metrics <tune-autofilled-metrics>` such as ``training_iteration``.
 
-    # training_iteration is an auto-filled metric by Tune.
-    tune.Tuner(
-        my_trainable,
-        run_config=air.RunConfig(stop={"training_iteration": 10, "mean_accuracy": 0.98})
-    ).fit()
+    In the example below, each trial will be stopped either when it completes ``10`` iterations or when it
+    reaches a mean accuracy of ``0.8`` or more.
 
-Stopping Tune runs with a function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    These metrics are assumed to be **increasing**, so the trial will stop once the reported metric has exceeded the threshold specified in the dictionary.
 
-For more flexibility, you can pass in a function instead.
-If a function is passed in, it must take ``(trial_id, result)`` as arguments and return a boolean
-(``True`` if trial should be stopped and ``False`` otherwise).
+    .. literalinclude:: /tune/doc_code/stopping.py
+        :language: python
+        :start-after: __stopping_dict_start__
+        :end-before: __stopping_dict_end__
 
-.. code-block:: python
+.. tabbed:: User-defined Function
 
-    def stopper(trial_id: str, result: dict):
-        return result["mean_accuracy"] / result["training_iteration"] > 5
+    For more flexibility, you can pass in a function instead.
+    If a function is passed in, it must take ``(trial_id: str, result: dict)`` as arguments and return a boolean
+    (``True`` if trial should be stopped and ``False`` otherwise).
 
-    tune.Tuner(my_trainable, run_config=air.RunConfig(stop=stopper)).fit()
+    In the example below, each trial will be stopped either when it completes ``10`` iterations or when it
+    reaches a mean accuracy of ``0.8`` or more.
 
-Stopping Tune runs with a class
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    .. literalinclude:: /tune/doc_code/stopping.py
+        :language: python
+        :start-after: __stopping_fn_start__
+        :end-before: __stopping_fn_end__
 
-Finally, you can implement the :class:`Stopper <ray.tune.stopper.Stopper>` abstract class for stopping entire experiments. For example, the following example stops all trials after the criteria is fulfilled by any individual trial, and prevents new ones from starting:
+.. tabbed:: Custom Stopper Class
 
-.. code-block:: python
+    Finally, you can implement the :class:`~ray.tune.stopper.Stopper` interface for
+    stopping individual trials or even entire experiments based on custom stopping
+    criteria. For example, the following example stops all trials after the criteria
+    is achieved by any individual trial and prevents new ones from starting:
 
-    from ray.tune import Stopper
+    .. literalinclude:: /tune/doc_code/stopping.py
+        :language: python
+        :start-after: __stopping_cls_start__
+        :end-before: __stopping_cls_end__
 
-    class CustomStopper(Stopper):
-        def __init__(self):
-            self.should_stop = False
+    In the example, once any trial reaches a ``mean_accuracy`` of 0.8 or more, all trials will stop.
 
-        def __call__(self, trial_id, result):
-            if not self.should_stop and result['foo'] > 10:
-                self.should_stop = True
-            return self.should_stop
+    .. note::
 
-        def stop_all(self):
-            """Returns whether to stop trials and prevent new ones from starting."""
-            return self.should_stop
+        When returning ``True`` from ``stop_all``, currently running trials will not stop immediately.
+        They will stop after finishing their ongoing training iteration (after ``session.report`` or ``step``).
 
-    stopper = CustomStopper()
-    tune.Tuner(my_trainable, run_config=air.RunConfig(stop=stopper)).fit()
-
-
-Note that in the above example the currently running trials will not stop immediately but will do so
-once their current iterations are complete.
-
-Ray Tune comes with a set of out-of-the-box stopper classes. See the :ref:`Stopper <tune-stoppers>` documentation.
+    Ray Tune comes with a set of out-of-the-box stopper classes. See the :ref:`Stopper <tune-stoppers>` documentation.
 
 
 Stop on Trial Failures
 ----------------------
 
-In addition to stopping trials based on their performance, you can also stop the entire experiment if any trial encounters a runtime error. To do this, you can use the FailureConfig class. Here is an example:
+In addition to stopping trials based on their performance, you can also stop the entire experiment if any trial encounters a runtime error. To do this, you can use the :class:`ray.air.config.FailureConfig` class.
 
 With this configuration, if any trial encounters an error, the entire experiment will stop immediately.
 
-.. code-block:: python
-
-    tune.Tuner(trainable, run_config=air.RunConfig(failure_config=air.FailureConfig(fail_fast=True))).fit()
+.. literalinclude:: /tune/doc_code/stopping.py
+    :language: python
+    :start-after: __stopping_on_trial_error_start__
+    :end-before: __stopping_on_trial_error_end__
 
 This is useful when you are debugging a Tune experiment with many trials.
 
@@ -106,4 +120,26 @@ This is useful when you are debugging a Tune experiment with many trials.
 Early stopping with Tune schedulers
 -----------------------------------
 
-Another way to stop Tune experiments is to use early stopping schedulers. These schedulers monitor the performance of trials and stop them early if they are not making sufficient progress. Tune currently supports two schedulers: ASHA and BOHB.
+Another way to stop Tune experiments is to use early stopping schedulers.
+These schedulers monitor the performance of trials and stop them early if they are not making sufficient progress.
+
+:class:`~ray.tune.schedulers.AsyncHyperBandScheduler` and :class:`~ray.tune.schedulers.HyperBandForBOHB` are examples of early stopping schedulers built into Tune.
+See :ref:`the Tune scheduler API reference <tune-schedulers>` for a full list, as well as more realistic examples.
+
+In the following example, we use both a dictionary stopping criteria along with an early-stopping criteria:
+
+.. literalinclude:: /tune/doc_code/stopping.py
+    :language: python
+    :start-after: __early_stopping_start__
+    :end-before: __early_stopping_end__
+
+Summary
+-------
+
+In this user guide, we learned how to stop Tune experiments using metrics, trial errors,
+and early stopping schedulers.
+
+See the following resources for more information:
+
+- :ref:`Tune Stopper API reference<tune-stoppers>`
+- For an experiment that was manually interrupted, it's possible to resume the experiment. See :ref:`tune-fault-tolerance`.
