@@ -39,6 +39,7 @@ from ray.serve._private.utils import (
     merge_dict,
 )
 from ray.serve._private.version import DeploymentVersion
+from ray.serve import metrics as serve_metrics
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -128,6 +129,10 @@ def create_replica_wrapper(name: str):
             controller_handle = ray.get_actor(
                 controller_name, namespace=SERVE_NAMESPACE
             )
+
+            # Set information for this actor metrics.
+            serve_metrics.DEPLOYMENT = deployment_name
+            serve_metrics.REPLICA_TAG = replica_tag
 
             # This closure initializes user code and finalizes replica
             # startup. By splitting the initialization step like this,
