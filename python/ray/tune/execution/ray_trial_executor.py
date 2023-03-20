@@ -747,7 +747,7 @@ class RayTrialExecutor:
                         trainable.reset.remote(
                             extra_config,
                             logger_creator=logger_creator,
-                            remote_checkpoint_dir=trial.remote_checkpoint_dir,
+                            remote_checkpoint_dir=trial.remote_path,
                         ),
                         timeout=DEFAULT_GET_TIMEOUT,
                     )
@@ -779,7 +779,7 @@ class RayTrialExecutor:
             or self._resource_manager.has_resources_ready(resource_request)
         )
 
-    def _occupied_resources(self) -> dict:
+    def _allocated_resources(self) -> dict:
         total_resources = {"CPU": 0, "GPU": 0}
         for allocated_resource in self._trial_to_acquired_resources.values():
             resource_request = allocated_resource.resource_request
@@ -790,9 +790,9 @@ class RayTrialExecutor:
 
     def debug_string(self) -> str:
         """Returns a human readable message for printing to the console."""
-        occupied_resources = self._occupied_resources()
+        allocated_resources = self._allocated_resources()
 
-        return self._resource_updater.debug_string(occupied_resources)
+        return self._resource_updater.debug_string(allocated_resources)
 
     def on_step_begin(self) -> None:
         """Before step() is called, update the available resources."""
@@ -840,7 +840,7 @@ class RayTrialExecutor:
             # (if the search ended).
             return
 
-        for (actor, acquired_resources) in self._actor_cache.flush_cached_objects(
+        for actor, acquired_resources in self._actor_cache.flush_cached_objects(
             force_all=force_all
         ):
             future = actor.stop.remote()
@@ -938,8 +938,8 @@ class RayTrialExecutor:
                     metrics=result,
                     local_to_remote_path_fn=partial(
                         TrainableUtil.get_remote_storage_path,
-                        logdir=trial.logdir,
-                        remote_checkpoint_dir=trial.remote_checkpoint_dir,
+                        logdir=trial.local_path,
+                        remote_checkpoint_dir=trial.remote_path,
                     )
                     if trial.uses_cloud_checkpointing
                     else None,
@@ -1070,7 +1070,7 @@ class RayTrialExecutor:
         if ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
             old_dir = os.getcwd()
             try:
-                os.chdir(trial.logdir)
+                os.chdir(trial.local_path)
                 yield
             finally:
                 os.chdir(old_dir)

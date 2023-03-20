@@ -6,7 +6,6 @@ TD3 paper.
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
@@ -107,20 +106,3 @@ class TD3(DDPG):
     @override(DDPG)
     def get_default_config(cls) -> AlgorithmConfig:
         return TD3Config()
-
-
-# Deprecated: Use ray.rllib.algorithms.ddpg..td3.TD3Config instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(TD3Config().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.ddpg.td3::TD3_DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.td3.td3::TD3Config(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-TD3_DEFAULT_CONFIG = _deprecated_default_config()
