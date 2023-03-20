@@ -2426,10 +2426,30 @@
 
   run:
     timeout: 3600
-    script: bash run.sh
+    script: bash run_train_opt_2_7b.sh
 
     wait_for_nodes:
       num_nodes: 2
+
+  alert: default
+
+- name: alpa_opt_30b_inference
+  group: Alpa tests
+  working_dir: alpa_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1_p3_16xlarge.yaml
+
+  run:
+    timeout: 3600
+    script: bash run_inference_opt_30b.sh
+
+    wait_for_nodes:
+      num_nodes: 1
 
   alert: default
 
