@@ -3078,7 +3078,7 @@
   frequency: nightly
   working_dir: benchmark-worker-startup
   stable: false
-  env: staging_v2
+  env: staging_v1
 
   python: "3.9"
 
