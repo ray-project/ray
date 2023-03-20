@@ -39,12 +39,9 @@ from ray.data.preprocessors import (
 def create_dummy_preprocessors():
     class DummyPreprocessorWithNothing(Preprocessor):
         _is_fittable = False
-        pandas_called = False
-        numpy_called = False
 
     class DummyPreprocessorWithPandas(DummyPreprocessorWithNothing):
         def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
-            self.pandas_called = True
             return df
 
     class DummyPreprocessorWithNumpy(DummyPreprocessorWithNothing):
@@ -53,29 +50,24 @@ def create_dummy_preprocessors():
         def _transform_numpy(
             self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
         ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
-            self.numpy_called = True
             return np_data
 
     class DummyPreprocessorWithPandasAndNumpy(DummyPreprocessorWithNothing):
         def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
-            self.pandas_called = True
             return df
 
         def _transform_numpy(
             self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
         ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
-            self.numpy_called = True
             return np_data
 
     class DummyPreprocessorWithPandasAndNumpyPreferred(DummyPreprocessorWithNothing):
         def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
-            self.pandas_called = True
             return df
 
         def _transform_numpy(
             self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
         ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
-            self.numpy_called = True
             return np_data
 
         def preferred_batch_format(cls) -> BatchFormat:
@@ -239,22 +231,35 @@ def test_transform_all_formats(create_dummy_preprocessors, pipeline, dataset_for
     with pytest.raises(NotImplementedError):
         _apply_transform(with_nothing, ds)
 
-    _apply_transform(with_pandas, ds)
-    assert with_pandas.pandas_called
-    assert not with_pandas.numpy_called
+    if pipeline:
+        patcher = patch.object(ray.data.dataset_pipeline.DatasetPipeline, "map_batches")
+    else:
+        patcher = patch.object(ray.data.dataset.Dataset, "map_batches")
 
-    _apply_transform(with_numpy, ds)
-    assert with_numpy.numpy_called
-    assert not with_pandas.pandas_called
+    with patcher as mock_map_batches:
+        _apply_transform(with_pandas, ds)
+        mock_map_batches.assert_called_once_with(
+            with_pandas._transform_pandas, batch_format=BatchFormat.PANDAS
+        )
+
+    with patcher as mock_map_batches:
+        _apply_transform(with_numpy, ds)
+        mock_map_batches.assert_called_once_with(
+            with_numpy._transform_numpy, batch_format=BatchFormat.NUMPY
+        )
 
     # Pandas preferred by default.
-    _apply_transform(with_pandas_and_numpy, ds)
-    assert with_pandas_and_numpy.pandas_called
-    assert not with_pandas_and_numpy.numpy_called
+    with patcher as mock_map_batches:
+        _apply_transform(with_pandas_and_numpy, ds)
+    mock_map_batches.assert_called_once_with(
+        with_pandas_and_numpy._transform_pandas, batch_format=BatchFormat.PANDAS
+    )
 
-    _apply_transform(with_pandas_and_numpy_preferred, ds)
-    assert with_pandas_and_numpy_preferred.numpy_called
-    assert not with_pandas_and_numpy_preferred.pandas_called
+    with patcher as mock_map_batches:
+        _apply_transform(with_pandas_and_numpy_preferred, ds)
+    mock_map_batches.assert_called_once_with(
+        with_pandas_and_numpy_preferred._transform_numpy, batch_format=BatchFormat.NUMPY
+    )
 
 
 def test_numpy_pandas_support_transform_batch_wrong_format(create_dummy_preprocessors):
@@ -416,7 +421,7 @@ def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors)
 
 
 def test_transform_stats_raises_deprecation_warning(create_dummy_preprocessors):
-    with_nothing, _, _, _ = create_dummy_preprocessors
+    with_nothing, _, _, _, _ = create_dummy_preprocessors
 
     with pytest.raises(DeprecationWarning):
         with_nothing.transform_stats()
