@@ -486,7 +486,7 @@ futures.
   This conversion has near-zero overhead, since Datasets simply reinterprets existing
   Mars partition objects as Dataset blocks.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __from_mars_begin__
     :end-before: __from_mars_end__

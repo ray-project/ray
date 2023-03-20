@@ -198,7 +198,7 @@ ds.show(3)
 
 # fmt: off
 # __from_arrow_mult_begin__
-import arrow as pd
+import pyarrow as pa
 
 data = list(range(10000))
 num_chunks = 10
@@ -252,26 +252,6 @@ ds.show(3)
 # -> {'col1': 1, 'col2': '1'}
 # -> {'col1': 2, 'col2': '2'}
 # __from_modin_end__
-# fmt: on
-
-# fmt: off
-# __from_mars_begin__
-import mars
-import mars.dataframe as md
-
-cluster = mars.new_cluster_in_ray(worker_num=2, worker_cpu=1)
-
-df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
-mdf = md.DataFrame(df, num_partitions=8)
-# Create a tabular Dataset from a Mars DataFrame.
-ds = ray.data.from_mars(mdf)
-# -> Dataset(num_blocks=8, num_rows=10000, schema={col1: int64, col2: object})
-
-ds.show(3)
-# -> {'col1': 0, 'col2': '0'}
-# -> {'col1': 1, 'col2': '1'}
-# -> {'col1': 2, 'col2': '2'}
-# __from_mars_end__
 # fmt: on
 
 # fmt: off
