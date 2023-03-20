@@ -1161,10 +1161,10 @@ class Dataset(Generic[T]):
         This method is the recommended way to consume Datasets from multiple processes
         (e.g., for distributed training), and requires streaming execution mode.
 
-        It works by delegating the execution of this Dataset to a coordinator actor.
-        The coordinator pulls block references from the executed stream, and
-        divides those blocks among the `n` output iterators. Iterators pull blocks
-        from the coordinator actor to return to their caller on `next`.
+        Streaming split works by delegating the execution of this Dataset to a
+        coordinator actor. The coordinator pulls block references from the executed
+        stream, and divides those blocks among `n` output iterators. Iterators pull
+        blocks from the coordinator actor to return to their caller on `next`.
 
         The returned iterators are also repeatable; each iteration will trigger a
         new execution of the Dataset. There is an implicit barrier at the start of
@@ -1178,8 +1178,25 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> ds = ray.data.range(1000000)
             >>> it1, it2 = ds.streaming_split(2, equal=True)
-            >>> list(it1.iter_batches())  # doctest: +SKIP
-            >>> list(it2.iter_batches())  # doctest: +SKIP
+
+            >>> # Can consume from both iterators in parallel.
+            >>> @ray.remote
+            ... def consume(it):
+            ...    for batch in it.iter_batches():
+            ...        print(batch)
+            >>> ray.get([consume.remote(it1), consume.remote(it2)])  # doctest: +SKIP
+
+            >>> # Can loop over the iterators multiple times (multiple epochs).
+            >>> @ray.remote
+            ... def train(it):
+            ...    NUM_EPOCHS = 100
+            ...    for _ in range(NUM_EPOCHS):
+            ...        for batch in it.iter_batches():
+            ...            print(batch)
+            >>> ray.get([train.remote(it1), train.remote(it2)])  # doctest: +SKIP
+
+            >>> # ERROR: this will block waiting for a read on `it2` to start.
+            >>> ray.get(train.remote(it1))  # doctest: +SKIP
 
         Args:
             n: Number of output iterators to return.
