@@ -6,6 +6,9 @@ import ray
 # __creating_datasets_import_end__
 # fmt: on
 
+# For tfrecords
+ray.init(runtime_env={"pip": ["tensorflow_metadata"]})
+
 # fmt: off
 # __gen_synth_int_range_begin__
 # Create a Dataset of Python objects.
