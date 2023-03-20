@@ -482,7 +482,7 @@ class RayActorManager:
         """Return number of pending tasks"""
         return self._actor_task_events.num_futures
 
-    @lru_cache
+    @lru_cache()
     def get_live_actors_resources(self):
         counter = Counter()
         for _, acq in self._live_actors_to_ray_actors_resources.values():
