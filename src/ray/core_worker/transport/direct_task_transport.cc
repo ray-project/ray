@@ -586,10 +586,11 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
   request->unsafe_arena_set_allocated_task_spec(
-      const_cast<rpc::TaskSpec*>(&task_spec.GetMessage()));
+      const_cast<rpc::TaskSpec *>(&task_spec.GetMessage()));
 
-  for(const auto& resource : assigned_resources) {
-    request->mutable_resource_mapping()->UnsafeArenaAddAllocated(const_cast<rpc::ResourceMapEntry*>(&resource));
+  for (const auto &resource : assigned_resources) {
+    request->mutable_resource_mapping()->UnsafeArenaAddAllocated(
+        const_cast<rpc::ResourceMapEntry *>(&resource));
   }
   request->set_intended_worker_id(addr.worker_id.Binary());
   task_finisher_->MarkTaskWaitingForExecution(task_id, addr.raylet_id, addr.worker_id);

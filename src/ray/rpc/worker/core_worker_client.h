@@ -115,7 +115,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
 
   /// Similar to PushActorTask, but sets no ordering constraint. This is used to
   /// push non-actor tasks directly to a worker.
-  virtual void PushNormalTask(PushTaskRequest& request,
+  virtual void PushNormalTask(PushTaskRequest &request,
                               const ClientCallback<PushTaskReply> &callback) {}
 
   /// Notify a wait has completed for direct actor call arguments.
@@ -366,7 +366,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     SendRequests();
   }
 
-  void PushNormalTask(PushTaskRequest& request,
+  void PushNormalTask(PushTaskRequest &request,
                       const ClientCallback<PushTaskReply> &callback) override {
     request.set_sequence_number(-1);
     request.set_client_processed_up_to(-1);

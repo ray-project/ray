@@ -449,17 +449,17 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
   using google::protobuf::Arena;
   Arena arena;
   auto request = Arena::CreateMessage<rpc::PushTaskRequest>(&arena);
-  const rpc::TaskSpec* spec = &actor->GetCreationTaskSpecification().GetMessage();
+  const rpc::TaskSpec *spec = &actor->GetCreationTaskSpecification().GetMessage();
   request->set_intended_worker_id(worker->GetWorkerID().Binary());
-  request->unsafe_arena_set_allocated_task_spec(const_cast<rpc::TaskSpec*>(spec));
+  request->unsafe_arena_set_allocated_task_spec(const_cast<rpc::TaskSpec *>(spec));
 
-  for (const auto& resource : worker->GetLeasedResources()) {
-    request->mutable_resource_mapping()->UnsafeArenaAddAllocated(const_cast<rpc::ResourceMapEntry*>(&resource));
+  for (const auto &resource : worker->GetLeasedResources()) {
+    request->mutable_resource_mapping()->UnsafeArenaAddAllocated(
+        const_cast<rpc::ResourceMapEntry *>(&resource));
   }
   auto client = core_worker_clients_.GetOrConnect(worker->GetAddress());
   client->PushNormalTask(
-      *request,
-      [this, actor, worker](Status status, const rpc::PushTaskReply &reply) {
+      *request, [this, actor, worker](Status status, const rpc::PushTaskReply &reply) {
         // If the actor is still in the creating map and the status is ok, remove the
         // actor from the creating map and invoke the schedule_success_handler_.
         // Otherwise, create again, because it may be a network exception.

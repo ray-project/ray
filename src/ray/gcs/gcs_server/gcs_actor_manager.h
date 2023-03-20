@@ -81,7 +81,7 @@ class GcsActor {
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter)
       : task_spec_(std::move(_task_spec)), counter_(counter) {
-    auto& task_spec = task_spec_.GetMessage();
+    auto &task_spec = task_spec_.GetMessage();
     const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
     actor_table_data_.set_job_id(task_spec.job_id());
@@ -183,7 +183,7 @@ class GcsActor {
   /// Get the namespace of this actor.
   std::string GetRayNamespace() const;
   /// Get the task specification of this actor.
-  const TaskSpecification& GetCreationTaskSpecification() const;
+  const TaskSpecification &GetCreationTaskSpecification() const;
 
   /// Get the immutable ActorTableData of this actor.
   const rpc::ActorTableData &GetActorTableData() const;
