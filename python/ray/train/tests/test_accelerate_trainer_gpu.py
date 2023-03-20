@@ -8,7 +8,6 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.train.torch import TorchPredictor
 from ray.air.config import ScalingConfig
 import ray.train as train
-from ray.cluster_utils import Cluster
 from ray.air import session
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
@@ -163,20 +162,6 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-@pytest.fixture
-def ray_2_node_2_gpu_deepspeed():
-    cluster = Cluster()
-    for _ in range(2):
-        cluster.add_node(num_cpus=4, num_gpus=2)
-
-    ray.init(address=cluster.address, runtime_env={"pip": ["deepspeed>=0.8.0"]})
-
-    yield
-
-    ray.shutdown()
-    cluster.shutdown()
-
-
 def linear_train_func(accelerator: Accelerator, config):
     # Has to be imported here because it required deepspeed to be installed
     from accelerate.utils import DummyOptim
@@ -268,9 +253,7 @@ def linear_train_func(accelerator: Accelerator, config):
         "ACCELERATE_CONFIG_GPU",
     ],
 )
-def test_accelerate_linear(
-    ray_2_node_2_gpu_deepspeed, accelerate_config_file_contents, tmpdir
-):
+def test_accelerate_linear(ray_2_node_2_gpu, accelerate_config_file_contents, tmpdir):
     # Using strings to make test names nicer
     accelerate_config_file_contents = globals()[accelerate_config_file_contents]
 

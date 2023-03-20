@@ -20,5 +20,6 @@ transformers==4.19.1; python_version > '3.6'
 # If changing the version here, also change it in AccelerateTrainer docstring
 accelerate==0.5.1; python_version <= '3.6'
 accelerate==0.17.1; python_version > '3.6'
+deepspeed; python_version > '3.6'
 datasets==2.0.0
 sentencepiece==0.1.96
