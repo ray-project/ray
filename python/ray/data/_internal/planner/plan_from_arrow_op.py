@@ -7,8 +7,12 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.operators.from_arrow_operator import FromArrowRefs
-from ray.data.block import BlockAccessor, BlockExecStats
 from ray import ObjectRef
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.util import _get_metadata
+
+
+get_metadata = cached_remote_fn(_get_metadata)
 
 
 def _plan_from_arrow_refs_op(op: FromArrowRefs) -> PhysicalOperator:
@@ -24,11 +28,13 @@ def _plan_from_arrow_refs_op(op: FromArrowRefs) -> PhysicalOperator:
             if not isinstance(table_ref, ObjectRef):
                 op._tables[idx] = ray.put(table_ref)
                 table_ref = op._tables[idx]
-            stats = BlockExecStats.builder()
-            block_metadata = BlockAccessor.for_block(table_ref).get_metadata(
-                input_files=None, exec_stats=stats.build()
+            block_metadata = get_metadata.remote(table_ref)
+            ref_bundles.append(
+                RefBundle(
+                    [table_ref, ray.get(block_metadata)],
+                    owns_blocks=True,
+                )
             )
-            ref_bundles.append(RefBundle([table_ref, block_metadata], owns_blocks=True))
         return ref_bundles
 
     return InputDataBuffer(input_data_factory=get_input_data)
