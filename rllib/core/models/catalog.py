@@ -413,14 +413,14 @@ class Catalog:
             raise NotImplementedError(f"Unsupported action space: `{action_space}`")
 
     @staticmethod
-    def get_preprocessor_for_space(
-        observation_space: gym.Space, options: dict = None
+    def get_preprocessor(
+        observation_space: gym.Space, **kwargs
     ) -> Preprocessor:
         """Returns a suitable preprocessor for the given observation space.
 
         Args:
             observation_space: The input observation space.
-            options: Options to pass to the preprocessor. This is deprecated.
+            **kwargs: Forward-compatible kwargs.
 
         Returns:
             preprocessor: Preprocessor for the observations.
@@ -430,10 +430,11 @@ class Catalog:
         #  beginning with this entrypoint.
         # Next, we should deprecate the `options` kwarg from the Preprocessor itself,
         # after deprecating the old catalog and other components that still pass this.
-        if options is not None:
+        options = kwargs.get("options", {})
+        if options:
             deprecation_warning(
                 old="get_preprocessor_for_space(..., options={...})",
-                help="Override `Catalog.get_preprocessor_for_space()` "
+                help="Override `Catalog.get_preprocessor()` "
                 "in order to implement custom behaviour.",
                 error=False,
             )
