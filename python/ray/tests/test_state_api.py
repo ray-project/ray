@@ -1770,6 +1770,18 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         print(result.output)
         return exit_code_correct and substring_matched
 
+    # Test get task by ID
+    wait_for_condition(
+        lambda: verify_output(
+            ray_get, ["tasks", task.task_id().hex()], ["task_id", task.task_id().hex()]
+        )
+    )
+
+    # test list tasks
+    wait_for_condition(
+        lambda: verify_output(ray_list, ["tasks"], ["Stats:", "Table:", "TASK_ID"])
+    )
+
     wait_for_condition(
         lambda: verify_output(ray_list, ["actors"], ["Stats:", "Table:", "ACTOR_ID"])
     )
@@ -1791,9 +1803,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         )
     )
     wait_for_condition(lambda: verify_output(ray_list, ["jobs"], ["raysubmit"]))
-    wait_for_condition(
-        lambda: verify_output(ray_list, ["tasks"], ["Stats:", "Table:", "TASK_ID"])
-    )
+
     wait_for_condition(
         lambda: verify_output(ray_list, ["objects"], ["Stats:", "Table:", "OBJECT_ID"])
     )
