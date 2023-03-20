@@ -16,7 +16,7 @@ Replay Buffer Base Classes
 
     ~replay_buffer.StorageUnit
     ~replay_buffer.ReplayBuffer
-    ~replay_buffers.prioritized_replay_buffer
+    ~prioritized_replay_buffer.PrioritizedReplayBuffer
     ~reservoir_replay_buffer.ReservoirReplayBuffer
 
 
