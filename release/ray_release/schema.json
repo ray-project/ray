@@ -33,7 +33,7 @@
 				"frequency": {
 					"type": "string",
 					"enum": [
-						"disabled",
+						"manual",
 						"multi",
 						"nightly",
 						"nightly-3x",
@@ -188,7 +188,7 @@
 				"frequency": {
 					"type": "string",
 					"enum": [
-						"disabled",
+						"manual",
 						"multi",
 						"nightly",
 						"nightly-3x",
