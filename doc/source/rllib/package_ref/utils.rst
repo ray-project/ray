@@ -75,7 +75,7 @@ types.
 
 
 
-Some Built-in Scheduler Components
+Built-in scheduler components
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. currentmodule:: ray.rllib.utils.schedules
