@@ -10,11 +10,13 @@ from tdigest import TDigest
 
 RowType = Union[int, float, TableRow]
 
+
 def _initialize_tdigest(k: Optional[float]) -> TDigest:
     digest = TDigest()
     if k is not None:
         digest.update(k)
     return digest
+
 
 ### Aggregator Class
 class PercentileAggregator(_AggregateOnKeyBase):
@@ -27,7 +29,9 @@ class PercentileAggregator(_AggregateOnKeyBase):
             elif isinstance(row, int) or isinstance(row, float) or row is None:
                 return _initialize_tdigest(row)
             else:
-                raise TypeError("Not a supported data row type: {} ({})".format(row, type(row)))
+                raise TypeError(
+                    "Not a supported data row type: {} ({})".format(row, type(row))
+                )
 
         def merge(left: TDigest, right: TDigest) -> TDigest:
             sum = left + right
@@ -44,9 +48,11 @@ class PercentileAggregator(_AggregateOnKeyBase):
                     if row is not None:
                         aggregator.update(row)
                 else:
-                    raise TypeError("Not a supported data row type: {} ({})".format(row, type(row))) 
+                    raise TypeError(
+                        "Not a supported data row type: {} ({})".format(row, type(row))
+                    )
 
-            aggregator.compress() 
+            aggregator.compress()
             return aggregator
 
         super().__init__(
@@ -55,6 +61,7 @@ class PercentileAggregator(_AggregateOnKeyBase):
             merge=merge,
             name=f"t-digest({str(on)})",
         )
+
 
 ### Code to use the custom aggregator
 ray.init(num_cpus=2)
