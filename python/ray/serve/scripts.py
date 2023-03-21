@@ -442,7 +442,8 @@ def config(address: str, name: Optional[str]):
                     sort_keys=False,
                 )
                 for app in serve_details.applications.values()
-            )
+            ),
+            end="",
         )
     # Fetch a specific app config by name.
     else:
@@ -452,7 +453,7 @@ def config(address: str, name: Optional[str]):
             config = serve_details.applications.get(name).deployed_app_config.dict(
                 exclude_unset=True
             )
-        print(yaml.safe_dump(config, sort_keys=False))
+        print(yaml.safe_dump(config, sort_keys=False), end="")
 
 
 @cli.command(
@@ -504,18 +505,19 @@ def status(address: str, name: Optional[str]):
     if name is None:
         if len(serve_details.applications) == 0:
             print("There are no applications running on this cluster.")
-
-        print(
-            "\n---\n\n".join(
-                yaml.safe_dump(
-                    # Ensure exception tracebacks in app_status are printed correctly
-                    process_dict_for_yaml_dump(application.get_status_dict()),
-                    default_flow_style=False,
-                    sort_keys=False,
-                )
-                for application in serve_details.applications.values()
+        else:
+            print(
+                "\n---\n\n".join(
+                    yaml.safe_dump(
+                        # Ensure exception traceback in app_status are printed correctly
+                        process_dict_for_yaml_dump(application.get_status_dict()),
+                        default_flow_style=False,
+                        sort_keys=False,
+                    )
+                    for application in serve_details.applications.values()
+                ),
+                end="",
             )
-        )
     else:
         if name not in serve_details.applications:
             cli_logger.error(f'Application "{name}" does not exist.')
@@ -528,7 +530,8 @@ def status(address: str, name: Optional[str]):
                     ),
                     default_flow_style=False,
                     sort_keys=False,
-                )
+                ),
+                end="",
             )
 
 
