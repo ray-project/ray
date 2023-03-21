@@ -76,8 +76,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         if weight is None:
             weight = self._max_priority
 
-        self._it_sum[self._next_idx] = weight ** self._alpha
-        self._it_min[self._next_idx] = weight ** self._alpha
+        self._it_sum[self._next_idx] = weight**self._alpha
+        self._it_min[self._next_idx] = weight**self._alpha
 
         ReplayBuffer._add_single_batch(self, item)
 
@@ -182,10 +182,10 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         for idx, priority in zip(idxes, priorities):
             assert priority > 0
             assert 0 <= idx < len(self._storage)
-            delta = priority ** self._alpha - self._it_sum[idx]
+            delta = priority**self._alpha - self._it_sum[idx]
             self._prio_change_stats.push(delta)
-            self._it_sum[idx] = priority ** self._alpha
-            self._it_min[idx] = priority ** self._alpha
+            self._it_sum[idx] = priority**self._alpha
+            self._it_min[idx] = priority**self._alpha
 
             self._max_priority = max(self._max_priority, priority)
 
