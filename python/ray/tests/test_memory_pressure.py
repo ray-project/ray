@@ -14,6 +14,7 @@ from ray._private.test_utils import wait_for_condition, raw_metrics
 import numpy as np
 from ray._private.utils import get_system_memory
 from ray._private.utils import get_used_memory
+from ray.experimental.state.api import list_tasks
 from ray.experimental.state.state_manager import StateDataSourceClient
 
 
@@ -339,7 +340,7 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(
-            allocate_memory.options(max_retries=0).remote(
+            allocate_memory.options(max_retries=0, name="allocate_memory").remote(
                 allocate_bytes=bytes_to_alloc,
                 allocate_interval_s=0,
                 post_allocate_sleep_s=1000,
@@ -355,8 +356,16 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
         verified = True
     assert verified
 
-    # TODO(clarng): verify task info once state_api_client.get_task_info
-    # returns the crashed task.
+    def verify_oom_task_error():
+        tasks = list_tasks(filters=[("name", "=", "allocate_memory")])
+        print(tasks)
+        assert len(tasks) == 1, "no retries should be expected."
+        assert tasks[0]["state"] == "FAILED"
+        assert tasks[0]["error_type"] == "OUT_OF_MEMORY"
+        return True
+
+    wait_for_condition(verify_oom_task_error)
+
     # TODO(clarng): verify log info once state api can dump log info
 
 

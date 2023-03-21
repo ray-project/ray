@@ -45,6 +45,7 @@ class AnyscaleJobRunner(JobRunner):
         file_manager: JobFileManager,
         working_dir: str,
         sdk: Optional["AnyscaleSDK"] = None,
+        artifact_path: Optional[str] = None,
     ):
         super().__init__(
             cluster_manager=cluster_manager,
@@ -60,6 +61,8 @@ class AnyscaleJobRunner(JobRunner):
             self.cluster_manager.test_name.replace(" ", "_"),
             generate_tmp_s3_path(),
         )
+        # The root s3 bucket path. result, metric, artifact files
+        # will be uploaded to under it on s3.
         self.upload_path = join_s3_paths(
             f"s3://{self.file_manager.bucket}", self.path_in_bucket
         )
@@ -69,6 +72,11 @@ class AnyscaleJobRunner(JobRunner):
 
         self._results_uploaded = True
         self._metrics_uploaded = True
+
+        # artifact related
+        # user provided path to where they write the artifact to.
+        self._artifact_path = artifact_path
+        self._artifact_uploaded = artifact_path is not None
 
     def prepare_remote_env(self):
         # Copy anyscale job script to working dir
@@ -139,6 +147,7 @@ class AnyscaleJobRunner(JobRunner):
             # fetching later.
             self._results_uploaded = output_json["uploaded_results"]
             self._metrics_uploaded = output_json["uploaded_metrics"]
+            self._artifact_uploaded = output_json["uploaded_artifact"]
 
             if prepare_return_codes and prepare_return_codes[-1] != 0:
                 if prepare_return_codes[-1] == TIMEOUT_RETURN_CODE:
@@ -217,14 +226,17 @@ class AnyscaleJobRunner(JobRunner):
             f"{env_str}python anyscale_job_wrapper.py '{command}' "
             f"--test-workload-timeout {timeout}{no_raise_on_timeout_str} "
             "--results-s3-uri "
-            f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
+            f"'{join_s3_paths(self.upload_path, self._RESULT_OUTPUT_JSON)}' "
             "--metrics-s3-uri "
-            f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}' "
+            f"'{join_s3_paths(self.upload_path, self._METRICS_OUTPUT_JSON)}' "
             "--output-s3-uri "
             f"'{join_s3_paths(self.upload_path, self.output_json)}' "
+            f"--upload-s3-uri '{self.upload_path}' "
             f"--prepare-commands {prepare_commands_shell} "
-            f"--prepare-commands-timeouts {prepare_commands_timeouts_shell}"
+            f"--prepare-commands-timeouts {prepare_commands_timeouts_shell} "
         )
+        if self._artifact_path:
+            full_command += f"--artifact-path '{self._artifact_path}' "
 
         timeout = min(
             (self.cluster_manager.maximum_uptime_minutes - 1) * 60,
@@ -279,7 +291,7 @@ class AnyscaleJobRunner(JobRunner):
                 "Could not fetch results from session as they were not uploaded."
             )
         return self._fetch_json(
-            join_s3_paths(self.path_in_bucket, self.result_output_json)
+            join_s3_paths(self.path_in_bucket, self._RESULT_OUTPUT_JSON)
         )
 
     def fetch_metrics(self) -> Dict[str, Any]:
@@ -288,7 +300,37 @@ class AnyscaleJobRunner(JobRunner):
                 "Could not fetch metrics from session as they were not uploaded."
             )
         return self._fetch_json(
-            join_s3_paths(self.path_in_bucket, self.metrics_output_json)
+            join_s3_paths(self.path_in_bucket, self._METRICS_OUTPUT_JSON)
+        )
+
+    def fetch_artifact(self):
+        """Fetch artifact (file) from `self._artifact_path` on Anyscale cluster head node.
+
+        Note, an implementation detail here is that by the time this function is called,
+        the artifact file is already present in s3 bucket by the name of
+        `self._USER_GENERATED_ARTIFACT`. This is because, the uploading to s3 portion is
+        done by `_anyscale_job_wrapper`.
+
+        The fetched artifact will be placed under `self._DEFAULT_ARTIFACTS_DIR`,
+        which will ultimately show up in buildkite Artifacts UI tab.
+        The fetched file will have the same filename and extension as the one
+        on Anyscale cluster head node (same as `self._artifact_path`).
+        """
+        if not self._artifact_uploaded:
+            raise FetchResultError(
+                "Could not fetch artifact from session as they "
+                "were either not generated or not uploaded."
+            )
+        # first make sure that `self._DEFAULT_ARTIFACTS_DIR` exists.
+        if not os.path.exists(self._DEFAULT_ARTIFACTS_DIR):
+            os.makedirs(self._DEFAULT_ARTIFACTS_DIR, 0o755)
+
+        # we use the same artifact file name and extension specified by user
+        # and put it under `self._DEFAULT_ARTIFACTS_DIR`.
+        artifact_file_name = os.path.basename(self._artifact_path)
+        self.file_manager.download_from_s3(
+            join_s3_paths(self.path_in_bucket, self._USER_GENERATED_ARTIFACT),
+            os.path.join(self._DEFAULT_ARTIFACTS_DIR, artifact_file_name),
         )
 
     def fetch_output(self) -> Dict[str, Any]:
