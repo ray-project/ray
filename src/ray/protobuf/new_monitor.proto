@@ -52,13 +52,21 @@ message AutoscalerNode {
   string description = 4;
 }
 
+message PendingNode {
+  string node_type = 1;
+  uint64 pending_count = 2;
+  uint64 sent_count = 3;
+}
+
 message AutoscalerDecision {
   oneof possible_autoscaler_decisions {
     // Information about actions taken on nodes.
     AutoscalerNode autoscaler_node = 1;
     // Feedback about whether a resource request was infeasible.
     ResourceRequest infeasible_request_data = 2;
-    //  TODO: Information about pending launches/pending launch failures.
+    // The unfinished requests in the autoscaler. Ray will only use this
+    // information for observability.
+    PendingNode pending_node = 3;
   }
 }
 
