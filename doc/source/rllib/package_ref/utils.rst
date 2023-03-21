@@ -131,7 +131,7 @@ Import utilities
    ~try_import_tfp
 
 
-Tensorflow Utilities
+Tensorflow utilities
 ~~~~~~~~~~~~~~~~~~~~
 
 .. currentmodule:: ray.rllib.utils.tf_utils
