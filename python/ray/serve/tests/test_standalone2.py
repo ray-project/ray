@@ -1171,8 +1171,6 @@ class TestDeployApp:
         world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
         pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
         test_config = {
-            "host": "127.0.0.1",
-            "port": 8000,
             "applications": [
                 {
                     "name": "app1",
