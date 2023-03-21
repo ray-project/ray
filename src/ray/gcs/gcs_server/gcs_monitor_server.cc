@@ -21,6 +21,10 @@
 namespace ray {
 namespace gcs {
 
+constexpr char autoscaler_namespace[] = "__autoscaler";
+constexpr char autoscaler_request_resources_key[] = "request_resources";
+
+
 static const rpc::ResourceRequest_ResourceRequestType
     PLACEMENT_STRATEGY_TO_REQUEST_TYPE[rpc::PlacementStrategy_ARRAYSIZE] = {
         rpc::ResourceRequest_ResourceRequestType::
@@ -187,8 +191,8 @@ void GcsMonitorServer::HandleGetSchedulingStatus(
   PopulateResourceDemands(reply);
   PopulatePlacementGroupDemands(reply);
 
-  internal_kv_.Get("",
-                   AUTOSCALER_SDK_REQUEST_RESOURCES_KEY,
+  internal_kv_.Get(autoscaler_namespace,
+                   autoscaler_request_resources_key,
                    [reply, send_reply_callback](std::optional<std::string> res) {
                      if (res != std::nullopt) {
                        auto resource_request = reply->add_resource_requests();
@@ -197,6 +201,23 @@ void GcsMonitorServer::HandleGetSchedulingStatus(
 
                      send_reply_callback(Status::OK(), nullptr, nullptr);
                    });
+}
+
+
+void GcsMonitorServer::HandleSetMinResources(rpc::SetMinResourcesRequest request,
+                          rpc::SetMinResourcesReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) {
+  std::string request_as_string;
+  request.min_resource_request().SerializeToString(&request_as_string);
+  internal_kv_.Put(
+                   autoscaler_namespace /*ns*/,
+                   autoscaler_request_resources_key /*key*/,
+                   request_as_string /*value*/,
+                   true /*overwrite*/,
+                   [send_reply_callback](bool _unused) {
+                     send_reply_callback(Status::OK(), nullptr, nullptr);
+                   } /*callback*/
+                   );
 }
 
 }  // namespace gcs

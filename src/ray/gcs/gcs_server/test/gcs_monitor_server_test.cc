@@ -175,7 +175,8 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
 
   {
     // Setup ray.autoscaler.sdk.request_resources
-    rpc::ResourceRequest request;
+    rpc::SetMinResourcesRequest min_req;
+    rpc::ResourceRequest &request = *min_req.mutable_min_resource_request();
     request.set_resource_request_type(
         rpc::ResourceRequest_ResourceRequestType::
             ResourceRequest_ResourceRequestType_MIN_RESOURCES);
@@ -189,10 +190,14 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
     rpc::ResourceBundle *bundle2 = request.add_bundles();
     bundle2->mutable_resources()->insert(resource_map2.begin(), resource_map2.end());
 
-    std::string buf;
-    ASSERT_TRUE(request.SerializeToString(&buf));
-    internal_kv_.Put(
-        "", gcs::AUTOSCALER_SDK_REQUEST_RESOURCES_KEY, buf, true, [](bool success) {});
+    rpc::SetMinResourcesReply unused;
+    monitor_server_.HandleSetMinResources(min_req, &unused,
+                                          send_reply_callback
+                                          );
+    reply_future.get();
+    reply_promise = std::promise<void>();
+    reply_future = reply_promise.get_future();
+
   }
   {
     // Setup resource demand mocks.

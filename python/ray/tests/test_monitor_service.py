@@ -113,9 +113,17 @@ def test_scheduling_status_actors(monitor_stub):
 
 
 def test_scheduling_status_pgs(monitor_stub):
-    pg = ray.util.placement_group(
-        [{"CPU": 0.1, "GPU": 1}, {"custom": 10}], strategy="STRICT_PACK"
-    )
+    @ray.remote(num_cpus=0)
+    class PGCreator:
+        def __init__(self):
+            self.pg = ray.util.placement_group(
+                [{"CPU": 0.1, "GPU": 1}, {"custom": 10}], strategy="STRICT_PACK"
+            )
+        def ready(self):
+            pass
+
+    pg = PGCreator.options(name="a", lifetime="detached").remote()
+    ray.get(pg.ready.remote())
 
     def condition():
         request = monitor_pb2.GetSchedulingStatusRequest()
@@ -131,7 +139,15 @@ def test_scheduling_status_pgs(monitor_stub):
         return True
 
     wait_for_condition(condition)
-    del pg
+    ray.kill(pg)
+
+    def condition():
+        request = monitor_pb2.GetSchedulingStatusRequest()
+        response = monitor_stub.GetSchedulingStatus(request)
+
+        return len(response.resource_requests) == 0
+
+    wait_for_condition(condition)
 
 
 def test_scheduling_status_autoscaler_sdk_request_resources(monitor_stub):

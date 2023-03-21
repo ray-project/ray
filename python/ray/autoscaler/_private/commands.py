@@ -37,7 +37,6 @@ from ray.autoscaler._private.command_runner import (
 )
 from ray.autoscaler._private.constants import (
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
-    AUTOSCALER_RESOURCE_REQUEST_PROTO_KEY,
     MAX_PARALLEL_SHUTDOWN_WORKERS,
 )
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
@@ -181,16 +180,8 @@ def request_resources(
     if bundles:
         to_request += bundles
 
-    resource_request_proto = ResourceRequest(
-        resource_request_type=ResourceRequest.ResourceRequestType.MIN_RESOURCES,
-        count=1,
-        bundles=[ResourceBundle(resources=bundle) for bundle in to_request],
-    )
-    _internal_kv_put(
-        AUTOSCALER_RESOURCE_REQUEST_PROTO_KEY,
-        resource_request_proto.SerializeToString(),
-        overwrite=True,
-    )
+
+    ray._private.worker.global_worker.gcs_client.set_min_resources(to_request)
     _internal_kv_put(
         AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request), overwrite=True
     )

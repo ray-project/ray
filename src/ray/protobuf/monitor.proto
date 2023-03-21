@@ -95,6 +95,13 @@ message GetSchedulingStatusReply {
   repeated NodeStatus node_statuses = 2;
 }
 
+message SetMinResourcesRequest {
+  ResourceRequest min_resource_request = 1;
+}
+
+message SetMinResourcesReply {
+}
+
 // This service provides a stable interface for a monitor/autoscaler process to interact
 // with Ray.
 service MonitorGcsService {
@@ -103,6 +110,9 @@ service MonitorGcsService {
   // Request that GCS drain and kill a node. This call is idempotent, and could
   // need to be retried if the head node fails.
   rpc DrainAndKillNode(DrainAndKillNodeRequest) returns (DrainAndKillNodeReply);
-
+  // A a snapshot of all information ray scheduling information relevant ot
+  // autoscaling.
   rpc GetSchedulingStatus(GetSchedulingStatusRequest) returns (GetSchedulingStatusReply);
+  // Set a global min resources for the cluster.
+  rpc SetMinResources(SetMinResourcesRequest) returns (SetMinResourcesReply);
 }

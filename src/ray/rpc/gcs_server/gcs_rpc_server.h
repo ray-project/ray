@@ -230,6 +230,10 @@ class MonitorGcsServiceHandler {
   virtual void HandleGetSchedulingStatus(GetSchedulingStatusRequest request,
                                          GetSchedulingStatusReply *reply,
                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleSetMinResources(SetMinResourcesRequest request,
+                                         SetMinResourcesReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `MonitorServer`.
@@ -251,6 +255,7 @@ class MonitorGrpcService : public GrpcService {
     MONITOR_SERVICE_RPC_HANDLER(GetRayVersion);
     MONITOR_SERVICE_RPC_HANDLER(DrainAndKillNode);
     MONITOR_SERVICE_RPC_HANDLER(GetSchedulingStatus);
+    MONITOR_SERVICE_RPC_HANDLER(SetMinResources);
   }
 
  private:

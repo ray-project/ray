@@ -35,6 +35,7 @@ from ray.core.generated.gcs_pb2 import (
     TaskEvents,
     WorkerTableData,
 )
+from ray.core.generated import monitor_pb2, monitor_pb2_grpc
 
 logger = logging.getLogger(__name__)
 
@@ -276,10 +277,24 @@ class GcsClient:
         self._job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
             self._channel.channel()
         )
+        self._monitor_service_stub = monitor_pb2_grpc.MonitorGcsServiceStub(
+            self._channel.channel()
+        )
 
     @property
     def address(self):
         return self._channel._gcs_address
+
+    @_auto_reconnect
+    def set_min_resources(self, bundles: List[Dict[str, float]], timeout: Optional[float] = None) -> None:
+        request = monitor_pb2.SetMinResourcesRequest(
+            min_resource_request = monitor_pb2.ResourceRequest(
+                resource_request_type=monitor_pb2.ResourceRequest.ResourceRequestType.MIN_RESOURCES,
+                count=1,
+                bundles=[monitor_pb2.ResourceBundle(resources=bundle) for bundle in bundles],
+            )
+        )
+        self._monitor_service_stub.SetMinResources(request, timeout=timeout)
 
     @_auto_reconnect
     def internal_kv_get(
