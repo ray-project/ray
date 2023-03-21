@@ -44,7 +44,7 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
         "(for internal use)."
     ),
 )
-def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False):
+def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = True):
     settings = get_pipeline_settings()
 
     repo = settings["ray_test_repo"]
@@ -72,10 +72,6 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
             ) from e
         subprocess.check_output(
             ["cp", "-rf", os.path.join(tmpdir, "release"), current_release_dir],
-        )
-        subprocess.check_output(
-            ["cat", os.path.join(current_release_dir, 'tune_tests/cloud_tests/tpl_gce_4x8.yaml')],
-            shell=True
         )
 
         # We run the script again in a subprocess without entering this if again.
