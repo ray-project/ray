@@ -11,7 +11,7 @@ Exploration API
 Exploration is crucial in RL for enabling a learning agent to find new, potentially high-reward states by reaching unexplored areas of the environment.
 
 RLlib has several built-in exploration components that
-the different algorithms. Also users can customize an algo's exploration
+the different algorithms use. You can also customize an algorithm's exploration
 behavior by sub-classing the Exploration base class and implementing
 their own logic:
 
