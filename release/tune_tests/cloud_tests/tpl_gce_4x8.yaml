@@ -1,5 +1,7 @@
-cloud_id: cld_tPsS3nQz8p5cautbyWgEdr4y  # anyscale_k8s_gcp_cloud
+cloud_id: cld_tPsS3nQz8p5cautbyWgEdr4y  # anyscale_gce_cloud
 region: us-west1
+allowed_azs: 
+    - us-west1-a
 
 max_workers: 3
 
@@ -9,7 +11,7 @@ head_node_type:
 
 worker_node_types:
     - name: worker_node
-      instance_type: n2-standard-8
+      instance_type: n2-standard-16
       min_workers: 3
       max_workers: 3
       use_spot: false
