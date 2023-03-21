@@ -34,7 +34,6 @@ from ray.serve._private.constants import (
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
 
-from ray.serve._private.request_context import _serve_request_context, RequestContext
 from ray.serve._private.utils import get_random_letters
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -385,14 +384,15 @@ class HTTPProxy:
             scope["root_path"] = root_path + route_prefix
 
         start_time = time.time()
-        _serve_request_context.set(RequestContext(route_path, get_random_letters(10)))
+        ray.serve.context._serve_request_context.set(
+            ray.serve.context.RequestContext(route_path, get_random_letters(10))
+        )
         status_code = await _send_request_to_handle(handle, scope, receive, send)
         latency_ms = (time.time() - start_time) * 1000.0
         self.processing_latency_tracker.observe(latency_ms, tags={"route": route_path})
         logger.info(
             access_log_msg(
                 method=scope["method"],
-                route=route_prefix,
                 status=str(status_code),
                 latency_ms=latency_ms,
             )
@@ -410,7 +410,7 @@ class HTTPProxy:
                     "deployment": handle.deployment_name,
                     "error_code": status_code,
                     "method": scope["method"].upper(),
-                    "route": route_prefix,
+                    "route": route_path,
                 }
             )
 

@@ -40,7 +40,6 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.version import DeploymentVersion
 
-from ray.serve._private.request_context import _serve_request_context, RequestContext
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -451,13 +450,6 @@ class RayServeReplica:
             )
         )
 
-        # Set request context variables for subsequent handle so that
-        # handle can pass the correct request context to subsequent replicas.
-        _serve_request_context.set(
-            RequestContext(
-                request_item.metadata.route, request_item.metadata.request_id
-            )
-        )
         args, kwargs = parse_request_item(request_item)
 
         method_to_call = None
@@ -526,6 +518,14 @@ class RayServeReplica:
             num_running_requests = self._get_handle_request_stats()["running"]
             self.num_processing_items.set(num_running_requests)
 
+            # Set request context variables for subsequent handle so that
+            # handle can pass the correct request context to subsequent replicas.
+            ray.serve.context._serve_request_context.set(
+                ray.serve.context.RequestContext(
+                    request.metadata.route, request.metadata.request_id
+                )
+            )
+
             start_time = time.time()
             result, success = await self.invoke_single(request)
             latency_ms = (time.time() - start_time) * 1000
@@ -534,8 +534,7 @@ class RayServeReplica:
             )
             logger.info(
                 access_log_msg(
-                    method="HANDLE",
-                    route=request.metadata.call_method,
+                    method=request.metadata.call_method,
                     status="OK" if success else "ERROR",
                     latency_ms=latency_ms,
                 )

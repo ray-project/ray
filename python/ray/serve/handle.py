@@ -30,8 +30,6 @@ from ray.serve._private.router import Router, RequestMetadata
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-from ray.serve._private.request_context import _serve_request_context
-
 _global_async_loop = None
 
 
@@ -215,7 +213,7 @@ class RayServeHandle:
         )
 
     def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
-        _request_context = _serve_request_context.get()
+        _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
             _request_context.request_id,
             deployment_name,

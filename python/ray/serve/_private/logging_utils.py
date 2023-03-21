@@ -5,13 +5,47 @@ from typing import Optional
 import ray
 from ray.serve._private.constants import DEBUG_LOG_ENV_VAR, SERVE_LOGGER_NAME
 
-COMPONENT_LOG_FMT = "%(levelname)s %(asctime)s {component_name} {component_id} %(filename)s:%(lineno)d - %(message)s"  # noqa:E501
+
 LOG_FILE_FMT = "{component_name}_{component_id}.log"
 
 
-def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
+class ServeFormatter(logging.Formatter):
+    """Serve Logging Formatter
+
+    The formatter will generate the log format on the fly based on the field of record.
+    """
+
+    COMPONENT_LOG_FMT = (
+        "%(levelname)s %(asctime)s {component_name} {component_id} "  # noqa:E501
+    )
+    MESSAGE_FMT = "%(filename)s:%(lineno)d - %(message)s"
+    REQUEST_ID_FMT = "%(request_id)s "
+    ROUTE_FMT = "%(route)s "
+
+    def __init__(self, component_name: str, component_id: str):
+        self.component_log_fmt = ServeFormatter.COMPONENT_LOG_FMT.format(
+            component_name=component_name, component_id=component_id
+        )
+
+    def format(self, record):
+        # generate a format string based on the record field.
+        cur_format = self.component_log_fmt
+        if "request_id" in record.__dict__:
+            cur_format += ServeFormatter.REQUEST_ID_FMT
+        if "route" in record.__dict__:
+            cur_format += ServeFormatter.ROUTE_FMT
+        cur_format += ServeFormatter.MESSAGE_FMT
+
+        # create a formatter using the format string
+        formatter = logging.Formatter(cur_format)
+
+        # format the log record using the formatter
+        return formatter.format(record)
+
+
+def access_log_msg(*, method: str, status: str, latency_ms: float):
     """Returns a formatted message for an HTTP or ServeHandle access log."""
-    return f"{method.upper()} {route} {status.upper()} {latency_ms:.1f}ms"
+    return f"{method.upper()} {status.upper()} {latency_ms:.1f}ms"
 
 
 def configure_component_logger(
@@ -38,14 +72,22 @@ def configure_component_logger(
     if os.environ.get(DEBUG_LOG_ENV_VAR, "0") != "0":
         logger.setLevel(logging.DEBUG)
 
-    formatter = logging.Formatter(
-        COMPONENT_LOG_FMT.format(
-            component_name=component_name, component_id=component_id
-        )
-    )
+    factory = logging.getLogRecordFactory()
+
+    def record_factory(*args, **kwargs):
+        request_context = ray.serve.context._serve_request_context.get()
+        record = factory(*args, **kwargs)
+        if request_context.route:
+            record.route = request_context.route
+        if request_context.request_id:
+            record.request_id = request_context.request_id
+        return record
+
+    logging.setLogRecordFactory(record_factory)
+
     if log_to_stream:
         stream_handler = logging.StreamHandler()
-        stream_handler.setFormatter(formatter)
+        stream_handler.setFormatter(ServeFormatter(component_name, component_id))
         logger.addHandler(stream_handler)
 
     if log_to_file:
@@ -67,7 +109,7 @@ def configure_component_logger(
             maxBytes=max_bytes,
             backupCount=backup_count,
         )
-        file_handler.setFormatter(formatter)
+        file_handler.setFormatter(ServeFormatter(component_name, component_id))
         logger.addHandler(file_handler)
 
 
