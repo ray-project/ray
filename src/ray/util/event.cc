@@ -311,10 +311,11 @@ void RayEvent::SendMessage(const std::string &message) {
   } else {
     event_id = kEmptyEventIdHex;
   }
-  if (ray::RayLog::IsLevelEnabled(log_severity_)) {
-    ::ray::RayLog(file_name_, line_number_, log_severity_)
-        << "[ Event " << event_id << " " << custom_fields_.dump() << " ] " << message;
-  }
+  // TODO(sang): Reneable event logging feature.
+  // if (ray::RayLog::IsLevelEnabled(log_severity_)) {
+  //   ::ray::RayLog(file_name_, line_number_, log_severity_)
+  //       << "[ Event " << event_id << " " << custom_fields_.dump() << " ] " << message;
+  // }
 }
 
 static absl::once_flag init_once_;

@@ -641,6 +641,25 @@ TEST_F(EventTest, TestLogEvent) {
   EXPECT_THAT(vc[3], testing::HasSubstr("test fatal 2"));
 }
 
+TEST_F(EventTest, VerifyOnlyNthOccurenceEventLogged) {
+  EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
+  const std::string kLogStr = "this is a test log";
+  static int counter = 0;
+  for (int i = 0; i < 9; i++) {
+    counter++;
+    RAY_EVENT_EVERY_N(WARNING, "label") << kLogStr;
+  }
+
+  std::vector<rpc::Event> &result = TestEventReporter::event_list;
+
+  EXPECT_EQ(result.size(), 3);
+  RAY_LOG(INFO) << result[0];
+
+  CheckEventDetail(result[0], "", "", "", "COMMON", "WARNING", "label", kLogStr);
+  CheckEventDetail(result[1], "", "", "", "COMMON", "WARNING", "label", kLogStr);
+  CheckEventDetail(result[2], "", "", "", "COMMON", "WARNING", "label", kLogStr);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
