@@ -83,13 +83,15 @@ If the experient has been interrupted due to one of the reasons listed above, us
 
 .. tip::
 
-    You can also restore the experiment from a cloud bucket path. See :ref:`tune-storage-options`.
+    You can also restore the experiment from a cloud bucket path:
 
     .. code-block:: python
 
         tuner = tune.Tuner.restore(
             path="s3://cloud-bucket/tune_fault_tolerance_guide", trainable=trainable
         )
+
+    See :ref:`tune-storage-options`.
 
 
 .. _tune-experiment-autoresume-example:
