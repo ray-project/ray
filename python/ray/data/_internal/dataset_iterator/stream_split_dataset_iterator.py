@@ -177,11 +177,6 @@ class SplitCoordinator:
     def start_epoch(self, split_idx: int) -> str:
         """Called to start an epoch.
 
-<<<<<<< HEAD:python/ray/data/_internal/dataset_iterator/stream_split_dataset_iterator.py
-    def get(
-        self, output_split_idx: int
-    ) -> Optional[Tuple[ObjectRef[Block], BlockMetadata]]:
-=======
         Returns:
             UUID for the epoch, which must be used when accessing results via get().
         """
@@ -190,8 +185,7 @@ class SplitCoordinator:
         epoch_id = self._barrier(split_idx)
         return epoch_id
 
-    def get(self, epoch_id: int, output_split_idx: int) -> Optional[ObjectRef[Block]]:
->>>>>>> aa02993127d448c7f6a68f7c1d7c941df227e008:python/ray/data/_internal/stream_split_dataset_iterator.py
+    def get(self, epoch_id: int, output_split_idx: int) -> Optional[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.
