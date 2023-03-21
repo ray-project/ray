@@ -99,4 +99,9 @@ enum TagKey {
   // Logical operators, stored in JSON format with operator name and count.
   // Example: {"MapBatches": 2, "Filter": 1}
   DATA_LOGICAL_OPS = 400;
+
+  // AIR
+  // Name of AIR trainer, or "Custom" if user-defined.
+  // Example: "TorchTrainer"
+  AIR_TRAINER = 500;
 }
