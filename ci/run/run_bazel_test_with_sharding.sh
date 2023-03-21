@@ -22,8 +22,10 @@ for arg in "$@"; do
     fi
 done
 
+
 SHARD=$(python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters="$test_tag_filters" "${targets[@]}")
 if [ -z "$SHARD" ]
+# if no targets are assigned to this shard, skip bazel test run
 then
     echo "$SHARD"
     echo "$SHARD" | xargs bazel test --test_tag_filters="$test_tag_filters" "${optional_args[@]}"
