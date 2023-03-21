@@ -154,7 +154,7 @@ Tensorflow utilities
    ~zero_logps_from_actions
 
 
-Torch Utilities
+Torch utilities
 ~~~~~~~~~~~~~~~
 
 .. currentmodule:: ray.rllib.utils.torch_utils  
