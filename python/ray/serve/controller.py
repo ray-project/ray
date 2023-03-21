@@ -319,16 +319,25 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            deployment_time, config_checkpoints_dict = pickle.loads(checkpoint)
+            deployment_time, deploy_mode, config_checkpoints_dict = pickle.loads(
+                checkpoint
+            )
             applications = [
                 app_config_dict
                 for app_config_dict, _ in config_checkpoints_dict.values()
             ]
-            self.deploy_apps(
-                ServeDeploySchema.parse_obj({"applications": applications}),
-                deployment_time,
-                False,
-            )
+            if deploy_mode == ServeDeployMode.SINGLE_APP:
+                self.deploy_apps(
+                    ServeApplicationSchema.parse_obj(applications[0]),
+                    deployment_time,
+                    False,
+                )
+            else:
+                self.deploy_apps(
+                    ServeDeploySchema.parse_obj({"applications": applications}),
+                    deployment_time,
+                    False,
+                )
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
         """Used for testing.
@@ -531,7 +540,7 @@ class ServeController:
         if config_checkpoint is None:
             config_checkpoints_dict = {}
         else:
-            _, config_checkpoints_dict = pickle.loads(config_checkpoint)
+            _, _, config_checkpoints_dict = pickle.loads(config_checkpoint)
 
         new_config_checkpoint = {}
 
@@ -582,7 +591,7 @@ class ServeController:
 
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            pickle.dumps((deployment_time, new_config_checkpoint)),
+            pickle.dumps((deployment_time, self.deploy_mode, new_config_checkpoint)),
         )
 
         # Delete live applications not listed in config
@@ -759,7 +768,7 @@ class ServeController:
         if checkpoint is None:
             return ServeApplicationSchema.get_empty_schema_dict()
         else:
-            _, config_checkpoints_dict = pickle.loads(checkpoint)
+            _, _, config_checkpoints_dict = pickle.loads(checkpoint)
             if name not in config_checkpoints_dict:
                 return ServeApplicationSchema.get_empty_schema_dict()
             config, _ = config_checkpoints_dict[name]
