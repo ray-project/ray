@@ -6,8 +6,12 @@ import pytest
 import sys
 import tempfile
 
-from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import DEFAULT_GRAFANA_PANELS
-from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import SERVE_GRAFANA_PANELS
+from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
+    DEFAULT_GRAFANA_PANELS,
+)
+from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
+    SERVE_GRAFANA_PANELS,
+)
 from ray.tests.conftest import _ray_start
 
 
@@ -45,7 +49,7 @@ def override_dashboard_dir():
 @pytest.fixture
 def override_default_dashboard():
     uid = "test_uid_ses_12345"
-    global_filters = "TestVar=\"StaticValue\""
+    global_filters = 'TestVar="StaticValue"'
 
     os.environ["RAY_GRAFANA_DEFAULT_DASHBOARD_UID"] = uid
     os.environ["RAY_GRAFANA_DEFAULT_DASHBOARD_GLOBAL_FILTERS"] = global_filters
@@ -53,17 +57,17 @@ def override_default_dashboard():
     del os.environ["RAY_GRAFANA_DEFAULT_DASHBOARD_GLOBAL_FILTERS"]
     del os.environ["RAY_GRAFANA_DEFAULT_DASHBOARD_UID"]
 
+
 @pytest.fixture
 def override_serve_dashboard():
     uid = "test_serve_uid_ses_12345"
-    global_filters = "TestVar=\"$TestVariableValue\""
+    global_filters = 'TestVar="$TestVariableValue"'
 
     os.environ["RAY_GRAFANA_SERVE_DASHBOARD_UID"] = uid
     os.environ["RAY_GRAFANA_SERVE_DASHBOARD_GLOBAL_FILTERS"] = global_filters
     yield uid, global_filters
     del os.environ["RAY_GRAFANA_SERVE_DASHBOARD_GLOBAL_FILTERS"]
     del os.environ["RAY_GRAFANA_SERVE_DASHBOARD_UID"]
-
 
 
 def test_metrics_folder_with_dashboard_override(
@@ -85,7 +89,7 @@ def test_metrics_folder_with_dashboard_override(
         ) as f:
             contents = f.read()
             assert override_dashboard_dir in contents
-        
+
         # Default Dashboard
         with open(f"{override_dashboard_dir}/default_grafana_dashboard.json") as f:
             contents = json.loads(f.read())
@@ -93,7 +97,7 @@ def test_metrics_folder_with_dashboard_override(
             for panel in contents["panels"]:
                 for target in panel["targets"]:
                     # Check for standard_global_filters
-                    assert "SessionName=\"$SessionName\"" in target["expr"]
+                    assert 'SessionName="$SessionName"' in target["expr"]
                     # Check for custom global_filters
                     assert global_filters in target["expr"]
             for variable in contents["templating"]["list"]:
@@ -139,11 +143,11 @@ def test_default_dashboard_utilizes_global_filters():
         for target in panel.targets:
             assert "{global_filters}" in target.expr
 
+
 def test_serve_dashboard_utilizes_global_filters():
     for panel in SERVE_GRAFANA_PANELS:
         for target in panel.targets:
             assert "{global_filters}" in target.expr
-
 
 
 if __name__ == "__main__":

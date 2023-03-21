@@ -2,7 +2,7 @@ import copy
 from dataclasses import asdict
 import json
 import os
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import ray
 from ray.dashboard.modules.metrics.dashboards.common import DashboardConfig, Panel
@@ -18,7 +18,9 @@ METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 
 GRAFANA_DASHBOARD_UID_OVERRIDE_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_DASHBOARD_UID"
-GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"
+GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
+    "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"
+)
 
 
 TARGET_TEMPLATE = {
@@ -132,20 +134,33 @@ PANEL_TEMPLATE = {
     "yaxis": {"align": False, "alignLevel": None},
 }
 
-def _read_configs_for_dashboard(dashboard_config: DashboardConfig) -> Tuple[str, List[str]]:
+
+def _read_configs_for_dashboard(
+    dashboard_config: DashboardConfig,
+) -> Tuple[str, List[str]]:
     """
     Reads environment variable configs for overriding uid or global_filters for a given
-    dashboard. 
+    dashboard.
 
     Returns:
       Tuple with format uid, global_filters
     """
-    uid = os.environ.get(
-        GRAFANA_DASHBOARD_UID_OVERRIDE_ENV_VAR_TEMPLATE.format(name=dashboard_config.name)
-    ) or dashboard_config.default_uid
-    global_filters_str = os.environ.get(
-        GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE.format(name=dashboard_config.name)
-    ) or ""
+    uid = (
+        os.environ.get(
+            GRAFANA_DASHBOARD_UID_OVERRIDE_ENV_VAR_TEMPLATE.format(
+                name=dashboard_config.name
+            )
+        )
+        or dashboard_config.default_uid
+    )
+    global_filters_str = (
+        os.environ.get(
+            GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE.format(
+                name=dashboard_config.name
+            )
+        )
+        or ""
+    )
     global_filters = global_filters_str.split(",")
 
     return uid, global_filters
@@ -153,7 +168,8 @@ def _read_configs_for_dashboard(dashboard_config: DashboardConfig) -> Tuple[str,
 
 def generate_default_grafana_dashboard() -> Tuple[str, str]:
     """
-    Generates the dashboard output for the default dashboard and returns both the content and the uid.
+    Generates the dashboard output for the default dashboard and returns
+    both the content and the uid.
 
     Returns:
       Tuple with format content, uid
@@ -163,7 +179,8 @@ def generate_default_grafana_dashboard() -> Tuple[str, str]:
 
 def generate_serve_grafana_dashboard() -> Tuple[str, str]:
     """
-    Generates the dashboard output for the serve dashboard and returns both the content and the uid.
+    Generates the dashboard output for the serve dashboard and returns
+    both the content and the uid.
 
     Returns:
       Tuple with format content, uid
@@ -171,9 +188,7 @@ def generate_serve_grafana_dashboard() -> Tuple[str, str]:
     return _generate_grafana_dashboard(serve_dashboard_config)
 
 
-def _generate_grafana_dashboard(
-    dashboard_config: DashboardConfig
-) -> str:
+def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
     """
     Returns:
       Tuple with format dashboard_content, uid
@@ -190,8 +205,12 @@ def _generate_grafana_dashboard(
     global_filters_str = ",".join(global_filters)
     variables = base_json.get("templating", {}).get("list", [])
     for variable in variables:
-        variable["definition"] = variable["definition"].format(global_filters=global_filters_str)
-        variable["query"]["query"] = variable["query"]["query"].format(global_filters=global_filters_str)
+        variable["definition"] = variable["definition"].format(
+            global_filters=global_filters_str
+        )
+        variable["query"]["query"] = variable["query"]["query"].format(
+            global_filters=global_filters_str
+        )
 
     tags = base_json.get("tags", []) or []
     tags.append(f"rayVersion:{ray.__version__}")
@@ -204,7 +223,9 @@ def _generate_grafana_dashboard(
     return json.dumps(base_json, indent=4), uid
 
 
-def _generate_grafana_panels(config: DashboardConfig, global_filters: List[str]) -> List[dict]:
+def _generate_grafana_panels(
+    config: DashboardConfig, global_filters: List[str]
+) -> List[dict]:
     out = []
     panel_global_filters = [*config.standard_global_filters, *global_filters]
     for i, panel in enumerate(config.panels):
@@ -244,7 +265,9 @@ def _generate_targets(panel: Panel, panel_global_filters: List[str]) -> List[dic
         template = copy.deepcopy(TARGET_TEMPLATE)
         template.update(
             {
-                "expr": target.expr.format(global_filters=",".join(panel_global_filters)),
+                "expr": target.expr.format(
+                    global_filters=",".join(panel_global_filters)
+                ),
                 "legendFormat": target.legend,
                 "refId": ref_id,
             }

@@ -49,6 +49,7 @@ GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR = "RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 GRAFANA_HEALTHCHECK_PATH = "api/health"
 
+
 class PrometheusQueryError(Exception):
     def __init__(self, status, message):
         self.message = (
@@ -79,7 +80,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         )
 
         # To be set later when dashboards gets generated
-        self._grafana_default_dashboard_uid = None 
+        self._grafana_default_dashboard_uid = None
 
         self._session = aiohttp.ClientSession()
         self._ip = dashboard_head.ip
@@ -242,7 +243,10 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             ),
             "w",
         ) as f:
-            content, self._grafana_default_dashboard_uid = generate_default_grafana_dashboard()
+            (
+                content,
+                self._grafana_default_dashboard_uid,
+            ) = generate_default_grafana_dashboard()
             f.write(content)
         with open(
             os.path.join(
