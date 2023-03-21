@@ -1259,6 +1259,54 @@ def read_sql(
     """Read from a database that provides a
     `Python DB API2-compliant <https://peps.python.org/pep-0249/>`_ connector.
 
+    .. note::
+
+        By default, ``read_sql`` launches multiple read tasks, and each task executes a
+        ``LIMIT`` and ``OFFSET`` to fetch a subset of the rows. However, for many
+        databases, ``OFFSET`` is slow.
+
+        As a workaround, you can set ``parallelism=1`` to directly fetch all rows.
+
+    Examples:
+
+        For examples of reading from larger databases like MySQL and PostgreSQL, see
+        :ref:`Reading from SQL Databases <datasets_sql_databases>`.
+
+        .. testcode::
+
+            import sqlite3
+
+            import ray
+
+            # Create a simple database
+            connection = sqlite3.connect("example.db")
+            connection.execute("CREATE TABLE movie(title, year, score)")
+            connection.execute(
+                \"\"\"
+                INSERT INTO movie VALUES
+                    ('Monty Python and the Holy Grail', 1975, 8.2),
+                    ("Monty Python Live at the Hollywood Bowl", 1982, 7.9),
+                    ("Monty Python's Life of Brian", 1979, 8.0),
+                    ("Rocky II", 1979, 7.3)
+                \"\"\"
+            )
+            connection.commit()
+            connection.close()
+
+            def create_connection():
+                return sqlite3.connect("example.db")
+
+            # Get all movies
+            dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+            # Get movies after the year 1980
+            dataset = ray.data.read_sql(
+                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+            )
+            # Get the number of movies per year
+            dataset = ray.data.read_sql(
+                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+            )
+
     Args:
         sql: The SQL query to execute.
         connection_factory: A function that takes no arguments and returns a

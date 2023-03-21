@@ -93,13 +93,22 @@ class SQLReader(Reader):
         None
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
-        # If `parallelism` is 1, directly read the entire database and avoid queries
-        # to fetch a sample block and compute the total number of rows.
-        if parallelism == 1:
+        # Databases like DB2, Oracle, and MS SQL Server don't support `LIMIT`.
+        try:
+            with connect(self.connection_factory) as cursor:
+                cursor.execute(f"SELECT * FROM ({self.sql}) as T LIMIT 1 OFFSET 0")
+            is_limit_supported = True
+        except Exception:
+            is_limit_supported = False
+
+        # If `parallelism` is 1 or `LIMIT` clauses are unsupported, directly fetch all
+        # rows. This avoids unnecessary queries to fetch a sample block and compute the 
+        # total number of rows.
+        if parallelism == 1 or not is_limit_supported:
 
             def read_fn() -> Iterable[Block]:
                 with connect(self.connection_factory) as cursor:
-                    cursor.execute(f"SELECT * FROM ({self.sql}) as T")
+                    cursor.execute(self.sql)
                     block = cursor_to_block(cursor)
                     return [block]
 
@@ -159,16 +168,9 @@ class SQLReader(Reader):
     def _create_read_fn(self, num_rows: int, offset: int):
         def read_fn() -> Iterable[Block]:
             with connect(self.connection_factory) as cursor:
-                try:
-                    query = (
-                        f"SELECT * FROM ({self.sql}) as T LIMIT {num_rows} "
-                        f"OFFSET {offset}"
-                    )
-                    cursor.execute(query)
-                except Exception as e:
-                    # Some databases don't support `LIMIT` and `OFFSET`.
-                    raise RuntimeError("Failed to execute SQL query '{query!r}'") from e
-
+                cursor.execute(
+                    f"SELECT * FROM ({self.sql}) as T LIMIT {num_rows} OFFSET {offset}"
+                )
                 block = cursor_to_block(cursor)
                 return [block]
 
