@@ -58,5 +58,11 @@ class Panel:
 
 @dataclass
 class DashboardConfig:
+    # This dashboard name is an internal key used to determine which env vars to check for customization
+    name: str
+    # The uid of the dashboard json if not overridden by a user
+    default_uid: str
     panels: List[Panel]
-    global_filters: List[str]
+    # The global filters used for the graphs in this dashboard if not overridden by a user
+    default_global_filters: List[str]
+    base_json_file_name: str

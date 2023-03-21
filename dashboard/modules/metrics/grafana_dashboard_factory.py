@@ -2,7 +2,7 @@ import copy
 from dataclasses import asdict
 import json
 import os
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import ray
 from ray.dashboard.modules.metrics.dashboards.common import DashboardConfig, Panel
@@ -16,6 +16,9 @@ from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
 
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
+
+GRAFANA_DASHBOARD_UID_OVERRIDE_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_DASHBOARD_UID"
+GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"
 
 
 TARGET_TEMPLATE = {
@@ -129,28 +132,55 @@ PANEL_TEMPLATE = {
     "yaxis": {"align": False, "alignLevel": None},
 }
 
+def _read_configs_for_dashboard(dashboard_config: DashboardConfig) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Reads environment variable configs for overriding uid or global_filters for a given
+    dashboard. 
 
-def generate_default_grafana_dashboard(override_uid: Optional[str] = None) -> str:
-    panels = _generate_grafana_panels(default_dashboard_config)
-    return _generate_grafana_dashboard(
-        "default_grafana_dashboard_base.json", panels, override_uid=override_uid
-    )
+    Returns:
+      Tuple with format uid, global_filters
+    """
+    uid = os.environ.get(
+        GRAFANA_DASHBOARD_UID_OVERRIDE_ENV_VAR_TEMPLATE.format(name=dashboard_config.name)
+    ) or dashboard_config.default_uid
+    global_filters = os.environ.get(
+        GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE.format(name=dashboard_config.name)
+    ) or ",".join(dashboard_config.default_global_filters)
+
+    return uid, global_filters
 
 
-def generate_serve_grafana_dashboard(override_uid: Optional[str] = None) -> str:
-    import logging
+def generate_default_grafana_dashboard() -> Tuple[str, str]:
+    """
+    Generates the dashboard output for the default dashboard and returns both the content and the uid.
 
-    panels = _generate_grafana_panels(serve_dashboard_config)
-    logger = logging.getLogger(__name__)
-    logger.info(f"panels: {panels}")
-    return _generate_grafana_dashboard(
-        "serve_grafana_dashboard_base.json", panels, override_uid=override_uid
-    )
+    Returns:
+      Tuple with format content, uid
+    """
+    return _generate_grafana_dashboard(default_dashboard_config)
+
+
+def generate_serve_grafana_dashboard() -> Tuple[str, str]:
+    """
+    Generates the dashboard output for the serve dashboard and returns both the content and the uid.
+
+    Returns:
+      Tuple with format content, uid
+    """
+    return _generate_grafana_dashboard(serve_dashboard_config)
 
 
 def _generate_grafana_dashboard(
-    base_file_name: str, panels: List[dict], override_uid: Optional[str] = None
+    dashboard_config: DashboardConfig
 ) -> str:
+    """
+    Returns:
+      Tuple with format dashboard_content, uid
+    """
+    uid, global_filters = _read_configs_for_dashboard(dashboard_config)
+    panels = _generate_grafana_panels(dashboard_config, global_filters)
+    base_file_name = dashboard_config.base_json_file_name
+
     base_json = json.load(
         open(os.path.join(os.path.dirname(__file__), "dashboards", base_file_name))
     )
@@ -158,12 +188,11 @@ def _generate_grafana_dashboard(
     tags = base_json.get("tags", []) or []
     tags.append(f"rayVersion:{ray.__version__}")
     base_json["tags"] = tags
-    if override_uid:
-        base_json["uid"] = override_uid
-    return json.dumps(base_json, indent=4)
+    base_json["uid"] = uid
+    return json.dumps(base_json, indent=4), uid
 
 
-def _generate_grafana_panels(config: DashboardConfig) -> List[dict]:
+def _generate_grafana_panels(config: DashboardConfig, global_filters: str) -> List[dict]:
     out = []
     for i, panel in enumerate(config.panels):
         template = copy.deepcopy(PANEL_TEMPLATE)
@@ -172,7 +201,7 @@ def _generate_grafana_panels(config: DashboardConfig) -> List[dict]:
                 "title": panel.title,
                 "description": panel.description,
                 "id": panel.id,
-                "targets": _generate_targets(config, panel),
+                "targets": _generate_targets(panel, global_filters),
             }
         )
         if panel.grid_pos:
@@ -194,8 +223,7 @@ def gen_incrementing_alphabets(length):
     return list(map(chr, range(65, 65 + length)))
 
 
-def _generate_targets(config: DashboardConfig, panel: Panel) -> List[dict]:
-    global_filters = ",".join(config.global_filters)
+def _generate_targets(panel: Panel, global_filters: str) -> List[dict]:
     targets = []
     for target, ref_id in zip(
         panel.targets, gen_incrementing_alphabets(len(panel.targets))

@@ -365,5 +365,9 @@ assert len(ids) == len(
 ), f"Duplicated id found. Use unique id for each panel. {ids}"
 
 default_dashboard_config = DashboardConfig(
-    panels=DEFAULT_GRAFANA_PANELS, global_filters=['SessionName="$SessionName"']
+    name="DEFAULT",
+    default_uid="rayDefaultDashboard",
+    panels=DEFAULT_GRAFANA_PANELS,
+    default_global_filters=['SessionName="$SessionName"'],
+    base_json_file_name="default_grafana_dashboard_base.json",
 )
