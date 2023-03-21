@@ -624,6 +624,7 @@ class Impala(Algorithm):
             )
             self._aggregator_actor_manager = None
 
+        self._results = {}
         self._timeout_s_sampler_manager = self.config.timeout_s_sampler_manager
 
         if not self.config._enable_learner_api:
@@ -705,7 +706,17 @@ class Impala(Algorithm):
                 timeout_seconds=self.config.worker_health_probe_timeout_s,
                 mark_healthy=True,
             )
-        return train_results
+
+        if self.config._enable_learner_api:
+            if train_results:
+                # store the most recent result and return it if no new result is
+                # available. This keeps backwards compatibility with the old
+                # training stack / results reporting stack. This is necessary
+                # any time we develop an asynchronous algorithm.
+                self._results = train_results
+            return self._results
+        else:
+            return train_results
 
     @classmethod
     @override(Algorithm)
