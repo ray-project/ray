@@ -20,7 +20,7 @@ and are compatible with a variety of file formats, data sources, and distributed
 Here's an overview of the integrations with other processing frameworks, file formats, and supported operations,
 as well as a glimpse at the Ray Datasets API.
 
-Check our :ref:`compatibility matrix <data-compatibility>` to see if your favorite format
+Check the :ref:`Input/Output reference <input-output>` to see if your favorite format
 is already supported.
 
 .. image:: images/dataset.svg
@@ -173,158 +173,17 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
         :text: Check Out Other Data Processing Options
         :classes: btn-outline-info btn-block
 
-
-.. _data-compatibility:
-
 ------------------------
 Datasource Compatibility
 ------------------------
 
 Ray Datasets supports reading and writing many file formats.
-The following compatibility matrices will help you understand which formats are currently available.
+To view supported formats, read the :ref:`Input/Output reference <input-output>`.
 
-If none of these meet your needs, please reach out on `Discourse <https://discuss.ray.io/>`__ or open a feature
+If your use case isn't supported, reach out on `Discourse <https://discuss.ray.io/>`__ or open a feature
 request on the `Ray GitHub repo <https://github.com/ray-project/ray>`__, and check out
 our :ref:`guide for implementing a custom Datasets datasource <datasets_custom_datasource>`
 if you're interested in rolling your own integration!
-
-Supported Input Formats
-=======================
-
-.. list-table:: Input compatibility matrix
-   :header-rows: 1
-
-   * - Input Type
-     - Read API
-     - Status
-   * - CSV File Format
-     - :func:`ray.data.read_csv()`
-     - ✅
-   * - JSON File Format
-     - :func:`ray.data.read_json()`
-     - ✅
-   * - Parquet File Format
-     - :func:`ray.data.read_parquet()`
-     - ✅
-   * - Numpy File Format
-     - :func:`ray.data.read_numpy()`
-     - ✅
-   * - Text Files
-     - :func:`ray.data.read_text()`
-     - ✅
-   * - Image Files
-     - :func:`ray.data.read_images()`
-     - ✅
-   * - Binary Files
-     - :func:`ray.data.read_binary_files()`
-     - ✅
-   * - TFRecord Files
-     - :func:`ray.data.read_tfrecords()`
-     - 🚧
-   * - Python Objects
-     - :func:`ray.data.from_items()`
-     - ✅
-   * - Spark Dataframe
-     - :func:`ray.data.from_spark()`
-     - ✅
-   * - Dask Dataframe
-     - :func:`ray.data.from_dask()`
-     - ✅
-   * - Modin Dataframe
-     - :func:`ray.data.from_modin()`
-     - ✅
-   * - MARS Dataframe
-     - :func:`ray.data.from_mars()`
-     - ✅
-   * - Pandas Dataframe Objects
-     - :func:`ray.data.from_pandas()`
-     - ✅
-   * - NumPy ndarray Objects
-     - :func:`ray.data.from_numpy()`
-     - ✅
-   * - Arrow Table Objects
-     - :func:`ray.data.from_arrow()`
-     - ✅
-   * - 🤗 (Hugging Face) Dataset
-     - :func:`ray.data.from_huggingface()`
-     - ✅
-   * - MongoDB
-     - :func:`ray.data.read_mongo()`
-     - ✅
-   * - Custom Datasource
-     - :func:`ray.data.read_datasource()`
-     - ✅
-
-
-Supported Output Formats
-========================
-
-.. list-table:: Output compatibility matrix
-   :header-rows: 1
-
-   * - Output Type
-     - Dataset API
-     - Status
-   * - CSV File Format
-     - :meth:`ds.write_csv() <ray.data.Dataset.write_csv>`
-     - ✅
-   * - JSON File Format
-     - :meth:`ds.write_json() <ray.data.Dataset.write_json>`
-     - ✅
-   * - Parquet File Format
-     - :meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`
-     - ✅
-   * - Numpy File Format
-     - :meth:`ds.write_numpy() <ray.data.Dataset.write_numpy>`
-     - ✅
-   * - TFRecords File Format
-     - :meth:`ds.write_tfrecords() <ray.data.Dataset.write_tfrecords>`
-     - ✅
-   * - MongoDB
-     - :meth:`ds.write_mongo() <ray.data.Dataset.write_mongo>`
-     - ✅
-   * - Spark Dataframe
-     - :meth:`ds.to_spark() <ray.data.Dataset.to_spark>`
-     - ✅
-   * - Dask Dataframe
-     - :meth:`ds.to_dask() <ray.data.Dataset.to_dask>`
-     - ✅
-   * - Modin Dataframe
-     - :meth:`ds.to_modin() <ray.data.Dataset.to_modin>`
-     - ✅
-   * - MARS Dataframe
-     - :meth:`ds.to_mars() <ray.data.Dataset.to_mars>`
-     - ✅
-   * - Arrow Table Objects
-     - :meth:`ds.to_arrow_refs() <ray.data.Dataset.to_arrow_refs>`
-     - ✅
-   * - Arrow Table Iterator
-     - :meth:`ds.iter_batches(batch_format="pyarrow") <ray.data.Dataset.iter_batches>`
-     - ✅
-   * - Single Pandas Dataframe
-     - :meth:`ds.to_pandas() <ray.data.Dataset.to_pandas>`
-     - ✅
-   * - Pandas Dataframe Objects
-     - :meth:`ds.to_pandas_refs() <ray.data.Dataset.to_pandas_refs>`
-     - ✅
-   * - NumPy ndarray Objects
-     - :meth:`ds.to_numpy_refs() <ray.data.Dataset.to_numpy_refs>`
-     - ✅
-   * - Pandas Dataframe Iterator
-     - :meth:`ds.iter_batches(batch_format="pandas") <ray.data.Dataset.iter_batches>`
-     - ✅
-   * - PyTorch Tensor Iterator
-     - :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
-     - ✅
-   * - TensorFlow Dataset
-     - :meth:`ds.to_tf() <ray.data.Dataset.to_tf>`
-     - ✅
-   * - Random Access Dataset
-     - :meth:`ds.to_random_access_dataset() <ray.data.Dataset.to_random_access_dataset>`
-     - ✅
-   * - Custom Datasource
-     - :meth:`ds.write_datasource() <ray.data.Dataset.write_datasource>`
-     - ✅
 
 .. _data-talks:
 
