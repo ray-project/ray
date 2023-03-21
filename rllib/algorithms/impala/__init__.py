@@ -1,4 +1,4 @@
-from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig, DEFAULT_CONFIG
+from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.impala.impala_tf_policy import (
     ImpalaTF1Policy,
     ImpalaTF2Policy,
@@ -11,5 +11,4 @@ __all__ = [
     "ImpalaTF1Policy",
     "ImpalaTF2Policy",
     "ImpalaTorchPolicy",
-    "DEFAULT_CONFIG",
 ]

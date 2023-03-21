@@ -33,7 +33,6 @@ export type ActorTableProps = {
   actors: { [actorId: string]: Actor };
   workers?: Worker[];
   jobId?: string | null;
-  newIA?: boolean;
   filterToActorId?: string;
   onFilterChange?: () => void;
   detailPathPrefix?: string;
@@ -82,7 +81,6 @@ const ActorTable = ({
   actors = {},
   workers = [],
   jobId = null,
-  newIA = false,
   filterToActorId,
   onFilterChange,
   detailPathPrefix = "",
@@ -415,15 +413,9 @@ const ActorTable = ({
                       <React.Fragment>
                         <Link
                           target="_blank"
-                          to={
-                            newIA
-                              ? `/new/logs/${encodeURIComponent(
-                                  ipLogMap[address?.ipAddress],
-                                )}?fileName=${jobId}-${pid}`
-                              : `/log/${encodeURIComponent(
-                                  ipLogMap[address?.ipAddress],
-                                )}?fileName=${jobId}-${pid}`
-                          }
+                          to={`/logs/${encodeURIComponent(
+                            ipLogMap[address?.ipAddress],
+                          )}?fileName=${jobId}-${pid}`}
                         >
                           Log
                         </Link>
