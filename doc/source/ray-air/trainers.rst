@@ -171,9 +171,11 @@ Accelerate
 **********
 
 If you prefer a more fine-grained Hugging Face API than what Transformers provides, you can use :class:`AccelerateTrainer <ray.train.huggingface.accelerate.AccelerateTrainer>`
-to run training functions making use of Hugging Face Accelerate. This Trainer is also an extension of  :class:`TorchTrainer <ray.train.torch.TorchTrainer>`, allowing
-you to pass an Accelerate configuration file generated with ``accelerate config`` to be applied on all training workers. This ensures that the worker
-environments are set up correctly for Accelerate, allowing you to take advantage of Accelerate APIs and integrations such as DeepSpeed and FSDP
+to run training functions making use of Hugging Face Accelerate. Similarly to :class:`HuggingFaceTrainer <ray.train.huggingface.HuggingFaceTrainer>`, :class:`AccelerateTrainer <ray.train.huggingface.accelerate.AccelerateTrainer>`
+is also an extension of :class:`TorchTrainer <ray.train.torch.TorchTrainer>`.
+
+:class:`AccelerateTrainer <ray.train.huggingface.accelerate.AccelerateTrainer>` allows you to pass an Accelerate configuration file generated with ``accelerate config`` to be applied on all training workers.
+This ensures that the worker environments are set up correctly for Accelerate, allowing you to take advantage of Accelerate APIs and integrations such as DeepSpeed and FSDP
 just as you would if you were running Accelerate without Ray.
 
 .. note::
