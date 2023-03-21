@@ -150,18 +150,15 @@ Overview
 
 The overview page provides a high-level status of the Ray cluster.
 
-Overview Metrics
-~~~~~~~~~~~~~~~~
+**Overview Metrics**
 
 Overview metrics page provides the cluster-level hardware utilization and the autoscaling status (number of pending, active, and failed nodes).
 
-Recent Jobs
-~~~~~~~~~~~
+**Recent Jobs**
 
 Recent jobs card provides a list of recently submitted Ray jobs.
 
-Event View
-~~~~~~~~~~
+**Event View**
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/event-page.png
     :align: center
@@ -170,8 +167,8 @@ The event view lets you see a list of events associated with a specific type (e.
 
 2 types of events are available.
 
-- **Job**: Events related to :ref:`Ray job submission APIs <jobs-quickstart>`.
-- **Autoscaler**: Events related to :ref:`Ray autoscaler <cluster-autoscaler>`
+- Job: Events related to :ref:`Ray job submission APIs <jobs-quickstart>`.
+- Autoscaler: Events related to :ref:`Ray autoscaler <cluster-autoscaler>`
 
 .. _dash-jobs-view:
 
@@ -185,7 +182,7 @@ The Jobs view lets you monitor the different jobs that ran on your Ray cluster.
 
 A job is a ray workload that uses Ray APIs (e.g., ``ray.init``). It can be submitted directly (e.g., by executing a Python script within a head node) or via :ref:`Ray job API <jobs-quickstart>`.
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/job_list.png
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard/job_list.png
     :align: center
 
 The job page displays a list of active, finished, and failed jobs, and clicking on an ID allows users to view detailed information about that job. 
@@ -258,7 +255,7 @@ The right page displays the cluster's demands, which lists demanded resources th
 
 .. note:: 
 
-  The output shows the aggregated information across the cluster. If you run more than one job, the demands could be wrong.
+  The output shows the aggregated information across the cluster (not by a job). If you run more than one job, some of the demands may come from other jobs.
 
 .. _dash-workflow-state-apis:  
 
@@ -354,7 +351,7 @@ See :ref:`System Metrics Page <system-metrics>` for available metrics.
 
 .. note:: 
 
-  The metrics view required the Prometheus and Grafana setup. **See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana**.
+  The metrics view required the Prometheus and Grafana setup. See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana.
 
 The metrics view lets you view visualizations of the time series metrics emitted by Ray.
 
@@ -371,6 +368,8 @@ Logs view
     :align: center
 
 The logs view lets you view all the ray logs that are in your cluster. It is organized by node and log file name. Many log links in the other pages will link to this view and filter the list so the relevant logs appear.
+
+To learn the log file structure of Ray, see the :ref:`Logging directory structure page <logging-directory-structure>`
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/logs-content.png
     :align: center
