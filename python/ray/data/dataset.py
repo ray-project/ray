@@ -4200,7 +4200,12 @@ class Dataset(Generic[T]):
                 return np.ndarray
             return pd.DataFrame
 
-    @Deprecated
+    @ConsumptionAPI(
+        if_more_than_read=True,
+        datasource_metadata="schema",
+        pattern="for the first block.",
+        insert_after=True,
+    )
     def dataset_format(self) -> BlockFormat:
         """The format of the dataset's underlying data blocks. Possible values
         are: "arrow", "pandas" and "simple".
