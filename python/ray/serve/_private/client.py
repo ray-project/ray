@@ -314,6 +314,18 @@ class ServeControllerClient:
         config: Union[ServeApplicationSchema, ServeDeploySchema],
         _blocking: bool = False,
     ) -> None:
+        """Starts a task on the controller that deploys application(s) from a config.
+
+        Args:
+            config: A single-application config (ServeApplicationSchema) or a
+                multi-application config (ServeDeploySchema)
+            _blocking: Whether to block until the application is running.
+
+        Raises:
+            RayTaskError: If the deploy task on the controller fails. This can be
+                because a single-app config was deployed after deploying a multi-app
+                config, or vice versa.
+        """
         ray.get(self._controller.deploy_apps.remote(config))
 
         if _blocking:
