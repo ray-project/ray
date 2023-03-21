@@ -261,7 +261,7 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
         with pytest.warns() as warn_record:
             tuner = Tuner.restore(
                 str(tmpdir / "restore_new_trainer"),
-                overwrite_trainable=trainer,
+                trainable=trainer,
                 resume_errored=True,
             )
         # Should warn about the RunConfig being ignored

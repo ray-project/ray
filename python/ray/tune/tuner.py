@@ -39,7 +39,7 @@ _TUNER_FAILED_MSG = (
     "The Ray Tune run failed. Please inspect the previous error messages for a "
     "cause. After fixing the issue, you can restart the run from scratch or "
     "continue this run. To continue this run, you can use "
-    '`tuner = Tuner.restore("{path}")`.'
+    '`tuner = Tuner.restore("{path}", trainable=...)`.'
 )
 
 
@@ -112,7 +112,7 @@ class Tuner:
 
     .. code-block:: python
 
-        tuner = Tuner.restore(experiment_checkpoint_dir)
+        tuner = Tuner.restore(experiment_checkpoint_dir, trainable=trainer)
         tuner.fit()
 
     ``experiment_checkpoint_dir`` can be easily located near the end of the
@@ -292,7 +292,7 @@ class Tuner:
             exp_dir = os.path.join(local_dir, name)
 
             if Tuner.can_restore(exp_dir):
-                tuner = Tuner.restore(exp_dir, resume_errored=True)
+                tuner = Tuner.restore(exp_dir, trainable=train_fn, resume_errored=True)
             else:
                 tuner = Tuner(
                     train_fn,
@@ -337,8 +337,12 @@ class Tuner:
         In such cases, there will be instruction like the following printed out
         at the end of console output to inform users on how to resume.
 
-        Please use tuner = Tuner.restore("~/ray_results/tuner_resume")
-        to resume.
+        Please use `Tuner.restore` to resume.
+
+        .. code-block:: python
+
+            tuner = Tuner.restore("~/ray_results/tuner_resume", trainable=trainable)
+            tuner.fit()
 
         Raises:
             RayTaskError: If user-provided trainable raises an exception
@@ -388,7 +392,8 @@ class Tuner:
 
             from ray.tune import Tuner
 
-            tuner = Tuner.restore("/path/to/experiment')
+            # `trainable` is what was passed in to the original `Tuner`
+            tuner = Tuner.restore("/path/to/experiment', trainable=trainable)
             results = tuner.get_results()
 
         Returns:

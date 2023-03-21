@@ -404,7 +404,7 @@ def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
     )
 
     result_grid = tune.Tuner.restore(
-        str(tmpdir / "moved_ray_results" / "new_exp_dir")
+        str(tmpdir / "moved_ray_results" / "new_exp_dir"), trainable=train_func
     ).get_results()
     checkpoint_data = []
 
