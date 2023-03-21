@@ -13,7 +13,7 @@ Exploration is crucial in RL for enabling a learning agent to find new, potentia
 RLlib has several built-in exploration components that
 the different algorithms use. You can also customize an algorithm's exploration
 behavior by sub-classing the Exploration base class and implementing
-their own logic:
+your own logic:
 
 Some Built-in Exploration Components
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
