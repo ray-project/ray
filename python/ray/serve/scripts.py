@@ -454,8 +454,11 @@ def config(address: str, name: Optional[str]):
                 )
     # Backwards compatible single-app behavior: displays the config for default app "".
     else:
-        if name is not None:
-            raise click.ClickException("oh no.")
+        if serve_details.deploy_mode == ServeDeployMode.SINGLE_APP and name is not None:
+            raise click.ClickException(
+                "A single-app config was deployed to this cluster, so fetching an "
+                "application config by name is not allowed."
+            )
 
         if SERVE_DEFAULT_APP_NAME in serve_details.applications:
             config = serve_details.applications[

@@ -747,7 +747,12 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         ),
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
-    deploy_mode: ServeDeployMode = Field(description="Single-app vs Multi-app.")
+    deploy_mode: ServeDeployMode = Field(
+        description=(
+            "Whether a single-app config of format ServeApplicationSchema or multi-app "
+            "config of format ServeDeploySchema was deployed to the cluster."
+        )
+    )
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
     )
