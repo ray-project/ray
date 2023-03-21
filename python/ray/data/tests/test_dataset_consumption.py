@@ -11,6 +11,7 @@ import pytest
 from unittest.mock import patch
 
 import ray
+from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -390,7 +391,14 @@ def test_convert_types(ray_start_regular_shared):
 
     arrow_ds = ray.data.range_table(1)
     assert arrow_ds.map(lambda x: "plain_{}".format(x["value"])).take() == ["plain_0"]
-    assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": 0}]
+    # In streaming, we set batch_format to "default" (because calling
+    # ds.dataset_format() will still invoke bulk execution and we want
+    # to avoid that). As a result, it's receiving PandasRow (the defaut
+    # batch format), which unwraps [0] to plain 0.
+    if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+        assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": 0}]
+    else:
+        assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": [0]}]
 
 
 def test_from_items(ray_start_regular_shared):
@@ -472,11 +480,17 @@ def test_iter_rows(ray_start_regular_shared):
         ]
         return pylist
 
-    # Default PandasRow.
+    # Default ArrowRows.
     for row, t_row in zip(ds.iter_rows(), to_pylist(t)):
         assert isinstance(row, TableRow)
-        # "default" batch format outputs PandasRow.
-        assert isinstance(row, PandasRow)
+        # In streaming, we set batch_format to "default" because calling
+        # ds.dataset_format() will still invoke bulk execution and we want
+        # to avoid that. As a result, it's receiving PandasRow (the defaut
+        # batch format).
+        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+            assert isinstance(row, PandasRow)
+        else:
+            assert isinstance(row, ArrowRow)
         assert row == t_row
 
     # PandasRows after conversion.
@@ -484,15 +498,20 @@ def test_iter_rows(ray_start_regular_shared):
     df = t.to_pandas()
     for row, (index, df_row) in zip(pandas_ds.iter_rows(), df.iterrows()):
         assert isinstance(row, TableRow)
-        # "default" batch format outputs PandasRow.
         assert isinstance(row, PandasRow)
         assert row == df_row.to_dict()
 
     # Prefetch.
     for row, t_row in zip(ds.iter_rows(prefetch_blocks=1), to_pylist(t)):
         assert isinstance(row, TableRow)
-        # "default" batch format outputs PandasRow.
-        assert isinstance(row, PandasRow)
+        # In streaming, we set batch_format to "default" because calling
+        # ds.dataset_format() will still invoke bulk execution and we want
+        # to avoid that. As a result, it's receiving PandasRow (the defaut
+        # batch format).
+        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+            assert isinstance(row, PandasRow)
+        else:
+            assert isinstance(row, ArrowRow)
         assert row == t_row
 
 
@@ -1567,6 +1586,18 @@ def test_polars_lazy_import(shutdown_only):
 
     finally:
         ctx.use_polars = original_use_polars
+
+
+def test_default_batch_format(shutdown_only):
+    ds = ray.data.range(100)
+    assert ds.default_batch_format() == list
+
+    ds = ray.data.range_tensor(100)
+    assert ds.default_batch_format() == np.ndarray
+
+    df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
+    ds = ray.data.from_pandas(df)
+    assert ds.default_batch_format() == pd.DataFrame
 
 
 def test_dataset_schema_after_read_stats(ray_start_cluster):

@@ -1,7 +1,9 @@
 from typing import TYPE_CHECKING, Optional, Union, Iterator, Callable, Any
 import time
 import warnings
+import sys
 
+from ray.data._internal.util import _default_batch_format
 from ray.data.block import DataBatch
 from ray.data.context import DatasetContext
 from ray.data.dataset_iterator import DatasetIterator
@@ -10,6 +12,11 @@ from ray.data._internal.block_batching import batch_block_refs
 if TYPE_CHECKING:
     import pyarrow
     from ray.data import Dataset
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 
 class DatasetIteratorImpl(DatasetIterator):
@@ -61,6 +68,9 @@ class DatasetIteratorImpl(DatasetIterator):
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         return self._base_dataset.schema()
+
+    def _default_batch_format(self) -> Literal["default", "pandas", "pyarrow", "numpy"]:
+        return _default_batch_format(self._base_dataset)
 
     def __getattr__(self, name):
         if name == "_base_dataset":

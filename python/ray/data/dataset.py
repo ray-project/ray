@@ -3608,10 +3608,18 @@ class Dataset(Generic[T]):
         Returns:
             A list of remote Arrow tables created from this dataset.
         """
-        # Convert into Arrow blocks.
-        arrow_ds = self.map_batches(lambda x: x, batch_format="pyarrow")
-        blocks: List[ObjectRef["pyarrow.Table"]] = arrow_ds.get_internal_block_refs()
-        return blocks
+        import pyarrow as pa
+
+        blocks: List[ObjectRef["pyarrow.Table"]] = self.get_internal_block_refs()
+        # Schema is safe to call since we have already triggered execution with
+        # get_internal_block_refs.
+        schema = self.schema(fetch_if_missing=True)
+        if isinstance(schema, pa.Schema):
+            # Zero-copy path.
+            return blocks
+
+        block_to_arrow = cached_remote_fn(_block_to_arrow)
+        return [block_to_arrow.remote(block) for block in blocks]
 
     @ConsumptionAPI(pattern="Args:")
     def to_random_access_dataset(
@@ -4203,7 +4211,7 @@ class Dataset(Generic[T]):
         pattern="for the first block.",
         insert_after=True,
     )
-    @Deprecated
+    @Deprecated(message="`dataset_format` is deprecated for streaming execution.")
     def dataset_format(self) -> BlockFormat:
         """The format of the dataset's underlying data blocks. Possible values
         are: "arrow", "pandas" and "simple".
@@ -4214,7 +4222,7 @@ class Dataset(Generic[T]):
         context = DatasetContext.get_current()
         if context.use_streaming_executor:
             raise DeprecationWarning(
-                "dataset_format` is deprecated for streaming execution. To use "
+                "`dataset_format` is deprecated for streaming execution. To use "
                 "`dataset_format`, you must explicitly enable bulk execution by "
                 "setting `use_streaming_executor` to False in the `DatasetContext`"
             )
