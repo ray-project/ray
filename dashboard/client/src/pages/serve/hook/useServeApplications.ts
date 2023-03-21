@@ -35,7 +35,9 @@ export const useServeApplications = () => {
     { refreshInterval: API_REFRESH_INTERVAL_MS },
   );
 
-  const serveDetails = data ? { host: data.host, port: data.port } : undefined;
+  const serveDetails = data
+    ? { ...data.http_options, proxy_location: data.proxy_location }
+    : undefined;
   const serveApplicationsList = data
     ? Object.values(data.applications).sort(
         (a, b) => (b.last_deployed_time_s ?? 0) - (a.last_deployed_time_s ?? 0),
@@ -116,5 +118,41 @@ export const useServeApplicationDetails = (
     setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
     ipLogMap,
     allDeployments: deployments,
+  };
+};
+
+export const useServeReplicaDetails = (
+  applicationName: string | undefined,
+  deploymentName: string | undefined,
+  replicaId: string | undefined,
+) => {
+  // TODO(aguo): Use a fetch by replicaId endpoint?
+  const { data, error } = useSWR(
+    "useServeReplicaDetails",
+    async () => {
+      const rsp = await getServeApplications();
+
+      if (rsp) {
+        return rsp.data;
+      }
+    },
+    { refreshInterval: API_REFRESH_INTERVAL_MS },
+  );
+
+  const application = applicationName
+    ? data?.applications?.[applicationName !== "-" ? applicationName : ""]
+    : undefined;
+  const deployment = deploymentName
+    ? application?.deployments[deploymentName]
+    : undefined;
+  const replica = deployment?.replicas.find(
+    ({ replica_id }) => replica_id === replicaId,
+  );
+
+  return {
+    application,
+    deployment,
+    replica,
+    error,
   };
 };
