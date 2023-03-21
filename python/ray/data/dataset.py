@@ -542,6 +542,7 @@ class Dataset(Generic[T]):
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets, or None to return
                 the underlying block exactly as is with no additional formatting.
+                The default is "default".
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to process. If set to greater than 0, a separate thread will be used
                 to fetch the specified amount of formatted batches from blocks. This
@@ -2934,9 +2935,9 @@ class Dataset(Generic[T]):
                 (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets, or ``"zero-copy"``
+                ``Dict[str, numpy.ndarray]`` for tabular datasets, or None
                 to return the underlying block exactly as is with no additional
-                formatting. Default is "default".
+                formatting. The default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
