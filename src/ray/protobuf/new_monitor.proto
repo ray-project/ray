@@ -7,6 +7,7 @@ message AntiAffinity {
 message ResourceBundle {
   map<string, double> resources = 1;
   repeated AntiAffinity anti_affinities = 2;
+  repeated string dynamic_labels = 3;
 }
 
 
