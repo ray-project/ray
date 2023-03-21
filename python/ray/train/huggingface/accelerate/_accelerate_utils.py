@@ -153,11 +153,13 @@ def load_accelerate_config(
     with ctx() as tempdir:
         if isinstance(accelerate_config, dict):
             # We save the dict to file, as Accelerate doesn't allow users to pass
-            # dicts directly. That way, we ensure the behavior is consistent.
+            # dicts directly. That way, we ensure the behavior is consistent with
+            # vanilla Accelerate, which has side effects when loading the file.
+            # The file is loaded by Accelerate in `launch_command`.
             tempdir = Path(tempdir)
             accelerate_config_path = str(tempdir / "accelerate_config.json")
             # Those are the same default settings as in Accelerate.
-            # They cannot be missing from the config.
+            # Those keys cannot be missing from the config.
             accelerate_config.setdefault("num_processes", 1)
             accelerate_config.setdefault("distributed_type", "NO")
             accelerate_config.setdefault("mixed_precision", "no")
