@@ -1710,6 +1710,21 @@ cc_test(
 )
 
 cc_test(
+    name = "worker_killing_policy_retriable_fifo_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/worker_killing_policy_retriable_fifo_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_common",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "pubsub_integration_test",
     size = "small",
     srcs = ["src/ray/pubsub/test/integration_test.cc"],
