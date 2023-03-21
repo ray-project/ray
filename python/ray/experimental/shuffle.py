@@ -27,6 +27,7 @@ from typing import Any, Callable, Iterable, List, Tuple, Union
 
 import ray
 from ray import ObjectRef
+from ray._private.test_utils import monitor_memory_usage
 from ray.cluster_utils import Cluster
 
 # TODO(ekl) why doesn't TypeVar() deserialize properly in Ray?
@@ -257,6 +258,7 @@ def run(
         print("Start a new cluster...")
         ray.init(num_cpus=num_cpus, object_store_memory=object_store_memory)
 
+    monitor_actor = monitor_memory_usage()
     partition_size = int(partition_size)
     num_partitions = num_partitions
     rows_per_partition = partition_size // (8 * 2)
@@ -307,6 +309,12 @@ def run(
         tracker=tracker,
     )
     delta = time.time() - start
+
+    ray.get(monitor_actor.stop_run.remote())
+    used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
+    print(f"Peak memory usage: {round(used_gb, 2)}GB")
+    print(f"Peak memory usage per processes:\n {usage}")
+    del monitor_actor
 
     time.sleep(0.5)
     print()

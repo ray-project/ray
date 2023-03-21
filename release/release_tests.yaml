@@ -3074,7 +3074,7 @@
     test_name: shuffle_1tb_5000_partitions
     test_suite: nightly_tests
 
-  frequency: nightly-3x
+  frequency: nightly
   team: core
   env: staging
   cluster:
