@@ -971,6 +971,11 @@ available_node_types:
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
+# TODO(https://github.com/ray-project/ray/issues/33486)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 11, 0),
+    reason=("Currently not passing for Python 3.11"),
+)
 def test_usage_lib_report_data(
     monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats
 ):
@@ -1056,6 +1061,11 @@ provider:
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
+)
+# TODO(https://github.com/ray-project/ray/issues/33486)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 11, 0),
+    reason=("Currently not passing for Python 3.11"),
 )
 def test_usage_report_e2e(
     monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats, gcs_storage_type
@@ -1393,6 +1403,11 @@ if os.environ.get("RAY_MINIMAL") != "1":
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
+)
+# TODO(https://github.com/ray-project/ray/issues/33486)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 11, 0),
+    reason=("Currently not passing for Python 3.11"),
 )
 def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats):
     """
