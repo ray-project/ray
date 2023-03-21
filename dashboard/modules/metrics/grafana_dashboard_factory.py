@@ -233,7 +233,7 @@ GRAFANA_PANELS = [
         targets=[
             Target(
                 expr='ray_node_gpus_utilization{{instance=~"$Instance",{global_filters}}} / 100',
-                legend="GPU Usage: {{GpuDeviceName}}.{{GpuIndex}}, {{instance}}",
+                legend="GPU Usage: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
             Target(
                 expr="sum(ray_node_gpus_available{{{global_filters}}})",
