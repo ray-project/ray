@@ -284,6 +284,45 @@
 
   alert: default
 
+- name: air_benchmark_gce_torch_batch_prediction_gpu_1x1_20gb
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gce_gpu_1_g4_8xl.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/gpu_batch_prediction.py --data-size-gb 20
+
+
+  alert: default
+
+- name: air_benchmark_gce_torch_batch_prediction_gpu_4x4_100gb
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+
+  stable: false
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gce_gpu_4_g4_12xl.yaml
+
+  run:
+    timeout: 10800
+    script: python workloads/gpu_batch_prediction.py --data-size-gb 100
+
+    wait_for_nodes:
+        num_nodes: 4
+
+  alert: default
 
 - name: air_benchmark_torch_batch_prediction_gpu_4x4_100gb
   group: AIR tests
@@ -473,6 +512,23 @@
 
   alert: default
 
+- name: air_benchmark_gce_pytorch_training_e2e_gpu_1x1_20gb
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gce_gpu_1.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/pytorch_training_e2e.py --data-size-gb 20
+
+
+  alert: default
 
 - name: air_benchmark_pytorch_training_e2e_gpu_1x1_20gb
   group: AIR tests
@@ -492,6 +548,28 @@
 
   alert: default
 
+- name: air_benchmark_gce_pytorch_training_e2e_gpu_4x4_100gb
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: ml
+
+  stable: false
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gce_gpu_16.yaml
+
+  run:
+    timeout: 10800
+    script: python workloads/pytorch_training_e2e.py --data-size-gb=100 --num-workers=16
+
+    wait_for_nodes:
+      num_nodes: 4
+
+
+  alert: default
 
 - name: air_benchmark_pytorch_training_e2e_gpu_4x4_100gb
   group: AIR tests
@@ -517,6 +595,23 @@
   alert: default
 
 # Test tiny, medium, and huge input files.
+- name: ray-data-gce-bulk-ingest-file-size-benchmark
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks/mlperf-train
+
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config_oom.yaml
+    cluster_compute: compute_gce_cpu_16.yaml
+
+  run:
+    timeout: 3600
+    script: bash file_size_benchmark.sh
+
+# Test tiny, medium, and huge input files.
 - name: ray-data-bulk-ingest-file-size-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
@@ -534,6 +629,23 @@
     script: bash file_size_benchmark.sh
 
 # Test dataset larger than object store memory.
+- name: ray-data-gce-bulk-ingest-out-of-core-benchmark
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks/mlperf-train
+
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config_oom.yaml
+    cluster_compute: compute_gce_cpu_16.yaml
+
+  run:
+    timeout: 3600
+    script: bash out_of_core_benchmark.sh
+
+# Test dataset larger than object store memory.
 - name: ray-data-bulk-ingest-out-of-core-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
@@ -549,6 +661,26 @@
   run:
     timeout: 3600
     script: bash out_of_core_benchmark.sh
+
+# Test additional CPU nodes for preprocessing.
+- name: ray-data-gce-bulk-ingest-heterogeneity-benchmark
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks/mlperf-train
+
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config_oom.yaml
+    cluster_compute: compute_gce_cpu_16_worker_nodes_2.yaml
+
+  run:
+    wait_for_nodes:
+      num_nodes: 3
+
+    timeout: 1800
+    script: bash heterogeneity_benchmark.sh 2
 
 # Test additional CPU nodes for preprocessing.
 - name: ray-data-bulk-ingest-heterogeneity-benchmark
