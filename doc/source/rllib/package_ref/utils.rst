@@ -68,7 +68,7 @@ Setting and getting the states
 Scheduler API
 -------------
 
-Scheduler are used to set scheduled values for varibles (in python, PyTorch or 
+Use a scheduler to set scheduled values for variables (in Python, PyTorch, or 
 TensorFlow) based on a (int64) timestep input. The computed values are usually float32 
 types.
 
