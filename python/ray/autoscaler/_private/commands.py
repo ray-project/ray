@@ -70,7 +70,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray.core.generated.monitor_pb2 import ResourceBundle, ResourceRequest
 from ray.experimental.internal_kv import _internal_kv_put
 from ray.util.debug import log_once
 
