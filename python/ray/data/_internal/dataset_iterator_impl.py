@@ -69,9 +69,6 @@ class DatasetIteratorImpl(DatasetIterator):
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         return self._base_dataset.schema()
 
-    def _default_batch_format(self) -> Literal["default", "pandas", "pyarrow", "numpy"]:
-        return _default_batch_format(self._base_dataset)
-
     def __getattr__(self, name):
         if name == "_base_dataset":
             raise AttributeError()

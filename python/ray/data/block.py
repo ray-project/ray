@@ -150,7 +150,7 @@ BlockPartitionMetadata = List["BlockMetadata"]
 # is on by default. When block splitting is off, the type is a plain block.
 MaybeBlockPartition = Union[Block, ObjectRefGenerator]
 
-VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy"]
+VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy", "zero-copy"]
 
 
 @DeveloperAPI
@@ -326,6 +326,8 @@ class BlockAccessor(Generic[T]):
         """
         if batch_format == "default" or batch_format == "native":
             return self.to_default()
+        elif batch_format == "zero-copy":
+            return self.to_block()
         elif batch_format == "pandas":
             return self.to_pandas()
         elif batch_format == "pyarrow":

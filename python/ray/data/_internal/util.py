@@ -406,31 +406,6 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
     return splits
 
 
-def _default_batch_format(
-    ds: "Dataset",
-) -> Literal["default", "pandas", "pyarrow", "numpy"]:
-    """Get the best batch format that lines up with the dataset format."""
-    ctx = DatasetContext.get_current()
-    if ctx.use_streaming_executor:
-        # TODO: calling dataset_format() triggers bulk execution.
-        batch_format = "default"
-    else:
-        try:
-            dataset_format = ds.dataset_format()
-        except ValueError:
-            # Dataset is empty or cleared, so fall back to "default".
-            batch_format = "default"
-        else:
-            batch_format = (
-                "pyarrow"
-                if dataset_format == BlockFormat.ARROW
-                else "pandas"
-                if dataset_format == BlockFormat.PANDAS
-                else "default"
-            )
-    return batch_format
-
-
 def capfirst(s: str):
     """Capitalize the first letter of a string
 
