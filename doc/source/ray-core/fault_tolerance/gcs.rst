@@ -3,10 +3,11 @@
 GCS Fault Tolerance
 ===================
 
-Global Control Service (GCS) is a server that manages cluster-level metadata, such as locations of :ref:`actors <ray-remote-classes>`.
-It also provides a handful of cluster-level operations including :ref:`placement group <ray-placement-group-doc-ref>` scheduling and nodes management.
+Global Control Service (GCS) is a server that manages cluster-level metadata.
+It also provides a handful of cluster-level operations including :ref:`actor <ray-remote-classes>`, :ref:`placement group <ray-placement-group-doc-ref>` and node management.
 By default, GCS is not fault tolerant since all the data is stored in-memory and its failure means that the entire Ray cluster fails.
-To make GCS fault tolerant, HA storage is required. Ray supports Redis as the backend storage for durability and high availability. Then, when GCS restarts, it loads all the data from the Redis instance and resumes regular functions.
+To make GCS fault tolerant, HA storage is required. Ray supports Redis as the backend storage for durability and high availability.
+Then, when GCS restarts, it loads all the data from the Redis instance and resumes regular functions.
 
 During the recovery period, the following functions are not available:
 
@@ -20,6 +21,10 @@ But the running Ray tasks and actors remain alive and any existing objects will 
 
 Setting up Redis
 ----------------
+
+.. tabbed:: KubeRay (Recommended)
+
+    If you are using :ref:`KubeRay <kuberay-index>`, please refer to `KubeRay docs on GCS Fault Tolerance <https://ray-project.github.io/kuberay/guidance/gcs-ft/>`_.
 
 .. tabbed:: ray start
 
@@ -40,10 +45,6 @@ Setting up Redis
       head_start_ray_commands:
         - ray stop
         - ulimit -n 65536; RAY_REDIS_ADDRESS=redis_ip:port ray start --head --redis-password PASSWORD --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host=0.0.0.0
-
-.. tabbed:: KubeRay
-
-    If you are using :ref:`KubeRay <kuberay-index>`, please refer to `KubeRay docs on GCS Fault Tolerance <https://ray-project.github.io/kuberay/guidance/gcs-ft/>`_.
 
 .. tabbed:: Kubernetes
 
@@ -66,4 +67,3 @@ the correct GCS. You need to ensure that at any time, only one GCS is alive.
   Unless you are using :ref:`KubeRay <kuberay-index>`,
   you also need to implement a mechanism to detect the failure of GCS or the head node
   and restart it automatically in addition to setting up the external Redis instance.
-
