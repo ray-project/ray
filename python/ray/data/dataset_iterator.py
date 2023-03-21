@@ -1,6 +1,5 @@
 import abc
 import numpy as np
-import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Iterator
 
 from ray.data.block import BlockAccessor, DataBatch, T

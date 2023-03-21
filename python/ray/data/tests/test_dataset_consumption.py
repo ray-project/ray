@@ -1567,6 +1567,33 @@ def test_polars_lazy_import(shutdown_only):
         ctx.use_polars = original_use_polars
 
 
+def test_batch_formats(shutdown_only):
+    ds = ray.data.range(100)
+    assert ds.default_batch_format() == list
+    assert isinstance(next(ds.iter_batches(batch_format=None)), list)
+    assert isinstance(next(ds.iter_batches(batch_format="default")), list)
+    assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
+    assert isinstance(next(ds.iter_batches(batch_format="numpy")), np.ndarray)
+
+    ds = ray.data.range_tensor(100)
+    assert ds.default_batch_format() == np.ndarray
+    assert isinstance(next(ds.iter_batches(batch_format=None)), pa.Table)
+    assert isinstance(next(ds.iter_batches(batch_format="default")), np.ndarray)
+    assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
+    assert isinstance(next(ds.iter_batches(batch_format="numpy")), np.ndarray)
+
+    df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
+    ds = ray.data.from_pandas(df)
+    assert ds.default_batch_format() == pd.DataFrame
+    assert isinstance(next(ds.iter_batches(batch_format=None)), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="default")), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
+    assert isinstance(next(ds.iter_batches(batch_format="numpy")), dict)
+
+
 def test_dataset_schema_after_read_stats(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
