@@ -16,6 +16,7 @@ import pandas as pd
 
 import ray
 from ray._private.dict import flatten_dict
+from ray.experimental.tqdm_ray import safe_print
 from ray.air.util.node import _force_on_current_node
 from ray.tune.callback import Callback
 from ray.tune.logger import pretty_print
@@ -707,7 +708,7 @@ class CLIReporter(TuneReporterBase):
         )
 
     def _print(self, msg: str):
-        print(msg)
+        safe_print(msg)
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         self._print(self._progress_str(trials, done, *sys_info))
@@ -859,7 +860,7 @@ def _trial_progress_str(
     num_trials = len(trials)
     trials_by_state = _get_trials_by_state(trials)
 
-    for local_dir in sorted({t.local_dir for t in trials}):
+    for local_dir in sorted({t.local_experiment_path for t in trials}):
         messages.append("Result logdir: {}".format(local_dir))
 
     num_trials_strs = [
@@ -1313,7 +1314,7 @@ class TrialProgressCallback(Callback):
         self._display_handle = None
 
     def _print(self, msg: str):
-        print(msg)
+        safe_print(msg)
 
     def on_trial_result(
         self,
@@ -1384,7 +1385,7 @@ class TrialProgressCallback(Callback):
         elif has_verbosity(Verbosity.V2_TRIAL_NORM):
             metric_name = self._metric or "_metric"
             metric_value = result.get(metric_name, -99.0)
-            error_file = os.path.join(trial.logdir, "error.txt")
+            error_file = os.path.join(trial.local_path, "error.txt")
 
             info = ""
             if done:
