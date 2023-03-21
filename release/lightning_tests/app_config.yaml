@@ -4,8 +4,7 @@ debian_packages:
   - curl
 
 python:
-  pip_packages:
-    - pytorch-lightning
+  pip_packages: []
   conda_packages: []
 
 post_build_cmds:
