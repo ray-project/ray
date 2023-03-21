@@ -21,7 +21,6 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
@@ -605,20 +604,3 @@ class ARS(Algorithm):
         FilterManager.synchronize(
             {DEFAULT_POLICY_ID: self.policy.observation_filter}, self.workers
         )
-
-
-# Deprecated: Use ray.rllib.algorithms.ars.ARSConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(ARSConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.ars.ars.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.ars.ars.ARSConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
