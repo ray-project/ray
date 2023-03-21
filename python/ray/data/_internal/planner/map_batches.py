@@ -2,10 +2,10 @@ import sys
 from types import GeneratorType
 from typing import Callable, Iterator, Optional
 
-from ray.data._internal.block_batching import batch_blocks
+from ray.data._internal.batcher import Batcher, _blocks_to_batches
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data.block import BatchUDF, Block, DataBatch
+from ray.data.block import BlockAccessor, BatchUDF, Block, DataBatch
 from ray.data.context import DEFAULT_BATCH_SIZE, DatasetContext
 
 
@@ -18,7 +18,6 @@ else:
 def generate_map_batches_fn(
     batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
     batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
-    prefetch_batches: int = 0,
     zero_copy_batch: bool = False,
 ) -> Callable[[Iterator[Block], TaskContext, BatchUDF], Iterator[Block]]:
     """Generate function to apply the batch UDF to blocks."""
@@ -94,17 +93,21 @@ def generate_map_batches_fn(
                     raise e from None
 
         # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
-        formatted_batch_iter = batch_blocks(
-            blocks=blocks,
-            stats=None,
+        batcher = Batcher(
             batch_size=batch_size,
-            batch_format=batch_format,
             ensure_copy=not zero_copy_batch and batch_size is not None,
-            prefetch_batches=prefetch_batches,
         )
 
-        for batch in formatted_batch_iter:
-            yield from process_next_batch(batch)
+        batch_iter = _blocks_to_batches(
+            blocks,
+            batcher=batcher,
+        )
+
+        for batch in batch_iter:
+            formatted_batch = BlockAccessor.for_block(batch).to_batch_format(
+                batch_format
+            )
+            yield from process_next_batch(formatted_batch)
 
         # Yield remainder block from output buffer.
         output_buffer.finalize()

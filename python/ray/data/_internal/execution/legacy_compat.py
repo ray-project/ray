@@ -34,16 +34,17 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-   
+
 
 def execute_to_legacy_block_iterator(
-        executor: Executor, 
-        plan: ExecutionPlan, 
-        allow_clear_input_blocks: bool, 
-        dataset_uuid: str
-    ) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
-    """Same as execute_to_legacy_bundle_iterator but returning blocks and their metadata"""
-    
+    executor: Executor,
+    plan: ExecutionPlan,
+    allow_clear_input_blocks: bool,
+    dataset_uuid: str,
+) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+    """Same as execute_to_legacy_bundle_iterator but returning blocks and their
+    metadata."""
+
     bundle_iter = execute_to_legacy_bundle_iterator(
         executor, plan, allow_clear_input_blocks, dataset_uuid
     )

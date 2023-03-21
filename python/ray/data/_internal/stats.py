@@ -4,6 +4,8 @@ import time
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Set, Tuple, Union, Any
 
+import threading
+from collections import defaultdict
 import numpy as np
 
 import ray
@@ -28,8 +30,7 @@ def fmt(seconds: float) -> str:
     else:
         return str(round(seconds * 1000 * 1000, 2)) + "us"
 
-import threading
-from collections import defaultdict
+
 class Timer:
     """Helper class for tracking accumulated time (in seconds)."""
 
@@ -661,12 +662,24 @@ class IterStatsSummary:
         _thread_ids = self.next_time._thread_values.keys()
         for thread_id in _thread_ids:
             out += "\n Thread {}:\n".format(thread_id)
-            out += "* In ray.wait(): {}\n".format(fmt(self.wait_time._thread_values[thread_id]))
-            out += "* In ray.get(): {}\n".format(fmt(self.get_time._thread_values[thread_id]))
-            out += "* In next_batch(): {}\n".format(fmt(self.next_time._thread_values[thread_id]))
-            out += "* In format_batch(): {}\n".format(fmt(self.format_time._thread_values[thread_id]))
-            out += "* In collate_fn(): {}\n".format(fmt(self.collate_time._thread_values[thread_id]))
-            out += "* Total time for this thread: {}\n".format(fmt(self.thread_total_time._thread_values[thread_id]))
+            out += "* In ray.wait(): {}\n".format(
+                fmt(self.wait_time._thread_values[thread_id])
+            )
+            out += "* In ray.get(): {}\n".format(
+                fmt(self.get_time._thread_values[thread_id])
+            )
+            out += "* In next_batch(): {}\n".format(
+                fmt(self.next_time._thread_values[thread_id])
+            )
+            out += "* In format_batch(): {}\n".format(
+                fmt(self.format_time._thread_values[thread_id])
+            )
+            out += "* In collate_fn(): {}\n".format(
+                fmt(self.collate_time._thread_values[thread_id])
+            )
+            out += "* Total time for this thread: {}\n".format(
+                fmt(self.thread_total_time._thread_values[thread_id])
+            )
 
         out += "\n"
         if (
@@ -676,7 +689,7 @@ class IterStatsSummary:
             or self.format_time.get()
             or self.get_time.get()
         ):
-            
+
             # out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
             # out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
             out += "* Num blocks local: {}\n".format(self.iter_blocks_local)

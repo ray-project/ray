@@ -1,7 +1,9 @@
-from typing import TYPE_CHECKING, Any, Callable, Optional, Union, Iterator
+from typing import TYPE_CHECKING, Tuple, Union, Iterator, Optional
 import warnings
 
-from ray.data.block import DataBatch
+from ray.types import ObjectRef
+from ray.data.block import Block, BlockMetadata
+from ray.data._internal.stats import DatasetStats
 from ray.data.dataset_iterator import DatasetIterator
 
 if TYPE_CHECKING:
@@ -27,27 +29,14 @@ class PipelinedDatasetIterator(DatasetIterator):
         ds = next(self._epoch_iterator)
         return ds
 
-    def iter_batches(
+    def _to_block_iterator(
         self,
-        *,
-        prefetch_blocks: int = 0,
-        batch_size: Optional[int] = 256,
-        batch_format: str = "default",
-        drop_last: bool = False,
-        local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-    ) -> Iterator[DataBatch]:
+    ) -> Tuple[
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+    ]:
         ds = self._get_next_dataset()
-        return ds.iter_batches(
-            prefetch_blocks=prefetch_blocks,
-            batch_size=batch_size,
-            batch_format=batch_format,
-            drop_last=drop_last,
-            local_shuffle_buffer_size=local_shuffle_buffer_size,
-            local_shuffle_seed=local_shuffle_seed,
-            _collate_fn=_collate_fn,
-        )
+        block_iterator, stats = ds.iterator()._to_block_iterator()
+        return block_iterator, stats
 
     def stats(self) -> str:
         return self._base_dataset_pipeline.stats()

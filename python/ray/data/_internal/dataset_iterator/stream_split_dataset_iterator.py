@@ -7,8 +7,6 @@ from typing import (
     Dict,
     Optional,
     Iterator,
-    Callable,
-    Any,
     Tuple,
     Union,
     TYPE_CHECKING,
@@ -16,15 +14,15 @@ from typing import (
 
 import ray
 from ray.data._internal.util import _default_batch_format
+from ray.data._internal.stats import DatasetStats
 
 from ray.data.dataset_iterator import DatasetIterator
-from ray.data.block import Block, BlockMetadata, DataBatch
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.legacy_compat import (
     execute_to_legacy_bundle_iterator,
 )
-from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.types import ObjectRef
@@ -80,42 +78,27 @@ class StreamSplitDatasetIterator(DatasetIterator):
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
 
-    def iter_batches(
+    def _to_block_iterator(
         self,
-        *,
-        prefetch_blocks: int = 0,
-        batch_size: int = 256,
-        batch_format: Literal["default", "numpy", "pandas"] = "default",
-        drop_last: bool = False,
-        local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-    ) -> Iterator[DataBatch]:
-        """Implements DatasetIterator."""
-
-        def gen_blocks() -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+    ) -> Tuple[
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+    ]:
+        def gen_blocks():
             future: ObjectRef[
                 Optional[Tuple[ObjectRef[Block], BlockMetadata]]
             ] = self._coord_actor.get.remote(self._output_split_idx)
+
             while True:
-                block_ref: Optional[Tuple[ObjectRef[Block], BlockMetadata]] = ray.get(future)
+                block_ref: Optional[Tuple[ObjectRef[Block], BlockMetadata]] = ray.get(
+                    future
+                )
                 if not block_ref:
                     break
                 else:
                     future = self._coord_actor.get.remote(self._output_split_idx)
                     yield block_ref
 
-        yield from batch_block_refs(
-            gen_blocks(),
-            stats=None,
-            prefetch_blocks=prefetch_blocks,
-            batch_size=batch_size,
-            batch_format=batch_format,
-            drop_last=drop_last,
-            collate_fn=_collate_fn,
-            shuffle_buffer_min_size=local_shuffle_buffer_size,
-            shuffle_seed=local_shuffle_seed,
-        )
+        return gen_blocks, None
 
     def stats(self) -> str:
         """Implements DatasetIterator."""
@@ -173,7 +156,9 @@ class SplitCoordinator:
             dag_rewrite=add_split_op,
         )
 
-    def get(self, output_split_idx: int) -> Optional[Tuple[ObjectRef[Block], BlockMetadata]]:
+    def get(
+        self, output_split_idx: int
+    ) -> Optional[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.

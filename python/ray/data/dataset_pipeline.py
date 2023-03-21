@@ -21,14 +21,16 @@ import numpy as np
 import ray
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal import progress_bar
-from ray.data._internal.block_batching import batch_block_refs
+from ray.data._internal.iter_batches import iter_batches
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
-from ray.data._internal.pipelined_dataset_iterator import PipelinedDatasetIterator
+from ray.data._internal.dataset_iterator.pipelined_dataset_iterator import (
+    PipelinedDatasetIterator,
+)
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF
@@ -226,7 +228,7 @@ class DatasetPipeline(Generic[T]):
             )
         else:
             blocks_owned_by_consumer = self._peek()._plan.execute()._owned_by_consumer
-        yield from batch_block_refs(
+        yield from iter_batches(
             self._iter_blocks(),
             stats=self._stats,
             prefetch_blocks=prefetch_blocks,

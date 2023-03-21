@@ -1,12 +1,27 @@
 import abc
 import numpy as np
 import sys
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Iterator
+import time
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Union,
+    Iterator,
+    Tuple,
+)
 
-from ray.data.block import BlockAccessor, DataBatch, T
+from ray.types import ObjectRef
+from ray.data.block import Block, BlockMetadata, BlockAccessor, DataBatch, T
+from ray.data.context import DatasetContext
 from ray.data.row import TableRow
 from ray.util.annotations import PublicAPI
 from ray.data._internal.util import _is_tensor_schema
+from ray.data._internal.iter_batches import iter_batches, legacy_iter_batches
+from ray.data._internal.stats import DatasetStats
 
 if TYPE_CHECKING:
     import pyarrow
@@ -56,6 +71,21 @@ class DatasetIterator(abc.ABC):
     """
 
     @abc.abstractmethod
+    def _to_block_iterator(
+        self,
+    ) -> Tuple[
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+    ]:
+        """Returns the iterator to use for `iter_batches`.
+
+        The first item of the tuple is an iterator over pairs of Block object
+        references and their corresponding metadata.
+
+        The second item of the tuple is a DatasetStats object used for recording stats
+        during iteration.
+        """
+        raise NotImplementedError
+
     def iter_batches(
         self,
         *,
@@ -83,7 +113,8 @@ class DatasetIterator(abc.ABC):
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
-                to fetch the objects to the local node, format the batches, and apply the collate_fn. Defaults to 0 (no prefetching enabled.)
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 0 (no prefetching enabled.)
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -105,7 +136,48 @@ class DatasetIterator(abc.ABC):
         Returns:
             An iterator over record batches.
         """
-        raise NotImplementedError
+        context = DatasetContext.get_current()
+
+        if prefetch_blocks > 0 and not context.use_legacy_iter_batches:
+            raise DeprecationWarning(
+                """
+                `prefetch_blocks` arg is deprecated in Ray 2.4. Use
+                the`prefetch_batches` arg instead to specify the amount of prefetching
+                in terms of batches instead of blocks. If you would like to use the
+                legacy `iter_batches` codepath, you can enable it by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
+                """
+            )
+
+        time_start = time.perf_counter()
+        block_iterator, stats = self._to_block_iterator()
+
+        if not context.use_legacy_iter_batches:
+            yield from iter_batches(
+                block_iterator,
+                stats=stats,
+                prefetch_batches=prefetch_batches,
+                batch_size=batch_size,
+                batch_format=batch_format,
+                drop_last=drop_last,
+                collate_fn=_collate_fn,
+                shuffle_buffer_min_size=local_shuffle_buffer_size,
+                shuffle_seed=local_shuffle_seed,
+            )
+        else:
+            yield from legacy_iter_batches(
+                block_iterator,
+                stats=stats,
+                prefetch_blocks=prefetch_blocks,
+                batch_size=batch_size,
+                batch_format=batch_format,
+                drop_last=drop_last,
+                collate_fn=_collate_fn,
+                shuffle_buffer_min_size=local_shuffle_buffer_size,
+                shuffle_seed=local_shuffle_seed,
+            )
+
+        stats.iter_total_s.add(time.perf_counter() - time_start)
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the dataset.
@@ -134,7 +206,9 @@ class DatasetIterator(abc.ABC):
         # Since we do not specify a batch size, `prefetch_batches` is exactly
         # equivalent to `prefetch_blocks`.
         for batch in self.iter_batches(
-            batch_size=None, prefetch_batches=prefetch_blocks, batch_format=target_format
+            batch_size=None,
+            prefetch_batches=prefetch_blocks,
+            batch_format=target_format,
         ):
             batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
             for row in batch.iter_rows():
@@ -185,7 +259,8 @@ class DatasetIterator(abc.ABC):
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
-                to fetch the objects to the local node, format the batches, and apply the collate_fn. Defaults to 0 (no prefetching enabled.)
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 0 (no prefetching enabled.)
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -290,7 +365,8 @@ class DatasetIterator(abc.ABC):
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
-                to fetch the objects to the local node, format the batches, and apply the collate_fn. Defaults to 0 (no prefetching enabled.)
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 0 (no prefetching enabled.)
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if

@@ -51,8 +51,12 @@ from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.dataset_iterator_impl import DatasetIteratorImpl
-from ray.data._internal.stream_split_dataset_iterator import StreamSplitDatasetIterator
+from ray.data._internal.dataset_iterator.dataset_iterator_impl import (
+    DatasetIteratorImpl,
+)
+from ray.data._internal.dataset_iterator.stream_split_dataset_iterator import (
+    StreamSplitDatasetIterator,
+)
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -380,7 +384,6 @@ class Dataset(Generic[T]):
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
-        prefetch_batches: int = 0,
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -541,14 +544,6 @@ class Dataset(Generic[T]):
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to process. If set to greater than 0, a separate thread will be used
-                to fetch the specified amount of formatted batches from blocks. This
-                improves performance for non-CPU bound UDFs, allowing batch fetching
-                compute and formatting to be overlapped with the UDF. Defaults to 0 (no
-                prefetching enabled.) Increasing the number of batches to prefetch can
-                result in higher throughput, at the expense of requiring more heap
-                memory to buffer the batches.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch will be a zero-copy, read-only
@@ -648,7 +643,6 @@ class Dataset(Generic[T]):
         transform_fn = generate_map_batches_fn(
             batch_size=batch_size,
             batch_format=batch_format,
-            prefetch_batches=prefetch_batches,
             zero_copy_batch=zero_copy_batch,
         )
 
@@ -2927,7 +2921,8 @@ class Dataset(Generic[T]):
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
-                to fetch the objects to the local node, format the batches, and apply the collate_fn. Defaults to 0 (no prefetching enabled.)
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 0 (no prefetching enabled.)
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: The number of rows in each batch, or None to use entire blocks
@@ -3008,7 +3003,8 @@ class Dataset(Generic[T]):
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
-                to fetch the objects to the local node, format the batches, and apply the collate_fn. Defaults to 0 (no prefetching enabled.)
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 0 (no prefetching enabled.)
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -3061,7 +3057,7 @@ class Dataset(Generic[T]):
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         # Deprecated.
-         prefetch_blocks: int = 0,
+        prefetch_blocks: int = 0,
     ) -> Iterator[TensorFlowTensorBatchType]:
         """Return a local batched iterator of TensorFlow Tensors over the dataset.
 
@@ -3089,7 +3085,8 @@ class Dataset(Generic[T]):
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
-                to fetch the objects to the local node, format the batches, and apply the collate_fn. Defaults to 0 (no prefetching enabled.)
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 0 (no prefetching enabled.)
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
