@@ -166,10 +166,10 @@ def update_settings_from_environment(settings: Dict) -> Dict:
             "name:" + os.environ["TEST_NAME"]
         )
 
-#    if "TEST_ATTR_REGEX_FILTERS" in os.environ:
-#        settings["test_attr_regex_filters"] = get_test_attr_regex_filters(
-#            os.environ["TEST_ATTR_REGEX_FILTERS"]
-#        )
+    if "TEST_ATTR_REGEX_FILTERS" in os.environ:
+        settings["test_attr_regex_filters"] = get_test_attr_regex_filters(
+            os.environ["TEST_ATTR_REGEX_FILTERS"]
+        )
 
     if "RELEASE_PRIORITY" in os.environ:
         settings["priority"] = get_priority(os.environ["RELEASE_PRIORITY"])
