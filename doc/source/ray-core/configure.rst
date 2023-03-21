@@ -96,7 +96,7 @@ Look :ref:`Logging Directory Structure <logging-directory-structure>` for more d
 
 Ports configurations
 --------------------
-Ray requires bi-directional communication among its nodes in a cluster. Each of node is supposed to open specific ports to receive incoming network requests.
+Ray requires bi-directional communication among its nodes in a cluster. Each node opens specific ports to receive incoming network requests. 
 
 All Nodes
 ~~~~~~~~~
@@ -167,6 +167,12 @@ and ``ray start``, it may become reachable again due to the dashboard
 restarting.
 
 If you don't want the dashboard, set ``--include-dashboard=false``.
+
+Additionally, the following ports on the head node can be overriden using environment variables:
+
+- ``DASHBOARD_RPC_PORT``: The gRPC port used by the dashboard head. Default: Random value.
+- ``DASHBOARD_METRIC_PORT``: The port that dashboard prometheus metrics will be exported to. Default: 44227.
+
 
 TLS Authentication
 ------------------
