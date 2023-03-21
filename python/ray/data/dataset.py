@@ -379,7 +379,9 @@ class Dataset(Generic[T]):
         *,
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
-        batch_format: Literal["default", "pandas", "pyarrow", "numpy", "zero-copy"] = "default",
+        batch_format: Literal[
+            "default", "pandas", "pyarrow", "numpy", "zero-copy"
+        ] = "default",
         prefetch_batches: int = 0,
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
@@ -2933,7 +2935,9 @@ class Dataset(Generic[T]):
                 (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets, or ``"zero-copy"`` to return the underlying block exactly as is with no additional formatting. Default is "default".
+                ``Dict[str, numpy.ndarray]`` for tabular datasets, or ``"zero-copy"``
+                to return the underlying block exactly as is with no additional
+                formatting. Default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the

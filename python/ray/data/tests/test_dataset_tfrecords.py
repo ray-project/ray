@@ -271,6 +271,7 @@ def _features_to_schema(features: "tf.train.Features") -> "schema_pb2.Schema":
 def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
     assert ds_expected.take() == ds_actual.take()
 
+
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_read_tfrecords(
     with_tf_schema,

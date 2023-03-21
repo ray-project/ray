@@ -9,17 +9,10 @@ import numpy as np
 
 import ray
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data.context import DatasetContext
 from ray._private.utils import _get_pyarrow_version
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
-
 if TYPE_CHECKING:
-    from ray.data.dataset import Dataset
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
 
