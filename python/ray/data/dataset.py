@@ -379,9 +379,7 @@ class Dataset(Generic[T]):
         *,
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
-        batch_format: Literal[
-            "default", "pandas", "pyarrow", "numpy", "zero-copy"
-        ] = "default",
+        batch_format: Optional[str] = "default",
         prefetch_batches: int = 0,
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
@@ -542,7 +540,8 @@ class Dataset(Generic[T]):
                 (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets, or ``"zero-copy"`` to return the underlying block exactly as is with no additional formatting. Default is "default".
+                ``Dict[str, numpy.ndarray]`` for tabular datasets, or None to return
+                the underlying block exactly as is with no additional formatting.
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to process. If set to greater than 0, a separate thread will be used
                 to fetch the specified amount of formatted batches from blocks. This

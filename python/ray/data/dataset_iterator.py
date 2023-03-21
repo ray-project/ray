@@ -16,12 +16,6 @@ if TYPE_CHECKING:
     from ray.data.dataset import TensorFlowTensorBatchType
 
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
-
-
 @PublicAPI(stability="beta")
 class DatasetIterator(abc.ABC):
     """An iterator for reading items from a :class:`~Dataset` or
@@ -61,7 +55,7 @@ class DatasetIterator(abc.ABC):
         *,
         prefetch_blocks: int = 0,
         batch_size: int = 256,
-        batch_format: Literal["default", "numpy", "pandas"] = "default",
+        batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -127,7 +121,9 @@ class DatasetIterator(abc.ABC):
             An iterator over rows of the dataset.
         """
         for batch in self.iter_batches(
-            batch_size=None, prefetch_blocks=prefetch_blocks, batch_format="zero-copy"
+            batch_size=None,
+            prefetch_blocks=prefetch_blocks,
+            batch_format=None,
         ):
             batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
             for row in batch.iter_rows():
