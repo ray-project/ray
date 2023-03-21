@@ -44,7 +44,7 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
         "(for internal use)."
     ),
 )
-def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = True):
+def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False):
     settings = get_pipeline_settings()
 
     repo = settings["ray_test_repo"]
@@ -52,7 +52,8 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = True)
     tmpdir = None
 
     env = {}
-    if repo and not no_clone_repo:
+    if False:
+#    if repo and not no_clone_repo:
         # If the Ray test repo is set, we clone that repo to fetch
         # the test configuration file. Otherwise, we might be missing newly
         # added test.
