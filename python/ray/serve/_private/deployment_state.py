@@ -2104,9 +2104,7 @@ class DeploymentStateManager:
                 self._deployment_states[
                     deployment_name
                 ] = self._create_deployment_state(deployment_name)
-            record_extra_usage_tag(
-                TagKey.SERVE_NUM_DEPLOYMENTS, str(len(self._deployment_states))
-            )
+            self._record_deployment_usage()
 
         return self._deployment_states[deployment_name].deploy(deployment_info)
 
@@ -2195,9 +2193,6 @@ class DeploymentStateManager:
 
         if len(deleted_tags):
             self._record_deployment_usage()
-            record_extra_usage_tag(
-                TagKey.SERVE_NUM_DEPLOYMENTS, str(len(self._deployment_states))
-            )
 
     def _record_deployment_usage(self):
         record_extra_usage_tag(
