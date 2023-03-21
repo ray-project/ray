@@ -692,7 +692,6 @@ def _add_min_workers_nodes(
         resource_requests_unfulfilled, _ = get_bin_pack_residual(
             max_node_resources, ensure_min_cluster_size
         )
-        print("alex: ", resource_requests_unfulfilled)
         # Get the nodes to meet the unfulfilled.
         nodes_to_add_request_resources, _ = get_nodes_for(
             node_types,
