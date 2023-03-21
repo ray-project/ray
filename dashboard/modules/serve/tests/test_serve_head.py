@@ -5,6 +5,7 @@ import pytest
 import requests
 
 from ray._private.test_utils import wait_for_condition
+from ray.serve.config import DeploymentMode
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.serve.schema import ServeInstanceDetails
 from ray.serve._private.common import ApplicationStatus, DeploymentStatus
@@ -29,8 +30,11 @@ def test_get_serve_instance_details(ray_start_stop):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
     config1 = {
-        "host": "127.0.0.1",
-        "port": 8000,
+        "proxy_location": "HeadOnly",
+        "http_options": {
+            "host": "127.0.0.1",
+            "port": 8005,
+        },
         "applications": [
             {
                 "name": "app1",
@@ -70,8 +74,9 @@ def test_get_serve_instance_details(ray_start_stop):
         **requests.get("http://localhost:8265/api/serve_head/applications/").json()
     )
     # CHECK: host and port
-    assert serve_details.host == "127.0.0.1"
-    assert serve_details.port == 8000
+    assert serve_details.http_options.host == "127.0.0.1"
+    assert serve_details.http_options.port == 8005
+    assert serve_details.proxy_location == DeploymentMode.HeadOnly
     print('Confirmed fetched host and port metadata are "127.0.0.1" and "8000".')
 
     app_details = serve_details.applications
