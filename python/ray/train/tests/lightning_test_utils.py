@@ -55,6 +55,7 @@ class DoubleLinearModule(pl.LightningModule):
         return {"val_loss": loss}
 
     def validation_epoch_end(self, outputs) -> None:
+        print("Validation Epoch:", self.current_epoch)
         avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
         self.log("val_loss", avg_loss)
 
