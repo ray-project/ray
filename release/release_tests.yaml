@@ -1321,7 +1321,7 @@
 
   frequency: nightly
   team: ml
-  env: prod_v1
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
