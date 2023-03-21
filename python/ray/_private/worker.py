@@ -1842,8 +1842,11 @@ def process_tqdm(line):
         data = json.loads(line)
         tqdm_ray.instance().process_state_update(data)
     except Exception:
-        print("[tqdm_ray] Failed to decode", line)
-        raise
+        if log_once("tqdm_corruption"):
+            logger.warning(
+                f"[tqdm_ray] Failed to decode {line}, this may be due to "
+                "logging too fast. This warning will not be printed again."
+            )
 
 
 def hide_tqdm():
@@ -1970,12 +1973,6 @@ def connect(
         ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
     )
     worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
-    worker.gcs_error_subscriber = GcsErrorSubscriber(address=worker.gcs_client.address)
-    worker.gcs_log_subscriber = GcsLogSubscriber(address=worker.gcs_client.address)
-    worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
-        address=worker.gcs_client.address
-    )
-
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
@@ -2124,6 +2121,16 @@ def connect(
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
+    worker_id = worker.worker_id
+    worker.gcs_error_subscriber = GcsErrorSubscriber(
+        worker_id=worker_id, address=worker.gcs_client.address
+    )
+    worker.gcs_log_subscriber = GcsLogSubscriber(
+        worker_id=worker_id, address=worker.gcs_client.address
+    )
+    worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
+        worker_id=worker_id, address=worker.gcs_client.address
+    )
 
     if driver_object_store_memory is not None:
         logger.warning(
@@ -2209,9 +2216,12 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
-        worker.gcs_function_key_subscriber.close()
-        worker.gcs_error_subscriber.close()
-        worker.gcs_log_subscriber.close()
+        if hasattr(worker, "gcs_function_key_subscriber"):
+            worker.gcs_function_key_subscriber.close()
+        if hasattr(worker, "gcs_error_subscriber"):
+            worker.gcs_error_subscriber.close()
+        if hasattr(worker, "gcs_log_subscriber"):
+            worker.gcs_log_subscriber.close()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
