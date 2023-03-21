@@ -9,7 +9,6 @@ Exploration API
 ---------------
 
 Exploration is crucial in RL for enabling a learning agent to find new, potentially high-reward states by reaching unexplored areas of the environment.
-reach areas of the environment that have not been discovered so far and therefore
 find new states yielding possibly high rewards.
 
 RLlib comes with several built-in exploration components, used by
