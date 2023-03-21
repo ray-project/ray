@@ -113,8 +113,7 @@ def test_predict_pandas_with_pandas_data():
     predictor = DummyPredictor.from_checkpoint(checkpoint)
     actual_output = predictor.predict(input)
     pd.testing.assert_frame_equal(actual_output, pd.DataFrame({"x": [4.0, 8.0, 12.0]}))
-    # Nothing should change compare to previous path since preprocessor will
-    # go through Pandas path
+    # This Preprocessor has Numpy as the batch format preference.
     pd.testing.assert_frame_equal(
         predictor.get_preprocessor().inputs[0],
         pd.DataFrame({"x": [1, 2, 3]}),
