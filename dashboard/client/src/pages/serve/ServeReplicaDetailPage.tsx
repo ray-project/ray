@@ -2,6 +2,7 @@ import { Link, Typography } from "@material-ui/core";
 import React, { useContext } from "react";
 import { Link as RouterLink, useParams } from "react-router-dom";
 import { GlobalContext } from "../../App";
+import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
 import { generateActorLink, generateNodeLink } from "../../common/links";
@@ -111,6 +112,15 @@ export const ServeReplicaDetailPage = () => {
               value: pid ? pid : "-",
               copyableValue: pid ? pid : undefined,
             },
+          },
+          {
+            label: "Deployment config",
+            content: (
+              <CodeDialogButton
+                title={`Deployment config for ${deployment.name}`}
+                code={deployment.deployment_config}
+              />
+            ),
           },
           {
             label: "Started at",
