@@ -5,6 +5,7 @@ import os
 import warnings
 from typing import Dict, Optional, List, Union, Any, TYPE_CHECKING
 
+from ray.air._internal.usage import tag_searcher
 from ray.tune.search.util import _set_search_properties_backwards_compatible
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
@@ -76,6 +77,7 @@ class Searcher:
         metric: Optional[str] = None,
         mode: Optional[str] = None,
     ):
+        tag_searcher(self)
         self._metric = metric
         self._mode = mode
 

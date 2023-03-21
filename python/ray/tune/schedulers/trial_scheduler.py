@@ -1,5 +1,6 @@
 from typing import Dict, Optional
 
+from ray.air._internal.usage import tag_scheduler
 from ray.tune.execution import trial_runner
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.experiment import Trial
@@ -22,6 +23,9 @@ class TrialScheduler:
     _metric = None
 
     _supports_buffered_results = True
+
+    def __init__(self):
+        tag_scheduler(self)
 
     @property
     def metric(self):
@@ -126,6 +130,9 @@ class TrialScheduler:
 @PublicAPI
 class FIFOScheduler(TrialScheduler):
     """Simple scheduler that just runs trials in submission order."""
+
+    def __init__(self):
+        super().__init__()
 
     def on_trial_add(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
         pass
