@@ -8,10 +8,10 @@ except ModuleNotFoundError:
     )
 # isort: on
 
+from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from ray.train.lightning.lightning_trainer import (
     LightningTrainer,
     LightningConfigBuilder,
 )
 
-
-__all__ = ["LightningTrainer", "LightningConfigBuilder"]
+__all__ = ["LightningTrainer", "LightningConfigBuilder", "LightningCheckpoint"]
