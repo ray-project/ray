@@ -7,7 +7,8 @@ head_node_type:
     name: head_node
     instance_type: m5a.large
     resources:
-      head: 1
+      custom_resources:
+        head: 1
 
 worker_node_types:
     - name: worker_node
