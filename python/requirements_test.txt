@@ -58,7 +58,9 @@ pymongo==4.3.2
 https://ml-team-public-read.s3.us-west-2.amazonaws.com/spark-pkgs/pyspark-3.4.0.dev0-0cb0fa313979e1b82ddd711a05d8c4e78cf6c9f5.tar.gz
 pytest==7.0.1
 pytest-asyncio==0.16.0
+pytest-httpserver==1.0.6
 pytest-rerunfailures==10.2
+pytest-responses==0.5.1
 pytest-sugar==0.9.5
 pytest-lazy-fixture==0.6.3
 pytest-timeout==2.1.0
@@ -67,6 +69,7 @@ redis==4.4.2
 scikit-learn==1.0.2; python_version < '3.11'
 smart_open[s3]==6.2.0
 tqdm==4.64.1
+trustme==0.9.0
 testfixtures==7.0.0
 werkzeug==2.1.2
 xlrd==2.0.1

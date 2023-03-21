@@ -229,5 +229,21 @@ def test_multiple_ray_init(
     wait_for_condition(wait_for_four_drivers, retry_interval_ms=1000)
 
 
+# def test_https_submission(
+#     make_sure_dashboard_http_port_unused,
+#     ray_start_with_dashboard,
+#     disable_aiohttp_cache,
+#     enable_test_module,
+#     http_server,
+#     ca
+# ):
+#     """Test that job submission client connections work using HTTPs."""
+#     address = ray._private.worker._global_node.webui_url
+#     assert wait_until_server_available(address)
+#     address = format_web_url(address)
+#     with ca.cert_pem.tempfile() as ca_temp_path:
+#         JobSubmissionClient("mock_https_dashboard.com", verify=ca_temp_path)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

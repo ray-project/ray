@@ -1,5 +1,7 @@
 import os
 import pytest
+import ssl
+import trustme
 from ray.tests.conftest import *  # noqa
 
 
@@ -47,3 +49,19 @@ def reduce_actor_cache():
     os.environ["RAY_DASHBOARD_MAX_ACTORS_TO_CACHE"] = "3"
     yield
     os.environ.pop("RAY_DASHBOARD_MAX_ACTORS_TO_CACHE", None)
+
+# Parameters for the mock HTTPS dashboard server
+
+MOCK_HTTPS_DASHBOARD_ADDRESS = "mock_https_dashboard.com"
+
+@pytest.fixture(scope="session")
+def ca():
+    return trustme.CA()
+
+
+@pytest.fixture(scope="session")
+def dashboard_ssl_context(ca):
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    mock_dashboard_cert = ca.issue_cert(MOCK_HTTPS_DASHBOARD_ADDRESS)
+    mock_dashboard_cert.configure_cert(context)
+    return context
