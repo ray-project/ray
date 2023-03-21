@@ -232,8 +232,8 @@ class MonitorGcsServiceHandler {
                                          SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleSetMinResources(SetMinResourcesRequest request,
-                                         SetMinResourcesReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
+                                     SetMinResourcesReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `MonitorServer`.

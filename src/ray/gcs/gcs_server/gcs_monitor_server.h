@@ -53,6 +53,7 @@ class GcsMonitorServer : public rpc::MonitorServiceHandler {
   void HandleSetMinResources(rpc::SetMinResourcesRequest request,
                              rpc::SetMinResourcesReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   void PopulateNodeStatuses(rpc::GetSchedulingStatusReply *reply) const;
   void PopulateResourceDemands(rpc::GetSchedulingStatusReply *reply) const;

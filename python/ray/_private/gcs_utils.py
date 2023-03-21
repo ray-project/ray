@@ -286,12 +286,16 @@ class GcsClient:
         return self._channel._gcs_address
 
     @_auto_reconnect
-    def set_min_resources(self, bundles: List[Dict[str, float]], timeout: Optional[float] = None) -> None:
+    def set_min_resources(
+        self, bundles: List[Dict[str, float]], timeout: Optional[float] = None
+    ) -> None:
         request = monitor_pb2.SetMinResourcesRequest(
-            min_resource_request = monitor_pb2.ResourceRequest(
+            min_resource_request=monitor_pb2.ResourceRequest(
                 resource_request_type=monitor_pb2.ResourceRequest.ResourceRequestType.MIN_RESOURCES,
                 count=1,
-                bundles=[monitor_pb2.ResourceBundle(resources=bundle) for bundle in bundles],
+                bundles=[
+                    monitor_pb2.ResourceBundle(resources=bundle) for bundle in bundles
+                ],
             )
         )
         self._monitor_service_stub.SetMinResources(request, timeout=timeout)

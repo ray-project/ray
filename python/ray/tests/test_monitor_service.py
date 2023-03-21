@@ -119,6 +119,7 @@ def test_scheduling_status_pgs(monitor_stub):
             self.pg = ray.util.placement_group(
                 [{"CPU": 0.1, "GPU": 1}, {"custom": 10}], strategy="STRICT_PACK"
             )
+
         def ready(self):
             pass
 

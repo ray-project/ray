@@ -180,7 +180,6 @@ def request_resources(
     if bundles:
         to_request += bundles
 
-
     ray._private.worker.global_worker.gcs_client.set_min_resources(to_request)
     _internal_kv_put(
         AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request), overwrite=True

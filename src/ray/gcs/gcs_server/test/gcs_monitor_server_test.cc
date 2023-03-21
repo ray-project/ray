@@ -191,13 +191,10 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
     bundle2->mutable_resources()->insert(resource_map2.begin(), resource_map2.end());
 
     rpc::SetMinResourcesReply unused;
-    monitor_server_.HandleSetMinResources(min_req, &unused,
-                                          send_reply_callback
-                                          );
+    monitor_server_.HandleSetMinResources(min_req, &unused, send_reply_callback);
     reply_future.get();
     reply_promise = std::promise<void>();
     reply_future = reply_promise.get_future();
-
   }
   {
     // Setup resource demand mocks.
