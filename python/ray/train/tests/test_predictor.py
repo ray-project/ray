@@ -35,7 +35,10 @@ class DummyWithNumpyPreprocessor(DummyPreprocessor):
         self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         self.inputs.append(np_data)
-        rst = np_data * self.multiplier
+        if isinstance(np_data, np.ndarray):
+            rst = np_data * self.multiplier
+        else:
+            rst = {k: v * self.multiplier for k, v in np_data.items()}
         self.outputs.append(rst)
         return rst
 
@@ -66,6 +69,10 @@ class DummyWithNumpyPredictor(DummyPredictor):
         self, data: Union[np.ndarray, Dict[str, np.ndarray]], **kwargs
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         return data * self.factor
+
+    @classmethod
+    def preferred_batch_format(cls):
+        return BatchFormat.NUMPY
 
 
 def test_serialization():
@@ -114,13 +121,14 @@ def test_predict_pandas_with_pandas_data():
     actual_output = predictor.predict(input)
     pd.testing.assert_frame_equal(actual_output, pd.DataFrame({"x": [4.0, 8.0, 12.0]}))
     # This Preprocessor has Numpy as the batch format preference.
-    pd.testing.assert_frame_equal(
-        predictor.get_preprocessor().inputs[0],
-        pd.DataFrame({"x": [1, 2, 3]}),
+    assert list(predictor.get_preprocessor().inputs[0].keys()) == ["x"]
+    np.testing.assert_array_equal(
+        predictor.get_preprocessor().inputs[0]["x"], np.array([1, 2, 3])
     )
-    pd.testing.assert_frame_equal(
-        predictor.get_preprocessor().outputs[0],
-        pd.DataFrame({"x": [2, 4, 6]}),
+
+    assert list(predictor.get_preprocessor().outputs[0].keys()) == ["x"]
+    np.testing.assert_array_equal(
+        predictor.get_preprocessor().outputs[0]["x"], np.array([2, 4, 6])
     )
 
 
@@ -135,10 +143,11 @@ def test_predict_numpy_with_numpy_data():
     )
     predictor = DummyWithNumpyPredictor.from_checkpoint(checkpoint)
     actual_output = predictor.predict(input)
+    # Numpy is the preferred batch format for prediction.
     # Multiply by 2 from preprocessor, another multiply by 2.0 from predictor
-    pd.testing.assert_frame_equal(
-        actual_output, pd.DataFrame({TENSOR_COLUMN_NAME: [4.0, 8.0, 12.0]})
-    )
+    np.testing.assert_array_equal(actual_output, np.array([4.0, 8.0, 12.0]))
+
+    # Preprocessing is still done via Pandas path.
     pd.testing.assert_frame_equal(
         predictor.get_preprocessor().inputs[0],
         pd.DataFrame({TENSOR_COLUMN_NAME: [1, 2, 3]}),
@@ -148,7 +157,8 @@ def test_predict_numpy_with_numpy_data():
         pd.DataFrame({TENSOR_COLUMN_NAME: [2, 4, 6]}),
     )
 
-    # Test predict with both Numpy and Pandas preprocessor available
+    # Test predict with Numpy as preferred batch format for both Predictor and
+    # Preprocessor.
     checkpoint = Checkpoint.from_dict(
         {"factor": 2.0, PREPROCESSOR_KEY: DummyWithNumpyPreprocessor()}
     )
@@ -174,10 +184,11 @@ def test_predict_pandas_with_numpy_data():
     predictor = DummyPredictor.from_checkpoint(checkpoint)
     actual_output = predictor.predict(input)
 
+    # Predictor should return in the same format as the input.
     # Multiply by 2 from preprocessor, another multiply by 2.0 from predictor
-    pd.testing.assert_frame_equal(
-        actual_output, pd.DataFrame({TENSOR_COLUMN_NAME: [4.0, 8.0, 12.0]})
-    )
+    np.testing.assert_array_equal(actual_output, np.array([4.0, 8.0, 12.0]))
+
+    # Preprocessing should go through Pandas path.
     pd.testing.assert_frame_equal(
         predictor.get_preprocessor().inputs[0],
         pd.DataFrame({TENSOR_COLUMN_NAME: [1, 2, 3]}),
@@ -195,7 +206,7 @@ def test_predict_pandas_with_numpy_data():
 
     actual_output = predictor.predict(input)
     np.testing.assert_equal(actual_output, np.array([4.0, 8.0, 12.0]))
-    # Preprocessor should still go through the Numpy path
+    # Preprocessor should go through Numpy path since it is the preferred batch type.
     np.testing.assert_equal(predictor.get_preprocessor().inputs[0], np.array([1, 2, 3]))
     np.testing.assert_equal(
         predictor.get_preprocessor().outputs[0], np.array([2, 4, 6])

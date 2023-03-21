@@ -194,13 +194,6 @@ class Predictor(abc.ABC):
 
         batch_format_to_use = self._batch_format_to_use()
 
-        has_predict_numpy = self.__class__._predict_numpy != Predictor._predict_numpy
-        has_predict_pandas = self.__class__._predict_pandas != Predictor._predict_pandas
-        if not has_predict_numpy and not has_predict_pandas:
-            raise NotImplementedError(
-                "None of `_predict_pandas` or `_predict_numpy` are "
-                f"implemented for input data batch format `{batch_format}`."
-            )
         # We can finish prediction as long as one predict method is implemented.
         # For Prediction, we have to return back in the same format as the input.
         if batch_format == BatchFormat.PANDAS:
