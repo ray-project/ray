@@ -156,7 +156,7 @@ def test_deploy_with_http_options(ray_start_stop):
     assert config == info
 
     with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(["serve", "deploy", f2])
+        subprocess.check_output(["serve", "deploy", f2], stderr=subprocess.STDOUT)
 
     assert requests.post("http://localhost:8005/").text == "wonderful world"
 
