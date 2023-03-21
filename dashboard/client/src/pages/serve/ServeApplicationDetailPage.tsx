@@ -24,7 +24,6 @@ import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import { HelpInfo } from "../../components/Tooltip";
-import { ServeApplication } from "../../type/serve";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useServeApplicationDetails } from "./hook/useServeApplications";
 import { ServeDeploymentRow } from "./ServeDeploymentRow";
@@ -104,8 +103,10 @@ export const ServeApplicationDetailPage = () => {
           {
             label: "Replicas",
             content: {
-              // TODO (aguo): Add number of replicas across all deployments once available in the UI
-              value: "0",
+              value: Object.values(application.deployments)
+                .map(({ replicas }) => replicas.length)
+                .reduce((acc, curr) => acc + curr)
+                .toString(),
             },
           },
           {
