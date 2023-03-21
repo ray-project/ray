@@ -25,8 +25,8 @@ In this guide, we will cover how to enable different types of fault tolerance of
 Experiment-level Fault Tolerance in Tune
 ----------------------------------------
 
-At the experiment level, users can use the :meth:`Tuner.restore <ray.tune.Tuner.restore>`
-method to resume a Tune experiment.
+At the experiment level, :meth:`Tuner.restore <ray.tune.Tuner.restore>`
+resumes a previously interrupted experiment from where it left off.
 
 You should use :meth:`Tuner.restore <ray.tune.Tuner.restore>` in the following cases:
 
@@ -60,12 +60,15 @@ You should use :meth:`Tuner.restore <ray.tune.Tuner.restore>` in the following c
 
 .. _tune-experiment-restore-example:
 
-Example: Restore a Tune Experiment
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Restore a Tune Experiment
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Let's say your initial Tune experiment is configured as follows.
 The actual training loop is just for demonstration purposes: the important detail is that
-:ref:`saving and loading checkpoints has been implemented in the trainable <tune-trial-checkpoint>`.
+saving and loading checkpoints has been implemented in the trainable.
+
+.. TODO: Replace the last line above with this after the checkpoint user guide has landed.
+.. :ref:`saving and loading checkpoints has been implemented in the trainable <tune-trial-checkpoint>`.
 
 .. literalinclude:: /tune/doc_code/fault_tolerance.py
     :language: python
@@ -74,7 +77,7 @@ The actual training loop is just for demonstration purposes: the important detai
 
 The results and checkpoints of the experiment are saved to ``~/ray_results/tune_fault_tolerance_guide``,
 as configured by :class:`~ray.air.config.RunConfig`.
-If the experient has been interrupted due to one of the reasons listed above, use this path to restore the experiment:
+If the experiment has been interrupted due to one of the reasons listed above, use this path to resume:
 
 .. literalinclude:: /tune/doc_code/fault_tolerance.py
     :language: python
@@ -94,13 +97,28 @@ If the experient has been interrupted due to one of the reasons listed above, us
     See :ref:`tune-storage-options`.
 
 
+Restore Configurations
+~~~~~~~~~~~~~~~~~~~~~~
+
+Tune allows configuring which trials should be resumed, based on their status when the experiment was interrupted:
+
+- Unfinished trials left in the ``RUNNING`` state will be resumed by default.
+- Trials that have ``ERRORED`` can be resumed or retried from scratch.
+- ``TERMINATED`` trials *cannot* be resumed.
+
+.. literalinclude:: /tune/doc_code/fault_tolerance.py
+    :language: python
+    :start-after: __ft_restore_options_start__
+    :end-before: __ft_restore_options_end__
+
+
 .. _tune-experiment-autoresume-example:
 
-Example: Auto-resume
-~~~~~~~~~~~~~~~~~~~~
+Auto-resume
+~~~~~~~~~~~
 
 When running in a production setting, one may want a *single script* that (1) launches the
-initial training run in the beginning and (2) restores the experiment (1) already happened previously.
+initial training run in the beginning and (2) restores the experiment if (1) already happened.
 
 Use the :meth:`Tuner.can_restore <ray.tune.Tuner.can_restore>` utility to accomplish this:
 
@@ -149,5 +167,6 @@ In this user guide, we covered how to enable experiment-level and trial-level fa
 See the following resources for more information:
 
 - :ref:`tune-storage-options`
-- :ref:`tune-trial-checkpoint`
 - :ref:`tune-distributed-ref`
+.. TODO: Add this in when the tune trial checkpoint guide has landed.
+.. - :ref:`tune-trial-checkpoint`

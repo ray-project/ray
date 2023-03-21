@@ -33,10 +33,22 @@ tuner.fit()
 
 # __ft_restored_run_start__
 tuner = tune.Tuner.restore(
-    path="~/ray_results/tune_fault_tolerance_guide", trainable=trainable
+    path="~/ray_results/tune_fault_tolerance_guide",
+    trainable=trainable,
+    resume_errored=True,
 )
 tuner.fit()
 # __ft_restored_run_end__
+
+# __ft_restore_options_start__
+tuner = tune.Tuner.restore(
+    path="~/ray_results/tune_fault_tolerance_guide",
+    trainable=trainable,
+    resume_errored=True,
+    restart_errored=False,
+    resume_unfinished=True,
+)
+# __ft_restore_options_end__
 
 # __ft_restore_multiplexing_start__
 import os
@@ -47,7 +59,7 @@ exp_name = "tune_fault_tolerance_guide"
 path = os.path.join(local_dir, exp_name)
 
 if tune.Tuner.can_restore(path):
-    tuner = tune.Tuner.restore(path, trainable=trainable)
+    tuner = tune.Tuner.restore(path, trainable=trainable, resume_errored=True)
 else:
     tuner = tune.Tuner(
         trainable,
