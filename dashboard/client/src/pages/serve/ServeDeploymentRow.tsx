@@ -1,12 +1,12 @@
 import {
   createStyles,
+  IconButton,
   makeStyles,
   TableCell,
   TableRow,
 } from "@material-ui/core";
-import AddIcon from "@material-ui/icons/Add";
-import RemoveIcon from "@material-ui/icons/Remove";
 import React, { useState } from "react";
+import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { Link } from "react-router-dom";
 import {
   CodeDialogButton,
@@ -53,23 +53,39 @@ export const ServeDeploymentRow = ({
   return (
     <React.Fragment>
       <TableRow>
-        <TableCell
-          align="center"
-          onClick={() => {
-            setExpanded(!expanded);
-          }}
-        >
-          {!expanded ? (
-            <AddIcon className={classes.expandCollapseIcon} />
-          ) : (
-            <RemoveIcon className={classes.expandCollapseIcon} />
-          )}
+        <TableCell align="center">
+          <IconButton
+            size="small"
+            onClick={() => {
+              setExpanded(!expanded);
+            }}
+          >
+            {!expanded ? (
+              <RiArrowRightSLine
+                className={classes.expandCollapseIcon}
+                title="Expand"
+              />
+            ) : (
+              <RiArrowDownSLine
+                className={classes.expandCollapseIcon}
+                title="Collapse"
+              />
+            )}
+          </IconButton>
         </TableCell>
         <TableCell align="center" className={classes.deploymentName}>
           {name}
         </TableCell>
+        <TableCell align="center">{Object.keys(replicas).length}</TableCell>
         <TableCell align="center">
           <StatusChip type="serveDeployment" status={status} />
+        </TableCell>
+        <TableCell align="center">
+          <CodeDialogButton
+            title={`Deployment config for ${name}`}
+            code={deployment_config}
+            buttonText="Deployment config"
+          />
         </TableCell>
         <TableCell align="center">
           {message ? (
@@ -82,19 +98,11 @@ export const ServeDeploymentRow = ({
           )}
         </TableCell>
         <TableCell align="center">
-          <CodeDialogButton
-            title={`Deployment config for ${name}`}
-            code={deployment_config}
-            buttonText="Deployment config"
-          />
-        </TableCell>
-        <TableCell align="center">
           {formatDateFromTimeMs(last_deployed_time_s * 1000)}
         </TableCell>
         <TableCell align="center">
           <DurationText startTime={last_deployed_time_s * 1000} />
         </TableCell>
-        <TableCell align="center">{Object.keys(replicas).length}</TableCell>
       </TableRow>
       {expanded &&
         replicas.map((replica) => (
@@ -130,20 +138,20 @@ export const ServeReplicaRow = ({
           {replica_id}
         </Link>
       </TableCell>
+      <TableCell align="center">-</TableCell>
       <TableCell align="center">
         <StatusChip type="serveReplica" status={state} />
       </TableCell>
-      <TableCell align="center">-</TableCell>
       <TableCell align="center">
         <ServeReplicaLogsLink replica={replica} deployment={deployment} />
       </TableCell>
+      <TableCell align="center">-</TableCell>
       <TableCell align="center">
         {formatDateFromTimeMs(start_time_s * 1000)}
       </TableCell>
       <TableCell align="center">
         <DurationText startTime={start_time_s * 1000} />
       </TableCell>
-      <TableCell align="center">-</TableCell>
     </TableRow>
   );
 };

@@ -4,6 +4,7 @@ import { Link as RouterLink, useParams } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
+import { generateActorLink, generateNodeLink } from "../../common/links";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
@@ -44,13 +45,6 @@ export const ServeReplicaDetailPage = () => {
   } = replica;
   return (
     <div>
-      {/* Extra MainNavPageInfo to add an extra layer of nesting in breadcrumbs */}
-      <MainNavPageInfo
-        pageInfo={{
-          id: "serveDeployentDetail",
-          title: deployment.name,
-        }}
-      />
       <MainNavPageInfo
         pageInfo={{
           id: "serveReplicaDetail",
@@ -86,6 +80,7 @@ export const ServeReplicaDetailPage = () => {
             content: {
               value: actor_id ? actor_id : "-",
               copyableValue: actor_id ? actor_id : undefined,
+              link: actor_id ? generateActorLink(actor_id) : undefined,
             },
           },
           {
@@ -100,6 +95,7 @@ export const ServeReplicaDetailPage = () => {
             content: {
               value: node_id ? node_id : "-",
               copyableValue: node_id ? node_id : undefined,
+              link: node_id ? generateNodeLink(node_id) : undefined,
             },
           },
           {

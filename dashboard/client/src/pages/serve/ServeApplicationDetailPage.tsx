@@ -42,12 +42,12 @@ const useStyles = makeStyles((theme) =>
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "" }, // For expand/collapse button
   { label: "Name" },
+  { label: "Replicas" },
   { label: "Status" },
-  { label: "Status message", width: "30%" },
   { label: "Actions" },
+  { label: "Status message", width: "30%" },
   { label: "Last deployed at" },
   { label: "Duration" },
-  { label: "Replicas" },
 ];
 
 export const ServeApplicationDetailPage = () => {
@@ -250,13 +250,6 @@ export const ServeApplicationDetailLayout = () => {
 
   return (
     <React.Fragment>
-      {/* Extra MainNavPageInfo to add an extra layer of nesting in breadcrumbs */}
-      <MainNavPageInfo
-        pageInfo={{
-          id: "serveApplicationsList",
-          title: "Applications",
-        }}
-      />
       <MainNavPageInfo
         pageInfo={{
           id: "serveApplicationDetail",

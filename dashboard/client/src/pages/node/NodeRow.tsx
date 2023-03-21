@@ -5,13 +5,13 @@ import {
   TableRow,
   Tooltip,
 } from "@material-ui/core";
-import AddIcon from "@material-ui/icons/Add";
-import RemoveIcon from "@material-ui/icons/Remove";
 import { sortBy } from "lodash";
 import React, { useState } from "react";
+import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { Link } from "react-router-dom";
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
+import { NodeLink } from "../../common/links";
 import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
@@ -65,9 +65,9 @@ export const NodeRow = ({
       <TableCell>
         <IconButton size="small" onClick={onExpandButtonClick}>
           {!expanded ? (
-            <AddIcon className={classes.expandCollapseIcon} />
+            <RiArrowRightSLine className={classes.expandCollapseIcon} />
           ) : (
-            <RemoveIcon className={classes.expandCollapseIcon} />
+            <RiArrowDownSLine className={classes.expandCollapseIcon} />
           )}
         </IconButton>
       </TableCell>
@@ -79,9 +79,13 @@ export const NodeRow = ({
       </TableCell>
       <TableCell align="center">
         <Tooltip title={raylet.nodeId} arrow interactive>
-          <Link to={`nodes/${raylet.nodeId}`} className={classes.idCol}>
-            {raylet.nodeId}
-          </Link>
+          <div>
+            <NodeLink
+              nodeId={raylet.nodeId}
+              to={`nodes/${raylet.nodeId}`}
+              className={classes.idCol}
+            />
+          </div>
         </Tooltip>
       </TableCell>
       <TableCell align="center">

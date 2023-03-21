@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
+import { generateNodeLink } from "../../common/links";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
@@ -107,6 +108,9 @@ const ActorDetailPage = () => {
                 ? {
                     value: actorDetail.address?.rayletId,
                     copyableValue: actorDetail.address?.rayletId,
+                    link: actorDetail.address.rayletId
+                      ? generateNodeLink(actorDetail.address.rayletId)
+                      : undefined,
                   }
                 : { value: "-" },
             },
