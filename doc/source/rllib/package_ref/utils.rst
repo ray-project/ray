@@ -16,7 +16,7 @@ behavior by sub-classing the Exploration base class and implementing
 your own logic:
 
 Built-in exploration components
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. currentmodule:: ray.rllib.utils.exploration
 
