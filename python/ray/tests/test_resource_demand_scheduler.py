@@ -720,6 +720,70 @@ def test_calculate_node_resources():
     assert not rem
 
 
+def test_request_resources_gpu_no_gpu_nodes():
+    provider = MockProvider()
+    TYPES = {
+        "m5.8xlarge": {
+            "node_config": {},
+            "resources": {"CPU": 32},
+            "max_workers": 40,
+        },
+    }
+    scheduler = ResourceDemandScheduler(
+        provider,
+        TYPES,
+        max_workers=100,
+        head_node_type="empty_node",
+        upscaling_speed=1,
+    )
+
+    # Head node
+    provider.create_node(
+        {},
+        {
+            TAG_RAY_USER_NODE_TYPE: "m5.8xlarge",
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+        },
+        1,
+    )
+    all_nodes = provider.non_terminated_nodes({})
+    node_ips = provider.non_terminated_node_ips({})
+    assert len(node_ips) == 1, node_ips
+
+    # Fully utilized, no requests.
+    avail_by_ip = {ip: {} for ip in node_ips}
+    max_by_ip = {ip:{"CPU": 32} for ip in node_ips}
+    # There aren't any nodes that can satisfy this demand, but we still shouldn't crash.
+    demands = [{"CPU": 1, "GPU": 1}] * 1
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        all_nodes,
+        {},
+        [],
+        avail_by_ip,
+        [],
+        max_by_ip,
+        demands,
+        EMPTY_AVAILABILITY_SUMMARY,
+    )
+    assert len(to_launch) == 0, to_launch
+    assert not rem
+
+    demands = [{"CPU": 1, "GPU": 0}] * 33
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        all_nodes,
+        {},
+        [],
+        avail_by_ip,
+        [],
+        max_by_ip,
+        demands,
+        EMPTY_AVAILABILITY_SUMMARY,
+    )
+    assert len(to_launch) == 1, to_launch
+    assert not rem
+
+
 def test_request_resources_existing_usage():
     provider = MockProvider()
     TYPES = {
