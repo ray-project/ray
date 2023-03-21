@@ -291,7 +291,9 @@ class GcsClient:
     ) -> None:
         request = monitor_pb2.SetMinResourcesRequest(
             min_resource_request=monitor_pb2.ResourceRequest(
-                resource_request_type=monitor_pb2.ResourceRequest.ResourceRequestType.MIN_RESOURCES,
+                resource_request_type=(
+                    monitor_pb2.ResourceRequest.ResourceRequestType.MIN_RESOURCES
+                ),
                 count=1,
                 bundles=[
                     monitor_pb2.ResourceBundle(resources=bundle) for bundle in bundles
