@@ -113,6 +113,8 @@ service MonitorGcsService {
   // A a snapshot of all information ray scheduling information relevant ot
   // autoscaling.
   rpc GetSchedulingStatus(GetSchedulingStatusRequest) returns (GetSchedulingStatusReply);
-  // Set a global min resources for the cluster.
+  // Set a global min resources for the cluster. This endpoint is an
+  // implementation detail of `ray.autoscaler.sdk.request_resources()` and does
+  // NOT have a version compatibility guarantee.
   rpc SetMinResources(SetMinResourcesRequest) returns (SetMinResourcesReply);
 }
