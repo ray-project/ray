@@ -753,7 +753,7 @@ def test_request_resources_gpu_no_gpu_nodes():
 
     # Fully utilized, no requests.
     avail_by_ip = {ip: {} for ip in node_ips}
-    max_by_ip = {ip:{"CPU": 32} for ip in node_ips}
+    max_by_ip = {ip: {"CPU": 32} for ip in node_ips}
     # There aren't any nodes that can satisfy this demand, but we still shouldn't crash.
     demands = [{"CPU": 1, "GPU": 1}] * 1
     to_launch, rem = scheduler.get_nodes_to_launch(
