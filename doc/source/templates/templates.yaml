@@ -1,0 +1,37 @@
+# See README.md for more details.
+
+- name: Scaling Batch Inference with Ray Data
+  path: doc/source/templates/01_batch_inference
+  cluster_env: doc/source/templates/configs/anyscale_cluster_env.yaml
+  small:
+    compute_config:
+      gcp: doc/source/templates/configs/compute/gpu/gcp_small.yaml
+      aws: doc/source/templates/configs/compute/gpu/aws_small.yaml
+  large:
+    compute_config:
+      gcp: doc/source/templates/configs/compute/gpu/gcp_large.yaml
+      aws: doc/source/templates/configs/compute/gpu/aws_large.yaml
+
+- name: Scaling Many Model Training with Ray Tune
+  path: doc/source/templates/02_many_model_training
+  cluster_env: doc/source/templates/configs/anyscale_cluster_env.yaml
+  small:
+    compute_config:
+      gcp: doc/source/templates/configs/compute/cpu/gcp_small.yaml
+      aws: doc/source/templates/configs/compute/cpu/aws_small.yaml
+  large:
+    compute_config:
+      gcp: doc/source/templates/configs/compute/cpu/gcp_large.yaml
+      aws: doc/source/templates/configs/compute/cpu/aws_large.yaml
+
+- name: Serving a Stable Diffusion Model with Ray Serve
+  path: doc/source/templates/03_serving_stable_diffusion
+  cluster_env: doc/source/templates/configs/anyscale_cluster_env.yaml
+  small:
+    compute_config:
+      gcp: doc/source/templates/configs/compute/cpu/gcp_small.yaml
+      aws: doc/source/templates/configs/compute/cpu/aws_small.yaml
+  large:
+    compute_config:
+      gcp: doc/source/templates/configs/compute/cpu/gcp_large.yaml
+      aws: doc/source/templates/configs/compute/cpu/aws_large.yaml

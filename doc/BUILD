@@ -28,14 +28,12 @@ py_test(
 )
 
 py_test(
-    name = "big_data_ingestion",
+    name = "tensor",
     size = "small",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    args = ["--path", "doc/source/data/examples/big_data_ingestion.ipynb"],
-    data = ["//doc/source/data/examples:data_examples"],
-    tags = ["exclusive", "team:core", "py37"]
+    srcs = ["source/data/doc_code/tensor.py"],
+    tags = ["exclusive", "team:ml"]
 )
+
 
 py_test(
     name = "datasets_train",
@@ -145,9 +143,23 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/serve/doc_code/**/*.py"],
-    exclude = [],
+    exclude = [
+        "source/serve/doc_code/distilbert.py",
+        "source/serve/doc_code/stable_diffusion.py",
+    ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
+)
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = [
+        "source/serve/doc_code/distilbert.py",
+        "source/serve/doc_code/stable_diffusion.py",
+    ],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:serve", "gpu"],
 )
 
 
@@ -226,4 +238,14 @@ py_test_run_all_subdirectory(
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:ml", "ray_air", "gpu"],
+)
+
+py_test(
+    name = "pytorch_resnet_finetune",
+    size = "large",
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    tags = ["exclusive", "team:ml", "gpu", "ray_air"],
+    data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
+    args = ["--path", "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb"]
 )

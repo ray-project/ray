@@ -7,6 +7,7 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     ApplicationStatusInfo,
 )
+from ray.serve.schema import DeploymentDetails
 import time
 from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 import logging
@@ -51,6 +52,7 @@ class ApplicationState:
         self.deploy_obj_ref = deploy_obj_ref
         self.app_msg = ""
         self.route_prefix = None
+        self.docs_path = None
 
         # This set tracks old deployments that are being deleted
         self.deployments_to_delete = set()
@@ -81,18 +83,30 @@ class ApplicationState:
 
         # Update route prefix for application
         num_route_prefixes = 0
+        num_docs_paths = 0
         for deploy_param in deployment_params:
-            if (
-                "route_prefix" in deploy_param
-                and deploy_param["route_prefix"] is not None
-            ):
+            if deploy_param.get("route_prefix") is not None:
                 self.route_prefix = deploy_param["route_prefix"]
                 num_route_prefixes += 1
-        assert num_route_prefixes <= 1, (
-            f"Found multiple route prefix from application {self.name},"
-            " Please specify only one route prefix for the application "
-            "to avoid this issue."
-        )
+
+            if deploy_param.get("docs_path") is not None:
+                self.docs_path = deploy_param["docs_path"]
+                num_docs_paths += 1
+        if num_route_prefixes > 1:
+            raise RayServeException(
+                f'Found multiple route prefix from application "{self.name}",'
+                " Please specify only one route prefix for the application "
+                "to avoid this issue."
+            )
+        # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
+        # if user sets the docs path to None in their FastAPI app.
+        if num_docs_paths > 1:
+            raise RayServeException(
+                f'Found multiple deployments in application "{self.name}" that have '
+                "a docs path. This may be due to using multiple FastAPI deployments "
+                "in your application. Please only include one deployment with a docs "
+                "path in your application to avoid this issue."
+            )
 
         self.status = ApplicationStatus.DEPLOYING
         return cur_deployments_to_delete
@@ -147,9 +161,13 @@ class ApplicationState:
                     return
                 try:
                     ray.get(finished[0])
-                except RayTaskError:
+                except RayTaskError as e:
                     self.status = ApplicationStatus.DEPLOY_FAILED
-                    self.app_msg = f"Deployment failed:\n{traceback.format_exc()}"
+                    # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
+                    # here because the full details of the error is not displayed
+                    # properly with traceback.format_exc(). RayTaskError has its own
+                    # custom __str__ function.
+                    self.app_msg = f"Deployment failed:\n{str(e)}"
                     self.deploy_obj_ref = None
                     return
                 except RuntimeEnvSetupError:
@@ -195,6 +213,13 @@ class ApplicationState:
             message=self.app_msg,
             deployment_timestamp=self.deployment_timestamp,
         )
+
+    def list_deployment_details(self) -> Dict[str, DeploymentDetails]:
+        """Gets detailed info on all deployments in this application."""
+        return {
+            name: self.deployment_state_manager.get_deployment_details(name)
+            for name in self.get_all_deployments()
+        }
 
 
 class ApplicationStateManager:
@@ -266,12 +291,24 @@ class ApplicationStateManager:
             )
         return self._application_states[name].get_application_status_info()
 
+    def get_docs_path(self, app_name: str):
+        return self._application_states[app_name].docs_path
+
+    def get_route_prefix(self, name: str) -> str:
+        return self._application_states[name].route_prefix
+
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}"""
         return {
             name: self._application_states[name].get_application_status_info()
             for name in self._application_states
         }
+
+    def list_deployment_details(self, name: str) -> Dict[str, DeploymentDetails]:
+        """Gets detailed info on all deployments in specified application."""
+        if name not in self._application_states:
+            return {}
+        return self._application_states[name].list_deployment_details()
 
     def create_application_state(
         self, name: str, deploy_obj_ref: ObjectRef, deployment_time: float = 0

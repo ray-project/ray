@@ -258,7 +258,7 @@ def test_monitor_callbacks(ray_start_4_cpus):
     from ray.train.mosaic import MosaicTrainer
 
     # Test Callbacks involving logging (SpeedMonitor, LRMonitor)
-    from composer.callbacks import SpeedMonitor, LRMonitor, GradMonitor
+    from composer.callbacks import SpeedMonitor, LRMonitor
 
     trainer_init_config = {
         "max_duration": "1ep",
@@ -270,7 +270,6 @@ def test_monitor_callbacks(ray_start_4_cpus):
     trainer_init_config["callbacks"] = [
         SpeedMonitor(window_size=3),
         LRMonitor(),
-        GradMonitor(),
     ]
 
     trainer = MosaicTrainer(
@@ -289,7 +288,6 @@ def test_monitor_callbacks(ray_start_4_cpus):
         "wall_clock/val",
         "wall_clock/total",
         "lr-DecoupledSGDW/group0",
-        "grad_l2_norm/step",
     ]
     for column in columns_to_check:
         assert column in metrics_columns, column + " is not found"

@@ -6,10 +6,12 @@ import tensorflow as tf
 import tree  # pip install dm-tree
 
 import ray.rllib.algorithms.ppo as ppo
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.metrics import ALL_MODULES
 
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -32,9 +34,9 @@ FAKE_BATCH = {
     SampleBatch.TERMINATEDS: np.array([False, False, True]),
     SampleBatch.TRUNCATEDS: np.array([False, False, False]),
     SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-    SampleBatch.ACTION_DIST_INPUTS: {
-        "logits": np.array([[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5]], dtype=np.float32)
-    },
+    SampleBatch.ACTION_DIST_INPUTS: np.array(
+        [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5]], dtype=np.float32
+    ),
     SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
     SampleBatch.EPS_ID: np.array([0, 0, 0]),
     SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
@@ -101,7 +103,8 @@ class TestPPO(unittest.TestCase):
                     module_class=algo_config.rl_module_spec.module_class,
                     observation_space=policy.observation_space,
                     action_space=policy.action_space,
-                    model_config=policy.config["model"],
+                    model_config_dict=policy.config["model"],
+                    catalog_class=PPOCatalog,
                 )
             )
             learner_group = learner_group_config.build()
@@ -110,7 +113,7 @@ class TestPPO(unittest.TestCase):
             learner_group.set_weights(trainer.get_weights())
             results = learner_group.update(train_batch.as_multi_agent())
 
-            learner_group_loss = results["loss"]["total_loss"]
+            learner_group_loss = results[ALL_MODULES]["total_loss"]
 
             check(learner_group_loss, policy_loss)
 

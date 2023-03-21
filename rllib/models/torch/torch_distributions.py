@@ -28,7 +28,7 @@ class TorchDistribution(Distribution, abc.ABC):
     @abc.abstractmethod
     def _get_torch_distribution(
         self, *args, **kwargs
-    ) -> torch.distributions.Distribution:
+    ) -> "torch.distributions.Distribution":
         """Returns the torch.distributions.Distribution object to use."""
 
     @override(Distribution)
@@ -108,7 +108,7 @@ class TorchCategorical(TorchDistribution):
         probs: torch.Tensor = None,
         logits: torch.Tensor = None,
         temperature: float = 1.0,
-    ) -> torch.distributions.Distribution:
+    ) -> "torch.distributions.Distribution":
         if logits is not None:
             assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
             logits /= temperature
@@ -119,7 +119,14 @@ class TorchCategorical(TorchDistribution):
     def required_model_output_shape(
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
-        return (space.n,)
+        return (int(space.n),)
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(
+        cls, logits: TensorType, temperature: float = 1.0, **kwargs
+    ) -> "TorchCategorical":
+        return TorchCategorical(logits=logits, temperature=temperature, **kwargs)
 
 
 @DeveloperAPI
@@ -158,7 +165,7 @@ class TorchDiagGaussian(TorchDistribution):
 
     def _get_torch_distribution(
         self, loc, scale=None
-    ) -> torch.distributions.Distribution:
+    ) -> "torch.distributions.Distribution":
         if scale is None:
             loc, log_std = torch.chunk(self.inputs, 2, dim=1)
             scale = torch.exp(log_std)
@@ -181,7 +188,14 @@ class TorchDiagGaussian(TorchDistribution):
     def required_model_output_shape(
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
-        return tuple(np.prod(space.shape, dtype=np.int32) * 2)
+        return (int(np.prod(space.shape, dtype=np.int32) * 2),)
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDiagGaussian":
+        loc, log_std = logits.chunk(2, dim=-1)
+        scale = log_std.exp()
+        return TorchDiagGaussian(loc=loc, scale=scale)
 
 
 @DeveloperAPI
@@ -254,4 +268,9 @@ class TorchDeterministic(Distribution):
         space: gym.Space, model_config: ModelConfigDict
     ) -> Tuple[int, ...]:
         # TODO: This was copied from previous code. Is this correct? add unit test.
-        return tuple(np.prod(space.shape, dtype=np.int32))
+        return (int(np.prod(space.shape, dtype=np.int32)),)
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDeterministic":
+        return TorchDeterministic(loc=logits)

@@ -14,6 +14,7 @@ from ray.rllib.algorithms.impala.tf.impala_tf_learner import (
     ImpalaHPs,
     _reduce_impala_results,
 )
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.learner.learner_group_config import (
     LearnerGroupConfig,
     ModuleSpec,
@@ -32,9 +33,9 @@ from ray.rllib.utils.actor_manager import (
 )
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
-    Deprecated,
     deprecation_warning,
 )
 from ray.rllib.utils.metrics import (
@@ -147,15 +148,6 @@ class ImpalaConfig(AlgorithmConfig):
         self._tf_policy_handles_more_than_one_loss = True
         # __sphinx_doc_end__
         # fmt: on
-        self._learner_hps.discount_factor = self.gamma
-        self._learner_hps.entropy_coeff = self.entropy_coeff
-        self._learner_hps.vf_loss_coeff = self.vf_loss_coeff
-        self._learner_hps.vtrace_drop_last_ts = self.vtrace_drop_last_ts
-        self._learner_hps.vtrace_clip_rho_threshold = self.vtrace_clip_rho_threshold
-        self._learner_hps.vtrace_clip_pg_rho_threshold = (
-            self.vtrace_clip_pg_rho_threshold
-        )
-        self._learner_hps.rollout_frag_or_episode_len = self.rollout_fragment_length
 
         # Deprecated value.
         self.num_data_loader_buffers = DEPRECATED_VALUE
@@ -281,15 +273,10 @@ class ImpalaConfig(AlgorithmConfig):
             self.vtrace = vtrace
         if vtrace_clip_rho_threshold is not NotProvided:
             self.vtrace_clip_rho_threshold = vtrace_clip_rho_threshold
-            self._learner_hps.vtrace_clip_rho_threshold = vtrace_clip_rho_threshold
         if vtrace_clip_pg_rho_threshold is not NotProvided:
             self.vtrace_clip_pg_rho_threshold = vtrace_clip_pg_rho_threshold
-            self._learner_hps.vtrace_clip_pg_rho_threshold = (
-                vtrace_clip_pg_rho_threshold
-            )
         if vtrace_drop_last_ts is not NotProvided:
             self.vtrace_drop_last_ts = vtrace_drop_last_ts
-            self._learner_hps.vtrace_drop_last_ts = vtrace_drop_last_ts
         if num_multi_gpu_tower_stacks is not NotProvided:
             self.num_multi_gpu_tower_stacks = num_multi_gpu_tower_stacks
         if minibatch_buffer_size is not NotProvided:
@@ -330,10 +317,8 @@ class ImpalaConfig(AlgorithmConfig):
             self.epsilon = epsilon
         if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
-            self._learner_hps.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
             self.entropy_coeff = entropy_coeff
-            self._learner_hps.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
         if _separate_vf_optimizer is not NotProvided:
@@ -344,7 +329,6 @@ class ImpalaConfig(AlgorithmConfig):
             self.after_train_step = after_train_step
         if gamma is not NotProvided:
             self.gamma = gamma
-            self._learner_hps.discount_factor = self.gamma
 
         return self
 
@@ -393,8 +377,19 @@ class ImpalaConfig(AlgorithmConfig):
                     "term/optimizer! Try setting config.training("
                     "_tf_policy_handles_more_than_one_loss=True)."
                 )
+        # learner hps need to be updated inside of config.validate in order to have
+        # the correct values for when a user starts an experiment from a dict. This is
+        # as oppposed to assigning the values inthe builder functions such as `training`
         self._learner_hps.rollout_frag_or_episode_len = (
             self.get_rollout_fragment_length()
+        )
+        self._learner_hps.discount_factor = self.gamma
+        self._learner_hps.entropy_coeff = self.entropy_coeff
+        self._learner_hps.vf_loss_coeff = self.vf_loss_coeff
+        self._learner_hps.vtrace_drop_last_ts = self.vtrace_drop_last_ts
+        self._learner_hps.vtrace_clip_rho_threshold = self.vtrace_clip_rho_threshold
+        self._learner_hps.vtrace_clip_pg_rho_threshold = (
+            self.vtrace_clip_pg_rho_threshold
         )
 
     @override(AlgorithmConfig)
@@ -428,7 +423,9 @@ class ImpalaConfig(AlgorithmConfig):
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
-            return SingleAgentRLModuleSpec(module_class=PPOTfRLModule)
+            return SingleAgentRLModuleSpec(
+                module_class=PPOTfRLModule, catalog_class=PPOCatalog
+            )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
@@ -664,7 +661,7 @@ class Impala(Algorithm):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.config._enable_learner_api:
                 if train_results:
-                    pids = list(train_results["learner"]["loss"].keys())
+                    pids = list(set(train_results.keys()) - {ALL_MODULES})
                 else:
                     pids = []
                 self.update_workers_from_learner_group(
@@ -830,9 +827,9 @@ class Impala(Algorithm):
                     timeout_seconds=self._timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
-            elif self.workers.local_worker() and (
-                self.config.create_env_on_local_worker
-                or self.config.num_rollout_workers == 0
+            elif (
+                self.workers.local_worker()
+                and self.workers.local_worker().async_env is not None
             ):
                 # Sampling from the local worker
                 sample_batch = self.workers.local_worker().sample()
@@ -859,17 +856,24 @@ class Impala(Algorithm):
             # Then we can't do async updates, so we need to block.
             blocking = self.config.num_learner_workers == 0
             lg_results = self.learner_group.update(
-                batch, reduce_fn=_reduce_impala_results, block=blocking
+                batch,
+                reduce_fn=_reduce_impala_results,
+                block=blocking,
+                num_iters=self.config.num_sgd_iter,
             )
         else:
             lg_results = None
 
         if lg_results:
-            self._counters[NUM_ENV_STEPS_TRAINED] += lg_results["env_steps_trained"]
-            self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results["agent_steps_trained"]
-            del lg_results["env_steps_trained"]
-            del lg_results["agent_steps_trained"]
-            result = {"learner": lg_results}
+            self._counters[NUM_ENV_STEPS_TRAINED] += lg_results[ALL_MODULES][
+                NUM_ENV_STEPS_TRAINED
+            ]
+            self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results[ALL_MODULES][
+                NUM_AGENT_STEPS_TRAINED
+            ]
+            del lg_results[ALL_MODULES][NUM_ENV_STEPS_TRAINED]
+            del lg_results[ALL_MODULES][NUM_AGENT_STEPS_TRAINED]
+            result = lg_results
 
         return result
 
@@ -1151,20 +1155,3 @@ class AggregatorWorker(FaultAwareApply):
 
     def get_host(self) -> str:
         return platform.node()
-
-
-# Deprecated: Use ray.rllib.algorithms.impala.ImpalaConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(ImpalaConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.impala.impala::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.impala.impala::IMPALAConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

@@ -15,14 +15,13 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-@pytest.mark.parametrize("use_workaround", [False, True])
 @pytest.mark.parametrize("exit_same", [False, True])
-def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
+def test_registry_conflict(ray_start_4_cpus, tmpdir, exit_same):
     """Two concurrent Tune runs can conflict with each other when they
     use a trainable with the same name.
 
-    This test starts two runs in parallel and asserts that a workaround used
-    in the docs can alleviate the problem.
+    This test starts two runs in parallel and asserts that our fix in
+    https://github.com/ray-project/ray/pull/33095 resolves the issue.
 
     This is how we schedule the runs:
 
@@ -42,10 +41,6 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
     - Run 1 finally finishes, and we compare the expected results with the actual
       results.
 
-    When you don't use the workaround, expect an assertion error (if ``exit_same=True``,
-    see below), otherwise a KeyError (because a trial failed).
-    When the workaround is used, we expect everything to run without error.
-
     NOTE: Two errors can occur with registry conflicts. First,
     the trainable can be overwritten and captured, for example, when a fixed value
     is included in the trainable. The second trial of run 1 then has a wrong
@@ -57,10 +52,6 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
     removed already. Note that these objects are registered with
     ``tune.with_parameters()`` (not the global registry store).
     We test both scenarios using the ``exit_same`` parameter.
-
-    NOTE: If we resolve the registry issue (for example, with unique keys)
-    you can remove the test that expects the assertion error. We can remove
-    the parametrization and the workaround and assert that no conflict occurs.
     """
     # Create file markers
     run_1_running = tmpdir / "run_1_running"
@@ -75,7 +66,6 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
 
     run_1_env = {
         "RAY_ADDRESS": ray_address,
-        "WORKAROUND": str(int(use_workaround)),
         "FIXED_VAL": str(1),
         "VAL_1": str(2),
         "VAL_2": str(3),
@@ -93,7 +83,6 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
 
     run_2_env = {
         "RAY_ADDRESS": ray_address,
-        "WORKAROUND": str(int(use_workaround)),
         "FIXED_VAL": str(4),
         "VAL_1": str(5),
         "VAL_2": str(6),
@@ -123,18 +112,7 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, use_workaround, exit_same):
     print("Started run 2:", run_2.pid)
 
     assert run_2.wait() == 0
-
-    if use_workaround:
-        assert run_1.wait() == 0
-    else:
-        assert run_1.wait() != 0
-
-        stderr = run_1.stderr.read().decode()
-
-        if not exit_same:
-            assert "OwnerDiedError" in stderr, stderr
-        else:
-            assert "AssertionError" in stderr, stderr
+    assert run_1.wait() == 0
 
 
 if __name__ == "__main__":
