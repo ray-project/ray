@@ -432,7 +432,7 @@ class TuneTerminalReporter(TuneReporterBase):
                     tabulate(
                         table.trial_infos,
                         headers=header,
-                        tablefmt="psql",
+                        tablefmt="simple",
                         showindex=False,
                     )
                 )
@@ -440,7 +440,7 @@ class TuneTerminalReporter(TuneReporterBase):
                 if table.more_info:
                     print(table.more_info)
             else:
-                print(tabulate(table.trial_infos, tablefmt="psql", showindex=False))
+                print(tabulate(table.trial_infos, tablefmt="simple", showindex=False))
 
 
 class TuneRichReporter(TuneReporterBase):
@@ -493,6 +493,7 @@ class AirResultCallbackWrapper(Callback):
     # are added, there is no information on `num_samples` yet.
     def __init__(self, verbosity):
         self._verbosity = verbosity
+        self._callback = None
 
     def setup(
         self,
@@ -508,9 +509,15 @@ class AirResultCallbackWrapper(Callback):
         )
 
     # everything ELSE is just passing through..
-    def __getattr__(self, attr):
-        if attr == "setup":
-            return getattr(self, attr)
+    def __getattribute__(self, attr):
+        proxy_through_keys = {
+            "on_trial_result",
+            "on_trial_complete",
+            "on_checkpoint",
+            "on_trial_start",
+        }
+        if attr not in proxy_through_keys:
+            return super().__getattribute__(attr)
         return getattr(self._callback, attr)
 
 
