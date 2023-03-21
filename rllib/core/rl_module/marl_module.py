@@ -431,6 +431,7 @@ class MultiAgentRLModuleSpec:
             )
 
     def get_marl_config(self) -> "MultiAgentRLModuleConfig":
+        """Returns the MultiAgentRLModuleConfig for this spec."""
         return MultiAgentRLModuleConfig(modules=self.module_specs)
 
     @OverrideToImplementCustomLogic
