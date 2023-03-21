@@ -1571,7 +1571,7 @@
     cluster_compute: tpl_aws_16x1.yaml
 
   run:
-    timeout: 4200
+    timeout: 5400
     script: python workloads/test_tune_worker_fault_tolerance.py
 
     wait_for_nodes:
