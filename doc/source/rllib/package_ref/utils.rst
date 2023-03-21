@@ -69,7 +69,7 @@ Scheduler API
 -------------
 
 Use a scheduler to set scheduled values for variables (in Python, PyTorch, or 
-TensorFlow) based on a (int64) timestep input. The computed values are usually float32 
+TensorFlow) based on an (int64) timestep input. The computed values are usually float32 
 types.
 
 
