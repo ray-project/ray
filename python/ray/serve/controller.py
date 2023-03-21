@@ -504,6 +504,13 @@ class ServeController:
         # ServeApplicationSchema. Eventually, after migration is complete, we should
         # deprecate such usage.
         if isinstance(config, ServeApplicationSchema):
+            if "name" in config.dict(exclude_unset=True):
+                raise RayServeException(
+                    "Specifying the name of an application is only allowed for apps "
+                    "that are listed as part of a multi-app config file. Please see "
+                    "the documentation for ServeDeploySchema for more details."
+                )
+
             applications = [config]
             if self.deploy_mode == ServeDeployMode.MULTI_APP:
                 raise RayServeException(
@@ -730,6 +737,7 @@ class ServeController:
                 host=http_config.host,
                 port=http_config.port,
             ),
+            deploy_mode=self.deploy_mode,
             applications=applications,
         ).dict(exclude_unset=True)
 

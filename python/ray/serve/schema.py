@@ -10,6 +10,7 @@ from ray.serve._private.common import (
     StatusOverview,
     DeploymentInfo,
     ReplicaState,
+    ServeDeployMode,
 )
 from ray.serve.config import DeploymentMode
 from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
@@ -746,6 +747,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         ),
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
+    deploy_mode: ServeDeployMode = Field(description="Single-app vs Multi-app.")
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
     )
@@ -757,7 +759,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         Represents no Serve instance running on the cluster.
         """
 
-        return {"applications": {}}
+        return {"deploy_mode": "UNSET", "applications": {}}
 
 
 @PublicAPI(stability="beta")

@@ -166,6 +166,16 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 text=repr(e),
             )
 
+        if "name" in config.dict(exclude_unset=True):
+            return Response(
+                status=400,
+                text=(
+                    "Specifying the name of an application is only allowed for apps "
+                    "that are listed as part of a multi-app config file. Please see "
+                    "the documentation for ServeDeploySchema for more details."
+                ),
+            )
+
         client = serve_start(
             detached=True,
             http_options={
