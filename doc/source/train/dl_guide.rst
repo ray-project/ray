@@ -62,7 +62,7 @@ training.
        and instead handle the logic directly inside your training function.
 
     First, use the :func:`~ray.train.torch.prepare_model` function to automatically move your model to the right device and wrap it in
-    ``DistributedDataParallel``
+    ``DistributedDataParallel``:
 
     .. code-block:: diff
 
@@ -92,7 +92,7 @@ training.
 
     Then, use the ``prepare_data_loader`` function to automatically add a ``DistributedSampler`` to your ``DataLoader``
     and move the batches to the right device. This step is not necessary if you are passing in Ray Datasets to your Trainer
-    (see :ref:`train-datasets`)
+    (see :ref:`train-datasets`):
 
     .. code-block:: diff
 

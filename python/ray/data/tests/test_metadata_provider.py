@@ -168,7 +168,7 @@ def test_default_file_metadata_provider(
         wraps=_get_file_infos_serial,
     ) as mock_get:
         file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
-    mock_get.assert_called_once_with(paths, fs)
+    mock_get.assert_called_once_with(paths, fs, False)
     assert "meta_provider=FastFileMetadataProvider()" in caplog.text
     assert file_paths == paths
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
@@ -185,6 +185,44 @@ def test_default_file_metadata_provider(
     assert len(paths) == 2
     assert all(path in meta.input_files for path in paths)
     assert meta.schema is None
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_default_metadata_provider_ignore_missing(fs, data_path, endpoint_url):
+    storage_options = (
+        {}
+        if endpoint_url is None
+        else dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    )
+
+    path1 = os.path.join(data_path, "test1.csv")
+    path2 = os.path.join(data_path, "test2.csv")
+    paths = [path1, path2]
+    paths_with_missing = paths + [os.path.join(data_path, "missing.csv")]
+    paths_with_missing, fs = _resolve_paths_and_filesystem(paths_with_missing, fs)
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df1.to_csv(path1, index=False, storage_options=storage_options)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df2.to_csv(path2, index=False, storage_options=storage_options)
+
+    meta_provider = DefaultFileMetadataProvider()
+    file_paths, _ = map(
+        list,
+        zip(
+            *meta_provider.expand_paths(
+                paths_with_missing, fs, ignore_missing_paths=True
+            )
+        ),
+    )
+
+    assert len(file_paths) == 2
 
 
 @pytest.mark.parametrize(
@@ -231,9 +269,9 @@ def test_default_file_metadata_provider_many_files_basic(
     with caplog.at_level(logging.WARNING), patcher as mock_get:
         file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
     if isinstance(fs, LocalFileSystem):
-        mock_get.assert_called_once_with(paths, fs)
+        mock_get.assert_called_once_with(paths, fs, False)
     else:
-        mock_get.assert_called_once_with(paths, _unwrap_protocol(data_path), fs)
+        mock_get.assert_called_once_with(paths, _unwrap_protocol(data_path), fs, False)
     assert "meta_provider=FastFileMetadataProvider()" in caplog.text
     assert file_paths == paths
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
@@ -302,12 +340,10 @@ def test_default_file_metadata_provider_many_files_partitioned(
             list, zip(*meta_provider.expand_paths(paths, fs, partitioning))
         )
     if isinstance(fs, LocalFileSystem):
-        mock_get.assert_called_once_with(paths, fs)
+        mock_get.assert_called_once_with(paths, fs, False)
     else:
         mock_get.assert_called_once_with(
-            paths,
-            _unwrap_protocol(partitioning.base_dir),
-            fs,
+            paths, _unwrap_protocol(partitioning.base_dir), fs, False
         )
     assert "meta_provider=FastFileMetadataProvider()" in caplog.text
     assert file_paths == paths
@@ -369,7 +405,8 @@ def test_default_file_metadata_provider_many_files_diff_dirs(
         )
     with caplog.at_level(logging.WARNING), patcher as mock_get:
         file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
-    mock_get.assert_called_once_with(paths, fs)
+
+    mock_get.assert_called_once_with(paths, fs, False)
     assert "meta_provider=FastFileMetadataProvider()" in caplog.text
     assert file_paths == paths
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
@@ -432,6 +469,14 @@ def test_fast_file_metadata_provider(
     assert len(paths) == 2
     assert all(path in meta.input_files for path in paths)
     assert meta.schema is None
+
+
+def test_fast_file_metadata_provider_ignore_missing():
+    meta_provider = FastFileMetadataProvider()
+    with pytest.raises(ValueError):
+        paths = meta_provider.expand_paths([], None, ignore_missing_paths=True)
+        for _ in paths:
+            pass
 
 
 if __name__ == "__main__":
