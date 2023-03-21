@@ -48,7 +48,7 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
 
     # test from single pyarrow table
     ds = ray.data.from_arrow(pa.Table.from_pandas(df1))
@@ -56,7 +56,7 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
 
 
 def test_from_arrow_refs(ray_start_regular_shared):
@@ -69,7 +69,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
 
     # test from single pyarrow table ref
     ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
@@ -77,7 +77,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "from_arrow_refs" in ds.stats()
+    assert "FromArrowRefs" in ds.stats()
 
 
 def test_to_arrow_refs(ray_start_regular_shared):
@@ -340,7 +340,7 @@ def test_get_read_tasks(ray_start_cluster):
     head_node_id = ray.get_runtime_context().get_node_id()
 
     # Issue read so `_get_read_tasks` being executed.
-    ray.data.range(10).fully_executed()
+    ray.data.range(10).cache()
 
     # Verify `_get_read_tasks` being executed on same node (head node).
     def verify_get_read_tasks():

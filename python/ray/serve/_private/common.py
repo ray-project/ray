@@ -28,6 +28,14 @@ class EndpointInfo:
     route: str
 
 
+class ReplicaState(str, Enum):
+    STARTING = "STARTING"
+    UPDATING = "UPDATING"
+    RECOVERING = "RECOVERING"
+    RUNNING = "RUNNING"
+    STOPPING = "STOPPING"
+
+
 class ApplicationStatus(str, Enum):
     NOT_STARTED = "NOT_STARTED"
     DEPLOYING = "DEPLOYING"
@@ -326,3 +334,9 @@ class RunningReplicaInfo:
                 self._hash == other._hash,
             ]
         )
+
+
+class ServeDeployMode(str, Enum):
+    UNSET = "UNSET"
+    SINGLE_APP = "SINGLE_APP"
+    MULTI_APP = "MULTI_APP"
