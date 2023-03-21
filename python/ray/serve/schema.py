@@ -553,6 +553,13 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
             )
         return v
 
+    @validator("applications")
+    def application_names_nonempty(cls, v):
+        for app in v:
+            if len(app.name) == 0:
+                raise ValueError("Application names must be nonempty.")
+        return v
+
     @root_validator
     def nested_host_and_port(cls, values):
         # TODO (zcin): ServeApplicationSchema still needs to have host and port
