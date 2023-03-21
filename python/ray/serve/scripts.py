@@ -425,48 +425,33 @@ def config(address: str, name: Optional[str]):
         **ServeSubmissionClient(address).get_serve_details()
     )
 
-    # Multi-app support
-    if serve_details.deploy_mode == ServeDeployMode.MULTI_APP:
-        # Fetch app configs for all live applications on the cluster
-        if name is None:
-            print(
-                "\n---\n\n".join(
-                    yaml.safe_dump(
-                        app.deployed_app_config.dict(exclude_unset=True),
-                        sort_keys=False,
-                    )
-                    for app in serve_details.applications.values()
-                )
-            )
-
-        # Fetch a specific app config by name.
-        elif name is not None:
-            if name not in serve_details.applications:
-                cli_logger.error(f'Application "{name}" does not exist.')
-            else:
-                print(
-                    yaml.safe_dump(
-                        serve_details.applications.get(name).deployed_app_config.dict(
-                            exclude_unset=True
-                        ),
-                        sort_keys=False,
-                    )
-                )
-    # Backwards compatible single-app behavior: displays the config for default app "".
-    else:
-        if serve_details.deploy_mode == ServeDeployMode.SINGLE_APP and name is not None:
+    if serve_details.deploy_mode != ServeDeployMode.MULTI_APP:
+        if name is not None:
             raise click.ClickException(
                 "A single-app config was deployed to this cluster, so fetching an "
                 "application config by name is not allowed."
             )
+        name = SERVE_DEFAULT_APP_NAME
 
-        if SERVE_DEFAULT_APP_NAME in serve_details.applications:
-            config = serve_details.applications[
-                SERVE_DEFAULT_APP_NAME
-            ].deployed_app_config.dict(exclude_unset=True)
-        else:
+    # Fetch app configs for all live applications on the cluster
+    if name is None:
+        print(
+            "\n---\n\n".join(
+                yaml.safe_dump(
+                    app.deployed_app_config.dict(exclude_unset=True),
+                    sort_keys=False,
+                )
+                for app in serve_details.applications.values()
+            )
+        )
+    # Fetch a specific app config by name.
+    else:
+        if name not in serve_details.applications:
             config = ServeApplicationSchema.get_empty_schema_dict()
-
+        else:
+            config = serve_details.applications.get(name).deployed_app_config.dict(
+                exclude_unset=True
+            )
         print(yaml.safe_dump(config, sort_keys=False))
 
 
