@@ -54,8 +54,6 @@ class TfLearner(Learner):
     ):
         super().__init__(framework_hyperparameters=framework_hyperparameters, **kwargs)
 
-        tf1.enable_eager_execution()
-
         self._enable_tf_function = framework_hyperparameters.eager_tracing
         # the default strategy is a no-op that can be used in the local mode
         # cpu only case, build will override this if needed.
