@@ -680,7 +680,7 @@ class SyncerCallback(Callback):
             _BackgroundProcess(partial(sync_dir_between_nodes, max_size_bytes=None)),
         )
 
-    def _remove_trial_sync_process(self, trial: "Trial", force: bool = False):
+    def _remove_trial_sync_process(self, trial_id: str, force: bool = False):
         """Remove trial sync process.
 
         If ``force=True``, we remove it immediately. If ``force=False``, we flag
@@ -688,9 +688,9 @@ class SyncerCallback(Callback):
         the sync process at the end of the experiment.
         """
         if force:
-            self._sync_processes.pop(trial.trial_id, None)
+            self._sync_processes.pop(trial_id, None)
         else:
-            self._trial_sync_processes_to_remove.add(trial.trial_id)
+            self._trial_sync_processes_to_remove.add(trial_id)
 
     def _cleanup_trial_sync_processes(self):
         for trial_id in list(self._trial_sync_processes_to_remove):
@@ -815,14 +815,14 @@ class SyncerCallback(Callback):
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
         self._sync_trial_dir(trial, force=True, wait=False)
-        self._remove_trial_sync_process(trial, force=False)
+        self._remove_trial_sync_process(trial.trial_id, force=False)
         self._trial_ips.pop(trial.trial_id, None)
         self._cleanup_trial_sync_processes()
 
     def on_trial_error(
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
-        self._remove_trial_sync_process(trial, force=True)
+        self._remove_trial_sync_process(trial.trial_id, force=True)
         self._trial_ips.pop(trial.trial_id, None)
         self._cleanup_trial_sync_processes()
 
@@ -846,14 +846,21 @@ class SyncerCallback(Callback):
             )
 
     def wait_for_all(self):
+        # Remove any sync processes as needed, and only wait on the remaining ones.
         self._cleanup_trial_sync_processes()
 
         failed_syncs = {}
-        for trial, sync_process in self._sync_processes.items():
+        for trial_id, sync_process in self._sync_processes.items():
             try:
                 sync_process.wait()
             except Exception as e:
-                failed_syncs[trial] = e
+                failed_syncs[trial_id] = e
+
+            # Queue this sync process for removal
+            self._remove_trial_sync_process(trial_id, force=False)
+
+        # Remove the awaited processes
+        self._cleanup_trial_sync_processes()
 
         if failed_syncs:
             sync_str = "\n".join(
@@ -863,6 +870,13 @@ class SyncerCallback(Callback):
                 f"At least one trial failed to sync down when waiting for all "
                 f"trials to sync: \n{sync_str}"
             )
+
+    def on_experiment_end(self, trials: List["Trial"], **info):
+        """Wait for background sync processes to finish on experiment end."""
+        try:
+            self.wait_for_all()
+        except TuneError as e:
+            logger.error(e)
 
     def __getstate__(self):
         state = self.__dict__.copy()
