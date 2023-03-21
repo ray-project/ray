@@ -1321,7 +1321,10 @@
 
   frequency: nightly
   team: ml
+<<<<<<< HEAD
   env: gce
+=======
+>>>>>>> 7871714d8 (Add GCE tests for all tune_cloud tests. Use default anyscale tier.)
 
   cluster:
     cluster_env: app_config.yaml
