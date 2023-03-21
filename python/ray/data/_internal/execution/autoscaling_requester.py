@@ -1,5 +1,5 @@
 import time
-from typing import Dict
+from typing import Dict, List
 
 import ray
 from ray.data.context import DatasetContext
@@ -22,24 +22,23 @@ class AutoscalingRequester:
     """
 
     def __init__(self):
-        # Mapping execution_uuid to latest resource request and time we received
-        # the request.
+        # execution_id -> (List[Dict], expiration timestamp)
         self._resource_requests = {}
         # TTL for requests.
         self._timeout = RESOURCE_REQUEST_TIMEOUT
 
-    def request_resources(self, req: Dict, execution_uuid: str):
+    def request_resources(self, req: List[Dict], execution_id: str):
         # Purge expired requests before making request to autoscaler.
         self._purge()
-        # For the same execution_uuid, we track the latest resource request and
+        # For the same execution_id, we track the latest resource request and
         # the its expiration timestamp.
-        self._resource_requests[execution_uuid] = (
+        self._resource_requests[execution_id] = (
             req,
             time.time() + self._timeout,
         )
-        # We aggregate the resource requests across all execution_uuid's to Ray
+        # We aggregate the resource requests across all execution_id's to Ray
         # autoscaler.
-        ray.autoscaler.sdk.request_resources(bundles=[self._aggregate_requests()])
+        ray.autoscaler.sdk.request_resources(bundles=self._aggregate_requests())
 
     def _purge(self):
         # Purge requests that are stale.
@@ -48,17 +47,11 @@ class AutoscalingRequester:
             if t < now:
                 self._resource_requests.pop(k)
 
-    def _aggregate_requests(self) -> Dict:
-        num_cpu = 0
-        num_gpu = 0
+    def _aggregate_requests(self) -> List[Dict]:
+        self._purge()
+        req = []
         for _, (r, _) in self._resource_requests.items():
-            num_cpu += r["CPU"] if "CPU" in r else 0
-            num_gpu += r["GPU"] if "GPU" in r else 0
-        req = {}
-        if num_cpu > 0:
-            req["CPU"] = num_cpu
-        if num_gpu > 0:
-            req["GPU"] = num_gpu
+            req.extend(r)
         return req
 
     def _test_set_timeout(self, ttl):

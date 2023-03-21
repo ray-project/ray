@@ -400,22 +400,27 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
         topology: The execution state of the in-progress workload for which we wish to
             request more resources.
     """
-    # Get resource usage for all ready ops.
-    usage = ExecutionResources()
+    # Get resource usage for all ops + additional resources needed to launch one more
+    # task for each ready op.
+    resource_request = []
+
+    def to_bundle(resource: ExecutionResources) -> Dict:
+        num_cpus = math.ceil(resource.cpu) if resource.cpu else 0
+        num_gpus = math.ceil(resource.gpu) if resource.gpu else 0
+        return {"CPU": num_cpus, "GPU": num_gpus}
+
     for op, state in topology.items():
-        usage = usage.add(op.current_resource_usage())
+        per_task_resource = op.incremental_resource_usage()
+        task_bundle = to_bundle(per_task_resource)
+        resource_request.extend([task_bundle] * op.num_active_work_refs())
         # Only include incremental resource usage for ops that are ready for
         # dispatch.
         if state.num_queued() > 0:
             # TODO(Clark): Scale up more aggressively by adding incremental resource
             # usage for more than one bundle in the queue for this op?
-            usage = usage.add(op.incremental_resource_usage())
-    resource_request = {}
-    # Round usage to ints, since autoscaler only accepts integral resource requests.
-    if usage.cpu:
-        resource_request["CPU"] = math.ceil(usage.cpu)
-    if usage.gpu:
-        resource_request["GPU"] = math.ceil(usage.gpu)
+            resource_request.append(task_bundle)
+
+    print("XXX req:", resource_request)
     # Make autoscaler resource request.
     actor = get_or_create_autoscaling_requester_actor()
     actor.request_resources.remote(resource_request, execution_id)

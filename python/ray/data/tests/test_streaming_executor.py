@@ -354,24 +354,70 @@ def test_resource_constrained_triggers_autoscaling():
     ray.get(ac._test_set_timeout.remote(test_timeout))
 
     run_execution("1")
-    assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 3, "GPU": 2}
+    assert ray.get(ac._aggregate_requests.remote()) == [
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 0, "GPU": 1},
+        {"CPU": 0, "GPU": 1},
+    ]
+
+    # For the same execution_id, the later request overrides the previous one.
     run_execution("1")
-    assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 3, "GPU": 2}
+    assert ray.get(ac._aggregate_requests.remote()) == [
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 0, "GPU": 1},
+        {"CPU": 0, "GPU": 1},
+    ]
+
+    # Having another execution, so the resource bundles expanded.
     run_execution("2")
-    assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 6, "GPU": 4}
-    run_execution("1")
-    assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 6, "GPU": 4}
+    assert ray.get(ac._aggregate_requests.remote()) == [
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 0, "GPU": 1},
+        {"CPU": 0, "GPU": 1},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 0, "GPU": 1},
+        {"CPU": 0, "GPU": 1},
+    ]
 
-    # Test stale requests got purged.
+    # Requesting for existing execution again, so no change in resource bundles.
+    run_execution("1")
+    assert ray.get(ac._aggregate_requests.remote()) == [
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 0, "GPU": 1},
+        {"CPU": 0, "GPU": 1},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 0, "GPU": 1},
+        {"CPU": 0, "GPU": 1},
+    ]
+
+    # After the timeout, all requests should have been purged.
     time.sleep(test_timeout + 1)
-    run_execution("1")
-    assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 3, "GPU": 2}
+    assert ray.get(ac._aggregate_requests.remote()) == []
 
-    # Test throttling by sending 100 requests.
+    # Test throttling by sending 100 requests: only one request actually
+    # got sent to the actor.
     autoscaling_state = AutoscalingState()
     for i in range(100):
         run_execution("1", i + 1, autoscaling_state)
-    assert ray.get(ac._aggregate_requests.remote()) == {"CPU": 3, "GPU": 2}
+    assert ray.get(ac._aggregate_requests.remote()) == [
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 1, "GPU": 0},
+        {"CPU": 0, "GPU": 1},
+        {"CPU": 0, "GPU": 1},
+    ]
 
 
 def test_select_ops_ensure_at_least_one_live_operator():
