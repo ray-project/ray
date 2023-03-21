@@ -287,9 +287,7 @@ def format_get_api_output(
     if not state_data or len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
 
-    human_readable_state_data = schema.humanify(state_data)
-
-    return output_with_format(human_readable_state_data, schema=schema, format=format)
+    return output_with_format(state_data, schema=schema, format=format)
 
 
 def format_list_api_output(
