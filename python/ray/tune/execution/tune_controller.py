@@ -84,6 +84,8 @@ class TuneController(_TuneControllerBase):
 
         self._actor_manager = RayActorManager(resource_manager=self._resource_manager)
 
+        self._class_cache = _class_cache
+
         # Resource status
         self._resource_updater = _ResourceUpdater(None)
 
@@ -346,7 +348,7 @@ class TuneController(_TuneControllerBase):
                 f"Invalid trainable: {trial.trainable_name}. If you passed "
                 f"a string, make sure the trainable was registered before."
             )
-        _actor_cls = _class_cache.get(trainable_cls)
+        _actor_cls = self._class_cache.get(trainable_cls)
 
         trial.set_location(_Location())
         trial_config = copy.deepcopy(trial.config)

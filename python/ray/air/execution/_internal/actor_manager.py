@@ -675,6 +675,7 @@ class RayActorManager:
                 method_name=method_name,
                 args=args,
                 kwargs=kwargs,
+                _return_future=_return_future,
             )
             if _return_future:
                 return res[1]
