@@ -54,7 +54,9 @@ def get_random_node(exclude_current: bool = True):
     nodes = [
         node
         for node in nodes
-        if node["Alive"] and node["NodeManagerAddress"] != current_node_ip
+        if node["Alive"]
+        and node["NodeManagerAddress"] != current_node_ip
+        and not node["Resources"].get("head")
     ]
     if not nodes:
         return None
@@ -62,7 +64,7 @@ def get_random_node(exclude_current: bool = True):
     return random_node
 
 
-@ray.remote(num_cpus=0)
+@ray.remote(num_cpus=0, resources={"head": 0.01})
 class InstanceKillerActor:
     def __init__(
         self,
