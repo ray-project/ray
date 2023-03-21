@@ -2,7 +2,8 @@ import logging
 import random
 import time
 import uuid
-from collections import defaultdict
+from collections import defaultdict, Counter
+from functools import lru_cache
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 import ray
@@ -384,6 +385,7 @@ class RayActorManager:
                     actor,
                     acquired_resources,
                 )
+                self.get_live_actors_resources.cache_clear()
 
                 self._enqueue_cached_actor_tasks(tracked_actor=tracked_actor)
 
@@ -440,6 +442,7 @@ class RayActorManager:
             ray_actor,
             acquired_resources,
         ) = self._live_actors_to_ray_actors_resources.pop(tracked_actor)
+        self.get_live_actors_resources.cache_clear()
 
         # Return resources
         self._resource_manager.free_resources(acquired_resource=acquired_resources)
@@ -473,6 +476,19 @@ class RayActorManager:
     def num_total_actors(self):
         """Return number of total actors."""
         return len(self.all_actors)
+
+    @property
+    def num_actor_tasks(self):
+        """Return number of pending tasks"""
+        return self._actor_task_events.num_futures
+
+    @lru_cache()
+    def get_live_actors_resources(self):
+        counter = Counter()
+        for _, acq in self._live_actors_to_ray_actors_resources.values():
+            for bdl in acq.resource_request.bundles:
+                counter.update(bdl)
+        return dict(counter)
 
     def add_actor(
         self,
@@ -602,7 +618,8 @@ class RayActorManager:
         kwargs: Optional[Dict] = None,
         on_result: Optional[Callable[[TrackedActor, Any], None]] = None,
         on_error: Optional[Callable[[TrackedActor, Exception], None]] = None,
-    ) -> None:
+        _return_future: bool = False,
+    ) -> Optional[ray.ObjectRef]:
         """Schedule and track a task on an actor.
 
         This method will schedule a remote task ``method_name`` on the
@@ -653,12 +670,14 @@ class RayActorManager:
                 (tracked_actor_task, method_name, args, kwargs)
             )
         else:
-            self._schedule_tracked_actor_task(
+            res = self._schedule_tracked_actor_task(
                 tracked_actor_task=tracked_actor_task,
                 method_name=method_name,
                 args=args,
                 kwargs=kwargs,
             )
+            if _return_future:
+                return res[1]
 
     def _schedule_tracked_actor_task(
         self,
@@ -667,7 +686,8 @@ class RayActorManager:
         *,
         args: Optional[Tuple] = None,
         kwargs: Optional[Dict] = None,
-    ) -> TrackedActorTask:
+        _return_future: bool = False,
+    ) -> Union[TrackedActorTask, Tuple[TrackedActorTask, ray.ObjectRef]]:
         tracked_actor = tracked_actor_task._tracked_actor
         ray_actor, _ = self._live_actors_to_ray_actors_resources[tracked_actor]
 
@@ -695,6 +715,9 @@ class RayActorManager:
         )
 
         self._tracked_actors_to_task_futures[tracked_actor].add(future)
+
+        if _return_future:
+            return tracked_actor_task, future
 
         return tracked_actor_task
 
