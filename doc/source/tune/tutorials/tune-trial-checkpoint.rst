@@ -3,10 +3,11 @@
 How to Save and Load Trial Checkpoints
 ======================================
 
-Trial checkpoint is one of :ref:`the three types of data stored by Tune <tune-persisted-experiment-data>`.
+Trial checkpoints are one of :ref:`the three types of data stored by Tune <tune-persisted-experiment-data>`.
 These are user-defined and are meant to snapshot your training progress!
 
-Trial-level checkpoints are saved via the :ref:`Tune Trainable <tune-60-seconds>` API.
+Trial-level checkpoints are saved via the :ref:`Tune Trainable <tune-60-seconds>` API: this is how you define your
+custom training logic, and it's also where you'll define which trial state to checkpoint.
 In this guide, we will show how to save and load checkpoints for Tune's Function Trainable and Class Trainable APIs,
 as well as walk you through configuration options.
 
@@ -43,7 +44,7 @@ To create an AIR checkpoint, one can either use :meth:`~ray.air.checkpoint.Check
 In the above code snippet:
 
 - We implement *checkpoint saving* with :meth:`session.report(..., checkpoint=checkpoint) <ray.air.session.report>`. Note that every checkpoint must be reported alongside a set of metrics -- this way, checkpoints can be ordered with respect to a specified metric.
-- The saved checkpoint during training iteration `step` is saved to the path ``<local_dir>/<exp_name>/<trial_name>/checkpoint_<step>`` on the node on which training happens and can be further synced to a consolidated storage location depending on the :ref:`storage configuration <tune-storage-options>`.
+- The saved checkpoint during training iteration `epoch` is saved to the path ``<local_dir>/<exp_name>/<trial_name>/checkpoint_<epoch>`` on the node on which training happens and can be further synced to a consolidated storage location depending on the :ref:`storage configuration <tune-storage-options>`.
 - We implement *checkpoint loading* with :meth:`session.get_checkpoint() <ray.air.session.get_checkpoint>`. This will be populated with a trial's latest checkpoint whenever Tune restores a trial. This happens when (1) a trial is configured to retry after encountering a failure, (2) the experiment is being restored, and (3) the trial is being resumed after a pause (ex: :doc:`PBT </tune/examples/pbt_guide>`).
 
   .. TODO: for (1), link to tune fault tolerance guide. For (2), link to tune restore guide.
@@ -96,9 +97,7 @@ In the above example, if ``detect_instance_preemption`` returns True, manual che
 Periodic Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Periodic checkpointing can be used to provide fault-tolerance for experiments.
-This can be enabled by setting ``checkpoint_frequency=<int>`` and ``max_failures=<int>`` to checkpoint trials
-every *N* iterations and recover from up to *M* crashes per trial, e.g.:
+This can be enabled by setting ``checkpoint_frequency=N`` to checkpoint trials every *N* iterations, e.g.:
 
 .. literalinclude:: /tune/doc_code/trial_checkpoint.py
     :language: python
@@ -187,7 +186,7 @@ Following are a few uses of trial checkpoints:
 - Some searchers or schedulers pause trials to free up resources for other trials to train in the meantime. This only makes sense if the trials can then continue training from the latest state.
 - The checkpoint can be later used for other downstream tasks like batch inference.
 
-Learn saving and loading trial checkpoints here: :ref:`here <tune-trial-checkpoint>`.
+Learn how to save and load trial checkpoints :ref:`here <tune-trial-checkpoint>`.
 
 Trial Results
 ~~~~~~~~~~~~~

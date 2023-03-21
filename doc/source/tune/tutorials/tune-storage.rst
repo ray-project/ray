@@ -1,7 +1,7 @@
 .. _tune-storage-options:
 
-How to Configure Storage Options for a Distributed Tune Experiment?
-===================================================================
+How to Configure Storage Options for a Distributed Tune Experiment
+==================================================================
 
 .. seealso::
 

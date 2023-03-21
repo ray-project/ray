@@ -132,22 +132,24 @@ def write_model_to_dir(model, dir_path):
     pass
 
 
-def write_epoch_to_dir(epoch: int, path: str):
-    pass
+def write_epoch_to_dir(epoch: int, dir_path: str):
+    with open(os.path.join(dir_path, "epoch"), "w") as f:
+        f.write(str(epoch))
 
 
-def get_epoch_from_dir(path: str) -> int:
-    pass
+def get_epoch_from_dir(dir_path: str) -> int:
+    with open(os.path.join(dir_path, "epoch"), "r") as f:
+        return int(f.read())
 
 
 def train_func(config):
-    start = 0
+    start = 1
     if session.get_checkpoint() is not None:
         loaded_checkpoint = session.get_checkpoint()
         with loaded_checkpoint.as_directory() as loaded_checkpoint_path:
             start = get_epoch_from_dir(loaded_checkpoint_path) + 1
 
-    for epoch in range(start, config["epochs"]):
+    for epoch in range(start, config["epochs"] + 1):
         # Model training here
         # ...
 
@@ -155,6 +157,7 @@ def train_func(config):
         metrics = {"metric": "my_metric"}
         # some function to write model to directory
         write_model_to_dir(my_model, "my_model")
+        write_epoch_to_dir(epoch, "my_model")
         session.report(
             metrics=metrics, checkpoint=Checkpoint.from_directory("my_model")
         )
