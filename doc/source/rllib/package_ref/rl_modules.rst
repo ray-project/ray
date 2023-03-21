@@ -22,12 +22,14 @@ Single Agent
     SingleAgentRLModuleSpec.build
     SingleAgentRLModuleSpec.get_rl_module_config
 
+RLModule Configuration
++++++++++++++++++++++++
+
 .. autosummary::
     :toctree: doc/
     :template: autosummary/class_with_autosummary.rst
 
     RLModuleConfig
-    RLModuleConfig.build
     RLModuleConfig.to_dict
     RLModuleConfig.from_dict
     RLModuleConfig.get_catalog
@@ -61,7 +63,7 @@ Constructor
     :template: autosummary/class_with_autosummary.rst
 
     RLModule
-    RLModule.as_multiagent
+    RLModule.as_multi_agent
 
 
 Forward methods
@@ -118,10 +120,10 @@ Constructor
 
     MultiAgentRLModule
     MultiAgentRLModule.build
-    MultiAgentRLModule.as_multiagent
+    MultiAgentRLModule.as_multi_agent
 
-Modifying RL Modules
---------------------
+Modifying the underlying RL modules
+++++++++++++++++++++++++++++++++++++
 
 .. autosummary::
     :toctree: doc/
