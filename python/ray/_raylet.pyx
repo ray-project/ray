@@ -928,6 +928,10 @@ cdef void execute_task(
                     print(actor_magic_token, end="")
                     print(actor_magic_token, file=sys.stderr, end="")
 
+                    # Sets the actor repr name for the actor so other components
+                    # like GCS has such info.
+                    core_worker.set_actor_repr_name(repr(actor))
+
             if (returns[0].size() > 0 and
                     not inspect.isgenerator(outputs) and
                     len(outputs) != int(returns[0].size())):
@@ -1619,6 +1623,9 @@ cdef class CoreWorker:
 
     def set_actor_title(self, title):
         CCoreWorkerProcess.GetCoreWorker().SetActorTitle(title)
+
+    def set_actor_repr_name(self, repr_name):
+        CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
 
     def get_plasma_event_handler(self):
         return self.plasma_event_handler

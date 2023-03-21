@@ -380,6 +380,8 @@ class ActorState(StateSchema):
     is_detached: bool = state_column(filterable=False, detail=True)
     #: The placement group id that's associated with this actor.
     placement_group_id: str = state_column(detail=True, filterable=True)
+    #: Actor's repr name if a customized __repr__ method exists, else empty string.
+    repr_name: str = state_column(detail=True, filterable=True)
 
 
 @dataclass(init=True)

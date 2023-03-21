@@ -155,6 +155,9 @@ message ActorTableData {
   optional bytes node_id = 29;
   // Placement group ID if the actor requires a placement group.
   optional bytes placement_group_id = 30;
+  // The repr name of the actor if specified with a customized repr method, e.g. __repr__
+  // Default to empty string if no customized repr is defined.
+  string repr_name = 31;
 }
 
 message ErrorTableData {
