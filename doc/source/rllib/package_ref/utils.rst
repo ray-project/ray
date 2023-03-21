@@ -103,6 +103,8 @@ Methods
    ~schedule.Schedule.__call__
 
 
+.. _train-ops-docs:
+
 Training Operations Utilities
 -----------------------------
 
