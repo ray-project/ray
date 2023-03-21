@@ -499,7 +499,7 @@ class TuneController(_TuneControllerBase):
                     f"Future {method_name.upper()} FAILED for trial {trial}: "
                     f"{exception}"
                 )
-                on_result(trial, *args, **kwargs)
+                on_error(trial, exception)
 
         logger.debug(f"Future {method_name.upper()} SCHEDULED for trial {trial}")
 
@@ -523,7 +523,7 @@ class TuneController(_TuneControllerBase):
             raise exception
         else:
             if self._print_trial_errors:
-                logger.exception("Trial task failed", exc=exception)
+                logger.error("Trial task failed", exc_info=exception)
             self._process_trial_failure(trial, exception=exception)
 
     def _schedule_trial_stop(self, trial: Trial, exception: Optional[Exception] = None):
@@ -532,6 +532,9 @@ class TuneController(_TuneControllerBase):
 
         self._set_trial_status(trial, Trial.ERROR if exception else Trial.TERMINATED)
         trial.set_location(_Location())
+
+        if exception:
+            trial.handle_error(exc=exception)
 
         if not exception and self._maybe_cache_trial_actor(trial):
             # Trial runner has been cached
@@ -545,7 +548,7 @@ class TuneController(_TuneControllerBase):
         if should_checkpoint:
             self._schedule_trial_save(trial, storage=CheckpointStorage.MEMORY)
         self._schedule_trial_stop(trial)
-        self._set_trial_status(Trial.PAUSED)
+        self._set_trial_status(trial, Trial.PAUSED)
 
     ###
     # TRAIN
