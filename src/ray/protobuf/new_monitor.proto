@@ -62,6 +62,7 @@ message AutoscalerDecision {
   }
 }
 
+
 // ============= Batched approach =======================
 message ReportBatchAutoscalerDecisionsReply {}
 
@@ -117,4 +118,31 @@ message GetStreamSchedulingStatusRequest {
 service StreamAutoscalerService {
   rpc GetBatchSchedulingStatus(GetStreamSchedulingStatusRequest) returns (stream GetStreamSchedulingStatusPacket);
   rpc ReportAutoscalerDecisionsStream(stream ReportAutoscalerDecisionsStreamPacket) returns ReportBatchAutoscalerDecisionsStreamReply;
+}
+
+// ============= Metrics =================
+
+message EmitMetricRequest {
+  string metric_name = 2;
+  map<string, string> tags = 3;
+  double value = 4;
+}
+
+message EmitMetricReply {}
+
+message CreateMetricRequest {
+  enum MetricType {
+
+  }
+  string metric_name = 1;
+  string metric_description = 2;
+  string unit = 4;
+  repeated string tag_keys = 3;
+}
+
+message CreateMetricReply {}
+
+service MetricService {
+  rpc CreateMetric(CreateMetricRequest) returns CreateMetricReply;
+  rpc EmitMetric(EmitMetricRequest) returns EmitMetricReply;
 }
