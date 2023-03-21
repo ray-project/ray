@@ -58,10 +58,6 @@ class PPOCatalog(Catalog):
             3,
         ), "This simple PPO Module only supports 1D and 3D observation spaces."
 
-        assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
-            "This simple PPO Module only supports Discrete and Box action spaces.",
-        )
-
         # Replace EncoderConfig by ActorCriticEncoderConfig
         self.actor_critic_encoder_config = ActorCriticEncoderConfig(
             base_encoder_config=self.encoder_config,

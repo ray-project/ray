@@ -211,9 +211,22 @@ class Distribution(abc.ABC):
                 **kwargs,
             ) -> "DistributionPartial":
                 merged_kwargs = cls._merge_kwargs(**kwargs)
-                return parent_cls.from_logits(logits, **merged_kwargs)
+                distribution = parent_cls.from_logits(logits, **merged_kwargs)
+                # Replace the class of the returned distribution with this partial
+                # This makes it so that we can use type() on this distribution and
+                # get back the partial class.
+                distribution.__class__ = cls
+                return distribution
 
         # Substitute name of this partial class to match the original class.
         DistributionPartial.__name__ = f"{parent_cls}Partial"
 
         return DistributionPartial
+
+    def to_deterministic(self) -> "Distribution":
+        """Returns a new distribution that is deterministic.
+
+        Returns:
+            A new distribution that is deterministic.
+        """
+        raise NotImplementedError

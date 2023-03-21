@@ -27,8 +27,4 @@ class PPORLModuleBase(RLModule, abc.ABC):
 
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
 
-        self._is_discrete = isinstance(
-            convert_old_gym_space_to_gymnasium_space(self.config.action_space),
-            gym.spaces.Discrete,
-        )
         assert isinstance(self.encoder, ActorCriticEncoder)

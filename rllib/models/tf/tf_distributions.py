@@ -50,22 +50,18 @@ class TfDistribution(Distribution, abc.ABC):
 
     @override(Distribution)
     def sample(
-        self, *, sample_shape=(), return_logp: bool = False
+        self, *, sample_shape=()
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         sample = self._dist.sample(sample_shape)
-        if return_logp:
-            return sample, self.logp(sample)
         return sample
 
     @override(Distribution)
     def rsample(
-        self, *, sample_shape=(), return_logp: bool = False
+        self, *, sample_shape=()
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
 
         # rsample is not implemented in tfp. So we need to make a placeholder for it.
         rsample = self._rsample(sample_shape)
-        if return_logp:
-            return rsample, self.logp(rsample)
         return rsample
 
     @OverrideToImplementCustomLogic
@@ -112,7 +108,20 @@ class TfCategorical(TfDistribution):
         logits: tf.Tensor = None,
         temperature: float = 1.0,
     ) -> None:
+        # We assert this here because to_deterministic makes this assumption.
+        assert not (
+            probs is not None and logits is not None
+        ), "Only one of `probs` or `logits` can be set!"
+        self.probs = probs
+        self.logits = logits
         super().__init__(probs=probs, logits=logits, temperature=temperature)
+
+    @override(Distribution)
+    def logp(self, value: TensorType, **kwargs) -> TensorType:
+        # This prevents an error in which float values at the boundaries of the range
+        # of the distribution are passed to this function.
+        value = tf.cast(value, tf.int32)
+        return self._dist.log_prob(value, **kwargs)
 
     @override(TfDistribution)
     def _get_tf_distribution(
@@ -142,6 +151,14 @@ class TfCategorical(TfDistribution):
         cls, logits: TensorType, temperature: float = 1.0, **kwargs
     ) -> "TfCategorical":
         return TfCategorical(logits=logits, temperature=temperature, **kwargs)
+
+    def to_deterministic(self) -> "TfDeterministic":
+        if self.probs is not None:
+            probs_or_logits = self.probs
+        else:
+            probs_or_logits = self.logits
+
+        return TfDeterministic(loc=tf.math.argmax(probs_or_logits, axis=-1))
 
 
 @DeveloperAPI
@@ -174,15 +191,13 @@ class TfDiagGaussian(TfDistribution):
     def __init__(
         self,
         loc: Union[float, tf.Tensor],
-        scale: Optional[Union[float, tf.Tensor]] = None,
+        scale: Optional[Union[float, tf.Tensor]],
     ):
+        self.loc = loc
         super().__init__(loc=loc, scale=scale)
 
     @override(TfDistribution)
-    def _get_tf_distribution(self, loc, scale=None) -> "tfp.distributions.Distribution":
-        if scale is None:
-            loc, log_scale = tf.split(loc, num_or_size_splits=2, axis=-1)
-            scale = tf.exp(log_scale)
+    def _get_tf_distribution(self, loc, scale) -> "tfp.distributions.Distribution":
         return tfp.distributions.Normal(loc=loc, scale=scale)
 
     @override(TfDistribution)
@@ -215,6 +230,9 @@ class TfDiagGaussian(TfDistribution):
         scale = tf.math.exp(log_std)
         return TfDiagGaussian(loc=loc, scale=scale)
 
+    def to_deterministic(self) -> "TfDeterministic":
+        return TfDeterministic(loc=self.loc)
+
 
 @DeveloperAPI
 class TfDeterministic(Distribution):
@@ -245,12 +263,8 @@ class TfDeterministic(Distribution):
         self,
         *,
         sample_shape: Tuple[int, ...] = (),
-        return_logp: bool = False,
         **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        if return_logp:
-            raise ValueError(f"Cannot return logp for {self.__class__.__name__}.")
-
         shape = sample_shape + self.loc.shape
         return tf.ones(shape, dtype=self.loc.dtype) * self.loc
 
@@ -258,7 +272,6 @@ class TfDeterministic(Distribution):
         self,
         *,
         sample_shape: Tuple[int, ...] = None,
-        return_logp: bool = False,
         **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         raise NotImplementedError
@@ -284,6 +297,9 @@ class TfDeterministic(Distribution):
     @override(Distribution)
     def from_logits(cls, logits: TensorType, **kwargs) -> "TfDeterministic":
         return TfDeterministic(loc=logits)
+
+    def to_deterministic(self) -> "TfDeterministic":
+        return self
 
 
 @DeveloperAPI
@@ -370,6 +386,9 @@ class TfMultiCategorical(Distribution):
 
         return TfMultiCategorical(categoricals=categoricals)
 
+    def to_deterministic(self) -> "TfMultiDistribution":
+        return TfMultiDistribution([cat.to_deterministic() for cat in self.cats])
+
 
 @DeveloperAPI
 class TfMultiDistribution(Distribution):
@@ -395,35 +414,21 @@ class TfMultiDistribution(Distribution):
         self,
         *,
         sample_shape: Tuple[int, ...] = None,
-        return_logp: bool = False,
         **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         rsamples = []
-        logps = []
         for dist in self.flat_child_distributions:
-            rsample_logp = dist.rsample(
-                sample_shape=sample_shape, return_logp=return_logp, **kwargs
-            )
-            if return_logp:
-                rsample, logp = rsample_logp
-                logps.append(logp)
-                rsamples.append(rsample)
-            else:
-                rsample = rsample_logp
-                rsamples.append(rsample)
+            rsample_logp = dist.rsample(sample_shape=sample_shape, **kwargs)
+            rsample = rsample_logp
+            rsamples.append(rsample)
 
         rsamples = tree.unflatten_as(self.original_struct, rsamples)
-
-        if return_logp:
-            logps = tree.unflatten_as(self.original_struct, logps)
-            return rsamples, logps
-        else:
-            return rsamples
+        return rsamples
 
     @override(Distribution)
-    def logp(self, x):
+    def logp(self, value):
         # Single tensor input (all merged).
-        if isinstance(x, (tf.Tensor, np.ndarray)):
+        if isinstance(value, (tf.Tensor, np.ndarray)):
             split_indices = []
             for dist in self.flat_child_distributions:
                 if isinstance(dist, TfCategorical):
@@ -440,22 +445,24 @@ class TfMultiDistribution(Distribution):
                         split_indices.append(1)
                     else:
                         split_indices.append(tf.shape(sample)[1])
-            split_x = tf.split(x, split_indices, axis=1)
+            split_value = tf.split(value, split_indices, axis=1)
         # Structured or flattened (by single action component) input.
         else:
-            split_x = tree.flatten(x)
+            split_value = tree.flatten(value)
 
         def map_(val, dist):
-            # Remove extra categorical dimension.
-            if isinstance(dist, TfCategorical):
-                val = tf.cast(
-                    tf.squeeze(val, axis=-1) if len(val.shape) > 1 else val, tf.int32
-                )
+            # Remove extra dimension if present.
+            shape = val.shape
+            if len(shape) > 1 and val.shape[-1] == 1:
+                val = tf.squeeze(val, axis=-1)
+
             return dist.logp(val)
 
         # Remove extra categorical dimension and take the logp of each
         # component.
-        flat_logps = tree.map_structure(map_, split_x, self.flat_child_distributions)
+        flat_logps = tree.map_structure(
+            map_, split_value, self.flat_child_distributions
+        )
 
         return functools.reduce(lambda a, b: a + b, flat_logps)
 
@@ -533,3 +540,12 @@ class TfMultiDistribution(Distribution):
         return TfMultiDistribution(
             child_distribution_struct=child_distribution_struct,
         )
+
+    def to_deterministic(self) -> "TfMultiDistribution":
+        flat_deterministic_dists = [
+            dist.to_deterministic for dist in self.flat_child_distributions
+        ]
+        deterministic_dists = tree.unflatten_as(
+            self.original_struct, flat_deterministic_dists
+        )
+        return TfMultiDistribution(deterministic_dists)

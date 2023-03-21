@@ -47,20 +47,20 @@ class TorchDistribution(Distribution, abc.ABC):
 
     @override(Distribution)
     def sample(
-        self, *, sample_shape=torch.Size(), return_logp: bool = False
+        self,
+        *,
+        sample_shape=torch.Size(),
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         sample = self._dist.sample(sample_shape)
-        if return_logp:
-            return sample, self.logp(sample)
         return sample
 
     @override(Distribution)
     def rsample(
-        self, *, sample_shape=torch.Size(), return_logp: bool = False
+        self,
+        *,
+        sample_shape=torch.Size(),
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         rsample = self._dist.rsample(sample_shape)
-        if return_logp:
-            return rsample, self.logp(rsample)
         return rsample
 
 
@@ -86,8 +86,8 @@ class TorchCategorical(TorchDistribution):
         tensor([3, 4])
 
     Args:
-        probs: The probablities of each event.
         logits: Event log probabilities (unnormalized)
+        probs: The probablities of each event.
         temperature: In case of using logits, this parameter can be used to determine
             the sharpness of the distribution. i.e.
             ``probs = softmax(logits / temperature)``. The temperature must be strictly
@@ -98,10 +98,16 @@ class TorchCategorical(TorchDistribution):
     @override(TorchDistribution)
     def __init__(
         self,
-        probs: torch.Tensor = None,
         logits: torch.Tensor = None,
+        probs: torch.Tensor = None,
         temperature: float = 1.0,
     ) -> None:
+        # We assert this here because to_deterministic makes this assumption.
+        assert not (probs is not None and logits is not None), (
+            "Only one of `probs` " "or `logits` " "can be set!"
+        )
+        self.probs = probs
+        self.logits = logits
         super().__init__(probs=probs, logits=logits, temperature=temperature)
 
     @override(TorchDistribution)
@@ -113,8 +119,10 @@ class TorchCategorical(TorchDistribution):
     ) -> "torch.distributions.Distribution":
         if logits is not None:
             assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-            logits /= temperature
-        return torch.distributions.categorical.Categorical(probs, logits)
+            _logits = logits / temperature
+        else:
+            _logits = logits
+        return torch.distributions.categorical.Categorical(probs, _logits)
 
     @staticmethod
     @override(Distribution)
@@ -127,6 +135,14 @@ class TorchCategorical(TorchDistribution):
         cls, logits: TensorType, temperature: float = 1.0, **kwargs
     ) -> "TorchCategorical":
         return TorchCategorical(logits=logits, temperature=temperature, **kwargs)
+
+    def to_deterministic(self) -> "TorchDeterministic":
+        if self.probs is not None:
+            probs_or_logits = self.probs
+        else:
+            probs_or_logits = self.logits
+
+        return TorchDeterministic(loc=torch.argmax(probs_or_logits, dim=-1))
 
 
 @DeveloperAPI
@@ -159,16 +175,12 @@ class TorchDiagGaussian(TorchDistribution):
     def __init__(
         self,
         loc: Union[float, torch.Tensor],
-        scale: Optional[Union[float, torch.Tensor]] = None,
+        scale: Optional[Union[float, torch.Tensor]],
     ):
+        self.loc = loc
         super().__init__(loc=loc, scale=scale)
 
-    def _get_torch_distribution(
-        self, loc, scale=None
-    ) -> "torch.distributions.Distribution":
-        if scale is None:
-            loc, log_std = torch.chunk(self.inputs, 2, dim=1)
-            scale = torch.exp(log_std)
+    def _get_torch_distribution(self, loc, scale) -> "torch.distributions.Distribution":
         return torch.distributions.normal.Normal(loc, scale)
 
     @override(TorchDistribution)
@@ -194,6 +206,9 @@ class TorchDiagGaussian(TorchDistribution):
         loc, log_std = logits.chunk(2, dim=-1)
         scale = log_std.exp()
         return TorchDiagGaussian(loc=loc, scale=scale)
+
+    def to_deterministic(self) -> "TorchDeterministic":
+        return TorchDeterministic(loc=self.loc)
 
 
 @DeveloperAPI
@@ -225,12 +240,8 @@ class TorchDeterministic(Distribution):
         self,
         *,
         sample_shape: Tuple[int, ...] = None,
-        return_logp: bool = False,
         **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        if return_logp:
-            raise ValueError(f"Cannot return logp for {self.__class__.__name__}.")
-
         if sample_shape is None:
             sample_shape = torch.Size()
 
@@ -243,7 +254,6 @@ class TorchDeterministic(Distribution):
         self,
         *,
         sample_shape: Tuple[int, ...] = None,
-        return_logp: bool = False,
         **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         raise NotImplementedError
@@ -269,6 +279,9 @@ class TorchDeterministic(Distribution):
     @override(Distribution)
     def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDeterministic":
         return TorchDeterministic(loc=logits)
+
+    def to_deterministic(self) -> "TorchDeterministic":
+        return self
 
 
 @DeveloperAPI
@@ -359,6 +372,9 @@ class TorchMultiCategorical(Distribution):
 
         return TorchMultiCategorical(categoricals=categoricals)
 
+    def to_deterministic(self) -> "TorchMultiDistribution":
+        return TorchMultiDistribution([cat.to_deterministic() for cat in self.cats])
+
 
 @DeveloperAPI
 class TorchMultiDistribution(Distribution):
@@ -384,61 +400,55 @@ class TorchMultiDistribution(Distribution):
         self,
         *,
         sample_shape: Tuple[int, ...] = None,
-        return_logp: bool = False,
         **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         rsamples = []
-        logps = []
         for dist in self.flat_child_distributions:
-            rsample_logp = dist.rsample(
-                sample_shape=sample_shape, return_logp=return_logp, **kwargs
-            )
-            if return_logp:
-                rsample, logp = rsample_logp
-                logps.append(logp)
-                rsamples.append(rsample)
-            else:
-                rsample = rsample_logp
-                rsamples.append(rsample)
+            rsample_logp = dist.rsample(sample_shape=sample_shape, **kwargs)
+            rsample = rsample_logp
+            rsamples.append(rsample)
 
         rsamples = tree.unflatten_as(self.original_struct, rsamples)
 
-        if return_logp:
-            logps = tree.unflatten_as(self.original_struct, logps)
-            return rsamples, logps
-        else:
-            return rsamples
+        return rsamples
 
     @override(Distribution)
     def logp(self, value: TensorType) -> TensorType:
-        # Single tensor input (all merged).
-        split_indices = []
-        for dist in self.flat_child_distributions:
-            if isinstance(dist, TorchCategorical):
-                split_indices.append(1)
-            elif (
-                isinstance(dist, TorchMultiCategorical)
-                and dist.action_space is not None
-            ):
-                split_indices.append(int(np.prod(dist.action_space.shape)))
-            else:
-                sample = dist.sample()
-                # Cover Box(shape=()) case.
-                if len(sample.shape) == 1:
+        # Different places in RLlib use this method with different inputs.
+        # We therefore need to handle a flattened and concatenated input, as well as
+        # a nested one.
+        # TODO(Artur): Deprecate tensor inputs, only allow nested structures.
+        if isinstance(value, torch.Tensor):
+            split_indices = []
+            for dist in self.flat_child_distributions:
+                if isinstance(dist, TorchCategorical):
                     split_indices.append(1)
+                elif (
+                    isinstance(dist, TorchMultiCategorical)
+                    and dist.action_space is not None
+                ):
+                    split_indices.append(int(np.prod(dist.action_space.shape)))
                 else:
-                    split_indices.append(sample.size()[1])
-        split_x = list(torch.split(value, split_indices, dim=1))
+                    sample = dist.sample()
+                    # Cover Box(shape=()) case.
+                    if len(sample.shape) == 1:
+                        split_indices.append(1)
+                    else:
+                        split_indices.append(sample.size()[1])
+            split_value = list(torch.split(value, split_indices, dim=1))
+        else:
+            split_value = tree.flatten(value)
 
         def map_(val, dist):
-            # Remove extra categorical dimension.
-            if isinstance(dist, TorchCategorical):
-                val = (torch.squeeze(val, dim=-1) if len(val.shape) > 1 else val).int()
+            # Remove extra dimension if present.
+            shape = val.shape
+            if val.shape[-1] == 1 and len(shape) > 1:
+                val = torch.squeeze(val, dim=-1)
             return dist.logp(val)
 
-        # Remove extra categorical dimension and take the logp of each
-        # component.
-        flat_logps = tree.map_structure(map_, split_x, self.flat_child_distributions)
+        flat_logps = tree.map_structure(
+            map_, split_value, self.flat_child_distributions
+        )
 
         return functools.reduce(lambda a, b: a + b, flat_logps)
 
@@ -516,3 +526,12 @@ class TorchMultiDistribution(Distribution):
         return TorchMultiDistribution(
             child_distribution_struct=child_distribution_struct,
         )
+
+    def to_deterministic(self) -> "TorchMultiDistribution":
+        flat_deterministic_dists = [
+            dist.to_deterministic for dist in self.flat_child_distributions
+        ]
+        deterministic_dists = tree.unflatten_as(
+            self.original_struct, flat_deterministic_dists
+        )
+        return TorchMultiDistribution(deterministic_dists)
