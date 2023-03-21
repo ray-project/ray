@@ -20,20 +20,13 @@ py_test(
 )
 
 ### Ray Data
-py_test(
-    name = "quick_start",
-    size = "small",
-    srcs = ["source/data/doc_code/quick_start.py"],
-    tags = ["exclusive", "team:ml"]
+py_test_run_all_subdirectory(
+    size="small",
+    include=["source/data/doc_code/*.py"],
+    exclude=[],
+    extra_srcs=[],
+    tags=["exclusive", "team:ml"],
 )
-
-py_test(
-    name = "tensor",
-    size = "small",
-    srcs = ["source/data/doc_code/tensor.py"],
-    tags = ["exclusive", "team:ml"]
-)
-
 
 py_test(
     name = "datasets_train",
