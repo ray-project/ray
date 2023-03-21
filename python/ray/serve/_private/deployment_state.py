@@ -761,6 +761,10 @@ class DeploymentReplica(VersionedReplica):
 
         Should handle the case where the replica is already stopped.
         """
+        logger.info(
+            f"Stopping replica {self.replica_tag} for deployment "
+            f"{self.deployment_name}."
+        )
         timeout_s = self._actor.graceful_stop()
         if not graceful:
             timeout_s = 0
