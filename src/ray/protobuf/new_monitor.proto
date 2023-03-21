@@ -1,5 +1,9 @@
 // ============= Scheduling Status Primitives ====================
+//
+// Following fields represents the Ray state autoscaler interested
+// in.
 
+// Represents anti affinity constraints for a resource requirement.
 message AntiAffinity {
   string label = 1;
 }
@@ -7,30 +11,47 @@ message AntiAffinity {
 message ResourceBundle {
   map<string, double> resources = 1;
   repeated AntiAffinity anti_affinities = 2;
+  // Note: for optimization, soft contraints 
+  // can be added here.
+  // label affinity constraints could be
+  // added here too.
 }
 
-
+// All unbundles in a resource request requires gang
+// allocation semantics: they should be
+// fullfilled all or nothing.
 message ResourceRequest {
   repeated ResourceBundle bundles = 1;
 }
 
+// Cluster constraint represents minimial cluster size requirement,
+// issued through ray.autoscaler.sdk.
 message ClusterSizeConstraint {
+  // The number of request_ids and bundles should match.
   repeated bytes request_ids = 1;
   repeated ResourceBundle bundles = 2;
 }
 
 message NodeStatus {
+  bytes node_id = 1;
+
   // The address of the node.
-  string address = 1;
+  string address = 2;
 
   // The available resources on the node.
-  map<string, double> available_resources = 2;
+  map<string, double> available_resources = 3;
 
   // The corresponding total resources on the node.
-  map<string, double> total_resources = 3;
+  map<string, double> total_resources = 4;
+
+  // Labels on the node.
+  set<string> labels = 5;
 }
 
 // =========== Primitives autoscaler insights ====================
+
+// Following states present the Autoscaler state GCS interested in,
+// for observability and scheduling purpose.
 
 enum AutoscalerNodeStates {
   // The underlying cloud resource is alive, it's up to the cluster to decide
@@ -72,11 +93,31 @@ message AutoscalerDecision {
 
 
 // ============= Batched approach =======================
+//
+// Option 1 (recommended): Autoscaler periodically calls to
+// two snapshot/batch APIs, GetBatchSchedulingStatus
+// and ReportAutoscalerDecisions. 
+// The GetBatchSchedulingStatus will return a snapshot
+// of Ray state that Autoscaler interested, along with
+// the snapshot_id (version).
+//
+// Separately, autoscaler will constantly making decisions
+// based on the latest Ray state, and also change its
+// state based on the information from node provider.
+// Autoscaler will periodically report its state to GCS
+// through ReportAutoscalerDecisions API.
+
 message ReportBatchAutoscalerDecisionsReply {}
 
 message ReportBatchAutoscalerDecisionsRequest {
   bytes scheduling_state_id = 1;
-  repeated AutoscalerDecision decisions = 2;
+  // For the same secheduling state id, the
+  // autoscaler state might be different. i.e.
+  // pending node started, or some node terminated.
+  // Thus it worths to report a separate autoscaler_sequence_no
+  // for GCS to tell the staleness of the response.
+  int64_t autoscaler_sequence_no = 2;
+  repeated AutoscalerDecision decisions = 3;
 }
 
 message GetBatchSchedulingStatusReply {
@@ -98,7 +139,10 @@ service BatchAutoscalerService {
 }
 
 // ================ Streaming approach ================
-
+// Option 2 (future): This is the streaming/delta update version of
+// Option 1. Semantically it should be identical to option1, just
+// that we allow Autoscaler/GCS to report delta update through 
+// a stream.
 
 message ReportBatchAutoscalerDecisionsStreamReply {}
 
