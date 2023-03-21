@@ -12,7 +12,7 @@ export const useActorDetail = () => {
 
   const { data: actorDetail } = useSWR(
     ["useActorDetail", params.id],
-    async (_, actorId) => {
+    async ([_, actorId]) => {
       const actor_resp = await getActor(actorId);
       const data: ActorResp = actor_resp?.data;
       const { data: rspData, msg, result } = data;
