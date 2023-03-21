@@ -7,6 +7,7 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     ApplicationStatusInfo,
 )
+from ray.serve.schema import DeploymentDetails
 import time
 from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 import logging
@@ -160,9 +161,13 @@ class ApplicationState:
                     return
                 try:
                     ray.get(finished[0])
-                except RayTaskError:
+                except RayTaskError as e:
                     self.status = ApplicationStatus.DEPLOY_FAILED
-                    self.app_msg = f"Deployment failed:\n{traceback.format_exc()}"
+                    # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
+                    # here because the full details of the error is not displayed
+                    # properly with traceback.format_exc(). RayTaskError has its own
+                    # custom __str__ function.
+                    self.app_msg = f"Deployment failed:\n{str(e)}"
                     self.deploy_obj_ref = None
                     return
                 except RuntimeEnvSetupError:
@@ -209,6 +214,13 @@ class ApplicationState:
             deployment_timestamp=self.deployment_timestamp,
         )
 
+    def list_deployment_details(self) -> Dict[str, DeploymentDetails]:
+        """Gets detailed info on all deployments in this application."""
+        return {
+            name: self.deployment_state_manager.get_deployment_details(name)
+            for name in self.get_all_deployments()
+        }
+
 
 class ApplicationStateManager:
     def __init__(self, deployment_state_manager):
@@ -233,21 +245,23 @@ class ApplicationStateManager:
         """
 
         # Make sure route_prefix is not being used by other application.
-        all_route_prefixes: Dict[str, str] = {
+        live_route_prefixes: Dict[str, str] = {
             self._application_states[app_name].route_prefix: app_name
-            for app_name in self._application_states
+            for app_name, app_state in self._application_states.items()
+            if app_state.route_prefix is not None
+            and not app_state.status == ApplicationStatus.DELETING
         }
         for deploy_param in deployment_args:
             if "route_prefix" in deploy_param:
                 deploy_app_prefix = deploy_param["route_prefix"]
                 if (
                     deploy_app_prefix
-                    and deploy_app_prefix in all_route_prefixes
-                    and name != all_route_prefixes[deploy_app_prefix]
+                    and deploy_app_prefix in live_route_prefixes
+                    and name != live_route_prefixes[deploy_app_prefix]
                 ):
                     raise RayServeException(
                         f"Prefix {deploy_app_prefix} is being used by application "
-                        f'"{all_route_prefixes[deploy_app_prefix]}".'
+                        f'"{live_route_prefixes[deploy_app_prefix]}".'
                         f' Failed to deploy application "{name}".'
                     )
 
@@ -282,12 +296,21 @@ class ApplicationStateManager:
     def get_docs_path(self, app_name: str):
         return self._application_states[app_name].docs_path
 
+    def get_route_prefix(self, name: str) -> str:
+        return self._application_states[name].route_prefix
+
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}"""
         return {
             name: self._application_states[name].get_application_status_info()
             for name in self._application_states
         }
+
+    def list_deployment_details(self, name: str) -> Dict[str, DeploymentDetails]:
+        """Gets detailed info on all deployments in specified application."""
+        if name not in self._application_states:
+            return {}
+        return self._application_states[name].list_deployment_details()
 
     def create_application_state(
         self, name: str, deploy_obj_ref: ObjectRef, deployment_time: float = 0

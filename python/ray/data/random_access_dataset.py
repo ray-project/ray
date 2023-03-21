@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class RandomAccessDataset(Generic[T]):
     """A class that provides distributed, random access to a Dataset.
 
