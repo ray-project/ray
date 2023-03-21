@@ -265,7 +265,7 @@ def test_report_stats():
     assert len(records) == 27
     # Test stats with gpus
     STATS_TEMPLATE["gpus"] = [
-        {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000}
+        {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
     ]
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
     assert len(records) == 31
