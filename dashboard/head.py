@@ -18,7 +18,7 @@ from ray._raylet import GcsClient
 from ray._private.gcs_utils import GcsAioClient, check_health
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
-from ray.dashboard.consts import DASHBOARD_METRIC_PORT
+from ray.dashboard.consts import DASHBOARD_METRIC_PORT, DASHBOARD_RPC_PORT
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 from typing import Optional, Set
@@ -131,7 +131,7 @@ class DashboardHead:
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-            self.server, f"{grpc_ip}:0"
+            self.server, f"{grpc_ip}:{DASHBOARD_RPC_PORT}"
         )
         logger.info("Dashboard head grpc address: %s:%s", grpc_ip, self.grpc_port)
         # If the dashboard is started as non-minimal version, http server should
