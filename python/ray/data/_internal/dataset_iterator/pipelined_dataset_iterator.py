@@ -48,7 +48,7 @@ class PipelinedDatasetIterator(DatasetIterator):
         if name == "_base_dataset_pipeline":
             raise AttributeError
 
-        if hasattr(self._base_dataset_pipeline, name):
+        if hasattr(self._base_dataset_pipeline, name) and not name.startswith("_"):
             # Warning for backwards compatibility. TODO: remove this method in 2.5.
             warnings.warn(
                 "session.get_dataset_shard returns a ray.data.DatasetIterator "

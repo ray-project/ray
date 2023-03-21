@@ -6,6 +6,7 @@ from ray.types import ObjectRef
 from ray.data._internal.util import _default_batch_format
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
+from ray.data.context import DatasetContext
 from ray.data.dataset_iterator import DatasetIterator
 
 if TYPE_CHECKING:
@@ -24,6 +25,7 @@ class DatasetIteratorImpl(DatasetIterator):
         base_dataset: "Dataset",
     ):
         self._base_dataset = base_dataset
+        self._base_context = DatasetContext.get_current()
 
     def __repr__(self) -> str:
         return f"DatasetIterator({self._base_dataset})"
@@ -33,6 +35,7 @@ class DatasetIteratorImpl(DatasetIterator):
     ) -> Tuple[
         Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
     ]:
+        DatasetContext._set_current(self._base_context)
         ds = self._base_dataset
         block_iterator, stats, executor = ds._plan.execute_to_iterator()
         ds._current_executor = executor
@@ -51,7 +54,7 @@ class DatasetIteratorImpl(DatasetIterator):
         if name == "_base_dataset":
             raise AttributeError()
 
-        if hasattr(self._base_dataset, name):
+        if hasattr(self._base_dataset, name) and not name.startswith("_"):
             # Warning for backwards compatibility. TODO: remove this method in 2.5.
             warnings.warn(
                 "session.get_dataset_shard returns a ray.data.DatasetIterator "
@@ -64,5 +67,5 @@ class DatasetIteratorImpl(DatasetIterator):
             )
 
             return getattr(self._base_dataset, name)
-        else:
-            return super().__getattr__(name)
+
+        raise AttributeError()

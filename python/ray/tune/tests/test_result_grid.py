@@ -342,7 +342,7 @@ def test_num_errors_terminated(tmpdir):
         trial.relative_logdir = trials[0].relative_logdir
 
     # Store a shared error file inside
-    error_path = Path(trials[0].logdir) / error_filename
+    error_path = Path(trials[0].local_path) / error_filename
     with open(error_path, "w") as fp:
         fp.write("Test error\n")
 
