@@ -31,6 +31,9 @@ class TrackedActor:
         self._on_stop = on_stop
         self._on_error = on_error
 
+    def __repr__(self):
+        return f"<TrackedActor {self.actor_id}>"
+
     def __eq__(self, other):
         return self.actor_id == other.actor_id
 

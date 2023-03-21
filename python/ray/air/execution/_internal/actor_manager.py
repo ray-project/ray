@@ -572,6 +572,11 @@ class RayActorManager:
                     on_result=on_actor_stop,
                     on_error=on_actor_stop,
                 )
+                # Clear state futures here to avoid resolving __ray_ready__ futures
+                for future in self._tracked_actors_to_state_futures[tracked_actor]:
+                    self._actor_state_events.discard_future(future)
+                    self._tracked_actors_to_state_futures[tracked_actor].remove(future)
+
                 self._tracked_actors_to_state_futures[tracked_actor].add(stop_future)
 
             else:
@@ -581,6 +586,9 @@ class RayActorManager:
         elif tracked_actor in self._pending_actors_to_attrs:
             # Actor is pending, stop
             _, _, resource_request = self._pending_actors_to_attrs.pop(tracked_actor)
+            self._resource_request_to_pending_actors[resource_request].remove(
+                tracked_actor
+            )
             self._resource_manager.cancel_resource_request(
                 resource_request=resource_request
             )

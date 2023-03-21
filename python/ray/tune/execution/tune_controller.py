@@ -1,4 +1,5 @@
 import copy
+from collections import defaultdict
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Union, Tuple, Set
 
@@ -6,7 +7,7 @@ import logging
 import os
 
 import ray
-from ray.air import Checkpoint
+from ray.air import Checkpoint, ResourceRequest
 from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
@@ -37,6 +38,7 @@ from ray.util.debug import log_once
 
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 class TuneController(_TuneControllerBase):
@@ -94,6 +96,11 @@ class TuneController(_TuneControllerBase):
         self._actor_to_trial: Dict[TrackedActor, Trial] = {}
         self._trial_to_actor: Dict[Trial, TrackedActor] = {}
 
+        # Resources <-> Trial
+        self._resources_to_pending_paused_trials: Dict[
+            ResourceRequest, Set[Trial]
+        ] = defaultdict(set)
+
         # Keep track of actor states
         self._pending_trials: Set[Trial] = set()
         self._pending_trials_list: List[Trial] = []
@@ -145,7 +152,7 @@ class TuneController(_TuneControllerBase):
         pass
 
     def on_step_end(self):
-        pass
+        self._actor_cache.flush_cached_objects()
 
     def step(self):
         if self.is_finished():
@@ -217,8 +224,18 @@ class TuneController(_TuneControllerBase):
         # items that are in this list but not in the respective set.
         if status == Trial.PAUSED:
             self._paused_trials_list.append(trial)
-        if status == Trial.PENDING:
+            self._resources_to_pending_paused_trials[trial.placement_group_factory].add(
+                trial
+            )
+        elif status == Trial.PENDING:
             self._pending_trials_list.append(trial)
+            self._resources_to_pending_paused_trials[trial.placement_group_factory].add(
+                trial
+            )
+        else:
+            self._resources_to_pending_paused_trials[
+                trial.placement_group_factory
+            ].discard(trial)
 
         trial.set_status(status)
 
@@ -248,8 +265,14 @@ class TuneController(_TuneControllerBase):
 
         if trial.status == Trial.PAUSED:
             self._paused_trials_list.append(trial)
+            self._resources_to_pending_paused_trials[trial.placement_group_factory].add(
+                trial
+            )
         if trial.status == Trial.PENDING:
             self._pending_trials_list.append(trial)
+            self._resources_to_pending_paused_trials[trial.placement_group_factory].add(
+                trial
+            )
 
     def _maybe_update_trial_queue(self):
         if self._search_alg.is_finished():
@@ -271,18 +294,27 @@ class TuneController(_TuneControllerBase):
     ###
     # ADD ACTORS
     def _maybe_add_actors(self):
+        ###
+        # 1: Start trial that the scheduler wants to run
         with warn_if_slow("choose_trial_to_run"):
             trial_to_run = self._scheduler_alg.choose_trial_to_run(self._wrapped())
 
         if trial_to_run:
+            logger.debug(f"Chose trial to run from scheduler: {trial_to_run}")
             if trial_to_run not in self._staged_trials:
+                logger.debug(f"Staging trial to run: {trial_to_run}")
                 self._staged_trials.add(trial_to_run)
                 self._actor_cache.increase_max(trial_to_run.placement_group_factory)
                 self._schedule_trial_actor(trial_to_run)
             else:
+                logger.debug(f"Trying to re-use actor for trial to run: {trial_to_run}")
                 self._maybe_reuse_cached_actor(trial_to_run)
 
+        ###
+        # 2: Start trials that are PENDING or PAUSED
         def _maybe_add_actors(candidates: List[Trial]):
+            new_candidates = []
+
             while candidates:
                 if len(self._staged_trials) >= self._max_pending_trials:
                     break
@@ -292,16 +324,40 @@ class TuneController(_TuneControllerBase):
                 if trial not in (self._pending_trials | self._paused_trials):
                     continue
 
+                if trial in self._trial_to_actor:
+                    new_candidates.append(trial)
+                    continue
+
                 if trial in self._staged_trials:
                     self._maybe_reuse_cached_actor(trial)
                     continue
 
+                logger.debug(f"Scheduling actor for enqueued trial: {trial}")
                 self._staged_trials.add(trial)
                 self._actor_cache.increase_max(trial.placement_group_factory)
                 self._schedule_trial_actor(trial)
 
-        _maybe_add_actors(self._pending_trials_list)
-        _maybe_add_actors(self._paused_trials_list)
+            return new_candidates + candidates
+
+        self._pending_trials_list = _maybe_add_actors(self._pending_trials_list)
+        self._paused_trials_list = _maybe_add_actors(self._paused_trials_list)
+
+        ###
+        # 3: Start any trial that can be started with a cached actor
+        if self._actor_cache.num_cached_objects:
+            for resource in self._resources_to_pending_paused_trials:
+                if not self._resources_to_pending_paused_trials[resource]:
+                    continue
+
+                if not self._actor_cache.has_cached_object(resource):
+                    continue
+
+                start_trial = self._resources_to_pending_paused_trials[resource].pop()
+                logger.debug(
+                    f"Trying to re-use actor for enqueued trial: {start_trial}"
+                )
+                if not self._maybe_reuse_cached_actor(start_trial):
+                    self._resources_to_pending_paused_trials[resource].add(start_trial)
 
     def _maybe_reuse_cached_actor(self, trial: Trial) -> bool:
         if trial in self._resetting_trials:
@@ -314,6 +370,12 @@ class TuneController(_TuneControllerBase):
 
         cached_actor = self._actor_cache.pop_cached_object(resource_request)
         logger.debug(f"Reusing ACTOR for trial {trial}: {cached_actor}")
+
+        if trial in self._trial_to_actor:
+            original_actor = self._trial_to_actor.pop(trial)
+            self._actor_to_trial.pop(original_actor)
+            logger.debug(f"Removing ORIGINAL ACTOR for trial {trial}: {original_actor}")
+            self._actor_manager.remove_actor(original_actor)
 
         self._trial_to_actor[trial] = cached_actor
         self._actor_to_trial[cached_actor] = trial
@@ -329,7 +391,12 @@ class TuneController(_TuneControllerBase):
         return True
 
     def _schedule_trial_actor(self, trial: Trial):
-        self._set_trial_status(trial, Trial.PENDING)
+        logger.debug(f"Trying to schedule new ACTOR for trial {trial}")
+
+        # Only set status to PENDING if we are not paused. Otherwise,
+        # all trials would constantly be pending and never in paused state.
+        if trial.status not in {Trial.PENDING, Trial.PAUSED}:
+            self._set_trial_status(trial, Trial.PENDING)
 
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
@@ -430,7 +497,7 @@ class TuneController(_TuneControllerBase):
             )
             return False
 
-        logger.debug(f"Caching actor of trial {trial} for re-use")
+        logger.debug(f"Caching actor of trial {trial} for re-use: {tracked_actor}")
 
         tracked_actor = self._trial_to_actor.pop(trial)
         self._actor_to_trial.pop(tracked_actor)
@@ -439,8 +506,10 @@ class TuneController(_TuneControllerBase):
 
         return True
 
-    def _actor_started(self, tracked_actor: TrackedActor):
+    def _actor_started(self, tracked_actor: TrackedActor, log: str = "STARTED"):
         trial = self._actor_to_trial[tracked_actor]
+
+        logger.debug(f"Actor {log} for trial {trial}: {tracked_actor}")
 
         self._unstage_trial_with_resources(trial)
 
@@ -449,17 +518,22 @@ class TuneController(_TuneControllerBase):
         ][0]
         trial.set_runner(ray_actor)
 
+        self._set_trial_status(trial, Trial.RUNNING)
         if not self._schedule_trial_restore(trial):
-            self._set_trial_status(trial, Trial.RUNNING)
             self._schedule_trial_train(trial)
 
     def _actor_stopped(self, tracked_actor: TrackedActor):
         trial = self._actor_to_trial.pop(tracked_actor)
+
+        logger.debug(f"Actor STOPPED for trial {trial}: {tracked_actor}")
+
         self._trial_to_actor.pop(trial)
 
         trial.set_runner(None)
 
     def _actor_failed(self, tracked_actor: TrackedActor, exception: Exception):
+        logger.debug(f"Actor FAILED: {tracked_actor}")
+
         self._actor_stopped(tracked_actor)
 
     def _schedule_trial_task(
@@ -616,6 +690,7 @@ class TuneController(_TuneControllerBase):
             checkpoint = _TrackedCheckpoint(
                 dir_or_data=future, storage_mode=storage, metrics=result
             )
+            trial.on_checkpoint(checkpoint)
         else:
             future = self._schedule_trial_task(
                 trial=trial,
@@ -752,14 +827,21 @@ class TuneController(_TuneControllerBase):
         self._resetting_trials.remove(trial)
 
         if not success:
-            exception = _AbortTrialExecution(
+            info = (
                 "Trainable runner reuse requires reset_config() to be "
                 "implemented and return True."
             )
-            return self._process_trial_failure(trial=trial, exception=exception)
+
+            logger.error(f"Could not re-use actor for trial {trial}: {info}")
+
+            exception = _AbortTrialExecution(info)
+
+            self._schedule_trial_stop(trial, exception=exception)
+            return
 
         tracked_actor = self._trial_to_actor[trial]
-        self._actor_started(tracked_actor)
+
+        self._actor_started(tracked_actor, log="REUSED")
 
     def __getstate__(self):
         state = super().__getstate__()
@@ -772,6 +854,7 @@ class TuneController(_TuneControllerBase):
             "_trial_metadata",
             "_actor_to_trial",
             "_trial_to_actor",
+            "_resources_to_pending_paused_trials",
             "_pending_trials",
             "_pending_trials_list",
             "_running_trials",
