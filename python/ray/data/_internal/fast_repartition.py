@@ -90,7 +90,7 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
             builder = SimpleBlockBuilder()
         elif isinstance(schema, pa.Schema):
             builder = ArrowBlockBuilder()
-        elif isinstance(PandasBlockSchema):
+        elif isinstance(schema, PandasBlockSchema):
             builder = PandasBlockBuilder()
 
         empty_block = builder.build()
