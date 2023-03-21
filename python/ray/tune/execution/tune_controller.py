@@ -34,13 +34,14 @@ from ray.tune.experiment import Trial
 from ray.tune.utils import warn_if_slow
 from ray.tune.utils.object_cache import _ObjectCache
 from ray.tune.utils.resource_updater import _ResourceUpdater
+from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
+@DeveloperAPI
 class TuneController(_TuneControllerBase):
     def __init__(
         self,
@@ -63,23 +64,6 @@ class TuneController(_TuneControllerBase):
         reuse_actors: bool = False,
         resource_manager_factory: Optional[Callable[[], ResourceManager]] = None,
     ):
-        super().__init__(
-            search_alg=search_alg,
-            placeholder_resolvers=placeholder_resolvers,
-            scheduler=scheduler,
-            experiment_path=experiment_path,
-            experiment_dir_name=experiment_dir_name,
-            sync_config=sync_config,
-            stopper=stopper,
-            resume=resume,
-            server_port=server_port,
-            fail_fast=fail_fast,
-            checkpoint_period=checkpoint_period,
-            callbacks=callbacks,
-            metric=metric,
-            trial_checkpoint_config=trial_checkpoint_config,
-        )
-
         if resource_manager_factory:
             self._resource_manager = resource_manager_factory()
         else:
@@ -133,6 +117,23 @@ class TuneController(_TuneControllerBase):
         self._buffer_min_time_s = float(os.getenv("TUNE_RESULT_BUFFER_MIN_TIME_S", 0.0))
         self._buffer_max_time_s = float(
             os.getenv("TUNE_RESULT_BUFFER_MAX_TIME_S", 100.0)
+        )
+
+        super().__init__(
+            search_alg=search_alg,
+            placeholder_resolvers=placeholder_resolvers,
+            scheduler=scheduler,
+            experiment_path=experiment_path,
+            experiment_dir_name=experiment_dir_name,
+            sync_config=sync_config,
+            stopper=stopper,
+            resume=resume,
+            server_port=server_port,
+            fail_fast=fail_fast,
+            checkpoint_period=checkpoint_period,
+            callbacks=callbacks,
+            metric=metric,
+            trial_checkpoint_config=trial_checkpoint_config,
         )
 
     def _wrapped(self):
