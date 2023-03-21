@@ -54,7 +54,7 @@ Callback hooks
    ~exploration.Exploration.postprocess_trajectory
 
 
-Setting and getting the states
+Setting and getting states
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
