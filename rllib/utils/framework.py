@@ -119,10 +119,12 @@ class _TFStub:
         # if tf should return False
         return False
 
+
 # Fake module for tf.Tensor
 class _TensorStub:
     def __init__(self, *a, **kw):
         raise ImportError("Could not import `tensorflow`. Try pip install tensorflow.")
+
 
 # Fake module for tf.keras.
 class _KerasStub:
