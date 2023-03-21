@@ -3,14 +3,203 @@
 RLlib Utilities
 ===============
 
-.. toctree::
-   :maxdepth: 1
+Here is a list of all the utilities available in RLlib.
 
-   utils/exploration.rst
-   utils/schedules.rst
-   utils/annotations.rst
-   utils/framework.rst
-   utils/tf_utils.rst
-   utils/torch_utils.rst
-   utils/numpy.rst
-   utils/deprecation.rst
+Exploration API
+---------------
+
+Exploration in RL is crucial for a learning agent in order to more easily
+reach areas of the environment that have not been discovered so far and therefore
+find new states yielding possibly high rewards.
+
+RLlib comes with several built-in exploration components, used by
+the different algorithms. Also users can customize an algo's exploration
+behavior by sub-classing the Exploration base class and implementing
+their own logic:
+
+Some Built-in Exploration Components
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib.utils.exploration
+
+.. autosummary::
+   :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
+
+   ~exploration.Exploration
+   ~random.Random
+   ~stochastic_sampling.StochasticSampling
+   ~epsilon_greedy.EpsilonGreedy
+   ~gaussian_noise.GaussianNoise
+   ~ornstein_uhlenbeck_noise.OrnsteinUhlenbeckNoise
+   ~random_encoder.RE3
+   ~curiosity.Curiosity
+   ~parameter_noise.ParameterNoise
+
+
+Inference
+~~~~~~~~~
+.. autosummary::
+   :toctree: doc/
+
+   ~exploration.Exploration.get_exploration_action
+
+Callback hooks
+~~~~~~~~~~~~~~
+
+.. autosummary::
+   :toctree: doc/
+
+   ~exploration.Exploration.before_compute_actions
+   ~exploration.Exploration.on_episode_start
+   ~exploration.Exploration.on_episode_end
+   ~exploration.Exploration.postprocess_trajectory
+
+
+Setting and getting the states
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+   :toctree: doc/
+
+   ~exploration.Exploration.get_state
+   ~exploration.Exploration.set_state
+
+
+
+Scheduler API
+-------------
+
+Scheduler are used to set scheduled values for varibles (in python, PyTorch or 
+TensorFlow) based on a (int64) timestep input. The computed values are usually float32 
+types.
+
+
+
+
+Some Built-in Scheduler Components
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib.utils.schedules
+
+.. autosummary::
+   :toctree: doc/
+   :template: autosummary/class_with_autosummary.rst
+
+   ~schedule.Schedule
+   ~constant_schedule.ConstantSchedule
+   ~linear_schedule.LinearSchedule
+   ~piecewise_schedule.PiecewiseSchedule
+   ~exponential_schedule.ExponentialSchedule
+   ~polynomial_schedule.PolynomialSchedule
+
+Methods
+~~~~~~~
+
+.. autosummary::
+   :toctree: doc/
+
+   ~schedule.Schedule.value
+   ~schedule.Schedule.__call__
+
+
+Training Operations Utilities
+-----------------------------
+
+.. currentmodule:: ray.rllib.execution.train_ops
+
+.. autosummary::
+   :toctree: doc/
+
+   ~multi_gpu_train_one_step
+   ~train_one_step
+
+
+Framework Utilities
+-------------------
+
+Import utilities
+~~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib.utils.framework
+
+.. autosummary::
+   :toctree: doc/
+
+   ~try_import_torch
+   ~try_import_tf
+   ~try_import_tfp
+
+
+Tensorflow Utilities
+~~~~~~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib.utils.tf_utils
+
+.. autosummary::
+   :toctree: doc/
+
+   ~explained_variance
+   ~flatten_inputs_to_1d_tensor
+   ~get_gpu_devices
+   ~get_placeholder
+   ~huber_loss
+   ~l2_loss
+   ~make_tf_callable
+   ~minimize_and_clip
+   ~one_hot
+   ~reduce_mean_ignore_inf
+   ~scope_vars
+   ~warn_if_infinite_kl_divergence
+   ~zero_logps_from_actions
+
+
+Torch Utilities
+~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib.utils.torch_utils  
+
+
+.. autosummary::
+   :toctree: doc/
+
+   ~apply_grad_clipping
+   ~concat_multi_gpu_td_errors
+   ~convert_to_torch_tensor
+   ~explained_variance
+   ~flatten_inputs_to_1d_tensor
+   ~get_device
+   ~global_norm
+   ~huber_loss
+   ~l2_loss
+   ~minimize_and_clip
+   ~one_hot
+   ~reduce_mean_ignore_inf
+   ~sequence_mask
+   ~warn_if_infinite_kl_divergence
+   ~set_torch_seed
+   ~softmax_cross_entropy_with_logits
+   ~Swish
+
+
+Numpy Utilities
+~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib.utils.numpy
+
+.. autosummary::
+   :toctree: doc/
+
+   ~aligned_array
+   ~concat_aligned
+   ~convert_to_numpy
+   ~fc
+   ~flatten_inputs_to_1d_tensor
+   ~make_action_immutable
+   ~huber_loss
+   ~l2_loss
+   ~lstm
+   ~one_hot
+   ~relu
+   ~sigmoid
+   ~softmax
