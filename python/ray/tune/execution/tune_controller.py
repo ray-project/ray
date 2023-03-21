@@ -137,6 +137,7 @@ class TuneController(_TuneControllerBase):
         )
 
     def _wrapped(self):
+        """Return wrapped tune controller to be passed to scheduler/searchers."""
         return TrialRunnerWrapper(
             self,
             trial_executor=_FakeRayTrialExecutor(self),
@@ -153,6 +154,11 @@ class TuneController(_TuneControllerBase):
         pass
 
     def on_step_end(self):
+        for tracked_actor in list(self._actor_to_trial):
+            self._actor_manager.remove_actor(tracked_actor=tracked_actor)
+            trial = self._actor_to_trial.pop(tracked_actor)
+            self._trial_to_actor.pop(trial)
+
         self._actor_cache.flush_cached_objects()
 
     def step(self):
@@ -167,14 +173,19 @@ class TuneController(_TuneControllerBase):
                 iteration=self._iteration, trials=self._trials
             )
 
+        # Ask searcher for more trials
         self._maybe_update_trial_queue()
 
+        # Start actors for added trials
         self._maybe_add_actors()
 
+        # Handle one event
         self._actor_manager.next(timeout=1)
 
+        # Maybe stop whole experiment
         self._stop_experiment_if_needed()
 
+        # Maybe save experiment state
         try:
             self.checkpoint()
         except Exception as e:
@@ -196,6 +207,16 @@ class TuneController(_TuneControllerBase):
             self._callbacks.on_step_end(iteration=self._iteration, trials=self._trials)
 
     def _set_trial_status(self, trial: Trial, status: str):
+        """Set trial to a specific status.
+
+        This will keep track of trials with specific statuses in sets.
+
+        For PENDING and PAUSED trials we also keep a list of trials to be able
+        to retain FIFO ordering. See ``_maybe_add_actors`` for details.
+
+        Lastly we also keep a mapping from resources to pending/paused trials
+        to be able to efficiently start trials for cached actors.
+        """
         current_status = trial.status
 
         if current_status == status:
@@ -252,6 +273,11 @@ class TuneController(_TuneControllerBase):
     ###
     # UPDATE TRIALS
     def add_trial(self, trial: Trial):
+        """Add a trial to run.
+
+        Like ``_set_trial_status``, this will also update the respective
+        trial state sets and mappings.
+        """
         super().add_trial(trial)
 
         status_str_map = {
@@ -276,6 +302,7 @@ class TuneController(_TuneControllerBase):
             )
 
     def _maybe_update_trial_queue(self):
+        """Ask the searcher for more trials."""
         if self._search_alg.is_finished():
             return
 
@@ -289,12 +316,29 @@ class TuneController(_TuneControllerBase):
             dont_wait_for_trial = True
 
     def _cleanup_trials(self):
+        self._actor_cache.flush_cached_objects(force_all=True)
+
         # Todo: Remove all
         pass
 
     ###
     # ADD ACTORS
     def _maybe_add_actors(self):
+        """Add actors for pending and paused trials.
+
+        For actors that have not been staged, yet, we request an actor.
+
+        For actors that have been staged, already, we try to reuse a cached actor.
+
+        First, we handle the trial that the scheduler chooses to run.
+
+        Then, we handle all trials that are pending or paused.
+
+        Lastly, we see if we have cached actors that we can assign to a pending or
+        paused trial. This can be the case when a trial has not been staged, yet,
+        for instance because the number of staging trials is too large.
+        """
+
         ###
         # 1: Start trial that the scheduler wants to run
         with warn_if_slow("choose_trial_to_run"):
@@ -306,8 +350,10 @@ class TuneController(_TuneControllerBase):
                 logger.debug(f"Staging trial to run: {trial_to_run}")
                 self._staged_trials.add(trial_to_run)
                 self._actor_cache.increase_max(trial_to_run.placement_group_factory)
+                # schedule_trial_actor also potentially uses cached actors
                 self._schedule_trial_actor(trial_to_run)
             else:
+                # Otherwise, only try to use the cached actor
                 logger.debug(f"Trying to re-use actor for trial to run: {trial_to_run}")
                 self._maybe_reuse_cached_actor(trial_to_run)
 
@@ -322,6 +368,9 @@ class TuneController(_TuneControllerBase):
 
                 trial = candidates.pop(0)
 
+                # If the trial is part of the list, but not of the set,
+                # we just ignore it. Removing it from the list on status
+                # change is too expensive.
                 if trial not in (self._pending_trials | self._paused_trials):
                     continue
 
@@ -361,6 +410,11 @@ class TuneController(_TuneControllerBase):
                     self._resources_to_pending_paused_trials[resource].add(start_trial)
 
     def _maybe_reuse_cached_actor(self, trial: Trial) -> bool:
+        """Maybe reuse a cached actor for a trial.
+
+        If an actor has been scheduled for the trial already,
+        this will remove the original actor.
+        """
         if trial in self._resetting_trials:
             return True
 
@@ -392,6 +446,11 @@ class TuneController(_TuneControllerBase):
         return True
 
     def _schedule_trial_actor(self, trial: Trial):
+        """Schedule an actor for a trial.
+
+        If a cached actor is available, use it. Otherwise, request a
+        new actor.
+        """
         logger.debug(f"Trying to schedule new ACTOR for trial {trial}")
 
         # Only set status to PENDING if we are not paused. Otherwise,
@@ -434,6 +493,7 @@ class TuneController(_TuneControllerBase):
         logger.debug(f"Scheduled new ACTOR for trial {trial}: {tracked_actor}")
 
     def _unstage_trial_with_resources(self, trial: Trial):
+        """Unstage trial, or one with the same resources as ``trial``."""
         # Case 1: The trial we started was staged. Just remove it
         if trial in self._staged_trials:
             self._staged_trials.remove(trial)
@@ -547,6 +607,14 @@ class TuneController(_TuneControllerBase):
         on_error: Optional[Callable[[Trial, Exception], None]] = None,
         _return_future: bool = False,
     ) -> Optional[ray.ObjectRef]:
+        """Schedule an actor task future for a trial.
+
+        This is a wrapper around ``ActorManager.schedule_actor_task``. This method
+        retrieves the tracked actor for a trial to kick off the task.
+
+        It also wraps around the callbacks, retrieving the trial object given the
+        tracked actor.
+        """
 
         tracked_actor = self._trial_to_actor[trial]
 
@@ -873,6 +941,16 @@ class TuneController(_TuneControllerBase):
 
 
 class _FakeRayTrialExecutor:
+    """The TuneController does not use a RayTrialExecutor anymore.
+
+    Instead, we pass this fake executor for searchers/schedulers to use
+    as an interface.
+
+    In the future, we should have the searchers/schedulers either interact with
+    the tune controller, or define a different API for more fine-grained scheduler
+    control.
+    """
+
     def __init__(self, tune_controller: TuneController):
         self._tune_controller = tune_controller
 
