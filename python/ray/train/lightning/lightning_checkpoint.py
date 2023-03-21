@@ -50,7 +50,9 @@ class LightningCheckpoint(TorchCheckpoint):
         Examples:
             >>> from ray.train.lightning import LightningCheckpoint
             >>>
-            >>> checkpoint = LightningCheckpoint.from_path("/path/to/checkpoint.ckpt")
+            >>> checkpoint = LightningCheckpoint.from_path( # doctest: +SKIP
+            ...     path="/path/to/checkpoint.ckpt"
+            ... )
         """
 
         assert os.path.exists(path), f"Lightning checkpoint {path} doesn't exists!"
