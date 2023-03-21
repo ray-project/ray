@@ -25,7 +25,7 @@ Setting up Redis
 
     If you are using :ref:`ray start <ray-start-doc>` to start the Ray head node,
     set the OS environment ``RAY_REDIS_ADDRESS`` to
-the Redis address, and supply the ``--redis-password`` flag with the password when calling ``ray start``:
+    the Redis address, and supply the ``--redis-password`` flag with the password when calling ``ray start``:
 
     .. code-block:: shell
 

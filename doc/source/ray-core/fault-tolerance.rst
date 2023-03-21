@@ -83,3 +83,5 @@ More about Ray Fault Tolerance
     fault_tolerance/tasks.rst
     fault_tolerance/actors.rst
     fault_tolerance/objects.rst
+    fault_tolerance/nodes.rst
+    fault_tolerance/gcs.rst
