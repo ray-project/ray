@@ -71,9 +71,9 @@ class LightningCheckpoint(TorchCheckpoint):
 
         Args:
             model_class: A subclass of ``pytorch_lightning.LightningModule`` that
-            defines your model and training logic.
+                defines your model and training logic.
             load_from_checkpoint_kwargs: Arguments to pass into
-            ``pl.Trainer.load_from_checkpoint``
+                ``pl.LightningModule.load_from_checkpoint``
 
         Returns:
             pl.LightningModule: An instance of the loaded model.

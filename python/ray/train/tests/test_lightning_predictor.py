@@ -1,21 +1,19 @@
 import re
-import numpy as np
 import pytest
-import pytorch_lightning as pl
 import tempfile
 import torch
 
-import ray
-from ray.train.lightning import LightningCheckpoint, LightningPredictor
-from ray.train.tests._lightning_utils import (
-    LightningMNISTClassifier,
-    LightningMNISTModelConfig,
-)
-from ray.train.batch_predictor import BatchPredictor
-from ray.air.constants import MAX_REPR_LENGTH
-from ray.train.tests.dummy_preprocessor import DummyPreprocessor
-from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
+import numpy as np
+import pytorch_lightning as pl
 from torch.utils.data import DataLoader
+
+import ray
+from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY
+from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.lightning import LightningCheckpoint, LightningPredictor
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
+from ray.train.tests.lightning_test_utils import LightningMNISTClassifier
 
 
 def test_repr():
@@ -46,28 +44,35 @@ def test_predictor(
     use_gpu: bool,
     batch_format: str,
 ):
-    model = LightningMNISTClassifier(**LightningMNISTModelConfig)
+    model_config = {
+        "layer_1": 32,
+        "layer_2": 64,
+        "lr": 1e-4,
+    }
+    model = LightningMNISTClassifier(**model_config)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        ckpt_path = f"{tmpdir}/checkpoint.ckpt"
+        ckpt_path = f"{tmpdir}/{MODEL_KEY}"
         save_checkpoint(model, ckpt_path)
 
-        # Save native checkpoint file to different file systems
+        # Test load checkpoint from local dir or remote path
         checkpoint = LightningCheckpoint.from_path(ckpt_path)
         if fs == "s3":
             checkpoint.to_uri(mock_s3_bucket_uri)
             checkpoint = LightningCheckpoint.from_uri(mock_s3_bucket_uri)
 
         preprocessor = DummyPreprocessor() if use_preprocessor else None
+
+        # Instantiate a predictor from checkpoint
         predictor = LightningPredictor.from_checkpoint(
             checkpoint=checkpoint,
             model=LightningMNISTClassifier,
             use_gpu=use_gpu,
             preprocessor=preprocessor,
-            **LightningMNISTModelConfig,
+            **model_config,
         )
 
-        # Build synthetic input data
+        # Create synthetic input data
         batch_size = 10
         batch = np.random.rand(batch_size, 1, 28, 28).astype(np.float32)
         if batch_format == "pandas":
@@ -93,8 +98,13 @@ def test_batch_predictor(use_gpu: bool):
         ds = ray.data.from_pandas(synthetic_data)
 
         # Create a PTL native checkpoint
-        ckpt_path = f"{tmpdir}/checkpoint.ckpt"
-        model = LightningMNISTClassifier(**LightningMNISTModelConfig)
+        ckpt_path = f"{tmpdir}/{MODEL_KEY}"
+        model_config = {
+            "layer_1": 32,
+            "layer_2": 64,
+            "lr": 1e-4,
+        }
+        model = LightningMNISTClassifier(**model_config)
         save_checkpoint(model, ckpt_path)
 
         # Create a LightningCheckpoint from the native checkpoint
@@ -105,7 +115,7 @@ def test_batch_predictor(use_gpu: bool):
             predictor_cls=LightningPredictor,
             use_gpu=use_gpu,
             model=LightningMNISTClassifier,
-            **LightningMNISTModelConfig,
+            **model_config,
         )
 
         predictions = batch_predictor.predict(
