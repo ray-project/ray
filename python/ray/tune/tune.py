@@ -52,7 +52,7 @@ from ray.tune.search.util import (
     _set_search_properties_backwards_compatible as searcher_set_search_props,
 )
 from ray.tune.search.variant_generator import _has_unresolved_values
-from ray.tune.syncer import SyncConfig, SyncerCallback
+from ray.tune.syncer import SyncConfig
 from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
@@ -798,14 +798,6 @@ def run(
 
     all_trials = runner.get_trials()
     experiment_checkpoint = runner.experiment_state_path
-
-    # Wait for syncing to finish
-    for callback in callbacks:
-        if isinstance(callback, SyncerCallback):
-            try:
-                callback.wait_for_all()
-            except TuneError as e:
-                logger.error(e)
 
     runner.cleanup()
 
