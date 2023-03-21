@@ -16,11 +16,22 @@
 
 import logging
 import os
+import sys
 from argparse import Namespace
 from typing import Optional, Tuple, Union
 import tempfile
-from contextlib import nullcontext
 from pathlib import Path
+
+
+if sys.version_info >= (3, 7):
+    from contextlib import nullcontext
+else:
+    from contextlib import contextmanager
+
+    @contextmanager
+    def nullcontext(enter_result=None):
+        yield enter_result
+
 
 try:
     from packaging.version import Version
@@ -141,8 +152,12 @@ def load_accelerate_config(
 
     with ctx() as tempdir:
         if isinstance(accelerate_config, dict):
+            # We save the dict to file, as Accelerate doesn't allow users to pass
+            # dicts directly. That way, we ensure the behavior is consistent.
             tempdir = Path(tempdir)
             accelerate_config_path = str(tempdir / "accelerate_config.json")
+            # Those are the same default settings as in Accelerate.
+            # They cannot be missing from the config.
             accelerate_config.setdefault("num_processes", 1)
             accelerate_config.setdefault("distributed_type", "NO")
             accelerate_config.setdefault("mixed_precision", "no")
