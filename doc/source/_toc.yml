@@ -161,6 +161,7 @@ parts:
                 title: "Using Search Spaces"
               - file: tune/tutorials/tune-stopping
               - file: tune/tutorials/tune-storage
+              - file: tune/tutorials/tune-fault-tolerance
               - file: tune/tutorials/tune-metrics
                 title: "Using Callbacks and Metrics"
               - file: tune/tutorials/tune_get_data_in_and_out
