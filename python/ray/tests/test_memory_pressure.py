@@ -521,10 +521,10 @@ def test_one_actor_max_fifo_kill_previous_actor(shutdown_only):
     with ray.init(
         _system_config={
             "worker_killing_policy": "retriable_fifo",
-            "memory_usage_threshold": 0.4,
+            "memory_usage_threshold": 0.7,
         },
     ) as addr:
-        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.3)
+        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.5)
 
         first_actor = Leaker.options(name="first_actor").remote()
         ray.get(first_actor.allocate.remote(bytes_to_alloc))
@@ -534,15 +534,15 @@ def test_one_actor_max_fifo_kill_previous_actor(shutdown_only):
         assert "first_actor" in actors
 
         second_actor = Leaker.options(name="second_actor").remote()
-        ray.get(second_actor.allocate.remote(bytes_to_alloc))
+        ray.get(second_actor.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
 
         actors = ray.util.list_named_actors()
-        assert len(actors) == 1
+        assert len(actors) == 1, actors
         assert "first_actor" not in actors
         assert "second_actor" in actors
 
         third_actor = Leaker.options(name="third_actor").remote()
-        ray.get(third_actor.allocate.remote(bytes_to_alloc))
+        ray.get(third_actor.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
 
         actors = ray.util.list_named_actors()
         assert len(actors) == 1
