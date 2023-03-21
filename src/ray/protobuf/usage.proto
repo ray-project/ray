@@ -101,7 +101,7 @@ enum TagKey {
   DATA_LOGICAL_OPS = 400;
 
   // AIR
-  // Name of AIR trainer, or CUSTOM if user-defined.
-  // Example: TorchTrainer
+  // Name of AIR trainer, or "Custom" if user-defined.
+  // Example: "TorchTrainer"
   AIR_TRAINER = 500;
 }
