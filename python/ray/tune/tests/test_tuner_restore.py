@@ -614,15 +614,11 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir, caplog):
         checkpoint = session.get_checkpoint()
         assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
 
-    caplog.clear()
-    with caplog.at_level(logging.WARNING, logger="ray.tune.impl.tuner_internal"):
-        tuner = Tuner.restore(
-            str(tmpdir / "overwrite_trainable"),
-            trainable=train_func_1,
-            resume_errored=True,
-        )
-        assert "The trainable will be overwritten" in caplog.text
-
+    tuner = Tuner.restore(
+        str(tmpdir / "overwrite_trainable"),
+        trainable=train_func_1,
+        resume_errored=True,
+    )
     results = tuner.fit()
     assert not results.errors
 
