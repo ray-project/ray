@@ -443,8 +443,6 @@ class TestDeployApp:
 
     def get_test_deploy_config(self) -> Dict:
         return {
-            "host": "127.0.0.1",
-            "port": 8000,
             "applications": [
                 {
                     "name": "app1",
@@ -821,8 +819,6 @@ class TestDeployApp:
         pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
         test_config = ServeDeploySchema.parse_obj(
             {
-                "host": "127.0.0.1",
-                "port": 8000,
                 "applications": [
                     {
                         "name": "app1",
@@ -867,8 +863,6 @@ class TestDeployApp:
         pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
         test_config = ServeDeploySchema.parse_obj(
             {
-                "host": "127.0.0.1",
-                "port": 8000,
                 "applications": [
                     {
                         "name": "app1",
@@ -897,8 +891,6 @@ class TestDeployApp:
         # Deploy app3
         new_config = ServeDeploySchema.parse_obj(
             {
-                "host": "127.0.0.1",
-                "port": 8000,
                 "applications": [
                     {
                         "name": "app3",
@@ -1100,8 +1092,6 @@ class TestDeployApp:
         """Deploy two applications with separate runtime envs."""
 
         config_template = {
-            "host": "127.0.0.1",
-            "port": 8000,
             "applications": [
                 {
                     "name": "app1",
@@ -1145,8 +1135,6 @@ class TestDeployApp:
         world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
         fail_import_path = "ray.serve.tests.test_config_files.fail.node"
         config_template = {
-            "host": "127.0.0.1",
-            "port": 8000,
             "applications": [
                 {
                     "name": "app1",

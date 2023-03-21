@@ -156,7 +156,7 @@ def test_deploy_with_http_options(ray_start_stop):
     assert config == info
 
     with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(["serve", "deploy", f2])
+        subprocess.check_output(["serve", "deploy", f2], stderr=subprocess.STDOUT)
 
     assert requests.post("http://localhost:8005/").text == "wonderful world"
 
@@ -271,41 +271,6 @@ def test_deploy_multi_app(ray_start_stop):
         print("All deployments are live.\n")
 
     ray.shutdown()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_http_override(ray_start_stop):
-    """
-    When deploying multiple applications in one config file, the top-level host and port
-    options should override those set at per-application level.
-    """
-    config = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "apps_with_http.yaml"
-    )
-
-    deploy_response = subprocess.check_output(["serve", "deploy", config])
-    assert b"Sent deploy request successfully!" in deploy_response
-
-    # Only port 8005 should work, since it was set as a top-level option
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8005/app1", json=["ADD", 2]).json()
-        == "4 pizzas please!",
-        timeout=15,
-    )
-    print('Application "app1" is reachable over HTTP at port 8005.')
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8005/app2").text == "wonderful world",
-        timeout=15,
-    )
-    print('Application "app2" is reachable over HTTP at port 8005.')
-
-    with pytest.raises(requests.exceptions.ConnectionError):
-        requests.post("http://localhost:8000/app1", json=["ADD", 2])
-    print('Confirmed "app1" is not reachable over HTTP at port 8000.')
-
-    with pytest.raises(requests.exceptions.ConnectionError):
-        requests.post("http://localhost:8010/app2")
-    print('Confirmed "app2" is not reachable over HTTP at port 8010.')
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
