@@ -45,6 +45,20 @@ logger = logging.getLogger(__name__)
 class TrainingFailedError(RuntimeError):
     """An error indicating that training has failed."""
 
+    _RESTORE_MSG = (
+        "The Ray Train run failed. Please inspect the previous error messages for a "
+        "cause. After fixing the issue, you can restart the run from scratch or "
+        "continue this run. To continue this run, you can use "
+        '`trainer = {trainer_cls_name}.restore("{path}")`.'
+    )
+
+    _FAILURE_CONFIG_MSG = (
+        "To start a new run that will retry on trial failures, set "
+        "`air.RunConfig(failure_config=air.FailureConfig(max_failures))` "
+        "in the Trainer's run_config with `max_failures > 0` or `max_failures = 1` "
+        "for unlimited retries."
+    )
+
     pass
 
 
@@ -543,7 +557,7 @@ class BaseTrainer(abc.ABC):
 
         Raises:
             TrainingFailedError: If any failures during the execution of
-            ``self.as_trainable()``.
+            ``self.as_trainable()``, or during the Tune execution loop.
         """
         from ray.tune.tuner import Tuner, TunerInternal
         from ray.tune import TuneError
@@ -571,14 +585,30 @@ class BaseTrainer(abc.ABC):
         )
         self._save(experiment_path)
 
-        result_grid = tuner.fit()
-        assert len(result_grid) == 1
+        restore_msg = TrainingFailedError._RESTORE_MSG.format(
+            trainer_cls_name=self.__class__.__name__,
+            path=str(experiment_path),
+        )
+
         try:
-            result = result_grid[0]
-            if result.error:
-                raise result.error
+            result_grid = tuner.fit()
         except TuneError as e:
-            raise TrainingFailedError from e
+            # Catch any `TuneError`s propagated from the underlying `Tuner.fit` call
+            #   -> This includes driver errors such as errors during callbacks.
+            # Raise it to the user as a `TrainingFailedError` with a message to restore.
+            if e.__cause__:
+                raise TrainingFailedError(restore_msg) from e.__cause__
+            else:
+                raise TrainingFailedError(restore_msg) from e
+
+        assert len(result_grid) == 1
+        result = result_grid[0]
+        if result.error:
+            # Raise trainable errors to the user with a message to restore
+            # or configure `FailureConfig` in a new run.
+            raise TrainingFailedError(
+                "\n".join([restore_msg, TrainingFailedError._FAILURE_CONFIG_MSG])
+            ) from result.error
         return result
 
     def _save(self, experiment_path: Union[str, Path]):
