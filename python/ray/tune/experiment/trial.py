@@ -2,6 +2,7 @@ from collections import deque
 import copy
 import json
 import logging
+from contextlib import contextmanager
 from functools import partial
 from numbers import Number
 import os
@@ -242,6 +243,24 @@ def _get_trainable_kwargs(
             kwargs.update(additional_kwargs)
 
     return kwargs
+
+
+@contextmanager
+def _change_working_directory(trial):
+    """Context manager changing working directory to trial logdir.
+    Used in local mode.
+
+    For non-local mode it is no-op.
+    """
+    if ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
+        old_dir = os.getcwd()
+        try:
+            os.chdir(trial.logdir)
+            yield
+        finally:
+            os.chdir(old_dir)
+    else:
+        yield
 
 
 @DeveloperAPI

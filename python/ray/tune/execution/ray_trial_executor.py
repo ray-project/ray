@@ -6,7 +6,6 @@ import random
 import time
 import traceback
 from collections import deque
-from contextlib import contextmanager
 from enum import Enum
 from functools import partial
 from typing import Callable, Dict, Iterable, Optional, Set, Union
@@ -35,6 +34,7 @@ from ray.tune.experiment.trial import (
     Trial,
     _Location,
     _TrialInfo,
+    _change_working_directory,
     _get_trainable_kwargs,
 )
 from ray.tune.utils import warn_if_slow
@@ -355,7 +355,7 @@ class RayTrialExecutor:
             resource_request
         )
 
-        logger.debug(f"Trial {trial}: Reusing cached actor " f"{actor}")
+        logger.debug(f"Trial {trial}: Reusing cached actor {actor}")
 
         trial.set_runner(actor)
 
@@ -416,7 +416,7 @@ class RayTrialExecutor:
         trial.set_location(_Location())
         logger.debug("Trial %s: Setting up new remote runner.", trial)
 
-        with self._change_working_directory(trial):
+        with _change_working_directory(trial):
             return full_actor_class.remote(**trainable_kwargs)
 
     def _train(self, trial):
@@ -435,7 +435,7 @@ class RayTrialExecutor:
             self._buffer_min_time_s,
             min(self._buffer_max_time_s, len(self._futures) // 10),
         )
-        with self._change_working_directory(trial):
+        with _change_working_directory(trial):
             buffer_length = self._buffer_length
             if buffer_length > 1 and trial.checkpoint_at_end:
                 # If a trial checkpoint can be triggered externally,
@@ -595,7 +595,7 @@ class RayTrialExecutor:
         try:
             logger.debug("Trial %s: Destroying actor.", trial)
 
-            with self._change_working_directory(trial):
+            with _change_working_directory(trial):
                 future = trial.runner.stop.remote()
 
             acquired_resources = self._trial_to_acquired_resources.pop(trial)
@@ -740,7 +740,7 @@ class RayTrialExecutor:
         extra_config[STDOUT_FILE] = stdout_file
         extra_config[STDERR_FILE] = stderr_file
 
-        with self._change_working_directory(trial):
+        with _change_working_directory(trial):
             with warn_if_slow("reset"):
                 try:
                     reset_val = ray.get(
@@ -923,7 +923,7 @@ class RayTrialExecutor:
         """
         logger.debug(f"saving trial {trial}")
         result = result or trial.last_result
-        with self._change_working_directory(trial):
+        with _change_working_directory(trial):
             if storage == CheckpointStorage.MEMORY:
                 value = trial.runner.save_to_object.remote()
                 checkpoint = _TrackedCheckpoint(
@@ -972,7 +972,7 @@ class RayTrialExecutor:
             logger.debug("Trial %s: Attempting restore from object", trial)
             # Note that we don't store the remote since in-memory checkpoints
             # don't guarantee fault tolerance and don't need to be waited on.
-            with self._change_working_directory(trial):
+            with _change_working_directory(trial):
                 trial.runner.restore_from_object.remote(checkpoint_dir)
         else:
             logger.debug("Trial %s: Attempting restore from %s", trial, checkpoint_dir)
@@ -988,7 +988,7 @@ class RayTrialExecutor:
                     int(os.environ.get("TUNE_FALLBACK_TO_LATEST_CHECKPOINT", "1"))
                 )
 
-                with self._change_working_directory(trial):
+                with _change_working_directory(trial):
                     remote = trial.runner.restore.remote(
                         checkpoint_dir,
                         checkpoint_node_ip=node_ip,
@@ -1001,7 +1001,7 @@ class RayTrialExecutor:
                 logger.debug("Trial %s: Reading checkpoint into memory", trial)
                 checkpoint_path = TrainableUtil.find_checkpoint_dir(checkpoint_dir)
                 obj = Checkpoint.from_directory(checkpoint_path).to_bytes()
-                with self._change_working_directory(trial):
+                with _change_working_directory(trial):
                     remote = trial.runner.restore_from_object.remote(obj)
             else:
                 raise _AbortTrialExecution(
@@ -1020,7 +1020,7 @@ class RayTrialExecutor:
             A dict that maps ExportFormats to successfully exported models.
         """
         if trial.export_formats and len(trial.export_formats) > 0:
-            with self._change_working_directory(trial):
+            with _change_working_directory(trial):
                 return ray.get(
                     trial.runner.export_model.remote(trial.export_formats),
                     timeout=DEFAULT_GET_TIMEOUT,
@@ -1059,23 +1059,6 @@ class RayTrialExecutor:
             )
 
         self._resource_manager.clear()
-
-    @contextmanager
-    def _change_working_directory(self, trial):
-        """Context manager changing working directory to trial logdir.
-        Used in local mode.
-
-        For non-local mode it is no-op.
-        """
-        if ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
-            old_dir = os.getcwd()
-            try:
-                os.chdir(trial.local_path)
-                yield
-            finally:
-                os.chdir(old_dir)
-        else:
-            yield
 
     def get_next_executor_event(
         self, live_trials: Set[Trial], next_trial_exists: bool
