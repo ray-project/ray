@@ -573,7 +573,9 @@ class RayActorManager:
                     on_error=on_actor_stop,
                 )
                 # Clear state futures here to avoid resolving __ray_ready__ futures
-                for future in self._tracked_actors_to_state_futures[tracked_actor]:
+                for future in list(
+                    self._tracked_actors_to_state_futures[tracked_actor]
+                ):
                     self._actor_state_events.discard_future(future)
                     self._tracked_actors_to_state_futures[tracked_actor].remove(future)
 
