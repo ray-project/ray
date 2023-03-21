@@ -1,6 +1,7 @@
 import logging
 from typing import Optional, Tuple
 
+import ray.dashboard.modules.log.log_utils as log_utils
 import ray.dashboard.modules.log.log_consts as log_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
@@ -218,6 +219,20 @@ async def _stream_log_in_chunk(
         cur_offset += len(bytes)
         if end_offset is not None and cur_offset >= end_offset:
             break
+
+
+class LogAgent(dashboard_utils.DashboardAgentModule):
+    def __init__(self, dashboard_agent):
+        super().__init__(dashboard_agent)
+        log_utils.register_mimetypes()
+        routes.static("/logs", self._dashboard_agent.log_dir, show_index=True)
+
+    async def run(self, server):
+        pass
+
+    @staticmethod
+    def is_minimal_module():
+        return False
 
 
 class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
