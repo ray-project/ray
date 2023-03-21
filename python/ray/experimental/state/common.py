@@ -1,5 +1,4 @@
 import json
-import json
 import logging
 import sys
 from abc import ABC
@@ -7,10 +6,11 @@ from dataclasses import dataclass, field, fields
 from enum import Enum, unique
 from typing import Dict, List, Optional, Set, Tuple, Union
 
+import ray.core.generated.common_pb2 as common_pb2
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
-from ray.core.generated.common_pb2 import TaskStatus, TaskType
-from ray.core.generated.gcs_pb2 import TaskEvents, TaskLogInfo
+from ray.core.generated.common_pb2 import TaskType
+from ray.core.generated.gcs_pb2 import TaskEvents
 from ray.dashboard.modules.job.common import JobInfo
 from ray.experimental.state.custom_types import (
     TypeActorStatus,
@@ -1395,7 +1395,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     task_state["end_time_ms"] = None
     events = []
 
-    for state in TaskStatus.keys():
+    for state in common_pb2.TaskStatus.keys():
         key = f"{state.lower()}_ts"
         if key in state_updates:
             # timestamp is recorded as nanosecond from the backend.
@@ -1418,7 +1418,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     if len(events) > 0:
         latest_state = events[-1]["state"]
     else:
-        latest_state = "NIL"
+        latest_state = common_pb2.TaskStatus.Name(common_pb2.NIL)
     task_state["state"] = latest_state
 
     return task_state
