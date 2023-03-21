@@ -17,20 +17,20 @@ class TfMLPHead(TfModel):
         TfModel.__init__(self, config)
 
         self.net = TfMLP(
-            input_dim=config.input_dim,
+            input_dim=config.input_dims[0],
             hidden_layer_dims=config.hidden_layer_dims,
-            output_dim=config.output_dim,
+            output_dim=config.output_dims[0],
             hidden_layer_activation=config.hidden_layer_activation,
             output_activation=config.output_activation,
         )
 
     @override(Model)
     def get_input_spec(self) -> Union[Spec, None]:
-        return TFTensorSpecs("b, h", h=self.config.input_dim)
+        return TFTensorSpecs("b, h", h=self.config.input_dims[0])
 
     @override(Model)
     def get_output_spec(self) -> Union[Spec, None]:
-        return TFTensorSpecs("b, h", h=self.config.output_dim)
+        return TFTensorSpecs("b, h", h=self.config.output_dims[0])
 
     @override(Model)
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:

@@ -12,25 +12,25 @@ torch, nn = try_import_torch()
 class TestTorchMLPEncoder(unittest.TestCase):
     def test_torch_mlp_encoder(self):
 
-        inputs_dims = [1, 2, 1000]
+        inputs_dims_configs = [[1], [2], [1000]]
 
         list_of_hidden_layer_dims = [[], [1], [64, 64], [1000, 1000, 1000, 1000]]
 
         hidden_layer_activations = [None, "linear", "relu", "tanh", "elu", "swish"]
 
-        output_dims = inputs_dims
+        output_dims_configs = inputs_dims_configs
 
         output_activations = hidden_layer_activations
 
         for permutation in itertools.product(
-            inputs_dims,
+            inputs_dims_configs,
             list_of_hidden_layer_dims,
             hidden_layer_activations,
             output_activations,
-            output_dims,
+            output_dims_configs,
         ):
             (
-                inputs_dim,
+                inputs_dims,
                 hidden_layer_dims,
                 hidden_layer_activation,
                 output_activation,
@@ -39,7 +39,7 @@ class TestTorchMLPEncoder(unittest.TestCase):
 
             print(
                 f"Testing ...\n"
-                f"inputs_dim: {inputs_dim}\n"
+                f"inputs_dim: {inputs_dims}\n"
                 f"hidden_layer_dims: {hidden_layer_dims}\n"
                 f"hidden_layer_activation: {hidden_layer_activation}\n"
                 f"output_activation: {output_activation}\n"
@@ -47,16 +47,16 @@ class TestTorchMLPEncoder(unittest.TestCase):
             )
 
             config = MLPEncoderConfig(
-                input_dim=inputs_dim,
+                input_dims=inputs_dims,
                 hidden_layer_dims=hidden_layer_dims,
-                output_dim=output_dims,
+                output_dims=output_dims,
                 hidden_layer_activation=hidden_layer_activation,
                 output_activation=output_activation,
             )
 
             model = config.build(framework="torch")
 
-            obs = torch.randn(1, inputs_dim)
+            obs = torch.randn(1, inputs_dims[0])
             seq_lens = torch.tensor([1])
             state = None
 
@@ -64,7 +64,7 @@ class TestTorchMLPEncoder(unittest.TestCase):
                 {SampleBatch.OBS: obs, SampleBatch.SEQ_LENS: seq_lens, STATE_IN: state}
             )
 
-            self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims))
+            self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims[0]))
             self.assertEqual(outputs[STATE_OUT], None)
 
 

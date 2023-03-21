@@ -115,6 +115,8 @@ from the above Python class.
   public class JavaCallPythonDemo {
 
     public static void main(String[] args) {
+      // Set the code-search-path to the directory of your `ray_demo.py` file.
+      System.setProperty("ray.job.code-search-path", "/path/to/the_dir/");
       Ray.init();
 
       // Define a Python class.

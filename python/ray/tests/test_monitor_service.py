@@ -66,7 +66,7 @@ def test_ray_version(monitor_stub):
     assert response.version == ray.__version__
 
 
-def test_scheduling_status(monitor_stub):
+def test_scheduling_status_actors(monitor_stub):
     @ray.remote(num_cpus=0, num_gpus=1)
     class Foo:
         pass
@@ -110,6 +110,28 @@ def test_scheduling_status(monitor_stub):
     wait_for_condition(condition)
 
     del gpu_actors
+
+
+def test_scheduling_status_pgs(monitor_stub):
+    pg = ray.util.placement_group(
+        [{"CPU": 0.1, "GPU": 1}, {"custom": 10}], strategy="STRICT_PACK"
+    )
+
+    def condition():
+        request = monitor_pb2.GetSchedulingStatusRequest()
+        response = monitor_stub.GetSchedulingStatus(request)
+
+        assert len(response.resource_requests) == 1
+
+        shapes = [{"CPU": 0.1, "GPU": 1}, {"custom": 10}]
+        for bundle in response.resource_requests[0].bundles:
+            if bundle.resources not in shapes:
+                return False
+
+        return True
+
+    wait_for_condition(condition)
+    del pg
 
 
 def count_live_nodes():

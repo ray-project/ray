@@ -26,7 +26,11 @@ from ray.serve._private.http_util import (
     set_socket_reuse_port,
 )
 from ray.serve._private.common import EndpointInfo, EndpointTag
-from ray.serve._private.constants import SERVE_LOGGER_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
+    DEFAULT_LATENCY_BUCKET_MS,
+)
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
 
@@ -291,6 +295,15 @@ class HTTPProxy:
                 "method",
             ),
         )
+        self.processing_latency_tracker = metrics.Histogram(
+            "serve_http_request_latency_ms",
+            description=(
+                "The end-to-end latency of HTTP requests "
+                "(measured from the Serve HTTP proxy)."
+            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("route_prefix",),
+        )
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
@@ -370,6 +383,9 @@ class HTTPProxy:
         start_time = time.time()
         status_code = await _send_request_to_handle(handle, scope, receive, send)
         latency_ms = (time.time() - start_time) * 1000.0
+        self.processing_latency_tracker.observe(
+            latency_ms, tags={"route_prefix": route_prefix}
+        )
         logger.info(
             access_log_msg(
                 method=scope["method"],

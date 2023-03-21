@@ -1,10 +1,10 @@
 import { Box, Grid, makeStyles, Typography } from "@material-ui/core";
-import dayjs from "dayjs";
 import React, { useContext, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
+import { formatDateFromTimeMs } from "../../common/formatUtils";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
@@ -29,13 +29,7 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-type JobDetailChartsPageProps = {
-  newIA?: boolean;
-};
-
-export const JobDetailChartsPage = ({
-  newIA = false,
-}: JobDetailChartsPageProps) => {
+export const JobDetailChartsPage = () => {
   const classes = useStyle();
   const { job, msg, params } = useJobDetail();
   const jobId = params.id;
@@ -202,23 +196,21 @@ export const JobDetailChartsPage = ({
               label: "Started at",
               content: {
                 value: job.start_time
-                  ? dayjs(Number(job.start_time)).format("YYYY/MM/DD HH:mm:ss")
+                  ? formatDateFromTimeMs(job.start_time)
                   : "-",
               },
             },
             {
               label: "Ended at",
               content: {
-                value: job.end_time
-                  ? dayjs(Number(job.end_time)).format("YYYY/MM/DD HH:mm:ss")
-                  : "-",
+                value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
               },
             },
             {
               label: "Actions",
               content: (
                 <div>
-                  <JobLogsLink job={job} newIA />
+                  <JobLogsLink job={job} />
                   <br />
                   <CpuProfilingLink
                     pid={job.driver_info?.pid}
@@ -296,7 +288,6 @@ export const JobDetailChartsPage = ({
             jobId={jobId}
             filterToTaskId={taskListFilter}
             onFilterChange={handleTaskListFilterChange}
-            newIA={newIA}
           />
         </CollapsibleSection>
       </TitleCard>
@@ -311,10 +302,9 @@ export const JobDetailChartsPage = ({
         >
           <ActorList
             jobId={jobId}
-            newIA={newIA}
             filterToActorId={actorListFilter}
             onFilterChange={handleActorListFilterChange}
-            detailPathPrefix={newIA ? "actors" : "/actors"}
+            detailPathPrefix="actors"
           />
         </CollapsibleSection>
       </TitleCard>
@@ -336,27 +326,19 @@ type JobLogsLinkProps = {
     | "submission_id"
     | "type"
   >;
-  newIA?: boolean;
 };
 
 export const JobLogsLink = ({
   job: { driver_agent_http_address, driver_info, job_id, submission_id, type },
-  newIA = false,
 }: JobLogsLinkProps) => {
   const { ipLogMap } = useContext(GlobalContext);
 
   let link: string | undefined;
 
-  const baseLink = newIA ? "/new/logs" : "/log";
-
   if (driver_agent_http_address) {
-    link = `${baseLink}/${encodeURIComponent(
-      `${driver_agent_http_address}/logs`,
-    )}`;
+    link = `/logs/${encodeURIComponent(`${driver_agent_http_address}/logs`)}`;
   } else if (driver_info && ipLogMap[driver_info.node_ip_address]) {
-    link = `${baseLink}/${encodeURIComponent(
-      ipLogMap[driver_info.node_ip_address],
-    )}`;
+    link = `/logs/${encodeURIComponent(ipLogMap[driver_info.node_ip_address])}`;
   }
 
   if (link) {
