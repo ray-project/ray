@@ -11,7 +11,7 @@ head_node_type:
 
 worker_node_types:
     - name: worker_node
-      instance_type: n2-standard-8
+      instance_type: n2-standard-16
       min_workers: 3
       max_workers: 3
       use_spot: false
