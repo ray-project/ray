@@ -1483,6 +1483,7 @@
   run:
     timeout: 1200
     script: python workloads/test_bookkeeping_overhead.py
+    type: client
 
   alert: tune_tests
 
@@ -1517,6 +1518,7 @@
   run:
     timeout: 900
     script: python workloads/test_durable_trainable.py --bucket tune-cloud-tests
+    type: client
     wait_for_nodes:
       num_nodes: 16
 
@@ -1557,6 +1559,7 @@
   run:
     timeout: 86400
     script: python workloads/test_long_running_large_checkpoints.py
+    type: client
     long_running: true
 
   smoke_test:
@@ -1606,6 +1609,7 @@
     timeout: 900
     prepare_timeout: 1200
     script: python workloads/test_network_overhead.py
+    type: client
     wait_for_nodes:
       num_nodes: 100
 
@@ -1669,7 +1673,7 @@
   run:
     timeout: 600
     script: python workloads/test_result_throughput_cluster.py
-
+    type: client
     wait_for_nodes:
       num_nodes: 16
 
@@ -1709,8 +1713,7 @@
   run:
     timeout: 600
     script: python workloads/test_result_throughput_single_node.py
-    # Not an anyscale_job as it fails due to extra overhead
-    type: job
+    type: client
 
   alert: tune_tests
 
