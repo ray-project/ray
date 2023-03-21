@@ -14,7 +14,8 @@ mkdir -p $LOCAL_MODEL_DIR
 mkdir -p $OUTPUT_DIR
 
 # Download weights and tokenizer.
-aws s3 sync $S3_MODEL_DIR $LOCAL_MODEL_DIR
+# We only need the FLAX weights to run this test.
+aws s3 sync $S3_MODEL_DIR $LOCAL_MODEL_DIR --exclude="*.bin,*.h5"
 
 # Run training.
 python train_opt_2_7b_minimum.py \
