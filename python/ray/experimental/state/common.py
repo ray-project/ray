@@ -1,5 +1,4 @@
 import json
-import json
 import logging
 import sys
 from abc import ABC
@@ -1419,7 +1418,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     if len(events) > 0:
         latest_state = events[-1]["state"]
     else:
-        latest_state = "NIL"
+        latest_state = common_pb2.TaskStatus.Name(common_pb2.NIL)
     task_state["state"] = latest_state
 
     return task_state
