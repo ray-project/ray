@@ -21,7 +21,6 @@ AIR_TRAINERS = {
 
 def tag_air_trainer(trainer: "BaseTrainer"):
     from ray.train.trainer import BaseTrainer
-    from ray.train.registry import AIR_TRAINERS
 
     assert isinstance(trainer, BaseTrainer)
     module_path = trainer.__module__
