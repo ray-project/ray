@@ -54,7 +54,10 @@ class SingleAgentRLModuleSpec:
 
     Args:
         module_class: The RLModule class to use.
-        observation_space: The observation space of the RLModule.
+        input_space: The input space space of the RLModule. This may differ from the
+            observation space of the environment. For example, a discrete observation
+            space of an environment, would usually correspond to a one-hot encoded
+            input space for the RLModule.
         action_space: The action space of the RLModule.
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.

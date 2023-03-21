@@ -216,6 +216,38 @@ class NoPreprocessor(Preprocessor):
         return self._obs_space
 
 
+@PublicAPI
+class MultiBinaryPreprocessor(Preprocessor):
+    """Preprocessor that turns a MultiBinary space into a Box.
+
+    Note: Before RLModules were introduced, RLlib's ModelCatalogV2 would produce
+    ComplexInputNetworks that treat MultiBinary spaces as Boxes. This preprocessor is
+    needed to get rid of the ComplexInputNetworks and use RLModules instead because
+    RLModules lack the logic to handle MultiBinary or other non-Box spaces.
+    """
+
+    @override(Preprocessor)
+    def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
+        return self._obs_space.shape
+
+    @override(Preprocessor)
+    def transform(self, observation: TensorType) -> np.ndarray:
+        # The shape stays the same, but the dtype changes.
+        self.check_shape(observation)
+        return observation.astype(np.float32)
+
+    @override(Preprocessor)
+    def write(self, observation: TensorType, array: np.ndarray, offset: int) -> None:
+        array[offset : offset + self._size] = np.array(observation, copy=False).ravel()
+
+    @property
+    @override(Preprocessor)
+    def observation_space(self) -> gym.Space:
+        obs_space = gym.spaces.Box(0.0, 1.0, self.shape, dtype=np.float32)
+        obs_space.original_space = self._obs_space
+        return obs_space
+
+
 @DeveloperAPI
 class TupleFlatteningPreprocessor(Preprocessor):
     """Preprocesses each tuple element, then flattens it all into a vector.
@@ -379,6 +411,8 @@ def get_preprocessor(space: gym.Space) -> type:
         preprocessor = DictFlatteningPreprocessor
     elif isinstance(space, Repeated):
         preprocessor = RepeatedValuesPreprocessor
+    elif isinstance(space, gym.spaces.MultiBinary):
+        preprocessor = MultiBinaryPreprocessor
     else:
         preprocessor = NoPreprocessor
 

@@ -370,15 +370,23 @@ class Catalog:
                     output_activation=output_activation,
                     output_dims=[encoder_latent_dim],
                 )
+            # input_space is a 2D Box
+            elif (
+                isinstance(observation_space, Box) and len(observation_space.shape) == 2
+            ):
+                # RLlib used to support 2D Box spaces by silently flattening them
+                raise ValueError(
+                    f"No default encoder config for obs space={observation_space},"
+                    f" lstm={use_lstm} and attention={use_attention} found. 2D Box "
+                    f"spaces are not supported. They should be either flattened to a "
+                    f"1D Box space or enhanced to be a 3D box space."
+                )
             # input_space is a possibly nested structure of spaces.
             else:
                 # NestedModelConfig
                 raise ValueError(
-                    f"No default encoder config for "
-                    f"obs space={observation_space},"
-                    f" lstm={use_lstm} and "
-                    f"attention={use_attention} "
-                    f"found."
+                    f"No default encoder config for obs space={observation_space},"
+                    f" lstm={use_lstm} and attention={use_attention} found."
                 )
 
         return encoder_config

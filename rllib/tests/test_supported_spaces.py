@@ -61,11 +61,22 @@ OBSERVATION_SPACES_TO_TEST = {
     ),
 }
 
+# TODO(Artur): Add back tf2 once we CNNs there
+RLMODULE_SUPPORTED_FRAMEWORKS = {"torch"}
+
 # The action spaces that we test RLModules with
 RLMODULE_SUPPORTED_ACTION_SPACES = ["discrete", "vector1d"]
 
 # The observation spaces that we test RLModules with
-RLMODULE_SUPPORTED_OBSERVATION_SPACES = ["discrete", "vector1d", "image"]
+RLMODULE_SUPPORTED_OBSERVATION_SPACES = [
+    "multi_binary",
+    "discrete",
+    "vector1d",
+    "image",
+    "vizdoomgym",
+    "tuple",
+    "dict",
+]
 
 DEFAULT_OBSERVATION_SPACE = DEFAULT_ACTION_SPACE = "discrete"
 
@@ -156,9 +167,14 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
             algo.stop()
         print("Test: {}, ran in {}s".format(stat, time.time() - t0))
 
-    frameworks = ("tf", "torch")
+    frameworks = {"tf", "torch"}
     if tf2:
-        frameworks += ("tf2",)
+        frameworks.add("tf2")
+
+    if config._enable_rl_module_api:
+        # Only test the frameworks that are supported by RLModules.
+        frameworks = frameworks.intersection(RLMODULE_SUPPORTED_FRAMEWORKS)
+
     for _ in framework_iterator(config, frameworks=frameworks):
         # Test all action spaces first.
         for a_name in ACTION_SPACES_TO_TEST.keys():
