@@ -185,7 +185,9 @@ class SplitCoordinator:
         epoch_id = self._barrier(split_idx)
         return epoch_id
 
-    def get(self, epoch_id: int, output_split_idx: int) -> Optional[Tuple[ObjectRef[Block], BlockMetadata]]:
+    def get(
+        self, epoch_id: int, output_split_idx: int
+    ) -> Optional[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.
