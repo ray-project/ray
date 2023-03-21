@@ -26,6 +26,9 @@ from ray.data._internal.execution.streaming_executor_state import (
     select_operator_to_run,
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION,
 )
+from ray.data._internal.execution.autoscaling_requester import (
+    get_or_create_autoscaling_requester_actor,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
 
@@ -142,6 +145,9 @@ class StreamingExecutor(Executor, threading.Thread):
                 state.close_progress_bars()
             if self._output_info:
                 self._output_info.close()
+            # Make request for zero resources to autoscaler for this execution.
+            actor = get_or_create_autoscaling_requester_actor()
+            actor.request_resources.remote({}, self._execution_id)
 
     def run(self):
         """Run the control loop in a helper thread.
