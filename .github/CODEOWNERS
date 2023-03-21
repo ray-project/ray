@@ -46,6 +46,9 @@
 # Docker image build script.
 /ci/build/build-docker-images.py @amogkam @krfricke @gvspraveen @alanwguo @ray-project/ray-core
 
+# Dockerfiles
+/ci/docker/base.gpu.Dockerfile @gvspraveen @alanwguo
+
 # Python worker.
 #/python/ray/ @ray-project/ray-core
 #!/python/ray/tune/ @ray-project/ray-core
