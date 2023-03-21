@@ -61,6 +61,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 # Task failure sometimes are due to GCS
                 # failure. When GCS failed, we expect a longer time
                 # to recover.
+                logger.exception("Failed to fetch config from the controller.")
                 return Response(
                     status=503,
                     text=(
@@ -120,6 +121,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         try:
             config = ServeApplicationSchema.parse_obj(await req.json())
         except ValidationError as e:
+            logger.warning(f"Received invalid config: {repr(e)}")
             return Response(
                 status=400,
                 text=repr(e),
@@ -184,7 +186,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                     await self._controller.check_alive.remote()
                     return self._controller
                 except ray.exceptions.RayActorError:
-                    logger.info("Controller is dead")
+                    logger.warning("Controller is dead.")
                 self._controller = None
 
             # Try to connect to serve even when we detect the actor is dead
