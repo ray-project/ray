@@ -15,10 +15,3 @@ worker_node_types:
       min_workers: 3
       max_workers: 3
       use_spot: false
-
-worker_node_types:
-    - name: worker_node
-      instance_type: n2-standard-8
-      min_workers: 3
-      max_workers: 3
-      use_spot: false
