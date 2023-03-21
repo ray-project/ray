@@ -20,6 +20,7 @@ from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.framework import try_import_tf
 
 
 def get_expected_module_config(

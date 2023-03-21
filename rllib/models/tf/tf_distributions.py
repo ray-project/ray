@@ -106,8 +106,8 @@ class TfCategorical(TfDistribution):
     @override(TfDistribution)
     def __init__(
         self,
-        probs: tf.Tensor = None,
-        logits: tf.Tensor = None,
+        probs: "tf.Tensor" = None,
+        logits: "tf.Tensor" = None,
         temperature: float = 1.0,
     ) -> None:
         super().__init__(probs=probs, logits=logits, temperature=temperature)

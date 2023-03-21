@@ -18,7 +18,6 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
 
 tf1, tf, _ = try_import_tf()
-tf1.enable_eager_execution()
 
 
 class PPOTfRLModule(PPORLModuleBase, TfRLModule):

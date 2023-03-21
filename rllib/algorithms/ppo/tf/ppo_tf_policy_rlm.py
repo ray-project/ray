@@ -60,6 +60,7 @@ class PPOTfPolicyWithRLModule(
     def __init__(self, observation_space, action_space, config):
         # TODO: Move into Policy API, if needed at all here. Why not move this into
         #  `PPOConfig`?.
+        self.framework="tf2"
         EagerTFPolicyV2.enable_eager_execution_if_necessary()
         validate_config(config)
         # Initialize MixIns.
