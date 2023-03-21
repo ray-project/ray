@@ -49,10 +49,16 @@ class AutoscalingRequester:
                 self._resource_requests.pop(k)
 
     def _aggregate_requests(self) -> Dict:
-        req = {"CPU": 0, "GPU": 0}
+        num_cpu = 0
+        num_gpu = 0
         for _, (r, _) in self._resource_requests.items():
-            req["CPU"] += r["CPU"] if "CPU" in r else 0
-            req["GPU"] += r["GPU"] if "GPU" in r else 0
+            num_cpu += r["CPU"] if "CPU" in r else 0
+            num_gpu += r["GPU"] if "GPU" in r else 0
+        req = {}
+        if num_cpu > 0:
+            req["CPU"] = num_cpu
+        if num_gpu > 0:
+            req["GPU"] = num_gpu
         return req
 
     def _test_set_timeout(self, ttl):

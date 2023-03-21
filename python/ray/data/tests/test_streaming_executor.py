@@ -332,7 +332,7 @@ def test_resource_constrained_triggers_autoscaling():
         o4.incremental_resource_usage = MagicMock(
             return_value=ExecutionResources(gpu=1)
         )
-        topo = build_streaming_topology(o4, opt)
+        topo = build_streaming_topology(o4, opt)[0]
         # Make sure only two operator's inqueues has data.
         topo[o2].inqueues[0].append("dummy")
         topo[o4].inqueues[0].append("dummy")
