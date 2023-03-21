@@ -14,6 +14,7 @@ from ray._private.test_utils import wait_for_condition, raw_metrics
 import numpy as np
 from ray._private.utils import get_system_memory
 from ray._private.utils import get_used_memory
+
 from ray.experimental.state.api import list_tasks
 from ray.experimental.state.state_manager import StateDataSourceClient
 
@@ -523,7 +524,7 @@ def test_one_actor_max_fifo_kill_previous_actor(shutdown_only):
             "worker_killing_policy": "retriable_fifo",
             "memory_usage_threshold": 0.7,
         },
-    ) as addr:
+    ):
         bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.5)
 
         first_actor = Leaker.options(name="first_actor").remote()
@@ -534,7 +535,9 @@ def test_one_actor_max_fifo_kill_previous_actor(shutdown_only):
         assert "first_actor" in actors
 
         second_actor = Leaker.options(name="second_actor").remote()
-        ray.get(second_actor.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
+        ray.get(
+            second_actor.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3)
+        )
 
         actors = ray.util.list_named_actors()
         assert len(actors) == 1, actors
@@ -542,7 +545,9 @@ def test_one_actor_max_fifo_kill_previous_actor(shutdown_only):
         assert "second_actor" in actors
 
         third_actor = Leaker.options(name="third_actor").remote()
-        ray.get(third_actor.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
+        ray.get(
+            third_actor.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3)
+        )
 
         actors = ray.util.list_named_actors()
         assert len(actors) == 1
