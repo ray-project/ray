@@ -1321,12 +1321,10 @@
 
   frequency: nightly
   team: ml
-  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_gce_4x8.yaml
-    cloud_id: cld_tPsS3nQz8p5cautbyWgEdr4y # anyscale gce
     autosuspend_mins: 60
 
   run:
@@ -1393,6 +1391,30 @@
 
   alert: tune_tests
 
+- name: tune_cloud_gce_ssh_sync
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+
+  stable: true
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_gce_4x8.yaml
+    autosuspend_mins: 60
+
+  run:
+    timeout: 600
+    script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
+    type: client
+
+    wait_for_nodes:
+      num_nodes: 4
+
+  alert: tune_tests
+
 - name: tune_cloud_gcp_k8s_durable_upload
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
@@ -1419,6 +1441,29 @@
 
   alert: tune_tests
 
+- name: tune_cloud_gce_durable_upload
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+
+  stable: true
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_gce_4x8.yaml
+    autosuspend_mins: 60
+
+  run:
+    timeout: 600
+    script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://tune-cloud-tests/durable_upload
+    type: client
+
+    wait_for_nodes:
+      num_nodes: 4
+
+  alert: tune_tests
 
 ########################
 # Tune scalability tests
