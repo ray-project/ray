@@ -1,6 +1,5 @@
 import copy
 import logging
-import sys
 import time
 import threading
 from typing import (
@@ -33,11 +32,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 if TYPE_CHECKING:
     import pyarrow
     from ray.data import Dataset
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +82,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
         *,
         prefetch_blocks: int = 0,
         batch_size: int = 256,
-        batch_format: Literal["default", "numpy", "pandas"] = "default",
+        batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
