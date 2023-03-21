@@ -15,7 +15,7 @@ the different algorithms use. You can also customize an algorithm's exploration
 behavior by sub-classing the Exploration base class and implementing
 your own logic:
 
-Some Built-in Exploration Components
+Built-in exploration components
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. currentmodule:: ray.rllib.utils.exploration
