@@ -1,9 +1,13 @@
+import os
 import ray
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
+import pytorch_lightning as pl
+from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 from ray.air import session
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingConfig
+from ray.air.constants import MODEL_KEY
 from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
 from ray.train.trainer import GenDataset
@@ -14,11 +18,9 @@ from ray.train.lightning._lightning_utils import (
     RayDDPStrategy,
     RayEnvironment,
     RayDataModule,
+    RayModelCheckpoint,
 )
 
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 import logging
 
@@ -78,7 +80,6 @@ class LightningConfigBuilder:
         self._trainer_fit_params = {}
         self._ddp_strategy_config = {}
         self._model_checkpoint_config = {}
-        self._ray_dataset_iter_config = {}
 
     def module(
         self, cls: Type[pl.LightningModule], **kwargs
@@ -164,7 +165,7 @@ class LightningTrainer(TorchTrainer):
     The training function ran on every Actor will first initialize an instance
     of the user-provided ``lightning_module`` class, which is a subclass of
     ``pytorch_lightning.LightningModule`` using the arguments provided in
-    ``lightning_module_init_config``.
+    ``LightningConfigBuilder.module()``.
 
     For data ingestion, the LightningTrainer will then either convert the Ray Dataset
     shards to a ``pytorch_lightning.LightningDataModule``, or directly use the
@@ -174,9 +175,13 @@ class LightningTrainer(TorchTrainer):
     provided in ``model_checkpoint_config``. Notice that all the other ModelCheckpoint
     callbacks specified in ``lightning_trainer_config`` will be ignored.
 
+    For logging, users can continue to use Lightning's native loggers, such as
+    WandbLogger, TensorboardLogger, etc. LightningTrainer will also log the latest
+    metrics to the trail directory whenever a new checkpoint is saved.
+
     Then, the training function will initialize an instance of ``pl.Trainer``
-    using the arguments provided in ``trainer_init_config`` and then run
-    ``pytorch_lightning.Trainer.fit``.
+    using the arguments provided in ``LightningConfigBuilder.fit_params()`` and then
+    run ``pytorch_lightning.Trainer.fit``.
 
     TODO(yunxuanx): make this example testable
 
@@ -308,6 +313,21 @@ class LightningTrainer(TorchTrainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+        run_config = run_config or RunConfig()
+        lightning_config = lightning_config or LightningConfigBuilder().build()
+
+        self._check_checkpoint_configs(
+            ptl_ckpt_config=lightning_config["_model_checkpoint_config"],
+            air_ckpt_config=run_config.checkpoint_config,
+        )
+
+        # Disable strict checking to prevent validation errors against metrics that
+        # are reported at different frequencies. This works here because the Trainer
+        # is always constructed on the same host as the Tuner.
+        # TODO(yunxuanxiao): find a long term solution that doesn't involve setting a
+        # environment variable globally.
+        os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "1"
+
         train_loop_config = {
             "lightning_config": lightning_config,
             "datasets_iter_config": datasets_iter_config,
@@ -325,6 +345,57 @@ class LightningTrainer(TorchTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
+    def _check_checkpoint_configs(
+        self, ptl_ckpt_config: Dict, air_ckpt_config: CheckpointConfig
+    ):
+        """Check if configs are set correctly"""
+        ptl_ckpt_metric = ptl_ckpt_config.get("monitor", None)
+        air_ckpt_metric = air_ckpt_config.checkpoint_score_attribute
+
+        if ptl_ckpt_metric and air_ckpt_metric and ptl_ckpt_metric != air_ckpt_metric:
+            logger.warning(
+                "You have specified different metrics to track in AIR "
+                "`CheckpointConfig` and Lightning ModelCheckpoint. "
+                "Make sure that you have logged both metrics before "
+                "a checkpoint is created."
+            )
+
+        if (
+            air_ckpt_config.checkpoint_frequency != 0
+            or air_ckpt_config.checkpoint_at_end
+        ):
+            logger.warning(
+                "Attrributes `checkpoint_frequency` and `checkpoint_at_end` will not "
+                "be used in `LightningTrainer`! Please set up checkpoint frequency "
+                "through `LightningConfigBuilder.checkpointing()`."
+            )
+
+    @PublicAPI(stability="alpha")
+    @classmethod
+    def restore(
+        cls: Type["LightningTrainer"],
+        path: str,
+        datasets: Optional[Dict[str, GenDataset]] = None,
+        preprocessor: Optional["Preprocessor"] = None,
+        scaling_config: Optional[ScalingConfig] = None,
+        **kwargs,
+    ) -> "LightningTrainer":
+        """Restores a LightningTrainer from a previously interrupted/failed run.
+
+        See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
+        for descriptions of the arguments.
+
+        Returns:
+            LightningTrainer: A restored instance of `LightningTrainer`
+        """
+        return super(LightningTrainer, cls).restore(
+            path=path,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            scaling_config=scaling_config,
+            **kwargs,
+        )
+
 
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for a Lightning Trainer."""
@@ -339,11 +410,11 @@ def _lightning_train_loop_per_worker(config):
     module_class = ptl_config["_module_class"]
     module_init_config = ptl_config["_module_init_config"]
     ddp_strategy_config = ptl_config["_ddp_strategy_config"]
+    model_checkpoint_config = ptl_config["_model_checkpoint_config"]
 
     # Prepare data
     datamodule = trainer_fit_params.get("datamodule", None)
     train_dataloaders = trainer_fit_params.get("train_dataloaders", None)
-    val_dataloaders = trainer_fit_params.get("val_dataloaders", None)
 
     train_ray_dataset = session.get_dataset_shard("train")
     val_ray_dataset = session.get_dataset_shard("val")
@@ -361,7 +432,7 @@ def _lightning_train_loop_per_worker(config):
                 "'LightningConfig.trainer_fit_params' is ignored!"
             )
 
-        datamodule = RayDataModule(
+        trainer_fit_params["datamodule"] = RayDataModule(
             dataset_iter_config=datasets_iter_config,
             train_dataset=train_ray_dataset,
             val_dataset=val_ray_dataset,
@@ -396,27 +467,21 @@ def _lightning_train_loop_per_worker(config):
         )
     trainer_config["strategy"] = RayDDPStrategy(**ddp_strategy_config)
 
-    # TODO(yunxuanx): Next PR, add logging and checkpointing support
-    trainer_config["enable_checkpointing"] = False
+    # LightningTrainer always requires checkpointing
+    trainer_config["enable_checkpointing"] = True
+    model_checkpoint_config["save_last"] = True
 
-    # Filter out existing ModelCheckpoint Callbacks
-    callbacks = []
-    for callback in trainer_config.get("callbacks", []):
-        if isinstance(callback, ModelCheckpoint):
-            logger.warning(
-                "LightningTrainer will create a Ray ModelCheckpoint callback "
-                "based on `LightningConfig.model_checkpoint_config`. All the other"
-                " ModelCheckpoint callbacks are ignored."
-            )
-        else:
-            callbacks.append(callback)
-    trainer_config["callbacks"] = callbacks
+    trainer_config["callbacks"] = trainer_config.get("callbacks", []) + [
+        RayModelCheckpoint(**model_checkpoint_config)
+    ]
 
     trainer = pl.Trainer(**trainer_config)
 
-    trainer.fit(
-        lightning_module,
-        datamodule=datamodule,
-        train_dataloaders=train_dataloaders,
-        val_dataloaders=val_dataloaders,
-    )
+    # Restore from a previously failed run
+    checkpoint = session.get_checkpoint()
+    if checkpoint and "ckpt_path" not in trainer_fit_params:
+        with checkpoint.as_directory() as ckpt_dir:
+            trainer_fit_params["ckpt_path"] = f"{ckpt_dir}/{MODEL_KEY}"
+            trainer.fit(lightning_module, **trainer_fit_params)
+    else:
+        trainer.fit(lightning_module, **trainer_fit_params)
