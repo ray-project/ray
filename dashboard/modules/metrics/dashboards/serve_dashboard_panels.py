@@ -298,6 +298,6 @@ serve_dashboard_config = DashboardConfig(
     name="SERVE",
     default_uid="rayServeDashboard",
     panels=SERVE_GRAFANA_PANELS,
-    default_global_filters=[],
+    standard_global_filters=[],
     base_json_file_name="serve_grafana_dashboard_base.json",
 )

@@ -368,6 +368,6 @@ default_dashboard_config = DashboardConfig(
     name="DEFAULT",
     default_uid="rayDefaultDashboard",
     panels=DEFAULT_GRAFANA_PANELS,
-    default_global_filters=['SessionName="$SessionName"'],
+    standard_global_filters=['SessionName="$SessionName"'],
     base_json_file_name="default_grafana_dashboard_base.json",
 )

@@ -63,6 +63,6 @@ class DashboardConfig:
     # The uid of the dashboard json if not overridden by a user
     default_uid: str
     panels: List[Panel]
-    # The global filters used for the graphs in this dashboard if not overridden by a user
-    default_global_filters: List[str]
+    # The global filters applied to all graphs in this dashboard. Users can add additional global_filters on top of this.
+    standard_global_filters: List[str]
     base_json_file_name: str

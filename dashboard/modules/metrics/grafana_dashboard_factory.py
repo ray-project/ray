@@ -132,7 +132,7 @@ PANEL_TEMPLATE = {
     "yaxis": {"align": False, "alignLevel": None},
 }
 
-def _read_configs_for_dashboard(dashboard_config: DashboardConfig) -> Tuple[Optional[str], Optional[str]]:
+def _read_configs_for_dashboard(dashboard_config: DashboardConfig) -> Tuple[str, List[str]]:
     """
     Reads environment variable configs for overriding uid or global_filters for a given
     dashboard. 
@@ -143,9 +143,10 @@ def _read_configs_for_dashboard(dashboard_config: DashboardConfig) -> Tuple[Opti
     uid = os.environ.get(
         GRAFANA_DASHBOARD_UID_OVERRIDE_ENV_VAR_TEMPLATE.format(name=dashboard_config.name)
     ) or dashboard_config.default_uid
-    global_filters = os.environ.get(
+    global_filters_str = os.environ.get(
         GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE.format(name=dashboard_config.name)
-    ) or ",".join(dashboard_config.default_global_filters)
+    ) or ""
+    global_filters = global_filters_str.split(",")
 
     return uid, global_filters
 
@@ -185,15 +186,27 @@ def _generate_grafana_dashboard(
         open(os.path.join(os.path.dirname(__file__), "dashboards", base_file_name))
     )
     base_json["panels"] = panels
+    # Update variables to use global_filters
+    global_filters_str = ",".join(global_filters)
+    variables = base_json.get("templating", {}).get("list", [])
+    for variable in variables:
+        variable["definition"] = variable["definition"].format(global_filters=global_filters_str)
+        variable["query"]["query"] = variable["query"]["query"].format(global_filters=global_filters_str)
+
     tags = base_json.get("tags", []) or []
     tags.append(f"rayVersion:{ray.__version__}")
     base_json["tags"] = tags
     base_json["uid"] = uid
+    # Ray metadata can be used to put arbitrary metadata
+    ray_meta = base_json.get("rayMeta", []) or []
+    ray_meta.append("supportsGlobalFilterOverride")
+    base_json["rayMeta"] = ray_meta
     return json.dumps(base_json, indent=4), uid
 
 
-def _generate_grafana_panels(config: DashboardConfig, global_filters: str) -> List[dict]:
+def _generate_grafana_panels(config: DashboardConfig, global_filters: List[str]) -> List[dict]:
     out = []
+    panel_global_filters = [*config.standard_global_filters, *global_filters]
     for i, panel in enumerate(config.panels):
         template = copy.deepcopy(PANEL_TEMPLATE)
         template.update(
@@ -201,7 +214,7 @@ def _generate_grafana_panels(config: DashboardConfig, global_filters: str) -> Li
                 "title": panel.title,
                 "description": panel.description,
                 "id": panel.id,
-                "targets": _generate_targets(panel, global_filters),
+                "targets": _generate_targets(panel, panel_global_filters),
             }
         )
         if panel.grid_pos:
@@ -223,7 +236,7 @@ def gen_incrementing_alphabets(length):
     return list(map(chr, range(65, 65 + length)))
 
 
-def _generate_targets(panel: Panel, global_filters: str) -> List[dict]:
+def _generate_targets(panel: Panel, panel_global_filters: List[str]) -> List[dict]:
     targets = []
     for target, ref_id in zip(
         panel.targets, gen_incrementing_alphabets(len(panel.targets))
@@ -231,7 +244,7 @@ def _generate_targets(panel: Panel, global_filters: str) -> List[dict]:
         template = copy.deepcopy(TARGET_TEMPLATE)
         template.update(
             {
-                "expr": target.expr.format(global_filters=global_filters),
+                "expr": target.expr.format(global_filters=",".join(panel_global_filters)),
                 "legendFormat": target.legend,
                 "refId": ref_id,
             }

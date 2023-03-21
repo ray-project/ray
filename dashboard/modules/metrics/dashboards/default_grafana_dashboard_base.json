@@ -30,7 +30,7 @@
           "selected": false
         },
         "datasource": "Prometheus",
-        "definition": "label_values(SessionName)",
+        "definition": "label_values(ray_node_network_receive_speed{{{global_filters}}}, SessionName)",
         "description": "Filter queries to specific ray sessions.",
         "error": null,
         "hide": 0,
@@ -40,7 +40,7 @@
         "name": "SessionName",
         "options": [],
         "query": {
-          "query": "label_values(SessionName)",
+          "query": "label_values(ray_node_network_receive_speed{{{global_filters}}}, SessionName)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
@@ -65,7 +65,7 @@
           ]
         },
         "datasource": "Prometheus",
-        "definition": "label_values(instance)",
+        "definition": "label_values(ray_node_network_receive_speed{{SessionName=\"$SessionName\",{global_filters}}}, instance)",
         "description": null,
         "error": null,
         "hide": 0,
@@ -75,10 +75,10 @@
         "name": "Instance",
         "options": [],
         "query": {
-          "query": "label_values(instance)",
+          "query": "label_values(ray_node_network_receive_speed{{SessionName=\"$SessionName\",{global_filters}}}, instance)",
           "refId": "Prometheus-Instance-Variable-Query"
         },
-        "refresh": 1,
+        "refresh": 2,
         "regex": "",
         "skipUrlSync": false,
         "sort": 0,
