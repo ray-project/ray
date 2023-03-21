@@ -73,6 +73,10 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
         subprocess.check_output(
             ["cp", "-rf", os.path.join(tmpdir, "release"), current_release_dir],
         )
+        subprocess.check_output(
+            ["cat", os.path.join(current_release_dir, 'tune_tests/cloud_tests/tpl_gce_4x8.yaml')],
+            shell=True
+        )
 
         # We run the script again in a subprocess without entering this if again.
         # This is necessary as we update the ray_release files. This way,
