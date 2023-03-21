@@ -426,4 +426,5 @@ def online_predict_tensorflow(checkpoint):
     predictions
 
 
-main()
+if __name__ == "__main__":
+    main()
