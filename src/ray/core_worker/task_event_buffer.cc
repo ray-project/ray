@@ -91,8 +91,8 @@ bool TaskStatusEvent::ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) {
   }
 
   if (state_update_->task_log_info_.has_value()) {
-    *dst_state_update->mutable_task_log_info() =
-        std::move(state_update_->task_log_info_.value());
+    dst_state_update->mutable_task_log_info()->MergeFrom(
+        state_update_->task_log_info_.value());
   }
 
   return false;
