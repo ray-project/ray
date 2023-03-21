@@ -3,6 +3,7 @@ import React, { useContext } from "react";
 import { Link as RouterLink, useParams } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
+import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
 import { generateActorLink, generateNodeLink } from "../../common/links";
@@ -11,6 +12,7 @@ import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import { ServeDeployment, ServeReplica } from "../../type/serve";
 import { MainNavPageInfo } from "../layout/mainNavContext";
+import TaskList from "../state/task";
 import { useServeReplicaDetails } from "./hook/useServeApplications";
 
 export const ServeReplicaDetailPage = () => {
@@ -134,6 +136,9 @@ export const ServeReplicaDetailPage = () => {
           },
         ]}
       />
+      <CollapsibleSection title="Tasks History" startExpanded>
+        <TaskList actorId={replica.actor_id ? replica.actor_id : undefined} />
+      </CollapsibleSection>
     </div>
   );
 };

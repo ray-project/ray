@@ -168,7 +168,7 @@ const ActorDetailPage = () => {
                 <div>
                   <Link
                     target="_blank"
-                    to={`/log/${encodeURIComponent(
+                    to={`/logs/${encodeURIComponent(
                       ipLogMap[actorDetail.address?.ipAddress],
                     )}?fileName=${actorDetail.jobId}-${actorDetail.pid}`}
                   >

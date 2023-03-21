@@ -17,7 +17,7 @@ const mockGetServeApplications = jest.mocked(getServeApplications);
 
 describe("ServeReplicaDetailPage", () => {
   it("renders", async () => {
-    expect.assertions(7);
+    expect.assertions(8);
 
     mockUseParams.mockReturnValue({
       applicationName: "home",
@@ -100,5 +100,6 @@ describe("ServeReplicaDetailPage", () => {
     expect(screen.getByTestId("metadata-content-for-PID")).toHaveTextContent(
       "12345",
     );
+    expect(screen.getByText("Tasks History")).toBeVisible();
   });
 });
