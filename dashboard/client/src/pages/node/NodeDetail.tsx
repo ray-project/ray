@@ -6,9 +6,9 @@ import {
   TableContainer,
   Tabs,
 } from "@material-ui/core";
-import dayjs from "dayjs";
 import React from "react";
 import { Link } from "react-router-dom";
+import { formatDateFromTimeMs } from "../../common/formatUtils";
 import ActorTable from "../../components/ActorTable";
 import Loading from "../../components/Loading";
 import PercentageBar from "../../components/PercentageBar";
@@ -132,9 +132,7 @@ const NodeDetailPage = () => {
               </Grid>
               <Grid item xs>
                 <div className={classes.label}>Boot Time</div>{" "}
-                {dayjs(nodeDetail.bootTime * 1000).format(
-                  "YYYY/MM/DD HH:mm:ss",
-                )}
+                {formatDateFromTimeMs(nodeDetail.bootTime * 1000)}
               </Grid>
             </Grid>
             <Grid container spacing={2}>
