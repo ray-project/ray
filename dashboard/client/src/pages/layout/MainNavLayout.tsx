@@ -21,7 +21,7 @@ const useStyles = makeStyles((theme) =>
       position: "fixed",
       width: "100%",
       backgroundColor: "white",
-      zIndex: 10000,
+      zIndex: 1000,
     },
   }),
 );
@@ -141,6 +141,12 @@ const NAV_ITEMS = [
     path: "/jobs",
     id: "jobs",
   },
+  // TODO(aguo): Add this nav button in once the page is fully implemented.
+  // {
+  //   title: "Serve",
+  //   path: "/serve",
+  //   id: "serve",
+  // },
   {
     title: "Cluster",
     path: "/cluster",
