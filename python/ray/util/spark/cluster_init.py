@@ -737,8 +737,6 @@ _head_node_option_block_keys = {
     "port": None,
     "num_cpus": None,
     "num_gpus": None,
-    "memory": None,
-    "object_store_memory": None,
     "dashboard_host": None,
     "dashboard_agent_listen_port": None,
 }
@@ -900,15 +898,22 @@ def setup_ray_cluster(
     spark = get_spark_session()
 
     spark_master = spark.sparkContext.master
+
+    is_spark_local_mode = spark_master == "local" or spark_master.startswith("local[")
+
     if not (
-        spark_master.startswith("spark://") or spark_master.startswith("local-cluster[")
+        spark_master.startswith("spark://")
+        or spark_master.startswith("local-cluster[")
+        or is_spark_local_mode
     ):
         raise RuntimeError(
-            "Ray on Spark only supports spark cluster in standalone mode or "
-            "local-cluster mode"
+            "Ray on Spark only supports spark cluster in standalone mode, "
+            "local-cluster mode or spark local mode."
         )
 
-    if (
+    if is_spark_local_mode:
+        support_stage_scheduling = False
+    elif (
         is_in_databricks_runtime()
         and Version(os.environ["DATABRICKS_RUNTIME_VERSION"]).major >= 12
     ):
@@ -958,7 +963,7 @@ def setup_ray_cluster(
                 "and number of 'spark.task.resource.gpu.amount' "
                 f"(equals to {num_spark_task_gpus}) GPUs. To enable spark stage "
                 "scheduling, you need to upgrade spark to 3.4 version or use "
-                "Databricks Runtime 12.x."
+                "Databricks Runtime 12.x, and you cannot use spark local mode."
             )
     else:
         using_stage_scheduling = False
