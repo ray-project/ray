@@ -741,7 +741,9 @@ class _TuneControllerBase:
             decision = TrialScheduler.STOP
         else:
             with warn_if_slow("scheduler.on_trial_result"):
-                decision = self._scheduler_alg.on_trial_result(self, trial, flat_result)
+                decision = self._scheduler_alg.on_trial_result(
+                    self._wrapped(), trial, flat_result
+                )
         if decision == TrialScheduler.STOP:
             result.update(done=True)
         else:

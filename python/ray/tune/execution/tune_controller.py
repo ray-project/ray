@@ -19,6 +19,7 @@ from ray.tune.experiment.trial import (
     _noop_logger_creator,
     _TrialInfo,
     _Location,
+    _get_trainable_kwargs,
 )
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.trainable import TrainableUtil
@@ -170,6 +171,7 @@ class TuneController(_TuneControllerBase):
             self.checkpoint()
         except Exception as e:
             logger.warning(f"Trial controller checkpointing failed: {str(e)}")
+            raise e
 
         self._iteration += 1
 
@@ -336,12 +338,6 @@ class TuneController(_TuneControllerBase):
         if self._maybe_reuse_cached_actor(trial):
             return
 
-        logger_creator = partial(
-            _noop_logger_creator,
-            logdir=trial.logdir,
-            should_chdir=self._chdir_to_trial_dir,
-        )
-
         trainable_cls = trial.get_trainable_cls()
         if not trainable_cls:
             raise _AbortTrialExecution(
@@ -351,22 +347,15 @@ class TuneController(_TuneControllerBase):
         _actor_cls = self._class_cache.get(trainable_cls)
 
         trial.set_location(_Location())
-        trial_config = copy.deepcopy(trial.config)
-        trial_config[TRIAL_INFO] = _TrialInfo(trial)
-        stdout_file, stderr_file = trial.log_to_file
-        trial_config[STDOUT_FILE] = stdout_file
-        trial_config[STDERR_FILE] = stderr_file
+        trainable_kwargs = _get_trainable_kwargs(
+            trial=trial, should_chdir=self._chdir_to_trial_dir
+        )
 
         with _change_working_directory(trial):
             tracked_actor = self._actor_manager.add_actor(
                 cls=_actor_cls,
                 resource_request=trial.placement_group_factory,
-                kwargs={
-                    "config": trial_config,
-                    "logger_creator": logger_creator,
-                    "remote_checkpoint_dir": trial.remote_checkpoint_dir,
-                    "sync_config": trial.sync_config,
-                },
+                kwargs=trainable_kwargs,
                 on_start=self._actor_started,
                 on_stop=self._actor_stopped,
                 on_error=self._actor_failed,
@@ -488,6 +477,9 @@ class TuneController(_TuneControllerBase):
 
         _on_result = None
         _on_error = None
+
+        args = args or tuple()
+        kwargs = kwargs or {}
 
         if on_result:
 
@@ -771,6 +763,7 @@ class TuneController(_TuneControllerBase):
         for exclude in [
             "_resource_manager",
             "_actor_manager",
+            "_class_cache",
             "_resource_updater",
             "_trials_to_cache",
             "_trial_metadata",
