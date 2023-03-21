@@ -359,6 +359,40 @@ def test_config_multi_app(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_config_deploy_mode1(ray_start_stop):
+    """
+    Deploys single-app config and checks that `serve config --multi-app` raises warning.
+    """
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
+    )
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    output = subprocess.run(
+        ["serve", "config", "--multi-app"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    ).stderr.decode("utf-8")
+    assert "warning" in output.lower()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_config_deploy_mode2(ray_start_stop):
+    """Deploys multi-app config and checks that `serve config` raises warning."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
+    )
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    output = subprocess.run(
+        ["serve", "config"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+    ).stderr.decode("utf-8")
+    assert "warning" in output.lower()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_status(ray_start_stop):
     """Deploys a config file and checks its status."""
 
