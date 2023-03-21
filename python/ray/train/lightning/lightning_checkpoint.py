@@ -39,11 +39,14 @@ class LightningCheckpoint(TorchCheckpoint):
         preprocessor: Optional["Preprocessor"] = None,
     ) -> "LightningCheckpoint":
         """Create a ``ray.air.lightning.LightningCheckpoint`` from a checkpoint path.
+
         Args:
             path: The file path to the PyTorch Lightning checkpoint.
             preprocessor: A fitted preprocessor to be applied before inference.
+
         Returns:
             An :py:class:`LightningCheckpoint` containing the model.
+
         Examples:
             >>> from ray.train.lightning import LightningCheckpoint
             >>>
@@ -70,14 +73,14 @@ class LightningCheckpoint(TorchCheckpoint):
             model_class: A subclass of ``pytorch_lightning.LightningModule`` that
             defines your model and training logic.
             load_from_checkpoint_kwargs: Arguments to pass into
-            ``model_cls.load_from_checkpoint``
+            ``pl.Trainer.load_from_checkpoint``
 
         Returns:
             pl.LightningModule: An instance of the loaded model.
         """
         if not isclass(model_class):
             raise ValueError(
-                "'lightning_module' must be a class, not a class instance."
+                "'model_class' must be a class, not an instantiated Lightning trainer."
             )
 
         with self.as_directory() as checkpoint_dir:

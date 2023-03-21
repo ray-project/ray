@@ -1,5 +1,5 @@
+import tempfile
 import unittest
-
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec, RLModuleConfig
 from ray.rllib.core.rl_module.marl_module import (
@@ -153,34 +153,78 @@ class TestMARLModule(unittest.TestCase):
             override=True,
         )
 
-    def test_serialize_deserialize(self):
+    def test_save_to_from_checkpoint(self):
+        """Test saving and loading from checkpoint after adding / removing modules."""
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
-        module1 = SingleAgentRLModuleSpec(
-            module_class=DiscreteBCTorchModule,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            model_config_dict={"fcnet_hiddens": [32]},
+        module = DiscreteBCTorchModule(
+            config=RLModuleConfig(
+                env.observation_space,
+                env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
+        ).as_multi_agent()
+
+        module.add_module(
+            "test",
+            DiscreteBCTorchModule(
+                config=RLModuleConfig(
+                    env.observation_space,
+                    env.action_space,
+                    model_config_dict={"fcnet_hiddens": [32]},
+                )
+            ),
+        )
+        module.add_module(
+            "test2",
+            DiscreteBCTorchModule(
+                config=RLModuleConfig(
+                    env.observation_space,
+                    env.action_space,
+                    model_config_dict={"fcnet_hiddens": [128]},
+                )
+            ),
         )
 
-        module2 = SingleAgentRLModuleSpec(
-            module_class=DiscreteBCTorchModule,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            model_config_dict={"fcnet_hiddens": [32]},
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            module.save_to_checkpoint(tmpdir)
+            module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
+            check(module.get_state(), module2.get_state())
+            self.assertEqual(module.keys(), module2.keys())
+            self.assertEqual(module.keys(), {"test", "test2", DEFAULT_POLICY_ID})
+            self.assertNotEqual(id(module), id(module2))
 
-        config = MultiAgentRLModuleConfig(
-            modules={"module1": module1, "module2": module2}
-        )
-        marl_module = MultiAgentRLModule(config)
-        new_marl_module = marl_module.deserialize(marl_module.serialize())
+        module.remove_module("test")
 
-        self.assertNotEqual(id(marl_module), id(new_marl_module))
-        self.assertEqual(set(marl_module.keys()), set(new_marl_module.keys()))
-        for key in marl_module.keys():
-            self.assertNotEqual(id(marl_module[key]), id(new_marl_module[key]))
-            check(marl_module[key].get_state(), new_marl_module[key].get_state())
+        # check that after removing a module, the checkpoint is correct
+        with tempfile.TemporaryDirectory() as tmpdir:
+            module.save_to_checkpoint(tmpdir)
+            module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
+            check(module.get_state(), module2.get_state())
+            self.assertEqual(module.keys(), module2.keys())
+            self.assertEqual(module.keys(), {"test2", DEFAULT_POLICY_ID})
+            self.assertNotEqual(id(module), id(module2))
+
+        # check that after adding a new module, the checkpoint is correct
+        module.add_module(
+            "test3",
+            DiscreteBCTorchModule(
+                config=RLModuleConfig(
+                    env.observation_space,
+                    env.action_space,
+                    model_config_dict={"fcnet_hiddens": [120]},
+                )
+            ),
+        )
+        # check that after adding a module, the checkpoint is correct
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = "/tmp/test_marl_module"
+            module.save_to_checkpoint(tmpdir)
+            module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
+            check(module.get_state(), module2.get_state())
+            self.assertEqual(module.keys(), module2.keys())
+            self.assertEqual(module.keys(), {"test2", "test3", DEFAULT_POLICY_ID})
+            self.assertNotEqual(id(module), id(module2))
 
 
 if __name__ == "__main__":

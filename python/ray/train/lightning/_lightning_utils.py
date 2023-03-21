@@ -1,26 +1,24 @@
-import os
 import logging
-from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
+import shutil
 import torch
-from torch import Tensor
-from copy import deepcopy
-from typing import Any, Dict, Optional
-
+import tempfile
 import pytorch_lightning as pl
+
+from typing import Any, Dict, Optional
 from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.utilities import rank_zero_only
-from pytorch_lightning.utilities.types import STEP_OUTPUT
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.plugins.environments import LightningEnvironment
+
 import ray
 from ray.air import session
 from ray.air.constants import MODEL_KEY
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
-
 from torch.utils.data import IterableDataset, DataLoader
-from ray.data.dataset import Dataset
+from ray.data.dataset import DatasetIterator
 
 logger = logging.getLogger(__name__)
+
+LIGHTNING_REPORT_STAGE_KEY = "_report_on"
 
 
 class RayDDPStrategy(DDPStrategy):
@@ -54,18 +52,19 @@ class RayEnvironment(LightningEnvironment):
         return session.get_node_rank()
 
     def set_world_size(self, size: int) -> None:
-        self._world_size = session.get_world_size()
+        # Disable it since `world_size()` directly returns data from AIR session.
+        pass
 
     def set_global_rank(self, rank: int) -> None:
-        self._global_rank = session.get_world_rank()
-        rank_zero_only.rank = rank
+        # Disable it since `global_rank()` directly returns data from AIR session.
+        pass
 
     def teardown(self):
         pass
 
 
 class RayIterableDataset(IterableDataset):
-    def __init__(self, dataset: "Dataset", config: Dict[str, Any]) -> None:
+    def __init__(self, dataset: "DatasetIterator", config: Dict[str, Any]) -> None:
         super().__init__()
         self.dataset = dataset
         self.config = config
@@ -78,23 +77,17 @@ class RayDataModule(pl.LightningDataModule):
     def __init__(
         self,
         dataset_iter_config: Dict[str, Any],
-        train_dataset: "Dataset",
-        val_dataset: Optional["Dataset"] = None,
+        train_dataset: "DatasetIterator",
+        val_dataset: Optional["DatasetIterator"] = None,
     ) -> None:
         super().__init__()
 
-        if not dataset_iter_config:
-            raise RuntimeError(
-                "To use Ray Datasets with LightningTrainer, you must specify "
-                " `datasets_iter_config` in LightningConfig!"
-            )
-
-        def _train_dataloader() -> TRAIN_DATALOADERS:
+        def _train_dataloader() -> DataLoader:
             assert train_dataset
             ds = RayIterableDataset(train_dataset, dataset_iter_config)
             return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
 
-        def _val_dataloader() -> EVAL_DATALOADERS:
+        def _val_dataloader() -> DataLoader:
             assert val_dataset
             ds = RayIterableDataset(val_dataset, dataset_iter_config)
             return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
@@ -102,6 +95,9 @@ class RayDataModule(pl.LightningDataModule):
         if train_dataset:
             self.train_dataloader = _train_dataloader
 
+        # ``pl.Trainer`` checks if the val_dataloader method has been overridden
+        # to determine whether to enable the validation loop. To align with this
+        # setting, we only override this method when `val_dataset` is not `None`.
         if val_dataset:
             self.val_dataloader = _val_dataloader
 
@@ -117,81 +113,53 @@ class RayModelCheckpoint(ModelCheckpoint):
 
     def setup(self, *args, **kwargs) -> None:
         super().setup(*args, **kwargs)
-        self.last_best_k_models = {}
-        self.last_best_model_path = None
+        self.is_checkpoint_step = False
 
-    def format_checkpoint_name(
-        self,
-        metrics: Dict[str, Tensor],
-        filename: Optional[str] = None,
-        ver: Optional[int] = None,
-    ) -> str:
+    def _session_report(self, trainer: "pl.Trainer", stage: str):
+        """Report latest metrics dict and checkpoint to AIR training session.
+
+        This method is called whenever a new checkpoint is created. It creates
+        a `LightningCheckpoint` and reports it to the AIR session along with
+        the latest metrics.
         """
-        Change checkpoint files path to align with AIR checkpoint format.
 
-        e.g. './epoch=2-loss=0.12.ckpt' -> './epoch=2-loss=0.12.ckpt/model'
-        """
-        filepath = super().format_checkpoint_name(metrics, filename, ver)
-        return f"{filepath}/{MODEL_KEY}"
-
-    def _session_report(self, trainer: "pl.Trainer"):
-        """Report latest metrics dict and checkpoint to AIR training session."""
-        kwargs = {}
+        # Align the frequency of checkpointing and logging
+        if not self.is_checkpoint_step:
+            return
 
         # Report latest logged metrics
-        metrics = self._monitor_candidates(trainer)
-        for k, v in metrics.items():
+        metrics = {LIGHTNING_REPORT_STAGE_KEY: stage}
+        for k, v in self._monitor_candidates(trainer).items():
             if isinstance(v, torch.Tensor):
-                metrics[k] = v.cpu().numpy()
-        kwargs["metrics"] = metrics
-
-        filepath = None
-        if self.monitor:
-            # Capture metric-based top-k checkpoint
-            new_checkpoint = self.best_k_models.keys() - self.last_best_k_models.keys()
-            if new_checkpoint:
-                filepath = new_checkpoint.pop()
-        else:
-            # Capture frequency-based checkpoint
-            if self.last_best_model_path != self.best_model_path:
-                filepath = self.best_model_path
+                metrics[k] = v.item()
 
         # Report latest saved checkpoint
         # Note that AIR only takes the checkpoint of rank 0.
-        # Just save a dummy checkpoint on the other workers.
-        if filepath:
+        # Save a dummy checkpoint on the other workers to avoid blocking.
+        with tempfile.TemporaryDirectory() as tmpdir:
             if trainer.global_rank == 0:
-                kwargs["checkpoint"] = LightningCheckpoint.from_directory(
-                    path=os.path.dirname(filepath)
-                )
+                shutil.copy(self.last_model_path, f"{tmpdir}/{MODEL_KEY}")
+                checkpoint = LightningCheckpoint.from_directory(path=tmpdir)
             else:
-                kwargs["checkpoint"] = LightningCheckpoint.from_dict(
+                checkpoint = LightningCheckpoint.from_dict(
                     {"rank": session.get_world_rank()}
                 )
+            session.report(metrics=metrics, checkpoint=checkpoint)
 
-        self.last_best_k_models = deepcopy(self.best_k_models)
-        self.last_best_model_path = self.best_model_path
-        session.report(**kwargs)
+        self.is_checkpoint_step = False
 
-    def on_train_batch_end(
-        self,
-        trainer: "pl.Trainer",
-        pl_module: "pl.LightningModule",
-        outputs: STEP_OUTPUT,
-        batch: Any,
-        batch_idx: int,
-    ) -> None:
-        super().on_train_batch_end(trainer, pl_module, outputs, batch, batch_idx)
-        self._session_report(trainer=trainer)
+    def _save_last_checkpoint(self, *args, **kwargs) -> None:
+        super()._save_last_checkpoint(*args, **kwargs)
+        self.is_checkpoint_step = True
 
-    def on_train_epoch_end(
-        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
-    ) -> None:
-        super().on_train_epoch_end(trainer, pl_module)
-        self._session_report(trainer=trainer)
+    def on_train_batch_end(self, trainer: "pl.Trainer", *args, **kwargs) -> None:
+        super().on_train_batch_end(trainer, *args, **kwargs)
+        self._session_report(trainer=trainer, stage="train_batch_end")
 
-    def on_validation_end(
-        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
-    ) -> None:
-        super().on_validation_end(trainer, pl_module)
-        self._session_report(trainer=trainer)
+    def on_train_epoch_end(self, trainer: "pl.Trainer", *args, **kwargs) -> None:
+        super().on_train_epoch_end(trainer, *args, **kwargs)
+        self._session_report(trainer=trainer, stage="train_epoch_end")
+
+    def on_validation_end(self, trainer: "pl.Trainer", *args, **kwargs) -> None:
+        super().on_validation_end(trainer, *args, **kwargs)
+        self._session_report(trainer=trainer, stage="validation_end")
