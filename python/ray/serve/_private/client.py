@@ -284,17 +284,19 @@ class ServeControllerClient:
         tags = []
         for i, updating in enumerate(updating_list):
             deployment = deployments[i]
-            name, version = deployment["name"], deployment["version"]
+            deployment_name, version = deployment["name"], deployment["version"]
 
-            tags.append(self.log_deployment_update_status(name, version, updating))
+            tags.append(
+                self.log_deployment_update_status(deployment_name, version, updating)
+            )
 
         for i, deployment in enumerate(deployments):
-            name = deployment["name"]
+            deployment_name = deployment["name"]
             url = deployment["url"]
 
             if _blocking:
-                self._wait_for_deployment_healthy(name)
-                self.log_deployment_ready(name, version, url, tags[i])
+                self._wait_for_deployment_healthy(deployment_name)
+                self.log_deployment_ready(deployment_name, version, url, tags[i])
 
         if remove_past_deployments:
             # clean up the old deployments
