@@ -45,10 +45,10 @@ You should use :meth:`Tuner.restore <ray.tune.Tuner.restore>` in the following c
     where all trials have already completed.
     :meth:`Tuner.restore <ray.tune.Tuner.restore>` cannot be used to restore the experiment,
     change the number of training iterations to ``20``, then continue training.
+
     Instead, this should be achieved by starting a *new* experiment and initializing
     your model weights with a checkpoint from the previous experiment.
-
-    See :ref:`this FAQ post <TODO>` for an example of this.
+    See :ref:`this FAQ post <tune-iterative-experimentation>` for an example.
 
 
 .. note::
