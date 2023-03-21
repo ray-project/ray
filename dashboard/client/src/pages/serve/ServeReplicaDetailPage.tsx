@@ -4,6 +4,7 @@ import { Link as RouterLink, useParams } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
+import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import { ServeDeployment, ServeReplica } from "../../type/serve";
@@ -13,17 +14,16 @@ import { useServeReplicaDetails } from "./hook/useServeApplications";
 export const ServeReplicaDetailPage = () => {
   const { applicationName, deploymentName, replicaId } = useParams();
 
-  const { application, deployment, replica, error } = useServeReplicaDetails(
-    applicationName,
-    deploymentName,
-    replicaId,
-  );
+  const { loading, application, deployment, replica, error } =
+    useServeReplicaDetails(applicationName, deploymentName, replicaId);
 
   if (error) {
     return <Typography color="error">{error.toString()}</Typography>;
   }
 
-  if (!replica || !deployment || !application) {
+  if (loading) {
+    return <Loading loading />;
+  } else if (!replica || !deployment || !application) {
     return (
       <Typography color="error">
         {applicationName} / {deploymentName} / {replicaId} not found.

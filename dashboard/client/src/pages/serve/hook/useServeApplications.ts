@@ -103,7 +103,10 @@ export const useServeApplicationDetails = (
       )
     : [];
 
+  // Need to expose loading because it's not clear if undefined values
+  // for application means loading or missing data.
   return {
+    loading: !data && !error,
     application,
     filteredDeployments: deployments.filter((deployment) =>
       filter.every((f) =>
@@ -149,7 +152,10 @@ export const useServeReplicaDetails = (
     ({ replica_id }) => replica_id === replicaId,
   );
 
+  // Need to expose loading because it's not clear if undefined values
+  // for application, deployment, or replica means loading or missing data.
   return {
+    loading: !data && !error,
     application,
     deployment,
     replica,

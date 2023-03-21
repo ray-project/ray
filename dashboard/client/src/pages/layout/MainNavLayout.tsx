@@ -245,6 +245,7 @@ const useMainNavBreadcrumbsStyles = makeStyles((theme) =>
     },
     breadcrumbItem: {
       fontWeight: 500,
+      color: "#8C9196",
       "&:not(:first-child)": {
         marginLeft: theme.spacing(1),
       },

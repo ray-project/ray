@@ -20,9 +20,11 @@ import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
+import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import { HelpInfo } from "../../components/Tooltip";
+import { ServeApplication } from "../../type/serve";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useServeApplicationDetails } from "./hook/useServeApplications";
 import { ServeDeploymentRow } from "./ServeDeploymentRow";
@@ -231,9 +233,11 @@ export const ServeApplicationDetailPage = () => {
 export const ServeApplicationDetailLayout = () => {
   const { applicationName } = useParams();
 
-  const { application } = useServeApplicationDetails(applicationName);
+  const { loading, application } = useServeApplicationDetails(applicationName);
 
-  if (!application) {
+  if (loading) {
+    return <Loading loading />;
+  } else if (!application) {
     return (
       <Typography color="error">
         Application with name "{applicationName}" not found.
