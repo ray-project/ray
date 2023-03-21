@@ -411,20 +411,6 @@ def run(
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 @click.option(
-    "--multi-app",
-    "-m",
-    is_flag=True,
-    help=(
-        "A toggle between single-application and multi-application mode.\n\n"
-        "- If a single application was deployed through a config of the format "
-        "ServeApplicationSchema, then `serve config` should be used without setting "
-        'flag to fetch the current config for the default app with name="".\n'
-        "- If multiple applications were deployed through a config of the format "
-        "ServeDeploySchema, then `serve config` should be used with this flag set to "
-        "get the current app configs of all live applications on the Ray Cluster."
-    ),
-)
-@click.option(
     "--name",
     "-n",
     required=False,
@@ -434,42 +420,13 @@ def run(
         "will only fetch the config for the specified application."
     ),
 )
-def config(address: str, multi_app: bool, name: Optional[str]):
-    if multi_app and name is not None:
-        cli_logger.error("Cannot set both `--multi-app` and `--name`.")
-        return
-
+def config(address: str, name: Optional[str]):
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
 
-    # Backwards compatible single-app behavior: displays the config for default app "".
-    if not multi_app:
-        if serve_details.deploy_mode == ServeDeployMode.MULTI_APP:
-            cli_logger._warning(
-                "A multi-app config was deployed to this cluster, but you are trying "
-                "to use the single-app behavior of `serve config`. This will try to "
-                "fetch the config for an application that doesn't exist.",
-                _level_str="WARNING",
-            )
-
-        if SERVE_DEFAULT_APP_NAME in serve_details.applications:
-            config = serve_details.applications[
-                SERVE_DEFAULT_APP_NAME
-            ].deployed_app_config.dict(exclude_unset=True)
-        else:
-            config = ServeApplicationSchema.get_empty_schema_dict()
-
-        print(yaml.safe_dump(config, sort_keys=False))
     # Multi-app support
-    else:
-        if serve_details.deploy_mode == ServeDeployMode.SINGLE_APP:
-            cli_logger._warning(
-                "A single-app config was deployed to this cluster, but you are using "
-                "multi-app behavior of `serve config`.",
-                _level_str="WARNING",
-            )
-
+    if serve_details.deploy_mode == ServeDeployMode.MULTI_APP:
         # Fetch app configs for all live applications on the cluster
         if name is None:
             print(
@@ -495,6 +452,19 @@ def config(address: str, multi_app: bool, name: Optional[str]):
                         sort_keys=False,
                     )
                 )
+    # Backwards compatible single-app behavior: displays the config for default app "".
+    else:
+        if name is not None:
+            raise click.ClickException("oh no.")
+
+        if SERVE_DEFAULT_APP_NAME in serve_details.applications:
+            config = serve_details.applications[
+                SERVE_DEFAULT_APP_NAME
+            ].deployed_app_config.dict(exclude_unset=True)
+        else:
+            config = ServeApplicationSchema.get_empty_schema_dict()
+
+        print(yaml.safe_dump(config, sort_keys=False))
 
 
 @cli.command(

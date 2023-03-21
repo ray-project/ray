@@ -167,13 +167,16 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             )
 
         if "name" in config.dict(exclude_unset=True):
+            error_msg = (
+                "Specifying the name of an application is only allowed for apps that "
+                "are listed as part of a multi-app config file. Please see the "
+                "documentation for ServeDeploySchema for more details on multi-app "
+                "config files."
+            )
+            logger.warning(error_msg)
             return Response(
                 status=400,
-                text=(
-                    "Specifying the name of an application is only allowed for apps "
-                    "that are listed as part of a multi-app config file. Please see "
-                    "the documentation for ServeDeploySchema for more details."
-                ),
+                text=error_msg,
             )
 
         client = serve_start(

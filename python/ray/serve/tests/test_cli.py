@@ -340,7 +340,7 @@ def test_config_multi_app(ray_start_stop):
     """Deploys multi-app config and checks output of `serve config`."""
 
     # Check that `serve config` works even if no Serve app is running
-    subprocess.check_output(["serve", "config", "--multi-app"])
+    subprocess.check_output(["serve", "config"])
 
     # Deploy config
     config_file_name = os.path.join(
@@ -351,45 +351,11 @@ def test_config_multi_app(ray_start_stop):
     subprocess.check_output(["serve", "deploy", config_file_name])
 
     # Config should be immediately ready
-    info_response = subprocess.check_output(["serve", "config", "--multi-app"])
+    info_response = subprocess.check_output(["serve", "config"])
     fetched_configs = list(yaml.safe_load_all(info_response))
 
     assert config["applications"][0] == fetched_configs[0]
     assert config["applications"][1] == fetched_configs[1]
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_config_deploy_mode1(ray_start_stop):
-    """
-    Deploys single-app config and checks that `serve config --multi-app` raises warning.
-    """
-
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
-    )
-    subprocess.check_output(["serve", "deploy", config_file_name])
-
-    output = subprocess.run(
-        ["serve", "config", "--multi-app"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-    ).stderr.decode("utf-8")
-    assert "warning" in output.lower()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_config_deploy_mode2(ray_start_stop):
-    """Deploys multi-app config and checks that `serve config` raises warning."""
-
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
-    )
-    subprocess.check_output(["serve", "deploy", config_file_name])
-
-    output = subprocess.run(
-        ["serve", "config"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
-    ).stderr.decode("utf-8")
-    assert "warning" in output.lower()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
