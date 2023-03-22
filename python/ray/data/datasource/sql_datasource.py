@@ -2,8 +2,6 @@ import math
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator, Iterable, List, Optional
 
-import pyarrow as pa
-
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask
@@ -13,6 +11,8 @@ Cursor = Any  # A Python DB API2-compliant `Cursor` object.
 
 
 def cursor_to_block(cursor) -> Block:
+    import pyarrow as pa
+
     rows = cursor.fetchall()
     # Each `column_description` is a 7-element sequence. The first element is the column
     # name. To learn more, read https://peps.python.org/pep-0249/#description.
