@@ -35,10 +35,8 @@ class DummyWithNumpyPreprocessor(DummyPreprocessor):
         self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         self.inputs.append(np_data)
-        if isinstance(np_data, np.ndarray):
-            rst = np_data * self.multiplier
-        else:
-            rst = {k: v * self.multiplier for k, v in np_data.items()}
+        assert isinstance(np_data, np.ndarray)
+        rst = np_data * self.multiplier
         self.outputs.append(rst)
         return rst
 
@@ -61,7 +59,7 @@ class DummyPredictor(Predictor):
         return cls(checkpoint_data["factor"], preprocessor)
 
     def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        return data * self.factor
+        return pd.DataFrame({"predictions": data.iloc[:, 0] * self.factor})
 
 
 class DummyWithNumpyPredictor(DummyPredictor):
@@ -103,7 +101,9 @@ def test_predict_pandas_with_pandas_data():
     predictor = DummyPredictor.from_checkpoint(checkpoint)
 
     actual_output = predictor.predict(input)
-    pd.testing.assert_frame_equal(actual_output, pd.DataFrame({"x": [4.0, 8.0, 12.0]}))
+    pd.testing.assert_frame_equal(
+        actual_output, pd.DataFrame({"predictions": [4.0, 8.0, 12.0]})
+    )
     pd.testing.assert_frame_equal(
         predictor.get_preprocessor().inputs[0],
         pd.DataFrame({"x": [1, 2, 3]}),
@@ -119,16 +119,16 @@ def test_predict_pandas_with_pandas_data():
     )
     predictor = DummyPredictor.from_checkpoint(checkpoint)
     actual_output = predictor.predict(input)
-    pd.testing.assert_frame_equal(actual_output, pd.DataFrame({"x": [4.0, 8.0, 12.0]}))
+    pd.testing.assert_frame_equal(
+        actual_output, pd.DataFrame({"predictions": [4.0, 8.0, 12.0]})
+    )
     # This Preprocessor has Numpy as the batch format preference.
-    assert list(predictor.get_preprocessor().inputs[0].keys()) == ["x"]
     np.testing.assert_array_equal(
-        predictor.get_preprocessor().inputs[0]["x"], np.array([1, 2, 3])
+        predictor.get_preprocessor().inputs[0], np.array([1, 2, 3])
     )
 
-    assert list(predictor.get_preprocessor().outputs[0].keys()) == ["x"]
     np.testing.assert_array_equal(
-        predictor.get_preprocessor().outputs[0]["x"], np.array([2, 4, 6])
+        predictor.get_preprocessor().outputs[0], np.array([2, 4, 6])
     )
 
 

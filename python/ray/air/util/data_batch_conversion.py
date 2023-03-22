@@ -113,7 +113,7 @@ def convert_pandas_to_batch_type(
         return data
 
     elif type == BatchFormat.NUMPY:
-        if len(data.columns) == 1 and data.columns[0] == TENSOR_COLUMN_NAME:
+        if len(data.columns) == 1:
             # If just a single column, return as a single numpy array.
             return data.iloc[:, 0].to_numpy()
         else:
