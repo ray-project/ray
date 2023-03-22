@@ -595,10 +595,10 @@ ds = ray.data.read_parquet(
 
 # fmt: off
 # __read_compressed_begin__
-# Read a gzip compressed Parquet file from S3.
-ds = ray.data.read_parquet(
-  "s3://air-example-data/my_large_parquet_file.gz",
-  arrow_open_stream_args={"compression": "gzip"},
+# Read a gzip-compressed CSV file from S3.
+ds = ray.data.read_csv(
+    "s3://anonymous@air-example-data/gzip_compressed.csv",
+    arrow_open_stream_args={"compression": "gzip"},
 )
 # __read_compressed_end__
 # fmt: on
