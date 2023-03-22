@@ -1,3 +1,4 @@
+import heapq
 import random
 from typing import Any, Callable, Iterator, List, Optional, Tuple
 
@@ -9,6 +10,7 @@ from ray.data._internal.block_batching.interfaces import (
     BlockPrefetcher,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.memory_tracing import trace_deallocation
 
 
 def _bundle_block_refs_to_logical_batches(
@@ -261,3 +263,40 @@ def _collate(
     for batch in batch_iter:
         batch.data = collate_fn(batch.data)
         yield batch
+
+
+def _trace_deallocation(
+    batch_iter: Iterator[Batch], eager_free: bool
+) -> Iterator[Batch]:
+    """Trace deallocation of the underlying block references for each batch.
+
+    Args:
+        batch_iter: An iterator over batches.
+        eager_free: Whether to eagerly free the object reference from the object store.
+    """
+    for batch in batch_iter:
+        block_refs = batch.logical_batch.block_refs
+        for block_ref in block_refs:
+            trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
+        yield batch
+
+
+def _restore_from_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
+    """Restores the original order of the provided `batch_iter`
+
+    This function will yield items from `base_iterator` in the correct order based on
+    each batch's batch_idx. All indexes are expected to be unique.
+
+    `batch_iter` is expected to not have any missing indexes. All indexes from 0 to len
+    (base_iterator) must be present.
+    """
+    next_index_required = 0
+    buffer: List[Batch] = []
+    for batch in batch_iter:
+        heapq.heappush(buffer, (batch.batch_idx, batch))
+        if buffer[0][0] == next_index_required:
+            yield heapq.heappop(buffer)[1]
+            next_index_required += 1
+
+    while len(buffer) > 0:
+        yield heapq.heappop(buffer)[1]

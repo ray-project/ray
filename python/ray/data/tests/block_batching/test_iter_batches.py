@@ -1,11 +1,13 @@
 from copy import copy
 import pytest
 from typing import Iterator, List, Tuple
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 
+import ray
 from ray.data.block import Block, BlockMetadata
 from ray.data._internal.block_batching.interfaces import (
     Batch,
@@ -19,6 +21,8 @@ from ray.data._internal.block_batching.iter_batches import (
     _construct_batch_from_logical_batch,
     _format_batches,
     _collate,
+    _trace_deallocation,
+    _restore_from_original_order,
 )
 
 
@@ -257,6 +261,29 @@ def test_collate():
     for i, batch in enumerate(batch_iter):
         assert batch.batch_idx == i
         assert batch.data == pa.table({"bar": [1] * 2})
+
+
+@patch.object(ray.data._internal.block_batching.iter_batches, "trace_deallocation")
+@pytest.mark.parametrize("eager_free", [True, False])
+def test_trace_deallocation(mock, eager_free):
+    batches = [Batch(0, 0, LogicalBatch(0, [0], 0, None, 1))]
+    batch_iter = _trace_deallocation(iter(batches), eager_free=eager_free)
+    # Test that the underlying batch is not modified.
+    assert next(batch_iter) == batches[0]
+    mock.assert_called_once_with(0, loc="iter_batches", free=eager_free)
+
+
+def test_restore_from_original_order():
+    base_iterator = [
+        Batch(1, None, None),
+        Batch(0, None, None),
+        Batch(3, None, None),
+        Batch(2, None, None),
+    ]
+
+    ordered = list(_restore_from_original_order(iter(base_iterator)))
+    idx = [batch.batch_idx for batch in ordered]
+    assert idx == [0, 1, 2, 3]
 
 
 if __name__ == "__main__":
