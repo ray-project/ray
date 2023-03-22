@@ -18,8 +18,8 @@ def _cursor_to_block(cursor) -> Block:
     # Each `column_description` is a 7-element sequence. The first element is the column
     # name. To learn more, read https://peps.python.org/pep-0249/#description.
     columns = [column_description[0] for column_description in cursor.description]
-    pylist = [{c: v for c, v in zip(columns, row)} for row in rows]
-    return pa.Table.from_pylist(pylist)
+    pydict = {column: [row[i] for row in rows] for i, column in enumerate(columns)}
+    return pa.Table.from_pydict(pydict)
 
 
 @PublicAPI(stability="alpha")
