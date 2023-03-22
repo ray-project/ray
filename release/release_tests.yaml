@@ -3070,9 +3070,6 @@
 - name: shuffle_1tb_5000_partitions
   group: core-multi-test
   working_dir: nightly_tests
-  legacy:
-    test_name: shuffle_1tb_5000_partitions
-    test_suite: nightly_tests
 
   frequency: nightly
   team: core
