@@ -55,7 +55,7 @@ Callback hooks
 
 
 Setting and getting states
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
    :toctree: doc/
