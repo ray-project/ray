@@ -2715,7 +2715,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/action_masking.py"],
-    args = ["--stop-iter=2"]
+    args = ["--stop-iter=2", "--framework=tf"]
 )
 
 py_test(
@@ -2733,7 +2733,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=70"]
+    args = ["--as-test", "--stop-reward=70", "--framework=tf"]
 )
 
 py_test(
@@ -2751,7 +2751,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/autoregressive_action_dist.py"],
-    args = ["--as-test", "--stop-reward=150", "--num-cpus=4"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=150", "--num-cpus=4"]
 )
 
 py_test(
@@ -2777,7 +2777,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--as-test", "--run=PPO", "--stop-reward=80"]
+    args = ["--as-test", "--framework=tf", "--run=PPO", "--stop-reward=80"]
 )
 
 py_test(
@@ -2795,7 +2795,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--as-test", "--run=DQN", "--stop-reward=70", "--stop-time=400"]
+    args = ["--as-test", "--framework=tf", "--run=DQN", "--stop-reward=70", "--stop-time=400"]
 )
 
 py_test(
@@ -2813,7 +2813,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--run=DDPG", "--stop-iters=1"]
+    args = ["--run=DDPG", "--framework=tf", "--stop-iters=1"]
 )
 
 py_test(
@@ -2831,7 +2831,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
+    args = ["--as-test", "--framework=tf", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
 )
 
 py_test(
@@ -2885,7 +2885,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/centralized_critic.py"],
-    args = ["--as-test", "--stop-reward=7.2"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=7.2"]
 )
 
 py_test(
@@ -2903,7 +2903,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/centralized_critic_2.py"],
-    args = ["--as-test", "--stop-reward=6.0"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=6.0"]
 )
 
 py_test(
@@ -2975,7 +2975,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/custom_env.py"],
-    args = ["--as-test"]
+    args = ["--as-test", "--framework=tf"]
 )
 
 py_test(
@@ -2993,7 +2993,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/custom_eval.py"],
-    args = ["--num-cpus=4", "--as-test"]
+    args = ["--num-cpus=4", "--framework=tf", "--as-test"]
 )
 
 py_test(
@@ -3029,7 +3029,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/custom_fast_model.py"],
-    args = ["--stop-iters=1"]
+    args = ["--stop-iters=1", "--framework=tf"]
 )
 
 py_test(
@@ -3083,6 +3083,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/custom_model_api.py"],
+    args = ["--framework=tf"],
 )
 
 py_test(
@@ -3102,7 +3103,7 @@ py_test(
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_model_loss_and_metrics.py"],
-    args = ["--run=PPO", "--stop-iters=1", "--input-files=tests/data/cartpole"]
+    args = ["--run=PPO", "--stop-iters=1", "--framework=tf","--input-files=tests/data/cartpole"]
 )
 
 py_test(
@@ -3124,7 +3125,7 @@ py_test(
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_model_loss_and_metrics.py"],
-    args = ["--run=PG", "--stop-iters=1", "--input-files=tests/data/cartpole"]
+    args = ["--run=PG", "--stop-iters=1", "--framework=tf", "--input-files=tests/data/cartpole"]
 )
 
 py_test(
@@ -3153,7 +3154,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/custom_rnn_model.py"],
-    args = ["--as-test", "--run=PPO", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
+    args = ["--as-test", "--run=PPO", "--framework=tf", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
 )
 
 py_test(
@@ -3162,7 +3163,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/custom_rnn_model.py"],
-    args = ["--as-test", "--run=PPO", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
+    args = ["--as-test", "--run=PPO", "--framework=tf", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
 )
 
 py_test(
@@ -3213,7 +3214,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/custom_vector_env.py"],
-    args = ["--as-test", "--stop-reward=40.0"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=40.0"]
 )
 
 py_test(
@@ -3309,7 +3310,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/hierarchical_training.py"],
-    args = ["--stop-reward=0.0"]
+    args = [ "--framework=tf", "--stop-reward=0.0"]
 )
 
 py_test(
@@ -3336,7 +3337,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/multi_agent_cartpole.py"],
-    args = ["--as-test", "--stop-reward=70.0", "--num-cpus=4"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=70.0", "--num-cpus=4"]
 )
 
 py_test(
@@ -3372,7 +3373,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_custom_policy.py"],
-    args = ["--as-test", "--stop-reward=80"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=80"]
 )
 
 py_test(
@@ -3454,7 +3455,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_two_trainers.py"],
-    args = ["--as-test", "--stop-reward=70"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=70"]
 )
 
 py_test(
@@ -3492,7 +3493,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/nested_action_spaces.py"],
-    args = ["--as-test", "--stop-reward=-600", "--run=PPO"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=-600", "--run=PPO"]
 )
 
 py_test(
@@ -3510,7 +3511,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=13"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=13"]
 )
 
 py_test(
@@ -3555,7 +3556,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
-    args = ["--as-test", "--stop-reward=60.0", "--run=DQN"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=60.0", "--run=DQN"]
 )
 
 py_test(
@@ -3655,7 +3656,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/preprocessing_disabled.py"],
-    args = ["--stop-iters=2"]
+    args = ["--stop-iters=2", "--framework=tf"]
 )
 
 py_test(
@@ -3682,7 +3683,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/remote_envs_with_inference_done_on_main_node.py"],
-    args = ["--as-test"],
+    args = ["--as-test", "--framework=tf"],
 )
 
 py_test(
@@ -3738,7 +3739,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/rock_paper_scissors_multiagent.py"],
-    args = ["--as-test"],
+    args = ["--as-test", "--framework=tf"],
 )
 
 py_test(
@@ -3838,7 +3839,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--stop-reward=450.0"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=450.0"]
 )
 
 py_test(
@@ -3865,7 +3866,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--stop-reward=7", "--run=PG"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=7", "--run=PG"]
 )
 
 py_test(
