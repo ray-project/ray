@@ -4314,6 +4314,21 @@
     wait_for_nodes:
       num_nodes: 15
 
+- name: pipelined_gce_data_ingest_benchmark_1tb
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_ingest_benchmark_compute_gce.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --streaming
+    wait_for_nodes:
+      num_nodes: 20
 
 - name: pipelined_data_ingest_benchmark_1tb
   group: data-tests
@@ -4331,6 +4346,21 @@
     wait_for_nodes:
       num_nodes: 20
 
+- name: streaming_gce_data_ingest_benchmark_1tb
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_ingest_benchmark_compute_gce.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --new_streaming
+    wait_for_nodes:
+      num_nodes: 20
 
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
@@ -4532,6 +4562,22 @@
     wait_for_nodes:
       num_nodes: 20
 
+- name: dataset_shuffle_gce_push_based_random_shuffle_1tb
+  group: data-tests
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
+
+  run:
+    timeout: 7200
+    script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
+    wait_for_nodes:
+      num_nodes: 20
+
 - name: dataset_shuffle_push_based_random_shuffle_1tb
   group: data-tests
   working_dir: nightly_tests
@@ -4563,6 +4609,22 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
+
+- name: dataset_shuffle_gce_push_based_random_shuffle_100tb
+  group: data-tests
+  working_dir: nightly_tests
+
+  frequency: weekly
+  team: data
+  cluster:
+    cluster_env: shuffle/100tb_shuffle_app_config.yaml
+    cluster_compute: shuffle/100tb_shuffle_compute_gce.yaml
+
+  run:
+    timeout: 28800
+    script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
+    wait_for_nodes:
+      num_nodes: 100
 
 - name: dataset_shuffle_push_based_random_shuffle_100tb
   group: data-tests
@@ -4733,7 +4795,7 @@
     wait_for_nodes:
       num_nodes: 20
 
-- name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
+- name: chaos_dataset_shuffle_gce_push_based_random_shuffle_1tb
   group: data-tests
   working_dir: nightly_tests
 
@@ -4744,7 +4806,7 @@
   cluster:
     # leave oom disabled as test is marked unstable at the moment.
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
+    cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
   run:
     timeout: 7200
