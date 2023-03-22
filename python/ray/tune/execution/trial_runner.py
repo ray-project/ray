@@ -1263,7 +1263,7 @@ class TrialRunner(_TuneControllerBase):
         return TrialRunnerWrapper(
             self,
             self.trial_executor,
-            runner_whitelist_attr={"search_alg", "get_trials"},
+            runner_whitelist_attr={"search_alg", "get_trials", "_set_trial_status"},
             executor_whitelist_attr={"has_resources_for_trial", "pause_trial", "save"},
         )
 

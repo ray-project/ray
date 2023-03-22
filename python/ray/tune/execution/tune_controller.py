@@ -141,7 +141,7 @@ class TuneController(_TuneControllerBase):
         return TrialRunnerWrapper(
             self,
             trial_executor=_FakeRayTrialExecutor(self),
-            runner_whitelist_attr={"search_alg", "get_trials"},
+            runner_whitelist_attr={"search_alg", "get_trials", "_set_trial_status"},
             executor_whitelist_attr={"has_resources_for_trial", "pause_trial", "save"},
         )
 
@@ -992,3 +992,10 @@ class _FakeRayTrialExecutor:
 
     def has_resources_for_trial(self, trial: Trial):
         return True
+
+    @property
+    def _resource_updater(self):
+        return self._tune_controller._resource_updater
+
+    def force_reconcilation_on_next_step_end(self):
+        pass
