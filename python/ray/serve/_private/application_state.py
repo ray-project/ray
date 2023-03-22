@@ -26,6 +26,7 @@ class ApplicationState:
         self,
         name: str,
         deployment_state_manager: DeploymentStateManager,
+        deployed_app_config: Dict,
         deploy_obj_ref: ObjectRef = None,
         deployment_time: float = 0,
     ):
@@ -42,6 +43,7 @@ class ApplicationState:
         else:
             self.status: ApplicationStatus = ApplicationStatus.NOT_STARTED
         self.name = name
+        self.deployed_app_config = deployed_app_config
         self.deployment_params: List[Dict] = []
         self.ready_to_be_deleted = False
         self.deployment_state_manager = deployment_state_manager
@@ -216,10 +218,11 @@ class ApplicationState:
 
     def list_deployment_details(self) -> Dict[str, DeploymentDetails]:
         """Gets detailed info on all deployments in this application."""
-        return {
+        details = {
             name: self.deployment_state_manager.get_deployment_details(name)
             for name in self.get_all_deployments()
         }
+        return {k: v for k, v in details.items() if v is not None}
 
 
 class ApplicationStateManager:
@@ -299,6 +302,9 @@ class ApplicationStateManager:
     def get_route_prefix(self, name: str) -> str:
         return self._application_states[name].route_prefix
 
+    def get_app_config(self, name: str) -> Dict:
+        return self._application_states[name].deployed_app_config
+
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}"""
         return {
@@ -313,7 +319,11 @@ class ApplicationStateManager:
         return self._application_states[name].list_deployment_details()
 
     def create_application_state(
-        self, name: str, deploy_obj_ref: ObjectRef, deployment_time: float = 0
+        self,
+        name: str,
+        deployed_app_config: Dict,
+        deploy_obj_ref: ObjectRef,
+        deployment_time: float = 0,
     ):
         """Create application state
         This is used for holding the deploy_obj_ref which is created by run_graph method
@@ -330,6 +340,7 @@ class ApplicationStateManager:
         self._application_states[name] = ApplicationState(
             name,
             self.deployment_state_manager,
+            deployed_app_config=deployed_app_config,
             deploy_obj_ref=deploy_obj_ref,
             deployment_time=deployment_time,
         )

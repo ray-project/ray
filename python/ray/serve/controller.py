@@ -34,6 +34,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
     SERVE_DEFAULT_APP_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
@@ -536,10 +537,6 @@ class ServeController:
         new_config_checkpoint = {}
 
         for app_config in applications:
-            # Prepend app name to each deployment name
-            if not _internal:
-                app_config = app_config.prepend_app_name_to_deployment_names()
-
             app_config_dict = app_config.dict(exclude_unset=True)
 
             # Compare new config options with old ones, set versions of new deployments
@@ -578,6 +575,7 @@ class ServeController:
                 app_config.name,
                 deploy_obj_ref=deploy_obj_ref,
                 deployment_time=deployment_time,
+                deployed_app_config=app_config_dict,
             )
 
         self.kv_store.put(
@@ -704,7 +702,9 @@ class ServeController:
                 status=app_status_info.status,
                 message=app_status_info.message,
                 last_deployed_time_s=app_status_info.deployment_timestamp,
-                deployed_app_config=self.get_app_config(app_name),
+                deployed_app_config=self.application_state_manager.get_app_config(
+                    app_name
+                ),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name
                 ),
@@ -764,11 +764,7 @@ class ServeController:
                 return ServeApplicationSchema.get_empty_schema_dict()
             config, _ = config_checkpoints_dict[name]
 
-            return (
-                ServeApplicationSchema.parse_obj(config)
-                .remove_app_name_from_deployment_names()
-                .dict(exclude_unset=True)
-            )
+            return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
 
     def get_all_deployment_statuses(self) -> List[bytes]:
         """Gets deployment status bytes for all live deployments."""
@@ -922,6 +918,15 @@ def run_graph(
         # Override options for each deployment
         for options in deployment_override_options:
             deployment_name = options["name"]
+            unique_deployment_name = (
+                (name + DEPLOYMENT_NAME_PREFIX_SEPARATOR) if len(name) else ""
+            ) + deployment_name
+
+            if unique_deployment_name not in app.deployments:
+                raise KeyError(
+                    f'There is no deployment named "{deployment_name}" in the '
+                    f'application "{name}".'
+                )
 
             # Merge graph-level and deployment-level runtime_envs
             if "ray_actor_options" in options:
@@ -931,7 +936,7 @@ def run_graph(
                 # Otherwise, get options from graph code (and default to {} if code
                 # sets options to None)
                 ray_actor_options = (
-                    app.deployments[deployment_name].ray_actor_options or {}
+                    app.deployments[unique_deployment_name].ray_actor_options or {}
                 )
             deployment_env = ray_actor_options.get("runtime_env", {})
             merged_env = override_runtime_envs_except_env_vars(
@@ -940,8 +945,11 @@ def run_graph(
             ray_actor_options.update({"runtime_env": merged_env})
             options["ray_actor_options"] = ray_actor_options
             options["version"] = deployment_versions[deployment_name]
+            options["name"] = unique_deployment_name
             # Update the deployment's options
-            app.deployments[deployment_name].set_options(**options, _internal=True)
+            app.deployments[unique_deployment_name].set_options(
+                **options, _internal=True
+            )
 
         # Run the graph locally on the cluster
         serve.run(app, name=name, route_prefix=route_prefix)
