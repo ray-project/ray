@@ -99,13 +99,13 @@ def configure_component_logger(
     # Wrap logger methods to take the `to_file_only` kwarg.
     # If this parameter is passed and set to `True`, the given log message
     # will be logged only to the file handler and not the stream handler.
-    logger.debug = add_to_file_only_kwarg_to_logger(logger.debug)
-    logger.info = add_to_file_only_kwarg_to_logger(logger.info)
-    logger.warning = add_to_file_only_kwarg_to_logger(logger.warning)
-    logger.error = add_to_file_only_kwarg_to_logger(logger.error)
-    logger.critical = add_to_file_only_kwarg_to_logger(logger.critical)
-    logger.log = add_to_file_only_kwarg_to_logger(logger.log)
-    logger.exception = add_to_file_only_kwarg_to_logger(logger.exception)
+    logger.debug = add_to_file_only_kwarg_to_logger_method(logger.debug)
+    logger.info = add_to_file_only_kwarg_to_logger_method(logger.info)
+    logger.warning = add_to_file_only_kwarg_to_logger_method(logger.warning)
+    logger.error = add_to_file_only_kwarg_to_logger_method(logger.error)
+    logger.critical = add_to_file_only_kwarg_to_logger_method(logger.critical)
+    logger.log = add_to_file_only_kwarg_to_logger_method(logger.log)
+    logger.exception = add_to_file_only_kwarg_to_logger_method(logger.exception)
 
 
 class LoggingContext:
