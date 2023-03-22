@@ -184,7 +184,7 @@ def iter_batches(
             yield from _preserve_order(batch_iter)
         else:
             # If no batch prefetching is specified, then don't use a threadpool.
-            batch_iter = threadpool_computations(async_batch_iter)
+            batch_iter = threadpool_computations(batch_iter)
             # Drop the index since ordering is already preserved as we are not using a
             # threadpool.
             for idx, batch in batch_iter:
@@ -833,8 +833,6 @@ def _make_async_gen(
         An iterator with the same elements as the base_iterator.
     """
 
-    input_queue = queue.Queue(1)
-    
     def convert_to_threadsafe_iterator(base_iterator: Iterator[T]) -> Iterator[T]:
         class ThreadSafeIterator:
             def __init__(self, it):
@@ -878,14 +876,18 @@ def _make_async_gen(
     while True:
         next_item = output_queue.get(block=True)
         if isinstance(next_item, Exception):
+            output_queue.task_done()
             raise next_item
         if isinstance(next_item, Sentinel):
+            output_queue.task_done()
             logger.debug(f"Thread {next_item.thread_index} finished.")
             num_threads_finished += 1
             threads[next_item.thread_index].join()
         else:
             yield next_item
+            output_queue.task_done()
         if num_threads_finished >= num_workers:
+            output_queue.join()
             break
 
 
