@@ -11,6 +11,160 @@ from ray.data._internal.block_batching.interfaces import (
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.memory_tracing import trace_deallocation
+from ray.data._internal.stats import DatasetStats
+
+
+def iter_batches(
+    block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+    *,
+    stats: DatasetStats = None,
+    clear_block_after_read: bool = False,
+    batch_size: Optional[int] = None,
+    batch_format: str = "default",
+    drop_last: bool = False,
+    collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+    shuffle_buffer_min_size: Optional[int] = None,
+    shuffle_seed: Optional[int] = None,
+    ensure_copy: bool = False,
+    prefetch_batches: int = 0,
+) -> Iterator[DataBatch]:
+    """Create formatted batches of data from an iterator of block object references and
+    corresponding metadata.
+
+    This takes a block iterator and creates batch_size batches, slicing,
+    unioning, shuffling, prefetching, and formatting blocks as needed.
+
+    This is used by both Dataset.iter_batches() and DatasetPipeline.iter_batches()
+
+    The algorithm is as follows:
+
+    In a single async thread, do the following:
+    1. Construct logical batches. This creates groupings of the block object references
+    based on the corresponding metadata.num_rows. The blocks are not resolved or sliced.
+    2. If specified, locally shuffle the logical batches.
+    3. Trigger local prefetching of the logical batches.
+    4. Then, in a threadpool consisting of `prefetch_batches` threads:
+        1. Resolve (i.e. call `ray.get()`) on the underlying block references for each
+        logical batch.
+        2. Perform the necessary batch slicing to construct full batches.
+        3. Format the batches to the provided batch format.
+        4. Apply the collate function
+    5. Fetch outputs from the threadpool, maintaining order of the batches.
+
+    Args:
+        block_refs: An iterator over block object references and their corresponding
+            metadata.
+        clear_block_after_read: Whether to clear the block from object store
+            manually (i.e. without waiting for Python's automatic GC) after it
+            is read. Doing so will reclaim memory faster and hence reduce the
+            memory footprint. However, the caller has to ensure the safety, i.e.
+            the block will never be accessed again.
+        batch_size: Record batch size, or None to let the system pick.
+        batch_format: The format in which to return each batch.
+            Specify "default" to use the current block format (promoting
+            Arrow to pandas automatically), "pandas" to
+            select ``pandas.DataFrame`` or "pyarrow" to select
+            ``pyarrow.Table``. Default is "default".
+        drop_last: Whether to drop the last batch if it's incomplete.
+        collate_fn: A function to apply to each data batch before returning it.
+        shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
+            local in-memory shuffle buffer, and this value will serve as the minimum
+            number of rows that must be in the local in-memory shuffle buffer in order
+            to yield a batch.
+        shuffle_seed: The seed to use for the local random shuffle.
+        ensure_copy: Whether batches are always copied from the underlying base
+            blocks (not zero-copy views).
+        prefetch_batches: The number of batches to fetch ahead of the current batch to
+            process. If set to greater than 0, a separate thread will be used to fetch
+            the specified amount of formatted batches from blocks. This improves
+            performance for non-CPU bound UDFs, allowing batch fetching compute and
+            formatting to be overlapped with the UDF. Defaults to 0 (no prefetching
+            enabled).
+
+    Returns:
+        An iterator over record batches.
+    """
+    context = DatasetContext.get_current()
+
+    if (
+        prefetch_batches > 0
+        and context.actor_prefetcher_enabled
+        and not ray.util.client.ray.is_connected()
+    ):
+        prefetcher = ActorBlockPrefetcher()
+    else:
+        prefetcher = WaitBlockPrefetcher()
+
+    def _async_iter_batches(block_refs):
+        # Step 1: Construct logical batches based on the metadata.
+        batch_iter = _bundle_block_refs_to_logical_batches(
+            block_refs, batch_size=batch_size, drop_last=drop_last
+        )
+
+        # Step 2: Shuffle the logical batches if applicable.
+        if shuffle_buffer_min_size is not None:
+            batch_iter = _local_shuffle_logical_batches(
+                shuffle_buffer_min_size=shuffle_buffer_min_size,
+                shuffle_seed=shuffle_seed,
+            )
+
+        # Step 3: Prefetch logical batches locally.
+        if prefetch_batches > 0:
+            batch_iter = _prefetch_batches_locally(
+                batch_iter,
+                prefetcher=prefetcher,
+                num_batches_to_prefetch=prefetch_batches,
+                stats=stats,
+            )
+
+        def threadpool_computations(logical_batch_iter: Iterator[LogicalBatch]):
+            # Step 4.1: Resolve the blocks.
+            resolved_batch_iter = _resolve_blocks(
+                logical_batch_iter,
+                clear_block_after_read=clear_block_after_read,
+                stats=stats,
+            )
+
+            # Step 4.2: Slice the blocks to create the batch.
+            batch_iter = _construct_batch_from_logical_batch(
+                resolved_batch_iter, stats=stats, ensure_copy=ensure_copy
+            )
+
+            # Step 4.3: Format the batches.
+            formatted_batch_iter = _format_batches(
+                batch_iter, batch_format=batch_format, stats=stats
+            )
+
+            # Step 4.4: Apply the collate function if applicable.
+            if collate_fn is not None:
+                formatted_batch_iter = _collate(
+                    formatted_batch_iter, collate_fn=collate_fn, stats=stats
+                )
+            yield from formatted_batch_iter
+
+        # Step 4: Use a threadpool for resolving blocks, slicing, formatting, and
+        # collation.
+        if prefetch_batches > 0:
+            batch_iter = _make_async_gen(
+                batch_iter, fn=threadpool_computations, num_workers=prefetch_batches
+            )
+            # Step 5: Make sure to preserve order from threadpool results.
+            yield from _preserve_order(batch_iter)
+        else:
+            # If no batch prefetching is specified, then don't use a threadpool.
+            batch_iter = threadpool_computations(batch_iter)
+            # Drop the index since ordering is already preserved as we are not using a
+            # threadpool.
+            for idx, batch in batch_iter:
+                yield batch
+
+    # Run everything in a separate thread to not block the main thread when waiting
+    # for streaming results.
+    async_batch_iter = _make_async_gen(
+        block_refs, fn=_async_iter_batches, num_workers=1
+    )
+
+    yield from async_batch_iter
 
 
 def _bundle_block_refs_to_logical_batches(

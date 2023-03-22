@@ -217,10 +217,11 @@ class DatasetStats:
         self.stats_uuid = stats_uuid
 
         # Iteration stats, filled out if the user iterates over the dataset.
-        self.iter_wait_s: Timer = Timer()
         self.iter_get_s: Timer = Timer()
-        self.iter_next_batch_s: Timer = Timer()
+        self.iter_create_batch_s: Timer = Timer()
         self.iter_format_batch_s: Timer = Timer()
+        self.iter_collate_batch_s: Timer = Timer()
+        self.iter_total_blocked_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
         self.extra_metrics = {}
