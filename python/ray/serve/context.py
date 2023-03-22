@@ -13,7 +13,7 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaTag
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 import contextvars
 
 logger = logging.getLogger(__file__)
@@ -141,6 +141,7 @@ def _connect() -> ServeControllerClient:
 #       async task conflicts when using it concurrently.
 
 
+@DeveloperAPI
 @dataclass(frozen=True)
 class RequestContext:
     route: str = ""
