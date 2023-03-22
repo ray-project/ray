@@ -22,7 +22,6 @@ GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
     "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"
 )
 
-
 TARGET_TEMPLATE = {
     "exemplar": True,
     "expr": "0",
@@ -81,7 +80,7 @@ PANEL_TEMPLATE = {
         },
         {
             "$$hashKey": "object:78",
-            "alias": "/FINISHED|FAILED|DEAD|REMOVED/",
+            "alias": "/FINISHED|FAILED|DEAD|REMOVED|Failed Nodes:/",
             "hiddenSeries": True,
         },
         {
