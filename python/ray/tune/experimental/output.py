@@ -154,7 +154,9 @@ def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
     return list(result.keys())
 
 
-def _current_best_trial(trials: List[Trial], metric: str, mode: str):
+def _current_best_trial(
+    trials: List[Trial], metric: Optional[str], mode: Optional[str]
+):
     if not trials:
         return None, None
 
@@ -332,13 +334,15 @@ def _best_trial_str(
     metric: str,
 ):
     """Returns a readable message stating the current best trial."""
+    # returns something like
+    # Current best trial: 18ae7_00005 with loss=0.5918508041056858 and parameters={'train_loop_config': {'lr': 0.059253447253394785}}. # noqa
     val = unflattened_lookup(metric, trial.last_result, default=None)
     config = trial.last_result.get("config", {})
     parameter_columns = list(config.keys())
     params = {p: unflattened_lookup(p, config) for p in parameter_columns}
     return (
         f"Current best trial: {trial.trial_id} with {metric}={val} and "
-        f"parameters={params}"
+        f"params={params}"
     )
 
 
@@ -376,16 +380,21 @@ class ProgressReporter:
         raise NotImplementedError
 
 
-def _detect_reporter(verbosity: AirVerbosity, num_samples: Optional[int] = None):
+def _detect_reporter(
+    verbosity: AirVerbosity,
+    num_samples: int,
+    metric: Optional[str] = None,
+    mode: Optional[str] = None,
+):
     # TODO: Add JupyterNotebook and Ray Client case later.
     rich_enabled = "ENABLE_RICH" in os.environ
     if num_samples and num_samples > 1:
         if rich_enabled:
             if not rich:
                 raise ImportError("Please run `pip install rich`. ")
-            reporter = TuneRichReporter(verbosity, num_samples)
+            reporter = TuneRichReporter(verbosity, num_samples, metric, mode)
         else:
-            reporter = TuneTerminalReporter(verbosity, num_samples)
+            reporter = TuneTerminalReporter(verbosity, num_samples, metric, mode)
     else:
         if rich_enabled:
             logger.warning("`ENABLE_RICH` is only effective with Tune usecase.")
@@ -449,6 +458,7 @@ class TuneReporterBase(ProgressReporter):
 
 
 class TuneTerminalReporter(TuneReporterBase):
+
     def _print_heartbeat(self, trials, *sys_args):
         if self._verbosity < self._heartbeat_threshold:
             return
@@ -456,24 +466,21 @@ class TuneTerminalReporter(TuneReporterBase):
         for s in heartbeat_strs:
             print(s)
         # now print the table using Tabulate
+        all_infos = []
         header = table_data.header
         table_data_list = table_data.data
-        header_printed = False
         for table in table_data_list:
-            if not header_printed:
-                print(
-                    tabulate(
-                        table.trial_infos,
-                        headers=header,
-                        tablefmt="simple",
-                        showindex=False,
-                    )
+            all_infos.extend(table.trial_infos)
+            if table.more_info:
+                all_infos.append(table.more_info)
+            print(
+                tabulate(
+                    all_infos,
+                    headers=header,
+                    tablefmt="simple",
+                    showindex=False,
                 )
-                header_printed = True
-                if table.more_info:
-                    print(table.more_info)
-            else:
-                print(tabulate(table.trial_infos, tablefmt="simple", showindex=False))
+            )
         print()
 
 

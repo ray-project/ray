@@ -843,7 +843,7 @@ def run(
         )
     else:
         air_progress_reporter = _detect_air_reporter(
-            air_verbosity, search_alg.total_samples
+            air_verbosity, search_alg.total_samples, metric=metric, mode=mode
         )
 
     # rich live context manager has to be called encapsulting
