@@ -2208,4 +2208,6 @@ class DeploymentStateManager:
                 > 0
             ):
                 num_gpu_deployments += 1
-        record_extra_usage_tag(TagKey.SERVE_NUM_GPU_DEPLOYMENTS, num_gpu_deployments)
+        record_extra_usage_tag(
+            TagKey.SERVE_NUM_GPU_DEPLOYMENTS, str(num_gpu_deployments)
+        )

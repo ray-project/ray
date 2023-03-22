@@ -200,7 +200,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
             async def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
-                record_extra_usage_tag(TagKey.SERVE_FASTAPI_USED, 1)
+                record_extra_usage_tag(TagKey.SERVE_FASTAPI_USED, "1")
                 install_serve_encoders_to_fastapi()
 
                 self._serve_app = frozen_app
