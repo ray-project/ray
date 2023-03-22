@@ -775,35 +775,20 @@ TEST_F(PublisherTest, TestMultiSubscribers) {
 TEST_F(PublisherTest, TestBatch) {
   // Test if published objects are batched properly.
   std::vector<ObjectID> batched_ids;
-<<<<<<< HEAD
-  send_reply_callback = [this, &batched_ids](Status status,
-                                             std::function<void()> success,
-                                             std::function<void()> failure) {
+  int64_t max_processed_sequence_id = 0;
+  send_reply_callback = [this, &batched_ids, &max_processed_sequence_id](
+                            Status status,
+                            std::function<void()> success,
+                            std::function<void()> failure) {
     for (int i = 0; i < reply.pub_messages_size(); i++) {
       const auto &msg = reply.pub_messages(i);
       const auto oid =
           ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
       batched_ids.push_back(oid);
+      max_processed_sequence_id = std::max(max_processed_sequence_id, msg.sequence_id());
     }
     reply = rpc::PubsubLongPollingReply();
   };
-=======
-  rpc::PubsubLongPollingReply reply;
-  int64_t max_processed_sequence_id = 0;
-  rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids, &max_processed_sequence_id](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        for (int i = 0; i < reply.pub_messages_size(); i++) {
-          const auto &msg = reply.pub_messages(i);
-          const auto oid =
-              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-          batched_ids.push_back(oid);
-          max_processed_sequence_id =
-              std::max(max_processed_sequence_id, msg.sequence_id());
-        }
-        reply = rpc::PubsubLongPollingReply();
-      };
->>>>>>> 40d87c9acb (ad)
 
   std::vector<ObjectID> oids;
   int num_oids = 5;
