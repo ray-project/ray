@@ -16,14 +16,18 @@ def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
 
 
 def to_file_only_filter(record: logging.LogRecord):
-    """XXX: comment."""
+    """Filters log records based on the `to_file_only` parameter of the `extra` dictionary."""
     if not hasattr(record, "to_file_only") or record.to_file_only is None:
         return True
 
     return not record.to_file_only
 
 def add_to_file_only_kwarg_to_logger_method(logger_method: Callable):
-    """XXX: comment."""
+    """Wraps the provided logger method to take a `to_file_only` kwarg.
+
+    The kwarg is converted into a field in the `extra` dictionary and passed to the underlying
+    logger method.
+    """
     @functools.wraps(logger_method)
     def wrapped(*args, to_file_only: Optional[bool] = False, extra: Optional[Dict[Any, Any]], **kwargs):
         if to_file_only is not None:
@@ -92,7 +96,9 @@ def configure_component_logger(
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
-    # XXX: parametrize?
+    # Wrap logger methods to take the `to_file_only` kwarg.
+    # If this parameter is passed and set to `True`, the given log message
+    # will be logged only to the file handler and not the stream handler.
     logger.debug = add_to_file_only_kwarg_to_logger(logger.debug)
     logger.info = add_to_file_only_kwarg_to_logger(logger.info)
     logger.warning = add_to_file_only_kwarg_to_logger(logger.warning)
