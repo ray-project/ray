@@ -273,7 +273,7 @@ export const NodeRows = ({
 
   const { data } = useSWR(
     ["getNodeDetail", node.raylet.nodeId],
-    async (_, nodeId) => {
+    async ([_, nodeId]) => {
       const { data } = await getNodeDetail(nodeId);
       const { data: rspData, result } = data;
 
