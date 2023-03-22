@@ -157,11 +157,16 @@ export const ServeReplicaLogsLink = ({
   let link: string | undefined;
 
   if (node_ip && ipLogMap[node_ip]) {
+    // TODO(aguo): Clean up this logic after re-writing the log viewer
+    const logsRoot = ipLogMap[node_ip].endsWith("/logs")
+      ? ipLogMap[node_ip].substring(
+          0,
+          ipLogMap[node_ip].length - "/logs".length,
+        )
+      : ipLogMap[node_ip];
     // TODO(aguo): Have API return the location of the logs.
-    const path = `/serve/deployment_${deploymentName}_${replica_id}.log`;
-    link = `/logs/${encodeURIComponent(ipLogMap[node_ip])}/${encodeURIComponent(
-      path,
-    )}`;
+    const path = `/logs/serve/deployment_${deploymentName}_${replica_id}.log`;
+    link = `/logs/${encodeURIComponent(logsRoot)}/${encodeURIComponent(path)}`;
   }
 
   if (link) {
