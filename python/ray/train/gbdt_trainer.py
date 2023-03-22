@@ -119,6 +119,7 @@ class GBDTTrainer(BaseTrainer):
         params: Framework specific training parameters.
         dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
             :class:`xgboost_ray.RayDMatrix` initializations.
+        num_boost_round: Target number of boosting iterations (trees in the model).
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
         preprocessor: A ray.data.Preprocessor to preprocess the
@@ -152,6 +153,7 @@ class GBDTTrainer(BaseTrainer):
         label_column: str,
         params: Dict[str, Any],
         dmatrix_params: Optional[Dict[str, Dict[str, Any]]] = None,
+        num_boost_round: int = 10,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         preprocessor: Optional["Preprocessor"] = None,
@@ -161,6 +163,7 @@ class GBDTTrainer(BaseTrainer):
         self.label_column = label_column
         self.params = params
 
+        self.num_boost_round = num_boost_round
         self.train_kwargs = train_kwargs
         self.dmatrix_params = dmatrix_params or {}
 
@@ -264,6 +267,7 @@ class GBDTTrainer(BaseTrainer):
 
     def training_loop(self) -> None:
         config = self.train_kwargs.copy()
+        config[self._num_iterations_argument] = self.num_boost_round
 
         dmatrices = self._get_dmatrices(
             dmatrix_params=self.dmatrix_params,
