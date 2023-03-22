@@ -1839,6 +1839,13 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         )
     )
 
+    # Test get task by ID
+    wait_for_condition(
+        lambda: verify_output(
+            ray_get, ["tasks", task.task_id().hex()], ["task_id", task.task_id().hex()]
+        )
+    )
+
     # Test get placement groups by id
     wait_for_condition(
         lambda: verify_output(
