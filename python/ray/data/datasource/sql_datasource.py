@@ -93,6 +93,18 @@ class SQLReader(Reader):
         None
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        def fallback_read_fn() -> Iterable[Block]:
+            with connect(self.connection_factory) as cursor:
+                cursor.execute(self.sql)
+                block = cursor_to_block(cursor)
+                return [block]
+
+        # If `parallelism` is 1, directly fetch all rows. This avoids unnecessary
+        # queries to fetch a sample block and compute the total number of rows.
+        if parallelism == 1:
+            metadata = BlockMetadata(None, None, None, None, None)
+            return [ReadTask(fallback_read_fn, metadata)]
+
         # Databases like DB2, Oracle, and MS SQL Server don't support `LIMIT`.
         try:
             with connect(self.connection_factory) as cursor:
@@ -101,19 +113,9 @@ class SQLReader(Reader):
         except Exception:
             is_limit_supported = False
 
-        # If `parallelism` is 1 or `LIMIT` clauses are unsupported, directly fetch all
-        # rows. This avoids unnecessary queries to fetch a sample block and compute the 
-        # total number of rows.
-        if parallelism == 1 or not is_limit_supported:
-
-            def read_fn() -> Iterable[Block]:
-                with connect(self.connection_factory) as cursor:
-                    cursor.execute(self.sql)
-                    block = cursor_to_block(cursor)
-                    return [block]
-
+        if not is_limit_supported:
             metadata = BlockMetadata(None, None, None, None, None)
-            return [ReadTask(read_fn, metadata)]
+            return [ReadTask(fallback_read_fn, metadata)]
 
         num_rows_total = self._get_num_rows()
 
