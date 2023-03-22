@@ -87,5 +87,4 @@ def _make_async_gen(
             yield next_item
             output_queue.task_done()
         if num_threads_finished >= num_workers:
-            output_queue.join()
             break
