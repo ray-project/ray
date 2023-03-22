@@ -546,7 +546,6 @@ class RayActorManager:
         If the actor has only been requested, but not started, yet, this will cancel
         the actor request. This will not trigger any callback.
 
-
         If ``kill=True``, this will use ``ray.kill()`` to forcefully terminate the
         actor. Otherwise, graceful actor deconstruction will be scheduled after
         all currently tracked futures are resolved.
@@ -567,17 +566,27 @@ class RayActorManager:
                     self._actor_stop_resolved(tracked_actor=tracked_actor)
 
                 stop_future = ray_actor.__ray_terminate__.remote()
-                self._actor_state_events.track_future(
-                    future=stop_future,
-                    on_result=on_actor_stop,
-                    on_error=on_actor_stop,
-                )
+
                 # Clear state futures here to avoid resolving __ray_ready__ futures
                 for future in list(
                     self._tracked_actors_to_state_futures[tracked_actor]
                 ):
                     self._actor_state_events.discard_future(future)
                     self._tracked_actors_to_state_futures[tracked_actor].remove(future)
+
+                    # If the __ray_ready__ future hasn't resolved yet, but we already
+                    # scheduled the actor via Actor.remote(), we just want to stop
+                    # it but not trigger any callbacks. This is in accordance with
+                    # the contract defined in the docstring.
+                    tracked_actor._on_start = None
+                    tracked_actor._on_stop = None
+                    tracked_actor._on_error = None
+
+                self._actor_state_events.track_future(
+                    future=stop_future,
+                    on_result=on_actor_stop,
+                    on_error=on_actor_stop,
+                )
 
                 self._tracked_actors_to_state_futures[tracked_actor].add(stop_future)
 

@@ -600,7 +600,7 @@ class _TuneControllerBase:
             [
                 self._schedule_trial_stop(t)
                 for t in self._trials
-                if t.status is not Trial.ERROR
+                if t.status not in {Trial.ERROR, Trial.TERMINATED}
             ]
 
     ###

@@ -703,6 +703,10 @@ class TuneController(_TuneControllerBase):
     def _schedule_trial_stop(self, trial: Trial, exception: Optional[Exception] = None):
         logger.debug(f"Requesting to STOP actor for trial {trial}")
 
+        if trial not in self._trial_to_actor:
+            logger.debug(f"Cannot STOP trial as it is not live: {trial}")
+            return
+
         trial.saving_to = None
         trial.restoring_from = None
 
