@@ -17,7 +17,8 @@ from ray.exceptions import (
     ObjectLostError,
 )
 from ray._private.utils import DeferSigint
-from ray._private.test_utils import SignalActor
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.experimental.state.api import list_tasks
 
 
 def valid_exceptions(use_force):
@@ -526,6 +527,140 @@ def test_recursive_cancel(shutdown_only, use_force):
         ray.get(outer_fut, timeout=10)
 
     assert ray.get(many_fut, timeout=30)
+
+
+def test_recursive_cancel_actor_task(shutdown_only):
+    ray.init()
+
+    @ray.remote(num_cpus=0)
+    class Semaphore:
+        def wait(self):
+            import time
+
+            time.sleep(600)
+
+    @ray.remote(num_cpus=0)
+    class Actor2:
+        def __init__(self, obj):
+            (self.obj,) = obj
+
+        def cancel(self):
+            ray.cancel(self.obj)
+
+    @ray.remote
+    def task(sema):
+        return ray.get(sema.wait.remote())
+
+    sema = Semaphore.remote()
+
+    t = task.remote(sema)
+
+    def wait_until_wait_task_starts():
+        wait_state = list_tasks(
+            filters=[("func_or_class_name", "=", "Semaphore.wait")]
+        )[0]
+        return wait_state["state"] == "RUNNING"
+
+    wait_for_condition(wait_until_wait_task_starts)
+
+    # Make sure this will not crash ray.
+    # https://github.com/ray-project/ray/issues/31398
+    a2 = Actor2.remote((t,))
+    a2.cancel.remote()
+
+    with pytest.raises(RayTaskError, match="TaskCancelledError"):
+        ray.get(t)
+
+    wait_state = list_tasks(filters=[("func_or_class_name", "=", "Semaphore.wait")])
+    assert len(wait_state) == 1
+    wait_state = wait_state[0]
+    task_state = list_tasks(filters=[("func_or_class_name", "=", "task")])
+    assert len(task_state) == 1
+    task_state = task_state[0]
+
+    def verify():
+        wait_state = list_tasks(filters=[("func_or_class_name", "=", "Semaphore.wait")])
+        assert len(wait_state) == 1
+        wait_state = wait_state[0]
+        task_state = list_tasks(filters=[("func_or_class_name", "=", "task")])
+        assert len(task_state) == 1
+        task_state = task_state[0]
+
+        assert task_state["state"] == "FINISHED"
+        assert wait_state["state"] == "RUNNING"
+
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_recursive_cancel_error_messages(shutdown_only, capsys):
+    """
+    Make sure the error message printed from the core worker
+    when the recursive cancelation fails it correct.
+
+    It should only sample 10 tasks.
+
+    Example output:
+    (task pid=55118) [2023-02-07 12:51:45,000 E 55118 6637966] core_worker.cc:3360: Unknown error: Failed to cancel all the children tasks of 85748392bcd969ccffffffffffffffffffffffff01000000 recursively. # noqa
+    (task pid=55118) Here are up to 10 samples tasks that failed to be canceled # noqa
+    (task pid=55118) 	b2094147c88795c9678740914e63d022610d70d501000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	d33d38e548ef4f998e63e2e1aaf05a3270e2722e01000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	46009b11e76c891daae7fa9272cac4a2755bb1a901000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	163f27568ace977d38a1ee4f11d3a358e694488901000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	4a0fec5a878ccb98afd7e48837351bfd14957bf001000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	45757cb171c13b7409953bfd8065a5eb36ba936201000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	a5220c501dc8f624f3ab13166dcf73e3f35068a101000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	f8bdb7979cd66dfc0fb4f8225e6197a779e4b7e901000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	3d941239bca36a1cef9d9405523ce46181ebecfe01000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	d6fe9100f5c082db407a983e2f7ada3b5a065e3f01000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) Total Recursive cancelation success: 0, failures: 12
+    """
+    ray.init(num_cpus=12)
+    NUM_ACTORS = 12
+
+    @ray.remote(num_cpus=0)
+    class Semaphore:
+        def wait(self):
+            print("wait called")
+            import time
+
+            time.sleep(600)
+
+    @ray.remote
+    def task(semas):
+        refs = []
+        for sema in semas:
+            refs.append(sema.wait.remote())
+        return ray.get(refs)
+
+    semas = [Semaphore.remote() for _ in range(NUM_ACTORS)]
+
+    t = task.remote(semas)
+
+    def wait_until_wait_task_starts():
+        wait_state = list_tasks(filters=[("func_or_class_name", "=", "Semaphore.wait")])
+        return len(wait_state) == 12
+
+    wait_for_condition(wait_until_wait_task_starts)
+    ray.cancel(t)
+
+    with pytest.raises(RayTaskError, match="TaskCancelledError"):
+        ray.get(t)
+
+    msgs = capsys.readouterr().err.strip(" \n").split("\n")
+    total_result = msgs[-1]
+
+    samples = []
+    for msg in msgs:
+        if "Invalid: Actor task cancellation is not supported." in msg:
+            samples.append(msg)
+    assert len(samples) == 10
+
+    assert (
+        f"Total Recursive cancelation success: 0, failures: {NUM_ACTORS}"
+        in total_result
+    )
 
 
 if __name__ == "__main__":

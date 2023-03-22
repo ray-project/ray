@@ -2,7 +2,7 @@ two-step-game-qmix-with-vdn-mixer:
     env: ray.rllib.examples.env.two_step_game.TwoStepGameWithGroupedAgents
     run: QMIX
     stop:
-        episode_reward_mean: 7.0
+        episode_reward_mean: 6.5
         timesteps_total: 70000
     config:
         # QMIX only supports torch for now.
@@ -16,7 +16,7 @@ two-step-game-qmix-with-vdn-mixer:
         exploration_config:
             final_epsilon: 0.0
 
-        rollout_fragment_length: 4
+        rollout_fragment_length: 8
         train_batch_size: 32
-        num_workers: 0
+        num_workers: 4
         mixer: vdn

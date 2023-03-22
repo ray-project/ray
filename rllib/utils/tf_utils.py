@@ -570,7 +570,7 @@ def zero_logps_from_actions(actions: TensorStructType) -> TensorType:
 
 @DeveloperAPI
 def warn_if_infinite_kl_divergence(
-    policy: Type["TFPolicy"], mean_kl_loss: TensorType
+    policy: Type["TFPolicy"], mean_kl: TensorType
 ) -> None:
     def print_warning():
         logger.warning(
@@ -585,7 +585,7 @@ def warn_if_infinite_kl_divergence(
 
     if policy.loss_initialized():
         tf.cond(
-            tf.math.is_inf(mean_kl_loss),
+            tf.math.is_inf(mean_kl),
             false_fn=lambda: tf.constant(0.0),
             true_fn=lambda: print_warning(),
         )

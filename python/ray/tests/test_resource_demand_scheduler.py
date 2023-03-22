@@ -720,6 +720,70 @@ def test_calculate_node_resources():
     assert not rem
 
 
+def test_request_resources_gpu_no_gpu_nodes():
+    provider = MockProvider()
+    TYPES = {
+        "m5.8xlarge": {
+            "node_config": {},
+            "resources": {"CPU": 32},
+            "max_workers": 40,
+        },
+    }
+    scheduler = ResourceDemandScheduler(
+        provider,
+        TYPES,
+        max_workers=100,
+        head_node_type="empty_node",
+        upscaling_speed=1,
+    )
+
+    # Head node
+    provider.create_node(
+        {},
+        {
+            TAG_RAY_USER_NODE_TYPE: "m5.8xlarge",
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+        },
+        1,
+    )
+    all_nodes = provider.non_terminated_nodes({})
+    node_ips = provider.non_terminated_node_ips({})
+    assert len(node_ips) == 1, node_ips
+
+    # Fully utilized, no requests.
+    avail_by_ip = {ip: {} for ip in node_ips}
+    max_by_ip = {ip: {"CPU": 32} for ip in node_ips}
+    # There aren't any nodes that can satisfy this demand, but we still shouldn't crash.
+    demands = [{"CPU": 1, "GPU": 1}] * 1
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        all_nodes,
+        {},
+        [],
+        avail_by_ip,
+        [],
+        max_by_ip,
+        demands,
+        EMPTY_AVAILABILITY_SUMMARY,
+    )
+    assert len(to_launch) == 0, to_launch
+    assert not rem
+
+    demands = [{"CPU": 1, "GPU": 0}] * 33
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        all_nodes,
+        {},
+        [],
+        avail_by_ip,
+        [],
+        max_by_ip,
+        demands,
+        EMPTY_AVAILABILITY_SUMMARY,
+    )
+    assert len(to_launch) == 1, to_launch
+    assert not rem
+
+
 def test_request_resources_existing_usage():
     provider = MockProvider()
     TYPES = {
@@ -2998,6 +3062,31 @@ def format_pg(pg):
     return f"{bundles_str} ({strategy})"
 
 
+def test_memory_string_formatting():
+    assert ray.autoscaler._private.util.format_memory(0) == "0B"
+    assert (
+        ray.autoscaler._private.util.format_memory(0.0) == "0B"
+    ), "Bytes aren't decimals"
+    assert ray.autoscaler._private.util.format_memory(1) == "1B"
+    assert ray.autoscaler._private.util.format_memory(1023) == "1023B"
+    assert ray.autoscaler._private.util.format_memory(1024) == "1.00KiB"
+    assert ray.autoscaler._private.util.format_memory(1025) == "1.00KiB"
+    assert ray.autoscaler._private.util.format_memory(1037) == "1.01KiB"
+    assert ray.autoscaler._private.util.format_memory(1200) == "1.17KiB"
+    assert ray.autoscaler._private.util.format_memory(2**20 - 10) == "1023.99KiB"
+    assert ray.autoscaler._private.util.format_memory(2**20 - 1) == "1024.00KiB"
+    assert ray.autoscaler._private.util.format_memory(2**20) == "1.00MiB"
+    assert ray.autoscaler._private.util.format_memory(2**30) == "1.00GiB"
+    assert ray.autoscaler._private.util.format_memory(5.001 * 2**30) == "5.00GiB"
+    assert (
+        ray.autoscaler._private.util.format_memory(5.004 * 2**30) == "5.00GiB"
+    ), "rounds down"
+    assert (
+        ray.autoscaler._private.util.format_memory(5.005 * 2**30) == "5.00GiB"
+    ), "rounds down"
+    assert ray.autoscaler._private.util.format_memory(2**40) == "1.00TiB"
+
+
 def test_info_string():
     lm_summary = LoadMetricsSummary(
         usage={
@@ -3006,6 +3095,7 @@ def test_info_string():
             "AcceleratorType:V100": (0, 2),
             "memory": (2 * 2**30, 2**33),
             "object_store_memory": (3.14 * 2**30, 2**34),
+            "accelerator_type:T4": (1, 1),
         },
         resource_demand=[({"CPU": 1}, 150)],
         pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
@@ -3042,8 +3132,8 @@ Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Demands:
  {'CPU': 1}: 150+ pending tasks/actors
@@ -3064,7 +3154,7 @@ def test_info_string_verbose():
         usage={
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
-            "AcceleratorType:V100": (1, 2),
+            "accelerator_type:V100": (1, 2),
             "memory": (2 * 2**30, 2**33),
             "object_store_memory": (3.14 * 2**30, 2**34),
         },
@@ -3076,14 +3166,14 @@ def test_info_string_verbose():
             "192.168.1.1": {
                 "CPU": (5.0, 20.0),
                 "GPU": (0.7, 1),
-                "AcceleratorType:V100": (0.1, 1),
+                "accelerator_type:V100": (0.1, 1),
                 "memory": (2**30, 2**32),
                 "object_store_memory": (3.14 * 2**30, 2**32),
             },
             "192.168.1.2": {
                 "CPU": (15.0, 20.0),
                 "GPU": (0.3, 1),
-                "AcceleratorType:V100": (0.9, 1),
+                "accelerator_type:V100": (0.9, 1),
                 "memory": (2**30, 1.5 * 2**33),
                 "object_store_memory": (0, 2**32),
             },
@@ -3119,11 +3209,11 @@ Recent failures:
 Resources
 --------------------------------------------------------
 Total Usage:
- 1/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 1/2 accelerator_type:V100
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
@@ -3132,19 +3222,19 @@ Total Demands:
 
 Node: 192.168.1.1
  Usage:
-  0.1/1 AcceleratorType:V100
   5.0/20.0 CPU
   0.7/1 GPU
-  1.00/4.000 GiB memory
-  3.14/4.000 GiB object_store_memory
+  0.1/1 accelerator_type:V100
+  1.00GiB/4.00GiB memory
+  3.14GiB/4.00GiB object_store_memory
 
 Node: 192.168.1.2
  Usage:
-  0.9/1 AcceleratorType:V100
   15.0/20.0 CPU
   0.3/1 GPU
-  1.00/12.000 GiB memory
-  0.00/4.000 GiB object_store_memory
+  0.9/1 accelerator_type:V100
+  1.00GiB/12.00GiB memory
+  0B/4.00GiB object_store_memory
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3209,8 +3299,8 @@ Total Usage:
  1/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
@@ -3300,8 +3390,8 @@ Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Demands:
  {'CPU': 1}: 150+ pending tasks/actors
@@ -3384,8 +3474,8 @@ Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU (2.0 used of 2.0 reserved in placement groups)
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Demands:
  {'CPU': 2.0}: 153+ pending tasks/actors (3+ using placement groups)

@@ -5,10 +5,9 @@ import time
 import functools
 from abc import ABC
 from pyspark.sql import SparkSession
-from ray.tests.spark.test_basic import RayOnSparkCPUClusterTestBase
+from ray.tests.spark.test_basic import RayOnSparkCPUClusterTestBase, _setup_ray_cluster
 
 import ray
-from ray.util.spark.cluster_init import _init_ray_cluster
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"),
@@ -22,40 +21,64 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
     num_gpus_per_spark_task = None
 
     def test_gpu_allocation(self):
-
-        for num_spark_tasks in [self.max_spark_tasks // 2, self.max_spark_tasks]:
-            with _init_ray_cluster(num_worker_nodes=num_spark_tasks, safe_mode=False):
+        for num_worker_nodes, num_cpus_per_node, num_gpus_per_node in [
+            (
+                self.max_spark_tasks // 2,
+                self.num_cpus_per_spark_task,
+                self.num_gpus_per_spark_task,
+            ),
+            (
+                self.max_spark_tasks,
+                self.num_cpus_per_spark_task,
+                self.num_gpus_per_spark_task,
+            ),
+            (
+                self.max_spark_tasks // 2,
+                self.num_cpus_per_spark_task * 2,
+                self.num_gpus_per_spark_task * 2,
+            ),
+            (
+                self.max_spark_tasks // 2,
+                self.num_cpus_per_spark_task,
+                self.num_gpus_per_spark_task * 2,
+            ),
+        ]:
+            with _setup_ray_cluster(
+                num_worker_nodes=num_worker_nodes,
+                num_cpus_per_node=num_cpus_per_node,
+                num_gpus_per_node=num_gpus_per_node,
+                head_node_options={"include_dashboard": False},
+            ):
+                ray.init()
                 worker_res_list = self.get_ray_worker_resources_list()
-                assert len(worker_res_list) == num_spark_tasks
+                assert len(worker_res_list) == num_worker_nodes
                 for worker_res in worker_res_list:
-                    assert worker_res["GPU"] == self.num_gpus_per_spark_task
+                    assert worker_res["CPU"] == num_cpus_per_node
+                    assert worker_res["GPU"] == num_gpus_per_node
 
-    def test_basic_ray_app_using_gpu(self):
+                @ray.remote(num_cpus=num_cpus_per_node, num_gpus=num_gpus_per_node)
+                def f(_):
+                    # Add a sleep to avoid the task finishing too fast,
+                    # so that it can make all ray tasks concurrently running in all idle
+                    # task slots.
+                    time.sleep(5)
+                    return [
+                        int(gpu_id)
+                        for gpu_id in os.environ["CUDA_VISIBLE_DEVICES"].split(",")
+                    ]
 
-        with _init_ray_cluster(num_worker_nodes=self.max_spark_tasks, safe_mode=False):
-
-            @ray.remote(num_cpus=1, num_gpus=1)
-            def f(_):
-                # Add a sleep to avoid the task finishing too fast,
-                # so that it can make all ray tasks concurrently running in all idle
-                # task slots.
-                time.sleep(5)
-                return [
-                    int(gpu_id)
-                    for gpu_id in os.environ["CUDA_VISIBLE_DEVICES"].split(",")
-                ]
-
-            futures = [f.remote(i) for i in range(self.num_total_gpus)]
-            results = ray.get(futures)
-            merged_results = functools.reduce(lambda x, y: x + y, results)
-            # Test all ray tasks are assigned with different GPUs.
-            assert sorted(merged_results) == list(range(self.num_total_gpus))
+                futures = [f.remote(i) for i in range(num_worker_nodes)]
+                results = ray.get(futures)
+                merged_results = functools.reduce(lambda x, y: x + y, results)
+                # Test all ray tasks are assigned with different GPUs.
+                assert sorted(merged_results) == list(
+                    range(num_gpus_per_node * num_worker_nodes)
+                )
 
 
 class TestBasicSparkGPUCluster(RayOnSparkGPUClusterTestBase):
     @classmethod
     def setup_class(cls):
-        super().setup_class()
         cls.num_total_cpus = 2
         cls.num_total_gpus = 2
         cls.num_cpus_per_spark_task = 1
@@ -76,6 +99,8 @@ class TestBasicSparkGPUCluster(RayOnSparkGPUClusterTestBase):
             .config(
                 "spark.worker.resource.gpu.discoveryScript", gpu_discovery_script_path
             )
+            .config("spark.executorEnv.RAY_ON_SPARK_WORKER_CPU_CORES", "2")
+            .config("spark.executorEnv.RAY_ON_SPARK_WORKER_GPU_NUM", "2")
             .getOrCreate()
         )
 

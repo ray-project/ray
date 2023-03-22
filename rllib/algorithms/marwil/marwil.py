@@ -11,7 +11,7 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -178,7 +178,7 @@ class MARWILConfig(AlgorithmConfig):
     ) -> "Algorithm":
         if not self._set_off_policy_estimation_methods:
             deprecation_warning(
-                old="MARWIL used to have off_policy_estimation_methods "
+                old=r"MARWIL used to have off_policy_estimation_methods "
                 "is and wis by default. This has"
                 "changed to off_policy_estimation_methods: \{\}."
                 "If you want to use an off-policy estimator, specify it in"
@@ -194,9 +194,6 @@ class MARWILConfig(AlgorithmConfig):
 
         if self.beta < 0.0 or self.beta > 1.0:
             raise ValueError("`beta` must be within 0.0 and 1.0!")
-
-        if self.num_gpus > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
 
         if self.postprocess_inputs is False and self.beta > 0.0:
             raise ValueError(
@@ -269,20 +266,3 @@ class MARWIL(Algorithm):
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.marwil.MARWILConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(MARWILConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.marwil.marwil::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.marwil.marwil::MARWILConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

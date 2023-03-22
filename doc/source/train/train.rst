@@ -42,8 +42,8 @@ There are three broad categories of Trainers that Train offers:
 * Leverage the :ref:`Ray cluster launcher <cluster-index>` to launch autoscaling or spot instance clusters on any cloud.
 
 
-Quick Start
------------
+Quick Start to Distributed Training with Ray Train
+--------------------------------------------------
 
 .. tabbed:: XGBoost
 
@@ -79,10 +79,11 @@ Quick Start
 
 .. _train-framework-catalog:
 
-Framework Catalog
------------------
+Training Framework Catalog
+--------------------------
 
-Here is a catalog of the framework-specific Trainer, Checkpoint, and Predictor classes that ship out of the box with Train:
+Here is a catalog of the framework-specific Trainer, Checkpoint, and Predictor
+classes that ship out of the box with Train:
 
 .. list-table::
 

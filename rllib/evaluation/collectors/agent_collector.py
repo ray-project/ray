@@ -1,14 +1,14 @@
+import copy
 import logging
-
-from copy import deepcopy
-from gymnasium.spaces import Space
 import math
-import numpy as np
-import tree  # pip install dm_tree
 from typing import Any, Dict, List, Optional
 
-from ray.rllib.policy.view_requirement import ViewRequirement
+import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Space
+
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import (
     flatten_to_single_ndarray,
@@ -20,8 +20,6 @@ from ray.rllib.utils.typing import (
     TensorType,
     ViewRequirementsDict,
 )
-
-from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -37,6 +35,17 @@ def _to_float_np_array(v: List[Any]) -> np.ndarray:
     if arr.dtype == np.float64:
         return arr.astype(np.float32)  # save some memory
     return arr
+
+
+def _get_buffered_slice_with_paddings(d, inds):
+    element_at_t = []
+    for index in inds:
+        if index < len(d):
+            element_at_t.append(d[index])
+        else:
+            # zero pad similar to the last element.
+            element_at_t.append(tree.map_structure(np.zeros_like, d[-1]))
+    return element_at_t
 
 
 @PublicAPI
@@ -138,38 +147,6 @@ class AgentCollector:
         """Returns True if this collector has no data."""
         return not self.buffers or all(len(item) == 0 for item in self.buffers.values())
 
-    def _check_view_requirement(self, view_requirement_name: str, data: TensorType):
-        """Warns if data does not fit the view requirement.
-
-        Should raise an AssertionError if data does not fit the view requirement in the
-        future.
-        """
-
-        if view_requirement_name in self.view_requirements:
-            vr = self.view_requirements[view_requirement_name]
-            # We only check for the shape here, because conflicting dtypes are often
-            # because of float conversion
-            # TODO (Artur): Revisit test_multi_agent_env for cases where we accept a
-            #  space that is not a gym.Space
-            if (
-                hasattr(vr.space, "shape")
-                and not vr.space.shape == np.shape(data)
-                and log_once(
-                    f"view_requirement"
-                    f"_{view_requirement_name}_checked_in_agent_collector"
-                )
-            ):
-
-                # TODO (Artur): Enforce VR shape
-                # TODO (Artur): Enforce dtype as well
-                logger.warning(
-                    f"Provided tensor\n{data}\n does not match space of view "
-                    f"requirements {view_requirement_name}.\n"
-                    f"Provided tensor has shape {np.shape(data)} and view requirement "
-                    f"has shape shape {vr.space.shape}."
-                    f"Make sure dimensions match to resolve this warning."
-                )
-
     def add_init_obs(
         self,
         episode_id: EpisodeID,
@@ -202,10 +179,6 @@ class AgentCollector:
         # convert init_obs to np.array (in case it is a list)
         if isinstance(init_obs, list):
             init_obs = np.array(init_obs)
-
-        # Check if view requirement dict has the SampleBatch.OBS key and warn once if
-        # view requirement does not match init_obs
-        self._check_view_requirement(SampleBatch.OBS, init_obs)
 
         if SampleBatch.OBS not in self.buffers:
             single_row = {
@@ -267,8 +240,7 @@ class AgentCollector:
             AgentCollector._next_unroll_id += 1
 
         # Next obs -> obs.
-        # TODO @kourosh: remove the in-place operations and get rid of this deepcopy.
-        values = deepcopy(input_values)
+        values = copy.copy(input_values)
         assert SampleBatch.OBS not in values
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
@@ -292,10 +264,6 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         for k, v in values.items():
-            # Check if view requirement dict has k and warn once if
-            # view requirement does not match v
-            self._check_view_requirement(k, v)
-
             if k not in self.buffers:
                 if self.training and k.startswith("state_out_"):
                     vr = self.view_requirements[k]
@@ -397,8 +365,10 @@ class AgentCollector:
                 # before the last one (len(d) - 2) and so on.
                 element_at_t = d[view_req.shift_arr + len(d) - 1]
                 if element_at_t.shape[0] == 1:
-                    # squeeze to remove the T dimension if it is 1.
-                    element_at_t = element_at_t.squeeze(0)
+                    # We'd normally squeeze here to remove the time dim, but we'll
+                    # simply use the time dim as the batch dim.
+                    data.append(element_at_t)
+                    continue
                 # add the batch dimension with [None]
                 data.append(element_at_t[None])
 
@@ -409,7 +379,7 @@ class AgentCollector:
         return batch
 
     # TODO: @kouorsh we don't really need view_requirements anymore since it's already
-    # and attribute of the class
+    # an attribute of the class
     def build_for_training(
         self, view_requirements: ViewRequirementsDict
     ) -> SampleBatch:
@@ -499,20 +469,20 @@ class AgentCollector:
                     # handle the case where the inds are out of bounds from the end.
                     # if during the indexing any of the indices are out of bounds, we
                     # need to use padding on the end to fill in the missing indices.
-                    element_at_t = []
-                    for index in inds:
-                        if index < len(d):
-                            element_at_t.append(d[index])
-                        else:
-                            # zero pad similar to the last element.
-                            element_at_t.append(
-                                tree.map_structure(np.zeros_like, d[-1])
-                            )
-                    element_at_t = np.stack(element_at_t)
+                    # Create padding first time we encounter data
+                    if max(inds) < len(d):
+                        # Simple case where we can simply pick slices from buffer
+                        element_at_t = d[inds]
+                    else:
+                        # Case in which we have to pad because buffer has insufficient
+                        # length. This branch takes more time than simply picking
+                        # slices we try to avoid it.
+                        element_at_t = _get_buffered_slice_with_paddings(d, inds)
+                        element_at_t = np.stack(element_at_t)
 
                     if element_at_t.shape[0] == 1:
-                        # squeeze to remove the T dimension if it is 1.
-                        element_at_t = element_at_t.squeeze(0)
+                        # Remove the T dimension if it is 1.
+                        element_at_t = element_at_t[0]
                     shifted_data.append(element_at_t)
 
                 # in some multi-agent cases shifted_data may be an empty list.

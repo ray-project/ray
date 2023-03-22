@@ -15,7 +15,7 @@ import itertools
 __version__ = "0.5.7"
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 
 
 env_bin_dir = "bin"

@@ -326,14 +326,14 @@ components:
         job_id:
           title: Job Id
           description: >-
-            The job id. An id that is created for every job that is launched in ray.
-            This can be used to fetch data about jobs using ray core apis.
+            The job id. An id that is created for every job that is launched in Ray.
+            This id can be used to fetch data about jobs using Ray core APIs.
           type: string
         submission_id:
           title: Submission Id
           description: >-
-            A submission id is an id created for every submission job. It can be used
-            to fetch data about jobs using the job submission apis.
+            A submission id is an id created for every submission job. This id can be used
+            to fetch data about jobs using the job submission APIs.
           type: string
         driver_info:
           title: Driver Info

@@ -29,36 +29,35 @@ DEFAULT_POLICY_ID = "default_policy"
 
 @DeveloperAPI
 def attempt_count_timesteps(tensor_dict: dict):
-    """Attempt to count timesteps based on dimensions of individual elements
+    """Attempt to count timesteps based on dimensions of individual elements.
 
-    tensor_dict should be a SampleBatch or another dict. We do not attempt to count
-    on INFOS or any state_in_* and state_out_* keys. The number of timesteps we count
-    in cases where we are unable to count is zero.
+    Returns the first successfully counted number of timesteps.
+    We do not attempt to count on INFOS or any state_in_* and state_out_* keys. The
+    number of timesteps we count in cases where we are unable to count is zero.
+
+    Args:
+        tensor_dict: A SampleBatch or another dict.
 
     Returns:
         count: The inferred number of timesteps >= 0.
     """
     # Try to infer the "length" of the SampleBatch by finding the first
     # value that is actually a ndarray/tensor.
-    lengths = []
-    copy_ = {k: v for k, v in tensor_dict.items() if k != SampleBatch.SEQ_LENS}
-
-    for k, v in copy_.items():
-        # TODO: Drop support for lists and Numbers as values.
-        # Convert lists of int|float into numpy arrays make sure all data
-        # has same length.
-        if isinstance(v, (Number, list)):
-            tensor_dict[k] = np.array(v)
-
     # Skip manual counting routine if we can directly infer count from sequence lengths
     if (
         tensor_dict.get(SampleBatch.SEQ_LENS) is not None
         and not (tf and tf.is_tensor(tensor_dict[SampleBatch.SEQ_LENS]))
         and len(tensor_dict[SampleBatch.SEQ_LENS]) > 0
     ):
-        return sum(tensor_dict[SampleBatch.SEQ_LENS])
+        if torch and torch.is_tensor(tensor_dict[SampleBatch.SEQ_LENS]):
+            return tensor_dict[SampleBatch.SEQ_LENS].sum().item()
+        else:
+            return sum(tensor_dict[SampleBatch.SEQ_LENS])
 
-    for k, v in copy_.items():
+    for k, v in tensor_dict.items():
+        if k == SampleBatch.SEQ_LENS:
+            continue
+
         assert isinstance(k, str), tensor_dict
 
         if (
@@ -85,40 +84,12 @@ def attempt_count_timesteps(tensor_dict: dict):
             # Add one of the elements' length, since they are all the same
             _len = len(v_list[0])
             if _len:
-                lengths.append(_len)
+                return _len
         except Exception:
             pass
-        else:
-            # If we were able to figure out a length, all lengths of
-            # elements of nested structure must be the same
-            try:
-                same_lengths = all(
-                    len(sub_space) == len(v_list[0]) for sub_space in v_list
-                )
-            except TypeError:
-                # If input contains scalar arrays (that don't have a length),
-                # they should all be scalar arrays
-                same_lengths = all(sub_space.size == 0 for sub_space in v_list)
-            if not same_lengths:
-                if log_once("flattened_elements_have_different_lengths"):
-                    deprecation_warning(
-                        old="Usage of nested elements in SampleBatch "
-                        "with different lengths",
-                        help="Found nested elements in SampleBatch with "
-                        "different lengths. This might be because one or "
-                        "more elements are lists or of different lengths. "
-                        "Construct SampleBatch only from Tensors of same length "
-                        "to avoid this warning.",
-                        error=False,
-                    )
-                # Could not infer length
-                # TODO(Artur): raise error instead of setting length to zero once
-                #  we have deprecated non-tensor inputs
-                lengths = [0]
-                break
 
-    # Return from lengths if we found anything to count from except INFOS and states
-    return lengths[0] if lengths else 0
+    # Return zero if we are unable to count
+    return 0
 
 
 @PublicAPI
@@ -202,19 +173,19 @@ class SampleBatch(dict):
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor).
 
-        Note: All *args and those **kwargs not listed below will be passed
+        Note: All args and those kwargs not listed below will be passed
         as-is to the parent dict constructor.
 
-        Keyword Args:
-            _time_major (Optional[bool]): Whether data in this sample batch
+        Args:
+            _time_major: Whether data in this sample batch
                 is time-major. This is False by default and only relevant
                 if the data contains sequences.
-            _max_seq_len (Optional[int]): The max sequence chunk length
+            _max_seq_len: The max sequence chunk length
                 if the data contains sequences.
-            _zero_padded (Optional[bool]): Whether the data in this batch
+            _zero_padded: Whether the data in this batch
                 contains sequences AND these sequences are right-zero-padded
                 according to the `_max_seq_len` setting.
-            _is_training (Optional[bool]): Whether this batch is used for
+            _is_training: Whether this batch is used for
                 training. If False, batch may be used for e.g. action
                 computations (inference).
         """
@@ -269,10 +240,20 @@ class SampleBatch(dict):
             and not (tf and tf.is_tensor(seq_lens_))
             and len(seq_lens_) > 0
         ):
-            self.max_seq_len = max(seq_lens_)
+            if torch and torch.is_tensor(seq_lens_):
+                self.max_seq_len = seq_lens_.max().item()
+            else:
+                self.max_seq_len = max(seq_lens_)
 
         if self._is_training is None:
             self._is_training = self.pop("is_training", False)
+
+        for k, v in self.items():
+            # TODO: Drop support for lists and Numbers as values.
+            # Convert lists of int|float into numpy arrays make sure all data
+            # has same length.
+            if isinstance(v, (Number, list)):
+                self[k] = np.array(v)
 
         self.count = attempt_count_timesteps(self)
 
@@ -348,7 +329,7 @@ class SampleBatch(dict):
             >>> print(b1.concat(b2)) # doctest: +SKIP
             {"a": np.array([1, 2, 3, 4, 5])}
         """
-        return self.concat_samples([self, other])
+        return concat_samples([self, other])
 
     @PublicAPI
     def copy(self, shallow: bool = False) -> "SampleBatch":
@@ -823,7 +804,7 @@ class SampleBatch(dict):
     def size_bytes(self) -> int:
         """Returns sum over number of bytes of all data buffers.
 
-        For numpy arrays, we use `.nbytes`. For all other value types, we use
+        For numpy arrays, we use ``.nbytes``. For all other value types, we use
         sys.getsizeof(...).
 
         Returns:
@@ -835,6 +816,7 @@ class SampleBatch(dict):
         )
 
     def get(self, key, default=None):
+        """Returns one column (by key) from the data or a default value."""
         try:
             return self.__getitem__(key)
         except KeyError:
@@ -938,6 +920,7 @@ class SampleBatch(dict):
         return self._is_training
 
     def set_training(self, training: Union[bool, "tf1.placeholder"] = True):
+        """Sets the `is_training` flag for this SampleBatch."""
         self._is_training = training
         self.intercepted_values.pop("_is_training", None)
 
@@ -1012,6 +995,7 @@ class SampleBatch(dict):
 
     @DeveloperAPI
     def set_get_interceptor(self, fn):
+        """Sets a function to be called on every getitem."""
         # If get-interceptor changes, must erase old intercepted values.
         if fn is not self.get_interceptor:
             self.intercepted_values = {}
@@ -1376,7 +1360,7 @@ class MultiAgentBatch:
 
     @staticmethod
     @PublicAPI
-    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=False)
+    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=True)
     def concat_samples(samples: List["MultiAgentBatch"]) -> "MultiAgentBatch":
         return concat_samples_into_ma_batch(samples)
 

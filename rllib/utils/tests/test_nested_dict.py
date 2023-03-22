@@ -22,6 +22,10 @@ class TestNestedDict(unittest.TestCase):
             "b": {"c": 200, "d": 300},
             "c": {"e": {"f": 400}},
             "d": {"g": {"h": {"i": 500}}},
+            # An empty dict that has no leafs and thus should be ignored when
+            # counting or iterating
+            "j": {"k": {}},
+            "l": {},
         }
 
         desired_keys = [
@@ -30,32 +34,38 @@ class TestNestedDict(unittest.TestCase):
             ("b", "d"),
             ("c", "e", "f"),
             ("d", "g", "h", "i"),
+            ("j", "k"),
+            ("l",),
         ]
 
-        desired_values = [100, 200, 300, 400, 500]
+        # We have 5 leafs that are not empty and two empty leafs
+        desired_values = [100, 200, 300, 400, 500, NestedDict(), NestedDict()]
 
         foo_dict["aa"] = 100
         foo_dict["b", "c"] = 200
         foo_dict[("b", "d")] = 300
         foo_dict["c", "e"] = {"f": 400}
 
-        # Note: key ("c", "f") should not be a valid key since it is empty
-        foo_dict["c", "f"] = NestedDict()
-
         # test __len__
-        self.assertEqual(len(foo_dict), len(desired_keys) - 1)
+        # We have not yet included d, j and l in foo_dict
+        self.assertEqual(len(foo_dict), len(desired_keys) - 3)
 
         # test __iter__
-        self.assertEqual(list(iter(foo_dict)), desired_keys[:-1])
+        self.assertEqual(list(iter(foo_dict)), desired_keys[:-3])
 
         # this call will use __len__ and __iter__
-        foo_dict["d"] = {"g": NestedDict([(("h"), NestedDict({"i": 500}))])}
+        foo_dict["d"] = {"g": NestedDict([("h", NestedDict({"i": 500}))])}
+        foo_dict["j"] = {"k": {}}
+        foo_dict["l"] = {}
 
         # test asdict
         check(foo_dict.asdict(), desired_dict)
 
         # test __len__ again
-        self.assertEqual(len(foo_dict), len(desired_keys))
+        # We have included d, j and l in foo_dict, but j and l don't contribute to
+        # the length because they are empty sub-roots of the tree structure with no
+        # leafs.
+        self.assertEqual(len(foo_dict), len(desired_keys) - 2)
 
         # test __iter__ again
         self.assertEqual(list(iter(foo_dict)), desired_keys)
@@ -98,7 +108,7 @@ class TestNestedDict(unittest.TestCase):
         )
 
         # test shallow_keys()
-        self.assertEqual(list(foo_dict.shallow_keys()), ["aa", "b", "c", "d"])
+        self.assertEqual(list(foo_dict.shallow_keys()), ["aa", "b", "c", "d", "j", "l"])
 
         # test copy()
         foo_dict_copy = foo_dict.copy()
@@ -139,6 +149,30 @@ class TestNestedDict(unittest.TestCase):
         self.assertEqual(
             dict1.filter(dict3, ignore_missing=True).asdict(), {"foo": {"a": 10}}
         )
+
+    def test_init(self):
+        # test init with list
+        foo_dict = NestedDict([(("a", "b"), 1), (("a", "c"), 2)])
+        self.assertEqual(foo_dict.asdict(), {"a": {"b": 1, "c": 2}})
+
+        # test init with dict
+        foo_dict = NestedDict({"a": {"b": 1, "c": 2}})
+        self.assertEqual(foo_dict.asdict(), {"a": {"b": 1, "c": 2}})
+
+        # test init with NestedDict
+        foo_dict = NestedDict(NestedDict({"a": {"b": 1, "c": 2}}))
+        self.assertEqual(foo_dict.asdict(), {"a": {"b": 1, "c": 2}})
+
+        # test init empty element
+        foo_dict = NestedDict({"a": {}})
+        self.assertEqual(foo_dict.asdict(), {"a": {}})
+
+        # test init with nested empty element
+        foo_dict = NestedDict({"a": {"b": {}, "c": 2}})
+        self.assertEqual(foo_dict.asdict(), {"a": {"b": {}, "c": 2}})
+
+        # test init with empty dict
+        self.assertEqual(NestedDict().asdict(), {})
 
 
 if __name__ == "__main__":

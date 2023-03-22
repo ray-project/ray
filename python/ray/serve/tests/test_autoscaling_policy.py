@@ -15,7 +15,7 @@ from ray.serve._private.autoscaling_policy import (
     calculate_desired_num_replicas,
 )
 from ray.serve._private.common import DeploymentInfo
-from ray.serve._private.deployment_state import ReplicaState
+from ray.serve._private.common import ReplicaState
 from ray.serve.config import AutoscalingConfig
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.controller import ServeController
@@ -58,23 +58,29 @@ class TestCalculateDesiredNumReplicas:
             )
             assert min_replicas <= desired_num_replicas <= max_replicas
 
-    def test_scale_up(self):
+    @pytest.mark.parametrize("target_requests", [0.5, 1.0, 1.5])
+    def test_scale_up(self, target_requests):
         config = AutoscalingConfig(
-            min_replicas=0, max_replicas=100, target_num_ongoing_requests_per_replica=1
+            min_replicas=0,
+            max_replicas=100,
+            target_num_ongoing_requests_per_replica=target_requests,
         )
         num_replicas = 10
-        num_ongoing_requests = [2.0] * num_replicas
+        num_ongoing_requests = [2 * target_requests] * num_replicas
         desired_num_replicas = calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 19 <= desired_num_replicas <= 21  # 10 * 2 = 20
 
-    def test_scale_down(self):
+    @pytest.mark.parametrize("target_requests", [0.5, 1.0, 1.5])
+    def test_scale_down(self, target_requests):
         config = AutoscalingConfig(
-            min_replicas=0, max_replicas=100, target_num_ongoing_requests_per_replica=1
+            min_replicas=0,
+            max_replicas=100,
+            target_num_ongoing_requests_per_replica=target_requests,
         )
         num_replicas = 10
-        num_ongoing_requests = [0.5] * num_replicas
+        num_ongoing_requests = [0.5 * target_requests] * num_replicas
         desired_num_replicas = calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )

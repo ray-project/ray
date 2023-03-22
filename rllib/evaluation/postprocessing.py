@@ -188,7 +188,7 @@ def compute_gae_for_sample_batch(
             policy.model.view_requirements, index="last"
         )
 
-        if policy.config["_enable_rl_module_api"]:
+        if policy.config.get("_enable_rl_module_api"):
             # Note: During sampling you are using the parameters at the beginning of
             # the sampling process. If I'll be using this advantages during training
             # should it not be the latest parameters during training for this to be
@@ -205,7 +205,7 @@ def compute_gae_for_sample_batch(
             # will not be needed but takes time to compute.
             input_dict = policy._lazy_tensor_dict(input_dict)
             fwd_out = policy.model.forward_exploration(input_dict)
-            last_r = fwd_out[SampleBatch.VF_PREDS]
+            last_r = fwd_out[SampleBatch.VF_PREDS][-1]
         else:
             last_r = policy._value(**input_dict)
 

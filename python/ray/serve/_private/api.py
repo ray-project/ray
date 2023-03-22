@@ -186,7 +186,7 @@ def serve_start(
 
     # Used for scheduling things to the head node explicitly.
     # Assumes that `serve.start` runs on the head node.
-    head_node_id = ray.get_runtime_context().node_id.hex()
+    head_node_id = ray.get_runtime_context().get_node_id()
     controller_actor_options = {
         "num_cpus": 1 if dedicated_cpu else 0,
         "name": controller_name,

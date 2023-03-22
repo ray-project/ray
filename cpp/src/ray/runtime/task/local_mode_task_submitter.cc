@@ -54,6 +54,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
                             rpc::Language::CPP,
                             functionDescriptor,
                             local_mode_ray_tuntime_.GetCurrentJobID(),
+                            rpc::JobConfig(),
                             local_mode_ray_tuntime_.GetCurrentTaskId(),
                             0,
                             local_mode_ray_tuntime_.GetCurrentTaskId(),
@@ -63,7 +64,8 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
                             required_resources,
                             required_placement_resources,
                             "",
-                            /*depth=*/0);
+                            /*depth=*/0,
+                            local_mode_ray_tuntime_.GetCurrentTaskId());
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
     invocation.actor_id = local_mode_ray_tuntime_.GetNextActorID();
@@ -81,10 +83,8 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
         TaskID::ForActorCreationTask(invocation.actor_id);
     const ObjectID actor_creation_dummy_object_id =
         ObjectID::FromIndex(actor_creation_task_id, 1);
-    builder.SetActorTaskSpec(invocation.actor_id,
-                             actor_creation_dummy_object_id,
-                             ObjectID(),
-                             invocation.actor_counter);
+    builder.SetActorTaskSpec(
+        invocation.actor_id, actor_creation_dummy_object_id, invocation.actor_counter);
   } else {
     throw RayException("unknown task type");
   }

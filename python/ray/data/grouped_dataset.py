@@ -3,6 +3,9 @@ from typing import Any, Callable, Generic, List, Tuple, Union
 from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
 from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
@@ -28,7 +31,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DatasetContext
-from ray.data.dataset import BatchType, Dataset
+from ray.data.dataset import DataBatch, Dataset
 from ray.util.annotations import PublicAPI
 
 
@@ -138,8 +141,6 @@ class GroupedDataset(Generic[T]):
     def aggregate(self, *aggs: AggregateFn) -> Dataset[U]:
         """Implements an accumulator-based aggregation.
 
-        This is a blocking operation.
-
         Examples:
 
             .. testcode::
@@ -152,7 +153,7 @@ class GroupedDataset(Generic[T]):
                     init=lambda k: [],
                     accumulate_row=lambda a, r: a + [r],
                     merge=lambda a1, a2: a1 + a2,
-                    finalize=lambda a: a
+                    finalize=lambda a: sorted(a)
                 ))
                 result.show()
 
@@ -180,7 +181,7 @@ class GroupedDataset(Generic[T]):
             If groupby key is ``None`` then the key part of return is omitted.
         """
 
-        def do_agg(blocks, clear_input_blocks: bool, *_):
+        def do_agg(blocks, task_ctx: TaskContext, clear_input_blocks: bool, *_):
             # TODO: implement clear_input_blocks
             stage_info = {}
             if len(aggs) == 0:
@@ -203,6 +204,7 @@ class GroupedDataset(Generic[T]):
                     if isinstance(self._key, str)
                     else self._key,
                     num_reducers,
+                    task_ctx,
                 )
             ctx = DatasetContext.get_current()
             if ctx.use_push_based_shuffle:
@@ -216,13 +218,31 @@ class GroupedDataset(Generic[T]):
                 blocks,
                 num_reducers,
                 clear_input_blocks,
+                ctx=task_ctx,
             )
 
-        plan = self._dataset._plan.with_stage(AllToAllStage("aggregate", None, do_agg))
+        plan = self._dataset._plan.with_stage(
+            AllToAllStage(
+                "Aggregate",
+                None,
+                do_agg,
+                sub_stage_names=["SortSample", "ShuffleMap", "ShuffleReduce"],
+            )
+        )
+
+        logical_plan = self._dataset._logical_plan
+        if logical_plan is not None:
+            op = Aggregate(
+                logical_plan.dag,
+                key=self._key,
+                aggs=aggs,
+            )
+            logical_plan = LogicalPlan(op)
         return Dataset(
             plan,
             self._dataset._epoch,
             self._dataset._lazy,
+            logical_plan,
         )
 
     def _aggregate_on(
@@ -247,7 +267,7 @@ class GroupedDataset(Generic[T]):
 
     def map_groups(
         self,
-        fn: Union[CallableClass, Callable[[BatchType], BatchType]],
+        fn: Union[CallableClass, Callable[[DataBatch], DataBatch]],
         *,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: str = "default",
@@ -262,8 +282,6 @@ class GroupedDataset(Generic[T]):
             * It requires that each group fits in memory on a single node.
 
         In general, prefer to use aggregate() instead of map_groups().
-
-        This is a blocking operation.
 
         Examples:
             >>> # Return a single record per group (list of multiple records in,
@@ -374,8 +392,6 @@ class GroupedDataset(Generic[T]):
     def count(self) -> Dataset[U]:
         """Compute count aggregation.
 
-        This is a blocking operation.
-
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby(lambda x: x % 3).count() # doctest: +SKIP
@@ -394,9 +410,7 @@ class GroupedDataset(Generic[T]):
     def sum(
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
     ) -> Dataset[U]:
-        """Compute grouped sum aggregation.
-
-        This is a blocking operation.
+        r"""Compute grouped sum aggregation.
 
         Examples:
             >>> import ray
@@ -457,8 +471,6 @@ class GroupedDataset(Generic[T]):
     ) -> Dataset[U]:
         """Compute grouped min aggregation.
 
-        This is a blocking operation.
-
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby(lambda x: x % 3).min() # doctest: +SKIP
@@ -518,8 +530,6 @@ class GroupedDataset(Generic[T]):
     ) -> Dataset[U]:
         """Compute grouped max aggregation.
 
-        This is a blocking operation.
-
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby(lambda x: x % 3).max() # doctest: +SKIP
@@ -578,8 +588,6 @@ class GroupedDataset(Generic[T]):
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
     ) -> Dataset[U]:
         """Compute grouped mean aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -643,8 +651,6 @@ class GroupedDataset(Generic[T]):
         ignore_nulls: bool = True,
     ) -> Dataset[U]:
         """Compute grouped standard deviation aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray

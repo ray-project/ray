@@ -3,6 +3,7 @@
 # Ray Jobs Overview
 
 Once you have deployed a Ray cluster (on [VMs](vm-cluster-quick-start) or [Kubernetes](kuberay-quickstart)), you are ready to run a Ray application!
+![A diagram that shows three ways of running a job on a Ray cluster.](../../images/ray-job-diagram.svg "Three ways of running a job on a Ray cluster.")
 
 ## Ray Jobs API
 
@@ -32,7 +33,7 @@ If needed, the Ray Jobs API also provides APIs for [programmatic job submission]
 If you would like to run an application *interactively* and see the output in real time (for example, during development or debugging), you can:
 
 - (Recommended) Run your script directly on a cluster node (e.g. after SSHing into the node using [`ray attach`](ray-attach-doc)), or
-- use [Ray Client](ray-client-ref) to run a script from your local machine while maintaining a connection to the cluster.
+- (For Experts only) Use [Ray Client](ray-client-ref) to run a script from your local machine while maintaining a connection to the cluster.
 
 Note that jobs started in these ways are not managed by the Ray Jobs API, so the Ray Jobs API will not be able to see them or interact with them (with the exception of `ray job list` and `JobSubmissionClient.list_jobs()`).
 

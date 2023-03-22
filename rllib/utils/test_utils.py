@@ -38,6 +38,7 @@ from ray.tune import CLIReporter, run_experiments
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms import Algorithm, AlgorithmConfig
+    from ray.rllib.offline.dataset_reader import DatasetReader
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -219,7 +220,9 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         else:
             assert x == y, f"ERROR: x ({x}) is not the same as y ({y})!"
     # String/byte comparisons.
-    elif hasattr(x, "dtype") and (x.dtype == object or str(x.dtype).startswith("<U")):
+    elif (
+        hasattr(x, "dtype") and (x.dtype == object or str(x.dtype).startswith("<U"))
+    ) or isinstance(x, bytes):
         try:
             np.testing.assert_array_equal(x, y)
             if false is True:
@@ -527,7 +530,10 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
 
 
 def check_learning_achieved(
-    tune_results: "tune.ResultGrid", min_reward, evaluation=False
+    tune_results: "tune.ResultGrid",
+    min_value,
+    evaluation=False,
+    metric: str = "episode_reward_mean",
 ):
     """Throws an error if `min_reward` is not reached within tune_results.
 
@@ -543,18 +549,14 @@ def check_learning_achieved(
     """
     # Get maximum reward of all trials
     # (check if at least one trial achieved some learning)
-    avg_rewards = [
-        (
-            row["episode_reward_mean"]
-            if not evaluation
-            else row["evaluation/episode_reward_mean"]
-        )
+    recorded_values = [
+        (row[metric] if not evaluation else row[f"evaluation/{metric}"])
         for _, row in tune_results.get_dataframe().iterrows()
     ]
-    best_avg_reward = max(avg_rewards)
-    if best_avg_reward < min_reward:
-        raise ValueError(f"`stop-reward` of {min_reward} not reached!")
-    print(f"`stop-reward` of {min_reward} reached! ok")
+    best_value = max(recorded_values)
+    if best_value < min_value:
+        raise ValueError(f"`{metric}` of {min_value} not reached!")
+    print(f"`{metric}` of {min_value} reached! ok")
 
 
 def check_off_policyness(
@@ -631,7 +633,6 @@ def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict
         "episode_reward_max",
         "episode_reward_mean",
         "episode_reward_min",
-        "episodes_total",
         "hist_stats",
         "info",
         "iterations_since_restore",
@@ -643,7 +644,6 @@ def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict
         "sampler_perf",
         "time_since_restore",
         "time_this_iter_s",
-        "timesteps_since_restore",
         "timesteps_total",
         "timers",
         "time_total_s",
@@ -1093,7 +1093,12 @@ def check_reproducibilty(
     for num_workers in [0, 2]:
         algo_config = (
             algo_config.debugging(seed=42)
-            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+            .resources(
+                # old API
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+                # new API
+                num_gpus_per_learner_worker=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            )
             .rollouts(num_rollout_workers=num_workers, num_envs_per_worker=2)
         )
 
@@ -1127,3 +1132,34 @@ def check_reproducibilty(
                 results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
                 results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
             )
+
+
+def get_cartpole_dataset_reader(batch_size: int = 1) -> "DatasetReader":
+    """Returns a DatasetReader for the cartpole dataset.
+    Args:
+        batch_size: The batch size to use for the reader.
+    Returns:
+        A rllib DatasetReader for the cartpole dataset.
+    """
+    from ray.rllib.algorithms import AlgorithmConfig
+    from ray.rllib.offline import IOContext
+    from ray.rllib.offline.dataset_reader import (
+        DatasetReader,
+        get_dataset_and_shards,
+    )
+
+    path = "tests/data/cartpole/large.json"
+    input_config = {"format": "json", "paths": path}
+    dataset, _ = get_dataset_and_shards(
+        AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
+    )
+    ioctx = IOContext(
+        config=(
+            AlgorithmConfig()
+            .training(train_batch_size=batch_size)
+            .offline_data(actions_in_input_normalized=True)
+        ),
+        worker_index=0,
+    )
+    reader = DatasetReader(dataset, ioctx)
+    return reader

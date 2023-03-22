@@ -17,6 +17,7 @@ const useStyles = makeStyles((theme) =>
     root: {
       display: "flex",
       flexDirection: "column",
+      padding: theme.spacing(2, 3),
     },
     listContainer: {
       marginTop: theme.spacing(2),
@@ -39,7 +40,7 @@ export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
   const classes = useStyles();
 
   const { jobList } = useJobList();
-  const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 5);
+  const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 6);
 
   return (
     <OverviewCard className={classNames(classes.root, className)}>
@@ -56,7 +57,7 @@ export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
           <Typography variant="h4">No jobs yet...</Typography>
         )}
       </div>
-      <LinkWithArrow text="View all jobs" to="/new/jobs" />
+      <LinkWithArrow text="View all jobs" to="/jobs" />
     </OverviewCard>
   );
 };
@@ -108,6 +109,7 @@ const useRecentJobListItemStyles = makeStyles((theme) =>
       overflow: "hidden",
       textOverflow: "ellipsis",
       whiteSpace: "nowrap",
+      color: "#5F6469",
     },
   }),
 );
@@ -145,13 +147,17 @@ const RecentJobListItem = ({ job, className }: RecentJobListItemProps) => {
   })();
   return (
     <div className={className}>
-      <Link className={classes.root} to={`/new/jobs/${job.job_id}`}>
+      <Link className={classes.root} to={`/jobs/${job.job_id}`}>
         {icon}
         <div className={classes.textContainer}>
-          <Typography className={classes.title} variant="h4">
+          <Typography className={classes.title} variant="body2">
             {job.job_id ?? job.submission_id}
           </Typography>
-          <Typography className={classes.entrypoint} title={job.entrypoint}>
+          <Typography
+            className={classes.entrypoint}
+            title={job.entrypoint}
+            variant="caption"
+          >
             {job.entrypoint}
           </Typography>
         </div>

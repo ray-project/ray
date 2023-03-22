@@ -28,6 +28,7 @@ We welcome (and encourage!) all forms of contributions to Ray, including and not
 - Code readability and code comments to improve readability.
 - Test cases to make the codebase more robust.
 - Tutorials, blog posts, talks that promote the project.
+- Features and major changes via Ray Enhancement Proposals (REP): https://github.com/ray-project/enhancements
 
 What can I work on?
 -------------------

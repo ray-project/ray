@@ -1,5 +1,5 @@
 base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
-env_vars: {"LD_LIBRARY_PATH": "$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin"}
+env_vars: {"LD_LIBRARY_PATH": "$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin", "RLLIB_TEST_NO_JAX_IMPORT": "1"}
 debian_packages:
   - unzip
   - zip
@@ -19,7 +19,10 @@ python:
   - ale-py==0.8.0
   - gym==0.26.2
   - mujoco-py<2.2,>=2.1
-  - autorom[accept-rom-license]
+  # AutoROM downloads ROMs via torrent when they are built. The torrent is unreliable,
+  # so we built it for py3 and use that instead. This wheel was tested for python 3.7, 3.8,
+  # and 3.9.
+  - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
   conda_packages: []
 
 post_build_cmds:

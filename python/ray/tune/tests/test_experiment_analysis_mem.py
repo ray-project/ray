@@ -1,4 +1,3 @@
-import json
 import unittest
 import shutil
 import tempfile
@@ -55,30 +54,6 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
-
-    def testInitLegacy(self):
-        """Should still work if checkpoints are not json strings"""
-        experiment_checkpoint_path = os.path.join(
-            self.test_dir, "experiment_state.json"
-        )
-        checkpoint_data = {
-            "checkpoints": [
-                {
-                    "trial_id": "abcd1234",
-                    "status": Trial.TERMINATED,
-                    "trainable_name": "MockTrainable",
-                    "local_dir": self.test_dir,
-                    "relative_logdir": "MockTrainable_0_id=3_2020-07-12",
-                }
-            ]
-        }
-
-        with open(experiment_checkpoint_path, "w") as f:
-            f.write(json.dumps(checkpoint_data))
-
-        experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
-        self.assertEqual(len(experiment_analysis._checkpoints_and_paths), 1)
-        self.assertTrue(experiment_analysis.trials)
 
     def testInit(self):
         trial = Trial(

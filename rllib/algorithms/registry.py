@@ -216,6 +216,12 @@ def _import_td3():
     return td3.TD3, td3.TD3.get_default_config()
 
 
+def _import_leela_chess_zero():
+    import ray.rllib.algorithms.leela_chess_zero as lc0
+
+    return lc0.LeelaChessZero, lc0.LeelaChessZero.get_default_config()
+
+
 ALGORITHMS = {
     "A2C": _import_a2c,
     "A3C": _import_a3c,
@@ -251,6 +257,46 @@ ALGORITHMS = {
     "SimpleQ": _import_simple_q,
     "SlateQ": _import_slate_q,
     "TD3": _import_td3,
+    "LeelaChessZero": _import_leela_chess_zero,
+}
+
+
+ALGORITHMS_CLASS_TO_NAME = {
+    "A2C": "A2C",
+    "A3C": "A3C",
+    "AlphaZero": "AlphaZero",
+    "ApexDQN": "APEX",
+    "ApexDDPG": "APEX_DDPG",
+    "ARS": "ARS",
+    "BanditLinTS": "BanditLinTS",
+    "BanditLinUCB": "BanditLinUCB",
+    "BC": "BC",
+    "CQL": "CQL",
+    "CRR": "CRR",
+    "ES": "ES",
+    "DDPG": "DDPG",
+    "DDPPO": "DDPPO",
+    "DQN": "DQN",
+    "Dreamer": "Dreamer",
+    "DT": "DT",
+    "Impala": "IMPALA",
+    "APPO": "APPO",
+    "AlphaStar": "AlphaStar",
+    "MADDPG": "MADDPG",
+    "MAML": "MAML",
+    "MARWIL": "MARWIL",
+    "MBMPO": "MBMPO",
+    "PG": "PG",
+    "PPO": "PPO",
+    "QMix": "QMIX",
+    "R2D2": "R2D2",
+    "RandomAgent": "Random",
+    "RNNSAC": "RNNSAC",
+    "SAC": "SAC",
+    "SimpleQ": "SimpleQ",
+    "SlateQ": "SlateQ",
+    "TD3": "TD3",
+    "LeelaChessZero": "LeelaChessZero",
 }
 
 

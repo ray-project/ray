@@ -59,7 +59,7 @@ serve run local_dev:graph
 # 2022-08-11 11:31:57,383 SUCC scripts.py:315 -- Deployed successfully.
 ```
 
-The `serve run` command blocks the terminal and can be canceled with Ctrl-C.
+The `serve run` command blocks the terminal and can be canceled with Ctrl-C. Typically, `serve run` should not be run simultaneously from multiple terminals, unless each `serve run` is targeting a separate running Ray cluster.
 
 Now that Serve is running, we can send HTTP requests to the application.
 For simplicity, we'll just use the `curl` command to send requests from another terminal.

@@ -34,17 +34,46 @@ tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
-def _ground_truth_calculation(
-    vtrace,
-    discounts,
-    log_rhos,
-    rewards,
-    values,
-    bootstrap_value,
-    clip_rho_threshold,
-    clip_pg_rho_threshold,
+def _ground_truth_vtrace_calculation(
+    discounts: np.ndarray,
+    log_rhos: np.ndarray,
+    rewards: np.ndarray,
+    values: np.ndarray,
+    bootstrap_value: np.ndarray,
+    clip_rho_threshold: float,
+    clip_pg_rho_threshold: float,
 ):
-    """Calculates the ground truth for V-trace in Python/Numpy."""
+    """Calculates the ground truth for V-trace in Python/Numpy.
+
+    NOTE:
+    The discount, log_rhos, rewards, values, and bootstrap_value are all assumed to
+    come from trajectories of experience. Typically batches of trajectories could be
+    thought of as having the shape [B, T] where B is the batch dimension, and T is
+    the timestep dimension. Computing vtrace returns requires that the data is time
+    major, meaning that it has the shape [T, B]. One can use a function like
+    `make_time_major` to properly format their discount, log_rhos, rewards, values,
+    and bootstrap_value before calling _ground_truth_vtrace_calculation.
+
+    Args:
+        discounts: Array of shape [T*B] of discounts. T is the lenght of the trajectory
+            or sequence and B is the batch size.
+            NOTE: The discount will be equal to gamma, the discount factor when the
+            timestep that the discount is being applied to is not a terminal timestep.
+        log_rhos: Array of shape [T*B] of log likelihood ratios of target action
+            probabilities to behavior action probabilities.
+        rewards: Array of shape [T*B] of rewards.
+        values: Array of shape [T*B] of the value function estimated for every timestep
+            in a batch.
+        bootstrap_value: Array of shape [T] of the value function estimated at the last
+            timestep for each trajectory in the batch.
+        clip_rho_threshold: The threshold for clipping the importance weights.
+        clip_pg_rho_threshold: The threshold for clipping the importance weights for
+            the policy gradient loss.
+
+    Returns:
+        The v-trace adjusted values and the policy gradient advantages.
+
+    """
     vs = []
     seq_len = len(discounts)
     rhos = np.exp(log_rhos)
@@ -85,8 +114,7 @@ def _ground_truth_calculation(
         + discounts * np.concatenate([vs[1:], bootstrap_value[None, :]], axis=0)
         - values
     )
-
-    return vtrace.VTraceReturns(vs=vs, pg_advantages=pg_advantages)
+    return vs, pg_advantages
 
 
 class LogProbsFromLogitsAndActionsTest(unittest.TestCase):
@@ -166,8 +194,9 @@ class VtraceTest(unittest.TestCase):
             if sess:
                 output = sess.run(output)
 
-            ground_truth_v = _ground_truth_calculation(vtrace, **values)
-            check(output, ground_truth_v)
+            gt_vs, gt_pg_advantags = _ground_truth_vtrace_calculation(**values)
+            check(output.vs, gt_vs)
+            check(output.pg_advantages, gt_pg_advantags)
 
     def test_vtrace_from_logits(self):
         """Tests V-trace calculated from logits."""

@@ -281,11 +281,16 @@ inline ray::internal::TaskCaller<F> Task(F func) {
 template <typename F>
 inline ray::internal::ActorCreator<F> Actor(F create_func) {
   auto func_name = internal::FunctionManager::Instance().GetFunctionName(create_func);
-  ray::internal::RemoteFunctionHolder remote_func_holder(std::move(func_name));
+  // Cpp actor don't need class_name, But java/python calls cpp actor need class name
+  // param.
+  auto class_name = internal::FunctionManager::GetClassNameByFuncName(func_name);
+  ray::internal::RemoteFunctionHolder remote_func_holder(
+      "", std::move(func_name), std::move(class_name), internal::LangType::CPP);
   return ray::internal::ActorCreator<F>(ray::internal::GetRayRuntime().get(),
                                         std::move(remote_func_holder));
 }
 
+// Get the cpp actor handle by name.
 template <typename T>
 boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
   return GetActor<T>(actor_name, "");
@@ -304,6 +309,21 @@ boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
   }
 
   return ActorHandle<T>(actor_id);
+}
+
+// Get the cross-language actor handle by name.
+inline boost::optional<ActorHandleXlang> GetActor(const std::string &actor_name,
+                                                  const std::string &ray_namespce = "") {
+  if (actor_name.empty()) {
+    return {};
+  }
+
+  auto actor_id = ray::internal::GetRayRuntime()->GetActorId(actor_name, ray_namespce);
+  if (actor_id.empty()) {
+    return {};
+  }
+
+  return ActorHandleXlang(actor_id);
 }
 
 inline void ExitActor() { ray::internal::GetRayRuntime()->ExitActor(); }

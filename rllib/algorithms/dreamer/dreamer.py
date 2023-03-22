@@ -19,10 +19,10 @@ from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import (
@@ -364,7 +364,8 @@ class Dreamer(Algorithm):
         batch_size = self.config.batch_size
 
         # Collect SampleBatches from rollout workers.
-        batch = synchronous_parallel_sample(worker_set=self.workers)
+        with self._timers[SAMPLE_TIMER]:
+            batch = synchronous_parallel_sample(worker_set=self.workers)
         self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
 
@@ -395,20 +396,3 @@ class Dreamer(Algorithm):
         self.local_replay_buffer.add(batch)
 
         return fetches
-
-
-# Deprecated: Use ray.rllib.algorithms.dreamer.DreamerConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(DreamerConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.dreamer.dreamer.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.dreamer.dreamer.DreamerConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

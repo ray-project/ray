@@ -20,6 +20,7 @@
 #include <thread>
 
 #include "absl/container/btree_map.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/network_util.h"
 #include "ray/rpc/grpc_client.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
@@ -184,7 +185,7 @@ class GcsRpcClient {
         gcs_port_(port),
         io_context_(&client_call_manager.GetMainService()),
         timer_(std::make_unique<boost::asio::deadline_timer>(*io_context_)) {
-    grpc::ChannelArguments arguments;
+    grpc::ChannelArguments arguments = CreateDefaultChannelArguments();
     arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
                      ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
     arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
@@ -217,8 +218,6 @@ class GcsRpcClient {
     node_resource_info_grpc_client_ =
         std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(channel_,
                                                                  client_call_manager);
-    heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
-        channel_, client_call_manager);
     worker_info_grpc_client_ =
         std::make_unique<GrpcClient<WorkerInfoGcsService>>(channel_, client_call_manager);
     placement_group_info_grpc_client_ =
@@ -359,12 +358,6 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
                              GetAllResourceUsage,
                              node_resource_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
-  /// Report heartbeat of a node to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService,
-                             ReportHeartbeat,
-                             heartbeat_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Add task events info to GCS Service.
@@ -586,7 +579,6 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
-  std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>> heartbeat_info_grpc_client_;
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
   std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;

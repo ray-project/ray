@@ -7,9 +7,6 @@ import collections
 import logging
 
 
-_MEMORY_BUFFER_OFFSET = 0.8
-
-
 _logger = logging.getLogger("ray.util.spark.utils")
 
 
@@ -130,91 +127,210 @@ def get_spark_application_driver_host(spark):
     return spark.conf.get("spark.driver.host")
 
 
-def get_max_num_concurrent_tasks(spark_context):
+def get_max_num_concurrent_tasks(spark_context, resource_profile):
     """Gets the current max number of concurrent tasks."""
-    # pylint: disable=protected-access
-    # spark version 3.1 and above have a different API for fetching max concurrent
-    # tasks
-    if spark_context._jsc.sc().version() >= "3.1":
-        return spark_context._jsc.sc().maxNumConcurrentTasks(
-            spark_context._jsc.sc().resourceProfileManager().resourceProfileFromId(0)
+    # pylint: disable=protected-access=
+    ssc = spark_context._jsc.sc()
+    if resource_profile is not None:
+
+        def dummpy_mapper(_):
+            pass
+
+        # Runs a dummy spark job to register the `res_profile`
+        spark_context.parallelize([1], 1).withResources(resource_profile).map(
+            dummpy_mapper
+        ).collect()
+
+        return ssc.maxNumConcurrentTasks(resource_profile._java_resource_profile)
+    else:
+        return ssc.maxNumConcurrentTasks(
+            ssc.resourceProfileManager().defaultResourceProfile()
         )
-    return spark_context._jsc.sc().maxNumConcurrentTasks()
 
 
 def _get_total_physical_memory():
     import psutil
 
+    if RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES in os.environ:
+        return int(os.environ[RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES])
     return psutil.virtual_memory().total
 
 
 def _get_total_shared_memory():
     import shutil
 
+    if RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES in os.environ:
+        return int(os.environ[RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES])
+
     return shutil.disk_usage("/dev/shm").total
+
+
+# The maximum proportion for Ray worker node object store memory size
+_RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION = 0.8
+
+# The buffer offset for calculating Ray node memory.
+_RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET = 0.8
+
+
+def _calc_mem_per_ray_worker_node(
+    num_task_slots, physical_mem_bytes, shared_mem_bytes, configured_object_store_bytes
+):
+    from ray._private.ray_constants import (
+        DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
+        OBJECT_STORE_MINIMUM_MEMORY_BYTES,
+    )
+
+    warning_msg = None
+
+    available_physical_mem_per_node = int(
+        physical_mem_bytes / num_task_slots * _RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET
+    )
+    available_shared_mem_per_node = int(
+        shared_mem_bytes / num_task_slots * _RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET
+    )
+
+    object_store_bytes = configured_object_store_bytes or (
+        available_physical_mem_per_node * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+    )
+
+    if object_store_bytes > available_shared_mem_per_node:
+        object_store_bytes = available_shared_mem_per_node
+
+    object_store_bytes_upper_bound = (
+        available_physical_mem_per_node
+        * _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION
+    )
+
+    if object_store_bytes > object_store_bytes_upper_bound:
+        object_store_bytes = object_store_bytes_upper_bound
+        warning_msg = (
+            "Your configured `object_store_memory_per_node` value "
+            "is too high and it is capped by 80% of per-Ray node "
+            "allocated memory."
+        )
+
+    if object_store_bytes < OBJECT_STORE_MINIMUM_MEMORY_BYTES:
+        object_store_bytes = OBJECT_STORE_MINIMUM_MEMORY_BYTES
+        warning_msg = (
+            "Your operating system is configured with too small /dev/shm "
+            "size, so `object_store_memory_per_node` value is configured "
+            f"to minimal size ({OBJECT_STORE_MINIMUM_MEMORY_BYTES} bytes),"
+            f"Please increase system /dev/shm size."
+        )
+
+    object_store_bytes = int(object_store_bytes)
+
+    heap_mem_bytes = available_physical_mem_per_node - object_store_bytes
+    return heap_mem_bytes, object_store_bytes, warning_msg
+
+
+# User can manually set these environment variables
+# if ray on spark code accessing corresponding information failed.
+# Note these environment variables must be set in spark executor side,
+# you should set them via setting spark config of
+# `spark.executorEnv.[EnvironmentVariableName]`
+RAY_ON_SPARK_WORKER_CPU_CORES = "RAY_ON_SPARK_WORKER_CPU_CORES"
+RAY_ON_SPARK_WORKER_GPU_NUM = "RAY_ON_SPARK_WORKER_GPU_NUM"
+RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES = "RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES"
+RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES = "RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES"
 
 
 def _get_cpu_cores():
     import multiprocessing
 
+    if RAY_ON_SPARK_WORKER_CPU_CORES in os.environ:
+        # In some cases, spark standalone cluster might configure virtual cpu cores
+        # for spark worker that different with number of physical cpu cores,
+        # but we cannot easily get the virtual cpu cores configured for spark
+        # worker, as a workaround, we provide an environmental variable config
+        # `RAY_ON_SPARK_WORKER_CPU_CORES` for user.
+        return int(os.environ[RAY_ON_SPARK_WORKER_CPU_CORES])
+
     return multiprocessing.cpu_count()
 
 
-def _calc_mem_per_ray_worker_node(
-    num_task_slots, physical_mem_bytes, shared_mem_bytes, object_store_memory_per_node
-):
-    available_physical_mem_per_node = int(
-        physical_mem_bytes / num_task_slots * _MEMORY_BUFFER_OFFSET
-    )
-    available_shared_mem_per_node = int(
-        shared_mem_bytes / num_task_slots * _MEMORY_BUFFER_OFFSET
-    )
-    if object_store_memory_per_node is None:
-        object_store_bytes = available_shared_mem_per_node
-    else:
-        object_store_bytes = int(
-            min(
-                object_store_memory_per_node,
-                available_shared_mem_per_node,
-            )
+def _get_num_physical_gpus():
+    if RAY_ON_SPARK_WORKER_GPU_NUM in os.environ:
+        # In some cases, spark standalone cluster might configure part of physical
+        # GPUs for spark worker,
+        # but we cannot easily get related configuration,
+        # as a workaround, we provide an environmental variable config
+        # `RAY_ON_SPARK_WORKER_CPU_CORES` for user.
+        return int(os.environ[RAY_ON_SPARK_WORKER_GPU_NUM])
+
+    try:
+        completed_proc = subprocess.run(
+            "nvidia-smi --query-gpu=name --format=csv,noheader",
+            shell=True,
+            check=True,
+            text=True,
+            capture_output=True,
         )
-    heap_mem_bytes = available_physical_mem_per_node - object_store_bytes
-    return heap_mem_bytes, object_store_bytes
+    except Exception as e:
+        raise RuntimeError(
+            "Running command `nvidia-smi` for inferring GPU devices list failed."
+        ) from e
+    return len(completed_proc.stdout.strip().split("\n"))
 
 
-def get_avail_mem_per_ray_worker_node(spark, object_store_memory_per_node):
+def _get_avail_mem_per_ray_worker_node(
+    num_cpus_per_node,
+    num_gpus_per_node,
+    object_store_memory_per_node,
+):
+    num_cpus = _get_cpu_cores()
+    num_task_slots = num_cpus // num_cpus_per_node
+
+    if num_gpus_per_node > 0:
+        num_gpus = _get_num_physical_gpus()
+        if num_task_slots > num_gpus // num_gpus_per_node:
+            num_task_slots = num_gpus // num_gpus_per_node
+
+    physical_mem_bytes = _get_total_physical_memory()
+    shared_mem_bytes = _get_total_shared_memory()
+
+    (
+        ray_worker_node_heap_mem_bytes,
+        ray_worker_node_object_store_bytes,
+        warning_msg,
+    ) = _calc_mem_per_ray_worker_node(
+        num_task_slots,
+        physical_mem_bytes,
+        shared_mem_bytes,
+        object_store_memory_per_node,
+    )
+    return (
+        ray_worker_node_heap_mem_bytes,
+        ray_worker_node_object_store_bytes,
+        None,
+        warning_msg,
+    )
+
+
+def get_avail_mem_per_ray_worker_node(
+    spark,
+    object_store_memory_per_node,
+    num_cpus_per_node,
+    num_gpus_per_node,
+):
     """
-    Return the available heap memory and object store memory for each ray worker.
+    Return the available heap memory and object store memory for each ray worker,
+    and error / warning message if it has.
+    Return value is a tuple of
+    (ray_worker_node_heap_mem_bytes, ray_worker_node_object_store_bytes,
+     error_message, warning_message)
     NB: We have one ray node per spark task.
     """
-    num_cpus_per_spark_task = int(
-        spark.sparkContext.getConf().get("spark.task.cpus", "1")
-    )
 
     def mapper(_):
         try:
-            num_cpus = _get_cpu_cores()
-            num_task_slots = num_cpus // num_cpus_per_spark_task
-
-            physical_mem_bytes = _get_total_physical_memory()
-            shared_mem_bytes = _get_total_shared_memory()
-
-            (
-                ray_worker_node_heap_mem_bytes,
-                ray_worker_node_object_store_bytes,
-            ) = _calc_mem_per_ray_worker_node(
-                num_task_slots,
-                physical_mem_bytes,
-                shared_mem_bytes,
+            return _get_avail_mem_per_ray_worker_node(
+                num_cpus_per_node,
+                num_gpus_per_node,
                 object_store_memory_per_node,
             )
-            return (
-                ray_worker_node_heap_mem_bytes,
-                ray_worker_node_object_store_bytes,
-                None,
-            )
         except Exception as e:
-            return -1, -1, repr(e)
+            return -1, -1, repr(e), None
 
     # Running memory inference routine on spark executor side since the spark worker
     # nodes may have a different machine configuration compared to the spark driver
@@ -223,14 +339,22 @@ def get_avail_mem_per_ray_worker_node(spark, object_store_memory_per_node):
         inferred_ray_worker_node_heap_mem_bytes,
         inferred_ray_worker_node_object_store_bytes,
         err,
+        warning_msg,
     ) = (
         spark.sparkContext.parallelize([1], 1).map(mapper).collect()[0]
     )
 
     if err is not None:
         raise RuntimeError(
-            f"Inferring ray worker available memory failed, error: {err}"
+            f"Inferring ray worker node available memory failed, error: {err}. "
+            "You can bypass this error by setting following spark configs: "
+            "spark.executorEnv.RAY_ON_SPARK_WORKER_CPU_CORES, "
+            "spark.executorEnv.RAY_ON_SPARK_WORKER_GPU_NUM, "
+            "spark.executorEnv.RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES, "
+            "spark.executorEnv.RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES."
         )
+    if warning_msg is not None:
+        _logger.warning(warning_msg)
     return (
         inferred_ray_worker_node_heap_mem_bytes,
         inferred_ray_worker_node_object_store_bytes,

@@ -9,6 +9,7 @@ import pprint
 import time
 import traceback
 from typing import Callable, Dict, List, Optional
+from ray.experimental.state.api import list_tasks
 import ray
 from ray.actor import ActorHandle
 
@@ -45,6 +46,7 @@ def invoke_state_api(
     state_stats: StateAPIStats = GLOBAL_STATE_STATS,
     key_suffix: Optional[str] = None,
     print_result: Optional[bool] = False,
+    err_msg: Optional[str] = None,
     **kwargs,
 ):
     """Invoke a State API
@@ -80,7 +82,9 @@ def invoke_state_api(
         else:
             key = state_api_fn.__name__
         state_stats.calls[key].append(metric)
-        assert verify_cb(res), f"Calling State API failed. len(res)=({len(res)}): {res}"
+        assert verify_cb(
+            res
+        ), f"Calling State API failed. len(res)=({len(res)}): {err_msg}"
     except Exception as e:
         traceback.print_exc()
         assert (
@@ -303,3 +307,15 @@ def periodic_invoke_state_apis_with_actor(*args, **kwargs) -> ActorHandle:
     print("State api actor is ready now.")
     actor.start.remote()
     return actor
+
+
+def verify_failed_task(name: str, error_type: str) -> bool:
+    """
+    Check if a task with 'name' has failed with the exact error type 'error_type'
+    """
+    tasks = list_tasks(filters=[("name", "=", name)])
+    assert len(tasks) == 1, tasks
+    t = tasks[0]
+    assert t["state"] == "FAILED", t
+    assert t["error_type"] == error_type, t
+    return True

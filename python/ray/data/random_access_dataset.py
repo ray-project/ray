@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class RandomAccessDataset(Generic[T]):
     """A class that provides distributed, random access to a Dataset.
 
@@ -234,7 +234,7 @@ class _RandomAccessWorker:
         return result
 
     def ping(self):
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     def stats(self) -> dict:
         return {

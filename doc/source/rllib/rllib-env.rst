@@ -7,7 +7,7 @@
 Environments
 ============
 
-RLlib works with several different types of environments, including `OpenAI Gym <https://www.gymlibrary.dev/>`__, user-defined, multi-agent, and also batched environments.
+RLlib works with several different types of environments, including `Farama-Foundation Gymnasium <https://gymnasium.farama.org/>`__, user-defined, multi-agent, and also batched environments.
 
 .. tip::
 
@@ -88,10 +88,10 @@ This can be useful if you want to train over an ensemble of different environmen
 
    When using logging in an environment, the logging configuration needs to be done inside the environment, which runs inside Ray workers. Any configurations outside the environment, e.g., before starting Ray will be ignored.
 
-OpenAI Gym
+Gymnasium
 ----------
 
-RLlib uses Gym as its environment interface for single-agent training. For more information on how to implement a custom Gym environment, see the `gym.Env class definition <https://github.com/openai/gym/blob/master/gym/core.py>`__. You may find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ example useful as a reference.
+RLlib uses Gymnasium as its environment interface for single-agent training. For more information on how to implement a custom Gymnasium environment, see the `gymnasium.Env class definition <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__. You may find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ example useful as a reference.
 
 Performance
 ~~~~~~~~~~~

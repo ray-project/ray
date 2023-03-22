@@ -1,4 +1,5 @@
 import { Actor } from "./actor";
+import { TypeTaskType } from "./task";
 import { Worker } from "./worker";
 
 export type Job = {
@@ -105,6 +106,80 @@ export type JobProgressByTaskName = {
 export type JobProgressByTaskNameRsp = {
   data: {
     detail: JobProgressByTaskName;
+  };
+  msg: string;
+  result: boolean;
+};
+
+export type StateApiJobProgressByTaskName = {
+  node_id_to_summary: {
+    cluster: {
+      summary: {
+        [taskName: string]: {
+          func_or_class_name: string;
+          state_counts: {
+            [stateName: string]: number;
+          };
+        };
+      };
+    };
+  };
+};
+
+export type StateApiJobProgressByTaskNameRsp = {
+  data: {
+    result: {
+      result: StateApiJobProgressByTaskName;
+      num_filtered: number;
+      total: number;
+    };
+  };
+  msg: string;
+  result: boolean;
+};
+
+export type NestedJobProgressLink = {
+  type: "actor" | "task";
+  id: string;
+};
+
+export type NestedJobProgress = {
+  name: string;
+  key: string;
+  state_counts: {
+    [stateName: string]: number;
+  };
+  children: NestedJobProgress[];
+  type: TypeTaskType | "GROUP" | "ACTOR";
+  link?: NestedJobProgressLink;
+};
+
+export type JobProgressGroup = {
+  name: string;
+  key: string;
+  progress: TaskProgress;
+  children: JobProgressGroup[];
+  type: TypeTaskType | "GROUP" | "ACTOR";
+  link?: NestedJobProgressLink;
+};
+
+export type StateApiNestedJobProgress = {
+  node_id_to_summary: {
+    cluster: {
+      summary: {
+        [taskName: string]: NestedJobProgress;
+      };
+    };
+  };
+};
+
+export type StateApiNestedJobProgressRsp = {
+  data: {
+    result: {
+      result: StateApiNestedJobProgress;
+      num_filtered: number;
+      total: number;
+    };
   };
   msg: string;
   result: boolean;

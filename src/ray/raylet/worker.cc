@@ -196,6 +196,16 @@ const BundleID &Worker::GetBundleId() const { return bundle_id_; }
 
 void Worker::SetBundleId(const BundleID &bundle_id) { bundle_id_ = bundle_id; }
 
+void Worker::SetJobId(const JobID &job_id) {
+  if (assigned_job_id_.IsNil()) {
+    assigned_job_id_ = job_id;
+  }
+
+  RAY_CHECK(assigned_job_id_ == job_id)
+      << "Job_id mismatch, assigned: " << assigned_job_id_.Hex()
+      << ", actual: " << job_id.Hex();
+}
+
 }  // namespace raylet
 
 }  // end namespace ray

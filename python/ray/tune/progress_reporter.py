@@ -12,9 +12,12 @@ import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-from ray._private.dict import flatten_dict
+import pandas as pd
 
 import ray
+from ray._private.dict import flatten_dict
+from ray.experimental.tqdm_ray import safe_print
+from ray.air.util.node import _force_on_current_node
 from ray.tune.callback import Callback
 from ray.tune.logger import pretty_print
 from ray.tune.result import (
@@ -35,7 +38,6 @@ from ray.tune.result import (
 from ray.tune.experiment.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
 from ray.tune.trainable import Trainable
 from ray.tune.utils import unflattened_lookup
-from ray.tune.utils.node import _force_on_current_node
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.queue import Empty, Queue
@@ -355,7 +357,6 @@ class TuneReporterBase(ProgressReporter):
         messages = [
             "== Status ==",
             _time_passed_str(self._start_time, time.time()),
-            _memory_debug_str(),
             *sys_info,
         ]
         if done:
@@ -432,7 +433,7 @@ class TuneReporterBase(ProgressReporter):
             if not t.last_result:
                 continue
             metric_value = unflattened_lookup(metric, t.last_result, default=None)
-            if metric_value is None:
+            if pd.isnull(metric_value):
                 continue
             if not best_trial or metric_value * metric_op > best_metric:
                 best_metric = metric_value * metric_op
@@ -691,7 +692,6 @@ class CLIReporter(TuneReporterBase):
         mode: Optional[str] = None,
         sort_by_metric: bool = False,
     ):
-
         super(CLIReporter, self).__init__(
             metric_columns=metric_columns,
             parameter_columns=parameter_columns,
@@ -708,7 +708,7 @@ class CLIReporter(TuneReporterBase):
         )
 
     def _print(self, msg: str):
-        print(msg)
+        safe_print(msg)
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         self._print(self._progress_str(trials, done, *sys_info))
@@ -748,20 +748,6 @@ def _get_memory_usage() -> Tuple[float, float, Optional[str]]:
             np.nan,
             "Unknown memory usage. Please run `pip install psutil` to resolve",
         )
-
-
-def _memory_debug_str() -> str:
-    """Generate a message to be shown to the user showing memory consumption.
-
-    Returns:
-        String to be shown to the user with formatted memory consumption
-            stats.
-    """
-    used_gb, total_gb, message = _get_memory_usage()
-    if np.isnan(used_gb):
-        return message
-    else:
-        return f"Memory usage on this node: {used_gb}/{total_gb} GiB {message or ''}"
 
 
 def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
@@ -874,7 +860,7 @@ def _trial_progress_str(
     num_trials = len(trials)
     trials_by_state = _get_trials_by_state(trials)
 
-    for local_dir in sorted({t.local_dir for t in trials}):
+    for local_dir in sorted({t.local_experiment_path for t in trials}):
         messages.append("Result logdir: {}".format(local_dir))
 
     num_trials_strs = [
@@ -1328,7 +1314,7 @@ class TrialProgressCallback(Callback):
         self._display_handle = None
 
     def _print(self, msg: str):
-        print(msg)
+        safe_print(msg)
 
     def on_trial_result(
         self,
@@ -1399,7 +1385,7 @@ class TrialProgressCallback(Callback):
         elif has_verbosity(Verbosity.V2_TRIAL_NORM):
             metric_name = self._metric or "_metric"
             metric_value = result.get(metric_name, -99.0)
-            error_file = os.path.join(trial.logdir, "error.txt")
+            error_file = os.path.join(trial.local_path, "error.txt")
 
             info = ""
             if done:

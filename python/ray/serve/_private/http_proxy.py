@@ -26,7 +26,11 @@ from ray.serve._private.http_util import (
     set_socket_reuse_port,
 )
 from ray.serve._private.common import EndpointInfo, EndpointTag
-from ray.serve._private.constants import SERVE_LOGGER_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
+    DEFAULT_LATENCY_BUCKET_MS,
+)
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
 
@@ -37,9 +41,21 @@ DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
-SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0)) or None
+
+# TODO (shrekris-anyscale): Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
+RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
+    float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or None
 )
+
+if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
+    logger.warning(
+        "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
+        "been deprecated. Please use `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` "
+        "instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in "
+        "future versions."
+    )
 
 
 async def _send_request_to_handle(handle, scope, receive, send) -> str:
@@ -90,14 +106,14 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             # https://github.com/ray-project/ray/pull/29534 for more info.
 
             _, request_timed_out = await asyncio.wait(
-                [object_ref], timeout=SERVE_REQUEST_PROCESSING_TIMEOUT_S
+                [object_ref], timeout=RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             )
             if request_timed_out:
                 logger.info(
                     "Request didn't finish within "
-                    f"{SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
+                    f"{RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
                     "with another replica. You can modify this timeout by "
-                    'setting the "SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
+                    'setting the "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
                 )
                 backoff = True
             else:
@@ -279,6 +295,15 @@ class HTTPProxy:
                 "method",
             ),
         )
+        self.processing_latency_tracker = metrics.Histogram(
+            "serve_http_request_latency_ms",
+            description=(
+                "The end-to-end latency of HTTP requests "
+                "(measured from the Serve HTTP proxy)."
+            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("route_prefix",),
+        )
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
@@ -358,6 +383,9 @@ class HTTPProxy:
         start_time = time.time()
         status_code = await _send_request_to_handle(handle, scope, receive, send)
         latency_ms = (time.time() - start_time) * 1000.0
+        self.processing_latency_tracker.observe(
+            latency_ms, tags={"route_prefix": route_prefix}
+        )
         logger.info(
             access_log_msg(
                 method=scope["method"],
@@ -421,11 +449,12 @@ class HTTPProxyActor:
         """Returns when HTTP proxy is ready to serve traffic.
         Or throw exception when it is not able to serve traffic.
         """
+        setup_task = get_or_create_event_loop().create_task(self.setup_complete.wait())
         done_set, _ = await asyncio.wait(
             [
                 # Either the HTTP setup has completed.
                 # The event is set inside self.run.
-                self.setup_complete.wait(),
+                setup_task,
                 # Or self.run errored.
                 self.running_task,
             ],
