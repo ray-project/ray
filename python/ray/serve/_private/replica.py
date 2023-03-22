@@ -362,21 +362,6 @@ class RayServeReplica:
                 metrics_process_func=process_remote_func,
             )
 
-        # NOTE(edoakes): we used to recommend that users use the "ray" logger
-        # and tagged the logs with metadata as below. We now recommend using
-        # the "ray.serve" 'component logger' (as of Ray 1.13). This is left to
-        # maintain backwards compatibility with users who were using the
-        # existing logger. We can consider removing it in Ray 2.0.
-        ray_logger = logging.getLogger("ray")
-        for handler in ray_logger.handlers:
-            handler.setFormatter(
-                logging.Formatter(
-                    handler.formatter._fmt
-                    + f" component=serve deployment={self.deployment_name} "
-                    f"replica={self.replica_tag}"
-                )
-            )
-
     async def check_health(self):
         await self.user_health_check()
 
@@ -443,11 +428,7 @@ class RayServeReplica:
         Returns the user-provided output and a boolean indicating if the
         request succeeded (user code didn't raise an exception).
         """
-        logger.debug(
-            "Replica {} started executing request {}".format(
-                self.replica_tag, request_item.metadata.request_id
-            )
-        )
+        logger.info(f"Started executing request {request_item.metadata.request_id}", to_file_only=True)
         args, kwargs = parse_request_item(request_item)
 
         method_to_call = None

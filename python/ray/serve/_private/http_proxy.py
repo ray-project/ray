@@ -90,7 +90,8 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             )
             logger.warning(
                 f"Client from {scope['client']} disconnected, cancelling the "
-                "request."
+                "request.",
+                to_file_only=True,
             )
             # This will make the .result() to raise cancelled error.
             assignment_task.cancel()
@@ -129,7 +130,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             await Response(error_message, status_code=500).send(scope, receive, send)
             return "500"
         except RayActorError:
-            logger.debug(
+            logger.info(
                 "Request failed due to replica failure. There are "
                 f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
                 "remaining."
@@ -173,7 +174,7 @@ class LongestPrefixRouter:
         return endpoint in self.handles
 
     def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
-        logger.debug(f"Got updated endpoints: {endpoints}.")
+        logger.info(f"Got updated endpoints: {endpoints}.", to_file_only=True)
 
         existing_handles = set(self.handles.keys())
         routes = []
@@ -187,6 +188,8 @@ class LongestPrefixRouter:
                 self.handles[endpoint] = self._get_handle(endpoint)
 
         # Clean up any handles that are no longer used.
+        if len(existing_handles) > 0:
+            logger.info(f"Deleting {len(existing_handles)} unused handles.", to_file_only=True)
         for endpoint in existing_handles:
             del self.handles[endpoint]
 
@@ -392,7 +395,8 @@ class HTTPProxy:
                 route=route_prefix,
                 status=str(status_code),
                 latency_ms=latency_ms,
-            )
+            ),
+            to_file_only=True
         )
         if status_code != "200":
             self.request_error_counter.inc(
