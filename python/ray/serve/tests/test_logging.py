@@ -247,7 +247,8 @@ def test_context_information_in_logging(serve_instance):
         # Check User log
         user_log_regexes = [
             f".*{resp['request_id']} {resp['route']}.* user func.*",
-            f".*{resp2['request_id']} {resp2['route']}.* user log message from class method.*",
+            f".*{resp2['request_id']} {resp2['route']}.* user log "
+            "message from class method.*",
         ]
 
         def check_log():
