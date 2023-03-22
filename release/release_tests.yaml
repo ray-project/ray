@@ -3591,6 +3591,19 @@
     wait_for_nodes:
       num_nodes: 4
 
+- name: core_gce_stress_test_placement_group
+  group: core-multi-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: stress_tests/stress_tests_app_config.yaml
+    cluster_compute: stress_tests/placement_group_tests_compute_gce.yaml
+
+  run:
+    timeout: 7200
+    script: python stress_tests/test_placement_group.py
 
 - name: stress_test_placement_group
   group: core-multi-test
@@ -3620,6 +3633,20 @@
     timeout: 9600
     script: python decision_tree/cart_with_tree.py --concurrency=20
 
+- name: core_gce_decision_tree_autoscaling_20_runs
+  group: core-multi-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: decision_tree/decision_tree_app_config.yaml
+    cluster_compute: decision_tree/autoscaling_compute_gce.yaml
+
+  run:
+    timeout: 9600
+    script: python decision_tree/cart_with_tree.py --concurrency=20
+
 - name: autoscaling_shuffle_1tb_1000_partitions
   group: core-multi-test
   working_dir: nightly_tests
@@ -3635,6 +3662,21 @@
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
       --no-streaming
 
+- name: core_gce_microbenchmark
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  python: "3.7"
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_64_gce.yaml
+
+  run:
+    timeout: 1800
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
 - name: microbenchmark
   group: core-daily-test
