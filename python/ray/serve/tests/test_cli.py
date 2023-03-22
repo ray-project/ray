@@ -287,7 +287,7 @@ def test_put_duplicate_apps(ray_start_stop):
         subprocess.check_output(
             ["serve", "deploy", config_file], stderr=subprocess.STDOUT
         )
-        assert "ValidationError" in e.output
+    assert "ValidationError" in e.value.output.decode("utf-8")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -304,7 +304,7 @@ def test_put_duplicate_routes(ray_start_stop):
         subprocess.check_output(
             ["serve", "deploy", config_file], stderr=subprocess.STDOUT
         )
-        assert "ValidationError" in e.output
+    assert "ValidationError" in e.value.output.decode("utf-8")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -319,7 +319,8 @@ def test_deploy_bad_config1(ray_start_stop):
         subprocess.check_output(
             ["serve", "deploy", config_file], stderr=subprocess.STDOUT
         )
-        assert "ValidationError" in e.output and "ServeDeploySchema" in e.output
+    assert "ValidationError" in e.value.output.decode("utf-8")
+    assert "ServeDeploySchema" in e.value.output.decode("utf-8")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -336,7 +337,8 @@ def test_deploy_bad_config2(ray_start_stop):
         subprocess.check_output(
             ["serve", "deploy", config_file], stderr=subprocess.STDOUT
         )
-        assert "ValidationError" in e.output and "ServeApplicationSchema" in e.output
+    assert "ValidationError" in e.value.output.decode("utf-8")
+    assert "ServeApplicationSchema" in e.value.output.decode("utf-8")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
