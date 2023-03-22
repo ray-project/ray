@@ -441,7 +441,11 @@ class HTTPProxyActor:
         await self.app.block_until_endpoint_exists(endpoint, timeout_s)
 
     async def run(self):
-        sock = socket.socket()
+        if self.host == "::":
+            sock = socket.socket(socket.AF_INET6)
+        else:
+            sock = socket.socket()
+
         if SOCKET_REUSE_PORT_ENABLED:
             set_socket_reuse_port(sock)
         try:

@@ -75,6 +75,7 @@ GRPC_OPTIONS = [
     ("grpc.http2.min_ping_interval_without_data_ms", GRPC_KEEPALIVE_TIME_MS - 50),
     # Allow many strikes
     ("grpc.http2.max_ping_strikes", 0),
+    ("grpc.enable_http_proxy", 0),
 ]
 
 CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
