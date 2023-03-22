@@ -13,12 +13,15 @@ class LocalModeTest(unittest.TestCase):
         ray.shutdown()
 
     def test_local(self):
-        cf = PGConfig().environment("CartPole-v1")
-        cf.model["fcnet_hiddens"] = [10]
-        cf.num_rollout_workers = 2
+        config = (
+            PGConfig()
+            .environment("CartPole-v1")
+            .rollouts(num_rollout_workers=2)
+            .training(model={"fcnet_hiddens": [10]})
+        )
 
-        for _ in framework_iterator(cf):
-            algo = cf.build()
+        for _ in framework_iterator(config):
+            algo = config.build()
             print(algo.train())
             algo.stop()
 
