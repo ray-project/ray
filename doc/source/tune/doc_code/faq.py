@@ -465,15 +465,18 @@ tuner = tune.Tuner(
 result_grid = tuner.fit()
 
 best_result = result_grid.get_best_result()
-best_checkpoint_path = best_result.checkpoint.uri
+best_checkpoint = best_result.checkpoint
 # __iter_experimentation_initial_end__
 
 
 # __iter_experimentation_resume_start__
+import ray
+
+
 def trainable(config):
     # Add logic to handle the initial checkpoint.
-    checkpoint_path = config["start_from_checkpoint"]
-    checkpoint = Checkpoint.from_uri(checkpoint_path)
+    checkpoint_ref = config["start_from_checkpoint"]
+    checkpoint: Checkpoint = ray.get(checkpoint_ref)
     model_state_dict = checkpoint.to_dict()["model_state_dict"]
     # Initialize a model from the checkpoint...
 
@@ -492,7 +495,7 @@ new_tuner = tune.Tuner(
         "num_epochs": 10,
         "hyperparam": tune.grid_search([4, 5, 6]),
         # Use the `best_checkpoint_uri` from above.
-        "start_from_checkpoint": best_checkpoint_path,
+        "start_from_checkpoint": ray.put(best_checkpoint),
     },
     tune_config=tune.TuneConfig(metric="score", mode="max"),
 )
