@@ -19,7 +19,7 @@ import { getNodeDetail } from "../../service/node";
 import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
-import { NodeGPUView, WorkerGPU } from "./GPUColumn";
+import { NodeGPUView, WorkerGpuRow } from "./GPUColumn";
 import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
 
 const TEXT_COL_MIN_WIDTH = 100;
@@ -233,7 +233,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         )}
       </TableCell>
       <TableCell>
-        <WorkerGPU worker={worker} />
+        <WorkerGpuRow worker={worker} node={node} />
       </TableCell>
       <TableCell>
         <WorkerGRAM worker={worker} node={node} />
