@@ -57,7 +57,7 @@ def _find_class_name(obj, allowed_module_path_prefix: str, whitelist: Set[str]):
     Args:
         obj: The object under inspection.
         allowed_module_path_prefix: If the `obj`'s class is not under
-            the `whitelist_module_path_prefix`, its class name will be anonymized.
+            the `allowed_module_path_prefix`, its class name will be anonymized.
         whitelist: If the `obj`'s class is not in the `whitelist`,
             it will be anonymized.
     Returns:
@@ -101,5 +101,4 @@ def tag_scheduler(scheduler: "TrialScheduler"):
 
     assert isinstance(scheduler, TrialScheduler)
     scheduler_name = _find_class_name(scheduler, "ray.tune.schedulers", TUNE_SCHEDULERS)
-    print(scheduler_name)
     record_extra_usage_tag(TagKey.TUNE_SCHEDULER, scheduler_name)
