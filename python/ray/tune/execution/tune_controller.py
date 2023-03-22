@@ -465,6 +465,17 @@ class TuneController(_TuneControllerBase):
         if self._maybe_reuse_cached_actor(trial):
             return
 
+        # Safeguard
+        if trial in self._trial_to_actor:
+            raise RuntimeError(
+                f"Tried to request a new actor for trial {trial}, but an old "
+                f"actor still exists. This can lead to leaked resources. The old "
+                f"actor should be removed first. "
+                f"This is an internal problem in Ray Tune. If you encounter this "
+                f"error, please raise an issue on "
+                f"https://github.com/ray-project/ray/issues"
+            )
+
         trainable_cls = trial.get_trainable_cls()
         if not trainable_cls:
             raise _AbortTrialExecution(
