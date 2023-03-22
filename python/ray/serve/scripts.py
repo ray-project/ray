@@ -318,6 +318,7 @@ def run(
     )
 
     if pathlib.Path(config_or_import_path).is_file():
+        is_config = True
         config_path = config_or_import_path
         cli_logger.print(f'Deploying from config file: "{config_path}".')
 
@@ -340,17 +341,19 @@ def run(
                         "The gradio visualization feature of `serve run` does not yet "
                         "have support for multiple applications."
                     )
-            except ValidationError:
+            except ValidationError as v2_err:
                 try:
                     config = ServeApplicationSchema.parse_obj(config_dict)
-                except ValidationError as e:
-                    # If the config is neither a valid ServeDeploySchema nor a valid
-                    # ServeApplicationSchema, surface the validation error from trying
-                    # to parse as a ServeApplicationSchema
-                    raise e from None
+                except ValidationError as v1_err:
+                    # If we find the field "applications" in the config, most likely
+                    # user is trying to deploy a multi-application config
+                    if "applications" in config_dict:
+                        raise v2_err from None
+                    else:
+                        raise v1_err from None
 
-        is_config = True
     else:
+        is_config = False
         if host is None:
             host = DEFAULT_HTTP_HOST
         if port is None:
@@ -358,7 +361,6 @@ def run(
         import_path = config_or_import_path
         cli_logger.print(f'Deploying from import path: "{import_path}".')
         node = import_attr(import_path)
-        is_config = False
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
