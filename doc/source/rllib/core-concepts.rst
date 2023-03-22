@@ -307,9 +307,6 @@ fashion across multiple rollout workers (returns once all rollout workers are do
 It returns one final MultiAgentBatch resulting from concatenating n smaller MultiAgentBatches
 (exactly one from each remote rollout worker).
 
-RLlib includes other utilities, such as the ``AsyncRequestsManager``,
-for facilitating the dataflow between various components in a parallel, asyncronous fashion.
-These utilities are covered in the :ref:`parallel requests documentation <parallel-requests-docs>`.
 
 The ``train_batch`` is then passed to another utility function: ``train_one_step``.
 
@@ -390,9 +387,4 @@ training update.
 RLlib provides `a collection <https://github.com/ray-project/ray/tree/master/rllib/utils/replay_buffers>`__ of replay
 buffers that can be used for storing and sampling experiences.
 
-:ref:`Parallel Request Utilities <parallel-requests-docs>`:
-RLlib provides a collection of concurrency ops that can be asynchronous and synchronous operations in the training loop.
-``AsyncRequestsManager`` is used for launching and managing asynchronous requests on actors. Currently, in RLlib, it is
-used for asynchronous sampling on rollout workers and asynchronously adding to and sampling from replay buffer actors.
-``synchronous_parallel_sample`` has a more narrow but common usage of synchronously sampling from a set of rollout workers.
 
