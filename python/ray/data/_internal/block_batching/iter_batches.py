@@ -54,6 +54,7 @@ def iter_batches(
     Args:
         block_refs: An iterator over block object references and their corresponding
             metadata.
+        stats: DatasetStats object to record timing and other statistics.
         clear_block_after_read: Whether to clear the block from object store
             manually (i.e. without waiting for Python's automatic GC) after it
             is read. Doing so will reclaim memory faster and hence reduce the
@@ -165,6 +166,18 @@ def iter_batches(
     )
 
     yield from async_batch_iter
+
+def _batch_in_threadpool(
+        logical_batch_iterator: Iterator[LogicalBatch],
+        stats: DatasetStats,
+        clear_block_after_read: bool = False,
+        batch_format: str = "default",
+        collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        ensure_copy: bool = False,
+        prefetch_batches: int = 0,
+):
+    """"""
+
 
 
 def _bundle_block_refs_to_logical_batches(
