@@ -32,6 +32,7 @@ export type ServeDeployment = {
   status: ServeDeploymentStatus;
   message: string;
   deployment_config: ServeDeploymentConfig;
+  replicas: ServeReplica[];
 };
 
 export type ServeDeploymentConfig = {
@@ -55,9 +56,40 @@ export type ServeAutoscalingConfig = {
   target_num_ongoing_requests_per_replica: number;
 };
 
+export enum ServeReplicaState {
+  // Keep in sync with ReplicaState in python/ray/serve/_private/common.py
+  STARTING = "STARTING",
+  UPDATING = "UPDATING",
+  RECOVERING = "RECOVERING",
+  RUNNING = "RUNNING",
+  STOPPING = "STOPPING",
+}
+
+export type ServeReplica = {
+  replica_id: string;
+  state: ServeReplicaState;
+  pid: string | null;
+  actor_name: string;
+  actor_id: string | null;
+  node_id: string | null;
+  node_ip: string | null;
+  start_time_s: number;
+};
+
+// Keep in sync with DeploymentMode in python/ray/serve/config.py
+export enum ServeDeploymentMode {
+  NoServer = "NoServer",
+  HeadOnly = "HeadOnly",
+  EveryNode = "EveryNode",
+  FixedNumber = "FixedNumber",
+}
+
 export type ServeApplicationsRsp = {
-  host: string;
-  port: number;
+  http_options: {
+    host: string;
+    port: number;
+  };
+  proxy_location: ServeDeploymentMode;
   applications: {
     [name: string]: ServeApplication;
   };
