@@ -154,11 +154,6 @@ class TuneController(_TuneControllerBase):
         pass
 
     def on_step_end(self):
-        for tracked_actor in list(self._actor_to_trial):
-            self._actor_manager.remove_actor(tracked_actor=tracked_actor)
-            trial = self._actor_to_trial.pop(tracked_actor)
-            self._trial_to_actor.pop(trial)
-
         self._actor_cache.flush_cached_objects()
 
     def step(self):
@@ -316,10 +311,12 @@ class TuneController(_TuneControllerBase):
             dont_wait_for_trial = True
 
     def _cleanup_trials(self):
-        self._actor_cache.flush_cached_objects(force_all=True)
+        for tracked_actor in list(self._actor_to_trial):
+            self._actor_manager.remove_actor(tracked_actor=tracked_actor)
+            trial = self._actor_to_trial.pop(tracked_actor)
+            self._trial_to_actor.pop(trial)
 
-        # Todo: Remove all
-        pass
+        self._actor_cache.flush_cached_objects(force_all=True)
 
     ###
     # ADD ACTORS
