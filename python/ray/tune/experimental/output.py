@@ -4,8 +4,9 @@ import contextlib
 import collections
 from dataclasses import dataclass
 import datetime
-from enum import Enum
+from enum import IntEnum
 import logging
+import math
 import numbers
 import numpy as np
 import os
@@ -64,14 +65,20 @@ VALID_SUMMARY_TYPES = {
     type(None),
 }
 
+# The order of summarizing trials.
+ORDER = [
+    Trial.RUNNING,
+    Trial.TERMINATED,
+    Trial.PAUSED,
+    Trial.PENDING,
+    Trial.ERROR,
+]
 
-class AirVerbosity(Enum):
+
+class AirVerbosity(IntEnum):
     SILENT = 0
     DEFAULT = 1
     VERBOSE = 2
-
-    def __lt__(self, b):
-        return self.value < b.value
 
 
 try:
@@ -85,10 +92,6 @@ def get_air_verbosity() -> Optional[AirVerbosity]:
     verbosity = os.environ.get("AIR_VERBOSITY", None)
     if verbosity:
         return AirVerbosity(int(verbosity)) if verbosity else None
-
-
-def _get_current_time():
-    return datetime.datetime.fromtimestamp(time.time())
 
 
 def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
@@ -241,9 +244,23 @@ def _get_trial_table_data_per_status(
     status: str,
     trials: List[Trial],
     metric_keys: List[str],
+    force_max_rows: bool = False,
 ) -> Optional[_PerStatusTrialTableData]:
+    """Gather all information of trials pertained to one `status`.
+
+    Args:
+        status: The trial status of interest.
+        trials: all the trials of that status.
+        metric_keys: Ordered list of metrics to be displayed in the table.
+            Including both default and user defined.
+        force_max_rows: Whether or not to enforce a max row number for this status.
+            If True, only a max of `5` rows will be shown.
+
+    Returns:
+        All information of trials pertained to the `status`.
+    """
     # TODO: configure it.
-    max_row = 3
+    max_row = 5 if force_max_rows else math.inf
     if not trials:
         return None
 
@@ -257,7 +274,7 @@ def _get_trial_table_data_per_status(
     return _PerStatusTrialTableData(trial_infos, more_info)
 
 
-def _get_progress_table_data(
+def _get_trial_table_data(
     trials: List[Trial],
     metric_keys: List[str],
 ) -> _TrialTableData:
@@ -265,22 +282,17 @@ def _get_progress_table_data(
 
     Args:
         trials: List of trials for which progress is to be shown.
-        metric_keys: ordered list of metrics to be displayed in the table.
+        metric_keys: Ordered list of metrics to be displayed in the table.
             Including both default and user defined.
             Will only be shown if at least one trial is having the key.
 
     Returns:
+        Trial table data, including header and trial table per each status.
     """
+    # TODO: configure
+    max_trial_num_to_show = 20
     max_column_length = 20
     trials_by_state = _get_trials_by_state(trials)
-
-    order = [
-        Trial.RUNNING,
-        Trial.TERMINATED,
-        Trial.PAUSED,
-        Trial.PENDING,
-        Trial.ERROR,
-    ]
 
     # get the right metric to show.
     metric_keys = [
@@ -303,11 +315,12 @@ def _get_progress_table_data(
     ]
 
     trial_data = list()
-    for t_status in order:
+    for t_status in ORDER:
         trial_data_per_status = _get_trial_table_data_per_status(
             t_status,
             trials_by_state[t_status],
             metric_keys=formatted_metric_columns,
+            force_max_rows=len(trials) > max_trial_num_to_show,
         )
         if trial_data_per_status:
             trial_data.append(trial_data_per_status)
@@ -348,7 +361,7 @@ class ProgressReporter:
         self._last_heartbeat_time = 0
 
     @property
-    def _time_passed_str(self):
+    def _time_heartbeat_str(self):
         current_time_str, running_for_str = _get_time_str(self._start_time, time.time())
         return f"Current time: {current_time_str} " f"(running for {running_for_str})"
 
@@ -398,22 +411,22 @@ class TuneReporterBase(ProgressReporter):
         super(TuneReporterBase, self).__init__(verbosity=verbosity)
 
     def _get_overall_trial_progress_str(self, trials):
-        trial_status = _get_trials_by_state(trials)
-        num_finished = len(trial_status.get(Trial.TERMINATED, [])) + len(
-            trial_status.get(Trial.ERROR, [])
+        result = " | ".join(
+            [
+                f"{len(trials)} {status}"
+                for status, trials in _get_trials_by_state(trials).items()
+            ]
         )
-        return "Trial status: {:.2%} finished".format(
-            float(num_finished / self._num_samples)
-        )
+        return f"Trial status: {result}"
 
     # TODO: Return a more structured type to share code with Jupyter flow.
     def _get_heartbeat(self, trials, *sys_args) -> Tuple[List[str], _TrialTableData]:
         result = list()
-        # Trial status: 10%|█         | 1/10 COMPLETED, x RUNNING, x PENDING
+        # Trial status: 1 RUNNING | 7 PENDING
         result.append(self._get_overall_trial_progress_str(trials))
-        # Current time: 2023-02-24 12:35:39 (Running for 00:00:37.40)
-        result.append(self._time_passed_str)
-        # Logical Resource Usage: CPUs 12/64, GPUs 5/18
+        # Current time: 2023-02-24 12:35:39 (running for 00:00:37.40)
+        result.append(self._time_heartbeat_str)
+        # Logical resource usage: 8.0/64 CPUs, 0/0 GPUs
         result.extend(sys_args)
         # Current best trial: TRIAL NAME, metrics: {...}, parameters: {...}
         current_best_trial, metric = _current_best_trial(
@@ -428,7 +441,7 @@ class TuneReporterBase(ProgressReporter):
 
         all_metrics = list(DEFAULT_COLUMNS.keys()) + self._inferred_metric
 
-        trial_table_data = _get_progress_table_data(trials, all_metrics)
+        trial_table_data = _get_trial_table_data(trials, all_metrics)
         return result, trial_table_data
 
     def _print_heartbeat(self, trials, *sys_args):
@@ -461,6 +474,7 @@ class TuneTerminalReporter(TuneReporterBase):
                     print(table.more_info)
             else:
                 print(tabulate(table.trial_infos, tablefmt="simple", showindex=False))
+        print()
 
 
 class TuneRichReporter(TuneReporterBase):
@@ -614,6 +628,7 @@ class AirResultProgressCallback(Callback):
 
     def __init__(self, verbosity):
         self._verbosity = verbosity
+        self._start_time = time.time()
 
     def _print_result(self, trial, result=None):
         print(pretty_print(result or trial.last_result, BLACKLISTED_KEYS))
@@ -631,14 +646,14 @@ class AirResultProgressCallback(Callback):
     ):
         if self._verbosity < self._intermediate_result_verbosity:
             return
-        self._print_result(trial, result)
+        self._on_trial_result_internal(trial, result)
 
     def on_trial_complete(
         self, iteration: int, trials: List[Trial], trial: Trial, **info
     ):
         if self._verbosity < self._start_end_verbosity:
             return
-        self._print_result(trial)
+        self._on_trial_complete_internal(trial)
 
     def on_checkpoint(
         self,
@@ -650,20 +665,40 @@ class AirResultProgressCallback(Callback):
     ):
         if self._verbosity < self._intermediate_result_verbosity:
             return
-        ckpt_msg = f"!!!!!!!!!!!!Trial {trial} checkpoint saved at {checkpoint.dir_or_data}!!!!!!!!!!!!!"
-        print(ckpt_msg)
+        self._on_checkpoint_internal(trial, checkpoint)
 
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
         if self._verbosity < self._start_end_verbosity:
             return
-        start_msg = f"Trial {trial} started with configuration: "
-        print(start_msg)
-        self._print_config(trial)
+        self._on_trial_start_internal(trial)
 
 
 class TuneResultProgressCallback(AirResultProgressCallback):
     _intermediate_result_verbosity = AirVerbosity.VERBOSE
     _start_end_verbosity = AirVerbosity.DEFAULT
+
+    def _on_trial_start_internal(self, trial):
+        print(f"Trial {trial} started with configuration: ")
+        self._print_config(trial)
+
+    def _on_trial_result_internal(self, trial, result):
+        curr_time, running_time = _get_time_str(self._start_time, time.time())
+        print(
+            f"Trial {trial} finished iter "
+            f"{result[TRAINING_ITERATION]} at {curr_time} (running for {running_time})"
+        )
+        self._print_result(trial, result)
+
+    def _on_checkpoint_internal(self, trial, checkpoint):
+        print(f"Trial {trial} saved checkpoint at {checkpoint.dir_or_data}")
+
+    def _on_trial_complete_internal(self, trial):
+        curr_time, running_time = _get_time_str(self._start_time, time.time())
+        print(
+            f"Trial {trial} ({trial.last_result[TRAINING_ITERATION]} iters)"
+            f" finished at {curr_time} (running for {running_time})"
+        )
+        self._print_result(trial)
 
 
 class TrainResultProgressCallback(AirResultProgressCallback):
