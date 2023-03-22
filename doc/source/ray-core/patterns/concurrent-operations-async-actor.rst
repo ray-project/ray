@@ -2,7 +2,7 @@ Pattern: Using asyncio to run actor methods concurrently
 ========================================================
 
 By default, a Ray :ref:`actor <ray-remote-classes>` runs in a single thread and
-actor method calls are executed sequentially. This means that a long running method call blocks all the following method calls.
+actor method calls are executed sequentially. This means that a long running method call blocks all the following ones.
 In this pattern, we use ``await`` to yield control from the long running method call so other method calls can run concurrently.
 Normally the control is yielded when the method is doing IO operations but you can also use ``await asyncio.sleep(0)`` to yield control explicitly.
 

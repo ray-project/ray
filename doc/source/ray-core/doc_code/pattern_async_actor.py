@@ -31,7 +31,7 @@ task_store = TaskStore.remote()
 task_executor = TaskExecutor.remote(task_store)
 task_executor.run.remote()
 try:
-    # This will timeout since task_executor.run occpies the entire actor thread
+    # This will timeout since task_executor.run occupies the entire actor thread
     # and get_num_executed_tasks cannot run.
     ray.get(task_executor.get_num_executed_tasks.remote(), timeout=5)
 except ray.exceptions.GetTimeoutError:
