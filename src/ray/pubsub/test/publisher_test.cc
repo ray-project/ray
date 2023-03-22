@@ -475,6 +475,7 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
   ASSERT_EQ(reply_cnt, 1);
 
   // New connection is established.
+  reply = rpc::PubsubLongPollingReply();
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_TRUE(subscriber->ConnectionExists());
@@ -503,6 +504,7 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
 
   // Notify that message 1 is safe to be GCed.
   request_.set_max_processed_sequence_id(1);
+  reply = rpc::PubsubLongPollingReply();
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   ASSERT_TRUE(subscriber->CheckNoLeaks());
 }
