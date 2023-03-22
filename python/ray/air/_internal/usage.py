@@ -50,7 +50,7 @@ TUNE_SCHEDULERS = {
 
 
 def _find_class_name(obj, allowed_module_path_prefix: str, whitelist: Set[str]):
-    """Find the class name of the object. Or if the object is not
+    """Find the class name of the object. If the object is not
     under `allowed_module_path_prefix` or if its class is not in the whitelist,
     return "Custom".
 
@@ -58,7 +58,7 @@ def _find_class_name(obj, allowed_module_path_prefix: str, whitelist: Set[str]):
         obj: The object under inspection.
         allowed_module_path_prefix: If the `obj`'s class is not under
             the `whitelist_module_path_prefix`, its class name will be anonymized.
-        whitelist: If the `obj`'s class is not in the whitelist,
+        whitelist: If the `obj`'s class is not in the `whitelist`,
             it will be anonymized.
     Returns:
         The class name to be tagged with telemetry.
@@ -83,7 +83,7 @@ def tag_searcher(searcher: Union["BasicVariantGenerator", "Searcher"]):
     from ray.tune.search import BasicVariantGenerator, Searcher
 
     if isinstance(searcher, BasicVariantGenerator):
-        # Note this could be highly inflated as all train flow is treated
+        # Note this could be highly inflated as all train flows are treated
         # as using BasicVariantGenerator.
         record_extra_usage_tag(TagKey.TUNE_SEARCHER, "BasicVariantGenerator")
     elif isinstance(searcher, Searcher):
