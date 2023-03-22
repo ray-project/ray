@@ -133,7 +133,7 @@ def _connect() -> ServeControllerClient:
 # request context information.
 # route_prefix: http url route path, e.g. http://127.0.0.1:/app
 #     the route is "/app". When you send requests by handle,
-#     the route is "N/A.
+#     the route is empty.
 # request_id: the request id is generated from http proxy, the value
 #     shouldn't be changed when the variable is set.
 # note:

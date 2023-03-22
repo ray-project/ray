@@ -7,6 +7,12 @@ from ray.serve._private.constants import DEBUG_LOG_ENV_VAR, SERVE_LOGGER_NAME
 
 
 LOG_FILE_FMT = "{component_name}_{component_id}.log"
+COMPONENT_LOG_FMT = (
+    "%(levelname)s %(asctime)s {component_name} {component_id} "  # noqa:E501
+)
+MESSAGE_FMT = "%(filename)s:%(lineno)d - %(message)s"
+REQUEST_ID_FMT = "%(request_id)s "
+ROUTE_FMT = "%(route)s "
 
 
 class ServeFormatter(logging.Formatter):
@@ -15,15 +21,8 @@ class ServeFormatter(logging.Formatter):
     The formatter will generate the log format on the fly based on the field of record.
     """
 
-    COMPONENT_LOG_FMT = (
-        "%(levelname)s %(asctime)s {component_name} {component_id} "  # noqa:E501
-    )
-    MESSAGE_FMT = "%(filename)s:%(lineno)d - %(message)s"
-    REQUEST_ID_FMT = "%(request_id)s "
-    ROUTE_FMT = "%(route)s "
-
     def __init__(self, component_name: str, component_id: str):
-        self.component_log_fmt = ServeFormatter.COMPONENT_LOG_FMT.format(
+        self.component_log_fmt = COMPONENT_LOG_FMT.format(
             component_name=component_name, component_id=component_id
         )
 
@@ -31,10 +30,10 @@ class ServeFormatter(logging.Formatter):
         # generate a format string based on the record field.
         cur_format = self.component_log_fmt
         if "request_id" in record.__dict__:
-            cur_format += ServeFormatter.REQUEST_ID_FMT
+            cur_format += REQUEST_ID_FMT
         if "route" in record.__dict__:
-            cur_format += ServeFormatter.ROUTE_FMT
-        cur_format += ServeFormatter.MESSAGE_FMT
+            cur_format += ROUTE_FMT
+        cur_format += MESSAGE_FMT
 
         # create a formatter using the format string
         formatter = logging.Formatter(cur_format)

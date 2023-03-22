@@ -11,6 +11,7 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
+import re
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):
@@ -234,6 +235,8 @@ def test_context_information_in_logging(serve_instance):
     with redirect_stderr(f):
         resp = requests.get("http://127.0.0.1:8000/fn").json()
         resp2 = requests.get("http://127.0.0.1:8000/class_method").json()
+
+        # Check the component log
         expected_log_infos = [
             f"{resp['request_id']} {resp['route']} http_proxy.py",
             f"{resp['request_id']} {resp['route']} replica.py",
@@ -241,15 +244,23 @@ def test_context_information_in_logging(serve_instance):
             f"{resp2['request_id']} {resp2['route']} replica.py",
         ]
 
+        # Check User log
+        user_log_regexes = [
+            f".*{resp['request_id']} {resp['route']}.* user func.*",
+            f".*{resp2['request_id']} {resp2['route']}.* user log message from class method.*",
+        ]
+
         def check_log():
             logs_content = ""
-            for _ in range(10):
+            for _ in range(20):
                 time.sleep(0.1)
                 logs_content = f.getvalue()
                 if logs_content:
                     break
             for expected_log_info in expected_log_infos:
                 assert expected_log_info in logs_content
+            for regex in user_log_regexes:
+                assert re.findall(regex, logs_content) != []
 
         check_log()
 
