@@ -24,6 +24,7 @@ done
 
 
 SHARD=$(python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters="$test_tag_filters" "${targets[@]}")
+echo "yep using updated sharding script"
 if [[ -z "$SHARD" ]]
 # if no targets are assigned to this shard, skip bazel test run
 then
