@@ -1,4 +1,5 @@
 .. _tune-stopping-guide:
+.. _tune-stopping-ref:
 
 How to Define Stopping Criteria for a Ray Tune Experiment
 =========================================================
@@ -8,8 +9,9 @@ When running a Tune experiment, it can be challenging to determine the ideal dur
 For instance, one may want to set up the experiment to stop under the following circumstances:
 
 1. Set up an experiment to end after ``N`` epochs or when the reported evaluation score surpasses a particular threshold, whichever occurs first.
-2. Terminate when trials encounter runtime errors.
-3. Stop underperforming trials early by utilizing Tune's early-stopping schedulers.
+2. Stop the experiment after ``T``` seconds.
+3. Terminate when trials encounter runtime errors.
+4. Stop underperforming trials early by utilizing Tune's early-stopping schedulers.
 
 This user guide will illustrate how to achieve these types of stopping criteria in a Tune experiment.
 
@@ -20,8 +22,8 @@ For all the code examples, we use the following training function for demonstrat
     :start-after: __stopping_example_trainable_start__
     :end-before: __stopping_example_trainable_end__
 
-Stopping a Tune Experiment Manually
------------------------------------
+Stop a Tune experiment manually
+-------------------------------
 
 If you send a ``SIGINT`` signal to the process running :meth:`Tuner.fit() <ray.tune.Tuner.fit>`
 (which is usually what happens when you press ``Ctrl+C`` in the terminal), Ray Tune shuts
@@ -38,10 +40,9 @@ Ray Tune also accepts the ``SIGUSR1`` signal to interrupt training gracefully. T
 should be used when running Ray Tune in a remote Ray task
 as Ray will filter out ``SIGINT`` and ``SIGTERM`` signals per default.
 
-.. _tune-stopping-ref:
 
-Stop Programmatically with Metric-based Criteria
-------------------------------------------------
+Stop using metric-based criteria
+--------------------------------
 
 In addition to manual stopping, Tune provides several ways to stop experiments programmatically. The simplest way is to use metric-based criteria. These are a fixed set of thresholds that determine when the experiment should stop.
 
@@ -102,7 +103,49 @@ You can implement the stopping criteria using either a dictionary, a function, o
     Ray Tune comes with a set of out-of-the-box stopper classes. See the :ref:`Stopper <tune-stoppers>` documentation.
 
 
-Stop on Trial Failures
+Stop trials after a certain amount of time
+------------------------------------------
+
+There are two choices to stop a Tune experiment based on time: stopping trials individually
+after a specified timeout, or stopping the full experiment after a certain amount of time.
+
+Stop trials individually with a timeout
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can use a dictionary stopping criteria as described above, using the ``time_total_s`` metric that is auto-filled by Tune.
+
+.. literalinclude:: /tune/doc_code/stopping.py
+    :language: python
+    :start-after: __stopping_trials_by_time_start__
+    :end-before: __stopping_trials_by_time_end__
+
+.. note::
+
+    You need to include some intermediate reporting via :meth:`session.report <ray.air.session.report>`
+    if using the :ref:`Function Trainable API <tune-function-api>`.
+    Each report will automatically record the trial's ``time_total_s``, which allows Tune to stop based on time as a metric.
+
+    If the training loop hangs somewhere, Tune will not be able to intercept the training and stop the trial for you.
+    In this case, you can explicitly implement timeout logic in the training loop.
+
+
+Stop the experiment with a timeout
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use the ``TuneConfig(time_budget_s)`` configuration to tell Tune to stop the experiment after ``time_budget_s`` seconds.
+
+.. literalinclude:: /tune/doc_code/stopping.py
+    :language: python
+    :start-after: __stopping_experiment_by_time_start__
+    :end-before: __stopping_experiment_by_time_end__
+
+.. note::
+
+    You need to include some intermediate reporting via :meth:`session.report <ray.air.session.report>`
+    if using the :ref:`Function Trainable API <tune-function-api>`, for the same reason as above.
+
+
+Stop on trial failures
 ----------------------
 
 In addition to stopping trials based on their performance, you can also stop the entire experiment if any trial encounters a runtime error. To do this, you can use the :class:`ray.air.config.FailureConfig` class.

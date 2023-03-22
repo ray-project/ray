@@ -7,13 +7,25 @@ from ray.air import session
 
 def my_trainable(config):
     i = 1
+    while True:
+        # Do some training...
+        time.sleep(1)
+
+        # Report some metrics for demonstration...
+        session.report({"mean_accuracy": min(i / 10, 1.0)})
+        i += 1
+# __stopping_example_trainable_end__
+# fmt: on
+
+
+def my_trainable(config):
+    # NOTE: This re-defines the training loop with the sleep removed for faster testing.
+    i = 1
     # Training won't finish unless one of the stopping criteria is met!
     while True:
         # Do some training, and report some metrics for demonstration...
         session.report({"mean_accuracy": min(i / 10, 1.0)})
         i += 1
-# __stopping_example_trainable_end__
-# fmt: on
 
 
 # __stopping_dict_start__
@@ -119,3 +131,40 @@ tuner = tune.Tuner(
 )
 result_grid = tuner.fit()
 # __early_stopping_end__
+
+
+def my_trainable(config):
+    # NOTE: Introduce the sleep again for the time-based unit-tests.
+    i = 1
+    while True:
+        time.sleep(1)
+        # Do some training, and report some metrics for demonstration...
+        session.report({"mean_accuracy": min(i / 10, 1.0)})
+        i += 1
+
+
+# __stopping_trials_by_time_start__
+from ray import air, tune
+
+tuner = tune.Tuner(
+    my_trainable,
+    # Stop a trial after it's run for more than 5 seconds.
+    run_config=air.RunConfig(stop={"time_total_s": 5}),
+)
+result_grid = tuner.fit()
+# __stopping_trials_by_time_end__
+
+# Should only get ~5 reports
+assert result_grid[0].metrics["training_iteration"] < 8
+
+
+# __stopping_experiment_by_time_start__
+from ray import air, tune
+
+# Stop the entire experiment after ANY trial has run for more than 5 seconds.
+tuner = tune.Tuner(my_trainable, tune_config=tune.TuneConfig(time_budget_s=5.0))
+result_grid = tuner.fit()
+# __stopping_experiment_by_time_end__
+
+# Should only get ~5 reports
+assert result_grid[0].metrics["training_iteration"] < 8
