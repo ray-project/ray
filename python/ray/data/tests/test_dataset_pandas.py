@@ -24,7 +24,12 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
         df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
         df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
         ds = ray.data.from_pandas([df1, df2])
-        assert ds.dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        block = ray.get(ds.get_internal_block_refs()[0])
+        assert (
+            isinstance(block, pd.DataFrame)
+            if enable_pandas_block
+            else isinstance(block, pa.Table)
+        )
         values = [(r["one"], r["two"]) for r in ds.take(6)]
         rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
         assert values == rows
@@ -33,7 +38,12 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
 
         # test from single pandas dataframe
         ds = ray.data.from_pandas(df1)
-        assert ds.dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        block = ray.get(ds.get_internal_block_refs()[0])
+        assert (
+            isinstance(block, pd.DataFrame)
+            if enable_pandas_block
+            else isinstance(block, pa.Table)
+        )
         values = [(r["one"], r["two"]) for r in ds.take(3)]
         rows = [(r.one, r.two) for _, r in df1.iterrows()]
         assert values == rows
@@ -52,7 +62,12 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
         df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
         df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
         ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
-        assert ds.dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        block = ray.get(ds.get_internal_block_refs()[0])
+        assert (
+            isinstance(block, pd.DataFrame)
+            if enable_pandas_block
+            else isinstance(block, pa.Table)
+        )
         values = [(r["one"], r["two"]) for r in ds.take(6)]
         rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
         assert values == rows
@@ -61,7 +76,12 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
 
         # test from single pandas dataframe ref
         ds = ray.data.from_pandas_refs(ray.put(df1))
-        assert ds.dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        block = ray.get(ds.get_internal_block_refs()[0])
+        assert (
+            isinstance(block, pd.DataFrame)
+            if enable_pandas_block
+            else isinstance(block, pa.Table)
+        )
         values = [(r["one"], r["two"]) for r in ds.take(3)]
         rows = [(r.one, r.two) for _, r in df1.iterrows()]
         assert values == rows

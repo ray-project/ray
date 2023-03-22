@@ -7,7 +7,7 @@ import numpy as np
 import ray
 from ray.air import Checkpoint
 from ray.air.data_batch_type import DataBatchType
-from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset, DatasetPipeline, Preprocessor
 from ray.data.context import DatasetContext
 from ray.train.predictor import Predictor
@@ -485,16 +485,10 @@ class BatchPredictor:
             BatchFormat: Batch format to use for the preprocessor.
         """
         preprocessor = self.get_preprocessor()
-        dataset_block_format = ds.dataset_format()
-        if dataset_block_format == BlockFormat.SIMPLE:
-            # Naive case that we cast to pandas for compatibility.
-            # TODO: Revisit
-            return BatchFormat.PANDAS
-
         if preprocessor is None:
             # No preprocessor, just use the predictor format.
             return self._predictor_cls._batch_format_to_use()
-        # Code dealing with Chain preprocessor is in Chain._determine_transform_to_use
 
+        # Code dealing with Chain preprocessor is in Chain._determine_transform_to_use
         # Use same batch format as first preprocessor to minimize data copies.
-        return preprocessor._determine_transform_to_use(dataset_block_format)
+        return preprocessor._determine_transform_to_use()

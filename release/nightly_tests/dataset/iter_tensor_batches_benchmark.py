@@ -24,7 +24,7 @@ def iter_torch_batches(
             num_batches += 1
     print(
         "iter_torch_batches done, block_format:",
-        ds.dataset_format(),
+        "pyarrow",
         "num_rows:",
         ds.count(),
         "num_blocks:",

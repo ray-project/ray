@@ -14,6 +14,7 @@ else:
 
 def iter_batches(
     ds: Dataset,
+    block_format: Literal["pandas", "pyarrow", "simple"] = "pyarrow",
     batch_size: Optional[int] = None,
     batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
     local_shuffle_buffer_size: Optional[int] = None,
@@ -32,7 +33,7 @@ def iter_batches(
             num_batches += 1
     print(
         "iter_batches done, block_format:",
-        ds.dataset_format(),
+        block_format,
         "batch_format:",
         batch_format,
         "num_rows:",
@@ -81,6 +82,7 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
                     iter_batches,
                     ds=new_ds,
                     batch_format=new_format,
+                    block_format=current_format,
                     batch_size=batch_size,
                 )
 
@@ -112,6 +114,7 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
             iter_batches,
             ds=new_ds,
             batch_format="pandas",
+            block_format="pandas",
             batch_size=batch_size,
         )
 

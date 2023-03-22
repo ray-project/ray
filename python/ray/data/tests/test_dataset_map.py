@@ -196,10 +196,8 @@ def test_select_columns(ray_start_regular_shared):
     # Test pandas and arrow
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
     ds1 = ray.data.from_pandas(df)
-    assert ds1.dataset_format() == "pandas"
 
     ds2 = ds1.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow")
-    assert ds2.dataset_format() == "arrow"
 
     for each_ds in [ds1, ds2]:
         assert each_ds.select_columns(cols=[]).take(1) == [{}]
@@ -224,7 +222,6 @@ def test_select_columns(ray_start_regular_shared):
 
     # Test simple
     ds3 = ray.data.range(10)
-    assert ds3.dataset_format() == "simple"
     with pytest.raises(ValueError):
         ds3.select_columns(cols=[]).cache()
 
@@ -246,7 +243,6 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_dataset_c
     # Test pandas
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(lambda df: df + 1, batch_size=1, batch_format="pandas")
-    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
@@ -256,7 +252,6 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_dataset_c
     # Test Pyarrow
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow")
-    assert ds2.dataset_format() == "arrow"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [1, 2, 3]
@@ -267,7 +262,6 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_dataset_c
     size = 300
     ds = ray.data.range(size)
     ds2 = ds.map_batches(lambda df: df + 1, batch_size=17, batch_format="pandas")
-    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take_all()
     for i in range(size):
         # The pandas column is "value", and it originally has rows from 0~299.
@@ -280,7 +274,6 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_dataset_c
     # pandas => list block
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(lambda df: [1], batch_size=1)
-    assert ds2.dataset_format() == "simple"
     ds_list = ds2.take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
@@ -288,7 +281,6 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_dataset_c
     # pyarrow => list block
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(lambda df: [1], batch_size=1, batch_format="pyarrow")
-    assert ds2.dataset_format() == "simple"
     ds_list = ds2.take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
@@ -365,7 +357,6 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         batch_format="pandas",
         fn_args=(put(1),),
     )
-    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
@@ -384,7 +375,6 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         batch_format="pandas",
         fn_kwargs={"b": put(2)},
     )
-    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 4, 6]
@@ -405,7 +395,6 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_args=(put(1),),
         fn_kwargs={"b": put(2)},
     )
-    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [3, 5, 7]
@@ -430,7 +419,6 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         compute="actors",
         fn_constructor_args=(put(1),),
     )
-    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
@@ -454,7 +442,6 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         compute="actors",
         fn_constructor_kwargs={"b": put(2)},
     )
-    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 4, 6]
@@ -481,7 +468,6 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_constructor_args=(put(1),),
         fn_constructor_kwargs={"b": put(2)},
     )
-    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [3, 5, 7]
@@ -511,7 +497,6 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
             fn_constructor_kwargs=fn_constructor_kwargs,
         )
     )
-    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [7, 11, 15]
@@ -541,7 +526,6 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
             fn_constructor_kwargs=fn_constructor_kwargs,
         )
     )
-    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [7, 11, 15]
@@ -561,7 +545,6 @@ def test_map_batches_generator(ray_start_regular_shared, tmp_path):
 
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(pandas_generator, batch_size=1, batch_format="pandas")
-    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = sorted([s["one"] for s in ds_list])
     assert values == [2, 3, 4]
