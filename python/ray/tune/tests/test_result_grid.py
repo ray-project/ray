@@ -392,7 +392,7 @@ def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
     result_grid = tuner.fit()
 
     assert result_grid[0].checkpoint
-    for (checkpoint, metric) in result_grid[0].best_checkpoints:
+    for checkpoint, metric in result_grid[0].best_checkpoints:
         assert checkpoint
     assert len(result_grid[0].best_checkpoints) == num_to_keep
 
@@ -409,7 +409,7 @@ def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
     checkpoint_data = []
 
     assert len(result_grid[0].best_checkpoints) == num_to_keep
-    for (checkpoint, _) in result_grid[0].best_checkpoints:
+    for checkpoint, _ in result_grid[0].best_checkpoints:
         assert checkpoint
         assert "moved_ray_results" in checkpoint._local_path
         checkpoint_data.append(checkpoint.to_dict()["it"])
