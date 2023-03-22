@@ -145,6 +145,11 @@ parser.add_argument(
     help="The address of web ui",
 )
 
+parser.add_argument(
+    "--worker-preload-modules",
+    nargs='+',
+    default=[],
+)
 
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
@@ -215,6 +220,14 @@ if __name__ == "__main__":
         startup_token=args.startup_token,
         ray_debugger_external=args.ray_debugger_external,
     )
+
+    if mode == ray.WORKER_MODE and args.worker_preload_modules:
+        import importlib
+        for module_to_preload in args.worker_preload_modules:
+            try:
+                importlib.import_module(module_to_preload)
+            except ImportError:
+                pass
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(
