@@ -141,9 +141,6 @@ class EagerTFPolicyV2(Policy):
         # traced function after that.
         self._re_trace_counter = 0
 
-        if self.config.get("_enable_rl_module_api", False):
-            self._initialize_loss_from_dummy_batch()
-
     @DeveloperAPI
     @staticmethod
     def enable_eager_execution_if_necessary():

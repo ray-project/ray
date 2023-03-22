@@ -2,7 +2,6 @@ import logging
 from typing import Dict, List, Union
 
 from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
-from ray.rllib.core.rl_module import RLModule
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import (
@@ -36,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 class APPOTfPolicyWithRLModule(
-    # VTraceClipGradients,
+    VTraceClipGradients,
     VTraceOptimizer,
     LearningRateSchedule,
     KLCoeffMixin,
@@ -62,6 +61,9 @@ class APPOTfPolicyWithRLModule(
         KLCoeffMixin.__init__(self, config)
         GradStatsMixin.__init__(self)
         EagerTFPolicyV2.__init__(self, observation_space, action_space, config)
+        self.target_model = self.make_rl_module()
+        self.target_model.set_weights(self.model.get_weights())
+        # construct the target model and make its weights the same as the model
 
         # Initiate TargetNetwork ops after loss initialization.
         self.maybe_initialize_optimizer_and_loss()
@@ -219,23 +221,6 @@ class APPOTfPolicyWithRLModule(
             ),
             "mean_kl": self.stats["mean_kl"],
         }
-
-    @override(EagerTFPolicyV2)
-    def make_rl_module(self) -> "RLModule":
-        module = super().make_rl_module()
-
-        # initialize the old_policy
-        # we call this target model so that we can use the target network mixin
-        # however this is not the same as the target policy when we are referring to
-        # target and behavior policies.
-        # additionally, out appo rl module contains its own target network, however to
-        # maintain compatibilty with the target network mixin, we instead are creating
-        # a duplicate rl module here, and won't be utilizing that network.
-        self.target_model = super().make_rl_module()
-        self.target_model.set_weights(module.get_weights())
-
-        # similar to the original appo, only return the non target module
-        return module
 
     @override(EagerTFPolicyV2)
     def get_batch_divisibility_req(self) -> int:

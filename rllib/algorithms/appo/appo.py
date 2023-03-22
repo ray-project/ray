@@ -25,6 +25,8 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
+    NUM_ENV_STEPS_TRAINED,
+    NUM_AGENT_STEPS_TRAINED,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
@@ -201,11 +203,11 @@ class APPOConfig(ImpalaConfig):
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "tf2":
-            from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+            from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
             from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import APPOTfRLModule
 
             return SingleAgentRLModuleSpec(
-                module_class=APPOTfRLModule, catalog_class=PPOCatalog
+                module_class=APPOTfRLModule, catalog_class=APPOCatalog
             )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
@@ -297,22 +299,16 @@ class APPO(Impala):
             # updates.
             # we should instead have the target / kl threshold update be based off
             # of the train_batch_size * some target update frequency * num_sgd_iter.
-            # cur_ts = self._counters[
-            #     NUM_ENV_STEPS_TRAINED
-            #     if self.config.count_steps_by == "env_steps"
-            #     else NUM_AGENT_STEPS_TRAINED
-            # ]
-            # target_update_steps_freq = (
-            #     self.config.num_sgd_iter
-            #     * self.config.train_batch_size
-            #     * self.config.target_update_frequency
-            # )
             cur_ts = self._counters[
-                NUM_AGENT_STEPS_SAMPLED
-                if self.config.count_steps_by == "agent_steps"
-                else NUM_ENV_STEPS_SAMPLED
+                NUM_ENV_STEPS_TRAINED
+                if self.config.count_steps_by == "env_steps"
+                else NUM_AGENT_STEPS_TRAINED
             ]
-            target_update_steps_freq = 1
+            target_update_steps_freq = (
+                self.config.train_batch_size
+                * self.config.num_sgd_iter
+                * self.config.target_update_frequency
+            )
             if cur_ts - last_update > target_update_steps_freq:
                 self._counters[NUM_TARGET_UPDATES] += 1
                 self._counters[LAST_TARGET_UPDATE_TS] = cur_ts

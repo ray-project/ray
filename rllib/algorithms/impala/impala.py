@@ -220,8 +220,8 @@ class ImpalaConfig(AlgorithmConfig):
             minibatch_size: The size of minibatches that are trained over during
                 each SGD iteration. Note this only has an effect if
                 `_enable_learner_api` == True.
-                Note: minibatch_size must be a multiple of rollout_fragment_length and
-                smaller than or equal to train_batch_size.
+                Note: minibatch_size must be a multiple of rollout_fragment_length or
+                sequence_length and smaller than or equal to train_batch_size.
             num_sgd_iter: Number of passes to make over each train batch.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
                 be replayed with a p:1 proportion to new data samples.
@@ -624,6 +624,8 @@ class Impala(Algorithm):
             )
             self._aggregator_actor_manager = None
 
+        # This variable is used to keep track of the statistics from the most recent
+        # update of the learner group
         self._results = {}
         self._timeout_s_sampler_manager = self.config.timeout_s_sampler_manager
 
