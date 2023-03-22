@@ -151,3 +151,8 @@ class RequestContext:
 _serve_request_context = contextvars.ContextVar(
     "Serve internal request context variable", default=RequestContext()
 )
+
+
+# Context Information of replica actor.
+REPLICA_DEPLOYMENT_NAME = ""
+REPLICA_TAG_NAME = ""

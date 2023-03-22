@@ -165,14 +165,7 @@ def serve_start(
     # Initialize ray if needed.
     ray._private.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
-        ray.init(
-            namespace=SERVE_NAMESPACE,
-            _metrics_export_port=9999,
-            _system_config={
-                "metrics_report_interval_ms": 1000,
-                "task_retry_delay_ms": 50,
-            },
-        )
+        ray.init(namespace=SERVE_NAMESPACE)
 
     try:
         client = get_global_client(_health_check_controller=True)
