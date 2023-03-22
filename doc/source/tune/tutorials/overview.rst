@@ -63,6 +63,14 @@ Tune Feature Guides
     ---
     :img-top: /images/tune.png
 
+    .. link-button:: tune-trial-checkpoint
+        :type: ref
+        :text: How to Save and Load Trial Checkpoints
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/tune.png
+
     .. link-button:: tune-storage
         :type: ref
         :text: How to Configure Storage Options for a Distributed Tune Experiment
