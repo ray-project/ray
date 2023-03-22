@@ -44,7 +44,10 @@
 /ci/lint/format.sh @richardliaw @ericl @edoakes
 
 # Docker image build script.
-/ci/build/build-docker-images.py @amogkam @krfricke @ray-project/ray-core
+/ci/build/build-docker-images.py @amogkam @krfricke @gvspraveen @alanwguo @ray-project/ray-core
+
+# Dockerfiles
+/ci/docker/base.gpu.Dockerfile @gvspraveen @alanwguo
 
 # Python worker.
 #/python/ray/ @ray-project/ray-core
