@@ -299,6 +299,14 @@ export const Metrics = () => {
   );
 };
 
+const useGrafanaNotRunningAlertStyles = makeStyles((theme) =>
+  createStyles({
+    heading: {
+      fontWeight: 500,
+    },
+  }),
+);
+
 export type GrafanaNotRunningAlertProps = {
   severity?: AlertProps["severity"];
 } & ClassNameProps;
@@ -307,23 +315,26 @@ export const GrafanaNotRunningAlert = ({
   className,
   severity = "warning",
 }: GrafanaNotRunningAlertProps) => {
+  const classes = useGrafanaNotRunningAlertStyles();
+
   const { grafanaHost, prometheusHealth } = useContext(GlobalContext);
   return grafanaHost === undefined || !prometheusHealth ? (
     <Alert className={className} severity={severity}>
-      Grafana or prometheus server not detected. Please make sure both services
-      are running and refresh this page. See:{" "}
+      <span className={classes.heading}>
+        Set up Prometheus and Grafana for better Ray Dashboard experience
+      </span>
+      <br />
+      <br />
+      Time-series charts are hidden because either Prometheus or Grafana server
+      is not detected. Follow{" "}
       <a
         href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
         target="_blank"
         rel="noreferrer"
       >
-        https://docs.ray.io/en/latest/ray-observability/ray-metrics.html
-      </a>
-      .
-      <br />
-      If you are hosting grafana on a separate machine or using a non-default
-      port, please set the RAY_GRAFANA_HOST env var to point to your grafana
-      server when launching ray.
+        these instructions
+      </a>{" "}
+      to set them up and refresh this page. .
     </Alert>
   ) : null;
 };
