@@ -378,6 +378,7 @@ parts:
         title: References
         sections:
           - file: cluster/usage-stats
+          - file: ray-references/glossary
 
       - file: ray-contribute/stability
         title: Developer Guides
