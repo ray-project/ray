@@ -1,17 +1,17 @@
 name: Main CI
 trigger:
   change:
-  push:
+  manual:
 jobs:
   format-check:
-    image: hub.byted.org/kuberay/debian_bullseye:66045e17f9bc58a19f34893fd43d3a09
+    image: hub.byted.org/kuberay/debian_bullseye:ef30b6bdf0ab221c1d3c59f449e887b6
     steps:
       - name: FORMAT_CHECK
         commands:
           - bash .codebase/patch/codebase_format_check.sh
   build-wheels:
     depends: [format-check]
-    image: hub.byted.org/kuberay/manylinux2014_x86_64:2021-11-07-28723f3
+    image: hub.byted.org/compile/manylinux2014:6d45df5397bbc592d7b77f05bdc8c202
     steps:
       - name: BUILD_WHEEL
         commands:
@@ -23,22 +23,32 @@ jobs:
           path: .whl
   core-cpp-ut:
     depends: [format-check]
-    image: hub.byted.org/kuberay/manylinux2014_x86_64:2021-11-07-28723f3
+    image: hub.byted.org/compile/manylinux2014:6d45df5397bbc592d7b77f05bdc8c202
     steps:
       - name: CORE_CPP_UT
         commands:
           - bash .codebase/patch/codebase_core_cpp_ut.sh
   python-ut-small:
-    depends: [format-check]
-    image: hub.byted.org/kuberay/debian_bullseye:66045e17f9bc58a19f34893fd43d3a09
+    depends: [build-wheels]
+    image: hub.byted.org/kuberay/debian_bullseye:ef30b6bdf0ab221c1d3c59f449e887b6
     steps:
+      - name: DOWNLOAD_WHEEL
+        uses: actions/download-artifact
+        inputs:
+          name: release
+          path: ./
       - name: CORE_PYTHON_UT_SMALL
         commands:
           - bash .codebase/patch/codebase_python_ut_small.sh
-  # python-ut-medium1:
-  #   depends: [format-check]
-  #   image: hub.byted.org/kuberay/debian_bullseye:66045e17f9bc58a19f34893fd43d3a09
+  # python-ut-dataset:
+  #   depends: [build-wheels]
+  #   image: hub.byted.org/kuberay/debian_bullseye:ef30b6bdf0ab221c1d3c59f449e887b6
   #   steps:
-  #     - name: CORE_PYTHON_UT_MEDIUM1
+  #     - name: DOWNLOAD_WHEEL
+  #       uses: actions/download-artifact
+  #       inputs:
+  #         name: release
+  #         path: ./
+  #     - name: CORE_PYTHON_UT_DATASET
   #       commands:
-  #         - bash .codebase/patch/codebase_python_ut_medium_1.sh
+  #         - bash .codebase/patch/codebase_python_ut_dataset.sh

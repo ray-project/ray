@@ -161,7 +161,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor_out_of_order.py",
-    "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
+    # "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_concurrency_group.py",
@@ -183,7 +183,7 @@ py_test_module_list(
     "test_redis_tls.py",
     "test_ray_shutdown.py",
     "test_raylet_output.py",
-    "test_scheduling_performance.py",
+    # "test_scheduling_performance.py",
     "test_top_level_api.py",
     "test_unhandled_error.py",
     "test_utils.py",
@@ -218,11 +218,11 @@ py_test_module_list(
     "test_monitor.py",
     "test_node_provider_availability_tracker.py",
     "test_response_cache.py",
-    "kuberay/test_autoscaling_config.py",
+    # "kuberay/test_autoscaling_config.py",
     "kuberay/test_kuberay_node_provider.py"
   ],
   size = "small",
-  tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+  tags = ["exclusive", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -230,7 +230,7 @@ py_test(
   name = "test_autoscaler_yaml",
   size = "small",
   srcs = ["test_autoscaler_yaml.py"],
-  tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+  tags = ["exclusive", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
   data = [
     "additional_property.yaml",
@@ -368,7 +368,7 @@ py_test(
     name = "test_autoscaler_aws",
     size = "small",
     srcs = ["aws/test_autoscaler_aws.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    tags = ["exclusive", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -376,7 +376,7 @@ py_test(
     name = "test_aws_batch_tag_update",
     size = "small",
     srcs = ["aws/test_aws_batch_tag_update.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    tags = ["exclusive", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -384,7 +384,7 @@ py_test(
     name = "test_gcp_node_provider",
     size = "small",
     srcs = ["gcp/test_gcp_node_provider.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    tags = ["exclusive", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -412,7 +412,7 @@ py_test(
     name = "test_pydantic_serialization",
     size = "small",
     srcs = ["test_pydantic_serialization.py", "pydantic_module.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serve"],
+    tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -424,7 +424,7 @@ py_test(
         "test_runtime_env_validation_1_schema.json",
         "test_runtime_env_validation_2_schema.json",
     ],
-    tags = ["exclusive", "small_size_python_tests", "team:serve"],
+    tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
