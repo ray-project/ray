@@ -107,7 +107,7 @@ def test_predict_set_cpus(ray_start_4_cpus):
     data_batch = np.array([[1, 2], [3, 4], [5, 6]])
     predictions = predictor.predict(data_batch, num_estimator_cpus=2)
 
-    assert len(predictions) == 3
+    assert len(predictions["predictions"]) == 3
     assert predictor.get_preprocessor().has_preprocessed
     assert predictor.estimator.n_jobs == 2
 

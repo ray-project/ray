@@ -116,7 +116,7 @@ def test_predict_no_preprocessor_no_training():
     data_batch = np.array([[1, 2], [3, 4], [5, 6]])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
+    assert len(predictions["predictions"]) == 3
 
 
 if __name__ == "__main__":
