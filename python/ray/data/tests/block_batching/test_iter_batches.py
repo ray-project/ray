@@ -18,6 +18,7 @@ from ray.data._internal.block_batching.iter_batches import (
     _bundle_block_refs_to_logical_batches,
     _local_shuffle_logical_batches,
     _prefetch_batches_locally,
+    _resolve_logical_batch,
     _construct_batch_from_logical_batch,
     _format_batches,
     _collate,
@@ -212,6 +213,14 @@ def test_prefetch_batches_locally(num_batches_to_prefetch):
 
     # Check that the output iterator is the same as the input iterator.
     assert output_batches == logical_batches
+
+
+@patch.object(ray.data._internal.block_batching.interfaces.LogicalBatch, "resolve")
+def test_resolve_logical_batches(mock):
+    logical_batches = list(logical_batch_generator(1, 1))
+    resolved_iter = _resolve_logical_batch(iter(logical_batches))
+    assert next(resolved_iter) == logical_batches[0]
+    mock.assert_called_once()
 
 
 @pytest.mark.parametrize("block_size", [1, 10])

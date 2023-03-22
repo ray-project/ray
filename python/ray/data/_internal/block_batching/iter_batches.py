@@ -176,6 +176,13 @@ def _prefetch_batches_locally(
         yield batch
 
 
+def _resolve_logical_batch(logical_batch_iter: Iterator[LogicalBatch]):
+    """Resolves the block references for each logical batch."""
+    for logical_batch in logical_batch_iter:
+        logical_batch.resolve()
+        yield logical_batch
+
+
 def _construct_batch_from_logical_batch(
     resolved_logical_batch_iter: Iterator[LogicalBatch],
     ensure_copy: bool = False,
