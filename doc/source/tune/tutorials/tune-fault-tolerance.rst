@@ -65,10 +65,7 @@ Restore a Tune Experiment
 
 Let's say your initial Tune experiment is configured as follows.
 The actual training loop is just for demonstration purposes: the important detail is that
-saving and loading checkpoints has been implemented in the trainable.
-
-.. TODO: Replace the last line above with this after the checkpoint user guide has landed.
-.. :ref:`saving and loading checkpoints has been implemented in the trainable <tune-trial-checkpoint>`.
+:ref:`saving and loading checkpoints has been implemented in the trainable <tune-trial-checkpoint>`.
 
 .. literalinclude:: /tune/doc_code/fault_tolerance.py
     :language: python
@@ -218,5 +215,4 @@ See the following resources for more information:
 
 - :ref:`tune-storage-options`
 - :ref:`tune-distributed-ref`
-.. TODO: Add this in when the tune trial checkpoint guide has landed.
-.. - :ref:`tune-trial-checkpoint`
+- :ref:`tune-trial-checkpoint`

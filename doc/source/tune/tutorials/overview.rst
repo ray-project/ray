@@ -63,7 +63,7 @@ Tune Feature Guides
     ---
     :img-top: /images/tune.png
 
-    .. link-button:: tune-trial-checkpoint
+    .. link-button:: tune-trial-checkpoints
         :type: ref
         :text: How to Save and Load Trial Checkpoints
         :classes: btn-link btn-block stretched-link
