@@ -27,6 +27,7 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.data.tests.conftest import *  # noqa
 
 
 EMPTY_DOWNSTREAM_USAGE = collections.defaultdict(lambda: DownstreamMemoryInfo(0, 0))
@@ -304,6 +305,9 @@ def test_resource_constrained_triggers_autoscaling():
         get_or_create_autoscaling_requester_actor,
     )
 
+    ray.shutdown()
+    ray.init(num_cpus=3)
+
     def run_execution(
         execution_id: str, incremental_cpu: int = 1, autoscaling_state=None
     ):
@@ -360,6 +364,7 @@ def test_resource_constrained_triggers_autoscaling():
         {"CPU": 1},
         {"GPU": 1},
         {"GPU": 1},
+        {"CPU": 1},
     ]
 
     # For the same execution_id, the later request overrides the previous one.
@@ -370,6 +375,7 @@ def test_resource_constrained_triggers_autoscaling():
         {"CPU": 1},
         {"GPU": 1},
         {"GPU": 1},
+        {"CPU": 1},
     ]
 
     # Having another execution, so the resource bundles expanded.
@@ -418,6 +424,7 @@ def test_resource_constrained_triggers_autoscaling():
         {"CPU": 1},
         {"GPU": 1},
         {"GPU": 1},
+        {"CPU": 1},
     ]
 
 

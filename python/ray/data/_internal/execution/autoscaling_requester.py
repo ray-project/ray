@@ -1,3 +1,4 @@
+import math
 import time
 from typing import Dict, List
 
@@ -51,6 +52,22 @@ class AutoscalingRequester:
         req = []
         for _, (r, _) in self._resource_requests.items():
             req.extend(r)
+
+        # Round up to exceed total cluster CPUs so it can actually upscale.
+        def get_cpus(req):
+            num_cpus = 0
+            for r in req:
+                if "CPU" in r:
+                    num_cpus += r["CPU"]
+            return num_cpus
+
+        num_cpus = get_cpus(req)
+        if num_cpus > 0:
+            total = ray.cluster_resources()
+            if "CPU" in total and num_cpus <= total["CPU"]:
+                delta = 1 + math.ceil(total["CPU"]) - num_cpus
+                req.extend([{"CPU": 1}] * delta)
+
         return req
 
     def _test_set_timeout(self, ttl):

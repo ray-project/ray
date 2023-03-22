@@ -405,13 +405,11 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
     resource_request = []
 
     def to_bundle(resource: ExecutionResources) -> Dict:
-        num_cpus = math.ceil(resource.cpu) if resource.cpu else 0
-        num_gpus = math.ceil(resource.gpu) if resource.gpu else 0
         req = {}
-        if num_cpus > 0:
-            req["CPU"] = num_cpus
-        if num_gpus > 0:
-            req["GPU"] = num_gpus
+        if resource.cpu:
+            req["CPU"] = math.ceil(resource.cpu)
+        if resource.gpu:
+            req["GPU"] = math.ceil(resource.gpu)
         return req
 
     for op, state in topology.items():
