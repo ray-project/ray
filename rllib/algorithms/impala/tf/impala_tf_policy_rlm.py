@@ -48,11 +48,6 @@ class ImpalaTfPolicyWithRLModule(
         dist_class,
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
-        train_batch[SampleBatch.ACTIONS]
-        train_batch[SampleBatch.ACTION_LOGP]
-        train_batch[SampleBatch.REWARDS]
-        train_batch[SampleBatch.TERMINATEDS]
-
         seq_len = train_batch.get(SampleBatch.SEQ_LENS)
         rollout_frag_or_episode_len = (
             self.config["rollout_fragment_length"] if not seq_len else None
@@ -121,12 +116,12 @@ class ImpalaTfPolicyWithRLModule(
 
         # The policy gradients loss.
         pi_loss = -tf.reduce_sum(target_actions_logp_time_major * pg_advantages)
-        mean_pi_loss = pi_loss
+        mean_pi_loss = -tf.reduce_mean(target_actions_logp_time_major * pg_advantages)
 
         # The baseline loss.
         delta = values_time_major - vtrace_adjusted_target_values
         vf_loss = 0.5 * tf.reduce_sum(tf.math.pow(delta, 2.0))
-        mean_vf_loss = vf_loss
+        mean_vf_loss = 0.5 * tf.reduce_mean(tf.math.pow(delta, 2.0))
 
         # The entropy loss.
         entropy_loss = -tf.reduce_sum(target_actions_logp_time_major)

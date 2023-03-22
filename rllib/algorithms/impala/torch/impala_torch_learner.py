@@ -1,7 +1,5 @@
 from typing import Mapping
 
-import numpy as np
-
 from ray.rllib.algorithms.impala.impala_base_learner import ImpalaBaseLearner
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
@@ -31,13 +29,12 @@ class ImpalaTorchLearner(TorchLearner, ImpalaBaseLearner):
         target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
         values = fwd_out[SampleBatch.VF_PREDS]
 
-        # TODO(Artur): Why are we missing batch[SampleBatch.ACTION_LOGP] here?
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
         target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
 
         # TODO(Artur): In the old impala code, actions were unsqueezed if they were
-        # multi_discrete. Find out why and if we need to do the same here.
-        # actions = actions if is_multidiscrete else torch.unsqueeze(actions, dim=1)
+        #  multi_discrete. Find out why and if we need to do the same here.
+        #  actions = actions if is_multidiscrete else torch.unsqueeze(actions, dim=1)
 
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
@@ -94,18 +91,23 @@ class ImpalaTorchLearner(TorchLearner, ImpalaBaseLearner):
         )
 
         # Sample size is T x B, where T is the trajectory length and B is the batch size
-        sample_size = convert_to_torch_tensor(
-            np.prod(target_actions_logp_time_major.shape[:1])
-        ).to(device)
+        # We mean over the batch size for consistency with the pre-RLModule
+        # implementation of IMPALA
+        # TODO(Artur): Mean over trajectory length after migration to RLModules.
+        batch_size = (
+            convert_to_torch_tensor(target_actions_logp_time_major.shape[-1])
+            .float()
+            .to(device)
+        )
 
         # The policy gradients loss.
         pi_loss = -torch.sum(target_actions_logp_time_major * pg_advantages)
-        mean_pi_loss = pi_loss / sample_size
+        mean_pi_loss = pi_loss / batch_size
 
         # The baseline loss.
         delta = values_time_major - vtrace_adjusted_target_values
         vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
-        mean_vf_loss = vf_loss / sample_size
+        mean_vf_loss = vf_loss / batch_size
 
         # The entropy loss.
         entropy_loss = -torch.sum(target_actions_logp_time_major)
