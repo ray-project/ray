@@ -407,7 +407,12 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
     def to_bundle(resource: ExecutionResources) -> Dict:
         num_cpus = math.ceil(resource.cpu) if resource.cpu else 0
         num_gpus = math.ceil(resource.gpu) if resource.gpu else 0
-        return {"CPU": num_cpus, "GPU": num_gpus}
+        req = {}
+        if num_cpus > 0:
+            req["CPU"] = num_cpus
+        if num_gpus > 0:
+            req["GPU"] = num_gpus
+        return req
 
     for op, state in topology.items():
         per_task_resource = op.incremental_resource_usage()
@@ -420,7 +425,6 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
             # usage for more than one bundle in the queue for this op?
             resource_request.append(task_bundle)
 
-    print("XXX req:", resource_request)
     # Make autoscaler resource request.
     actor = get_or_create_autoscaling_requester_actor()
     actor.request_resources.remote(resource_request, execution_id)

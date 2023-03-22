@@ -48,7 +48,6 @@ class AutoscalingRequester:
                 self._resource_requests.pop(k)
 
     def _aggregate_requests(self) -> List[Dict]:
-        self._purge()
         req = []
         for _, (r, _) in self._resource_requests.items():
             req.extend(r)

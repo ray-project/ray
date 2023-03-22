@@ -355,55 +355,56 @@ def test_resource_constrained_triggers_autoscaling():
 
     run_execution("1")
     assert ray.get(ac._aggregate_requests.remote()) == [
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 0, "GPU": 1},
-        {"CPU": 0, "GPU": 1},
+        {"CPU": 1},
+        {"CPU": 1},
+        {"CPU": 1},
+        {"GPU": 1},
+        {"GPU": 1},
     ]
 
     # For the same execution_id, the later request overrides the previous one.
     run_execution("1")
     assert ray.get(ac._aggregate_requests.remote()) == [
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 0, "GPU": 1},
-        {"CPU": 0, "GPU": 1},
+        {"CPU": 1},
+        {"CPU": 1},
+        {"CPU": 1},
+        {"GPU": 1},
+        {"GPU": 1},
     ]
 
     # Having another execution, so the resource bundles expanded.
     run_execution("2")
     assert ray.get(ac._aggregate_requests.remote()) == [
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 0, "GPU": 1},
-        {"CPU": 0, "GPU": 1},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 0, "GPU": 1},
-        {"CPU": 0, "GPU": 1},
+        {"CPU": 1},
+        {"CPU": 1},
+        {"CPU": 1},
+        {"GPU": 1},
+        {"GPU": 1},
+        {"CPU": 1},
+        {"CPU": 1},
+        {"CPU": 1},
+        {"GPU": 1},
+        {"GPU": 1},
     ]
 
     # Requesting for existing execution again, so no change in resource bundles.
     run_execution("1")
     assert ray.get(ac._aggregate_requests.remote()) == [
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 0, "GPU": 1},
-        {"CPU": 0, "GPU": 1},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 0, "GPU": 1},
-        {"CPU": 0, "GPU": 1},
+        {"CPU": 1},
+        {"CPU": 1},
+        {"CPU": 1},
+        {"GPU": 1},
+        {"GPU": 1},
+        {"CPU": 1},
+        {"CPU": 1},
+        {"CPU": 1},
+        {"GPU": 1},
+        {"GPU": 1},
     ]
 
     # After the timeout, all requests should have been purged.
     time.sleep(test_timeout + 1)
+    ray.get(ac._purge.remote())
     assert ray.get(ac._aggregate_requests.remote()) == []
 
     # Test throttling by sending 100 requests: only one request actually
@@ -412,11 +413,11 @@ def test_resource_constrained_triggers_autoscaling():
     for i in range(100):
         run_execution("1", i + 1, autoscaling_state)
     assert ray.get(ac._aggregate_requests.remote()) == [
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 1, "GPU": 0},
-        {"CPU": 0, "GPU": 1},
-        {"CPU": 0, "GPU": 1},
+        {"CPU": 1},
+        {"CPU": 1},
+        {"CPU": 1},
+        {"GPU": 1},
+        {"GPU": 1},
     ]
 
 
