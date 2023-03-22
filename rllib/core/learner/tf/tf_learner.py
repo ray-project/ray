@@ -1,4 +1,6 @@
 import logging
+import numpy as np
+import tree  # pip install dm-tree
 from typing import (
     Any,
     Mapping,
@@ -8,7 +10,6 @@ from typing import (
     Callable,
     Sequence,
     Hashable,
-    Set,
 )
 
 from ray.rllib.core.learner.learner import (
@@ -24,6 +25,7 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
+from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -70,10 +72,11 @@ class TfLearner(Learner):
         lr = self._optimizer_config["lr"]
         return [
             (
-                self._module[key].trainable_variables,
+                self.get_parameters(self._module[key]),
                 tf.keras.optimizers.Adam(learning_rate=lr),
             )
             for key in self._module.keys()
+            if self._is_module_compatible_with_learner(self._module[key])
         ]
 
     @override(Learner)
@@ -90,18 +93,31 @@ class TfLearner(Learner):
         # This is probably because of the way that we are iterating over the
         # parameters in the optim_to_param_dictionary
         for optim, param_ref_seq in self._optim_to_param.items():
-            variable_list = [self._params[param_ref] for param_ref in param_ref_seq]
-            gradient_list = [gradients[param_ref] for param_ref in param_ref_seq]
+            variable_list = [
+                self._params[param_ref]
+                for param_ref in param_ref_seq
+                if gradients[param_ref] is not None
+            ]
+            gradient_list = [
+                gradients[param_ref]
+                for param_ref in param_ref_seq
+                if gradients[param_ref] is not None
+            ]
             optim.apply_gradients(zip(gradient_list, variable_list))
 
     @override(Learner)
-    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
-        """Returns the weights of the underlying MultiAgentRLModule"""
-        module_weights = self._module.get_state()
-        if module_ids is None:
-            return module_weights
-
-        return {k: v for k, v in module_weights.items() if k in module_ids}
+    def postprocess_gradients(
+        self, gradients_dict: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        grad_clip = self._optimizer_config.get("grad_clip", None)
+        assert isinstance(
+            grad_clip, (int, float, type(None))
+        ), "grad_clip must be a number"
+        if grad_clip is not None:
+            gradients_dict = tf.nest.map_structure(
+                lambda v: tf.clip_by_value(v, -grad_clip, grad_clip), gradients_dict
+            )
+        return gradients_dict
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
@@ -122,6 +138,9 @@ class TfLearner(Learner):
         lr = self._optimizer_config["lr"]
         return optimizer_cls(learning_rate=lr)
 
+    def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
+        return isinstance(module, TfRLModule)
+
     @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
         """Convert the arrays of batch to tf.Tensor's.
@@ -140,10 +159,11 @@ class TfLearner(Learner):
         # tf.function. This messes with input spec checking. Other fields of
         # the sample batch are possibly modified by tf.function which may lead
         # to unwanted consequences. We'll need to further investigate this.
-        batch = NestedDict(batch.policy_batches)
-        for key, value in batch.items():
-            batch[key] = tf.cast(tf.convert_to_tensor(value), tf.float32)
-        return batch.asdict()
+        ma_batch = NestedDict(batch.policy_batches)
+        for key, value in ma_batch.items():
+            if isinstance(value, np.ndarray):
+                ma_batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
+        return ma_batch
 
     @override(Learner)
     def add_module(
@@ -220,11 +240,11 @@ class TfLearner(Learner):
     ) -> Mapping[str, Any]:
         # TODO (Kourosh): The update of learner is vastly differnet than the base
         # class. So we need to unify them.
-
-        if set(batch.policy_batches.keys()) != set(self._module.keys()):
+        missing_module_ids = set(batch.policy_batches.keys()) - set(self._module.keys())
+        if len(missing_module_ids) > 0:
             raise ValueError(
-                "Batch keys must match module keys. Learner does not "
-                "currently support training of only some modules and not others"
+                "Batch contains module ids that are not in the learner: "
+                f"{missing_module_ids}"
             )
 
         batch_iter = (
@@ -237,12 +257,13 @@ class TfLearner(Learner):
         for minibatch in batch_iter(batch, minibatch_size, num_iters):
             # TODO (Avnish): converting to tf tensor and then from nested dict back to
             # dict will most likely hit us in perf. But let's go with this for now.
-            minibatch = self._convert_batch_type(minibatch)
-            update_outs = self._update_fn(minibatch)
+            tensorbatch = self._convert_batch_type(minibatch)
+            update_outs = self._update_fn(tensorbatch)
             loss = update_outs["loss"]
             fwd_out = update_outs["fwd_out"]
             postprocessed_gradients = update_outs["postprocessed_gradients"]
             result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+            self._check_result(result)
             results.append(result)
 
         # Reduce results across all minibatches, if necessary.
@@ -268,9 +289,24 @@ class TfLearner(Learner):
             gradients = self.compute_gradients(loss, tape)
             gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(gradients)
+
+            # NOTE (Kourosh) The reason for returning fwd_out is that it is optionally
+            # needed for compiling the results in a later step (e.g. in
+            # compile_results), but it should not contain anything but tensors, None or
+            # ExtensionTypes, otherwise the tf.function will yell at us because it
+            # won't be able to convert the returned objects to a tensor representation
+            # (for internal reasons). So, in here, we remove anything from fwd_out that
+            # is not a tensor, None or ExtensionType.
+            def filter_fwd_out(x):
+                if isinstance(
+                    x, (tf.Tensor, type(None), tf.experimental.ExtensionType)
+                ):
+                    return x
+                return None
+
             return {
                 "loss": loss,
-                "fwd_out": fwd_out,
+                "fwd_out": tree.map_structure(filter_fwd_out, fwd_out),
                 "postprocessed_gradients": gradients,
             }
 

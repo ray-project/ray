@@ -227,6 +227,7 @@ class TestWorkerFailures(unittest.TestCase):
         # Test fault handling
         config.num_rollout_workers = 2
         config.ignore_worker_failures = True
+        config.recreate_failed_workers = False
         config.env = "fault_env"
         # Make worker idx=1 fail. Other workers will be ok.
         config.env_config = {
@@ -237,12 +238,15 @@ class TestWorkerFailures(unittest.TestCase):
             config.evaluation_interval = 1
             config.evaluation_config = {
                 "ignore_worker_failures": True,
+                "recreate_failed_workers": False,
                 "env_config": {
                     # Make worker idx=1 fail. Other workers will be ok.
                     "bad_indices": [1],
                     "evaluation": True,
                 },
             }
+
+        print(config)
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
             algo = config.build()
@@ -261,7 +265,6 @@ class TestWorkerFailures(unittest.TestCase):
     def _do_test_fault_fatal(self, config, fail_eval=False):
         # Test raises real error when out of workers.
         config.num_rollout_workers = 2
-        config.ignore_worker_failures = False
         config.env = "fault_env"
         # Make both worker idx=1 and 2 fail.
         config.env_config = {"bad_indices": [1, 2]}
@@ -269,7 +272,6 @@ class TestWorkerFailures(unittest.TestCase):
             config.evaluation_num_workers = 2
             config.evaluation_interval = 1
             config.evaluation_config = {
-                "ignore_worker_failures": False,
                 # Make eval worker (index 1) fail.
                 "env_config": {
                     "bad_indices": [1],
@@ -294,6 +296,8 @@ class TestWorkerFailures(unittest.TestCase):
         config.env = "fault_env"
         config.evaluation_config = {
             "recreate_failed_workers": True,
+            # 0 delay for testing purposes.
+            "delay_between_worker_restarts_s": 0,
             # Make eval worker (index 1) fail.
             "env_config": {
                 "bad_indices": [1],
@@ -409,7 +413,7 @@ class TestWorkerFailures(unittest.TestCase):
             fail_eval=True,
         )
 
-    def test_recreate_eval_workers_parallel_to_training_w_async_req_manager(self):
+    def test_recreate_eval_workers_parallel_to_training_w_actor_manager(self):
         # Test the case where all eval workers fail, but we chose to recover.
         config = (
             PGConfig()
@@ -442,8 +446,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
-                ignore_worker_failures=False,  # Do not ignore
-                recreate_failed_workers=True,  # But recover.
             )
             .training(
                 train_batch_size=32,
@@ -458,6 +460,11 @@ class TestWorkerFailures(unittest.TestCase):
                     "failure_stop_count": 4,
                     "counter": COUNTER_NAME,
                 },
+            )
+            .fault_tolerance(
+                recreate_failed_workers=True,  # But recover.
+                # 0 delay for testing purposes.
+                delay_between_worker_restarts_s=0,
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -513,9 +520,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
-                ignore_worker_failures=False,  # Do not ignore
-                recreate_failed_workers=True,  # But recover.
-                # Throwing error in constructor is a bad idea.
             )
             .training(
                 train_batch_size=32,
@@ -535,7 +539,6 @@ class TestWorkerFailures(unittest.TestCase):
                 evaluation_num_workers=1,
                 evaluation_interval=1,
                 evaluation_config=PGConfig.overrides(
-                    ignore_worker_failures=False,
                     recreate_failed_workers=True,
                     # Restart the entire eval worker.
                     restart_failed_sub_environments=False,
@@ -550,6 +553,12 @@ class TestWorkerFailures(unittest.TestCase):
                 ),
             )
             .callbacks(callbacks_class=AddPolicyCallback)
+            .fault_tolerance(
+                recreate_failed_workers=True,  # But recover.
+                # Throwing error in constructor is a bad idea.
+                # 0 delay for testing purposes.
+                delay_between_worker_restarts_s=0,
+            )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
@@ -606,8 +615,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
-                ignore_worker_failures=True,  # Ignore failure.
-                recreate_failed_workers=True,  # And recover
             )
             .training(
                 train_batch_size=32,
@@ -630,6 +637,11 @@ class TestWorkerFailures(unittest.TestCase):
                         "counter": COUNTER_NAME,
                     },
                 ),
+            )
+            .fault_tolerance(
+                recreate_failed_workers=True,  # And recover
+                # 0 delay for testing purposes.
+                delay_between_worker_restarts_s=0,
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -666,10 +678,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=3,
                 rollout_fragment_length=16,
-                ignore_worker_failures=False,  # Not ignore failure.
-                recreate_failed_workers=True,  # And recover
-                worker_health_probe_timeout_s=0.01,
-                worker_restore_timeout_s=5,
             )
             .training(
                 train_batch_size=32,
@@ -701,6 +709,12 @@ class TestWorkerFailures(unittest.TestCase):
                     "step_delay": 3600,
                     "step_delay_indices": [3],
                 },
+            )
+            .fault_tolerance(
+                recreate_failed_workers=True,  # And recover
+                worker_health_probe_timeout_s=0.01,
+                worker_restore_timeout_s=5,
+                delay_between_worker_restarts_s=0,  # For testing, no delay.
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -737,8 +751,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
-                ignore_worker_failures=True,  # Ignore failure.
-                recreate_failed_workers=True,  # And recover
             )
             .training(
                 train_batch_size=32,
@@ -758,7 +770,6 @@ class TestWorkerFailures(unittest.TestCase):
                 evaluation_num_workers=2,
                 evaluation_interval=1,
                 evaluation_config=PGConfig.overrides(
-                    ignore_worker_failures=True,
                     recreate_failed_workers=True,
                     # Now instead of recreating failed workers,
                     # we want to recreate the failed sub env instead.
@@ -769,6 +780,11 @@ class TestWorkerFailures(unittest.TestCase):
                         "bad_indices": [1],
                     },
                 ),
+            )
+            .fault_tolerance(
+                recreate_failed_workers=True,  # And recover
+                # 0 delay for testing purposes.
+                delay_between_worker_restarts_s=0,
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -891,9 +907,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=1,
                 create_env_on_local_worker=False,
-                # Worker fault tolerance.
-                recreate_failed_workers=True,  # Restore failed workers.
-                restart_failed_sub_environments=True,  # And create failed envs.
             )
             .training(
                 model={"fcnet_hiddens": [4]},
@@ -919,6 +932,13 @@ class TestWorkerFailures(unittest.TestCase):
                         "evaluation": True,
                     }
                 ),
+            )
+            .fault_tolerance(
+                # Worker fault tolerance.
+                recreate_failed_workers=True,  # Restore failed workers.
+                restart_failed_sub_environments=True,  # And create failed envs.
+                # 0 delay for testing purposes.
+                delay_between_worker_restarts_s=0,
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -948,9 +968,6 @@ class TestWorkerFailures(unittest.TestCase):
             PGConfig()
             .rollouts(
                 num_rollout_workers=1,
-                # Worker fault tolerance.
-                recreate_failed_workers=False,  # Do not ignore.
-                restart_failed_sub_environments=True,  # But recover.
                 rollout_fragment_length=5,
                 # Use EMA PerfStat.
                 # Really large coeff to show the difference in env_wait_time_ms.
@@ -980,6 +997,13 @@ class TestWorkerFailures(unittest.TestCase):
                 # Important, don't smooth over all the episodes,
                 # otherwise we don't see latency spike.
                 metrics_num_episodes_for_smoothing=1
+            )
+            .fault_tolerance(
+                # Worker fault tolerance.
+                recreate_failed_workers=False,  # Do not ignore.
+                restart_failed_sub_environments=True,  # But recover.
+                # 0 delay for testing purposes.
+                delay_between_worker_restarts_s=0,
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )

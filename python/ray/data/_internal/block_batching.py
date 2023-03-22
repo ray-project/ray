@@ -3,7 +3,7 @@ import itertools
 import queue
 import sys
 import threading
-from typing import Iterator, Optional, TypeVar, Union
+from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -39,6 +39,7 @@ def batch_block_refs(
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     drop_last: bool = False,
+    collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
@@ -68,6 +69,7 @@ def batch_block_refs(
             select ``pandas.DataFrame`` or "pyarrow" to select
             ``pyarrow.Table``. Default is "default".
         drop_last: Whether to drop the last batch if it's incomplete.
+        collate_fn: A function to apply to each data batch before returning it.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
             local in-memory shuffle buffer, and this value will serve as the minimum
             number of rows that must be in the local in-memory shuffle buffer in order
@@ -114,6 +116,7 @@ def batch_block_refs(
         batch_size=batch_size,
         batch_format=batch_format,
         drop_last=drop_last,
+        collate_fn=collate_fn,
         shuffle_buffer_min_size=shuffle_buffer_min_size,
         shuffle_seed=shuffle_seed,
         ensure_copy=ensure_copy,
@@ -128,6 +131,7 @@ def batch_blocks(
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     drop_last: bool = False,
+    collate_fn: Optional[Callable[[DataBatch], DataBatch]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
@@ -153,6 +157,14 @@ def batch_blocks(
         batch_format=batch_format,
         stats=stats,
     )
+
+    if collate_fn is not None:
+
+        def batch_fn_iter(iterator: Iterator[DataBatch]) -> Iterator[DataBatch]:
+            for batch in iterator:
+                yield collate_fn(batch)
+
+        batch_iter = batch_fn_iter(batch_iter)
 
     if prefetch_batches > 0:
         batch_iter = _make_async_gen(batch_iter, prefetch_buffer_size=prefetch_batches)
@@ -228,12 +240,33 @@ def _resolve_blocks(
         An iterator over resolved blocks.
     """
 
+    hit = 0
+    miss = 0
+    unknown = 0
     for block_ref in block_ref_iter:
         if block_ref is not None:
             stats_timer = stats.iter_get_s.timer() if stats else nullcontext()
+            # Count the number of blocks that we hit locally or miss (so have to
+            # fetch from remote node). This is to measure the effectiveness of
+            # prefetch.
+            loc = ray.experimental.get_object_locations([block_ref])
+            nodes = loc[block_ref]["node_ids"]
+            if nodes:
+                current = ray.get_runtime_context().get_node_id()
+                if current in nodes:
+                    hit += 1
+                else:
+                    miss += 1
+            else:
+                unknown += 1
             with stats_timer:
                 block = ray.get(block_ref)
             yield block
+
+    if stats:
+        stats.iter_blocks_local = hit
+        stats.iter_blocks_remote = miss
+        stats.iter_unknown_location = unknown
 
 
 def _prefetch_blocks(

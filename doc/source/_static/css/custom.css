@@ -33,6 +33,14 @@
   .top-nav-content {
     display: none;
   }
+
+/* Make the book theme secondary nav stick below the new main top nav */
+.header-article {
+    top: 58px;
+}
+
+.toctree-l1.has-children {
+    font-weight: bold;
 }
 
 /* Styling the links and menus in the top nav */
@@ -358,7 +366,7 @@ pre {
 }
 
 .top-nav-content > button.try-anyscale > span {
-    margin-right: 12px;
+    margin: 0 12px;
 }
 
 .top-nav-content .menu:hover > ul {

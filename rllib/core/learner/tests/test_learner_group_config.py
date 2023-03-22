@@ -46,7 +46,7 @@ class TestAlgorithmConfig(unittest.TestCase):
                 module_class=DiscreteBCTFModule,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
-                model_config={"fcnet_hiddens": [32]},
+                model_config_dict={"fcnet_hiddens": [32]},
             )
         )
         learner_group_config.build()

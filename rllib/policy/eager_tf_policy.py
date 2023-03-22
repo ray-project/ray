@@ -6,8 +6,9 @@ import functools
 import logging
 import os
 import threading
-import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Union
+
+import tree  # pip install dm_tree
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
@@ -174,8 +175,15 @@ def _traced_eager_policy(eager_policy_cls):
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             """Traced version of Policy.compute_actions_from_input_dict."""
 
+            # NOTE: In the new RLModule stack the sampling side is not traced with this
+            # justification that in order to speed up sampling we need to use more
+            # actors.
             # Create a traced version of `self._compute_actions_helper`.
-            if self._traced_compute_actions_helper is False and not self._no_tracing:
+            if (
+                not self.config.get("_enable_rl_module_api", False)
+                and self._traced_compute_actions_helper is False
+                and not self._no_tracing
+            ):
                 self._compute_actions_helper = _convert_eager_inputs(
                     tf.function(
                         super(TracedEagerPolicy, self)._compute_actions_helper,
@@ -378,9 +386,6 @@ def _build_eager_tf_policy(
                 else (get_batch_divisibility_req or 1)
             )
             self._max_seq_len = config["model"]["max_seq_len"]
-
-            if get_default_config:
-                config = dict(get_default_config(), **config)
 
             if validate_spaces:
                 validate_spaces(self, observation_space, action_space, config)

@@ -15,6 +15,7 @@ from filelock import FileLock
 from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
+    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
 )
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.thirdparty.pathspec import PathSpec
@@ -246,6 +247,21 @@ def _get_excludes(path: Path, excludes: List[str]) -> Callable:
 
 
 def _get_gitignore(path: Path) -> Optional[Callable]:
+    """Returns a function that returns True if the path should be excluded.
+
+    Returns None if there is no .gitignore file in the path, or if the
+    RAY_RUNTIME_ENV_IGNORE_GITIGNORE environment variable is set to 1.
+
+    Args:
+        path: The path to the directory to check for a .gitignore file.
+
+    Returns:
+        A function that returns True if the path should be excluded.
+    """
+    ignore_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") == "1"
+    if ignore_gitignore:
+        return None
+
     path = path.absolute()
     ignore_file = path / ".gitignore"
     if ignore_file.is_file():
@@ -600,9 +616,6 @@ async def download_and_unpack_package(
         NotImplementedError: If the protocol of the URI is not supported.
 
     """
-    if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
-        raise IOError("Failed to download package. (Simulated failure for testing)")
-
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     async with _AsyncFileLock(str(pkg_file) + ".lock"):
         if logger is None:
@@ -621,6 +634,8 @@ async def download_and_unpack_package(
                 code = await gcs_aio_client.internal_kv_get(
                     pkg_uri.encode(), namespace=None, timeout=None
                 )
+                if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
+                    code = None
                 if code is None:
                     raise IOError(
                         f"Failed to download runtime_env file package {pkg_uri} "
@@ -630,7 +645,9 @@ async def download_and_unpack_package(
                         "environment variable "
                         f"{RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR} "
                         " to a value larger than the upload time in seconds "
-                        "(the default is 30). If this fails, try re-running "
+                        "(the default is "
+                        f"{RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT}). "
+                        "If this fails, try re-running "
                         "after making any change to a file in the file package."
                     )
                 code = code or b""

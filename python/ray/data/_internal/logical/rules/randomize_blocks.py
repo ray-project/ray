@@ -11,10 +11,10 @@ class ReorderRandomizeBlocksRule(Rule):
     """Rule for reordering RandomizeBlocks logical operator.
 
     Reordering RandomizeBlocks operators is to help fuse multiple
-    AbstractMap operators together for better performance.
+    AbstractUDFMap operators together for better performance.
 
     1. Dedupes multiple RandomizeBlocks operators if they are not seeded.
-    2. Moves RandomizeBlocks operator to the end of a sequence of AbstractMap
+    2. Moves RandomizeBlocks operator to the end of a sequence of AbstractUDFMap
     operators. RandomizeBlocks operators are not moved across AbstractAllToAll operator
     boundaries.
     """

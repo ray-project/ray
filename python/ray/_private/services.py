@@ -100,6 +100,30 @@ ProcessInfo = collections.namedtuple(
 )
 
 
+def _site_flags() -> List[str]:
+    """Detect whether flags related to site packages are enabled for the current
+    interpreter. To run Ray in hermetic build environments, it helps to pass these flags
+    down to Python workers.
+    """
+    flags = []
+    # sys.flags hidden behind helper methods for unit testing.
+    if _no_site():
+        flags.append("-S")
+    if _no_user_site():
+        flags.append("-s")
+    return flags
+
+
+# sys.flags hidden behind helper methods for unit testing.
+def _no_site():
+    return sys.flags.no_site
+
+
+# sys.flags hidden behind helper methods for unit testing.
+def _no_user_site():
+    return sys.flags.no_user_site
+
+
 def _build_python_executable_command_memory_profileable(
     component: str, session_dir: str, unbuffered: bool = True
 ):
@@ -1478,24 +1502,29 @@ def start_raylet(
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
     # needed.
-    start_worker_command = [
-        sys.executable,
-        setup_worker_path,
-        worker_path,
-        f"--node-ip-address={node_ip_address}",
-        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--object-store-name={plasma_store_name}",
-        f"--raylet-name={raylet_name}",
-        f"--redis-address={redis_address}",
-        f"--temp-dir={temp_dir}",
-        f"--metrics-agent-port={metrics_agent_port}",
-        f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}",
-        f"--gcs-address={gcs_address}",
-        f"--session-name={session_name}",
-        f"--temp-dir={temp_dir}",
-        f"--webui={webui}",
-    ]
+    start_worker_command = (
+        [
+            sys.executable,
+            setup_worker_path,
+        ]
+        + _site_flags()  # Inherit "-S" and "-s" flags from current Python interpreter.
+        + [
+            worker_path,
+            f"--node-ip-address={node_ip_address}",
+            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+            f"--object-store-name={plasma_store_name}",
+            f"--raylet-name={raylet_name}",
+            f"--redis-address={redis_address}",
+            f"--temp-dir={temp_dir}",
+            f"--metrics-agent-port={metrics_agent_port}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+            f"--gcs-address={gcs_address}",
+            f"--session-name={session_name}",
+            f"--temp-dir={temp_dir}",
+            f"--webui={webui}",
+        ]
+    )
 
     start_worker_command.append(f"--storage={storage}")
 

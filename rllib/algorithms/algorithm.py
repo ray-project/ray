@@ -35,8 +35,9 @@ from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
+from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
@@ -1346,6 +1347,8 @@ class Algorithm(Trainable):
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
             if self.config._enable_learner_api:
+                is_module_trainable = self.workers.local_worker().is_policy_to_train
+                self.learner_group.set_is_module_trainable(is_module_trainable)
                 train_results = self.learner_group.update(train_batch)
             elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
@@ -1780,6 +1783,7 @@ class Algorithm(Trainable):
             ]
         ] = None,
         evaluation_workers: bool = True,
+        module_spec: Optional[SingleAgentRLModuleSpec] = None,
         # Deprecated.
         workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> Optional[Policy]:
@@ -1816,9 +1820,13 @@ class Algorithm(Trainable):
                 returns False) will not be updated.
             evaluation_workers: Whether to add the new policy also
                 to the evaluation WorkerSet.
+            module_spec: In the new RLModule API we need to pass in the module_spec for
+                the new module that is supposed to be added. Knowing the policy spec is
+                not sufficient.
             workers: A list of RolloutWorker/ActorHandles (remote
                 RolloutWorkers) to add this policy to. If defined, will only
                 add the given policy to these workers.
+
 
         Returns:
             The newly added policy (the copy that got added to the local
@@ -1846,7 +1854,21 @@ class Algorithm(Trainable):
             policy_state=policy_state,
             policy_mapping_fn=policy_mapping_fn,
             policies_to_train=policies_to_train,
+            module_spec=module_spec,
         )
+
+        # If learner API is enabled, we need to also add the underlying module
+        # to the learner group.
+        if self.config._enable_learner_api:
+            policy = self.get_policy(policy_id)
+            module = policy.model
+            self.learner_group.add_module(
+                module_id=policy_id,
+                module_spec=SingleAgentRLModuleSpec.from_module(module),
+            )
+
+            weights = policy.get_weights()
+            self.learner_group.set_weights({policy_id: weights})
 
         # Add to evaluation workers, if necessary.
         if evaluation_workers is True and self.evaluation_workers is not None:
@@ -1860,6 +1882,7 @@ class Algorithm(Trainable):
                 policy_state=policy_state,
                 policy_mapping_fn=policy_mapping_fn,
                 policies_to_train=policies_to_train,
+                module_spec=module_spec,
             )
 
         # Return newly added policy (from the local rollout worker).
@@ -2119,19 +2142,34 @@ class Algorithm(Trainable):
         eval_cf.validate()
         eval_cf.freeze()
 
-        # resources for local worker
+        # resources for the driver of this trainable
         if cf._enable_learner_api:
-            local_worker = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
+            if cf.num_learner_workers == 0:
+                # in this case local_worker only does sampling and training is done on
+                # local learner worker
+                driver = {
+                    # sampling and training is not done concurrently when local is
+                    # used, so pick the max.
+                    "CPU": max(
+                        cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
+                    ),
+                    "GPU": cf.num_gpus_per_learner_worker,
+                }
+            else:
+                # in this case local_worker only does sampling and training is done on
+                # remote learner workers
+                driver = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
         else:
-            local_worker = {
+            # Without Learner API, the local_worker can do both sampling and training.
+            # So, we need to allocate the same resources for the driver as for the
+            # local_worker.
+            driver = {
                 "CPU": cf.num_cpus_for_local_worker,
                 "GPU": 0 if cf._fake_gpus else cf.num_gpus,
             }
 
-        bundles = [local_worker]
-
-        # resources for rollout env samplers
-        rollout_workers = [
+        # resources for remote rollout env samplers
+        rollout_bundles = [
             {
                 "CPU": cf.num_cpus_per_worker,
                 "GPU": cf.num_gpus_per_worker,
@@ -2140,11 +2178,11 @@ class Algorithm(Trainable):
             for _ in range(cf.num_rollout_workers)
         ]
 
-        # resources for evaluation env samplers or datasets (if any)
+        # resources for remote evaluation env samplers or datasets (if any)
         if cls._should_create_evaluation_rollout_workers(eval_cf):
             # Evaluation workers.
             # Note: The local eval worker is located on the driver CPU.
-            evaluation_bundle = [
+            evaluation_bundles = [
                 {
                     "CPU": eval_cf.num_cpus_per_worker,
                     "GPU": eval_cf.num_gpus_per_worker,
@@ -2166,31 +2204,20 @@ class Algorithm(Trainable):
             # operations. This behavior should get fixed by the dataset team. more info
             # found here:
             # https://docs.ray.io/en/master/data/dataset-internals.html#datasets-tune
-            evaluation_bundle = []
+            evaluation_bundles = []
 
-        bundles += rollout_workers + evaluation_bundle
+        # resources for remote learner workers
+        learner_bundles = []
+        if cf._enable_learner_api and cf.num_learner_workers > 0:
+            learner_bundles = [
+                {
+                    "CPU": cf.num_cpus_per_learner_worker,
+                    "GPU": cf.num_gpus_per_learner_worker,
+                }
+                for _ in range(cf.num_learner_workers)
+            ]
 
-        if cf._enable_learner_api:
-            # resources for the trainer
-            if cf.num_learner_workers == 0:
-                # if num_learner_workers is 0, then we need to allocate one gpu if
-                # num_gpus_per_learner_worker is greater than 0.
-                trainer_bundle = [
-                    {
-                        "CPU": cf.num_cpus_per_learner_worker,
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                ]
-            else:
-                trainer_bundle = [
-                    {
-                        "CPU": cf.num_cpus_per_learner_worker,
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                    for _ in range(cf.num_learner_workers)
-                ]
-
-            bundles += trainer_bundle
+        bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -2686,7 +2713,7 @@ class Algorithm(Trainable):
             None, if local replay buffer is not needed.
         """
         if not config.get("replay_buffer_config") or config["replay_buffer_config"].get(
-            "no_local_replay_buffer" or config.get("no_local_replay_buffer")
+            "no_local_replay_buffer"
         ):
             return
 

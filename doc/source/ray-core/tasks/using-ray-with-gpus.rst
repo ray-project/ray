@@ -89,6 +89,8 @@ it will pack one GPU before moving on to the next one to avoid fragmentation.
     :start-after: __fractional_gpus_packing_start__
     :end-before: __fractional_gpus_packing_end__
 
+.. _gpu-leak:
+
 Workers not Releasing GPU Resources
 -----------------------------------
 

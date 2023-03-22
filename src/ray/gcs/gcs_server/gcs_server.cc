@@ -594,7 +594,11 @@ void GcsServer::InitGcsTaskManager() {
 }
 
 void GcsServer::InitMonitorServer() {
-  monitor_server_ = std::make_unique<GcsMonitorServer>(gcs_node_manager_);
+  monitor_server_ = std::make_unique<GcsMonitorServer>(
+      gcs_node_manager_,
+      cluster_resource_scheduler_->GetClusterResourceManager(),
+      gcs_resource_manager_,
+      gcs_placement_group_manager_);
   monitor_grpc_service_.reset(
       new rpc::MonitorGrpcService(main_service_, *monitor_server_));
   rpc_server_.RegisterService(*monitor_grpc_service_);
@@ -639,6 +643,7 @@ void GcsServer::InstallEventListeners() {
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);
+        pubsub_handler_->RemoveSubscriberFrom(node_id.Binary());
 
         if (!RayConfig::instance().use_ray_syncer()) {
           gcs_ray_syncer_->RemoveNode(*node);
@@ -663,6 +668,7 @@ void GcsServer::InstallEventListeners() {
                                          worker_failure_data->exit_detail(),
                                          creation_task_exception);
         gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
+        pubsub_handler_->RemoveSubscriberFrom(worker_id.Binary());
       });
 
   // Install job event listeners.
