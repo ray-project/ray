@@ -155,6 +155,9 @@ class RayActorManager:
         # `remove_actor()`). Kill requests will be handled in wait().
         self._live_actors_to_kill: Set[TrackedActor] = set()
 
+        # Track failed actors
+        self._failed_actor_ids: Set[int] = set()
+
     def next(self, timeout: Optional[Union[int, float]] = None) -> None:
         """Yield control to event manager to await the next event and invoke callbacks.
 
@@ -245,6 +248,8 @@ class RayActorManager:
 
     def _actor_start_failed(self, tracked_actor: TrackedActor, exception: Exception):
         """Callback to be invoked when actor start/stop failed"""
+        self._failed_actor_ids.add(tracked_actor.actor_id)
+
         self._cleanup_actor(tracked_actor=tracked_actor)
 
         if tracked_actor._on_error:
@@ -262,16 +267,19 @@ class RayActorManager:
         tracked_actor = tracked_actor_task._tracked_actor
 
         if isinstance(exception, RayActorError):
-            # Here the actual actor process died.
-            # First, clean up any references to the actor and its futures
+            self._failed_actor_ids.add(tracked_actor.actor_id)
+
+            # Clean up any references to the actor and its futures
             self._cleanup_actor(tracked_actor=tracked_actor)
 
+            # Handle actor state callbacks
             if tracked_actor._on_error:
                 tracked_actor._on_error(tracked_actor, exception)
 
             # Then trigger actor task error callback
             if tracked_actor_task._on_error:
                 tracked_actor_task._on_error(tracked_actor, exception)
+
         elif isinstance(exception, RayTaskError):
             # Otherwise only the task failed. Invoke callback
             if tracked_actor_task._on_error:
@@ -558,7 +566,11 @@ class RayActorManager:
             kill: If set, will forcefully terminate the actor instead of gracefully
                 scheduling termination.
         """
-        if tracked_actor in self._live_actors_to_ray_actors_resources:
+        if tracked_actor.actor_id in self._failed_actor_ids:
+            logger.debug(
+                f"Tracked actor already failed, no need to remove: " f"{tracked_actor}"
+            )
+        elif tracked_actor in self._live_actors_to_ray_actors_resources:
             # Ray actor is running.
 
             if not kill:

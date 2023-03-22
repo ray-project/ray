@@ -624,11 +624,16 @@ class TuneController(_TuneControllerBase):
         )
 
         if trial in (self._pending_trials | self._paused_trials):
+            # First, set to running (needed downstream in _process_trial_failure)
+            self._set_trial_status(trial, Trial.RUNNING)
+
             logger.debug(
                 f"Trial {trial} failed in its creation task. Unstaging "
                 f"to allow it to be re-scheduled."
             )
+
             self._unstage_trial_with_resources(trial)
+            self._trial_task_failure(trial, exception=exception)
 
         self._actor_stopped(tracked_actor)
 
@@ -707,10 +712,6 @@ class TuneController(_TuneControllerBase):
     def _schedule_trial_stop(self, trial: Trial, exception: Optional[Exception] = None):
         logger.debug(f"Requesting to STOP actor for trial {trial}")
 
-        if trial not in self._trial_to_actor:
-            logger.debug(f"Cannot STOP trial as it is not live: {trial}")
-            return
-
         trial.saving_to = None
         trial.restoring_from = None
 
@@ -719,6 +720,10 @@ class TuneController(_TuneControllerBase):
 
         if exception:
             trial.handle_error(exc=exception)
+
+        if trial not in self._trial_to_actor:
+            logger.debug(f"Will not STOP trial actor as it is not live: {trial}")
+            return
 
         if not exception and self._maybe_cache_trial_actor(trial):
             # Trial runner has been cached

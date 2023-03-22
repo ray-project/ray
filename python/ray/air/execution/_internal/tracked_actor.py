@@ -35,6 +35,8 @@ class TrackedActor:
         return f"<TrackedActor {self.actor_id}>"
 
     def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return False
         return self.actor_id == other.actor_id
 
     def __hash__(self):
