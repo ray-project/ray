@@ -554,19 +554,21 @@ class TrainReporter(ProgressReporter):
     _heartbeat_threshold = AirVerbosity.VERBOSE
 
     def _get_heartbeat(self, trials: List[Trial]):
-        # Iteration 2 is running at 2023-02-24 12:35:39. Running time: 42min 14s
+        # Training on iteration 1. Current time: 2023-03-22 15:29:25 (running for 00:00:03.24)  # noqa
         if len(trials) == 0:
             return
         trial = trials[0]
         if trial.status != Trial.RUNNING:
             return " ".join(
-                [f"Training is in {trial.status} status.", self._time_passed_str]
+                [f"Training is in {trial.status} status.", self._time_heartbeat_str]
             )
-        if not trial.last_result:
+        if not trial.last_result or TRAINING_ITERATION not in trial.last_result:
             iter_num = 1
         else:
-            iter_num = trial.last_result[TRAINING_ITERATION] - 1
-        return " ".join([f"Training on iteration {iter_num}.", self._time_passed_str])
+            iter_num = trial.last_result[TRAINING_ITERATION] + 1
+        return " ".join(
+            [f"Training on iteration {iter_num}.", self._time_heartbeat_str]
+        )
 
     def _print_heartbeat(self, trials, *args):
         print(self._get_heartbeat(trials))
@@ -625,6 +627,7 @@ class AirResultProgressCallback(Callback):
     # to be filled in by subclasses.
     _start_end_verbosity = None
     _intermediate_result_verbosity = None
+    _addressing_tmpl = None
 
     def __init__(self, verbosity):
         self._verbosity = verbosity
@@ -646,14 +649,34 @@ class AirResultProgressCallback(Callback):
     ):
         if self._verbosity < self._intermediate_result_verbosity:
             return
-        self._on_trial_result_internal(trial, result)
+        curr_time, running_time = _get_time_str(self._start_time, time.time())
+        print(
+            " ".join(
+                [
+                    self._addressing_tmpl.format(trial),
+                    f"finished iter {result[TRAINING_ITERATION]} "
+                    f"at {curr_time} (running for {running_time})",
+                ]
+            )
+        )
+        self._print_result(trial, result)
 
     def on_trial_complete(
         self, iteration: int, trials: List[Trial], trial: Trial, **info
     ):
         if self._verbosity < self._start_end_verbosity:
             return
-        self._on_trial_complete_internal(trial)
+        curr_time, running_time = _get_time_str(self._start_time, time.time())
+        print(
+            " ".join(
+                [
+                    self._addressing_tmpl.format(trial),
+                    f"({trial.last_result[TRAINING_ITERATION]} iters) "
+                    f"finished at {curr_time} (running for {running_time})",
+                ]
+            )
+        )
+        self._print_result(trial)
 
     def on_checkpoint(
         self,
@@ -665,42 +688,35 @@ class AirResultProgressCallback(Callback):
     ):
         if self._verbosity < self._intermediate_result_verbosity:
             return
-        self._on_checkpoint_internal(trial, checkpoint)
+        print(
+            " ".join(
+                [
+                    self._addressing_tmpl.format(trial),
+                    f"saved checkpoint for iter {trial.last_result[TRAINING_ITERATION]}"
+                    f" at {checkpoint.dir_or_data}",
+                ]
+            )
+        )
+        print()
 
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
         if self._verbosity < self._start_end_verbosity:
             return
-        self._on_trial_start_internal(trial)
+        print(
+            " ".join(
+                [self._addressing_tmpl.format(trial), "started with configuration:"]
+            )
+        )
+        self._print_config(trial)
 
 
 class TuneResultProgressCallback(AirResultProgressCallback):
     _intermediate_result_verbosity = AirVerbosity.VERBOSE
     _start_end_verbosity = AirVerbosity.DEFAULT
-
-    def _on_trial_start_internal(self, trial):
-        print(f"Trial {trial} started with configuration: ")
-        self._print_config(trial)
-
-    def _on_trial_result_internal(self, trial, result):
-        curr_time, running_time = _get_time_str(self._start_time, time.time())
-        print(
-            f"Trial {trial} finished iter "
-            f"{result[TRAINING_ITERATION]} at {curr_time} (running for {running_time})"
-        )
-        self._print_result(trial, result)
-
-    def _on_checkpoint_internal(self, trial, checkpoint):
-        print(f"Trial {trial} saved checkpoint at {checkpoint.dir_or_data}")
-
-    def _on_trial_complete_internal(self, trial):
-        curr_time, running_time = _get_time_str(self._start_time, time.time())
-        print(
-            f"Trial {trial} ({trial.last_result[TRAINING_ITERATION]} iters)"
-            f" finished at {curr_time} (running for {running_time})"
-        )
-        self._print_result(trial)
+    _addressing_tmpl = "Trial {}"
 
 
 class TrainResultProgressCallback(AirResultProgressCallback):
     _intermediate_result_verbosity = AirVerbosity.DEFAULT
     _start_end_verbosity = AirVerbosity.DEFAULT
+    _addressing_tmpl = "Training"
