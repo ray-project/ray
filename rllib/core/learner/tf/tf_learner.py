@@ -56,7 +56,12 @@ class TfLearner(Learner):
         # by default in rllib we disable tf2 behavior
         # This call re-enables it as it is needed for using
         # this class.
-        tf1.enable_v2_behavior()
+        try:
+            tf1.enable_v2_behavior()
+        except ValueError:
+            # This is a hack to avoid the error that happens when calling
+            # enable_v2_behavior after variables have already been created.
+            pass
 
         super().__init__(framework_hyperparameters=framework_hyperparameters, **kwargs)
 
