@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 _WARN_REPARTITION_THRESHOLD = 10 * 1024**3
+_DEFAULT_NUM_ITERATIONS = 10
 
 
 def _convert_scaling_config_to_ray_params(
@@ -144,7 +145,7 @@ class GBDTTrainer(BaseTrainer):
     _default_ray_params: Dict[str, Any] = {"checkpoint_frequency": 1}
     _init_model_arg_name: str
     _num_iterations_argument: str = "num_boost_round"
-    _default_num_iterations: int = 10
+    _default_num_iterations: int = _DEFAULT_NUM_ITERATIONS
 
     def __init__(
         self,
@@ -153,7 +154,7 @@ class GBDTTrainer(BaseTrainer):
         label_column: str,
         params: Dict[str, Any],
         dmatrix_params: Optional[Dict[str, Dict[str, Any]]] = None,
-        num_boost_round: int = 10,
+        num_boost_round: int = _DEFAULT_NUM_ITERATIONS,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         preprocessor: Optional["Preprocessor"] = None,
