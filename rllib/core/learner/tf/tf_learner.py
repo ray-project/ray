@@ -52,6 +52,12 @@ class TfLearner(Learner):
         framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
         **kwargs,
     ):
+
+        # by default in rllib we disable tf2 behavior
+        # This call re-enables it as it is needed for using
+        # this class.
+        tf1.enable_v2_behavior()
+
         super().__init__(framework_hyperparameters=framework_hyperparameters, **kwargs)
 
         self._enable_tf_function = framework_hyperparameters.eager_tracing
