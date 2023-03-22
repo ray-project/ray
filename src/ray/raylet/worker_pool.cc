@@ -18,6 +18,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <fstream>
 
+#include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
@@ -390,6 +391,15 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
       }
 #endif
     }
+  }
+
+  if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER) {
+      auto preload_python_modules = RayConfig::instance().preload_python_modules();
+      std::string serialized_preload_python_modules  = absl::StrJoin(preload_python_modules, ",");
+      RAY_LOG(DEBUG) << "preload_python_modules " << serialized_preload_python_modules;
+      if (preload_python_modules.size() > 0) {
+        worker_command_args.push_back("--worker-preload-modules=" + serialized_preload_python_modules);
+      }
   }
 
   // We use setproctitle to change python worker process title,
