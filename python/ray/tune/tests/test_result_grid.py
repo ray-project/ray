@@ -463,7 +463,7 @@ def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
     assert best_checkpoint.uri.startswith(results._remote_path)
 
     # Upload path, so path should point to local_path
-    assert results._remote_path == results.path
+    assert results._remote_path == results.experiment_path
 
     # Check Result objects
     for result in results:

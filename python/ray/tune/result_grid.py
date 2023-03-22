@@ -76,7 +76,7 @@ class ResultGrid:
     @property
     def _local_path(self) -> str:
         """Return path pointing to the experiment directory on the local disk."""
-        return self._experiment_analysis.local_path
+        return self._experiment_analysis._local_path
 
     @property
     def _remote_path(self) -> Optional[str]:
