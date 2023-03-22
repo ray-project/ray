@@ -188,7 +188,7 @@ py_test(
     data = [
         "tuned_examples/appo/cartpole-appo-vtrace-separate-losses.yaml"
     ],
-    args = ["--dir=tuned_examples/appo"]
+    args = ["--dir=tuned_examples/appo", "--framework=tf"]
 )
 
 py_test(
