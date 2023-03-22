@@ -1,4 +1,5 @@
 import abc
+import contextlib
 import copy
 import datetime
 import logging
@@ -146,17 +147,6 @@ def _check_gpus_in_resources(
         return bool(resources.get("gpu", None))
 
 
-def _print_heartbeat(runner, reporter):
-    """Print heartbeat information for training/tuning workflow.
-
-    New console output flow.
-    Only relevant if `AIR_VERBOSITY` is set.
-    By default, on for tuning and off for training.
-    """
-    trials = runner.get_trials()
-    reporter.print_heartbeat(trials)
-
-
 def _report_progress(
     runner: TrialRunner, reporter: ProgressReporter, done: bool = False
 ):
@@ -174,12 +164,14 @@ def _report_progress(
         reporter.report(trials, done, sched_debug_str, executor_debug_str)
 
 
-def _report_air_progress(runner: TrialRunner, reporter: "AirProgressReporter"):
+def _report_air_progress(
+    runner: TrialRunner, reporter: "AirProgressReporter", force: bool = False
+):
     trials = runner.get_trials()
     reporter_args = []
     executor_debug_str = runner.trial_executor.debug_string()
     reporter_args.append(executor_debug_str)
-    reporter.print_heartbeat(trials, *reporter_args)
+    reporter.print_heartbeat(trials, *reporter_args, force=force)
 
 
 def _setup_signal_catching() -> threading.Event:
@@ -854,26 +846,36 @@ def run(
             air_verbosity, search_alg.total_samples
         )
 
-    while not runner.is_finished() and not experiment_interrupted_event.is_set():
-        runner.step()
+    # rich live context manager has to be called encapsulting
+    # the while loop. For other kind of reporters, no op.
+    # `ExitStack` allows us to *conditionally* apply context manager.
+    with contextlib.ExitStack() as stack:
+        from ray.tune.experimental.output import TuneRichReporter
+
+        if air_progress_reporter and isinstance(
+            air_progress_reporter, TuneRichReporter
+        ):
+            stack.enter_context(air_progress_reporter.with_live())
+        while not runner.is_finished() and not experiment_interrupted_event.is_set():
+            runner.step()
+            if has_verbosity(Verbosity.V1_EXPERIMENT):
+                _report_progress(runner, progress_reporter)
+
+            if air_verbosity:
+                _report_air_progress(runner, air_progress_reporter)
+
+        tune_taken = time.time() - tune_start
+
+        try:
+            runner.checkpoint(force=True, wait=True)
+        except Exception as e:
+            logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
+
         if has_verbosity(Verbosity.V1_EXPERIMENT):
-            _report_progress(runner, progress_reporter)
+            _report_progress(runner, progress_reporter, done=True)
 
         if air_verbosity:
-            _report_air_progress(runner, air_progress_reporter)
-
-    tune_taken = time.time() - tune_start
-
-    try:
-        runner.checkpoint(force=True, wait=True)
-    except Exception as e:
-        logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
-
-    if has_verbosity(Verbosity.V1_EXPERIMENT):
-        _report_progress(runner, progress_reporter, done=True)
-
-    if air_verbosity:
-        _report_air_progress(runner, air_progress_reporter)
+            _report_air_progress(runner, air_progress_reporter, force=True)
 
     all_trials = runner.get_trials()
     experiment_checkpoint = runner.experiment_state_path

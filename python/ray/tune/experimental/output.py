@@ -1,9 +1,11 @@
-from typing import List, Dict, Optional, Tuple, Any, TYPE_CHECKING
+from typing import List, Dict, Optional, OrderedDict, Tuple, Any, TYPE_CHECKING
 
+import contextlib
 import collections
 from dataclasses import dataclass
 import datetime
 from enum import Enum
+import logging
 import numbers
 import numpy as np
 import os
@@ -11,6 +13,13 @@ import pandas as pd
 from tabulate import tabulate
 import textwrap
 import time
+
+try:
+    import rich
+    import rich.layout
+    import rich.live
+except ImportError:
+    rich = None
 
 from ray._private.dict import unflattened_lookup
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
@@ -29,6 +38,8 @@ from ray.tune.experiment.trial import Trial
 
 if TYPE_CHECKING:
     from ray.tune.stopper import Stopper
+
+logger = logging.getLogger(__name__)
 
 # defines the mapping of the key in result and the key to be printed in table.
 # Note this is ordered!
@@ -124,7 +135,8 @@ def _get_trials_by_state(trials: List[Trial]) -> Dict[str, List[Trial]]:
 
 def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
     """Try to infer the metrics to print out."""
-    result = list()
+    # Using OrderedDict for OrderedSet.
+    result = OrderedDict()
     for t in trials:
         if not t.last_result:
             continue
@@ -132,11 +144,11 @@ def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
             if metric not in DEFAULT_COLUMNS:
                 if metric not in AUTO_RESULT_KEYS:
                     if type(value) in VALID_SUMMARY_TYPES:
-                        result.append(metric)
+                        result[metric] = ""  # not important
 
             if len(result) >= limit:
-                return result
-    return result
+                return list(result.keys())
+    return list(result.keys())
 
 
 def _current_best_trial(trials: List[Trial], metric: str, mode: str):
@@ -340,11 +352,11 @@ class ProgressReporter:
         current_time_str, running_for_str = _get_time_str(self._start_time, time.time())
         return f"Current time: {current_time_str} " f"(running for {running_for_str})"
 
-    def print_heartbeat(self, trials, *args):
+    def print_heartbeat(self, trials, *args, force: bool = False):
         if self._verbosity < self._heartbeat_threshold:
             return
-        if time.time() - self._last_heartbeat_time > self._heartbeat_freq:
-            self._print_heartbeat(trials, args)
+        if force or time.time() - self._last_heartbeat_time > self._heartbeat_freq:
+            self._print_heartbeat(trials, *args)
             self._last_heartbeat_time = time.time()
 
     def _print_heartbeat(self, trials, *args):
@@ -353,9 +365,17 @@ class ProgressReporter:
 
 def _detect_reporter(verbosity: AirVerbosity, num_samples: Optional[int] = None):
     # TODO: Add JupyterNotebook and Ray Client case later.
+    rich_enabled = "ENABLE_RICH" in os.environ
     if num_samples and num_samples > 1:
-        reporter = TuneTerminalReporter(verbosity, num_samples)
+        if rich_enabled:
+            if not rich:
+                raise ImportError("Please run `pip install rich`. ")
+            reporter = TuneRichReporter(verbosity, num_samples)
+        else:
+            reporter = TuneTerminalReporter(verbosity, num_samples)
     else:
+        if rich_enabled:
+            logger.warning("`ENABLE_RICH` is only effective with Tune usecase.")
         reporter = TrainReporter(verbosity)
     return reporter
 
@@ -419,7 +439,7 @@ class TuneTerminalReporter(TuneReporterBase):
     def _print_heartbeat(self, trials, *sys_args):
         if self._verbosity < self._heartbeat_threshold:
             return
-        heartbeat_strs, table_data = self._get_heartbeat(trials, sys_args)
+        heartbeat_strs, table_data = self._get_heartbeat(trials, *sys_args)
         for s in heartbeat_strs:
             print(s)
         # now print the table using Tabulate
@@ -444,9 +464,75 @@ class TuneTerminalReporter(TuneReporterBase):
 
 
 class TuneRichReporter(TuneReporterBase):
+    def __init__(
+        self,
+        verbosity: AirVerbosity,
+        num_samples: int,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+    ):
+        super().__init__(verbosity, num_samples, metric, mode)
+        self._live = None
+
+    # since sticky table, we can afford to do that more often.
+    _heartbeat_freq = 5
+
+    @contextlib.contextmanager
+    def with_live(self):
+        with rich.live.Live(refresh_per_second=4) as live:
+            self._live = live
+            yield
+            self._live = None
+
+    def _render_layout(self, heartbeat_strs: List[str], table_data: _TrialTableData):
+        # TODO: Right now the layout is aligned at the top. See if we can aligh it
+        # to the bottom of the console.
+        table = rich.table.Table(
+            box=rich.box.SQUARE,
+            expand=True,
+            show_header=False,
+            title=":glowing_star: Ray Tune Trial Status Table :glowing_star:",
+        )
+        header = table_data.header
+        table_data = table_data.data
+        # count table line number so that we know the layout height to allocate.
+        table_line_num = 4
+        for _ in header:
+            table.add_column(overflow="fold")
+        table.add_row(*header)
+        for per_status_info in table_data:
+            trial_infos = per_status_info.trial_infos
+            more_info = per_status_info.more_info
+            for trial_info in trial_infos:
+                table.add_row(*[str(_) for _ in trial_info])
+                table_line_num += 1
+            if more_info:
+                table.add_row(more_info)
+                table_line_num += 1
+
+        layout = rich.layout.Layout()
+        layout.split(
+            rich.layout.Layout(name="basic_info", size=3),
+            rich.layout.Layout(name="table", size=table_line_num),
+        )
+        basic_info_table = rich.table.Table.grid()
+        for s in heartbeat_strs:
+            basic_info_table.add_row(str(s))
+        layout["basic_info"].update(basic_info_table)
+        layout["table"].update(table)
+        self._live.update(layout)
+
     def _print_heartbeat(self, trials, *args):
-        # TODO: display `self._get_heartbeat` using Rich
-        pass
+        if not rich:
+            return
+        if not self._live:
+            logger.warning(
+                "`print_heartbeat` is not supposed to "
+                "be called within `with_live` context manager."
+            )
+            return
+        heartbeat_strs, table_data = self._get_heartbeat(trials, *args)
+        self._render_layout(heartbeat_strs, table_data)
 
 
 class TrainReporter(ProgressReporter):
