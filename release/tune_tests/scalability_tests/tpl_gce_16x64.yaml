@@ -7,11 +7,11 @@ max_workers: 15
 
 head_node_type:
     name: head_node
-    instance_type: n2d-standard-64
+    instance_type: n2-standard-64 # n2d-standard-64
 
 worker_node_types:
     - name: worker_node
-      instance_type: n2d-standard-64
+      instance_type: n2-standard-64 # n2d-standard-64
       min_workers: 15
       max_workers: 15
       use_spot: false
