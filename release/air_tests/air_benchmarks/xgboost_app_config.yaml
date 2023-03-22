@@ -6,7 +6,6 @@ python:
   pip_packages:
     - pytest
     - modin==0.12.1
-    - xgboost==1.3.3
   conda_packages: []
 
 post_build_cmds:
