@@ -38,7 +38,7 @@ class RequestMetadata:
     http_arg_is_pickled: bool = False
 
     # HTTP route path of the request.
-    route: str = "N/A"
+    route: str = ""
 
 
 @dataclass
