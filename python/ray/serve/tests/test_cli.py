@@ -16,7 +16,7 @@ from ray import serve
 from ray.experimental.state.api import list_actors
 from ray._private.test_utils import wait_for_condition
 from ray.serve.schema import ServeApplicationSchema
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_MESSAGE
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
@@ -305,6 +305,20 @@ def test_put_duplicate_routes(ray_start_stop):
             ["serve", "deploy", config_file], stderr=subprocess.STDOUT
         )
         assert "ValidationError" in e.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_single_with_name(ray_start_stop):
+    config_file = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "single_config_with_name.yaml"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(
+            ["serve", "deploy", config_file], stderr=subprocess.STDOUT
+        )
+    assert "name" in e.value.output.decode("utf-8")
+    assert MULTI_APP_MIGRATION_MESSAGE in e.value.output.decode("utf-8")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

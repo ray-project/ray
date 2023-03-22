@@ -34,6 +34,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
     SERVE_DEFAULT_APP_NAME,
+    MULTI_APP_MIGRATION_MESSAGE,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
@@ -507,10 +508,8 @@ class ServeController:
             if "name" in config.dict(exclude_unset=True):
                 error_msg = (
                     "Specifying the name of an application is only allowed for apps "
-                    "that are listed as part of a multi-app config file. Please see "
-                    "the documentation for ServeDeploySchema for more details on multi-"
-                    "app config files."
-                )
+                    "that are listed as part of a multi-app config file. "
+                ) + MULTI_APP_MIGRATION_MESSAGE
                 logger.warning(error_msg)
                 raise RayServeException(error_msg)
 
