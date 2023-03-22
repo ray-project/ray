@@ -34,7 +34,7 @@ parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2"],
-    default="tf",
+    default="tf2",
     help="The DL framework specifier (torch not supported yet "
     "due to lack of model).",
 )
