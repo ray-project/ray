@@ -1294,7 +1294,7 @@ class TestDeployApp:
         config.applications[1].deployments[0].name = "random2"
         client.deploy_apps(config)
 
-        def check_app_status():
+        def check_app_message():
             details = ray.get(client._controller.get_serve_instance_details.remote())
             # The error message should be descriptive
             # e.g. no deployment "x" in application "y"
@@ -1303,7 +1303,7 @@ class TestDeployApp:
                 and "deployment" in details["applications"]["random1"]["message"]
             )
 
-        wait_for_condition(check_app_status)
+        wait_for_condition(check_app_message)
 
 
 class TestServeRequestProcessingTimeoutS:
