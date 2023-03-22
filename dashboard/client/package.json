@@ -30,7 +30,7 @@
     "react-router-dom": "^6.4.3",
     "react-scripts": "^5.0.1",
     "react-window": "^1.8.5",
-    "swr": "^1.3.0",
+    "swr": "^2.1.0",
     "typeface-roboto": "0.0.75",
     "typescript": "^4.8.4"
   },
