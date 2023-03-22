@@ -1,6 +1,5 @@
 import abc
 import numpy as np
-import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Iterator
 
 from ray.data.block import BlockAccessor, DataBatch, T
@@ -14,12 +13,6 @@ if TYPE_CHECKING:
     import torch
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
     from ray.data.dataset import TensorFlowTensorBatchType
-
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
 
 
 @PublicAPI(stability="beta")
@@ -61,7 +54,7 @@ class DatasetIterator(abc.ABC):
         *,
         prefetch_blocks: int = 0,
         batch_size: int = 256,
-        batch_format: Literal["default", "numpy", "pandas"] = "default",
+        batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -90,7 +83,9 @@ class DatasetIterator(abc.ABC):
                 tables to Pandas and tensors to NumPy), "pandas" to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
                 to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
+                ``Dict[str, numpy.ndarray]`` for tabular datasets, or None to return
+                the underlying block exactly as is with no additional formatting.
+                The default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -126,9 +121,10 @@ class DatasetIterator(abc.ABC):
         Returns:
             An iterator over rows of the dataset.
         """
-        target_format = self._default_batch_format()
         for batch in self.iter_batches(
-            batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=target_format
+            batch_size=None,
+            prefetch_blocks=prefetch_blocks,
+            batch_format=None,
         ):
             batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
             for row in batch.iter_rows():
@@ -704,11 +700,3 @@ class DatasetIterator(abc.ABC):
         if schema is None or isinstance(schema, type):
             return False
         return _is_tensor_schema(schema.names)
-
-    def _default_batch_format(self) -> Literal["default", "pandas", "pyarrow", "numpy"]:
-        """Returns the best batch format that lines up with the dataset format.
-
-        NOTE: Return "default" here. Subclass can override this method to decide best
-        batch format.
-        """
-        return "default"

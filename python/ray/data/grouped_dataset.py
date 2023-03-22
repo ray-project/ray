@@ -1,4 +1,4 @@
-from typing import Any, Callable, Generic, List, Tuple, Union
+from typing import Any, Callable, Generic, List, Tuple, Union, Optional
 
 from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
@@ -270,7 +270,7 @@ class GroupedDataset(Generic[T]):
         fn: Union[CallableClass, Callable[[DataBatch], DataBatch]],
         *,
         compute: Union[str, ComputeStrategy] = None,
-        batch_format: str = "default",
+        batch_format: Optional[str] = "default",
         **ray_remote_args,
     ) -> "Dataset[Any]":
         # TODO AttributeError: 'GroupedDataset' object has no attribute 'map_groups'
@@ -322,10 +322,13 @@ class GroupedDataset(Generic[T]):
                 batch of zero or more records, similar to map_batches().
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
-            batch_format: Specify "default" to use the default block format
-                (promotes Arrow to pandas), "pandas" to select
-                ``pandas.DataFrame`` as the batch format,
-                or "pyarrow" to select ``pyarrow.Table``.
+            batch_format: Specify ``"default"`` to use the default block format
+                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
+                ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
+                ``Dict[str, numpy.ndarray]`` for tabular datasets, or None
+                to return the underlying block exactly as is with no additional
+                formatting. The default is "default".
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
