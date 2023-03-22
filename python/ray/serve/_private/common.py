@@ -28,6 +28,7 @@ class EndpointInfo:
     route: str
 
 
+# Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts
 class ReplicaState(str, Enum):
     STARTING = "STARTING"
     UPDATING = "UPDATING"

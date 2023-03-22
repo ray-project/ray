@@ -15,11 +15,12 @@ import {
 } from "@material-ui/core";
 import { Autocomplete, Pagination } from "@material-ui/lab";
 import React, { ReactElement } from "react";
-import { useParams } from "react-router-dom";
+import { Outlet, useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
+import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import { HelpInfo } from "../../components/Tooltip";
@@ -39,16 +40,19 @@ const useStyles = makeStyles((theme) =>
 );
 
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
+  { label: "" }, // For expand/collapse button
   { label: "Name" },
-  { label: "Status" },
-  { label: "Status message", width: "30%" },
   { label: "Replicas" },
-  { label: "Deployment config" },
+  { label: "Status" },
+  { label: "Actions" },
+  { label: "Status message", width: "30%" },
+  { label: "Last deployed at" },
+  { label: "Duration" },
 ];
 
 export const ServeApplicationDetailPage = () => {
   const classes = useStyles();
-  const { name } = useParams();
+  const { applicationName } = useParams();
 
   const {
     application,
@@ -57,12 +61,12 @@ export const ServeApplicationDetailPage = () => {
     setPage,
     changeFilter,
     allDeployments,
-  } = useServeApplicationDetails(name);
+  } = useServeApplicationDetails(applicationName);
 
   if (!application) {
     return (
       <Typography color="error">
-        Application with name "{name}" not found.
+        Application with name "{applicationName}" not found.
       </Typography>
     );
   }
@@ -70,20 +74,6 @@ export const ServeApplicationDetailPage = () => {
   const appName = application.name ? application.name : "-";
   return (
     <div>
-      {/* Extra MainNavPageInfo to add an extra layer of nesting in breadcrumbs */}
-      <MainNavPageInfo
-        pageInfo={{
-          id: "serveApplicationsList",
-          title: "Applications",
-        }}
-      />
-      <MainNavPageInfo
-        pageInfo={{
-          id: "serveApplicationDetail",
-          title: appName,
-          path: `/serve/applications/${appName}`,
-        }}
-      />
       <MetadataSection
         metadataList={[
           {
@@ -113,8 +103,10 @@ export const ServeApplicationDetailPage = () => {
           {
             label: "Replicas",
             content: {
-              // TODO (aguo): Add number of replicas across all deployments once available in the UI
-              value: "0",
+              value: Object.values(application.deployments)
+                .map(({ replicas }) => replicas.length)
+                .reduce((acc, curr) => acc + curr)
+                .toString(),
             },
           },
           {
@@ -148,7 +140,7 @@ export const ServeApplicationDetailPage = () => {
           },
         ]}
       />
-      <CollapsibleSection title="Deployments" startExpanded>
+      <CollapsibleSection title="Deployments / Replicas" startExpanded>
         <TableContainer>
           <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
             <Autocomplete
@@ -228,6 +220,7 @@ export const ServeApplicationDetailPage = () => {
                   <ServeDeploymentRow
                     key={deployment.name}
                     deployment={deployment}
+                    application={application}
                   />
                 ))}
             </TableBody>
@@ -235,5 +228,36 @@ export const ServeApplicationDetailPage = () => {
         </TableContainer>
       </CollapsibleSection>
     </div>
+  );
+};
+
+export const ServeApplicationDetailLayout = () => {
+  const { applicationName } = useParams();
+
+  const { loading, application } = useServeApplicationDetails(applicationName);
+
+  if (loading) {
+    return <Loading loading />;
+  } else if (!application) {
+    return (
+      <Typography color="error">
+        Application with name "{applicationName}" not found.
+      </Typography>
+    );
+  }
+
+  const appName = application.name ? application.name : "-";
+
+  return (
+    <React.Fragment>
+      <MainNavPageInfo
+        pageInfo={{
+          id: "serveApplicationDetail",
+          title: appName,
+          path: `/serve/applications/${appName}`,
+        }}
+      />
+      <Outlet />
+    </React.Fragment>
   );
 };

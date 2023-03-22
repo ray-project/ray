@@ -19,6 +19,7 @@ import React, { useContext, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import { DurationText } from "../common/DurationText";
+import { ActorLink } from "../common/links";
 import { CpuProfilingLink, CpuStackTraceLink } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
 import { Actor } from "../type/actor";
@@ -346,15 +347,16 @@ const ActorTable = ({
                       arrow
                       interactive
                     >
-                      <Link
-                        to={
-                          detailPathPrefix
-                            ? `${detailPathPrefix}/${actorId}`
-                            : actorId
-                        }
-                      >
-                        {actorId}
-                      </Link>
+                      <div>
+                        <ActorLink
+                          actorId={actorId}
+                          to={
+                            detailPathPrefix
+                              ? `${detailPathPrefix}/${actorId}`
+                              : actorId
+                          }
+                        />
+                      </div>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">{actorClass}</TableCell>

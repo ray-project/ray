@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { getServeApplications } from "../../service/serve";
-import { ServeApplicationStatus } from "../../type/serve";
+import { ServeApplicationStatus, ServeDeploymentMode } from "../../type/serve";
 import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import { ServeApplicationsListPage } from "./ServeApplicationsListPage";
 
@@ -16,8 +16,8 @@ describe("ServeApplicationsListPage", () => {
 
     mockGetServeApplications.mockResolvedValue({
       data: {
-        host: "1.2.3.4",
-        port: 8000,
+        http_options: { host: "1.2.3.4", port: 8000 },
+        proxy_location: ServeDeploymentMode.EveryNode,
         applications: {
           home: {
             name: "home",
