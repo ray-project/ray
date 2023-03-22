@@ -1,6 +1,7 @@
+import functools
 import logging
 import os
-from typing import Optional
+from typing import Any, Callable, Dict, Optional
 
 import ray
 from ray.serve._private.constants import DEBUG_LOG_ENV_VAR, SERVE_LOGGER_NAME
@@ -13,6 +14,25 @@ def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
     """Returns a formatted message for an HTTP or ServeHandle access log."""
     return f"{method.upper()} {route} {status.upper()} {latency_ms:.1f}ms"
 
+
+def to_file_only_filter(record: logging.LogRecord):
+    """XXX: comment."""
+    if not hasattr(record, "to_file_only") or record.to_file_only is None:
+        return True
+
+    return not record.to_file_only
+
+def add_to_file_only_kwarg_to_logger_method(logger_method: Callable):
+    """XXX: comment."""
+    @functools.wraps(logger_method)
+    def wrapped(*args, to_file_only: Optional[bool] = False, extra: Optional[Dict[Any, Any]], **kwargs):
+        if to_file_only is not None:
+            extra = extra if extra is not None else {}
+            extra["to_file_only"] = to_file_only
+
+        return logger_method(*args, extra=extra, **kwargs)
+
+    return wrapped
 
 def configure_component_logger(
     *,
@@ -46,7 +66,9 @@ def configure_component_logger(
     if log_to_stream:
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(formatter)
+        stream_handler.addFilter(to_file_only_filter)
         logger.addHandler(stream_handler)
+
 
     if log_to_file:
         logs_dir = os.path.join(
@@ -69,6 +91,15 @@ def configure_component_logger(
         )
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
+
+    # XXX: parametrize?
+    logger.debug = add_to_file_only_kwarg_to_logger(logger.debug)
+    logger.info = add_to_file_only_kwarg_to_logger(logger.info)
+    logger.warning = add_to_file_only_kwarg_to_logger(logger.warning)
+    logger.error = add_to_file_only_kwarg_to_logger(logger.error)
+    logger.critical = add_to_file_only_kwarg_to_logger(logger.critical)
+    logger.log = add_to_file_only_kwarg_to_logger(logger.log)
+    logger.exception = add_to_file_only_kwarg_to_logger(logger.exception)
 
 
 class LoggingContext:
