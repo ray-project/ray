@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 import ray
 from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
-from ray.dashboard.tests.conftest import *  # noqa
+from ray.train.tests.conftest import *  # noqa
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.lightning import LightningCheckpoint, LightningPredictor
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
