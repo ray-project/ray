@@ -2064,6 +2064,12 @@ class DeploymentStateManager:
     def get_deployment_details(
         self, deployment_name: str
     ) -> Optional[DeploymentDetails]:
+        """Gets detailed info on a deployment.
+
+        Returns:
+            DeploymentDetails: if the deployment is live.
+            None: if the deployment is deleted.
+        """
         statuses = self.get_deployment_statuses([deployment_name])
         if len(statuses) == 0:
             return None

@@ -215,7 +215,15 @@ class ApplicationState:
         )
 
     def list_deployment_details(self) -> Dict[str, DeploymentDetails]:
-        """Gets detailed info on all deployments in this application."""
+        """Gets detailed info on all live deployments in this application.
+        (Does not include deleted deployments.)
+
+        Returns: a dictionary of deployment info. The set of deployment info returned
+            may not be the full list of deployments that are part of the application.
+            This can happen when the application is still deploying and bringing up
+            deployments, or when the application is deleting and some deployments have
+            been deleted.
+        """
         details = {
             name: self.deployment_state_manager.get_deployment_details(name)
             for name in self.get_all_deployments()
