@@ -56,7 +56,8 @@ class BaseTrainer(abc.ABC):
     Note: The base ``BaseTrainer`` class cannot be instantiated directly. Only
     one of its subclasses can be used.
 
-    Note to AIR developers: If a new AIR trainer is added, please update `usage.py`.
+    Note to AIR developers: If a new AIR trainer is added, please update
+    `air/_internal/usage.py`.
 
     **How does a trainer work?**
 

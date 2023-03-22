@@ -11,7 +11,8 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 class TrialScheduler:
     """Interface for implementing a Trial Scheduler class.
 
-    Note to Tune developers: If a new scheduler is added, please update `usage.py`.
+    Note to Tune developers: If a new scheduler is added, please update
+    `air/_internal/usage.py`.
     """
 
     CONTINUE = "CONTINUE"  #: Status for continuing trial execution

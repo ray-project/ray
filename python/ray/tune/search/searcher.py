@@ -33,7 +33,8 @@ class Searcher:
 
     Not all implementations support multi objectives.
 
-    Note to Tune developers: If a new searcher is added, please update `usage.py`.
+    Note to Tune developers: If a new searcher is added, please update
+    `air/_internal/usage.py`.
 
     Args:
         metric: The training result objective value attribute. If
