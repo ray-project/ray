@@ -69,10 +69,10 @@ def test_predictor(
     # Instantiate a predictor from checkpoint
     predictor = LightningPredictor.from_checkpoint(
         checkpoint=checkpoint,
-        model=LightningMNISTClassifier,
+        model_class=LightningMNISTClassifier,
         use_gpu=use_gpu,
         preprocessor=preprocessor,
-        **model_config,
+        load_from_checkpoint_kwargs=model_config,
     )
 
     # Create synthetic input data
@@ -116,7 +116,7 @@ def test_batch_predictor(tmpdir, use_gpu: bool):
         predictor_cls=LightningPredictor,
         use_gpu=use_gpu,
         model=LightningMNISTClassifier,
-        **model_config,
+        load_from_checkpoint_kwargs=model_config,
     )
 
     predictions = batch_predictor.predict(

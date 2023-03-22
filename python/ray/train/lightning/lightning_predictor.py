@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Type
+from typing import Optional, Type, Dict, Any
 
 from ray.data.preprocessor import Preprocessor
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
@@ -84,11 +84,11 @@ class LightningPredictor(TorchPredictor):
     def from_checkpoint(
         cls,
         checkpoint: LightningCheckpoint,
-        model: Type[pl.LightningModule],
+        model_class: Type[pl.LightningModule],
         *,
         preprocessor: Optional[Preprocessor] = None,
         use_gpu: bool = False,
-        **load_from_checkpoint_kwargs,
+        load_from_checkpoint_kwargs: Dict[str, Any] = {}
     ) -> "LightningPredictor":
         """Instantiate the LightningPredictor from a Checkpoint.
 
@@ -97,15 +97,18 @@ class LightningPredictor(TorchPredictor):
         Args:
             checkpoint: The checkpoint to load the model and preprocessor from.
                 It is expected to be from the result of a ``LightningTrainer`` run.
-            model: A subclass of ``pytorch_lightning.LightningModule`` that
+            model_class: A subclass of ``pytorch_lightning.LightningModule`` that
                 defines your model and training logic. Note that this is a class type
                 instead of a model instance.
             preprocessor: A preprocessor used to transform data batches prior
                 to prediction.
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
-            **load_from_checkpoint_kwargs: Arguments to pass into
+            load_from_checkpoint_kwargs: A dictionary of arguments to pass into
                 ``pl.LightningModule.load_from_checkpoint``
         """
-        model = checkpoint.get_model(model, **load_from_checkpoint_kwargs)
+        model = checkpoint.get_model(
+            model_class=model_class,
+            load_from_checkpoint_kwargs=load_from_checkpoint_kwargs,
+        )
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)

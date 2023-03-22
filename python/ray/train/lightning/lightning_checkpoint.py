@@ -5,7 +5,7 @@ import tempfile
 import shutil
 
 from inspect import isclass
-from typing import Optional, Type
+from typing import Optional, Type, Dict, Any
 
 from ray.air.constants import MODEL_KEY
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
@@ -67,14 +67,16 @@ class LightningCheckpoint(TorchCheckpoint):
         return checkpoint
 
     def get_model(
-        self, model_class: Type[pl.LightningModule], **load_from_checkpoint_kwargs
+        self,
+        model_class: Type[pl.LightningModule],
+        load_from_checkpoint_kwargs: Dict[str, Any] = {},
     ) -> pl.LightningModule:
         """Retrieve the model stored in this checkpoint.
 
         Args:
             model_class: A subclass of ``pytorch_lightning.LightningModule`` that
                 defines your model and training logic.
-            load_from_checkpoint_kwargs: Arguments to pass into
+            load_from_checkpoint_kwargs: A dictionary of arguments to pass into
                 ``pl.LightningModule.load_from_checkpoint``
 
         Returns:
