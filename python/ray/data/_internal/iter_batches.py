@@ -833,6 +833,8 @@ def _make_async_gen(
         An iterator with the same elements as the base_iterator.
     """
 
+    input_queue = queue.Queue(1)
+    
     def convert_to_threadsafe_iterator(base_iterator: Iterator[T]) -> Iterator[T]:
         class ThreadSafeIterator:
             def __init__(self, it):
@@ -854,15 +856,15 @@ def _make_async_gen(
         def __init__(self, thread_index: int):
             self.thread_index = thread_index
 
-    fetch_queue = queue.Queue(1)
+    output_queue = queue.Queue(1)
 
     def execute_computation(thread_index: int):
         try:
             for item in fn(thread_safe_generator):
-                fetch_queue.put(item, block=True)
-            fetch_queue.put(Sentinel(thread_index), block=True)
+                output_queue.put(item, block=True)
+            output_queue.put(Sentinel(thread_index), block=True)
         except Exception as e:
-            fetch_queue.put(e, block=True)
+            output_queue.put(e, block=True)
 
     threads = [
         threading.Thread(target=execute_computation, args=(i,))
@@ -874,7 +876,7 @@ def _make_async_gen(
 
     num_threads_finished = 0
     while True:
-        next_item = fetch_queue.get(block=True)
+        next_item = output_queue.get(block=True)
         if isinstance(next_item, Exception):
             raise next_item
         if isinstance(next_item, Sentinel):
