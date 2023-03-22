@@ -22,7 +22,7 @@ But the running Ray tasks and actors remain alive and any existing objects will 
 Setting up Redis
 ----------------
 
-.. tabbed:: KubeRay (Recommended)
+.. tabbed:: KubeRay (officially supported)
 
     If you are using :ref:`KubeRay <kuberay-index>`, please refer to `KubeRay docs on GCS Fault Tolerance <https://ray-project.github.io/kuberay/guidance/gcs-ft/>`_.
 
@@ -64,6 +64,8 @@ the correct GCS. You need to ensure that at any time, only one GCS is alive.
 
 .. note::
 
-  Unless you are using :ref:`KubeRay <kuberay-index>`,
-  you also need to implement a mechanism to detect the failure of GCS or the head node
-  and restart it automatically in addition to setting up the external Redis instance.
+  GCS fault tolerance with external Redis is officially supported
+  ONLY if you are using :ref:`KubeRay <kuberay-index>` for :ref:`Ray serve fault tolerance <serve-e2e-ft>`.
+  For other cases, you can use it at your own risk and
+  you need to implement additional mechanisms to detect the failure of GCS or the head node
+  and restart it.
