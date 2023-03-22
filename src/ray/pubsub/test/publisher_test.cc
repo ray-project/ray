@@ -389,19 +389,19 @@ TEST_F(PublisherTest, TestSubscriber) {
 TEST_F(PublisherTest, TestSubscriberBatchSize) {
   absl::flat_hash_set<ObjectID> object_ids_published;
   int64_t max_processed_seuquence_id = 0;
-  send_reply_callback = [this, &object_ids_published,  &max_processed_seuquence_id](Status status,
-                                                      std::function<void()> success,
-                                                      std::function<void()> failure) {
-    for (int i = 0; i < reply.pub_messages_size(); i++) {
-      const auto &msg = reply.pub_messages(i);
-      const auto oid =
-          ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
-      object_ids_published.emplace(oid);
-      max_processed_seuquence_id =
-          std::max(msg.sequence_id(), max_processed_seuquence_id);
-    }
-    reply = rpc::PubsubLongPollingReply();
-  };
+  send_reply_callback =
+      [this, &object_ids_published, &max_processed_seuquence_id](
+          Status status, std::function<void()> success, std::function<void()> failure) {
+        for (int i = 0; i < reply.pub_messages_size(); i++) {
+          const auto &msg = reply.pub_messages(i);
+          const auto oid =
+              ObjectID::FromBinary(msg.worker_object_eviction_message().object_id());
+          object_ids_published.emplace(oid);
+          max_processed_seuquence_id =
+              std::max(msg.sequence_id(), max_processed_seuquence_id);
+        }
+        reply = rpc::PubsubLongPollingReply();
+      };
 
   auto max_publish_size = 5;
   auto subscriber = std::make_shared<SubscriberState>(
