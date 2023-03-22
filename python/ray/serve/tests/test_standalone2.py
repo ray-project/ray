@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
 from typing import Dict, Set
 from concurrent.futures.thread import ThreadPoolExecutor
+from functools import partial
 
 import pytest
 import requests
@@ -1262,6 +1263,47 @@ class TestDeployApp:
             client.deploy_apps(single_app_config)
         # The original applications should still be up and running
         self.check_multi_app()
+
+    def test_deploy_multi_app_deleting(self, client: ServeControllerClient):
+        """Remove an application from a config, it should reach a deleting state."""
+
+        config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
+        client.deploy_apps(config)
+        self.check_multi_app()
+
+        del config.applications[1]
+        client.deploy_apps(config)
+
+        def check_app_status(app, status):
+            details = ray.get(client._controller.get_serve_instance_details.remote())
+            return details["applications"][app]["status"] == status
+
+        wait_for_condition(
+            partial(check_app_status, "app2", ApplicationStatus.DELETING)
+        )
+        print("app2 is in a DELETING state.")
+        wait_for_condition(partial(check_app_status, "app1", ApplicationStatus.RUNNING))
+        print("app1 is in a RUNNING state.")
+
+    def test_deploy_nonexistent_deployment(self, client: ServeControllerClient):
+        """Remove an application from a config, it should reach a deleting state."""
+
+        config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
+        # Change names to invalid names that don't contain "deployment" or "application"
+        config.applications[1].name = "random1"
+        config.applications[1].deployments[0].name = "random2"
+        client.deploy_apps(config)
+
+        def check_app_status():
+            details = ray.get(client._controller.get_serve_instance_details.remote())
+            # The error message should be descriptive
+            # e.g. no deployment "x" in application "y"
+            return (
+                "application" in details["applications"]["random1"]["message"]
+                and "deployment" in details["applications"]["random1"]["message"]
+            )
+
+        wait_for_condition(check_app_status)
 
 
 class TestServeRequestProcessingTimeoutS:
