@@ -117,6 +117,12 @@ def test_metrics_folder_with_dashboard_override(
                 assert serve_global_filters in variable["query"]["query"]
             assert "supportsGlobalFilterOverride" in contents["rayMeta"]
 
+        # Serve Deployment Dashboard
+        with open(f"{override_dashboard_dir}/serve_deployment_grafana_dashboard.json") as f:
+            contents = json.loads(f.read())
+            assert contents["uid"] == "rayServeDeploymentDashboard"
+            assert "supportsGlobalFilterOverride" in contents["rayMeta"]
+
 
 def test_metrics_folder_when_dashboard_disabled():
     """

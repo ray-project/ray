@@ -12,6 +12,9 @@ from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
 from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
     serve_dashboard_config,
 )
+from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels import (
+    serve_deployment_dashboard_config,
+)
 
 
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
@@ -185,6 +188,17 @@ def generate_serve_grafana_dashboard() -> Tuple[str, str]:
       Tuple with format content, uid
     """
     return _generate_grafana_dashboard(serve_dashboard_config)
+
+def generate_serve_deployment_grafana_dashboard() -> Tuple[str, str]:
+    """
+    Generates the dashboard output for the serve dashboard and returns
+    both the content and the uid.
+
+    Returns:
+      Tuple with format content, uid
+    """
+    return _generate_grafana_dashboard(serve_deployment_dashboard_config)
+
 
 
 def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:

@@ -12,6 +12,7 @@ from urllib.parse import quote
 from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_default_grafana_dashboard,
     generate_serve_grafana_dashboard,
+    generate_serve_deployment_grafana_dashboard,
 )
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
@@ -256,6 +257,15 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             "w",
         ) as f:
             content, _ = generate_serve_grafana_dashboard()
+            f.write(content)
+        with open(
+            os.path.join(
+                self._grafana_dashboard_output_dir,
+                "serve_deployment_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            content, _ = generate_serve_deployment_grafana_dashboard()
             f.write(content)
 
     def _create_default_prometheus_configs(self):
