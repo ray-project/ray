@@ -25,9 +25,9 @@ def block_generator(num_rows: int, num_blocks: int):
 
 def test_batch_block_refs():
     with mock.patch(
-        "ray.data._internal.block_batching._prefetch_blocks"
+        "ray.data._internal.block_batching.block_batching._prefetch_blocks"
     ) as mock_prefetch, mock.patch(
-        "ray.data._internal.block_batching.batch_blocks"
+        "ray.data._internal.block_batching.block_batching.batch_blocks"
     ) as mock_batch_blocks:
         block_iter = block_generator(2, 2)
         batch_iter = batch_block_refs(block_iter)
@@ -39,9 +39,9 @@ def test_batch_block_refs():
 
 def test_batch_blocks():
     with mock.patch(
-        "ray.data._internal.block_batching._blocks_to_batches"
+        "ray.data._internal.block_batching.block_batching._blocks_to_batches"
     ) as mock_batch, mock.patch(
-        "ray.data._internal.block_batching._format_batches"
+        "ray.data._internal.block_batching.block_batching._format_batches"
     ) as mock_format:
         block_iter = block_generator(2, 2)
         batch_iter = batch_blocks(block_iter)
@@ -136,7 +136,8 @@ def test_async_batch_fetching(batch_size):
             yield batch
 
     with mock.patch(
-        "ray.data._internal.block_batching._format_batches", sleep_batch_format
+        "ray.data._internal.block_batching.block_batching._format_batches",
+        sleep_batch_format,
     ):
         batch_iter = batch_blocks(
             batch_size=batch_size, blocks=blocks, prefetch_batches=1
