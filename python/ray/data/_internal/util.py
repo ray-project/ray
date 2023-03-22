@@ -9,17 +9,10 @@ import numpy as np
 
 import ray
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data.context import DatasetContext
 from ray._private.utils import _get_pyarrow_version
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
-
 if TYPE_CHECKING:
-    from ray.data.dataset import Dataset
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
 
@@ -404,31 +397,6 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
         arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
     ]
     return splits
-
-
-def _default_batch_format(
-    ds: "Dataset",
-) -> Literal["default", "pandas", "pyarrow", "numpy"]:
-    """Get the best batch format that lines up with the dataset format."""
-    ctx = DatasetContext.get_current()
-    if ctx.use_streaming_executor:
-        # TODO: calling dataset_format() triggers bulk execution.
-        batch_format = "default"
-    else:
-        try:
-            dataset_format = ds.dataset_format()
-        except ValueError:
-            # Dataset is empty or cleared, so fall back to "default".
-            batch_format = "default"
-        else:
-            batch_format = (
-                "pyarrow"
-                if dataset_format == BlockFormat.ARROW
-                else "pandas"
-                if dataset_format == BlockFormat.PANDAS
-                else "default"
-            )
-    return batch_format
 
 
 def capfirst(s: str):

@@ -245,18 +245,22 @@ is given in the below table:
      - ``"pandas"``
      - ``"numpy"``
      - ``"pyarrow"``
+     - ``None``
    * - ``"pandas"``
      - Zero-copy
      - Zero-copy
      - Copy*
      - Copy*
+     - Zero-copy
    * - ``"arrow"``
      - Copy*
      - Copy*
      - Zero-copy*
      - Zero-copy
-   * - ``"simple"``
      - Zero-copy
+   * - ``"simple"``
+     - Copy
+     - Copy
      - Copy
      - Copy
      - Copy

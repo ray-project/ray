@@ -1,6 +1,5 @@
 import copy
 import logging
-import sys
 import time
 import threading
 from typing import (
@@ -15,7 +14,6 @@ from typing import (
 )
 
 import ray
-from ray.data._internal.util import _default_batch_format
 
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data.block import Block, DataBatch
@@ -34,11 +32,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 if TYPE_CHECKING:
     import pyarrow
     from ray.data import Dataset
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +82,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
         *,
         prefetch_blocks: int = 0,
         batch_size: int = 256,
-        batch_format: Literal["default", "numpy", "pandas"] = "default",
+        batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -133,9 +126,6 @@ class StreamSplitDatasetIterator(DatasetIterator):
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Implements DatasetIterator."""
         return self._base_dataset.schema()
-
-    def _default_batch_format(self) -> Literal["default", "pandas", "pyarrow", "numpy"]:
-        return _default_batch_format(self._base_dataset)
 
 
 @ray.remote(num_cpus=0)
