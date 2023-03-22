@@ -74,7 +74,7 @@ def test_predict(batch_type):
     data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
+    assert len(predictions["predictions"]) == 3
     assert predictor.get_preprocessor().has_preprocessed
 
 
@@ -119,7 +119,7 @@ def test_predict_feature_columns():
     data_batch = np.array([[1, 2, 7], [3, 4, 8], [5, 6, 9]])
     predictions = predictor.predict(data_batch, feature_columns=[0, 1])
 
-    assert len(predictions) == 3
+    assert len(predictions["predictions"]) == 3
     assert predictor.get_preprocessor().has_preprocessed
 
 
@@ -136,7 +136,7 @@ def test_predict_feature_columns_pandas():
     )
     predictions = predictor.predict(data_batch, feature_columns=["A", "B"])
 
-    assert len(predictions) == 3
+    assert len(predictions["predictions"]) == 3
     assert predictor.get_preprocessor().has_preprocessed
 
 
@@ -151,7 +151,7 @@ def test_predict_no_preprocessor():
     data_batch = np.array([[1, 2], [3, 4], [5, 6]])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
+    assert len(predictions["predictions"]) == 3
 
 
 def test_batch_prediction_with_set_cpus(ray_start_4_cpus):

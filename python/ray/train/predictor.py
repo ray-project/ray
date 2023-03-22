@@ -195,7 +195,7 @@ class Predictor(abc.ABC):
         batch_format_to_use = self._batch_format_to_use()
 
         # We can finish prediction as long as one predict method is implemented.
-        # For Prediction, we have to return back in the same format as the input.
+        # For prediction, we have to return back in the same format as the input.
         if batch_format == BatchFormat.PANDAS:
             if batch_format_to_use == BatchFormat.PANDAS:
                 return self._predict_pandas(

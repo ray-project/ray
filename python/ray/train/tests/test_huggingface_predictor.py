@@ -62,7 +62,7 @@ def test_predict(tmpdir, ray_start_runtime_env, batch_type):
 
         predictions = predictor.predict(dtype_prompts)
 
-        assert len(predictions) == 3
+        assert len(predictions["predictions"]) == 3
         if preprocessor:
             assert predictor.get_preprocessor().has_preprocessed
 
@@ -85,7 +85,7 @@ def test_predict_no_preprocessor_no_training(ray_start_runtime_env):
 
             predictions = predictor.predict(prompts)
 
-            assert len(predictions) == 3
+            assert len(predictions["predictions"]) == 3
 
     ray.get(test.remote())
 
