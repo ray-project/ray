@@ -7,6 +7,7 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
   return (
     <GlobalContext.Provider
       value={{
+        metricsContextLoaded: true,
         grafanaHost: "localhost:3000",
         grafanaDefaultDashboardUid: "rayDefaultDashboard",
         prometheusHealth: true,
@@ -26,6 +27,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
   return (
     <GlobalContext.Provider
       value={{
+        metricsContextLoaded: true,
         grafanaHost: undefined,
         grafanaDefaultDashboardUid: undefined,
         prometheusHealth: false,

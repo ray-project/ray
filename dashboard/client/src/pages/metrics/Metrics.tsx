@@ -6,7 +6,7 @@ import {
   Paper,
   TextField,
 } from "@material-ui/core";
-import { Alert } from "@material-ui/lab";
+import { Alert, AlertProps } from "@material-ui/lab";
 import React, { useContext, useEffect, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
 
@@ -299,10 +299,17 @@ export const Metrics = () => {
   );
 };
 
-export const GrafanaNotRunningAlert = ({ className }: ClassNameProps) => {
+export type GrafanaNotRunningAlertProps = {
+  severity?: AlertProps["severity"];
+} & ClassNameProps;
+
+export const GrafanaNotRunningAlert = ({
+  className,
+  severity = "warning",
+}: GrafanaNotRunningAlertProps) => {
   const { grafanaHost, prometheusHealth } = useContext(GlobalContext);
   return grafanaHost === undefined || !prometheusHealth ? (
-    <Alert className={className} severity="warning">
+    <Alert className={className} severity={severity}>
       Grafana or prometheus server not detected. Please make sure both services
       are running and refresh this page. See:{" "}
       <a
