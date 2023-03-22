@@ -1,9 +1,9 @@
 import { makeStyles } from "@material-ui/core";
-import dayjs from "dayjs";
 import React, { useContext } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { DurationText } from "../../common/DurationText";
+import { formatDateFromTimeMs } from "../../common/formatUtils";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
@@ -123,9 +123,7 @@ const ActorDetailPage = () => {
               label: "Started at",
               content: {
                 value: actorDetail.startTime
-                  ? dayjs(Number(actorDetail.startTime)).format(
-                      "YYYY/MM/DD HH:mm:ss",
-                    )
+                  ? formatDateFromTimeMs(actorDetail.startTime)
                   : "-",
               },
             },
@@ -133,9 +131,7 @@ const ActorDetailPage = () => {
               label: "Ended at",
               content: {
                 value: actorDetail.endTime
-                  ? dayjs(Number(actorDetail.endTime)).format(
-                      "YYYY/MM/DD HH:mm:ss",
-                    )
+                  ? formatDateFromTimeMs(actorDetail.endTime)
                   : "-",
               },
             },

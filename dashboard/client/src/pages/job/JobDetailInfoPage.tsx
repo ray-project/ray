@@ -1,7 +1,7 @@
 import { makeStyles } from "@material-ui/core";
-import dayjs from "dayjs";
 import React from "react";
 import { DurationText } from "../../common/DurationText";
+import { formatDateFromTimeMs } from "../../common/formatUtils";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
@@ -102,16 +102,14 @@ export const JobDetailInfoPage = () => {
               label: "Started at",
               content: {
                 value: job.start_time
-                  ? dayjs(Number(job.start_time)).format("YYYY/MM/DD HH:mm:ss")
+                  ? formatDateFromTimeMs(job.start_time)
                   : "-",
               },
             },
             {
               label: "Ended at",
               content: {
-                value: job.end_time
-                  ? dayjs(Number(job.end_time)).format("YYYY/MM/DD HH:mm:ss")
-                  : "-",
+                value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
               },
             },
           ]}
