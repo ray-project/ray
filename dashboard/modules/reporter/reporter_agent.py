@@ -223,8 +223,8 @@ METRICS_GAUGES = {
         "percentage",
         COMPONENT_METRICS_TAG_KEYS,
     ),
-    "component_shm_bytes": Gauge(
-        "component_shm_bytes",
+    "component_mem_shared_bytes": Gauge(
+        "component_mem_shared_bytes",
         "SHM usage of all components of the node. "
         "It is equivalent to the top command's SHR column.",
         "bytes",
@@ -660,7 +660,7 @@ class ReporterAgent(
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_shm_bytes"],
+                gauge=METRICS_GAUGES["component_mem_shared_bytes"],
                 value=0.0,
                 tags=tags,
             )
@@ -727,7 +727,7 @@ class ReporterAgent(
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_shm_bytes"],
+                gauge=METRICS_GAUGES["component_mem_shared_bytes"],
                 value=total_shm,
                 tags=tags,
             )

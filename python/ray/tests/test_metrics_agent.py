@@ -451,7 +451,7 @@ def test_per_func_name_stats(shutdown_only):
     if sys.platform == "linux" or sys.platform == "linux2":
         # Uss only available from Linux
         comp_metrics.append("ray_component_uss_mb")
-        comp_metrics.append("component_shm_bytes")
+        comp_metrics.append("component_mem_shared_bytes")
     addr = ray.init(num_cpus=2)
 
     @ray.remote

@@ -296,7 +296,7 @@ GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="(sum(ray_component_rss_mb{{{global_filters}}} * 1e6) by (Component)) - (sum(ray_component_shm_bytes{{{global_filters}}}) by (Component))",
+                expr="(sum(ray_component_rss_mb{{{global_filters}}} * 1e6) by (Component)) - (sum(ray_component_mem_shared_bytes{{{global_filters}}}) by (Component))",
                 legend="{{Component}}",
             ),
             Target(
