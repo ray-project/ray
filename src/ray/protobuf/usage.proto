@@ -58,6 +58,8 @@ enum TagKey {
   SERVE_GRPC_INGRESS_USED = 12;
   // The Serve REST API version ("v1", "v2")
   SERVE_REST_API_VERSION = 13;
+  // The number of serve apps running in the cluster
+  SERVE_NUM_APPS = 14;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of
