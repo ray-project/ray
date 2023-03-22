@@ -159,6 +159,7 @@ def test_repartition_noshuffle(ray_start_regular_shared):
     # Test num_partitions > num_rows
     ds4 = ds.repartition(40, shuffle=False)
     assert ds4.num_blocks() == 40
+
     blocks = ray.get(ds4.get_internal_block_refs())
     assert all(isinstance(block, list) for block in blocks), blocks
     assert ds4.sum() == 190

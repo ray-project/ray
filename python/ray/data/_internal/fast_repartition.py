@@ -25,7 +25,6 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
     )
     # Compute the (n-1) indices needed for an equal split of the data.
     count = wrapped_ds.count()
-    dataset_format = wrapped_ds.dataset_format()
     indices = []
     cur_idx = 0
     for _ in range(num_blocks - 1):
@@ -59,6 +58,9 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
 
     owned_by_consumer = blocks._owned_by_consumer
 
+    # Schema is safe to fetch here since we have already called
+    # get_internal_block_refs and executed the dataset.
+    schema = wrapped_ds.schema(fetch_if_missing=True)
     # Early-release memory.
     del splits, blocks, wrapped_ds
 
@@ -75,13 +77,23 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
         from ray.data._internal.pandas_block import PandasBlockBuilder
         from ray.data._internal.simple_block import SimpleBlockBuilder
 
+        import pyarrow as pa
+        from ray.data._internal.pandas_block import PandasBlockSchema
+
         num_empties = num_blocks - len(new_blocks)
-        if dataset_format == "arrow":
-            builder = ArrowBlockBuilder()
-        elif dataset_format == "pandas":
-            builder = PandasBlockBuilder()
-        else:
+
+        if schema is None:
+            raise ValueError(
+                "Dataset is empty or cleared, can't determine the format of "
+                "the dataset."
+            )
+        elif isinstance(schema, type):
             builder = SimpleBlockBuilder()
+        elif isinstance(schema, pa.Schema):
+            builder = ArrowBlockBuilder()
+        elif isinstance(schema, PandasBlockSchema):
+            builder = PandasBlockBuilder()
+
         empty_block = builder.build()
         empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
             input_files=None, exec_stats=None
