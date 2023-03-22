@@ -40,6 +40,10 @@ class _ObjectCache:
     def num_cached_objects(self):
         return self._num_cached_objects
 
+    @property
+    def num_max_objects(self):
+        return self._max_num_objects.total()
+
     def increase_max(self, key: T, by: int = 1) -> None:
         """Increase number of max objects for this key.
 
