@@ -8,9 +8,7 @@ from ray.air import Checkpoint, session
 def trainable(config):
     # Checkpoint loading
     checkpoint = session.get_checkpoint()
-    start = 1
-    if checkpoint:
-        start = checkpoint.to_dict()["epoch"] + 1
+    start = 1 if not checkpoint else checkpoint.to_dict()["epoch"] + 1
 
     for epoch in range(start, config["num_epochs"]):
         # Do some training...
