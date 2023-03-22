@@ -421,7 +421,7 @@ def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
     assert Path(result_grid._local_path).parent.name == "moved_ray_results"
 
     # No upload path, so path should point to local_path
-    assert result_grid._local_path == result_grid.path
+    assert result_grid._local_path == result_grid.experiment_path
 
     # Check Result objects
     for result in result_grid:

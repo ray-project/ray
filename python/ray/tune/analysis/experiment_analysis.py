@@ -116,12 +116,16 @@ class ExperimentAnalysis:
         self._remote_storage_path = remote_storage_path
 
     @property
-    def local_path(self) -> str:
+    def _local_path(self) -> str:
         return str(self._local_experiment_path)
 
     @property
-    def remote_path(self) -> Optional[str]:
-        return self._parse_cloud_path(self.local_path)
+    def _remote_path(self) -> Optional[str]:
+        return self._parse_cloud_path(self._local_path)
+
+    @property
+    def experiment_path(self) -> str:
+        return self._remote_path or self._local_path
 
     def _parse_cloud_path(self, local_path: str):
         """Convert local path into cloud storage path"""

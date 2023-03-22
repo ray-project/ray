@@ -81,10 +81,10 @@ class ResultGrid:
     @property
     def _remote_path(self) -> Optional[str]:
         """Return path pointing to the experiment directory on remote storage."""
-        return self._experiment_analysis.remote_path
+        return self._experiment_analysis._remote_path
 
     @property
-    def path(self) -> str:
+    def experiment_path(self) -> str:
         """Path pointing to the experiment directory on persistent storage.
 
         This can point to a remote storage location (e.g. S3) or to a local
