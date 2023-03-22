@@ -19,10 +19,12 @@ def _make_async_gen(
     Each thread in the threadpool will fetch data from the base_iterator in a
     thread-safe fashion, and apply the provided computation.  triggering the base
     iterator's execution.
+
     Args:
         base_iterator: The iterator to asynchronously fetch from.
         fn: The function to run on the input iterator.
         num_workers: The number of threads to use in the threadpool.
+
     Returns:
         An iterator with the same elements as the base_iterator.
     """
