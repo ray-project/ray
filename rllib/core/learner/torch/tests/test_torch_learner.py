@@ -15,6 +15,9 @@ from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.core.testing.utils import get_learner
 
 
+# REMOVE THIS LINE
+
+
 def _get_learner() -> Learner:
     env = gym.make("CartPole-v1")
     learner = get_learner("torch", env)
