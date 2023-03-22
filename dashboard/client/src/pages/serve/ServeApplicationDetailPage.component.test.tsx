@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { useParams } from "react-router-dom";
@@ -6,6 +6,7 @@ import { getServeApplications } from "../../service/serve";
 import {
   ServeApplicationStatus,
   ServeDeploymentStatus,
+  ServeReplicaState,
 } from "../../type/serve";
 import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import { ServeApplicationDetailPage } from "./ServeApplicationDetailPage";
@@ -20,11 +21,11 @@ const mockUseParams = jest.mocked(useParams);
 const mockGetServeApplications = jest.mocked(getServeApplications);
 
 describe("ServeApplicationDetailPage", () => {
-  it("renders page with deployments", async () => {
-    expect.assertions(12);
+  it("renders page with deployments and replicas", async () => {
+    expect.assertions(19);
 
     mockUseParams.mockReturnValue({
-      name: "home",
+      applicationName: "home",
     });
     mockGetServeApplications.mockResolvedValue({
       data: {
@@ -49,12 +50,46 @@ describe("ServeApplicationDetailPage", () => {
                 },
                 status: ServeDeploymentStatus.HEALTHY,
                 message: "deployment is healthy",
+                replicas: [
+                  {
+                    actor_id: "test-actor-id",
+                    actor_name: "FirstDeployment",
+                    node_id: "test-node-id",
+                    node_ip: "123.456.789.123",
+                    pid: "12345",
+                    replica_id: "test-replica-1",
+                    start_time_s: new Date().getTime() / 1000,
+                    state: ServeReplicaState.STARTING,
+                  },
+                  {
+                    actor_id: "test-actor-id-2",
+                    actor_name: "FirstDeployment",
+                    node_id: "test-node-id",
+                    node_ip: "123.456.789.123",
+                    pid: "12346",
+                    replica_id: "test-replica-2",
+                    start_time_s: new Date().getTime() / 1000,
+                    state: ServeReplicaState.RUNNING,
+                  },
+                ],
               },
               SecondDeployment: {
                 name: "SecondDeployment",
                 deployment_config: {},
                 status: ServeDeploymentStatus.UPDATING,
                 message: "deployment is updating",
+                replicas: [
+                  {
+                    actor_id: "test-actor-id-3",
+                    actor_name: "SecondDeployment",
+                    node_id: "test-node-id",
+                    node_ip: "123.456.789.123",
+                    pid: "12347",
+                    replica_id: "test-replica-3",
+                    start_time_s: new Date().getTime() / 1000,
+                    state: ServeReplicaState.STARTING,
+                  },
+                ],
               },
             },
           },
@@ -73,9 +108,18 @@ describe("ServeApplicationDetailPage", () => {
     const user = userEvent.setup();
 
     await screen.findByText("home");
-    expect(screen.getByText("home")).toBeVisible();
-    expect(screen.getByText("/home")).toBeVisible();
-    expect(screen.getByText("RUNNING")).toBeVisible();
+    expect(screen.getByTestId("metadata-content-for-Name")).toHaveTextContent(
+      "home",
+    );
+    expect(
+      screen.getByTestId("metadata-content-for-Route prefix"),
+    ).toHaveTextContent("/home");
+    expect(screen.getByTestId("metadata-content-for-Status")).toHaveTextContent(
+      "RUNNING",
+    );
+    expect(
+      screen.getByTestId("metadata-content-for-Replicas"),
+    ).toHaveTextContent("3");
 
     // First deployment
     expect(screen.getByText("FirstDeployment")).toBeVisible();
@@ -88,14 +132,32 @@ describe("ServeApplicationDetailPage", () => {
     expect(screen.getByText("UPDATING")).toBeVisible();
 
     // Config dialog for application
-    await user.click(screen.getAllByText("View")[0]);
+    await user.click(
+      within(
+        screen.getByTestId("metadata-content-for-Application config"),
+      ).getByText("View"),
+    );
     await screen.findByText(/import_path: home:graph/);
     expect(screen.getByText(/import_path: home:graph/)).toBeVisible();
 
     // Config dialog for first deployment
-    await user.click(screen.getAllByText("View")[1]);
+    await user.click(screen.getAllByText("Deployment config")[0]);
     await screen.findByText(/test-config: 1/);
     expect(screen.getByText(/test-config: 1/)).toBeVisible();
     expect(screen.getByText(/autoscaling-value: 2/)).toBeVisible();
+
+    // Expand the first deployment
+    await user.click(screen.getAllByTitle("Expand")[0]);
+    await screen.findByText("test-replica-1");
+    expect(screen.getByText("test-replica-1")).toBeVisible();
+    expect(screen.getByText("test-replica-2")).toBeVisible();
+    expect(screen.queryByText("test-replica-3")).toBeNull();
+
+    // Collapse the first deployment
+    await user.click(screen.getByTitle("Collapse"));
+    await waitFor(() => screen.queryByText("test-replica-1") === null);
+    expect(screen.queryByText("test-replica-1")).toBeNull();
+    expect(screen.queryByText("test-replica-2")).toBeNull();
+    expect(screen.queryByText("test-replica-3")).toBeNull();
   });
 });

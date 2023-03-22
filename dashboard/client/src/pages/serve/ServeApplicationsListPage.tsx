@@ -87,6 +87,12 @@ export const ServeApplicationsListPage = () => {
                   value: `${serveDetails.port}`,
                 },
               },
+              {
+                label: "Proxy location",
+                content: {
+                  value: `${serveDetails.proxy_location}`,
+                },
+              },
             ]}
           />
         ) : (
