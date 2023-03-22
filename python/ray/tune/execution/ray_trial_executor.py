@@ -840,6 +840,16 @@ class RayTrialExecutor:
             # (if the search ended).
             return
 
+        if (
+            search_ended
+            and not self._staged_trials
+            and self._actor_cache.total_max_objects == 0
+        ):
+            # If there are no more trials coming in, no trials are pending execution,
+            # and we don't explicitly want to cache objects, we can evict the full
+            # cache.
+            force_all = True
+
         for actor, acquired_resources in self._actor_cache.flush_cached_objects(
             force_all=force_all
         ):
