@@ -1264,7 +1264,7 @@ class TrialRunner(_TuneControllerBase):
             self,
             self.trial_executor,
             runner_whitelist_attr={"search_alg", "get_trials"},
-            executor_whitelist_attr={"has_resources_for_trial"},
+            executor_whitelist_attr={"has_resources_for_trial", "pause_trial", "save"},
         )
 
     def _used_resources_string(self) -> str:

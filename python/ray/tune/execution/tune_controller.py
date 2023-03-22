@@ -142,7 +142,7 @@ class TuneController(_TuneControllerBase):
             self,
             trial_executor=_FakeRayTrialExecutor(self),
             runner_whitelist_attr={"search_alg", "get_trials"},
-            executor_whitelist_attr={"has_resources_for_trial"},
+            executor_whitelist_attr={"has_resources_for_trial", "pause_trial", "save"},
         )
 
     def _used_resources_string(self):
@@ -343,7 +343,10 @@ class TuneController(_TuneControllerBase):
 
         if trial_to_run:
             logger.debug(f"Chose trial to run from scheduler: {trial_to_run}")
-            if trial_to_run not in self._staged_trials:
+            if (
+                trial_to_run not in self._staged_trials
+                and trial_to_run not in self._trial_to_actor
+            ):
                 logger.debug(f"Staging trial to run: {trial_to_run}")
                 self._staged_trials.add(trial_to_run)
                 self._actor_cache.increase_max(trial_to_run.placement_group_factory)
@@ -487,7 +490,10 @@ class TuneController(_TuneControllerBase):
             self._trial_to_actor[trial] = tracked_actor
             self._actor_to_trial[tracked_actor] = trial
 
-        logger.debug(f"Scheduled new ACTOR for trial {trial}: {tracked_actor}")
+        logger.debug(
+            f"Scheduled new ACTOR for trial {trial}: {tracked_actor}. "
+            f"Resources: {trial.placement_group_factory}"
+        )
 
     def _unstage_trial_with_resources(self, trial: Trial):
         """Unstage trial, or one with the same resources as ``trial``."""
@@ -667,6 +673,8 @@ class TuneController(_TuneControllerBase):
             self._process_trial_failure(trial, exception=exception)
 
     def _schedule_trial_stop(self, trial: Trial, exception: Optional[Exception] = None):
+        logger.debug(f"Requesting to STOP actor for trial {trial}")
+
         trial.saving_to = None
         trial.restoring_from = None
 
@@ -682,6 +690,7 @@ class TuneController(_TuneControllerBase):
 
         tracked_actor = self._trial_to_actor[trial]
 
+        logger.debug(f"Terminating actor for trial {trial}: {tracked_actor}")
         self._actor_manager.remove_actor(tracked_actor)
 
     def _schedule_trial_pause(self, trial: Trial, should_checkpoint: bool = True):
