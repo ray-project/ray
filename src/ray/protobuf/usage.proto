@@ -109,5 +109,5 @@ enum TagKey {
   TUNE_SEARCHER = 501;
   // Name of Tune scheduler algorithm or "Custom" if user-defined.
   // Example: "FIFOScheduler"
-  TUNE_SEARCHER = 502;
+  TUNE_SCHEDULER = 502;
 }
