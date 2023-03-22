@@ -9,6 +9,9 @@ echo "ci/lint/format.sh:"
 scripts/format.sh --all
 
 lint_exit_status=$?
+
+git diff --color | cat
+
 if [ $lint_exit_status -ne 0 ]; then
 	echo ""
 	echo "Linting changes failed."
