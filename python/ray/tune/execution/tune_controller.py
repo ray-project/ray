@@ -593,6 +593,10 @@ class TuneController(_TuneControllerBase):
         ][0]
         trial.set_runner(ray_actor)
 
+        self._callbacks.on_trial_start(
+            iteration=self._iteration, trials=self._trials, trial=trial
+        )
+
         self._set_trial_status(trial, Trial.RUNNING)
         if not self._schedule_trial_restore(trial):
             self._schedule_trial_train(trial)
