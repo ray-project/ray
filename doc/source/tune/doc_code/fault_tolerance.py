@@ -67,7 +67,53 @@ else:
         ),
     )
 tuner.fit()
-# __ft_restore_multiplexing_start__
+# __ft_restore_multiplexing_end__
+
+# __ft_restore_objrefs_initial_start__
+import ray
+from ray import air, tune
+
+
+class LargeModel:
+    def __init__(self, model_id):
+        self.model_id = model_id
+        # Load weights based on the `model_id`...
+
+
+def trainable(config):
+    # Retrieve the model from the object store.
+    model = ray.get(config["model_ref"])
+    print(model.model_id)
+
+
+# These models may be large, so `ray.put` them in the Ray Object Store
+# to share the models between trials.
+model_refs = [ray.put(LargeModel(1)), ray.put(LargeModel(2))]
+
+tuner = tune.Tuner(
+    trainable,
+    # Tune over the object references!
+    param_space={"model_ref": tune.grid_search([model_refs])},
+    run_config=air.RunConfig(local_dir="~/ray_results", name="restore_object_refs"),
+)
+tuner.fit()
+# __ft_restore_objrefs_initial_end__
+
+# __ft_restore_objrefs_restored_start__
+# Re-create the objects and put them in the object store.
+param_space = {
+    "model_ref": tune.grid_search([ray.put(LargeModel(1)), ray.put(LargeModel(2))])
+}
+
+tuner = tune.Tuner.restore(
+    "~/ray_results/restore_object_refs",
+    trainable=trainable,
+    # Re-specify the `param_space` to update the object references.
+    param_space=param_space,
+    resume_errored=True,
+)
+tuner.fit()
+# __ft_restore_objrefs_restored_end__
 
 # __ft_trial_failure_start__
 from ray import air, tune

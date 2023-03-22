@@ -125,11 +125,61 @@ Use the :meth:`Tuner.can_restore <ray.tune.Tuner.can_restore>` utility to accomp
 .. literalinclude:: /tune/doc_code/fault_tolerance.py
     :language: python
     :start-after: __ft_restore_multiplexing_start__
-    :end-before: __ft_restore_multiplexing_start__
+    :end-before: __ft_restore_multiplexing_end__
 
 Running this script the first time will launch the initial training run.
 Running this script the second time will attempt to resume from the outputs of the first run.
 
+
+Tune Experiment Restoration with Ray Object References (Advanced)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Experiment restoration often happens in a different Ray session than the original run,
+in which case Ray object references are automatically garbage collected.
+If object references are saved along with experiment state (e.g., within each trial's config),
+then attempting to retrieve theses objects will not work properly after restoration:
+the objects these references point to no longer exist.
+
+To work around this, you must re-create these objects, put them in the Ray object store,
+and then pass the new object references to Tune.
+
+Example
+*******
+
+Let's say we have some large pre-trained model that we want to use in some way in our training loop.
+For example, this could be a image classification model used to calculate an Inception Score
+to evaluate the quality of a generative model.
+We may have multiple models that we want to tune over, where each trial samples one of the models to use.
+
+.. literalinclude:: /tune/doc_code/fault_tolerance.py
+    :language: python
+    :start-after: __ft_restore_objrefs_initial_start__
+    :end-before: __ft_restore_objrefs_initial_end__
+
+To restore, we just need to re-specify the ``param_space`` via :meth:`Tuner.restore <ray.tune.Tuner.restore>`:
+
+.. literalinclude:: /tune/doc_code/fault_tolerance.py
+    :language: python
+    :start-after: __ft_restore_objrefs_restored_start__
+    :end-before: __ft_restore_objrefs_restored_end__
+
+.. note::
+
+    If you're tuning over :ref:`Ray Datasets <datasets>`, you'll also need to re-specify them in the ``param_space``.
+    Ray Datasets can contain object references, so the same problems described above apply.
+
+    See below for an example:
+
+    .. code-block:: python
+
+        ds_1 = ray.data.from_items([{"x": i, "y": 2 * i} for i in range(128)])
+        ds_2 = ray.data.from_items([{"x": i, "y": 3 * i} for i in range(128)])
+
+        param_space = {
+            "datasets": {"train": tune.grid_search([ds_1, ds_2])},
+        }
+
+        tuner = tune.Tuner.restore(..., param_space=param_space)
 
 .. _tune-trial-level-fault-tolerance:
 
@@ -145,7 +195,7 @@ Trial-level fault tolerance deals with individual trial failures in the cluster,
 Ray Tune provides a way to configure failure handling of individual trials with the :class:`~ray.air.config.FailureConfig`.
 
 Assuming that we're using the ``trainable`` from the previous example that implements
-trial checkpoint saving and loading, here is how to configure :class:`~ray.air.config.FailureConfig`.
+trial checkpoint saving and loading, here is how to configure :class:`~ray.air.config.FailureConfig`:
 
 .. literalinclude:: /tune/doc_code/fault_tolerance.py
     :language: python
