@@ -212,7 +212,7 @@ SERVE_GRAFANA_PANELS = [
     Panel(
         id=11,
         title="P99 latency per deployment",
-        description='P99 latency per route.',
+        description='P99 latency per deployment.',
         unit="ms",
         targets=[
             Target(
