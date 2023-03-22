@@ -2334,6 +2334,23 @@
 
   alert: default
 
+- name: jobs_gce_basic_local_working_dir
+  group: Jobs tests
+  working_dir: jobs_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_gce_4_xlarge.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/jobs_basic.py --working-dir "workloads"
+    wait_for_nodes:
+      num_nodes: 4
+
 - name: jobs_basic_local_working_dir
   group: Jobs tests
   working_dir: jobs_tests
@@ -2490,6 +2507,25 @@
 ########################
 # Runtime env tests
 ########################
+- name: runtime_env_gce_rte_many_tasks_actors
+  group: Runtime env tests
+  working_dir: runtime_env_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: rte_gce_small.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/rte_many_tasks_actors.py
+    wait_for_nodes:
+      num_nodes: 4
+
+
+  alert: default
 - name: runtime_env_rte_many_tasks_actors
   group: Runtime env tests
   working_dir: runtime_env_tests
@@ -2506,6 +2542,26 @@
     script: python workloads/rte_many_tasks_actors.py
     wait_for_nodes:
       num_nodes: 4
+
+
+  alert: default
+
+- name: runtime_env_gce_wheel_urls
+  group: Runtime env tests
+  working_dir: runtime_env_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: rte_gce_minimal.yaml
+
+  run:
+    timeout: 9000
+    script: python workloads/wheel_urls.py
+    wait_for_nodes:
+      num_nodes: 1
 
 
   alert: default
