@@ -381,7 +381,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     it->second.num_successful_executions++;
 
     if (is_application_error) {
-      SetTaskStatus(it->second, rpc::TaskStatus::FAILED);
+      SetTaskStatus(it->second,
+                    rpc::TaskStatus::FAILED,
+                    gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION));
     } else {
       SetTaskStatus(it->second, rpc::TaskStatus::FINISHED);
     }
@@ -420,11 +422,12 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 }
 
 bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
-                                      bool task_failed_due_to_oom) {
+                                      const rpc::RayErrorInfo &error_info) {
   TaskSpecification spec;
   bool will_retry = false;
   int32_t num_retries_left = 0;
   int32_t num_oom_retries_left = 0;
+  bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -455,7 +458,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       }
     }
     if (will_retry) {
-      MarkTaskRetryOnFailed(it->second);
+      MarkTaskRetryOnFailed(it->second, error_info);
     }
   }
 
@@ -493,7 +496,9 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
-                 << rpc::ErrorType_Name(error_type);
+                 << rpc::ErrorType_Name(error_type) << ", ray_error_info: "
+                 << ((ray_error_info == nullptr) ? "nullptr"
+                                                 : ray_error_info->DebugString());
 
   TaskSpecification spec;
   // Check whether the error should be stored in plasma or not.
@@ -506,7 +511,10 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
-    SetTaskStatus(it->second, rpc::TaskStatus::FAILED);
+    SetTaskStatus(
+        it->second,
+        rpc::TaskStatus::FAILED,
+        ray_error_info == nullptr ? gcs::GetRayErrorInfo(error_type) : *ray_error_info);
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
@@ -556,7 +564,8 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
   bool will_retry = false;
   if (!fail_immediately) {
     will_retry = RetryTaskIfPossible(
-        task_id, /*task_failed_due_to_oom*/ error_type == rpc::ErrorType::OUT_OF_MEMORY);
+        task_id,
+        ray_error_info == nullptr ? gcs::GetRayErrorInfo(error_type) : *ray_error_info);
   }
 
   if (!will_retry && mark_task_object_failed) {
@@ -801,8 +810,7 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
                         it->second.spec,
                         rpc::TaskStatus::SUBMITTED_TO_WORKER,
                         /* include_task_info */ false,
-                        node_id,
-                        worker_id);
+                        worker::TaskStatusEvent::TaskStateUpdate(node_id, worker_id));
 }
 
 void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
@@ -822,10 +830,14 @@ void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
                         /* include_task_info */ true);
 }
 
-void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry) {
+void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
+                                        const rpc::RayErrorInfo &error_info) {
   // Record the old attempt status as FAILED.
-  RecordTaskStatusEvent(
-      task_entry.spec.AttemptNumber(), task_entry.spec, rpc::TaskStatus::FAILED);
+  RecordTaskStatusEvent(task_entry.spec.AttemptNumber(),
+                        task_entry.spec,
+                        rpc::TaskStatus::FAILED,
+                        /* include_task_info */ false,
+                        worker::TaskStatusEvent::TaskStateUpdate(error_info));
   task_entry.MarkRetryOnFailed();
 
   // Mark the new status and also include task spec info for the new attempt.
@@ -836,9 +848,16 @@ void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry) {
                         /* include_task_info */ true);
 }
 
-void TaskManager::SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status) {
+void TaskManager::SetTaskStatus(
+    TaskEntry &task_entry,
+    rpc::TaskStatus status,
+    const absl::optional<const rpc::RayErrorInfo> &error_info) {
   task_entry.SetStatus(status);
-  RecordTaskStatusEvent(task_entry.spec.AttemptNumber(), task_entry.spec, status);
+  RecordTaskStatusEvent(task_entry.spec.AttemptNumber(),
+                        task_entry.spec,
+                        status,
+                        /* include_task_info */ false,
+                        worker::TaskStatusEvent::TaskStateUpdate(error_info));
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -892,12 +911,12 @@ void TaskManager::RecordMetrics() {
   task_counter_.FlushOnChangeCallbacks();
 }
 
-void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
-                                        const TaskSpecification &spec,
-                                        rpc::TaskStatus status,
-                                        bool include_task_info,
-                                        absl::optional<NodeID> node_id,
-                                        absl::optional<WorkerID> worker_id) {
+void TaskManager::RecordTaskStatusEvent(
+    int32_t attempt_number,
+    const TaskSpecification &spec,
+    rpc::TaskStatus status,
+    bool include_task_info,
+    absl::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update) {
   if (!task_event_buffer_.Enabled()) {
     return;
   }
@@ -908,8 +927,7 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
       status,
       /* timestamp */ absl::GetCurrentTimeNanos(),
       include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
-      node_id,
-      worker_id);
+      std::move(state_update));
 
   task_event_buffer_.AddTaskEvent(std::move(task_event));
 }

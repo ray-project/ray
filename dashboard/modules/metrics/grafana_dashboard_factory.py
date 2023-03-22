@@ -163,14 +163,14 @@ GRAFANA_PANELS = [
         id=29,
         title="Object Store Memory",
         description="Object store memory usage by location. The dotted line indicates the object store memory capacity.\n\nLocation: where the memory was allocated, which is MMAP_SHM or MMAP_DISK to indicate memory-mapped page, SPILLED to indicate spillage to disk, and WORKER_HEAP for objects small enough to be inlined in worker memory. Refer to metric_defs.cc for more information.",
-        unit="gbytes",
+        unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_object_store_memory{{{global_filters}}} / 1e9) by (Location)",
+                expr="sum(ray_object_store_memory{{{global_filters}}}) by (Location)",
                 legend="{{Location}}",
             ),
             Target(
-                expr='sum(ray_resources{{Name="object_store_memory",{global_filters}}} / 1e9)',
+                expr='sum(ray_resources{{Name="object_store_memory",{global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -233,7 +233,7 @@ GRAFANA_PANELS = [
         targets=[
             Target(
                 expr='ray_node_gpus_utilization{{instance=~"$Instance",{global_filters}}} / 100',
-                legend="GPU Usage: {{instance}}",
+                legend="GPU Usage: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
             Target(
                 expr="sum(ray_node_gpus_available{{{global_filters}}})",
@@ -322,7 +322,7 @@ GRAFANA_PANELS = [
         targets=[
             Target(
                 expr='ray_node_gram_used{{instance=~"$Instance",{global_filters}}} * 1024 * 1024',
-                legend="Used GRAM: {{instance}}",
+                legend="Used GRAM: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
             Target(
                 expr="(sum(ray_node_gram_available{{{global_filters}}}) + sum(ray_node_gram_used{{{global_filters}}})) * 1024 * 1024",
@@ -474,7 +474,7 @@ PANEL_TEMPLATE = {
         },
         {
             "$$hashKey": "object:78",
-            "alias": "/FINISHED|FAILED|DEAD|REMOVED/",
+            "alias": "/FINISHED|FAILED|DEAD|REMOVED|Failed Nodes:/",
             "hiddenSeries": True,
         },
         {
