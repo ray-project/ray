@@ -763,6 +763,7 @@ def run(
         trial_runner_cls = TuneController
         runner_kwargs.pop("trial_executor")
         runner_kwargs["reuse_actors"] = reuse_actors
+        runner_kwargs["chdir_to_trial_dir"] = chdir_to_trial_dir
     else:
         trial_runner_cls = TrialRunner
 
