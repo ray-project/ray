@@ -166,7 +166,7 @@ def batch_blocks(
         batch_iter = batch_fn_iter(batch_iter)
 
     if prefetch_batches > 0:
-        batch_iter = _make_async_gen(batch_iter, prefetch_buffer_size=prefetch_batches)
+        batch_iter = _make_async_gen(batch_iter, num_workers=prefetch_batches)
 
     for formatted_batch in batch_iter:
         user_timer = stats.iter_user_s.timer() if stats else nullcontext()
