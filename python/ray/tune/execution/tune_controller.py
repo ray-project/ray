@@ -39,6 +39,7 @@ from ray.util.debug import log_once
 
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 @DeveloperAPI
@@ -611,7 +612,19 @@ class TuneController(_TuneControllerBase):
         trial.set_runner(None)
 
     def _actor_failed(self, tracked_actor: TrackedActor, exception: Exception):
-        logger.debug(f"Actor FAILED: {tracked_actor}")
+        trial = self._actor_to_trial[tracked_actor]
+
+        logger.debug(
+            f"Actor FAILED for trial {trial}: {tracked_actor}. "
+            f"Exception: {exception}"
+        )
+
+        if trial in (self._pending_trials | self._paused_trials):
+            logger.debug(
+                f"Trial {trial} failed in its creation task. Unstaging "
+                f"to allow it to be re-scheduled."
+            )
+            self._unstage_trial_with_resources(trial)
 
         self._actor_stopped(tracked_actor)
 
