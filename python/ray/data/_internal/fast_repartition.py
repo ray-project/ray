@@ -83,9 +83,10 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
         num_empties = num_blocks - len(new_blocks)
 
         if schema is None:
-            # The existing dataset is empty, so fill out the rest of the empty blocks
-            # of any block type.
-            builder = ArrowBlockBuilder()
+            raise ValueError(
+                "Dataset is empty or cleared, can't determine the format of "
+                "the dataset."
+            )
         elif isinstance(schema, type):
             builder = SimpleBlockBuilder()
         elif isinstance(schema, pa.Schema):
