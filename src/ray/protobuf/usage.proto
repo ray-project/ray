@@ -54,7 +54,7 @@ enum TagKey {
   SERVE_DAG_DRIVER_USED = 10;
   // Whether or not an HTTP adapter was used in a DAGDriver ("1" if used).
   SERVE_HTTP_ADAPTER_USED = 11;
-  // Whether or not a GRPCIngress was used ("1" if used).
+  // Whether or not a gRPCIngress was used ("1" if used).
   SERVE_GRPC_INGRESS_USED = 12;
   // The Serve REST API version ("v1", "v2").
   SERVE_REST_API_VERSION = 13;
