@@ -36,7 +36,7 @@ def base_plus_ext(path: str):
     return match.group(1), match.group(2)
 
 
-def valid_sample(sample: Dict[str, Any]):
+def _valid_sample(sample: Dict[str, Any]):
     """Check whether a sample is valid.
 
     Args:
@@ -50,7 +50,7 @@ def valid_sample(sample: Dict[str, Any]):
     )
 
 
-def apply_list(
+def _apply_list(
     f: Union[Callable, List[Callable]], sample: Dict[str, Any], default: Callable = None
 ):
     """Apply a list of functions to a sample.
@@ -75,7 +75,7 @@ def apply_list(
     return sample
 
 
-def check_suffix(suffix: str, suffixes: Union[list, callable]):
+def _check_suffix(suffix: str, suffixes: Union[list, callable]):
     """Check whether a suffix is valid.
 
     Suffixes can be either None (=accept everything), a callable,
@@ -99,7 +99,7 @@ def check_suffix(suffix: str, suffixes: Union[list, callable]):
     return False
 
 
-def tar_file_iterator(
+def _tar_file_iterator(
     fileobj: Any,
     fileselect: Optional[Union[bool, callable, list]] = None,
     filerename: Optional[Union[bool, callable, list]] = None,
@@ -123,9 +123,9 @@ def tar_file_iterator(
         if not tarinfo.isreg() or fname is None:
             continue
         data = stream.extractfile(tarinfo).read()
-        fname = apply_list(filerename, fname)
+        fname = _apply_list(filerename, fname)
         assert isinstance(fname, str)
-        if not check_suffix(fname, fileselect):
+        if not _check_suffix(fname, fileselect):
             continue
         result = dict(fname=fname, data=data)
         yield result
@@ -133,7 +133,7 @@ def tar_file_iterator(
         print(f"done {meta}")
 
 
-def group_by_keys(
+def _group_by_keys(
     data: List[Dict[str, Any]],
     keys: callable = base_plus_ext,
     suffixes: Optional[Union[list, callable]] = None,
@@ -156,7 +156,7 @@ def group_by_keys(
         if prefix is None:
             continue
         if current_sample is None or prefix != current_sample["__key__"]:
-            if valid_sample(current_sample):
+            if _valid_sample(current_sample):
                 current_sample.update(meta)
                 yield current_sample
             current_sample = dict(__key__=prefix)
@@ -167,14 +167,14 @@ def group_by_keys(
                 f"{fname}: duplicate file name in tar file "
                 + f"{suffix} {current_sample.keys()}"
             )
-        if suffixes is None or check_suffix(suffix, suffixes):
+        if suffixes is None or _check_suffix(suffix, suffixes):
             current_sample[suffix] = value
-    if valid_sample(current_sample):
+    if _valid_sample(current_sample):
         current_sample.update(meta)
         yield current_sample
 
 
-def default_decoder(sample: Dict[str, Any], format: Optional[Union[bool, str]] = True):
+def _default_decoder(sample: Dict[str, Any], format: Optional[Union[bool, str]] = True):
     """A default decoder for webdataset.
 
     This handles common file extensions: .txt, .cls, .cls2,
@@ -228,7 +228,7 @@ def default_decoder(sample: Dict[str, Any], format: Optional[Union[bool, str]] =
 extension_to_format = {"jpg": "jpeg"}
 
 
-def default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] = True):
+def _default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] = True):
     """A default encoder for webdataset.
 
     This handles common file extensions: .txt, .cls, .cls2, .jpg,
@@ -289,7 +289,7 @@ def default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] =
     return sample
 
 
-def make_iterable(block: BlockAccessor):
+def _make_iterable(block: BlockAccessor):
     """Make a block iterable.
 
     This is a placeholder for dealing with more complex blocks.
@@ -338,16 +338,16 @@ class WebDatasetDatasource(FileBasedDatasource):
             List[Dict[str, Any]]: List of sample (list of length 1).
         """
 
-        files = tar_file_iterator(
+        files = _tar_file_iterator(
             stream,
             fileselect=fileselect,
             filerename=filerename,
             verbose_open=verbose_open,
         )
-        samples = group_by_keys(files, meta=dict(__url__=path), suffixes=suffixes)
+        samples = _group_by_keys(files, meta=dict(__url__=path), suffixes=suffixes)
         for sample in samples:
             if decoder is not None:
-                sample = apply_list(decoder, sample, default=default_decoder)
+                sample = _apply_list(decoder, sample, default=_default_decoder)
             yield [sample]
 
     def _write_block(
@@ -368,12 +368,12 @@ class WebDatasetDatasource(FileBasedDatasource):
         """
 
         stream = tarfile.open(fileobj=f, mode="w|")
-        samples = make_iterable(block)
+        samples = _make_iterable(block)
         for sample in samples:
             if not isinstance(sample, dict):
                 sample = sample.as_pydict()
             if encoder is not None:
-                sample = apply_list(encoder, sample, default=default_encoder)
+                sample = _apply_list(encoder, sample, default=_default_encoder)
             if "__key__" not in sample:
                 sample["__key__"] = uuid.uuid4().hex
             key = sample["__key__"]
