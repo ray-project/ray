@@ -14,6 +14,8 @@ def _linear_interpolation(left, right, alpha):
 
 @PublicAPI
 class PiecewiseSchedule(Schedule):
+    """Implements a Piecewise Scheduler."""
+
     def __init__(
         self,
         endpoints: List[Tuple[int, float]],
