@@ -1554,6 +1554,29 @@
   alert: tune_tests
 
 
+############################
+# Tune fault tolerance tests
+############################
+- name: tune_worker_fault_tolerance
+  group: Tune fault tolerance tests
+  working_dir: tune_tests/fault_tolerance_tests
+
+  stable: true
+
+  frequency: nightly-3x
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_aws_16x1.yaml
+
+  run:
+    timeout: 5400
+    script: python workloads/test_tune_worker_fault_tolerance.py
+
+    wait_for_nodes:
+      num_nodes: 16
+
 ########################
 # Golden Notebook tests
 ########################
