@@ -89,6 +89,9 @@ class ResultGrid:
 
         This can point to a remote storage location (e.g. S3) or to a local
         location (path on the head node).
+
+        For instance, if your remote storage path is ``s3://bucket/location``,
+        this will point to ``s3://bucket/location/experiment_name``.
         """
         return self._remote_path or self._local_path
 
