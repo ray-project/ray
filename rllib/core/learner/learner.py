@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import json
 import logging
 import numpy as np
+import pathlib
 from typing import (
     Any,
     Callable,
@@ -19,6 +20,7 @@ from typing import (
     Union,
 )
 
+import ray
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
@@ -38,6 +40,7 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
 )
+from ray.rllib.utils.serialization import serialize_type
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.utils.annotations import (
@@ -237,6 +240,7 @@ class Learner:
         self._optim_to_param: Dict[Optimizer, List[ParamRef]] = {}
         self._param_to_optim: Dict[ParamRef, Optimizer] = {}
         self._params: ParamDictType = {}
+        self._name_to_optim: Dict[str, Optimizer] = {}
 
     @property
     def distributed(self) -> bool:
@@ -253,7 +257,6 @@ class Learner:
         """The hyper-parameters for the learner."""
         return self._hps
 
-    @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
         """Configures the optimizers for the Learner.
 
@@ -271,6 +274,52 @@ class Learner:
             A list of tuples (parameters, optimizer), where parameters is a list of
             model parameters and optimizer is a deep learning optimizer.
         """
+        pairs = []
+        for module_id in self._module.keys():
+            if self._is_module_compatible_with_learner(self._module[module_id]):
+                pair = self.configure_optimizer_per_module(module_id)
+                for i, p in enumerate(pair):
+                    self._name_to_optim[f"{module_id}_optim_{i}"] = p[1]
+                pairs.extend(pair)
+        return pairs
+
+    @OverrideToImplementCustomLogic
+    def configure_optimizer_per_module(
+        self, module_id: ModuleID
+    ) -> ParamOptimizerPairs:
+        """Configures an optimizer for the given module_id.
+
+        This method is by default called for each RLModule that is apart of the greater
+        Mulit-Agent RLModule, that is being trained by the Learner, and any new module
+        that is being added to the Multi-Agent RLModule during training via a call to
+        `add_module`. The method should construct a ParamOptimizerPairs.
+
+        So for example, if one were to implement this function for a PPORLModule (which
+        has a value function network and policy network) with different optimizers for
+        the policy, then `configure_optimizer_per_module` should return a list of
+        tuples, the first tuple contains the parameters of the policy network
+        followed by the optimizer for those parameters, and the second tuple contains
+        the parameters of the value function network followed by the optimizer for
+        those parameters.
+
+        If one wanted to instead use one optimizer for both the policy and value
+        funtion network, then `configure_optimizer_per_module` should return a list
+        with only one tuple, where the first element of the tuple is a list of the
+        parameters of both the policy and value function network, and the second is
+        the optimizer for those parameters.
+
+        One can use the parameter `module_id` to determine which module to configure
+        the optimizer for, in the case where different optimizers are required for
+        different modules.
+
+        Args:
+            module_id: The module_id of the RLModule that is being configured.
+
+        Returns:
+            A list of tuples (parameters, optimizer), where parameters is a list of
+            model parameters and optimizer is a deep learning framework optimizer.
+        """
+        raise NotImplementedError
 
     @abc.abstractmethod
     def compute_gradients(self, loss: Mapping[str, Any]) -> ParamDictType:
@@ -425,46 +474,24 @@ class Learner:
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
-        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
-        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         """Add a module to the underlying MultiAgentRLModule and the Learner.
 
         Args:
             module_id: The id of the module to add.
             module_spec: The module spec of the module to add.
-            set_optimizer_fn: A function that takes in the module and returns a list of
-                (param, optimizer) pairs. Each element in the tuple describes a
-                parameter group that share the same optimizer object, if None, the
-                default optimizer_cls will be used with all the parameters from the
-                module.
-            optimizer_cls: The optimizer class to use. If None, the optimizer_cls of the
-                first parameter in the current list of parameters will be used.
         """
         self.__check_if_build_called()
         module = module_spec.build()
 
-        # construct a default set_optimizer_fn if not provided
-        if set_optimizer_fn is None:
-            if optimizer_cls is None:
-                # by default, use the optimizer_cls of the first parameter
-                optimizer_cls = next(iter(self._param_to_optim.values())).__class__
-
-            def set_optimizer_fn(module):
-                param_optims = []
-                if self._is_module_compatible_with_learner(module):
-                    optimizer = self.get_optimizer_obj(module, optimizer_cls)
-                    parameters = self.get_parameters(module)
-                    param_optims = [(parameters, optimizer)]
-                return param_optims
-
-        for param_seq, optimizer in set_optimizer_fn(module):
+        for i, (param_seq, optimizer) in enumerate(self.configure_optimizer(module)):
             self._optim_to_param[optimizer] = []
             for param in param_seq:
                 param_ref = self.get_param_ref(param)
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
+            self._name_to_optim[f"{module_id}_optim_{i}"] = optimizer
 
         self._module.add_module(module_id, module)
 
@@ -489,6 +516,10 @@ class Learner:
                     if optimizer in self._optim_to_param:
                         del self._optim_to_param[optimizer]
                     del self._param_to_optim[param_ref]
+            optim_names = list(self._name_to_optim.keys())
+            for name in optim_names:
+                if name.startswith(module_id):
+                    del self._name_to_optim[name]
 
         self._module.remove_module(module_id)
 
@@ -754,27 +785,39 @@ class Learner:
         """Save the state of the learner to dir
 
         Args:
-            dir: The dir to save the state to. 
+            dir: The dir to save the state to.
             NOTE: By default only the module state will be saved.
 
         """
         self.__check_if_build_called()
         dir = pathlib.Path(dir)
-        self._module.save_state(dir)
+        self._module.save_to_checkpoint(dir / "module_state")
         with open(dir / "learner_state.json", "w") as f:
-            json.dump(self.get_state(), f)
-        
+            metadata = {
+                "learner_class": serialize_type(self.__class__),
+                "ray_version": ray.__version__,
+                "ray_commit": ray.__commit__,
+            }
+            json.dump(metadata, f)
 
-    def load_state(cls, dir: Union[str, pathlib.Path]) -> None:
+    def load_state(
+        self,
+        dir: Union[str, pathlib.Path],
+        modules_to_load: Optional[Set[ModuleID]] = None,
+    ) -> None:
         """Load the state of the learner from dir
+
+        Note: The learner must be constructed ahead of time before its state is loaded.
 
         Args:
             dir: The dir to load the state from.
-            NOTE: By default only the module state will be loaded.
+            modules_to_load: The ids of the RLModules to load into the MARLModule that
+                is being traing by this learner. If None, all modules will be loaded.
 
         """
         self.__check_if_build_called()
-        self._module.load_state(path)
+        dir = pathlib.Path(dir)
+        self._module.load_state(dir / "module_state", modules_to_load)
 
     @abc.abstractmethod
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:

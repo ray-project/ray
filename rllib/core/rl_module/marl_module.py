@@ -281,7 +281,8 @@ class MultiAgentRLModule(RLModule):
         for module_id, state in state_dict.items():
             self._rl_modules[module_id].set_state(state)
 
-    def save_state_to_dir(self, dir: Union[str, pathlib.Path]) -> str:
+    @override(RLModule)
+    def save_state(self, dir: Union[str, pathlib.Path]) -> str:
         """Saves the weights of this MultiAgentRLModule to dir.
 
         Args:
@@ -295,7 +296,8 @@ class MultiAgentRLModule(RLModule):
         for module_id, module in self._rl_modules.items():
             module.save_to_checkpoint(str(dir / module_id))
 
-    def load_state_from_dir(
+    @override(RLModule)
+    def load_state(
         self,
         dir: Union[str, pathlib.Path],
         modules_to_load: Optional[Set[ModuleID]] = None,
@@ -334,13 +336,13 @@ class MultiAgentRLModule(RLModule):
             submodule_weights_path = (
                 submodule_weights_dir / submodule._module_state_file_name()
             )
-            submodule.load_state_from_file(submodule_weights_path)
+            submodule.load_state(submodule_weights_path)
 
     @override(RLModule)
     def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(checkpoint_dir_path)
         path.mkdir(parents=True, exist_ok=True)
-        self.save_state_to_dir(path)
+        self.save_state(path)
         self._save_module_metadata(path, MultiAgentRLModuleSpec)
 
     @classmethod
@@ -349,7 +351,7 @@ class MultiAgentRLModule(RLModule):
         path = pathlib.Path(checkpoint_dir_path)
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         marl_module = cls._from_metadata_file(metadata_path)
-        marl_module.load_state_from_dir(path)
+        marl_module.load_state(path)
         return marl_module
 
     def __repr__(self) -> str:

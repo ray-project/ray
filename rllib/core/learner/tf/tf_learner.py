@@ -62,22 +62,15 @@ class TfLearner(Learner):
         self._strategy = tf.distribute.get_strategy()
 
     @override(Learner)
-    def configure_optimizers(self) -> ParamOptimizerPairs:
-        """Configures the optimizers for the Learner.
-
-        By default it sets up a single Adam optimizer for each sub-module in module
-        accessible via `moduel.keys()`.
-        """
-        # TODO (Kourosh): convert optimizer_config to dataclass later.
+    def configure_optimizer_per_module(
+        self, module_id: ModuleID
+    ) -> ParamOptimizerPairs:
+        module = self._module[module_id]
         lr = self._optimizer_config["lr"]
-        return [
-            (
-                self.get_parameters(self._module[key]),
-                tf.keras.optimizers.Adam(learning_rate=lr),
-            )
-            for key in self._module.keys()
-            if self._is_module_compatible_with_learner(self._module[key])
+        pair = [
+            (self.get_parameters(module), tf.keras.optimizers.Adam(learning_rate=lr))
         ]
+        return pair
 
     @override(Learner)
     def compute_gradients(

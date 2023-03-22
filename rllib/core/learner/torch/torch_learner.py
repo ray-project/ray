@@ -57,22 +57,18 @@ class TorchLearner(Learner):
         self._device = None
 
     @override(Learner)
-    def configure_optimizers(self) -> ParamOptimizerPairs:
-        """Configures the optimizers for the Learner.
-
-        By default it sets up a single Adam optimizer for each sub-module in module
-        accessible via `moduel.keys()`.
-        """
-        # TODO (Kourosh): convert optimizer_config to dataclass later.
+    def configure_optimizer_per_module(
+        self, module_id: ModuleID
+    ) -> ParamOptimizerPairs:
+        module = self._module[module_id]
         lr = self._optimizer_config["lr"]
-        return [
+        pair = [
             (
-                self.get_parameters(self._module[key]),
-                torch.optim.Adam(self.get_parameters(self._module[key]), lr=lr),
+                self.get_parameters(module),
+                torch.optim.Adam(self.get_parameters(module), lr=lr),
             )
-            for key in self._module.keys()
-            if self._is_module_compatible_with_learner(self._module[key])
         ]
+        return pair
 
     @override(Learner)
     def compute_gradients(

@@ -50,7 +50,7 @@ class TfRLModule(RLModule, tf.keras.Model):
         return pathlib.Path("module_state")
 
     @override(RLModule)
-    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
+    def save_state(self, path: Union[str, pathlib.Path]) -> str:
         """Saves the weights of this RLmodule to path.
 
         Args:
@@ -69,7 +69,7 @@ class TfRLModule(RLModule, tf.keras.Model):
         self.save_weights(path, save_format="tf")
 
     @override(RLModule)
-    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
+    def load_state(self, path: Union[str, pathlib.Path]) -> None:
         self.load_weights(str(path))
 
     @override(RLModule)

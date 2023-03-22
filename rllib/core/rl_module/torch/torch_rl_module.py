@@ -33,11 +33,11 @@ class TorchRLModule(nn.Module, RLModule):
         return pathlib.Path("module_state.pt")
 
     @override(RLModule)
-    def save_state_to_file(self, path: Union[str, pathlib.Path]):
+    def save_state(self, path: Union[str, pathlib.Path]):
         torch.save(self.state_dict(), str(path))
 
     @override(RLModule)
-    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
+    def load_state(self, path: Union[str, pathlib.Path]) -> None:
         self.set_state(torch.load(str(path)))
 
     @override(RLModule)
@@ -80,12 +80,12 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         self.module.set_state(*args, **kwargs)
 
     @override(RLModule)
-    def save_state_to_file(self, *args, **kwargs) -> str:
-        return self.module.save_state_to_file(*args, **kwargs)
+    def save_state(self, *args, **kwargs) -> str:
+        return self.module.save_state(*args, **kwargs)
 
     @override(RLModule)
-    def load_state_from_file(self, *args, **kwargs):
-        self.module.load_state_from_file(*args, **kwargs)
+    def load_state(self, *args, **kwargs):
+        self.module.load_state(*args, **kwargs)
 
     @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:

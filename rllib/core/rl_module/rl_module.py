@@ -425,7 +425,7 @@ class RLModule(abc.ABC):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
 
-    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
+    def save_state(self, path: Union[str, pathlib.Path]) -> str:
         """Saves the weights of this RLmodule to path.
 
         Args:
@@ -436,7 +436,7 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
-    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
+    def load_state(self, path: Union[str, pathlib.Path]) -> None:
         """Loads the weights of an RLmodule from path.
 
         Args:
@@ -550,7 +550,7 @@ class RLModule(abc.ABC):
         path.mkdir(parents=True, exist_ok=True)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
         module_state_dir.mkdir(parents=True, exist_ok=True)
-        self.save_state_to_file(module_state_dir / self._module_state_file_name())
+        self.save_state(module_state_dir / self._module_state_file_name())
         self._save_module_metadata(path, SingleAgentRLModuleSpec)
 
     @classmethod
@@ -575,7 +575,7 @@ class RLModule(abc.ABC):
         module = cls._from_metadata_file(metadata_path)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
         state_path = module_state_dir / module._module_state_file_name()
-        module.load_state_from_file(state_path)
+        module.load_state(state_path)
         return module
 
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
