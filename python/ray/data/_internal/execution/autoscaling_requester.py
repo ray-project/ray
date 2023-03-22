@@ -15,11 +15,10 @@ RESOURCE_REQUEST_TIMEOUT = 60
 class AutoscalingRequester:
     """Actor to make resource requests to autoscaler for the datasets.
 
-    The resource requests are set to timeout for 60s.
-    For those live requests (i.e. those made in last 60s), we keep track of the
-    last request made for each execution, which overrides all previous requests it
-    made; then sum the requested amounts across all executions as the final request
-    to the autoscaler.
+    The resource requests are set to timeout after RESOURCE_REQUEST_TIMEOUT seconds.
+    For those live requests, we keep track of the last request made for each execution,
+    which overrides all previous requests it made; then sum the requested amounts
+    across all executions as the final request to the autoscaler.
     """
 
     def __init__(self):
@@ -53,7 +52,6 @@ class AutoscalingRequester:
         for _, (r, _) in self._resource_requests.items():
             req.extend(r)
 
-        # Round up to exceed total cluster CPUs so it can actually upscale.
         def get_cpus(req):
             num_cpus = 0
             for r in req:
@@ -61,6 +59,7 @@ class AutoscalingRequester:
                     num_cpus += r["CPU"]
             return num_cpus
 
+        # Round up to exceed total cluster CPUs so it can actually upscale.
         num_cpus = get_cpus(req)
         if num_cpus > 0:
             total = ray.cluster_resources()

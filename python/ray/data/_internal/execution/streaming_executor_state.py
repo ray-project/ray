@@ -36,7 +36,7 @@ MaybeRefBundle = Union[RefBundle, Exception, None]
 DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.25
 
 # Min number of seconds between two autoscaling requests.
-MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 5
+MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 20
 
 
 @dataclass
