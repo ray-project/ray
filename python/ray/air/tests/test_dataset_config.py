@@ -255,7 +255,7 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
         assert "Stage 1 ReadRange->BatchMapper: 1/1 blocks executed " in stats, stats
 
     def rand(x):
-        x["value"] = [random.random() for _ in range(len(x))]
+        x["value"] = x["value"].multiply(x["value"])
         return x
 
     prep = BatchMapper(rand, batch_format="pandas")
