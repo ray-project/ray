@@ -1265,7 +1265,10 @@ def read_sql(
         ``LIMIT`` and ``OFFSET`` to fetch a subset of the rows. However, for many
         databases, ``OFFSET`` is slow.
 
-        As a workaround, you can set ``parallelism=1`` to directly fetch all rows.
+        As a workaround, set ``parallelism=1`` to directly fetch all rows in a single 
+        task. Note that this approach requires all result rows to fit in the memory of 
+        single task. If the rows don't fit, your program may raise an out of memory 
+        error.
 
     Examples:
 
