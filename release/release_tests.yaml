@@ -1330,7 +1330,7 @@
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
-
+    type: job
     wait_for_nodes:
       num_nodes: 4
 
