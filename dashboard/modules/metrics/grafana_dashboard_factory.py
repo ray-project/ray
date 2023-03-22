@@ -474,7 +474,7 @@ PANEL_TEMPLATE = {
         },
         {
             "$$hashKey": "object:78",
-            "alias": "/FINISHED|FAILED|DEAD|REMOVED/",
+            "alias": "/FINISHED|FAILED|DEAD|REMOVED|Failed Nodes:/",
             "hiddenSeries": True,
         },
         {
