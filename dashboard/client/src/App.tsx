@@ -21,6 +21,9 @@ import { ClusterDetailInfoPage } from "./pages/node/ClusterDetailInfoPage";
 import { ClusterLayout } from "./pages/node/ClusterLayout";
 import NodeDetailPage from "./pages/node/NodeDetail";
 import { OverviewPage } from "./pages/overview/OverviewPage";
+import { ServeApplicationDetailPage } from "./pages/serve/ServeApplicationDetailPage";
+import { ServeApplicationsListPage } from "./pages/serve/ServeApplicationsListPage";
+import { ServeLayout } from "./pages/serve/ServeLayout";
 import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
 
@@ -32,7 +35,7 @@ const CMDResult = React.lazy(() => import("./pages/cmd/CMDResult"));
 const Logs = React.lazy(() => import("./pages/log/Logs"));
 
 // a global map for relations
-type GlobalContextType = {
+export type GlobalContextType = {
   nodeMap: { [key: string]: string };
   nodeMapByIp: { [key: string]: string };
   ipLogMap: { [key: string]: string };
@@ -185,6 +188,13 @@ const App = () => {
                 <Route element={<Actors />} path="actors" />
                 <Route element={<ActorDetailPage />} path="actors/:id" />
                 <Route element={<Metrics />} path="metrics" />
+                <Route element={<ServeLayout />} path="serve">
+                  <Route element={<ServeApplicationsListPage />} path="" />
+                  <Route
+                    element={<ServeApplicationDetailPage />}
+                    path="applications/:name"
+                  />
+                </Route>
                 <Route element={<LogsLayout />} path="logs">
                   {/* TODO(aguo): Refactor Logs component to use optional query
                         params since react-router 6 doesn't support optional path params... */}

@@ -233,7 +233,7 @@ GRAFANA_PANELS = [
         targets=[
             Target(
                 expr='ray_node_gpus_utilization{{instance=~"$Instance",{global_filters}}} / 100',
-                legend="GPU Usage: {{instance}}",
+                legend="GPU Usage: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
             Target(
                 expr="sum(ray_node_gpus_available{{{global_filters}}})",
@@ -322,7 +322,7 @@ GRAFANA_PANELS = [
         targets=[
             Target(
                 expr='ray_node_gram_used{{instance=~"$Instance",{global_filters}}} * 1024 * 1024',
-                legend="Used GRAM: {{instance}}",
+                legend="Used GRAM: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
             Target(
                 expr="(sum(ray_node_gram_available{{{global_filters}}}) + sum(ray_node_gram_used{{{global_filters}}})) * 1024 * 1024",
@@ -474,7 +474,7 @@ PANEL_TEMPLATE = {
         },
         {
             "$$hashKey": "object:78",
-            "alias": "/FINISHED|FAILED|DEAD|REMOVED/",
+            "alias": "/FINISHED|FAILED|DEAD|REMOVED|Failed Nodes:/",
             "hiddenSeries": True,
         },
         {
