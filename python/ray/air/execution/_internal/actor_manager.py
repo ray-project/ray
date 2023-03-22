@@ -427,15 +427,7 @@ class RayActorManager:
         return True
 
     def _cleanup_actor(self, tracked_actor: TrackedActor):
-        # Remove all actor task futures
-        futures = self._tracked_actors_to_task_futures.pop(tracked_actor, [])
-        for future in futures:
-            self._actor_task_events.discard_future(future)
-
-        # Remove all actor state futures
-        futures = self._tracked_actors_to_state_futures.pop(tracked_actor, [])
-        for future in futures:
-            self._actor_state_events.discard_future(future)
+        self._cleanup_actor_futures(tracked_actor)
 
         # Remove from tracked actors
         (
@@ -446,6 +438,17 @@ class RayActorManager:
 
         # Return resources
         self._resource_manager.free_resources(acquired_resource=acquired_resources)
+
+    def _cleanup_actor_futures(self, tracked_actor: TrackedActor):
+        # Remove all actor task futures
+        futures = self._tracked_actors_to_task_futures.pop(tracked_actor, [])
+        for future in futures:
+            self._actor_task_events.discard_future(future)
+
+        # Remove all actor state futures
+        futures = self._tracked_actors_to_state_futures.pop(tracked_actor, [])
+        for future in futures:
+            self._actor_state_events.discard_future(future)
 
     @property
     def all_actors(self) -> List[TrackedActor]:
@@ -592,6 +595,7 @@ class RayActorManager:
 
             else:
                 # kill = True
+                self._cleanup_actor_futures(tracked_actor)
                 self._live_actors_to_kill.add(tracked_actor)
 
         elif tracked_actor in self._pending_actors_to_attrs:

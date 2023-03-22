@@ -39,6 +39,7 @@ from ray.util.debug import log_once
 
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 @DeveloperAPI
@@ -98,6 +99,7 @@ class TuneController(_TuneControllerBase):
         self._failed_trials: Set[Trial] = set()
 
         self._resetting_trials: Set[Trial] = set()
+        self._stopping_trials: Set[Trial] = set()
 
         self._staged_trials: Set[Trial] = set()
 
@@ -312,9 +314,11 @@ class TuneController(_TuneControllerBase):
 
     def _cleanup_trials(self):
         for tracked_actor in list(self._actor_to_trial):
-            self._actor_manager.remove_actor(tracked_actor=tracked_actor)
-            trial = self._actor_to_trial.pop(tracked_actor)
-            self._trial_to_actor.pop(trial)
+            trial = self._actor_to_trial[tracked_actor]
+            if trial not in self._stopping_trials:
+                self._actor_manager.remove_actor(tracked_actor=tracked_actor, kill=True)
+                trial = self._actor_to_trial.pop(tracked_actor)
+                self._trial_to_actor.pop(trial)
 
         self._actor_cache.flush_cached_objects(force_all=True)
 
@@ -607,6 +611,7 @@ class TuneController(_TuneControllerBase):
         logger.debug(f"Actor STOPPED for trial {trial}: {tracked_actor}")
 
         self._trial_to_actor.pop(trial)
+        self._stopping_trials.discard(trial)
 
         trial.set_runner(None)
 
@@ -722,6 +727,7 @@ class TuneController(_TuneControllerBase):
         tracked_actor = self._trial_to_actor[trial]
 
         logger.debug(f"Terminating actor for trial {trial}: {tracked_actor}")
+        self._stopping_trials.add(trial)
         self._actor_manager.remove_actor(tracked_actor)
 
     def _schedule_trial_pause(self, trial: Trial, should_checkpoint: bool = True):
@@ -969,6 +975,7 @@ class TuneController(_TuneControllerBase):
             "_stopped_trials",
             "_failed_trials",
             "_resetting_trials",
+            "_stopping_trials",
             "_staged_trials",
             "_actor_cache",
         ]:
