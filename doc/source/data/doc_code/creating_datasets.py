@@ -593,6 +593,16 @@ ds = ray.data.read_parquet(
 # __read_parquet_az_end__
 # fmt: on
 
+# fmt: off
+# __read_compressed_begin__
+# Read a gzip-compressed CSV file from S3.
+ds = ray.data.read_csv(
+    "s3://anonymous@air-example-data/gzip_compressed.csv",
+    arrow_open_stream_args={"compression": "gzip"},
+)
+# __read_compressed_end__
+# fmt: on
+
 # __read_tfrecords_begin__
 # Create a tabular Dataset by reading a TFRecord file.
 ds = ray.data.read_tfrecords("example://iris.tfrecords")
