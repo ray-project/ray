@@ -182,7 +182,7 @@ Torch utilities
    ~Swish
 
 
-Numpy Utilities
+Numpy utilities
 ~~~~~~~~~~~~~~~
 
 .. currentmodule:: ray.rllib.utils.numpy
