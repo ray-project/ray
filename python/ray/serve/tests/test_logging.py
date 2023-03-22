@@ -97,26 +97,35 @@ def test_handle_access_log(serve_instance):
 def test_user_logs(serve_instance):
     logger = logging.getLogger("ray.serve")
     stderr_msg = "user log message"
-    log_file_msg = "user log message in file only"
+    log_file_msg = "in file only"
     name = "user_fn"
 
     @serve.deployment(name=name)
     def fn(*args):
         logger.info(stderr_msg)
         logger.info(log_file_msg, to_file_only=True)
-        return serve.get_replica_context().replica_tag
+        return serve.get_replica_context().replica_tag, logger.handlers[1].baseFilename
 
     handle = serve.run(fn.bind())
 
     f = io.StringIO()
     with redirect_stderr(f):
+        replica_tag, log_file_name = ray.get(handle.remote())
 
-        def check_log(replica_tag: str):
+        def check_stderr_log(replica_tag: str):
             s = f.getvalue()
-            return all([name in s, replica_tag in s, msg in s, log_file_msg not in s])
+            return all([name in s, replica_tag in s, stderr_msg in s, log_file_msg not in s])
 
-        replica_tag = ray.get(handle.remote())
-        wait_for_condition(check_log, replica_tag=replica_tag)
+        # Only the stderr_msg should be logged to stderr.
+        wait_for_condition(check_stderr_log, replica_tag=replica_tag)
+
+        def check_log_file(replica_tag: str):
+            with open(log_file_name, "r") as f:
+                s = f.read()
+                return all([name in s, replica_tag in s, stderr_msg in s, log_file_msg in s])
+
+        # Both messages should be logged to the file.
+        wait_for_condition(check_log_file, replica_tag=replica_tag)
 
 
 def test_disable_access_log(serve_instance):
