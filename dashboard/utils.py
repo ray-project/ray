@@ -153,7 +153,7 @@ def to_posix_time(dt):
 def address_tuple(address):
     if isinstance(address, tuple):
         return address
-    ip, port = address.split(":")
+    ip, port = address.rsplit(":", 1)
     return ip, int(port)
 
 

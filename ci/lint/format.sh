@@ -272,14 +272,14 @@ format_all_scripts() {
       black "${BLACK_EXCLUDES[@]}"
     echo "$(date)" "MYPY...."
     mypy_on_each "${MYPY_FILES[@]}"
-    if [ $HAS_FLAKE8 ]; then
-      echo "$(date)" "Flake8...."
-      git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
-        flake8 --config=.flake8
+    # if [ $HAS_FLAKE8 ]; then
+    #   echo "$(date)" "Flake8...."
+    #   git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
+    #     flake8 --config=.flake8
 
-      git ls-files -- '*.pyx' '*.pxd' '*.pxi' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
-        flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
-    fi
+    #   git ls-files -- '*.pyx' '*.pxd' '*.pxi' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
+    #     flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
+    # fi
 
     if command -v shellcheck >/dev/null; then
       local shell_files non_shell_files

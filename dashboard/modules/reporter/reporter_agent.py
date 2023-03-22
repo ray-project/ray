@@ -283,7 +283,7 @@ class ReporterAgent(
         self._gcs_aio_client = dashboard_agent.gcs_aio_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
-        self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
+        self._is_head_node = self._ip == dashboard_agent.gcs_address.rsplit(":", 1)[0]
         self._hostname = socket.gethostname()
         # (pid, created_time) -> psutil.Process
         self._workers = {}
@@ -367,6 +367,8 @@ class ReporterAgent(
 
     @staticmethod
     def _get_cpu_percent(in_k8s: bool):
+        return psutil.cpu_percent()
+
         if in_k8s:
             return k8s_utils.cpu_percent()
         else:

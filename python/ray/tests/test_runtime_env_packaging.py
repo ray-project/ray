@@ -434,6 +434,7 @@ class TestParseUri:
             ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
             ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
             ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
+            ("hdfs://namenode/file.zip", Protocol.HDFS, "hdfs_namenode_file.zip"),
         ],
     )
     def test_parsing_remote_basic(self, parsing_tuple):

@@ -57,9 +57,15 @@ class HttpServerAgent:
         self.runner = aiohttp.web.AppRunner(app)
         await self.runner.setup()
         try:
+            http_address = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
+            import os
+
+            if os.environ.get("BYTED_RAY_POD_IP") is not None:
+                if http_address == "0.0.0.0":
+                    http_address = "::"
             site = aiohttp.web.TCPSite(
                 self.runner,
-                "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0",
+                http_address,
                 self.listen_port,
             )
             await site.start()

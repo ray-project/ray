@@ -1,0 +1,5 @@
+
+## Run on devbox
+```bash
+docker run -w /ray -v ${your workspace}:/ray -v ${your local bazel cache}:/root/ray-bazel-cache -it hub.byted.org/kuberay/manylinux2014_x86_64:2021-11-07-28723f3 /ray/.codebase/patch/build_pip_wheel.sh
+```

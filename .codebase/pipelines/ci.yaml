@@ -1,0 +1,55 @@
+name: Main CI
+trigger:
+  change:
+  manual:
+jobs:
+  format-check:
+    image: hub.byted.org/kuberay/debian_bullseye:ef30b6bdf0ab221c1d3c59f449e887b6
+    timeout: 5
+    steps:
+      - name: FORMAT_CHECK
+        commands:
+          - bash .codebase/patch/codebase_format_check.sh
+  build-wheels:
+    depends: [format-check]
+    image: hub.byted.org/compile/manylinux2014:6d45df5397bbc592d7b77f05bdc8c202
+    steps:
+      - name: BUILD_WHEEL
+        commands:
+          - bash .codebase/patch/codebase_build_wheel.sh
+      - name: UPLOAD_WHEEL
+        uses: actions/upload-artifact
+        inputs:
+          name: release
+          path: .whl
+  core-cpp-ut:
+    depends: [format-check]
+    image: hub.byted.org/compile/manylinux2014:6d45df5397bbc592d7b77f05bdc8c202
+    steps:
+      - name: CORE_CPP_UT
+        commands:
+          - bash .codebase/patch/codebase_core_cpp_ut.sh
+  python-ut-small:
+    depends: [build-wheels]
+    image: hub.byted.org/kuberay/debian_bullseye:ef30b6bdf0ab221c1d3c59f449e887b6
+    steps:
+      - name: DOWNLOAD_WHEEL
+        uses: actions/download-artifact
+        inputs:
+          name: release
+          path: ./
+      - name: CORE_PYTHON_UT_SMALL
+        commands:
+          - bash .codebase/patch/codebase_python_ut_small.sh
+  # python-ut-dataset:
+  #   depends: [build-wheels]
+  #   image: hub.byted.org/kuberay/debian_bullseye:ef30b6bdf0ab221c1d3c59f449e887b6
+  #   steps:
+  #     - name: DOWNLOAD_WHEEL
+  #       uses: actions/download-artifact
+  #       inputs:
+  #         name: release
+  #         path: ./
+  #     - name: CORE_PYTHON_UT_DATASET
+  #       commands:
+  #         - bash .codebase/patch/codebase_python_ut_dataset.sh

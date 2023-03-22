@@ -36,6 +36,12 @@ static std::string to_str(const T &obj, bool include_scheme) {
   return EndpointToUrl(obj, include_scheme);
 }
 
+TEST(UtilTest, SplitIpPortTest) {
+  std::vector<std::string> result = SplitIpPort("127.0.0.1:7369");
+  std::cout << result[0] << std::endl;
+  std::cout << result[1] << std::endl;
+}
+
 TEST(UtilTest, UrlIpTcpParseTest) {
   ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://[::1]:1/", 0), false), "[::1]:1");
   ASSERT_EQ(to_str(ParseUrlEndpoint("tcp://[::1]/", 0), false), "[::1]:0");

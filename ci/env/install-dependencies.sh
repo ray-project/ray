@@ -102,7 +102,8 @@ install_miniconda() {
 
     local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
     local miniconda_target="${HOME}/${miniconda_url##*/}"
-    curl -f -s -L -o "${miniconda_target}" "${miniconda_url}"
+    # curl -f -s -L -o "${miniconda_target}" "${miniconda_url}"
+    toscli -bucket inf-batch-ray-build -accessKey K59XHNKC1P93V992Z8L2 -endpoint tos-cn-north.byted.org -psm toutiao.tos.tosapi get -filename "${miniconda_target}" Miniconda3-py37_4.9.2-Linux-x86_64.sh
     chmod +x "${miniconda_target}"
 
     case "${OSTYPE}" in
@@ -482,7 +483,31 @@ install_dependencies() {
   install_pip_packages
 }
 
-install_dependencies "$@"
+# install_dependencies "$@"
+
+install_dependencies_in_codebase() {
+  if [[  -n "${PYTHON-}" ]]; then
+    install_miniconda
+    source ~/.bashrc
+    install_upgrade_pip
+  fi
+
+  if [[ -n "${INSTALL_BAZEL:-}" ]]; then
+    install_bazel
+  fi
+  
+  if [[ -n "${NODE_VERSION:-}" ]]; then
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
+    if [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
+      source $XDG_CONFIG_HOME/nvm.sh
+    else
+      source "$HOME"/.nvm/nvm.sh
+    fi
+    nvm install "$NODE_VERSION"
+    nvm use "$NODE_VERSION"
+  fi
+}
+install_dependencies_in_codebase "$@"
 
 # Pop caller's shell options (quietly)
 { set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null

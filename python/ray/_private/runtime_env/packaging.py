@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import subprocess
 import shutil
 from enum import Enum
 from pathlib import Path
@@ -88,12 +89,13 @@ class Protocol(Enum):
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
     GS = "gs", "Remote google storage path, assumes everything packed in one zip file."
     FILE = "file", "File storage path, assumes everything packed in one zip file."
+    HDFS = "hdfs", "Remote HDFS path, assumes everything packed in one zip file."
 
     @classmethod
     def remote_protocols(cls):
         # Returns a list of protocols that support remote storage
         # These protocols should only be used with paths that end in ".zip"
-        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE]
+        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE, cls.HDFS]
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -665,7 +667,16 @@ async def download_and_unpack_package(
                             "`pip install boto3` to fetch URIs in s3 "
                             "bucket. " + install_warning
                         )
-                    tp = {"client": boto3.client("s3")}
+                    s3_endpoint = os.getenv("S3_ENDPOINT_URL")
+                    if s3_endpoint:
+                        tp = {
+                            "client": boto3.client(
+                                service_name="s3",
+                                endpoint_url=s3_endpoint,
+                            )
+                        }
+                    else:
+                        tp = {"client": boto3.client("s3")}
                 elif protocol == Protocol.GS:
                     try:
                         from google.cloud import storage  # noqa: F401
@@ -683,6 +694,13 @@ async def download_and_unpack_package(
                     def open_file(uri, mode, *, transport_params=None):
                         return open(uri, mode)
 
+                elif protocol == Protocol.HDFS:
+                    try:
+                        subprocess.check_call(["which", "hdfs"])
+                    except ImportError:
+                        raise ImportError(
+                            "You must have HDFS command to fetch files from HDFS."
+                        )
                 else:
                     try:
                         from smart_open import open as open_file
@@ -692,10 +710,12 @@ async def download_and_unpack_package(
                             f"to fetch {protocol.value.upper()} URIs. "
                             + install_warning
                         )
-
-                with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
-                    with open_file(pkg_file, "wb") as fin:
-                        fin.write(package_zip.read())
+                if protocol == Protocol.HDFS:
+                    subprocess.check_call(["hdfs", "dfs", "-get", pkg_uri, pkg_file])
+                else:
+                    with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
+                        with open_file(pkg_file, "wb") as fin:
+                            fin.write(package_zip.read())
 
                 unzip_package(
                     package_path=pkg_file,
