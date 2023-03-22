@@ -3,6 +3,13 @@ import queue
 import threading
 from typing import Callable, Iterator, TypeVar
 
+import ray
+from ray.actor import ActorHandle
+from ray.types import ObjectRef
+from ray.data.block import Block
+from ray.data._internal.block_batching.interfaces import BlockPrefetcher
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
 T = TypeVar("T")
 U = TypeVar("U")
 
@@ -85,3 +92,41 @@ def _make_async_gen(
         if num_threads_finished >= num_workers:
             output_queue.join()
             break
+
+PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
+class WaitBlockPrefetcher(BlockPrefetcher):
+    """Block prefetcher using ray.wait."""
+
+    def prefetch_blocks(self, blocks: ObjectRef[Block]):
+        ray.wait(blocks, num_returns=1, fetch_local=True)
+
+
+# ray.wait doesn't work as expected, so we have an
+# actor-based prefetcher as a work around. See
+# https://github.com/ray-project/ray/issues/23983 for details.
+class ActorBlockPrefetcher(BlockPrefetcher):
+    """Block prefetcher using a local actor."""
+
+    def __init__(self):
+        self.prefetch_actor = self._get_or_create_actor_prefetcher()
+
+    @staticmethod
+    def _get_or_create_actor_prefetcher() -> "ActorHandle":
+        node_id = ray.get_runtime_context().node_id
+        actor_name = f"dataset-block-prefetcher-{node_id}"
+        return _BlockPretcher.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+            name=actor_name,
+            namespace=PREFETCHER_ACTOR_NAMESPACE,
+            get_if_exists=True,
+        ).remote()
+
+    def prefetch_blocks(self, blocks: ObjectRef[Block]):
+        self.prefetch_actor.prefetch.remote(*blocks)
+
+@ray.remote(num_cpus=0)
+class _BlockPretcher:
+    """Helper actor that prefetches blocks asynchronously."""
+
+    def prefetch(self, *blocks) -> None:
+        pass

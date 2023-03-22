@@ -4,15 +4,14 @@ import sys
 from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 
 import ray
-from ray.actor import ActorHandle
-from ray.data._internal.block_batching.util import _make_async_gen
+from ray.data._internal.block_batching.interfaces import BlockPrefetcher
+from ray.data._internal.block_batching.util import _make_async_gen, WaitBlockPrefetcher, ActorBlockPrefetcher
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 T = TypeVar("T")
 
@@ -24,9 +23,6 @@ else:
     @contextmanager
     def nullcontext(enter_result=None):
         yield enter_result
-
-
-PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
 
 def batch_block_refs(
@@ -229,7 +225,7 @@ def _resolve_blocks(
 
 def _prefetch_blocks(
     block_ref_iter: Iterator[ObjectRef[Block]],
-    prefetcher: "BlockPrefetcher",
+    prefetcher: BlockPrefetcher,
     num_blocks_to_prefetch: int,
     clear_block_after_read: bool = False,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
@@ -359,50 +355,3 @@ def _format_batches(
         with stats.iter_format_batch_s.timer() if stats else nullcontext():
             batch = BlockAccessor.for_block(block).to_batch_format(batch_format)
         yield batch
-
-
-class BlockPrefetcher:
-    """Interface for prefetching blocks."""
-
-    def prefetch_blocks(self, blocks: ObjectRef[Block]):
-        """Prefetch the provided blocks to this node."""
-        raise NotImplementedError
-
-
-class WaitBlockPrefetcher(BlockPrefetcher):
-    """Block prefetcher using ray.wait."""
-
-    def prefetch_blocks(self, blocks: ObjectRef[Block]):
-        ray.wait(blocks, num_returns=1, fetch_local=True)
-
-
-# ray.wait doesn't work as expected, so we have an
-# actor-based prefetcher as a work around. See
-# https://github.com/ray-project/ray/issues/23983 for details.
-class ActorBlockPrefetcher(BlockPrefetcher):
-    """Block prefetcher using a local actor."""
-
-    def __init__(self):
-        self.prefetch_actor = self._get_or_create_actor_prefetcher()
-
-    @staticmethod
-    def _get_or_create_actor_prefetcher() -> "ActorHandle":
-        node_id = ray.get_runtime_context().node_id
-        actor_name = f"dataset-block-prefetcher-{node_id}"
-        return _BlockPretcher.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
-            name=actor_name,
-            namespace=PREFETCHER_ACTOR_NAMESPACE,
-            get_if_exists=True,
-        ).remote()
-
-    def prefetch_blocks(self, blocks: ObjectRef[Block]):
-        self.prefetch_actor.prefetch.remote(*blocks)
-
-
-@ray.remote(num_cpus=0)
-class _BlockPretcher:
-    """Helper actor that prefetches blocks asynchronously."""
-
-    def prefetch(self, *blocks) -> None:
-        pass
