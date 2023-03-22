@@ -1,11 +1,19 @@
-import { Box, Tooltip, Typography } from "@material-ui/core";
+import { Box, Tooltip, Typography, makeStyles, } from "@material-ui/core";
 import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import UsageBar from "../../common/UsageBar";
 import { GPUStats, NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 
-export const GPU_COL_WIDTH = 120;
+const useStyles = makeStyles((theme) => ({
+  gpuColumn: {
+    minWidth: 120,
+  },
+  box: {
+    display: "flex",
+    minWidth: 120,
+  }
+}));
 
 export type NodeGPUEntryProps = {
   slot: number;
@@ -13,8 +21,9 @@ export type NodeGPUEntryProps = {
 };
 
 export const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
+  const classes = useStyles();
   return (
-    <Box display="flex" style={{ minWidth: GPU_COL_WIDTH }}>
+    <Box className={classes.box}>
       <Tooltip title={gpu.name}>
         <RightPaddedTypography variant="body1">[{slot}]:</RightPaddedTypography>
       </Tooltip>
@@ -33,8 +42,9 @@ export const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
 };
 
 export const NodeGPUView = ({ node }: { node: NodeDetail }) => {
+  const classes = useStyles();
   return (
-    <div style={{ minWidth: GPU_COL_WIDTH }}>
+    <div className={classes.gpuColumn}>
       {node.gpus !== undefined && node.gpus.length !== 0 ? (
         node.gpus.map((gpu, i) => (
           <NodeGPUEntry key={gpu.uuid} gpu={gpu} slot={gpu.index} />
@@ -55,6 +65,7 @@ export const WorkerGpuRow = ({
   worker: Worker;
   node: NodeDetail;
 }) => {
+  const classes = useStyles();
   const workerGPUEntries = (node.gpus ?? [])
     .map((gpu, i) => {
       const process = gpu.processes?.find(
@@ -72,6 +83,6 @@ export const WorkerGpuRow = ({
       N/A
     </Typography>
   ) : (
-    <div style={{ minWidth: GPU_COL_WIDTH }}>{workerGPUEntries}</div>
+    <div className={classes.gpuColumn}>{workerGPUEntries}</div>
   );
 };
