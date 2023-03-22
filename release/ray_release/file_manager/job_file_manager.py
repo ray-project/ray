@@ -22,7 +22,8 @@ class JobFileManager(FileManager):
 
         self.sdk = self.cluster_manager.sdk
         self.s3_client = boto3.client("s3")
-        self.bucket = str(RELEASE_AWS_BUCKET)
+#        self.bucket = str(RELEASE_AWS_BUCKET)
+        self.bucket = "anyscale-oss-dev-bucket"
         self.job_manager = JobManager(cluster_manager)
         # Backward compatible
         if "ANYSCALE_RAY_DIR" in anyscale.__dict__:
