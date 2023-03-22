@@ -575,7 +575,6 @@ class ServeController:
                 app_config.name,
                 deploy_obj_ref=deploy_obj_ref,
                 deployment_time=deployment_time,
-                deployed_app_config=app_config_dict,
             )
 
         self.kv_store.put(
@@ -702,9 +701,7 @@ class ServeController:
                 status=app_status_info.status,
                 message=app_status_info.message,
                 last_deployed_time_s=app_status_info.deployment_timestamp,
-                deployed_app_config=self.application_state_manager.get_app_config(
-                    app_name
-                ),
+                deployed_app_config=self.get_app_config(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name
                 ),
@@ -754,17 +751,13 @@ class ServeController:
             statuses.append(self.get_serve_status(name))
         return statuses
 
-    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:
+    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Optional[Dict]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-        if checkpoint is None:
-            return ServeApplicationSchema.get_empty_schema_dict()
-        else:
+        if checkpoint is not None:
             _, config_checkpoints_dict = pickle.loads(checkpoint)
-            if name not in config_checkpoints_dict:
-                return ServeApplicationSchema.get_empty_schema_dict()
-            config, _ = config_checkpoints_dict[name]
-
-            return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
+            if name in config_checkpoints_dict:
+                config, _ = config_checkpoints_dict[name]
+                return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
 
     def get_all_deployment_statuses(self) -> List[bytes]:
         """Gets deployment status bytes for all live deployments."""

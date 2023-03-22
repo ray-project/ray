@@ -1,5 +1,5 @@
 import traceback
-from typing import Dict, List, Optional
+from typing import Dict, List
 from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.common import (
@@ -27,7 +27,6 @@ class ApplicationState:
         name: str,
         deployment_state_manager: DeploymentStateManager,
         deploy_obj_ref: ObjectRef = None,
-        deployed_app_config: Dict = None,
         deployment_time: float = 0,
     ):
         """
@@ -43,7 +42,6 @@ class ApplicationState:
         else:
             self.status: ApplicationStatus = ApplicationStatus.NOT_STARTED
         self.name = name
-        self.deployed_app_config = deployed_app_config
         self.deployment_params: List[Dict] = []
         self.ready_to_be_deleted = False
         self.deployment_state_manager = deployment_state_manager
@@ -302,9 +300,6 @@ class ApplicationStateManager:
     def get_route_prefix(self, name: str) -> str:
         return self._application_states[name].route_prefix
 
-    def get_app_config(self, name: str) -> Optional[Dict]:
-        return self._application_states[name].deployed_app_config
-
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}"""
         return {
@@ -322,7 +317,6 @@ class ApplicationStateManager:
         self,
         name: str,
         deploy_obj_ref: ObjectRef,
-        deployed_app_config: Dict,
         deployment_time: float = 0,
     ):
         """Create application state
@@ -341,7 +335,6 @@ class ApplicationStateManager:
             name,
             self.deployment_state_manager,
             deploy_obj_ref=deploy_obj_ref,
-            deployed_app_config=deployed_app_config,
             deployment_time=deployment_time,
         )
 

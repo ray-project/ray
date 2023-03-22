@@ -649,7 +649,7 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     last_deployed_time_s: float = Field(
         description="The time at which the application was deployed."
     )
-    deployed_app_config: ServeApplicationSchema = Field(
+    deployed_app_config: Optional[ServeApplicationSchema] = Field(
         description=(
             "The exact copy of the application config that was submitted to the "
             "cluster. This will include all of, and only, the options that were "
