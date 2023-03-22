@@ -494,7 +494,9 @@ new_tuner = tune.Tuner(
     param_space={
         "num_epochs": 10,
         "hyperparam": tune.grid_search([4, 5, 6]),
-        # Use the `best_checkpoint_uri` from above.
+        # Put the best checkpoint from above into the object store.
+        # This way, all trials will be able to access the checkpoint,
+        # regardless of which node they are on.
         "start_from_checkpoint": ray.put(best_checkpoint),
     },
     tune_config=tune.TuneConfig(metric="score", mode="max"),
