@@ -5,6 +5,7 @@ import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, DataBatch
 
+
 @dataclass
 class LogicalBatch:
     """A logical "batch" of data.
@@ -47,23 +48,28 @@ class LogicalBatch:
     @property
     def blocks(self) -> List[Block]:
         if not self._resolved:
-            raise RuntimeError("The resolved blocks for this logical batch can only be "
-                               "accessed after calling `resolve`.")
+            raise RuntimeError(
+                "The resolved blocks for this logical batch can only be "
+                "accessed after calling `resolve`."
+            )
         return self._blocks
+
 
 @dataclass
 class Batch:
     """A batch of data.
-    
+
     Attributes:
         batch_idx: The global index of this batch so that downstream operations can
             maintain ordering.
         data: The batch of data.
         logical_batch: The logical batch that was used to create this batch.
     """
+
     batch_idx: int
     data: DataBatch
     logical_batch: LogicalBatch
+
 
 class BlockPrefetcher:
     """Interface for prefetching blocks."""

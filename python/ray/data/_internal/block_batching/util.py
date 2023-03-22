@@ -93,7 +93,10 @@ def _make_async_gen(
             output_queue.join()
             break
 
+
 PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
+
+
 class WaitBlockPrefetcher(BlockPrefetcher):
     """Block prefetcher using ray.wait."""
 
@@ -123,6 +126,7 @@ class ActorBlockPrefetcher(BlockPrefetcher):
 
     def prefetch_blocks(self, blocks: ObjectRef[Block]):
         self.prefetch_actor.prefetch.remote(*blocks)
+
 
 @ray.remote(num_cpus=0)
 class _BlockPretcher:

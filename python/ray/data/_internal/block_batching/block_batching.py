@@ -5,7 +5,11 @@ from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 
 import ray
 from ray.data._internal.block_batching.interfaces import BlockPrefetcher
-from ray.data._internal.block_batching.util import _make_async_gen, WaitBlockPrefetcher, ActorBlockPrefetcher
+from ray.data._internal.block_batching.util import (
+    _make_async_gen,
+    WaitBlockPrefetcher,
+    ActorBlockPrefetcher,
+)
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data._internal.memory_tracing import trace_deallocation

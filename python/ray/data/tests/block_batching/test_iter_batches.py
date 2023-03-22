@@ -7,8 +7,19 @@ import pandas as pd
 import pyarrow as pa
 
 from ray.data.block import Block, BlockMetadata
-from ray.data._internal.block_batching.interfaces import Batch, LogicalBatch, BlockPrefetcher
-from ray.data._internal.block_batching.iter_batches import _bundle_block_refs_to_logical_batches, _local_shuffle_logical_batches, _prefetch_batches_locally, _construct_batch_from_logical_batch, _format_batches, _collate
+from ray.data._internal.block_batching.interfaces import (
+    Batch,
+    LogicalBatch,
+    BlockPrefetcher,
+)
+from ray.data._internal.block_batching.iter_batches import (
+    _bundle_block_refs_to_logical_batches,
+    _local_shuffle_logical_batches,
+    _prefetch_batches_locally,
+    _construct_batch_from_logical_batch,
+    _format_batches,
+    _collate,
+)
 
 
 def block_generator(
@@ -22,6 +33,7 @@ def block_generator(
             input_files=[],
             exec_stats=None,
         )
+
 
 def logical_batch_generator(
     num_rows: int, num_blocks: int, batch_size: int = None
@@ -119,6 +131,7 @@ def test_bundle_block_refs_to_logical_batches():
         LogicalBatch(1, [block_refs[1][0], block_refs[2][0]], 1, None, batch_size),
     ]
 
+
 def test_local_shuffle_logical_batches():
     # Case 1: Shuffle buffer min size is smaller than a batch.
     # In this case, there is effectively no shuffling since the buffer
@@ -158,6 +171,7 @@ def test_local_shuffle_logical_batches():
 
     assert shuffled_batches == expected_output
 
+
 @pytest.mark.parametrize("num_batches_to_prefetch", [1, 2])
 def test_prefetch_batches_locally(num_batches_to_prefetch):
     class DummyPrefetcher(BlockPrefetcher):
@@ -195,6 +209,7 @@ def test_prefetch_batches_locally(num_batches_to_prefetch):
     # Check that the output iterator is the same as the input iterator.
     assert output_batches == logical_batches
 
+
 @pytest.mark.parametrize("block_size", [1, 10])
 def test_construct_batch_from_logical_batch(block_size):
     num_blocks = 5
@@ -202,18 +217,20 @@ def test_construct_batch_from_logical_batch(block_size):
     logical_batches = list(
         logical_batch_generator(block_size, num_blocks, batch_size=batch_size)
     )
-    
-    created_batches = list(
-        _construct_batch_from_logical_batch(iter(logical_batches))
-    )
+
+    created_batches = list(_construct_batch_from_logical_batch(iter(logical_batches)))
 
     for i, batch in enumerate(created_batches):
         assert i == batch.batch_idx
         assert len(batch.data) == logical_batches[i].num_rows
 
+
 @pytest.mark.parametrize("batch_format", ["pandas", "numpy", "pyarrow"])
 def test_format_batches(batch_format):
-    batches = [Batch(i, data[0], None) for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))]
+    batches = [
+        Batch(i, data[0], None)
+        for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
+    ]
     batch_iter = _format_batches(batches, batch_format=batch_format)
 
     for i, batch in enumerate(batch_iter):
@@ -231,12 +248,16 @@ def test_collate():
     def collate_fn(batch):
         return pa.table({"bar": [1] * 2})
 
-    batches = [Batch(i, data[0], None) for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))]
+    batches = [
+        Batch(i, data[0], None)
+        for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
+    ]
     batch_iter = _collate(batches, collate_fn=collate_fn)
 
     for i, batch in enumerate(batch_iter):
         assert batch.batch_idx == i
         assert batch.data == pa.table({"bar": [1] * 2})
+
 
 if __name__ == "__main__":
     import sys

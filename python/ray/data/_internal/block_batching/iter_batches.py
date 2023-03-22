@@ -3,9 +3,13 @@ from typing import Any, Callable, Iterator, List, Optional, Tuple
 
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, BlockAccessor, DataBatch
-from ray.data._internal.block_batching.interfaces import Batch, LogicalBatch, BlockPrefetcher
+from ray.data._internal.block_batching.interfaces import (
+    Batch,
+    LogicalBatch,
+    BlockPrefetcher,
+)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.memory_tracing import trace_deallocation
+
 
 def _bundle_block_refs_to_logical_batches(
     block_ref_iterator: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
@@ -77,6 +81,7 @@ def _bundle_block_refs_to_logical_batches(
         )
         global_index += 1
 
+
 def _local_shuffle_logical_batches(
     logical_batch_iterator: Iterator[LogicalBatch],
     shuffle_buffer_min_size: int,
@@ -110,6 +115,7 @@ def _local_shuffle_logical_batches(
         output_batch.batch_idx = global_counter
         yield output_batch
         global_counter += 1
+
 
 def _prefetch_batches_locally(
     logical_batch_iter: Iterator[LogicalBatch],
@@ -167,6 +173,7 @@ def _prefetch_batches_locally(
     for batch in batches:
         yield batch
 
+
 def _construct_batch_from_logical_batch(
     resolved_logical_batch_iter: Iterator[LogicalBatch],
     ensure_copy: bool = False,
@@ -217,6 +224,7 @@ def _construct_batch_from_logical_batch(
 
         yield Batch(logical_batch.batch_idx, batch, logical_batch)
 
+
 def _format_batches(
     block_iter: Iterator[Batch],
     batch_format: str,
@@ -232,9 +240,12 @@ def _format_batches(
         An iterator over batch index and the formatted batch.
     """
     for batch in block_iter:
-        formatted_batch = BlockAccessor.for_block(batch.data).to_batch_format(batch_format)
+        formatted_batch = BlockAccessor.for_block(batch.data).to_batch_format(
+            batch_format
+        )
         batch.data = formatted_batch
         yield batch
+
 
 def _collate(
     batch_iter: Iterator[Batch],
@@ -250,11 +261,3 @@ def _collate(
     for batch in batch_iter:
         batch.data = collate_fn(batch.data)
         yield batch
-
-def _eagerly_free_blocks(batch_iter: Iterator[Batch]):
-    """Eagerly free the block references in the batch iterator."""
-
-    for batch in batch_iter:
-        block_refs = batch.logical_batch.block_refs
-        for block_ref in block_refs:
-            trace_deallocation(block_ref, )
