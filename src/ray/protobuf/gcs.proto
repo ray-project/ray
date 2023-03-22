@@ -393,10 +393,12 @@ message WorkerTableData {
   // The time when this worker process is requested from raylet.
   // The field exists only when the worker is launched
   // by a raylet. (I.e., driver worker won't have this value).
+  // If the value doesn't present, it is -1.
   uint64 worker_launch_time_ms = 25;
   // The time when this worker process is successfully started.
   // The field exists only when the worker is launched
   // by a raylet. (I.e., driver worker won't have this value).
+  // If the value doesn't present, it is -1.
   uint64 worker_launched_time_ms = 26;
 }
 

@@ -149,7 +149,7 @@ parser.add_argument(
     "--worker-launch-time-ms",
     required=True,
     type=int,
-    help="The time worker process is launched from raylet",
+    help="The time when raylet starts to launch the worker process.",
 )
 
 
@@ -166,7 +166,7 @@ if __name__ == "__main__":
     else:
         # This value might be inaccurate in Python 3.6.
         # We will anyway deprecate Python 3.6.
-        worker_launched_time = time.time() * 1000
+        worker_launched_time_ms = time.time() * 1000
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
