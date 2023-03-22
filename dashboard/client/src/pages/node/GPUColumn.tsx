@@ -1,4 +1,4 @@
-import { Box, Tooltip, Typography, makeStyles, } from "@material-ui/core";
+import { Box, makeStyles, Tooltip, Typography } from "@material-ui/core";
 import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import UsageBar from "../../common/UsageBar";
@@ -12,7 +12,7 @@ const useStyles = makeStyles((theme) => ({
   box: {
     display: "flex",
     minWidth: 120,
-  }
+  },
 }));
 
 export type NodeGPUEntryProps = {
