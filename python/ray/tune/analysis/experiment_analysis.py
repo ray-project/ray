@@ -125,6 +125,11 @@ class ExperimentAnalysis:
 
     @property
     def experiment_path(self) -> str:
+        """Path pointing to the experiment directory on persistent storage.
+
+        This can point to a remote storage location (e.g. S3) or to a local
+        location (path on the head node).
+        """
         return self._remote_path or self._local_path
 
     def _parse_cloud_path(self, local_path: str):
