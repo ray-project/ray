@@ -36,7 +36,7 @@ def batch_block_refs(
     prefetch_blocks: int = 0,
     clear_block_after_read: bool = False,
     batch_size: Optional[int] = None,
-    batch_format: str = "default",
+    batch_format: Optional[str] = "default",
     drop_last: bool = False,
     collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
@@ -128,7 +128,7 @@ def batch_blocks(
     *,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
     batch_size: Optional[int] = None,
-    batch_format: str = "default",
+    batch_format: Optional[str] = "default",
     drop_last: bool = False,
     collate_fn: Optional[Callable[[DataBatch], DataBatch]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
@@ -337,7 +337,7 @@ def _blocks_to_batches(
 
 def _format_batches(
     block_iter: Iterator[Block],
-    batch_format: str,
+    batch_format: Optional[str],
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[DataBatch]:
     """Given an iterator of blocks, returns an iterator of formatted batches.
