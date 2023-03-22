@@ -5,12 +5,13 @@ from typing import Any, Callable, Iterator, Iterable, List, Optional
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask
+from ray.util.annotations import PublicAPI
 
 Connection = Any  # A Python DB API2-compliant `Connection` object.
 Cursor = Any  # A Python DB API2-compliant `Cursor` object.
 
 
-def cursor_to_block(cursor) -> Block:
+def _cursor_to_block(cursor) -> Block:
     import pyarrow as pa
 
     rows = cursor.fetchall()
@@ -21,15 +22,16 @@ def cursor_to_block(cursor) -> Block:
     return pa.Table.from_pylist(pylist)
 
 
+@PublicAPI(stability="alpha")
 class SQLDatasource(Datasource[ArrowRow]):
     def __init__(self, connection_factory: Callable[[], Connection]):
         self.connection_factory = connection_factory
 
     def create_reader(self, sql: str) -> "Reader":
-        return SQLReader(sql, self.connection_factory)
+        return _SQLReader(sql, self.connection_factory)
 
 
-def check_connection_is_dbapi2_compliant(connection) -> None:
+def _check_connection_is_dbapi2_compliant(connection) -> None:
     for attr in "close", "commit", "cursor":
         if not hasattr(connection, attr):
             raise ValueError(
@@ -40,7 +42,7 @@ def check_connection_is_dbapi2_compliant(connection) -> None:
             )
 
 
-def check_cursor_is_dbapi2_compliant(cursor) -> None:
+def _check_cursor_is_dbapi2_compliant(cursor) -> None:
     # These aren't all the methods required by the specification, but it's all the ones
     # we care about.
     for attr in "execute", "fetchone", "fetchall", "description":
@@ -54,13 +56,13 @@ def check_cursor_is_dbapi2_compliant(cursor) -> None:
 
 
 @contextmanager
-def connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
+def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
     connection = connection_factory()
-    check_connection_is_dbapi2_compliant(connection)
+    _check_connection_is_dbapi2_compliant(connection)
 
     try:
         cursor = connection.cursor()
-        check_cursor_is_dbapi2_compliant(cursor)
+        _check_cursor_is_dbapi2_compliant(cursor)
         yield cursor
 
     finally:
@@ -80,7 +82,7 @@ def connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
         connection.close()
 
 
-class SQLReader(Reader):
+class _SQLReader(Reader):
 
     NUM_SAMPLE_ROWS = 100
     MIN_ROWS_PER_READ_TASK = 50
@@ -94,9 +96,9 @@ class SQLReader(Reader):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         def fallback_read_fn() -> Iterable[Block]:
-            with connect(self.connection_factory) as cursor:
+            with _connect(self.connection_factory) as cursor:
                 cursor.execute(self.sql)
-                block = cursor_to_block(cursor)
+                block = _cursor_to_block(cursor)
                 return [block]
 
         # If `parallelism` is 1, directly fetch all rows. This avoids unnecessary
@@ -107,7 +109,7 @@ class SQLReader(Reader):
 
         # Databases like DB2, Oracle, and MS SQL Server don't support `LIMIT`.
         try:
-            with connect(self.connection_factory) as cursor:
+            with _connect(self.connection_factory) as cursor:
                 cursor.execute(f"SELECT * FROM ({self.sql}) as T LIMIT 1 OFFSET 0")
             is_limit_supported = True
         except Exception:
@@ -156,24 +158,24 @@ class SQLReader(Reader):
         return tasks
 
     def _get_num_rows(self) -> int:
-        with connect(self.connection_factory) as cursor:
+        with _connect(self.connection_factory) as cursor:
             cursor.execute(f"SELECT COUNT(*) FROM ({self.sql}) as T")
             return cursor.fetchone()[0]
 
     def _get_sample_block(self) -> Block:
-        with connect(self.connection_factory) as cursor:
+        with _connect(self.connection_factory) as cursor:
             cursor.execute(
                 f"SELECT * FROM ({self.sql}) as T LIMIT {self.NUM_SAMPLE_ROWS}"
             )
-            return cursor_to_block(cursor)
+            return _cursor_to_block(cursor)
 
     def _create_read_fn(self, num_rows: int, offset: int):
         def read_fn() -> Iterable[Block]:
-            with connect(self.connection_factory) as cursor:
+            with _connect(self.connection_factory) as cursor:
                 cursor.execute(
                     f"SELECT * FROM ({self.sql}) as T LIMIT {num_rows} OFFSET {offset}"
                 )
-                block = cursor_to_block(cursor)
+                block = _cursor_to_block(cursor)
                 return [block]
 
         return read_fn
