@@ -77,6 +77,12 @@ This produces the following output:
     (MyActor(index=2) pid=482120) hello there
     (MyActor(index=1) pid=482119) hello there
 
+Coloring Actor logs prefixes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+By default Ray prints Actor logs prefixes in light blue:
+Users may instead activate multi-color prefixes by setting the environment variable ``RAY_COLOR_PREFIX=1``.
+This will index into an array of colors modulo the PID of each process.
+
 Distributed progress bars (tqdm)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
