@@ -379,7 +379,7 @@ class Dataset(Generic[T]):
         *,
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
-        batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
+        batch_format: Optional[str] = "default",
         prefetch_batches: int = 0,
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
@@ -540,7 +540,9 @@ class Dataset(Generic[T]):
                 (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
+                ``Dict[str, numpy.ndarray]`` for tabular datasets, or None to return
+                the underlying block exactly as is with no additional formatting.
+                The default is "default".
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to process. If set to greater than 0, a separate thread will be used
                 to fetch the specified amount of formatted batches from blocks. This
@@ -1159,17 +1161,44 @@ class Dataset(Generic[T]):
         be used to read disjoint subsets of the dataset in parallel.
 
         This method is the recommended way to consume Datasets from multiple processes
-        (e.g., for distributed training). It requires streaming execution mode.
+        (e.g., for distributed training), and requires streaming execution mode.
 
-        The returned iterators are Ray-serializable and can be freely passed to any
-        Ray task or actor.
+        Streaming split works by delegating the execution of this Dataset to a
+        coordinator actor. The coordinator pulls block references from the executed
+        stream, and divides those blocks among `n` output iterators. Iterators pull
+        blocks from the coordinator actor to return to their caller on `next`.
+
+        The returned iterators are also repeatable; each iteration will trigger a
+        new execution of the Dataset. There is an implicit barrier at the start of
+        each iteration, which means that `next` must be called on all iterators before
+        the iteration starts.
+
+        Warning: because iterators are pulling blocks from the same Dataset execution,
+        if one iterator falls behind other iterators may be stalled.
 
         Examples:
             >>> import ray
             >>> ds = ray.data.range(1000000)
             >>> it1, it2 = ds.streaming_split(2, equal=True)
-            >>> list(it1.iter_batches())  # doctest: +SKIP
-            >>> list(it2.iter_batches())  # doctest: +SKIP
+
+            >>> # Can consume from both iterators in parallel.
+            >>> @ray.remote
+            ... def consume(it):
+            ...    for batch in it.iter_batches():
+            ...        print(batch)
+            >>> ray.get([consume.remote(it1), consume.remote(it2)])  # doctest: +SKIP
+
+            >>> # Can loop over the iterators multiple times (multiple epochs).
+            >>> @ray.remote
+            ... def train(it):
+            ...    NUM_EPOCHS = 100
+            ...    for _ in range(NUM_EPOCHS):
+            ...        for batch in it.iter_batches():
+            ...            print(batch)
+            >>> ray.get([train.remote(it1), train.remote(it2)])  # doctest: +SKIP
+
+            >>> # ERROR: this will block waiting for a read on `it2` to start.
+            >>> ray.get(train.remote(it1))  # doctest: +SKIP
 
         Args:
             n: Number of output iterators to return.
@@ -1178,10 +1207,13 @@ class Dataset(Generic[T]):
                 slightly more or less rows than other, but no data will be dropped.
             locality_hints: Specify the node ids corresponding to each iterator
                 location. Datasets will try to minimize data movement based on the
-                iterator output locations. This list must have length ``n``.
+                iterator output locations. This list must have length ``n``. You can
+                get the current node id of a task or actor by calling
+                ``ray.get_runtime_context().get_node_id()``.
 
         Returns:
-            The output iterator splits.
+            The output iterator splits. These iterators are Ray-serializable and can
+            be freely passed to any Ray task or actor.
         """
         return StreamSplitDatasetIterator.create(self, n, equal, locality_hints)
 
@@ -2907,7 +2939,7 @@ class Dataset(Generic[T]):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "default",
+        batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -2929,12 +2961,13 @@ class Dataset(Generic[T]):
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
-            batch_format: The format in which to return each batch.
-                Specify "default" to use the default block format (promoting
-                tables to Pandas and tensors to NumPy), "pandas" to select
-                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
-                to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
+            batch_format: Specify ``"default"`` to use the default block format
+                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
+                ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
+                ``Dict[str, numpy.ndarray]`` for tabular datasets, or None
+                to return the underlying block exactly as is with no additional
+                formatting. The default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
