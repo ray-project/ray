@@ -209,6 +209,27 @@ def wait_for_restore(num_restarting_allowed=0):
         time.sleep(0.5)
 
 
+class AddPolicyCallback(DefaultCallbacks):
+    def __init__(self):
+        super().__init__()
+
+    def on_algorithm_init(self, *, algorithm, **kwargs):
+        # Add a custom policy to algorithm.
+        algorithm.add_policy(
+            policy_id="test_policy",
+            policy_cls=(
+                PGTorchPolicy
+                if algorithm.config.framework_str == "torch"
+                else PGTF2Policy
+            ),
+            observation_space=gym.spaces.Box(low=0, high=1, shape=(8,)),
+            action_space=gym.spaces.Discrete(2),
+            config={},
+            policy_state=None,
+            evaluation_workers=True,
+        )
+
+
 class TestWorkerFailures(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -491,26 +512,6 @@ class TestWorkerFailures(unittest.TestCase):
             self.assertEqual(a.workers.num_remote_worker_restarts(), 2)
 
     def test_policies_are_restored_on_recovered_worker(self):
-        class AddPolicyCallback(DefaultCallbacks):
-            def __init__(self):
-                super().__init__()
-
-            def on_algorithm_init(self, *, algorithm, **kwargs):
-                # Add a custom policy to algorithm
-                algorithm.add_policy(
-                    policy_id="test_policy",
-                    policy_cls=(
-                        PGTorchPolicy
-                        if algorithm.config.framework_str == "torch"
-                        else PGTF2Policy
-                    ),
-                    observation_space=gym.spaces.Box(low=0, high=1, shape=(8,)),
-                    action_space=gym.spaces.Discrete(2),
-                    config={},
-                    policy_state=None,
-                    evaluation_workers=True,
-                )
-
         # Counter that will survive restarts.
         COUNTER_NAME = "test_policies_are_restored_on_recovered_worker"
         counter = Counter.options(name=COUNTER_NAME).remote()
@@ -552,7 +553,7 @@ class TestWorkerFailures(unittest.TestCase):
                     },
                 ),
             )
-            .callbacks(callbacks_class=AddPolicyCallback)
+            .callbacks(AddPolicyCallback)
             .fault_tolerance(
                 recreate_failed_workers=True,  # But recover.
                 # Throwing error in constructor is a bad idea.
