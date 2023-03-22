@@ -2202,10 +2202,16 @@ class DeploymentStateManager:
         num_gpu_deployments = 0
         for deployment_state in self._deployment_states.values():
             if (
-                deployment_state.target_info.replica_config.ray_actor_options.get(
-                    "num_gpus", 0
+                deployment_state.target_info is not None
+                and deployment_state.target_info.replica_config is not None
+                and deployment_state.target_info.replica_config.ray_actor_options
+                is not None
+                and (
+                    deployment_state.target_info.replica_config.ray_actor_options.get(
+                        "num_gpus", 0
+                    )
+                    > 0
                 )
-                > 0
             ):
                 num_gpu_deployments += 1
         record_extra_usage_tag(
