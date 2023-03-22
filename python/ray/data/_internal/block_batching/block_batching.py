@@ -36,7 +36,7 @@ def batch_block_refs(
     prefetch_blocks: int = 0,
     clear_block_after_read: bool = False,
     batch_size: Optional[int] = None,
-    batch_format: Optional[str] = "default",
+    batch_format: str = "default",
     drop_last: bool = False,
     collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
@@ -128,7 +128,7 @@ def batch_blocks(
     *,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
     batch_size: Optional[int] = None,
-    batch_format: Optional[str] = "default",
+    batch_format: str = "default",
     drop_last: bool = False,
     collate_fn: Optional[Callable[[DataBatch], DataBatch]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
@@ -143,30 +143,36 @@ def batch_blocks(
     This means that this function does not support block prefetching.
     """
 
-    batch_iter = _format_batches(
-        _blocks_to_batches(
-            block_iter=blocks,
+    def _iterator_fn(base_iterator: Iterator[Block]) -> Iterator[DataBatch]:
+        batch_iter = _format_batches(
+            _blocks_to_batches(
+                block_iter=base_iterator,
+                stats=stats,
+                batch_size=batch_size,
+                drop_last=drop_last,
+                shuffle_buffer_min_size=shuffle_buffer_min_size,
+                shuffle_seed=shuffle_seed,
+                ensure_copy=ensure_copy,
+            ),
+            batch_format=batch_format,
             stats=stats,
-            batch_size=batch_size,
-            drop_last=drop_last,
-            shuffle_buffer_min_size=shuffle_buffer_min_size,
-            shuffle_seed=shuffle_seed,
-            ensure_copy=ensure_copy,
-        ),
-        batch_format=batch_format,
-        stats=stats,
-    )
+        )
 
-    if collate_fn is not None:
+        if collate_fn is not None:
 
-        def batch_fn_iter(iterator: Iterator[DataBatch]) -> Iterator[DataBatch]:
-            for batch in iterator:
-                yield collate_fn(batch)
+            def batch_fn_iter(iterator: Iterator[DataBatch]) -> Iterator[DataBatch]:
+                for batch in iterator:
+                    yield collate_fn(batch)
 
-        batch_iter = batch_fn_iter(batch_iter)
+            batch_iter = batch_fn_iter(batch_iter)
+        yield from batch_iter
 
     if prefetch_batches > 0:
-        batch_iter = _make_async_gen(batch_iter, num_workers=prefetch_batches)
+        batch_iter = _make_async_gen(
+            blocks, fn=_iterator_fn, num_workers=prefetch_batches
+        )
+    else:
+        batch_iter = _iterator_fn(blocks)
 
     for formatted_batch in batch_iter:
         user_timer = stats.iter_user_s.timer() if stats else nullcontext()
@@ -337,7 +343,7 @@ def _blocks_to_batches(
 
 def _format_batches(
     block_iter: Iterator[Block],
-    batch_format: Optional[str],
+    batch_format: str,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[DataBatch]:
     """Given an iterator of blocks, returns an iterator of formatted batches.
