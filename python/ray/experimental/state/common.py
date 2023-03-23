@@ -1,5 +1,4 @@
 import json
-import json
 import logging
 import sys
 from abc import ABC
