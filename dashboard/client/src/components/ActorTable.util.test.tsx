@@ -23,6 +23,7 @@ describe("sortActors", () => {
     exitDetail: "-",
     requiredResources: {},
     placementGroupId: "123",
+    reprName: "repr1",
   };
   const actor2: Actor = {
     actorId: "2a77333eac321119fae2f60601000000",
@@ -43,6 +44,7 @@ describe("sortActors", () => {
     exitDetail: "-",
     requiredResources: {},
     placementGroupId: "123",
+    reprName: "repr2",
   };
   const actorList: Actor[] = [actor1, actor2];
 
