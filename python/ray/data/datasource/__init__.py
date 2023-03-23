@@ -40,6 +40,7 @@ from ray.data.datasource.partitioning import (
 )
 from ray.data.datasource.sql_datasource import Connection, SQLDatasource
 from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
+from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data.datasource.text_datasource import TextDatasource
 
 __all__ = [
@@ -76,6 +77,7 @@ __all__ = [
     "Reader",
     "TextDatasource",
     "TFRecordDatasource",
+    "WebDatasetDatasource",
     "WriteResult",
     "_S3FileSystemWrapper",
 ]
