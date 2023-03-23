@@ -403,6 +403,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 **config,
             )
 
+        print("---- RESTARTING RUN ----")
+
         analysis = tune.run(
             "trainable",
             resume=True,
@@ -440,15 +442,17 @@ class TuneFailResumeGridTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             tune.run(
                 "trainable",
-                callbacks=[self.FailureInjectorCallback(15)],
+                callbacks=[self.FailureInjectorCallback(3)],
                 search_alg=search_alg,
                 **config,
             )
 
+        print("---- RESTARTING RUN ----")
+
         analysis = tune.run(
             "trainable",
             resume=True,
-            callbacks=[self.CheckStateCallback(expected_trials=15)],
+            callbacks=[self.CheckStateCallback(expected_trials=3)],
             search_alg=search_alg,
             **config,
         )

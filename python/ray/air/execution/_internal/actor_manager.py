@@ -831,3 +831,6 @@ class RayActorManager:
                 on_result=on_result,
                 on_error=on_error,
             )
+
+    def cleanup(self):
+        pass
