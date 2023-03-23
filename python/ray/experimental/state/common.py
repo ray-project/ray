@@ -1417,7 +1417,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     if len(events) > 0:
         latest_state = events[-1]["state"]
     else:
-        latest_state = common_pb2.TaskStatus.Name(common_pb2.NIL)
+        latest_state = "NIL"
     task_state["state"] = latest_state
 
     return task_state
