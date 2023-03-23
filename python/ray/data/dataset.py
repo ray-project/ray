@@ -51,8 +51,8 @@ from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.dataset_iterator_impl import DatasetIteratorImpl
-from ray.data._internal.stream_split_dataset_iterator import StreamSplitDatasetIterator
+from ray.data._internal.dataset_iterator.dataset_iterator_impl import DatasetIteratorImpl
+from ray.data._internal.dataset_iterator.stream_split_dataset_iterator import StreamSplitDatasetIterator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -380,7 +380,6 @@ class Dataset(Generic[T]):
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Optional[str] = "default",
-        prefetch_batches: int = 0,
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -543,14 +542,6 @@ class Dataset(Generic[T]):
                 ``Dict[str, numpy.ndarray]`` for tabular datasets, or None to return
                 the underlying block exactly as is with no additional formatting.
                 The default is "default".
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to process. If set to greater than 0, a separate thread will be used
-                to fetch the specified amount of formatted batches from blocks. This
-                improves performance for non-CPU bound UDFs, allowing batch fetching
-                compute and formatting to be overlapped with the UDF. Defaults to 0 (no
-                prefetching enabled.) Increasing the number of batches to prefetch can
-                result in higher throughput, at the expense of requiring more heap
-                memory to buffer the batches.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch will be a zero-copy, read-only
@@ -650,7 +641,6 @@ class Dataset(Generic[T]):
         transform_fn = generate_map_batches_fn(
             batch_size=batch_size,
             batch_format=batch_format,
-            prefetch_batches=prefetch_batches,
             zero_copy_batch=zero_copy_batch,
         )
 

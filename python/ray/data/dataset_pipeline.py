@@ -28,7 +28,7 @@ from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
-from ray.data._internal.pipelined_dataset_iterator import PipelinedDatasetIterator
+from ray.data._internal.dataset_iterator.pipelined_dataset_iterator import PipelinedDatasetIterator
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF

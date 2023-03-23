@@ -31,12 +31,17 @@ def _make_async_gen(
     Args:
         base_iterator: The iterator to asynchronously fetch from.
         fn: The function to run on the input iterator.
-        num_workers: The number of threads to use in the threadpool.
+        num_workers: The number of threads to use in the threadpool. Defaults to 1.
 
     Returns:
         An iterator with the same elements as the base_iterator.
     """
 
+    # If no threadpool workers are specified, then don't use a threadpool.
+    if num_workers <= 0:
+        yield from fn(base_iterator)
+        return
+    
     def convert_to_threadsafe_iterator(base_iterator: Iterator[T]) -> Iterator[T]:
         class ThreadSafeIterator:
             def __init__(self, it):
@@ -91,7 +96,6 @@ def _make_async_gen(
             yield next_item
             output_queue.task_done()
         if num_threads_finished >= num_workers:
-            output_queue.join()
             break
 
 def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:

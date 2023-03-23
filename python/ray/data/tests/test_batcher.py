@@ -2,7 +2,7 @@ import pytest
 
 import pyarrow as pa
 
-from ray.data._internal.batcher import ShufflingBatcher
+from ray.data._internal.batcher import ShufflingBatcher, _blocks_to_batches
 
 
 def gen_block(num_rows):
@@ -125,6 +125,39 @@ def test_shuffling_batcher():
         should_batch_be_full=False,
         should_have_batch_after=False,
     )
+
+
+@pytest.mark.parametrize("block_size", [1, 10])
+@pytest.mark.parametrize("drop_last", [True, False])
+def test_blocks_to_batches(block_size, drop_last):
+    def block_generator(num_rows, num_blocks):
+        for _ in range(num_blocks):
+            yield gen_block(num_rows)
+
+    num_blocks = 5
+    block_iter = block_generator(num_rows=block_size, num_blocks=num_blocks)
+
+    batch_size = 3
+    batch_iter = _blocks_to_batches(
+        block_iter, batch_size=batch_size, drop_last=drop_last
+    )
+
+    if drop_last:
+        for batch in batch_iter:
+            assert len(batch) == batch_size
+    else:
+        full_batches = 0
+        leftover_batches = 0
+
+        dataset_size = block_size * num_blocks
+        for batch in batch_iter:
+            if len(batch) == batch_size:
+                full_batches += 1
+            if len(batch) == (dataset_size % batch_size):
+                leftover_batches += 1
+
+        assert leftover_batches == 1
+        assert full_batches == (dataset_size // batch_size)
 
 
 if __name__ == "__main__":
