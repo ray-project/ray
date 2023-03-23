@@ -1,7 +1,9 @@
 import heapq
 import random
+import sys
 from typing import Any, Callable, Iterator, List, Optional, Tuple
 
+import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, BlockAccessor, DataBatch
 from ray.data._internal.block_batching.interfaces import (
@@ -9,9 +11,19 @@ from ray.data._internal.block_batching.interfaces import (
     LogicalBatch,
     BlockPrefetcher,
 )
+from ray.data._internal.block_batching.util import _calculate_ref_hits
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats
+
+if sys.version_info >= (3, 7):
+    from contextlib import nullcontext
+else:
+    from contextlib import contextmanager
+
+    @contextmanager
+    def nullcontext(enter_result=None):
+        yield enter_result
 
 
 # def iter_batches(
@@ -167,61 +179,58 @@ from ray.data._internal.stats import DatasetStats
 
 #     yield from async_batch_iter
 
-# def _batch_in_threadpool(
-#         logical_batch_iterator: Iterator[LogicalBatch],
-#         stats: DatasetStats,
-#         clear_block_after_read: bool = False,
-#         batch_format: str = "default",
-#         collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-#         ensure_copy: bool = False,
-#         prefetch_batches: int = 0,
-# ):
-#     """Executes the batching, formatting, and collation logic in a threadpool.
+def _batch_in_threadpool(
+        logical_batch_iterator: Iterator[LogicalBatch],
+        stats: DatasetStats,
+        clear_block_after_read: bool = False,
+        batch_format: str = "default",
+        collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        ensure_copy: bool = False,
+        prefetch_batches: int = 0,
+):
+    """Executes the batching, formatting, and collation logic in a threadpool.
     
-#     Args:
-#         logical_batch_iterator: An iterator over logical batches.
-#         stats: DatasetStats object to record timing and other statistics.
-#         clear_block_after_read: Whether to clear the block from object store
-#             manually (i.e. without waiting for Python's automatic GC) after it
-#             is read. Doing so will reclaim memory faster and hence reduce the
-#             memory footprint. However, the caller has to ensure the safety, i.e.
-#             the block will never be accessed again.
-#         batch_format: The format in which to return each batch.
-#             Specify "default" to use the current block format (promoting
-#             Arrow to pandas automatically), "pandas" to
-#             select ``pandas.DataFrame`` or "pyarrow" to select
-#             ``pyarrow.Table``. Default is "default".
-#         collate_fn: A function to apply to each data batch before returning it.
-#         ensure_copy: Whether batches are always copied from the underlying base
-#             blocks (not zero-copy views).
-#         threadpool_size: The number of threads to use in the threadpool.
-#     """
+    Args:
+        logical_batch_iterator: An iterator over logical batches.
+        stats: DatasetStats object to record timing and other statistics.
+        clear_block_after_read: Whether to clear the block from object store
+            manually (i.e. without waiting for Python's automatic GC) after it
+            is read. Doing so will reclaim memory faster and hence reduce the
+            memory footprint. However, the caller has to ensure the safety, i.e.
+            the block will never be accessed again.
+        batch_format: The format in which to return each batch.
+            Specify "default" to use the current block format (promoting
+            Arrow to pandas automatically), "pandas" to
+            select ``pandas.DataFrame`` or "pyarrow" to select
+            ``pyarrow.Table``. Default is "default".
+        collate_fn: A function to apply to each data batch before returning it.
+        ensure_copy: Whether batches are always copied from the underlying base
+            blocks (not zero-copy views).
+        threadpool_size: The number of threads to use in the threadpool.
+    """
 
-#     def threadpool_computations(logical_batch_iter: Iterator[LogicalBatch]):
-#         # Step 4.1: Resolve the blocks.
-#         resolved_batch_iter = 
-#         resolved_batch_iter = _resolve_blocks(
-#             logical_batch_iter,
-#             clear_block_after_read=clear_block_after_read,
-#             stats=stats,
-#         )
+    def threadpool_computations(logical_batch_iter: Iterator[LogicalBatch]):
+        # Step 4.1: Resolve the blocks.
+        resolved_batch_iter = _resolve_logical_batch(logical_batch_iter, stats=stats)
 
-#         # Step 4.2: Slice the blocks to create the batch.
-#         batch_iter = _construct_batch_from_logical_batch(
-#             resolved_batch_iter, stats=stats, ensure_copy=ensure_copy
-#         )
+        # Step 4.2: Slice the blocks to create the batch.
+        batch_iter = _construct_batch_from_logical_batch(
+            resolved_batch_iter, stats=stats, ensure_copy=ensure_copy
+        )
 
-#         # Step 4.3: Format the batches.
-#         formatted_batch_iter = _format_batches(
-#             batch_iter, batch_format=batch_format, stats=stats
-#         )
+        # Step 4.3: Format the batches.
+        formatted_batch_iter = _format_batches(
+            batch_iter, batch_format=batch_format, stats=stats
+        )
 
-#         # Step 4.4: Apply the collate function if applicable.
-#         if collate_fn is not None:
-#             formatted_batch_iter = _collate(
-#                 formatted_batch_iter, collate_fn=collate_fn, stats=stats
-#             )
-#         yield from formatted_batch_iter
+        # Step 4.4: Apply the collate function if applicable.
+        if collate_fn is not None:
+            formatted_batch_iter = _collate(
+                formatted_batch_iter, collate_fn=collate_fn, stats=stats
+            )
+        yield from formatted_batch_iter
+
+    return
 
 
 
@@ -386,6 +395,28 @@ def _prefetch_batches_locally(
     # Yield the final set of batches.
     for batch in batches:
         yield batch
+
+def _resolve_logical_batch(logical_batch_iter: Iterator[LogicalBatch], stats: Optional[DatasetStats]=None):
+    """Resolves the block references for each logical batch."""
+
+    hits = 0
+    misses = 0
+    unknowns = 0
+    
+    for logical_batch in logical_batch_iter:
+        current_hit, current_miss, current_unknown = _calculate_ref_hits(logical_batch.block_refs)
+        hits += current_hit,
+        misses += current_miss
+        unknowns += current_unknown
+
+        with stats.iter_get_s.timer() if stats else nullcontext():
+            logical_batch.resolve()
+        yield logical_batch
+
+    if stats:
+        stats.iter_blocks_local += hits
+        stats.iter_blocks_remote += misses
+        stats.iter_unknown_location += unknowns
 
 def _construct_batch_from_logical_batch(
     resolved_logical_batch_iter: Iterator[LogicalBatch],
