@@ -115,7 +115,7 @@ def test_batch_predictor(tmpdir, use_gpu: bool):
         checkpoint=checkpoint,
         predictor_cls=LightningPredictor,
         use_gpu=use_gpu,
-        model=LightningMNISTClassifier,
+        model_class=LightningMNISTClassifier,
         load_from_checkpoint_kwargs=model_config,
     )
 

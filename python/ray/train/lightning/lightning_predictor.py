@@ -88,7 +88,7 @@ class LightningPredictor(TorchPredictor):
         *,
         preprocessor: Optional[Preprocessor] = None,
         use_gpu: bool = False,
-        load_from_checkpoint_kwargs: Dict[str, Any] = {}
+        load_from_checkpoint_kwargs: Optional[Dict[str, Any]] = None
     ) -> "LightningPredictor":
         """Instantiate the LightningPredictor from a Checkpoint.
 
@@ -107,6 +107,9 @@ class LightningPredictor(TorchPredictor):
             load_from_checkpoint_kwargs: A dictionary of arguments to pass into
                 ``pl.LightningModule.load_from_checkpoint``
         """
+        if not load_from_checkpoint_kwargs:
+            load_from_checkpoint_kwargs = {}
+
         model = checkpoint.get_model(
             model_class=model_class,
             load_from_checkpoint_kwargs=load_from_checkpoint_kwargs,
