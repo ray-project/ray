@@ -18,7 +18,6 @@ from ray.air.execution._internal.tracked_actor import TrackedActor
 from ray.air.execution._internal.tracked_actor_task import TrackedActorTask
 from ray.exceptions import RayTaskError, RayActorError
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -833,4 +832,23 @@ class RayActorManager:
             )
 
     def cleanup(self):
-        pass
+        for (
+            actor,
+            acquired_resources,
+        ) in self._live_actors_to_ray_actors_resources.values():
+            ray.kill(actor)
+            self._resource_manager.free_resources(acquired_resources)
+
+        for (
+            resource_request,
+            pending_actors,
+        ) in self._resource_request_to_pending_actors.items():
+            for i in range(len(pending_actors)):
+                self._resource_manager.cancel_resource_request(resource_request)
+
+        self._resource_manager.clear()
+
+        self.__init__(resource_manager=self._resource_manager)
+
+    def __del__(self):
+        self.cleanup()

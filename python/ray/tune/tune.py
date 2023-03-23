@@ -793,10 +793,16 @@ def run(
         metric=metric,
         mode=mode,
     )
-    while not runner.is_finished() and not experiment_interrupted_event.is_set():
-        runner.step()
-        if has_verbosity(Verbosity.V1_EXPERIMENT):
-            _report_progress(runner, progress_reporter)
+
+    try:
+        while not runner.is_finished() and not experiment_interrupted_event.is_set():
+            runner.step()
+            if has_verbosity(Verbosity.V1_EXPERIMENT):
+                _report_progress(runner, progress_reporter)
+    except Exception:
+        runner.cleanup()
+        raise
+
     tune_taken = time.time() - tune_start
 
     try:

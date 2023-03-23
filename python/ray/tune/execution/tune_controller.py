@@ -346,15 +346,13 @@ class TuneController(_TuneControllerBase):
                     f"{tracked_actor}"
                 )
                 self._remove_actor(tracked_actor=tracked_actor)
-                trial = self._actor_to_trial.pop(tracked_actor)
-                self._trial_to_actor.pop(trial)
 
         start = time.monotonic()
         while time.monotonic() - start < 5 and self._actor_manager.num_total_actors:
             logger.debug("Waiting for actor manager to clean up final state")
             self._actor_manager.next(timeout=1)
 
-        self._resource_manager.clear()
+        self._actor_manager.cleanup()
 
     def _remove_actor(self, tracked_actor: TrackedActor, kill: bool = False):
         # Trainable.stop() is needed here for graceful shutdown.
