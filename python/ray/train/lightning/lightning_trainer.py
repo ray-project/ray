@@ -82,7 +82,7 @@ class LightningConfigBuilder:
         self._model_checkpoint_config = {}
 
     def module(
-        self, cls: Type[pl.LightningModule], **kwargs
+        self, cls: Optional[Type[pl.LightningModule]] = None, **kwargs
     ) -> "LightningConfigBuilder":
         """Set up the Pytorch Lightning module class.
 
@@ -92,14 +92,7 @@ class LightningConfigBuilder:
                 class definition instead of a class instance.
             **kwargs: The initialization argument list of your lightning module.
         """
-        if not isclass(cls):
-            raise ValueError("'module_class' must be a class, not a class instance.")
-        if not issubclass(cls, pl.LightningModule):
-            raise ValueError(
-                "'module_class' must be a subclass of 'pl.LightningModule'!"
-            )
         self._module_class = cls
-
         self._module_init_config.update(**kwargs)
         return self
 
@@ -150,7 +143,21 @@ class LightningConfigBuilder:
 
     def build(self) -> Dict["str", Any]:
         """Build and return a config dictionary to pass into LightningTrainer"""
-        return self.__dict__.copy()
+        config_dict = self.__dict__.copy()
+
+        if self._module_class:
+            if not isclass(self._module_class):
+                raise ValueError(
+                    "'module_class' must be a class, not a class instance."
+                )
+            if not issubclass(self._module_class, pl.LightningModule):
+                raise ValueError(
+                    "'module_class' must be a subclass of 'pl.LightningModule'!"
+                )
+        else:
+            # Avoid default key-value pair to adapt with Ray Tune scheduler.
+            config_dict.pop("_module_class")
+        return config_dict
 
 
 @PublicAPI(stability="alpha")
@@ -269,8 +276,8 @@ class LightningTrainer(TorchTrainer):
                 lightning_config=lightning_config,
                 scaling_config=scaling_config,
             )
-            results = trainer.fit()
-            print(results)
+            result = trainer.fit()
+            result
 
     .. testoutput::
         :hide:
