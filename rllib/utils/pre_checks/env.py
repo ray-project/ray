@@ -1,6 +1,5 @@
 """Common pre-checks for all RLlib experiments."""
 from copy import copy
-import inspect
 import logging
 import numpy as np
 import traceback
