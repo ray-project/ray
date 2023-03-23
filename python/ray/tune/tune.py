@@ -3,6 +3,7 @@ import copy
 import datetime
 import logging
 import os
+from pathlib import Path
 import signal
 import sys
 import threading
@@ -226,6 +227,7 @@ def run(
     _remote: Optional[bool] = None,
     # Passed by the Tuner.
     _remote_string_queue: Optional[Queue] = None,
+    _tuner_api: bool = False,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -445,6 +447,32 @@ def run(
             DeprecationWarning,
         )
 
+    error_message_map = (
+        {
+            "entrypoint": "Tuner(...)",
+            "search_space_arg": "param_space",
+            "restore_entrypoint": 'Tuner.restore(path="{path}", trainable=...)',
+        }
+        if _tuner_api
+        else {
+            "entrypoint": "tune.run(...)",
+            "search_space_arg": "config",
+            "restore_entrypoint": "tune.run(..., resume=True)",
+        }
+    )
+
+    def _ray_auto_init():
+        """Initialize Ray unless already configured."""
+        if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
+            logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
+        elif not ray.is_initialized():
+            logger.info(
+                "Initializing Ray automatically."
+                "For cluster usage or custom Ray initialization, "
+                f"call `ray.init(...)` before `{error_message_map['entrypoint']}`."
+            )
+            ray.init()
+
     if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
         _ray_auto_init()
 
@@ -478,8 +506,8 @@ def run(
 
     if mode and mode not in ["min", "max"]:
         raise ValueError(
-            "The `mode` parameter passed to `tune.run()` has to be one of "
-            "['min', 'max']"
+            f"The `mode` parameter passed to `{error_message_map['entrypoint']}` "
+            "must be one of ['min', 'max']"
         )
 
     set_verbosity(verbose)
@@ -489,7 +517,8 @@ def run(
         config = config.to_dict()
     if not isinstance(config, dict):
         raise ValueError(
-            "The `config` passed to `tune.run()` must be a dict. "
+            f"The `{error_message_map['search_space_arg']}` passed to "
+            f"`{error_message_map['entrypoint']}` must be a dict. "
             f"Got '{type(config)}' instead."
         )
 
@@ -622,8 +651,6 @@ def run(
                 max_failures=max_failures,
                 restore=restore,
             )
-    else:
-        logger.debug("Ignoring some parameters passed into tune.run.")
 
     if fail_fast and max_failures != 0:
         raise ValueError("max_failures must be 0 if fail_fast=True.")
@@ -687,7 +714,8 @@ def run(
     ):
         if _has_unresolved_values(config):
             raise ValueError(
-                "You passed a `config` parameter to `tune.run()` with "
+                f"You passed a `{error_message_map['search_space_arg']}` parameter to "
+                f"`{error_message_map['entrypoint']}` with "
                 "unresolved parameters, but the search algorithm was already "
                 "instantiated with a search space. Make sure that `config` "
                 "does not contain any more parameter definitions - include "
@@ -698,10 +726,11 @@ def run(
         scheduler.set_search_properties, metric, mode, **experiments[0].public_spec
     ):
         raise ValueError(
-            "You passed a `metric` or `mode` argument to `tune.run()`, but "
+            "You passed a `metric` or `mode` argument to "
+            f"`{error_message_map['entrypoint']}`, but "
             "the scheduler you are using was already instantiated with their "
             "own `metric` and `mode` parameters. Either remove the arguments "
-            "from your scheduler or from your call to `tune.run()`"
+            f"from your scheduler or from `{error_message_map['entrypoint']}` args."
         )
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
@@ -820,10 +849,12 @@ def run(
         )
 
     if experiment_interrupted_event.is_set():
+        restore_entrypoint = error_message_map["restore_entrypoint"].format(
+            path=Path(experiment_checkpoint).parent,
+        )
         logger.warning(
-            "Experiment has been interrupted, but the most recent state was "
-            "saved. You can continue running this experiment by passing "
-            "`resume=True` to `tune.run()`"
+            "Experiment has been interrupted, but the most recent state was saved.\n"
+            f"Continue running this experiment with: {restore_entrypoint}"
         )
 
     return ExperimentAnalysis(
@@ -931,16 +962,3 @@ def run_experiments(
                 callbacks=callbacks,
             ).trials
         return trials
-
-
-def _ray_auto_init():
-    """Initialize Ray unless already configured."""
-    if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
-        logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
-    elif not ray.is_initialized():
-        logger.info(
-            "Initializing Ray automatically."
-            "For cluster usage or custom Ray initialization, "
-            "call `ray.init(...)` before `tune.run`."
-        )
-        ray.init()
