@@ -308,7 +308,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      make html
+      FAST=True make html
       pip install datasets==2.0.0
       RAY_MOCK_MODULES=0 make doctest
     fi
@@ -321,7 +321,7 @@ check_sphinx_links() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      make linkcheck
+      FAST=True make linkcheck
     fi
   )
 }
@@ -415,10 +415,10 @@ validate_wheels_commit_str() {
       continue
     fi
 
-    WHL_COMMIT=$(unzip -p "$whl" | grep "^__commit__" | awk -F'"' '{print $2}')
+    WHL_COMMIT=$(unzip -p "$whl" "*ray/__init__.py" | grep "^__commit__" | awk -F'"' '{print $2}')
 
     if [ "${WHL_COMMIT}" != "${EXPECTED_COMMIT}" ]; then
-      echo "Error: Observed wheel commit (${WHL_COMMIT}) is not expected commit (${EXPECTED_COMMIT}). Aborting."
+      echo "Wheel ${basename} has incorrect commit: (${WHL_COMMIT}) is not expected commit (${EXPECTED_COMMIT}). Aborting."
       exit 1
     fi
 
