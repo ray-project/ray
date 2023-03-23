@@ -3595,7 +3595,7 @@
 - name: core_gce_stress_test_placement_group
   group: core-multi-test
   working_dir: nightly_tests
-
+  env: gce
   frequency: nightly
   team: core
   cluster:
@@ -3637,7 +3637,7 @@
 - name: core_gce_decision_tree_autoscaling_20_runs
   group: core-multi-test
   working_dir: nightly_tests
-
+  env: gce
   frequency: nightly
   team: core
   cluster:
@@ -3668,7 +3668,7 @@
   team: core
   frequency: nightly
   working_dir: microbenchmark
-
+  env: gce
   python: "3.7"
 
   cluster:
