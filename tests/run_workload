@@ -4,7 +4,8 @@ import subprocess
 import os
 import time
 
-os.environ['USE_ACTORS_OR_TASKS'] = 'actors'
+#os.environ['USE_ACTORS_OR_TASKS'] = 'tasks'
+#os.environ['WITH_GPU'] = 'true'
 
 def run_test(iterations):
     start_time = time.time()

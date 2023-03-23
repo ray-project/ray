@@ -1,0 +1,2737 @@
+1/47 stopped.2/47 stopped.3/47 stopped.4/47 stopped.5/47 stopped.6/47 stopped.7/47 stopped.8/47 stopped.9/47 stopped.10/47 stopped.11/47 stopped.12/47 stopped.13/47 stopped.14/47 stopped.15/47 stopped.16/47 stopped.17/47 stopped.18/47 stopped.19/47 stopped.20/47 stopped.21/47 stopped.22/47 stopped.23/47 stopped.24/47 stopped.25/47 stopped.26/47 stopped.27/47 stopped.28/47 stopped.29/47 stopped.30/47 stopped.31/47 stopped.32/47 stopped.33/47 stopped.34/47 stopped.35/47 stopped.36/47 stopped.37/47 stopped.38/47 stopped.39/47 stopped.40/47 stopped.41/47 stopped.42/47 stopped.43/47 stopped.44/47 stopped.45/47 stopped.46/47 stopped.47/47 stopped.1/1 stopped.[32mStopped all 48 Ray processes.[39m
+
+Local node IP: 10.0.43.22
+2023-03-23 14:20:51,339	ERROR services.py:1200 -- Failed to start the dashboard , return code 0
+2023-03-23 14:20:51,339	ERROR services.py:1225 -- Error should be written to 'dashboard.log' or 'dashboard.err'. We are printing the last 20 lines for you. See 'https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure' to find where the log file is.
+2023-03-23 14:20:51,339	ERROR services.py:1269 -- 
+The last 20 lines of /tmp/ray/session_2023-03-23_14-20-48_668906_569351/logs/dashboard.log (it contains the error message from the dashboard): 
+    return future.result()
+  File "/mnt/cluster_storage/pypi/lib/python3.10/site-packages/ray/dashboard/dashboard.py", line 70, in run
+    await self.dashboard_head.run()
+  File "/mnt/cluster_storage/pypi/lib/python3.10/site-packages/ray/dashboard/head.py", line 302, in run
+    self.http_server = await self._configure_http_server(modules)
+  File "/mnt/cluster_storage/pypi/lib/python3.10/site-packages/ray/dashboard/head.py", line 143, in _configure_http_server
+    http_server = HttpServerDashboardHead(
+  File "/mnt/cluster_storage/pypi/lib/python3.10/site-packages/ray/dashboard/http_server_head.py", line 93, in __init__
+    raise ex
+  File "/mnt/cluster_storage/pypi/lib/python3.10/site-packages/ray/dashboard/http_server_head.py", line 84, in __init__
+    build_dir = setup_static_dir()
+  File "/mnt/cluster_storage/pypi/lib/python3.10/site-packages/ray/dashboard/http_server_head.py", line 42, in setup_static_dir
+    raise dashboard_utils.FrontendNotFoundError(
+ray.dashboard.utils.FrontendNotFoundError: [Errno 2] Dashboard build directory not found. If installing from source, please follow the additional steps required to build the dashboard(cd python/ray/dashboard/client && npm ci && npm run build): '/mnt/cluster_storage/pypi/lib/python3.10/site-packages/ray/dashboard/client/build'
+
+2023-03-23 14:20:51,166	ERROR base_events.py:1752 -- Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x7fb2983530d0>
+2023-03-23 14:20:51,166	ERROR base_events.py:1752 -- Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x7fb298353040>
+2023-03-23 14:20:51,166	ERROR base_events.py:1752 -- Unclosed client session
+
+--------------------
+Ray runtime started.
+--------------------
+
+Next steps
+  To add another node to this Ray cluster, run
+    ray start --address='10.0.43.22:6379'
+  
+  To connect to this Ray cluster, run `ray.init()` as usual:
+    import ray
+    ray.init()
+  
+  To connect to this Ray instance from outside of the cluster, for example 
+  when connecting to a remote cluster from your laptop, make sure the
+  dashboard is accessible and use the Ray Jobs API. For example:
+  
+  See https://docs.ray.io/en/latest/cluster/running-applications/job-submission/index.html
+  for more information on connecting to the Ray cluster from a remote client.
+  
+  To see the status of the cluster, use
+    ray status
+  
+  If connection fails, check your firewall settings and network configuration.
+  
+  To terminate the Ray runtime, run
+    ray stop
+2023-03-23 14:21:15,329	INFO worker.py:1362 -- Connecting to existing Ray cluster at address: 10.0.43.22:6379...
+2023-03-23 14:21:15,345	INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://console.anyscale-staging.com/api/v2/sessions/ses_qauqfcuba36zrd9jsmr41ac47c/services?redirect_to=dashboard [39m[22m
+driver script pid 578689
+[2m[36m(pid=570223)[0m importing tensorflow
+[2m[36m(pid=570177)[0m importing tensorflow
+[2m[36m(pid=570178)[0m importing tensorflow
+[2m[36m(task pid=570201)[0m CADE_PREFIX:scheduling time 0.47
+[2m[36m(task pid=570201)[0m code pid 570201
+[2m[36m(task pid=570201)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570197)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=570197)[0m code pid 570197
+[2m[36m(task pid=570197)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570210)[0m CADE_PREFIX:scheduling time 0.50
+[2m[36m(task pid=570210)[0m code pid 570210
+[2m[36m(task pid=570210)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570187)[0m CADE_PREFIX:scheduling time 0.54
+[2m[36m(task pid=570187)[0m code pid 570187
+[2m[36m(task pid=570187)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570204)[0m CADE_PREFIX:scheduling time 0.56
+[2m[36m(task pid=570204)[0m code pid 570204
+[2m[36m(task pid=570204)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570179)[0m CADE_PREFIX:scheduling time 0.52
+[2m[36m(task pid=570179)[0m code pid 570179
+[2m[36m(task pid=570179)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570198)[0m CADE_PREFIX:scheduling time 0.55
+[2m[36m(task pid=570198)[0m code pid 570198
+[2m[36m(task pid=570198)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570188)[0m CADE_PREFIX:scheduling time 0.60
+[2m[36m(task pid=570188)[0m code pid 570188
+[2m[36m(task pid=570188)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570184)[0m CADE_PREFIX:scheduling time 0.55
+[2m[36m(task pid=570184)[0m code pid 570184
+[2m[36m(task pid=570184)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570183)[0m CADE_PREFIX:scheduling time 0.60
+[2m[36m(task pid=570183)[0m code pid 570183
+[2m[36m(task pid=570183)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=570233)[0m importing tensorflow
+[2m[36m(pid=570226)[0m importing tensorflow
+[2m[36m(pid=570209)[0m importing tensorflow
+[2m[36m(pid=570213)[0m importing tensorflow
+[2m[36m(task pid=570196)[0m CADE_PREFIX:scheduling time 0.66
+[2m[36m(task pid=570196)[0m code pid 570196
+[2m[36m(task pid=570196)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570199)[0m CADE_PREFIX:scheduling time 0.75
+[2m[36m(task pid=570199)[0m code pid 570199
+[2m[36m(task pid=570199)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=570232)[0m importing tensorflow
+[2m[36m(pid=570229)[0m importing tensorflow
+[2m[36m(task pid=570214)[0m CADE_PREFIX:scheduling time 1.12
+[2m[36m(task pid=570214)[0m code pid 570214
+[2m[36m(task pid=570214)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=570208)[0m importing tensorflow
+[2m[36m(pid=570175)[0m importing tensorflow
+[2m[36m(pid=570220)[0m importing tensorflow
+[2m[36m(pid=570216)[0m importing tensorflow
+[2m[36m(pid=570185)[0m importing tensorflow
+[2m[36m(task pid=570182)[0m CADE_PREFIX:scheduling time 1.39
+[2m[36m(task pid=570182)[0m code pid 570182
+[2m[36m(task pid=570182)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570215)[0m CADE_PREFIX:scheduling time 1.79
+[2m[36m(task pid=570215)[0m code pid 570215
+[2m[36m(task pid=570215)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570235)[0m CADE_PREFIX:scheduling time 1.88
+[2m[36m(task pid=570235)[0m code pid 570235
+[2m[36m(task pid=570235)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570205)[0m CADE_PREFIX:scheduling time 2.04
+[2m[36m(task pid=570205)[0m code pid 570205
+[2m[36m(task pid=570205)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570230)[0m CADE_PREFIX:scheduling time 2.10
+[2m[36m(task pid=570230)[0m code pid 570230
+[2m[36m(task pid=570230)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570176)[0m CADE_PREFIX:scheduling time 2.04
+[2m[36m(task pid=570176)[0m code pid 570176
+[2m[36m(task pid=570176)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570231)[0m CADE_PREFIX:scheduling time 2.08
+[2m[36m(task pid=570231)[0m code pid 570231
+[2m[36m(task pid=570231)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570206)[0m CADE_PREFIX:scheduling time 2.02
+[2m[36m(task pid=570206)[0m code pid 570206
+[2m[36m(task pid=570206)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570203)[0m CADE_PREFIX:scheduling time 2.02
+[2m[36m(task pid=570203)[0m code pid 570203
+[2m[36m(task pid=570203)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570211)[0m CADE_PREFIX:scheduling time 2.09
+[2m[36m(task pid=570211)[0m code pid 570211
+[2m[36m(task pid=570211)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570180)[0m CADE_PREFIX:scheduling time 2.27
+[2m[36m(task pid=570180)[0m code pid 570180
+[2m[36m(task pid=570180)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570194)[0m CADE_PREFIX:scheduling time 2.31
+[2m[36m(task pid=570194)[0m code pid 570194
+[2m[36m(task pid=570194)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570212)[0m CADE_PREFIX:scheduling time 2.33
+[2m[36m(task pid=570212)[0m code pid 570212
+[2m[36m(task pid=570212)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570202)[0m CADE_PREFIX:scheduling time 2.44
+[2m[36m(task pid=570202)[0m code pid 570202
+[2m[36m(task pid=570202)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570191)[0m CADE_PREFIX:scheduling time 2.53
+[2m[36m(task pid=570191)[0m code pid 570191
+[2m[36m(task pid=570191)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570236)[0m CADE_PREFIX:scheduling time 2.55
+[2m[36m(task pid=570236)[0m code pid 570236
+[2m[36m(task pid=570236)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570193)[0m CADE_PREFIX:scheduling time 2.76
+[2m[36m(task pid=570193)[0m code pid 570193
+[2m[36m(task pid=570193)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570200)[0m CADE_PREFIX:scheduling time 2.86
+[2m[36m(task pid=570200)[0m code pid 570200
+[2m[36m(task pid=570200)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570190)[0m CADE_PREFIX:scheduling time 2.86
+[2m[36m(task pid=570190)[0m code pid 570190
+[2m[36m(task pid=570190)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570228)[0m CADE_PREFIX:scheduling time 2.91
+[2m[36m(task pid=570228)[0m code pid 570228
+[2m[36m(task pid=570228)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570217)[0m CADE_PREFIX:scheduling time 2.97
+[2m[36m(task pid=570217)[0m code pid 570217
+[2m[36m(task pid=570217)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570189)[0m CADE_PREFIX:scheduling time 2.97
+[2m[36m(task pid=570189)[0m code pid 570189
+[2m[36m(task pid=570189)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570181)[0m CADE_PREFIX:scheduling time 2.90
+[2m[36m(task pid=570181)[0m code pid 570181
+[2m[36m(task pid=570181)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570238)[0m CADE_PREFIX:scheduling time 2.93
+[2m[36m(task pid=570238)[0m code pid 570238
+[2m[36m(task pid=570238)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570225)[0m CADE_PREFIX:scheduling time 3.08
+[2m[36m(task pid=570225)[0m code pid 570225
+[2m[36m(task pid=570225)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570221)[0m CADE_PREFIX:scheduling time 3.17
+[2m[36m(task pid=570221)[0m code pid 570221
+[2m[36m(task pid=570221)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570186)[0m CADE_PREFIX:scheduling time 3.11
+[2m[36m(task pid=570186)[0m code pid 570186
+[2m[36m(task pid=570186)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570219)[0m CADE_PREFIX:scheduling time 3.25
+[2m[36m(task pid=570219)[0m code pid 570219
+[2m[36m(task pid=570219)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570207)[0m CADE_PREFIX:scheduling time 3.30
+[2m[36m(task pid=570207)[0m code pid 570207
+[2m[36m(task pid=570207)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570195)[0m CADE_PREFIX:scheduling time 3.38
+[2m[36m(task pid=570195)[0m code pid 570195
+[2m[36m(task pid=570195)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570234)[0m CADE_PREFIX:scheduling time 3.38
+[2m[36m(task pid=570234)[0m code pid 570234
+[2m[36m(task pid=570234)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570227)[0m CADE_PREFIX:scheduling time 3.43
+[2m[36m(task pid=570227)[0m code pid 570227
+[2m[36m(task pid=570227)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570222)[0m CADE_PREFIX:scheduling time 3.60
+[2m[36m(task pid=570222)[0m code pid 570222
+[2m[36m(task pid=570222)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570224)[0m CADE_PREFIX:scheduling time 3.63
+[2m[36m(task pid=570224)[0m code pid 570224
+[2m[36m(task pid=570224)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570239)[0m CADE_PREFIX:scheduling time 3.72
+[2m[36m(task pid=570239)[0m code pid 570239
+[2m[36m(task pid=570239)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570192)[0m CADE_PREFIX:scheduling time 3.68
+[2m[36m(task pid=570192)[0m code pid 570192
+[2m[36m(task pid=570192)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570218)[0m CADE_PREFIX:scheduling time 3.79
+[2m[36m(task pid=570218)[0m code pid 570218
+[2m[36m(task pid=570218)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570177)[0m CADE_PREFIX:scheduling time 3.77
+[2m[36m(task pid=570177)[0m code pid 570177
+[2m[36m(task pid=570177)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570223)[0m CADE_PREFIX:scheduling time 3.94
+[2m[36m(task pid=570223)[0m code pid 570223
+[2m[36m(task pid=570223)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570233)[0m CADE_PREFIX:scheduling time 3.91
+[2m[36m(task pid=570233)[0m code pid 570233
+[2m[36m(task pid=570233)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570178)[0m CADE_PREFIX:scheduling time 3.97
+[2m[36m(task pid=570178)[0m code pid 570178
+[2m[36m(task pid=570178)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570213)[0m CADE_PREFIX:scheduling time 3.93
+[2m[36m(task pid=570213)[0m code pid 570213
+[2m[36m(task pid=570213)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570229)[0m CADE_PREFIX:scheduling time 4.04
+[2m[36m(task pid=570229)[0m code pid 570229
+[2m[36m(task pid=570229)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570226)[0m CADE_PREFIX:scheduling time 4.09
+[2m[36m(task pid=570226)[0m code pid 570226
+[2m[36m(task pid=570226)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570209)[0m CADE_PREFIX:scheduling time 4.10
+[2m[36m(task pid=570209)[0m code pid 570209
+[2m[36m(task pid=570209)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570232)[0m CADE_PREFIX:scheduling time 4.17
+[2m[36m(task pid=570232)[0m code pid 570232
+[2m[36m(task pid=570232)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570175)[0m CADE_PREFIX:scheduling time 4.19
+[2m[36m(task pid=570175)[0m code pid 570175
+[2m[36m(task pid=570175)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570220)[0m CADE_PREFIX:scheduling time 4.23
+[2m[36m(task pid=570220)[0m code pid 570220
+[2m[36m(task pid=570220)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570216)[0m CADE_PREFIX:scheduling time 4.27
+[2m[36m(task pid=570216)[0m code pid 570216
+[2m[36m(task pid=570216)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570208)[0m CADE_PREFIX:scheduling time 4.31
+[2m[36m(task pid=570208)[0m code pid 570208
+[2m[36m(task pid=570208)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=570185)[0m CADE_PREFIX:scheduling time 4.35
+[2m[36m(task pid=570185)[0m code pid 570185
+[2m[36m(task pid=570185)[0m CADE_PREFIX:imports took 0.00
+CADE_PREFIX:num_cpus: 64
+CADE_PREFIX:num_executables: 64
+CADE_PREFIX:end-to-end time 4.35
+2023-03-23 14:21:22,868	INFO worker.py:1362 -- Connecting to existing Ray cluster at address: 10.0.43.22:6379...
+2023-03-23 14:21:22,886	INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://console.anyscale-staging.com/api/v2/sessions/ses_qauqfcuba36zrd9jsmr41ac47c/services?redirect_to=dashboard [39m[22m
+[2m[33m(raylet)[0m [2023-03-23 14:21:24,734 I 585961 585961] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:24,815 I 585959 585959] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:24,825 I 585965 585965] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:24,855 I 585969 585969] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:24,865 I 585967 585967] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:24,871 I 585962 585962] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:24,874 I 585964 585964] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:24,876 I 585968 585968] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:24,886 I 585958 585958] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:24,901 I 585966 585966] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:24,905 I 585963 585963] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:32,039 I 586769 586769] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:34,561 I 586904 586904] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:35,059 I 586946 586946] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:36,055 I 586774 586774] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:36,087 I 586764 586764] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:36,538 I 586989 586989] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:36,548 I 586853 586853] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:37,162 I 586937 586937] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:37,220 I 586766 586766] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:37,318 I 586773 586773] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:37,384 I 586835 586835] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:37,412 I 586771 586771] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:37,475 I 587218 587218] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:37,486 I 586763 586763] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:37,489 I 586905 586905] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:37,553 I 586765 586765] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:37,595 I 586907 586907] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:37,747 I 587072 587072] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:37,865 I 586897 586897] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:38,427 I 587196 587196] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:38,638 I 586878 586878] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:38,772 I 587223 587223] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:39,129 I 587070 587070] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:40,335 I 586865 586865] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:41,566 I 587164 587164] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:41,879 I 587224 587224] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:41,904 I 586833 586833] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:41,915 I 587137 587137] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:43,392 I 586911 586911] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:44,227 I 587207 587207] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:44,666 I 586903 586903] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:44,734 I 587415 587415] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+driver script pid 585666
+[2m[36m(pid=585961)[0m importing torch
+[2m[36m(pid=585967)[0m importing torch
+[2m[36m(pid=585965)[0m importing torch
+[2m[36m(pid=585958)[0m importing torch
+[2m[36m(pid=585962)[0m importing torch
+[2m[36m(pid=585968)[0m importing torch
+[2m[36m(pid=585964)[0m importing torch
+[2m[36m(pid=585959)[0m importing torch
+[2m[36m(pid=585969)[0m importing torch
+[2m[36m(pid=585966)[0m importing torch
+[2m[36m(pid=585963)[0m importing torch
+[2m[36m(pid=585962)[0m importing tensorflow
+[2m[36m(pid=585958)[0m importing tensorflow
+[2m[36m(pid=585964)[0m importing tensorflow
+[2m[36m(pid=585961)[0m importing tensorflow
+[2m[36m(pid=585967)[0m importing tensorflow
+[2m[36m(pid=585969)[0m importing tensorflow
+[2m[36m(pid=585966)[0m importing tensorflow
+[2m[36m(pid=585965)[0m importing tensorflow
+[2m[36m(pid=585959)[0m importing tensorflow
+[2m[36m(pid=585968)[0m importing tensorflow
+[2m[36m(pid=585963)[0m importing tensorflow
+[2m[36m(pid=586769)[0m importing torch
+[2m[36m(pid=586904)[0m importing torch
+[2m[36m(pid=586946)[0m importing torch
+[2m[36m(pid=586769)[0m importing tensorflow
+[2m[36m(pid=586774)[0m importing torch
+[2m[36m(pid=586764)[0m importing torch
+[2m[36m(pid=586989)[0m importing torch
+[2m[36m(pid=586853)[0m importing torch
+[2m[36m(pid=586937)[0m importing torch
+[2m[36m(pid=586766)[0m importing torch
+[2m[36m(pid=586835)[0m importing torch
+[2m[36m(pid=586773)[0m importing torch
+[2m[36m(pid=586905)[0m importing torch
+[2m[36m(pid=586763)[0m importing torch
+[2m[36m(pid=586771)[0m importing torch
+[2m[36m(pid=587218)[0m importing torch
+[2m[36m(pid=586765)[0m importing torch
+[2m[36m(pid=586907)[0m importing torch
+[2m[36m(pid=586904)[0m importing tensorflow
+[2m[36m(pid=587072)[0m importing torch
+[2m[36m(pid=586897)[0m importing torch
+[2m[36m(pid=586946)[0m importing tensorflow
+[2m[36m(pid=587196)[0m importing torch
+[2m[36m(pid=586774)[0m importing tensorflow
+[2m[36m(pid=586878)[0m importing torch
+[2m[36m(pid=587223)[0m importing torch
+[2m[36m(pid=587070)[0m importing torch
+[2m[36m(pid=586764)[0m importing tensorflow
+[2m[36m(pid=586989)[0m importing tensorflow
+[2m[36m(pid=586853)[0m importing tensorflow
+[2m[36m(task pid=585958)[0m CADE_PREFIX:scheduling time 16.87
+[2m[36m(task pid=585958)[0m code pid 585958
+[2m[36m(task pid=585958)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585962)[0m CADE_PREFIX:scheduling time 17.00
+[2m[36m(task pid=585962)[0m code pid 585962
+[2m[36m(task pid=585962)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585964)[0m CADE_PREFIX:scheduling time 17.11
+[2m[36m(task pid=585964)[0m code pid 585964
+[2m[36m(task pid=585964)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=586835)[0m importing tensorflow
+[2m[36m(pid=586766)[0m importing tensorflow
+[2m[36m(pid=586771)[0m importing tensorflow
+[2m[36m(pid=586937)[0m importing tensorflow
+[2m[36m(pid=586905)[0m importing tensorflow
+[2m[36m(pid=586865)[0m importing torch
+[2m[36m(pid=586773)[0m importing tensorflow
+[2m[36m(pid=586907)[0m importing tensorflow
+[2m[36m(pid=587218)[0m importing tensorflow
+[2m[36m(pid=586765)[0m importing tensorflow
+[2m[36m(pid=586763)[0m importing tensorflow
+[2m[36m(pid=587072)[0m importing tensorflow
+[2m[36m(pid=586897)[0m importing tensorflow
+[2m[36m(task pid=585961)[0m CADE_PREFIX:scheduling time 18.67
+[2m[36m(task pid=585961)[0m code pid 585961
+[2m[36m(task pid=585961)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585967)[0m CADE_PREFIX:scheduling time 18.72
+[2m[36m(task pid=585967)[0m code pid 585967
+[2m[36m(task pid=585967)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=587164)[0m importing torch
+[2m[36m(pid=587224)[0m importing torch
+[2m[36m(pid=587196)[0m importing tensorflow
+[2m[36m(pid=587223)[0m importing tensorflow
+[2m[36m(pid=587137)[0m importing torch
+[2m[36m(pid=586833)[0m importing torch
+[2m[36m(pid=587070)[0m importing tensorflow
+[2m[36m(pid=586878)[0m importing tensorflow
+[2m[36m(task pid=585959)[0m CADE_PREFIX:scheduling time 19.69
+[2m[36m(task pid=585959)[0m code pid 585959
+[2m[36m(task pid=585959)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585969)[0m CADE_PREFIX:scheduling time 19.75
+[2m[36m(task pid=585969)[0m code pid 585969
+[2m[36m(task pid=585969)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585966)[0m CADE_PREFIX:scheduling time 19.76
+[2m[36m(task pid=585966)[0m code pid 585966
+[2m[36m(task pid=585966)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=586911)[0m importing torch
+[2m[36m(task pid=585963)[0m CADE_PREFIX:scheduling time 20.89
+[2m[36m(task pid=585963)[0m code pid 585963
+[2m[36m(task pid=585963)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=586865)[0m importing tensorflow
+[2m[36m(task pid=585968)[0m CADE_PREFIX:scheduling time 21.42
+[2m[36m(task pid=585968)[0m code pid 585968
+[2m[36m(task pid=585968)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=587207)[0m importing torch
+[2m[36m(task pid=585961)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585961)[0m code pid 585961
+[2m[36m(task pid=585961)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585961)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585961)[0m code pid 585961
+[2m[36m(task pid=585961)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585967)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585967)[0m code pid 585967
+[2m[36m(task pid=585967)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585967)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585967)[0m code pid 585967
+[2m[36m(task pid=585967)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585968)[0m CADE_PREFIX:scheduling time 21.95
+[2m[36m(task pid=585968)[0m code pid 585968
+[2m[36m(task pid=585968)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585968)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585968)[0m code pid 585968
+[2m[36m(task pid=585968)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585968)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585968)[0m code pid 585968
+[2m[36m(task pid=585968)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585968)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585968)[0m code pid 585968
+[2m[36m(task pid=585968)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585968)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585968)[0m code pid 585968
+[2m[36m(task pid=585968)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585968)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585968)[0m code pid 585968
+[2m[36m(task pid=585968)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585968)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585968)[0m code pid 585968
+[2m[36m(task pid=585968)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585968)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585968)[0m code pid 585968
+[2m[36m(task pid=585968)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585968)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585968)[0m code pid 585968
+[2m[36m(task pid=585968)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585968)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585968)[0m code pid 585968
+[2m[36m(task pid=585968)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585959)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585959)[0m code pid 585959
+[2m[36m(task pid=585959)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585959)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585959)[0m code pid 585959
+[2m[36m(task pid=585959)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585959)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585959)[0m code pid 585959
+[2m[36m(task pid=585959)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585959)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585959)[0m code pid 585959
+[2m[33m(raylet)[0m [2023-03-23 14:21:45,054 I 587222 587222] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:45,218 I 586960 586960] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:45,289 I 587128 587128] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:45,331 I 587096 587096] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:45,423 I 587393 587393] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:45,552 I 587225 587225] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:45,626 I 587385 587385] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:45,823 I 587395 587395] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:45,891 I 587220 587220] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:45,958 I 586906 586906] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:46,058 I 586770 586770] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:46,070 I 587211 587211] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:46,078 I 587029 587029] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:46,098 I 587382 587382] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:46,135 I 587403 587403] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:46,141 I 587405 587405] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:46,142 I 587373 587373] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:46,209 I 586776 586776] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:46,210 I 587221 587221] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:46,240 I 587357 587357] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:46,270 I 587398 587398] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:46,311 I 587124 587124] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:21:46,318 I 586772 586772] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[36m(task pid=585959)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585959)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585959)[0m code pid 585959
+[2m[36m(task pid=585959)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585959)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585959)[0m code pid 585959
+[2m[36m(task pid=585959)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585959)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585959)[0m code pid 585959
+[2m[36m(task pid=585959)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585969)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585969)[0m code pid 585969
+[2m[36m(task pid=585969)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585969)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585969)[0m code pid 585969
+[2m[36m(task pid=585969)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585969)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585969)[0m code pid 585969
+[2m[36m(task pid=585969)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585969)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585969)[0m code pid 585969
+[2m[36m(task pid=585969)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585969)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585969)[0m code pid 585969
+[2m[36m(task pid=585969)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585969)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585969)[0m code pid 585969
+[2m[36m(task pid=585969)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585969)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585969)[0m code pid 585969
+[2m[36m(task pid=585969)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585966)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585966)[0m code pid 585966
+[2m[36m(task pid=585966)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585966)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585966)[0m code pid 585966
+[2m[36m(task pid=585966)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585966)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585966)[0m code pid 585966
+[2m[36m(task pid=585966)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585966)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585966)[0m code pid 585966
+[2m[36m(task pid=585966)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585966)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585966)[0m code pid 585966
+[2m[36m(task pid=585966)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585966)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585966)[0m code pid 585966
+[2m[36m(task pid=585966)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585966)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585966)[0m code pid 585966
+[2m[36m(task pid=585966)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585966)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585966)[0m code pid 585966
+[2m[36m(task pid=585966)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585963)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585963)[0m code pid 585963
+[2m[36m(task pid=585963)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585963)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585963)[0m code pid 585963
+[2m[36m(task pid=585963)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585963)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585963)[0m code pid 585963
+[2m[36m(task pid=585963)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585963)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585963)[0m code pid 585963
+[2m[36m(task pid=585963)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585963)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585963)[0m code pid 585963
+[2m[36m(task pid=585963)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585963)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585963)[0m code pid 585963
+[2m[36m(task pid=585963)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585963)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585963)[0m code pid 585963
+[2m[36m(task pid=585963)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585963)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585963)[0m code pid 585963
+[2m[36m(task pid=585963)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=585963)[0m CADE_PREFIX:scheduling time 21.96
+[2m[36m(task pid=585963)[0m code pid 585963
+[2m[36m(task pid=585963)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=586903)[0m importing torch
+[2m[36m(pid=587415)[0m importing torch
+[2m[36m(pid=587164)[0m importing tensorflow
+[2m[36m(task pid=585965)[0m CADE_PREFIX:scheduling time 22.18
+[2m[36m(task pid=585965)[0m code pid 585965
+[2m[36m(task pid=585965)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=587222)[0m importing torch
+[2m[36m(pid=587224)[0m importing tensorflow
+[2m[36m(pid=586960)[0m importing torch
+[2m[36m(pid=587128)[0m importing torch
+[2m[36m(pid=587096)[0m importing torch
+[2m[36m(pid=587137)[0m importing tensorflow
+[2m[36m(pid=587393)[0m importing torch
+[2m[36m(pid=587225)[0m importing torch
+[2m[36m(pid=586833)[0m importing tensorflow
+[2m[36m(pid=587385)[0m importing torch
+[2m[36m(pid=587395)[0m importing torch
+[2m[36m(pid=587220)[0m importing torch
+[2m[36m(pid=586906)[0m importing torch
+[2m[36m(pid=587029)[0m importing torch
+[2m[36m(pid=586770)[0m importing torch
+[2m[36m(pid=587211)[0m importing torch
+[2m[36m(pid=587382)[0m importing torch
+[2m[36m(pid=586911)[0m importing tensorflow
+[2m[36m(pid=587221)[0m importing torch
+[2m[36m(pid=587403)[0m importing torch
+[2m[36m(pid=586776)[0m importing torch
+[2m[36m(pid=587373)[0m importing torch
+[2m[36m(pid=587405)[0m importing torch
+[2m[36m(pid=587357)[0m importing torch
+[2m[36m(pid=587398)[0m importing torch
+[2m[36m(pid=587124)[0m importing torch
+[2m[36m(pid=586772)[0m importing torch
+[2m[36m(pid=586903)[0m importing tensorflow
+[2m[36m(pid=587207)[0m importing tensorflow
+[2m[36m(pid=587415)[0m importing tensorflow
+[2m[36m(pid=587222)[0m importing tensorflow
+[2m[36m(pid=586960)[0m importing tensorflow
+[2m[36m(pid=587128)[0m importing tensorflow
+[2m[36m(pid=587393)[0m importing tensorflow
+[2m[36m(pid=587096)[0m importing tensorflow
+[2m[36m(pid=587220)[0m importing tensorflow
+[2m[36m(pid=587029)[0m importing tensorflow
+[2m[36m(pid=587373)[0m importing tensorflow
+[2m[36m(pid=587225)[0m importing tensorflow
+[2m[36m(pid=587385)[0m importing tensorflow
+[2m[36m(pid=587211)[0m importing tensorflow
+[2m[36m(pid=586776)[0m importing tensorflow
+[2m[36m(pid=587395)[0m importing tensorflow
+[2m[36m(pid=586906)[0m importing tensorflow
+[2m[36m(pid=586770)[0m importing tensorflow
+[2m[36m(pid=587382)[0m importing tensorflow
+[2m[36m(pid=587403)[0m importing tensorflow
+[2m[36m(pid=587221)[0m importing tensorflow
+[2m[36m(pid=587405)[0m importing tensorflow
+[2m[36m(pid=587357)[0m importing tensorflow
+[2m[36m(pid=586772)[0m importing tensorflow
+[2m[36m(pid=587398)[0m importing tensorflow
+[2m[36m(pid=587124)[0m importing tensorflow
+[2m[36m(task pid=586833)[0m CADE_PREFIX:scheduling time 26.80
+[2m[36m(task pid=586833)[0m code pid 586833
+[2m[36m(task pid=586833)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587224)[0m CADE_PREFIX:scheduling time 26.95
+[2m[36m(task pid=587224)[0m code pid 587224
+[2m[36m(task pid=587224)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587164)[0m CADE_PREFIX:scheduling time 27.00
+[2m[36m(task pid=587164)[0m code pid 587164
+[2m[36m(task pid=587164)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587137)[0m CADE_PREFIX:scheduling time 27.13
+[2m[36m(task pid=587137)[0m code pid 587137
+[2m[36m(task pid=587137)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586911)[0m CADE_PREFIX:scheduling time 27.30
+[2m[36m(task pid=586911)[0m code pid 586911
+[2m[36m(task pid=586911)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586903)[0m CADE_PREFIX:scheduling time 27.44
+[2m[36m(task pid=586903)[0m code pid 586903
+[2m[36m(task pid=586903)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587207)[0m CADE_PREFIX:scheduling time 27.51
+[2m[36m(task pid=587207)[0m code pid 587207
+[2m[36m(task pid=587207)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587415)[0m CADE_PREFIX:scheduling time 27.80
+[2m[36m(task pid=587415)[0m code pid 587415
+[2m[36m(task pid=587415)[0m CADE_PREFIX:imports took 0.00
+CADE_PREFIX:num_cpus: 64
+CADE_PREFIX:num_executables: 64
+CADE_PREFIX:end-to-end time 27.80
+2023-03-23 14:21:54,329	INFO worker.py:1362 -- Connecting to existing Ray cluster at address: 10.0.43.22:6379...
+2023-03-23 14:21:54,341	INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://console.anyscale-staging.com/api/v2/sessions/ses_qauqfcuba36zrd9jsmr41ac47c/services?redirect_to=dashboard [39m[22m
+driver script pid 600269
+[2m[36m(task pid=586776)[0m CADE_PREFIX:scheduling time 0.25
+[2m[36m(task pid=586776)[0m code pid 586776
+[2m[36m(task pid=586776)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587373)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=587373)[0m code pid 587373
+[2m[36m(task pid=587373)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587072)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=587072)[0m code pid 587072
+[2m[36m(task pid=587072)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586865)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=586865)[0m code pid 586865
+[2m[36m(task pid=586865)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586865)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=586865)[0m code pid 586865
+[2m[36m(task pid=586865)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586865)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=586865)[0m code pid 586865
+[2m[36m(task pid=586865)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587124)[0m CADE_PREFIX:scheduling time 0.25
+[2m[36m(task pid=587124)[0m code pid 587124
+[2m[36m(task pid=587124)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587124)[0m CADE_PREFIX:scheduling time 0.25
+[2m[36m(task pid=587124)[0m code pid 587124
+[2m[36m(task pid=587124)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587124)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=587124)[0m code pid 587124
+[2m[36m(task pid=587124)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587124)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=587124)[0m code pid 587124
+[2m[36m(task pid=587124)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587128)[0m CADE_PREFIX:scheduling time 0.25
+[2m[36m(task pid=587128)[0m code pid 587128
+[2m[36m(task pid=587128)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587128)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=587128)[0m code pid 587128
+[2m[36m(task pid=587128)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587128)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=587128)[0m code pid 587128
+[2m[36m(task pid=587128)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587096)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=587096)[0m code pid 587096
+[2m[36m(task pid=587096)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587096)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=587096)[0m code pid 587096
+[2m[36m(task pid=587096)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587096)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=587096)[0m code pid 587096
+[2m[36m(task pid=587096)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587220)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=587220)[0m code pid 587220
+[2m[36m(task pid=587220)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587220)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=587220)[0m code pid 587220
+[2m[36m(task pid=587220)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587220)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=587220)[0m code pid 587220
+[2m[36m(task pid=587220)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587029)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=587029)[0m code pid 587029
+[2m[36m(task pid=587029)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587029)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=587029)[0m code pid 587029
+[2m[36m(task pid=587029)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587029)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=587029)[0m code pid 587029
+[2m[36m(task pid=587029)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587029)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=587029)[0m code pid 587029
+[2m[36m(task pid=587029)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587211)[0m CADE_PREFIX:scheduling time 0.25
+[2m[36m(task pid=587211)[0m code pid 587211
+[2m[36m(task pid=587211)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587211)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=587211)[0m code pid 587211
+[2m[36m(task pid=587211)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587211)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=587211)[0m code pid 587211
+[2m[36m(task pid=587211)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587211)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=587211)[0m code pid 587211
+[2m[36m(task pid=587211)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587211)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=587211)[0m code pid 587211
+[2m[36m(task pid=587211)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586906)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=586906)[0m code pid 586906
+[2m[36m(task pid=586906)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586906)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=586906)[0m code pid 586906
+[2m[36m(task pid=586906)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586906)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=586906)[0m code pid 586906
+[2m[36m(task pid=586906)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586770)[0m CADE_PREFIX:scheduling time 0.25
+[2m[36m(task pid=586770)[0m code pid 586770
+[2m[36m(task pid=586770)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586770)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=586770)[0m code pid 586770
+[2m[36m(task pid=586770)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587221)[0m CADE_PREFIX:scheduling time 0.28
+[2m[36m(task pid=587221)[0m code pid 587221
+[2m[36m(task pid=587221)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586776)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=586776)[0m code pid 586776
+[2m[36m(task pid=586776)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586776)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=586776)[0m code pid 586776
+[2m[36m(task pid=586776)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586776)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=586776)[0m code pid 586776
+[2m[36m(task pid=586776)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586776)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=586776)[0m code pid 586776
+[2m[36m(task pid=586776)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586776)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=586776)[0m code pid 586776
+[2m[36m(task pid=586776)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587373)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=587373)[0m code pid 587373
+[2m[36m(task pid=587373)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587373)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=587373)[0m code pid 587373
+[2m[36m(task pid=587373)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586765)[0m CADE_PREFIX:scheduling time 0.29
+[2m[36m(task pid=586765)[0m code pid 586765
+[2m[36m(task pid=586765)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586907)[0m CADE_PREFIX:scheduling time 0.29
+[2m[36m(task pid=586907)[0m code pid 586907
+[2m[36m(task pid=586907)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587072)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=587072)[0m code pid 587072
+[2m[36m(task pid=587072)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586897)[0m CADE_PREFIX:scheduling time 0.28
+[2m[36m(task pid=586897)[0m code pid 586897
+[2m[36m(task pid=586897)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587196)[0m CADE_PREFIX:scheduling time 0.28
+[2m[36m(task pid=587196)[0m code pid 587196
+[2m[36m(task pid=587196)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586878)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=586878)[0m code pid 586878
+[2m[36m(task pid=586878)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586878)[0m CADE_PREFIX:scheduling time 0.29
+[2m[36m(task pid=586878)[0m code pid 586878
+[2m[36m(task pid=586878)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587223)[0m CADE_PREFIX:scheduling time 0.28
+[2m[36m(task pid=587223)[0m code pid 587223
+[2m[36m(task pid=587223)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587070)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=587070)[0m code pid 587070
+[2m[36m(task pid=587070)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587070)[0m CADE_PREFIX:scheduling time 0.28
+[2m[36m(task pid=587070)[0m code pid 587070
+[2m[36m(task pid=587070)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586865)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=586865)[0m code pid 586865
+[2m[36m(task pid=586865)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586865)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=586865)[0m code pid 586865
+[2m[36m(task pid=586865)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586865)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=586865)[0m code pid 586865
+[2m[36m(task pid=586865)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587124)[0m CADE_PREFIX:scheduling time 0.28
+[2m[36m(task pid=587124)[0m code pid 587124
+[2m[36m(task pid=587124)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586772)[0m CADE_PREFIX:scheduling time 0.29
+[2m[36m(task pid=586772)[0m code pid 586772
+[2m[36m(task pid=586772)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587222)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=587222)[0m code pid 587222
+[2m[36m(task pid=587222)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586960)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=586960)[0m code pid 586960
+[2m[36m(task pid=586960)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587096)[0m CADE_PREFIX:scheduling time 0.28
+[2m[36m(task pid=587096)[0m code pid 587096
+[2m[36m(task pid=587096)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586835)[0m CADE_PREFIX:scheduling time 0.37
+[2m[36m(task pid=586835)[0m code pid 586835
+[2m[36m(task pid=586835)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586905)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586905)[0m code pid 586905
+[2m[36m(task pid=586905)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586763)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=586763)[0m code pid 586763
+[2m[36m(task pid=586763)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586771)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586771)[0m code pid 586771
+[2m[36m(task pid=586771)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=587218)[0m CADE_PREFIX:scheduling time 0.39
+[2m[36m(task pid=587218)[0m code pid 587218
+[2m[36m(task pid=587218)[0m CADE_PREFIX:imports took 0.00
+CADE_PREFIX:num_cpus: 64
+CADE_PREFIX:num_executables: 64
+CADE_PREFIX:end-to-end time 0.40
+2023-03-23 14:22:00,017	INFO worker.py:1362 -- Connecting to existing Ray cluster at address: 10.0.43.22:6379...
+2023-03-23 14:22:00,025	INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://console.anyscale-staging.com/api/v2/sessions/ses_qauqfcuba36zrd9jsmr41ac47c/services?redirect_to=dashboard [39m[22m
+[2m[33m(raylet)[0m [2023-03-23 14:22:02,028 I 605615 605615] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:04,090 I 605599 605599] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:05,252 I 605697 605697] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:05,449 I 605604 605604] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:09,269 I 605608 605608] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:12,019 I 605617 605617] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:12,023 I 605596 605596] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+driver script pid 603737
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.33
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.34
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.34
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.34
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.34
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.34
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.34
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.34
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586946)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586946)[0m code pid 586946
+[2m[36m(task pid=586946)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586774)[0m CADE_PREFIX:scheduling time 0.34
+[2m[36m(task pid=586774)[0m code pid 586774
+[2m[36m(task pid=586774)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586774)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=586774)[0m code pid 586774
+[2m[36m(task pid=586774)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586774)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=586774)[0m code pid 586774
+[2m[36m(task pid=586774)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586774)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=586774)[0m code pid 586774
+[2m[36m(task pid=586774)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586774)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586774)[0m code pid 586774
+[2m[36m(task pid=586774)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586774)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586774)[0m code pid 586774
+[2m[36m(task pid=586774)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586774)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586774)[0m code pid 586774
+[2m[36m(task pid=586774)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586774)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586774)[0m code pid 586774
+[2m[36m(task pid=586774)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586764)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=586764)[0m code pid 586764
+[2m[36m(task pid=586764)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586764)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=586764)[0m code pid 586764
+[2m[36m(task pid=586764)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586764)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586764)[0m code pid 586764
+[2m[36m(task pid=586764)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586764)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586764)[0m code pid 586764
+[2m[36m(task pid=586764)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586764)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586764)[0m code pid 586764
+[2m[36m(task pid=586764)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586764)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586764)[0m code pid 586764
+[2m[36m(task pid=586764)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586764)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586764)[0m code pid 586764
+[2m[36m(task pid=586764)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586764)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586764)[0m code pid 586764
+[2m[36m(task pid=586764)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=586764)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=586764)[0m code pid 586764
+[2m[36m(task pid=586764)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=600617)[0m importing tensorflow
+[2m[36m(pid=600717)[0m importing tensorflow
+[2m[36m(pid=600618)[0m importing tensorflow
+[2m[36m(pid=600604)[0m importing tensorflow
+[2m[36m(pid=600767)[0m importing tensorflow
+[2m[36m(pid=600626)[0m importing tensorflow
+[2m[36m(pid=600577)[0m importing tensorflow
+[2m[36m(pid=600615)[0m importing tensorflow
+[2m[36m(pid=600789)[0m importing tensorflow
+[2m[36m(pid=600700)[0m importing tensorflow
+[2m[36m(pid=600594)[0m importing tensorflow
+[2m[36m(pid=600635)[0m importing tensorflow
+[2m[36m(pid=600627)[0m importing tensorflow
+[2m[36m(pid=600591)[0m importing tensorflow
+[2m[36m(pid=600629)[0m importing tensorflow
+[2m[36m(pid=600634)[0m importing tensorflow
+[2m[36m(pid=600732)[0m importing tensorflow
+[2m[36m(pid=600633)[0m importing tensorflow
+[2m[36m(pid=600611)[0m importing tensorflow
+[2m[36m(pid=600962)[0m importing tensorflow
+[2m[36m(pid=605615)[0m importing torch
+[2m[36m(pid=600623)[0m importing tensorflow
+[2m[36m(pid=600926)[0m importing tensorflow
+[2m[36m(pid=600620)[0m importing tensorflow
+[2m[36m(pid=600628)[0m importing tensorflow
+[2m[36m(pid=600624)[0m importing tensorflow
+[2m[36m(pid=600631)[0m importing tensorflow
+[2m[36m(pid=605599)[0m importing torch
+[2m[36m(pid=605615)[0m importing tensorflow
+[2m[36m(pid=605697)[0m importing torch
+[2m[36m(pid=605604)[0m importing torch
+[2m[36m(task pid=600622)[0m CADE_PREFIX:scheduling time 5.67
+[2m[36m(task pid=600622)[0m code pid 600622
+[2m[36m(task pid=600622)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=605599)[0m importing tensorflow
+[2m[36m(pid=605608)[0m importing torch
+[2m[36m(task pid=600632)[0m CADE_PREFIX:scheduling time 10.23
+[2m[36m(task pid=600632)[0m code pid 600632
+[2m[36m(task pid=600632)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=605697)[0m importing tensorflow
+[2m[36m(pid=605604)[0m importing tensorflow
+[2m[33m(raylet)[0m [2023-03-23 14:22:13,919 I 605606 605606] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:14,051 I 605593 605593] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:14,079 I 605611 605611] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:14,478 I 605597 605597] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:14,527 I 605595 605595] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:14,578 I 605605 605605] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:14,849 I 605601 605601] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:15,095 I 605609 605609] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:15,243 I 605685 605685] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:17,140 I 605619 605619] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:17,635 I 605594 605594] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:17,701 I 605618 605618] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:18,249 I 605612 605612] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:18,308 I 605603 605603] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:18,316 I 605707 605707] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:18,409 I 605704 605704] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:18,702 I 605607 605607] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:18,773 I 605706 605706] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:18,837 I 605690 605690] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:18,870 I 605620 605620] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:18,873 I 605600 605600] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:18,874 I 605616 605616] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:19,093 I 605687 605687] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:19,096 I 605686 605686] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:19,181 I 605613 605613] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:19,192 I 605699 605699] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:19,214 I 605689 605689] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:19,217 I 605708 605708] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:19,233 I 605610 605610] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:19,237 I 605614 605614] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:19,239 I 605693 605693] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:19,241 I 605709 605709] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:19,245 I 605702 605702] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:22:19,250 I 605703 605703] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[36m(pid=605596)[0m importing torch
+[2m[36m(pid=605617)[0m importing torch
+[2m[36m(task pid=600630)[0m CADE_PREFIX:scheduling time 12.09
+[2m[36m(task pid=600630)[0m code pid 600630
+[2m[36m(task pid=600630)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600625)[0m CADE_PREFIX:scheduling time 12.24
+[2m[36m(task pid=600625)[0m code pid 600625
+[2m[36m(task pid=600625)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600617)[0m CADE_PREFIX:scheduling time 13.74
+[2m[36m(task pid=600617)[0m code pid 600617
+[2m[36m(task pid=600617)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600618)[0m CADE_PREFIX:scheduling time 13.89
+[2m[36m(task pid=600618)[0m code pid 600618
+[2m[36m(task pid=600618)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=605608)[0m importing tensorflow
+[2m[36m(pid=605606)[0m importing torch
+[2m[36m(task pid=600717)[0m CADE_PREFIX:scheduling time 14.05
+[2m[36m(task pid=600717)[0m code pid 600717
+[2m[36m(task pid=600717)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=605593)[0m importing torch
+[2m[36m(task pid=600604)[0m CADE_PREFIX:scheduling time 14.21
+[2m[36m(task pid=600604)[0m code pid 600604
+[2m[36m(task pid=600604)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600626)[0m CADE_PREFIX:scheduling time 14.21
+[2m[36m(task pid=600626)[0m code pid 600626
+[2m[36m(task pid=600626)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=605611)[0m importing torch
+[2m[36m(task pid=600615)[0m CADE_PREFIX:scheduling time 14.35
+[2m[36m(task pid=600615)[0m code pid 600615
+[2m[36m(task pid=600615)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600577)[0m CADE_PREFIX:scheduling time 14.44
+[2m[36m(task pid=600577)[0m code pid 600577
+[2m[36m(task pid=600577)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=605597)[0m importing torch
+[2m[36m(pid=605595)[0m importing torch
+[2m[36m(pid=605605)[0m importing torch
+[2m[36m(pid=605617)[0m importing tensorflow
+[2m[36m(pid=605601)[0m importing torch
+[2m[36m(pid=605609)[0m importing torch
+[2m[36m(pid=605685)[0m importing torch
+[2m[36m(pid=605596)[0m importing tensorflow
+[2m[36m(task pid=600627)[0m CADE_PREFIX:scheduling time 16.02
+[2m[36m(task pid=600627)[0m code pid 600627
+[2m[36m(task pid=600627)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600789)[0m CADE_PREFIX:scheduling time 16.14
+[2m[36m(task pid=600789)[0m code pid 600789
+[2m[36m(task pid=600789)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600594)[0m CADE_PREFIX:scheduling time 16.26
+[2m[36m(task pid=600594)[0m code pid 600594
+[2m[36m(task pid=600594)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600591)[0m CADE_PREFIX:scheduling time 16.20
+[2m[36m(task pid=600591)[0m code pid 600591
+[2m[36m(task pid=600591)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600767)[0m CADE_PREFIX:scheduling time 16.27
+[2m[36m(task pid=600767)[0m code pid 600767
+[2m[36m(task pid=600767)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600611)[0m CADE_PREFIX:scheduling time 16.55
+[2m[36m(task pid=600611)[0m code pid 600611
+[2m[36m(task pid=600611)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=605606)[0m importing tensorflow
+[2m[36m(task pid=600629)[0m CADE_PREFIX:scheduling time 16.77
+[2m[36m(task pid=600629)[0m code pid 600629
+[2m[36m(task pid=600629)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=605619)[0m importing torch
+[2m[36m(pid=605593)[0m importing tensorflow
+[2m[36m(pid=605611)[0m importing tensorflow
+[2m[36m(task pid=600634)[0m CADE_PREFIX:scheduling time 17.54
+[2m[36m(task pid=600634)[0m code pid 600634
+[2m[36m(task pid=600634)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600623)[0m CADE_PREFIX:scheduling time 17.49
+[2m[36m(task pid=600623)[0m code pid 600623
+[2m[36m(task pid=600623)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600732)[0m CADE_PREFIX:scheduling time 17.47
+[2m[36m(task pid=600732)[0m code pid 600732
+[2m[36m(task pid=600732)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600635)[0m CADE_PREFIX:scheduling time 17.46
+[2m[36m(task pid=600635)[0m code pid 600635
+[2m[36m(task pid=600635)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600633)[0m CADE_PREFIX:scheduling time 17.50
+[2m[36m(task pid=600633)[0m code pid 600633
+[2m[36m(task pid=600633)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600700)[0m CADE_PREFIX:scheduling time 17.58
+[2m[36m(task pid=600700)[0m code pid 600700
+[2m[36m(task pid=600700)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600624)[0m CADE_PREFIX:scheduling time 17.75
+[2m[36m(task pid=600624)[0m code pid 600624
+[2m[36m(task pid=600624)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=605594)[0m importing torch
+[2m[36m(pid=605597)[0m importing tensorflow
+[2m[36m(pid=605618)[0m importing torch
+[2m[36m(task pid=600620)[0m CADE_PREFIX:scheduling time 17.89
+[2m[36m(task pid=600620)[0m code pid 600620
+[2m[36m(task pid=600620)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=605595)[0m importing tensorflow
+[2m[36m(pid=605605)[0m importing tensorflow
+[2m[36m(pid=605601)[0m importing tensorflow
+[2m[36m(pid=605609)[0m importing tensorflow
+[2m[36m(pid=605685)[0m importing tensorflow
+[2m[36m(pid=605612)[0m importing torch
+[2m[36m(task pid=600628)[0m CADE_PREFIX:scheduling time 18.41
+[2m[36m(task pid=600628)[0m code pid 600628
+[2m[36m(task pid=600628)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=600631)[0m CADE_PREFIX:scheduling time 18.37
+[2m[36m(task pid=600631)[0m code pid 600631
+[2m[36m(task pid=600631)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=605707)[0m importing torch
+[2m[36m(pid=605603)[0m importing torch
+[2m[36m(pid=605704)[0m importing torch
+[2m[36m(pid=605607)[0m importing torch
+[2m[36m(pid=605706)[0m importing torch
+[2m[36m(pid=605690)[0m importing torch
+[2m[36m(pid=605616)[0m importing torch
+[2m[36m(pid=605600)[0m importing torch
+[2m[36m(pid=605620)[0m importing torch
+[2m[36m(pid=605619)[0m importing tensorflow
+[2m[36m(pid=605687)[0m importing torch
+[2m[36m(pid=605613)[0m importing torch
+[2m[36m(pid=605686)[0m importing torch
+[2m[36m(pid=605699)[0m importing torch
+[2m[36m(pid=605594)[0m importing tensorflow
+[2m[36m(pid=605603)[0m importing tensorflow
+[2m[36m(pid=605693)[0m importing torch
+[2m[36m(pid=605703)[0m importing torch
+[2m[36m(pid=605709)[0m importing torch
+[2m[36m(pid=605614)[0m importing torch
+[2m[36m(pid=605689)[0m importing torch
+[2m[36m(pid=605708)[0m importing torch
+[2m[36m(pid=605702)[0m importing torch
+[2m[36m(pid=605610)[0m importing torch
+CADE_PREFIX:num_cpus: 64
+CADE_PREFIX:num_executables: 64
+CADE_PREFIX:end-to-end time 18.42
+[2m[36m(pid=605618)[0m importing tensorflow
+[2m[36m(pid=605612)[0m importing tensorflow
+[2m[36m(pid=605707)[0m importing tensorflow
+2023-03-23 14:22:22,368	INFO worker.py:1362 -- Connecting to existing Ray cluster at address: 10.0.43.22:6379...
+2023-03-23 14:22:22,386	INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://console.anyscale-staging.com/api/v2/sessions/ses_qauqfcuba36zrd9jsmr41ac47c/services?redirect_to=dashboard [39m[22m
+driver script pid 615882
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.44
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.40
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.41
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.42
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.43
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.43
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.43
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.44
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.44
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.44
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.44
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.45
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.45
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.45
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.45
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.47
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.47
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.47
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.47
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.47
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.47
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605685)[0m CADE_PREFIX:scheduling time 0.47
+[2m[36m(task pid=605685)[0m code pid 605685
+[2m[36m(task pid=605685)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605608)[0m CADE_PREFIX:scheduling time 0.53
+[2m[36m(task pid=605608)[0m code pid 605608
+[2m[36m(task pid=605608)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605617)[0m CADE_PREFIX:scheduling time 0.53
+[2m[36m(task pid=605617)[0m code pid 605617
+[2m[36m(task pid=605617)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605611)[0m CADE_PREFIX:scheduling time 0.53
+[2m[36m(task pid=605611)[0m code pid 605611
+[2m[36m(task pid=605611)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.48
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605597)[0m CADE_PREFIX:scheduling time 0.48
+[2m[36m(task pid=605597)[0m code pid 605597
+[2m[36m(task pid=605597)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605595)[0m CADE_PREFIX:scheduling time 0.88
+[2m[36m(task pid=605595)[0m code pid 605595
+[2m[36m(task pid=605595)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605606)[0m CADE_PREFIX:scheduling time 1.25
+[2m[36m(task pid=605606)[0m code pid 605606
+[2m[36m(task pid=605606)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605601)[0m CADE_PREFIX:scheduling time 1.26
+[2m[36m(task pid=605601)[0m code pid 605601
+[2m[36m(task pid=605601)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605596)[0m CADE_PREFIX:scheduling time 1.38
+[2m[36m(task pid=605596)[0m code pid 605596
+[2m[36m(task pid=605596)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605593)[0m CADE_PREFIX:scheduling time 1.39
+[2m[36m(task pid=605593)[0m code pid 605593
+[2m[36m(task pid=605593)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605605)[0m CADE_PREFIX:scheduling time 1.38
+[2m[36m(task pid=605605)[0m code pid 605605
+[2m[36m(task pid=605605)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605609)[0m CADE_PREFIX:scheduling time 1.38
+[2m[33m(raylet)[0m [2023-03-23 14:22:32,140 I 617144 617144] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[36m(task pid=605609)[0m code pid 605609
+[2m[36m(task pid=605609)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605619)[0m CADE_PREFIX:scheduling time 1.59
+[2m[36m(task pid=605619)[0m code pid 605619
+[2m[36m(task pid=605619)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605603)[0m CADE_PREFIX:scheduling time 2.25
+[2m[36m(task pid=605603)[0m code pid 605603
+[2m[36m(task pid=605603)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605618)[0m CADE_PREFIX:scheduling time 2.83
+[2m[36m(task pid=605618)[0m code pid 605618
+[2m[36m(task pid=605618)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605594)[0m CADE_PREFIX:scheduling time 3.23
+[2m[36m(task pid=605594)[0m code pid 605594
+[2m[36m(task pid=605594)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605612)[0m CADE_PREFIX:scheduling time 3.59
+[2m[36m(task pid=605612)[0m code pid 605612
+[2m[36m(task pid=605612)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605620)[0m CADE_PREFIX:scheduling time 6.15
+[2m[36m(task pid=605620)[0m code pid 605620
+[2m[36m(task pid=605620)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605613)[0m CADE_PREFIX:scheduling time 6.15
+[2m[36m(task pid=605613)[0m code pid 605613
+[2m[36m(task pid=605613)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605686)[0m CADE_PREFIX:scheduling time 6.16
+[2m[36m(task pid=605686)[0m code pid 605686
+[2m[36m(task pid=605686)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605616)[0m CADE_PREFIX:scheduling time 6.18
+[2m[36m(task pid=605616)[0m code pid 605616
+[2m[36m(task pid=605616)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605614)[0m CADE_PREFIX:scheduling time 6.34
+[2m[36m(task pid=605614)[0m code pid 605614
+[2m[36m(task pid=605614)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605689)[0m CADE_PREFIX:scheduling time 6.33
+[2m[36m(task pid=605689)[0m code pid 605689
+[2m[36m(task pid=605689)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605607)[0m CADE_PREFIX:scheduling time 6.31
+[2m[36m(task pid=605607)[0m code pid 605607
+[2m[36m(task pid=605607)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605600)[0m CADE_PREFIX:scheduling time 6.51
+[2m[36m(task pid=605600)[0m code pid 605600
+[2m[36m(task pid=605600)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605610)[0m CADE_PREFIX:scheduling time 6.71
+[2m[36m(task pid=605610)[0m code pid 605610
+[2m[36m(task pid=605610)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605687)[0m CADE_PREFIX:scheduling time 7.30
+[2m[36m(task pid=605687)[0m code pid 605687
+[2m[36m(task pid=605687)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=605690)[0m CADE_PREFIX:scheduling time 9.11
+[2m[36m(task pid=605690)[0m code pid 605690
+[2m[36m(task pid=605690)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(pid=617144)[0m importing torch
+CADE_PREFIX:num_cpus: 64
+CADE_PREFIX:num_executables: 64
+CADE_PREFIX:end-to-end time 9.11
+1/48 stopped.2/48 stopped.3/48 stopped.4/48 stopped.5/48 stopped.6/48 stopped.7/48 stopped.8/48 stopped.9/48 stopped.10/48 stopped.11/48 stopped.12/48 stopped.13/48 stopped.14/48 stopped.15/48 stopped.16/48 stopped.17/48 stopped.18/48 stopped.19/48 stopped.20/48 stopped.21/48 stopped.22/48 stopped.23/48 stopped.24/48 stopped.25/48 stopped.26/48 stopped.27/48 stopped.28/48 stopped.29/48 stopped.30/48 stopped.31/48 stopped.32/48 stopped.33/48 stopped.34/48 stopped.35/48 stopped.36/48 stopped.37/48 stopped.38/48 stopped.39/48 stopped.40/48 stopped.41/48 stopped.42/48 stopped.43/48 stopped.44/48 stopped.45/48 stopped.46/48 stopped.47/48 stopped.48/48 stopped.1/1 stopped.[32mStopped all 49 Ray processes.[39m
+
+Local node IP: 10.0.43.22
+2023-03-23 14:22:45,864	ERROR services.py:1200 -- Failed to start the dashboard , return code 0
+2023-03-23 14:22:45,865	ERROR services.py:1225 -- Error should be written to 'dashboard.log' or 'dashboard.err'. We are printing the last 20 lines for you. See 'https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure' to find where the log file is.
+2023-03-23 14:22:45,865	ERROR services.py:1269 -- 
+The last 20 lines of /tmp/ray/session_2023-03-23_14-22-43_193876_626331/logs/dashboard.log (it contains the error message from the dashboard): 
+    return future.result()
+  File "/mnt/cluster_storage/pypi/lib/python3.10/site-packages/ray/dashboard/dashboard.py", line 70, in run
+    await self.dashboard_head.run()
+  File "/mnt/cluster_storage/pypi/lib/python3.10/site-packages/ray/dashboard/head.py", line 302, in run
+    self.http_server = await self._configure_http_server(modules)
+  File "/mnt/cluster_storage/pypi/lib/python3.10/site-packages/ray/dashboard/head.py", line 143, in _configure_http_server
+    http_server = HttpServerDashboardHead(
+  File "/mnt/cluster_storage/pypi/lib/python3.10/site-packages/ray/dashboard/http_server_head.py", line 93, in __init__
+    raise ex
+  File "/mnt/cluster_storage/pypi/lib/python3.10/site-packages/ray/dashboard/http_server_head.py", line 84, in __init__
+    build_dir = setup_static_dir()
+  File "/mnt/cluster_storage/pypi/lib/python3.10/site-packages/ray/dashboard/http_server_head.py", line 42, in setup_static_dir
+    raise dashboard_utils.FrontendNotFoundError(
+ray.dashboard.utils.FrontendNotFoundError: [Errno 2] Dashboard build directory not found. If installing from source, please follow the additional steps required to build the dashboard(cd python/ray/dashboard/client && npm ci && npm run build): '/mnt/cluster_storage/pypi/lib/python3.10/site-packages/ray/dashboard/client/build'
+
+2023-03-23 14:22:45,714	ERROR base_events.py:1752 -- Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x7f66b07bb0d0>
+2023-03-23 14:22:45,714	ERROR base_events.py:1752 -- Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x7f66b07bb040>
+2023-03-23 14:22:45,714	ERROR base_events.py:1752 -- Unclosed client session
+
+--------------------
+Ray runtime started.
+--------------------
+
+Next steps
+  To add another node to this Ray cluster, run
+    ray start --address='10.0.43.22:6379'
+  
+  To connect to this Ray cluster, run `ray.init()` as usual:
+    import ray
+    ray.init()
+  
+  To connect to this Ray instance from outside of the cluster, for example 
+  when connecting to a remote cluster from your laptop, make sure the
+  dashboard is accessible and use the Ray Jobs API. For example:
+  
+  See https://docs.ray.io/en/latest/cluster/running-applications/job-submission/index.html
+  for more information on connecting to the Ray cluster from a remote client.
+  
+  To see the status of the cluster, use
+    ray status
+  
+  If connection fails, check your firewall settings and network configuration.
+  
+  To terminate the Ray runtime, run
+    ray stop
+2023-03-23 14:23:07,269	INFO worker.py:1362 -- Connecting to existing Ray cluster at address: 10.0.43.22:6379...
+2023-03-23 14:23:07,277	INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://console.anyscale-staging.com/api/v2/sessions/ses_qauqfcuba36zrd9jsmr41ac47c/services?redirect_to=dashboard [39m[22m
+[2m[33m(raylet)[0m [2023-03-23 14:23:08,376 I 628337 628337] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:08,399 I 628340 628340] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:08,405 I 628339 628339] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:08,417 I 628342 628342] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:08,419 I 628341 628341] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:08,421 I 628347 628347] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:08,429 I 628346 628346] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:08,433 I 628338 628338] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:08,440 I 628345 628345] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:08,515 I 628343 628343] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:08,516 I 628344 628344] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:12,836 I 629491 629491] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:14,923 I 629259 629259] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:16,550 I 629483 629483] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:18,695 I 629503 629503] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:18,740 I 629481 629481] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:18,842 I 629474 629474] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:20,172 I 629516 629516] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:20,417 I 629506 629506] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:20,445 I 629514 629514] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:20,700 I 629221 629221] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:20,808 I 629494 629494] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:20,836 I 629223 629223] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:20,979 I 629490 629490] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:21,353 I 629497 629497] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:21,859 I 629513 629513] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:21,893 I 629518 629518] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:21,982 I 629495 629495] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:22,030 I 629722 629722] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:22,585 I 629720 629720] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:23,176 I 629701 629701] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:24,058 I 629500 629500] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:24,069 I 629505 629505] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:24,211 I 629229 629229] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:24,281 I 629482 629482] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:24,615 I 629492 629492] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:24,762 I 629512 629512] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:24,830 I 629508 629508] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:24,906 I 629509 629509] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:24,969 I 629507 629507] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:25,614 I 629715 629715] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:26,004 I 629504 629504] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:26,034 I 629484 629484] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:26,045 I 629721 629721] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+driver script pid 628191
+[2m[36m(task pid=628340)[0m CADE_PREFIX:scheduling time 1.23
+[2m[36m(task pid=628340)[0m code pid 628340
+[2m[36m(task pid=628337)[0m CADE_PREFIX:scheduling time 1.34
+[2m[36m(task pid=628337)[0m code pid 628337
+[2m[36m(task pid=628339)[0m CADE_PREFIX:scheduling time 1.35
+[2m[36m(task pid=628339)[0m code pid 628339
+[2m[36m(task pid=628342)[0m CADE_PREFIX:scheduling time 1.36
+[2m[36m(task pid=628342)[0m code pid 628342
+[2m[36m(task pid=628347)[0m CADE_PREFIX:scheduling time 1.36
+[2m[36m(task pid=628347)[0m code pid 628347
+[2m[36m(task pid=628341)[0m CADE_PREFIX:scheduling time 1.36
+[2m[36m(task pid=628341)[0m code pid 628341
+[2m[36m(task pid=628338)[0m CADE_PREFIX:scheduling time 1.36
+[2m[36m(task pid=628338)[0m code pid 628338
+[2m[36m(task pid=628345)[0m CADE_PREFIX:scheduling time 1.35
+[2m[36m(task pid=628345)[0m code pid 628345
+[2m[36m(task pid=628346)[0m CADE_PREFIX:scheduling time 1.36
+[2m[36m(task pid=628346)[0m code pid 628346
+[2m[36m(task pid=628344)[0m CADE_PREFIX:scheduling time 1.43
+[2m[36m(task pid=628344)[0m code pid 628344
+[2m[36m(task pid=628343)[0m CADE_PREFIX:scheduling time 2.04
+[2m[36m(task pid=628343)[0m code pid 628343
+[2m[36m(task pid=629518)[0m CADE_PREFIX:scheduling time 14.87
+[2m[36m(task pid=629518)[0m code pid 629518
+[2m[36m(task pid=629495)[0m CADE_PREFIX:scheduling time 14.87
+[2m[36m(task pid=629495)[0m code pid 629495
+[2m[36m(task pid=629491)[0m CADE_PREFIX:scheduling time 14.88
+[2m[36m(task pid=629491)[0m code pid 629491
+[2m[36m(task pid=629259)[0m CADE_PREFIX:scheduling time 14.90
+[2m[36m(task pid=629259)[0m code pid 629259
+[2m[36m(task pid=629483)[0m CADE_PREFIX:scheduling time 14.90
+[2m[36m(task pid=629483)[0m code pid 629483
+[2m[36m(task pid=629503)[0m CADE_PREFIX:scheduling time 14.89
+[2m[36m(task pid=629503)[0m code pid 629503
+[2m[36m(task pid=629481)[0m CADE_PREFIX:scheduling time 14.89
+[2m[36m(task pid=629481)[0m code pid 629481
+[2m[36m(task pid=629474)[0m CADE_PREFIX:scheduling time 14.89
+[2m[36m(task pid=629474)[0m code pid 629474
+[2m[36m(task pid=629516)[0m CADE_PREFIX:scheduling time 14.88
+[2m[36m(task pid=629516)[0m code pid 629516
+[2m[36m(task pid=629506)[0m CADE_PREFIX:scheduling time 14.89
+[2m[36m(task pid=629506)[0m code pid 629506
+[2m[36m(task pid=629514)[0m CADE_PREFIX:scheduling time 14.87
+[2m[36m(task pid=629514)[0m code pid 629514
+[2m[36m(task pid=629221)[0m CADE_PREFIX:scheduling time 14.87
+[2m[36m(task pid=629221)[0m code pid 629221
+[2m[36m(task pid=629494)[0m CADE_PREFIX:scheduling time 14.89
+[2m[36m(task pid=629494)[0m code pid 629494
+[2m[36m(task pid=629223)[0m CADE_PREFIX:scheduling time 14.89
+[2m[36m(task pid=629223)[0m code pid 629223
+[2m[36m(task pid=629490)[0m CADE_PREFIX:scheduling time 14.88
+[2m[36m(task pid=629490)[0m code pid 629490
+[2m[36m(task pid=629497)[0m CADE_PREFIX:scheduling time 14.89
+[2m[36m(task pid=629497)[0m code pid 629497
+[2m[36m(task pid=629513)[0m CADE_PREFIX:scheduling time 14.88
+[2m[36m(task pid=629513)[0m code pid 629513
+[2m[36m(task pid=629722)[0m CADE_PREFIX:scheduling time 14.87
+[2m[36m(task pid=629722)[0m code pid 629722
+[2m[36m(task pid=629720)[0m CADE_PREFIX:scheduling time 15.42
+[2m[36m(task pid=629720)[0m code pid 629720
+[2m[36m(task pid=628346)[0m CADE_PREFIX:imports took 14.78
+[2m[36m(task pid=628345)[0m CADE_PREFIX:imports took 15.15
+[2m[36m(task pid=628339)[0m CADE_PREFIX:imports took 15.17
+[2m[36m(task pid=628342)[0m CADE_PREFIX:imports took 15.22
+[2m[36m(task pid=628338)[0m CADE_PREFIX:imports took 15.17
+[2m[36m(task pid=628337)[0m CADE_PREFIX:imports took 16.84
+[2m[36m(task pid=628347)[0m CADE_PREFIX:imports took 16.84
+[2m[36m(task pid=628337)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628337)[0m code pid 628337
+[2m[36m(task pid=628337)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628337)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628337)[0m code pid 628337
+[2m[36m(task pid=628337)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628337)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628337)[0m code pid 628337
+[2m[36m(task pid=628337)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628337)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628337)[0m code pid 628337
+[2m[36m(task pid=628337)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628337)[0m CADE_PREFIX:scheduling time 18.85
+[2m[36m(task pid=628337)[0m code pid 628337
+[2m[36m(task pid=628337)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628337)[0m CADE_PREFIX:scheduling time 18.85
+[2m[36m(task pid=628337)[0m code pid 628337
+[2m[36m(task pid=628337)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628337)[0m CADE_PREFIX:scheduling time 18.85
+[2m[36m(task pid=628337)[0m code pid 628337
+[2m[36m(task pid=628337)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628347)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628347)[0m code pid 628347
+[2m[36m(task pid=628347)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628347)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628347)[0m code pid 628347
+[2m[36m(task pid=628347)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628347)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628347)[0m code pid 628347
+[2m[36m(task pid=628347)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628347)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628347)[0m code pid 628347
+[2m[36m(task pid=628347)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628347)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628347)[0m code pid 628347
+[2m[36m(task pid=628347)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628347)[0m CADE_PREFIX:scheduling time 18.85
+[2m[36m(task pid=628347)[0m code pid 628347
+[2m[36m(task pid=628347)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628347)[0m CADE_PREFIX:scheduling time 18.85
+[2m[36m(task pid=628347)[0m code pid 628347
+[2m[36m(task pid=628347)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628343)[0m CADE_PREFIX:imports took 16.77
+[2m[36m(task pid=628343)[0m CADE_PREFIX:scheduling time 18.81
+[2m[36m(task pid=628343)[0m code pid 628343
+[2m[36m(task pid=628343)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628343)[0m CADE_PREFIX:scheduling time 18.81
+[2m[36m(task pid=628343)[0m code pid 628343
+[2m[36m(task pid=628343)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628343)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628343)[0m code pid 628343
+[2m[36m(task pid=628343)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628343)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628343)[0m code pid 628343
+[2m[36m(task pid=628343)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628343)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628343)[0m code pid 628343
+[2m[36m(task pid=628343)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628343)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628343)[0m code pid 628343
+[2m[36m(task pid=628343)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628343)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628343)[0m code pid 628343
+[2m[36m(task pid=628343)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628343)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628343)[0m code pid 628343
+[2m[36m(task pid=628343)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628343)[0m CADE_PREFIX:scheduling time 18.82
+[2m[36m(task pid=628343)[0m code pid 628343
+[2m[36m(task pid=628343)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628343)[0m CADE_PREFIX:scheduling time 18.85
+[2m[36m(task pid=628343)[0m code pid 628343
+[2m[36m(task pid=628343)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628343)[0m CADE_PREFIX:scheduling time 18.85
+[2m[36m(task pid=628343)[0m code pid 628343
+[2m[33m(raylet)[0m [2023-03-23 14:23:26,211 I 629502 629502] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:26,388 I 629510 629510] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:26,489 I 629498 629498] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:26,632 I 629724 629724] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:26,676 I 629489 629489] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:26,813 I 629689 629689] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:26,888 I 629487 629487] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:26,990 I 629485 629485] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,074 I 629760 629760] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,079 I 629520 629520] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,199 I 629591 629591] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,213 I 629486 629486] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,343 I 629766 629766] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,550 I 629488 629488] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,682 I 629723 629723] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,707 I 629577 629577] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,718 I 629496 629496] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,731 I 629480 629480] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,757 I 629511 629511] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,769 I 629501 629501] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,813 I 629493 629493] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,827 I 629519 629519] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,841 I 629726 629726] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,863 I 629521 629521] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:27,990 I 634834 634834] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:28,054 I 634944 634944] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[36m(task pid=628343)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=628343)[0m CADE_PREFIX:scheduling time 18.85
+[2m[36m(task pid=628343)[0m code pid 628343
+[2m[36m(task pid=628343)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629508)[0m CADE_PREFIX:scheduling time 18.91
+[2m[36m(task pid=629508)[0m code pid 629508
+[2m[36m(task pid=629507)[0m CADE_PREFIX:scheduling time 18.89
+[2m[36m(task pid=629507)[0m code pid 629507
+[2m[36m(task pid=629509)[0m CADE_PREFIX:scheduling time 18.89
+[2m[36m(task pid=629509)[0m code pid 629509
+[2m[36m(task pid=629715)[0m CADE_PREFIX:scheduling time 18.89
+[2m[36m(task pid=629715)[0m code pid 629715
+[2m[36m(task pid=629504)[0m CADE_PREFIX:scheduling time 18.89
+[2m[36m(task pid=629504)[0m code pid 629504
+[2m[36m(task pid=629484)[0m CADE_PREFIX:scheduling time 18.89
+[2m[36m(task pid=629484)[0m code pid 629484
+[2m[36m(task pid=629721)[0m CADE_PREFIX:scheduling time 18.89
+[2m[36m(task pid=629721)[0m code pid 629721
+[2m[36m(task pid=629512)[0m CADE_PREFIX:scheduling time 18.92
+[2m[36m(task pid=629512)[0m code pid 629512
+[2m[36m(task pid=628340)[0m CADE_PREFIX:imports took 18.02
+[2m[36m(task pid=628341)[0m CADE_PREFIX:imports took 18.73
+[2m[36m(task pid=628344)[0m CADE_PREFIX:imports took 18.69
+[2m[36m(task pid=629481)[0m CADE_PREFIX:imports took 7.34
+[2m[36m(task pid=629513)[0m CADE_PREFIX:imports took 7.31
+[2m[36m(task pid=629514)[0m CADE_PREFIX:imports took 7.42
+[2m[36m(task pid=629491)[0m CADE_PREFIX:imports took 7.53
+[2m[36m(task pid=629503)[0m CADE_PREFIX:imports took 7.53
+[2m[36m(task pid=629516)[0m CADE_PREFIX:imports took 7.53
+[2m[36m(task pid=629506)[0m CADE_PREFIX:imports took 7.50
+[2m[36m(task pid=629221)[0m CADE_PREFIX:imports took 7.56
+[2m[36m(task pid=629494)[0m CADE_PREFIX:imports took 7.49
+[2m[36m(task pid=629223)[0m CADE_PREFIX:imports took 7.55
+[2m[36m(task pid=629490)[0m CADE_PREFIX:imports took 7.60
+[2m[36m(task pid=629497)[0m CADE_PREFIX:imports took 7.55
+[2m[36m(task pid=629518)[0m CADE_PREFIX:imports took 7.54
+[2m[36m(task pid=629722)[0m CADE_PREFIX:imports took 7.54
+[2m[36m(task pid=629495)[0m CADE_PREFIX:imports took 7.55
+[2m[36m(task pid=629720)[0m CADE_PREFIX:imports took 7.05
+[2m[36m(task pid=629259)[0m CADE_PREFIX:imports took 7.59
+[2m[36m(task pid=629474)[0m CADE_PREFIX:imports took 7.65
+[2m[36m(task pid=629483)[0m CADE_PREFIX:imports took 7.70
+[2m[36m(task pid=629507)[0m CADE_PREFIX:imports took 3.98
+[2m[36m(task pid=629512)[0m CADE_PREFIX:imports took 3.99
+[2m[36m(task pid=629721)[0m CADE_PREFIX:imports took 4.13
+[2m[36m(task pid=629508)[0m CADE_PREFIX:imports took 4.13
+[2m[36m(task pid=629509)[0m CADE_PREFIX:imports took 4.14
+[2m[36m(task pid=629715)[0m CADE_PREFIX:imports took 4.14
+[2m[36m(task pid=629504)[0m CADE_PREFIX:imports took 4.18
+[2m[36m(task pid=629484)[0m CADE_PREFIX:imports took 4.13
+CADE_PREFIX:num_cpus: 64
+CADE_PREFIX:num_executables: 64
+CADE_PREFIX:end-to-end time 23.07
+2023-03-23 14:23:33,626	INFO worker.py:1362 -- Connecting to existing Ray cluster at address: 10.0.43.22:6379...
+2023-03-23 14:23:33,634	INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://console.anyscale-staging.com/api/v2/sessions/ses_qauqfcuba36zrd9jsmr41ac47c/services?redirect_to=dashboard [39m[22m
+[2m[33m(raylet)[0m [2023-03-23 14:23:36,883 I 639597 639597] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:38,966 I 639600 639600] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:45,772 I 639613 639613] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:46,434 I 639647 639647] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:46,485 I 639616 639616] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:46,944 I 639607 639607] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:46,952 I 639645 639645] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:47,230 I 639614 639614] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:47,283 I 639649 639649] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:47,481 I 639604 639604] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:48,006 I 639618 639618] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:48,061 I 639617 639617] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:48,198 I 639622 639622] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:48,684 I 639596 639596] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:48,729 I 639637 639637] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:49,347 I 639615 639615] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:49,364 I 639621 639621] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:50,535 I 639602 639602] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:50,746 I 639643 639643] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:51,258 I 639654 639654] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+driver script pid 638554
+[2m[36m(task pid=629498)[0m CADE_PREFIX:scheduling time 0.37
+[2m[36m(task pid=629498)[0m code pid 629498
+[2m[36m(task pid=629489)[0m CADE_PREFIX:scheduling time 0.28
+[2m[36m(task pid=629489)[0m code pid 629489
+[2m[36m(task pid=629689)[0m CADE_PREFIX:scheduling time 0.23
+[2m[36m(task pid=629689)[0m code pid 629689
+[2m[36m(task pid=629487)[0m CADE_PREFIX:scheduling time 0.25
+[2m[36m(task pid=629487)[0m code pid 629487
+[2m[36m(task pid=629485)[0m CADE_PREFIX:scheduling time 0.20
+[2m[36m(task pid=629485)[0m code pid 629485
+[2m[36m(task pid=629520)[0m CADE_PREFIX:scheduling time 0.24
+[2m[36m(task pid=629520)[0m code pid 629520
+[2m[36m(task pid=629486)[0m CADE_PREFIX:scheduling time 0.22
+[2m[36m(task pid=629486)[0m code pid 629486
+[2m[36m(task pid=629488)[0m CADE_PREFIX:scheduling time 0.19
+[2m[36m(task pid=629488)[0m code pid 629488
+[2m[36m(task pid=629511)[0m CADE_PREFIX:scheduling time 0.19
+[2m[36m(task pid=629511)[0m code pid 629511
+[2m[36m(task pid=629501)[0m CADE_PREFIX:scheduling time 0.19
+[2m[36m(task pid=629501)[0m code pid 629501
+[2m[36m(task pid=629493)[0m CADE_PREFIX:scheduling time 0.25
+[2m[36m(task pid=629493)[0m code pid 629493
+[2m[36m(task pid=629480)[0m CADE_PREFIX:scheduling time 0.21
+[2m[36m(task pid=629480)[0m code pid 629480
+[2m[36m(task pid=629496)[0m CADE_PREFIX:scheduling time 0.21
+[2m[36m(task pid=629496)[0m code pid 629496
+[2m[36m(task pid=629519)[0m CADE_PREFIX:scheduling time 0.25
+[2m[36m(task pid=629519)[0m code pid 629519
+[2m[36m(task pid=629521)[0m CADE_PREFIX:scheduling time 0.21
+[2m[36m(task pid=629521)[0m code pid 629521
+[2m[36m(task pid=629500)[0m CADE_PREFIX:scheduling time 0.49
+[2m[36m(task pid=629500)[0m code pid 629500
+[2m[36m(task pid=629229)[0m CADE_PREFIX:scheduling time 0.44
+[2m[36m(task pid=629229)[0m code pid 629229
+[2m[36m(task pid=629482)[0m CADE_PREFIX:scheduling time 1.13
+[2m[36m(task pid=629482)[0m code pid 629482
+[2m[36m(task pid=629510)[0m CADE_PREFIX:scheduling time 1.09
+[2m[36m(task pid=629510)[0m code pid 629510
+[2m[36m(task pid=629505)[0m CADE_PREFIX:scheduling time 1.14
+[2m[36m(task pid=629505)[0m code pid 629505
+[2m[36m(task pid=629502)[0m CADE_PREFIX:scheduling time 1.14
+[2m[36m(task pid=629502)[0m code pid 629502
+[2m[36m(task pid=629492)[0m CADE_PREFIX:scheduling time 1.21
+[2m[36m(task pid=629492)[0m code pid 629492
+[2m[36m(task pid=629487)[0m CADE_PREFIX:imports took 14.06
+[2m[36m(task pid=629500)[0m CADE_PREFIX:imports took 14.28
+[2m[36m(task pid=629489)[0m CADE_PREFIX:imports took 15.47
+[2m[36m(task pid=629486)[0m CADE_PREFIX:imports took 16.03
+[2m[36m(task pid=629488)[0m CADE_PREFIX:imports took 16.06
+[2m[36m(task pid=629229)[0m CADE_PREFIX:imports took 15.83
+[2m[36m(task pid=629520)[0m CADE_PREFIX:imports took 16.84
+[2m[36m(task pid=629480)[0m CADE_PREFIX:imports took 16.87
+[2m[36m(task pid=629521)[0m CADE_PREFIX:imports took 17.01
+[2m[36m(task pid=629510)[0m CADE_PREFIX:imports took 16.04
+[2m[36m(task pid=629492)[0m CADE_PREFIX:imports took 16.24
+[2m[36m(task pid=629520)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629520)[0m code pid 629520
+[2m[36m(task pid=629520)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629520)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629520)[0m code pid 629520
+[2m[36m(task pid=629520)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629520)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629520)[0m code pid 629520
+[2m[36m(task pid=629520)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629520)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629520)[0m code pid 629520
+[2m[36m(task pid=629520)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629520)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629520)[0m code pid 629520
+[2m[36m(task pid=629520)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629486)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629486)[0m code pid 629486
+[2m[36m(task pid=629486)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629486)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629486)[0m code pid 629486
+[2m[36m(task pid=629486)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629488)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629488)[0m code pid 629488
+[2m[36m(task pid=629488)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629480)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629480)[0m code pid 629480
+[2m[36m(task pid=629480)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629480)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629480)[0m code pid 629480
+[2m[36m(task pid=629480)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629480)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629480)[0m code pid 629480
+[2m[36m(task pid=629480)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629480)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629480)[0m code pid 629480
+[2m[36m(task pid=629480)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629480)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629480)[0m code pid 629480
+[2m[36m(task pid=629480)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629521)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629521)[0m code pid 629521
+[2m[36m(task pid=629521)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629521)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629521)[0m code pid 629521
+[2m[36m(task pid=629521)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629521)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629521)[0m code pid 629521
+[2m[36m(task pid=629521)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629521)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629521)[0m code pid 629521
+[2m[36m(task pid=629521)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629521)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629521)[0m code pid 629521
+[2m[36m(task pid=629521)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629521)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629521)[0m code pid 629521
+[2m[36m(task pid=629521)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629521)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629521)[0m code pid 629521
+[2m[36m(task pid=629521)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629521)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629521)[0m code pid 629521
+[2m[36m(task pid=629521)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629229)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629229)[0m code pid 629229
+[2m[36m(task pid=629229)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629229)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629229)[0m code pid 629229
+[2m[36m(task pid=629229)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629229)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629229)[0m code pid 629229
+[2m[36m(task pid=629229)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629492)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629492)[0m code pid 629492
+[2m[36m(task pid=629492)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629492)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629492)[0m code pid 629492
+[2m[36m(task pid=629492)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629492)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629492)[0m code pid 629492
+[2m[36m(task pid=629492)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629492)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629492)[0m code pid 629492
+[2m[36m(task pid=629492)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629492)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629492)[0m code pid 629492
+[2m[36m(task pid=629492)[0m CADE_PREFIX:imports took 0.00
+[2m[33m(raylet)[0m [2023-03-23 14:23:51,620 I 639605 639605] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:51,623 I 639570 639570] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:51,737 I 639648 639648] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:51,870 I 639646 639646] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:51,976 I 639651 639651] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:51,992 I 639653 639653] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,113 I 639639 639639] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,188 I 639599 639599] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,218 I 639636 639636] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,331 I 639587 639587] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,351 I 639674 639674] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,391 I 639628 639628] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,398 I 639652 639652] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,402 I 639620 639620] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,415 I 639598 639598] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,453 I 639633 639633] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,498 I 639680 639680] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,504 I 639591 639591] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,510 I 639667 639667] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,513 I 639608 639608] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,513 I 639624 639624] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,516 I 639610 639610] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,518 I 639670 639670] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,523 I 639623 639623] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,523 I 639609 639609] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,529 I 639619 639619] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,529 I 639650 639650] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,530 I 639676 639676] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,531 I 639672 639672] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,534 I 639603 639603] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,535 I 639665 639665] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:23:52,535 I 639678 639678] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[36m(task pid=629492)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629492)[0m code pid 629492
+[2m[36m(task pid=629492)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629492)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629492)[0m code pid 629492
+[2m[36m(task pid=629492)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629492)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629492)[0m code pid 629492
+[2m[36m(task pid=629492)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629492)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629492)[0m code pid 629492
+[2m[36m(task pid=629492)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629510)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629510)[0m code pid 629510
+[2m[36m(task pid=629510)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629510)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629510)[0m code pid 629510
+[2m[36m(task pid=629510)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629510)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629510)[0m code pid 629510
+[2m[36m(task pid=629510)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629510)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629510)[0m code pid 629510
+[2m[36m(task pid=629510)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629510)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629510)[0m code pid 629510
+[2m[36m(task pid=629510)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=629510)[0m CADE_PREFIX:scheduling time 17.68
+[2m[36m(task pid=629510)[0m code pid 629510
+[2m[36m(task pid=629510)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=639602)[0m CADE_PREFIX:scheduling time 17.74
+[2m[36m(task pid=639602)[0m code pid 639602
+[2m[36m(task pid=639643)[0m CADE_PREFIX:scheduling time 17.76
+[2m[36m(task pid=639643)[0m code pid 639643
+[2m[36m(task pid=639654)[0m CADE_PREFIX:scheduling time 17.76
+[2m[36m(task pid=639654)[0m code pid 639654
+[2m[36m(task pid=629505)[0m CADE_PREFIX:imports took 17.10
+[2m[36m(task pid=629511)[0m CADE_PREFIX:imports took 18.19
+[2m[36m(task pid=629502)[0m CADE_PREFIX:imports took 17.23
+[2m[36m(task pid=629496)[0m CADE_PREFIX:imports took 18.27
+[2m[36m(task pid=629501)[0m CADE_PREFIX:imports took 18.34
+[2m[36m(task pid=629482)[0m CADE_PREFIX:imports took 17.39
+[2m[36m(task pid=629485)[0m CADE_PREFIX:imports took 18.44
+[2m[36m(task pid=629689)[0m CADE_PREFIX:imports took 18.79
+[2m[36m(task pid=629498)[0m CADE_PREFIX:imports took 18.79
+[2m[36m(task pid=629519)[0m CADE_PREFIX:imports took 18.91
+[2m[36m(task pid=629493)[0m CADE_PREFIX:imports took 18.93
+[2m[36m(task pid=639602)[0m CADE_PREFIX:imports took 3.41
+[2m[36m(task pid=639643)[0m CADE_PREFIX:imports took 3.54
+[2m[36m(task pid=639654)[0m CADE_PREFIX:imports took 3.52
+CADE_PREFIX:num_cpus: 64
+CADE_PREFIX:num_executables: 64
+CADE_PREFIX:end-to-end time 21.30
+2023-03-23 14:23:57,996	INFO worker.py:1362 -- Connecting to existing Ray cluster at address: 10.0.43.22:6379...
+2023-03-23 14:23:58,005	INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://console.anyscale-staging.com/api/v2/sessions/ses_qauqfcuba36zrd9jsmr41ac47c/services?redirect_to=dashboard [39m[22m
+[2m[33m(raylet)[0m [2023-03-23 14:24:04,358 I 648537 648537] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:07,002 I 648543 648543] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:07,040 I 648551 648551] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:08,576 I 648564 648564] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:09,278 I 648546 648546] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:09,303 I 648542 648542] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:09,362 I 648612 648612] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:09,386 I 648534 648534] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:09,413 I 648527 648527] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:09,439 I 648523 648523] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:09,501 I 648528 648528] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:09,582 I 648544 648544] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:09,593 I 648538 648538] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:09,837 I 648590 648590] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:09,972 I 648592 648592] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:10,016 I 648531 648531] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:10,111 I 648585 648585] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:10,210 I 648532 648532] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:10,492 I 648567 648567] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:10,526 I 648535 648535] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:10,589 I 648530 648530] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:11,598 I 648562 648562] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:12,848 I 648579 648579] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:12,883 I 648605 648605] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:14,027 I 648540 648540] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:14,394 I 648536 648536] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:14,812 I 648604 648604] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:15,205 I 648610 648610] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:15,711 I 648552 648552] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:15,750 I 648539 648539] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:15,886 I 648533 648533] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:16,012 I 648606 648606] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:16,038 I 648614 648614] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+driver script pid 647474
+[2m[36m(task pid=639646)[0m CADE_PREFIX:scheduling time 0.23
+[2m[36m(task pid=639646)[0m code pid 639646
+[2m[36m(task pid=639651)[0m CADE_PREFIX:scheduling time 0.24
+[2m[36m(task pid=639651)[0m code pid 639651
+[2m[36m(task pid=639639)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=639639)[0m code pid 639639
+[2m[36m(task pid=639599)[0m CADE_PREFIX:scheduling time 0.24
+[2m[36m(task pid=639599)[0m code pid 639599
+[2m[36m(task pid=639636)[0m CADE_PREFIX:scheduling time 0.28
+[2m[36m(task pid=639636)[0m code pid 639636
+[2m[36m(task pid=639587)[0m CADE_PREFIX:scheduling time 0.25
+[2m[36m(task pid=639587)[0m code pid 639587
+[2m[36m(task pid=639598)[0m CADE_PREFIX:scheduling time 0.23
+[2m[36m(task pid=639598)[0m code pid 639598
+[2m[36m(task pid=639620)[0m CADE_PREFIX:scheduling time 0.25
+[2m[36m(task pid=639620)[0m code pid 639620
+[2m[36m(task pid=639652)[0m CADE_PREFIX:scheduling time 0.27
+[2m[36m(task pid=639652)[0m code pid 639652
+[2m[36m(task pid=639624)[0m CADE_PREFIX:scheduling time 0.22
+[2m[36m(task pid=639624)[0m code pid 639624
+[2m[36m(task pid=639591)[0m CADE_PREFIX:scheduling time 0.26
+[2m[36m(task pid=639591)[0m code pid 639591
+[2m[36m(task pid=639610)[0m CADE_PREFIX:scheduling time 0.29
+[2m[36m(task pid=639610)[0m code pid 639610
+[2m[36m(task pid=639609)[0m CADE_PREFIX:scheduling time 0.25
+[2m[36m(task pid=639609)[0m code pid 639609
+[2m[36m(task pid=639650)[0m CADE_PREFIX:scheduling time 0.23
+[2m[36m(task pid=639650)[0m code pid 639650
+[2m[36m(task pid=639619)[0m CADE_PREFIX:scheduling time 0.22
+[2m[36m(task pid=639619)[0m code pid 639619
+[2m[36m(task pid=639603)[0m CADE_PREFIX:scheduling time 0.24
+[2m[36m(task pid=639603)[0m code pid 639603
+[2m[36m(task pid=639648)[0m CADE_PREFIX:scheduling time 0.33
+[2m[36m(task pid=639648)[0m code pid 639648
+[2m[36m(task pid=639628)[0m CADE_PREFIX:scheduling time 0.32
+[2m[36m(task pid=639628)[0m code pid 639628
+[2m[36m(task pid=639608)[0m CADE_PREFIX:scheduling time 0.33
+[2m[36m(task pid=639608)[0m code pid 639608
+[2m[36m(task pid=639633)[0m CADE_PREFIX:scheduling time 0.33
+[2m[36m(task pid=639633)[0m code pid 639633
+[2m[36m(task pid=639623)[0m CADE_PREFIX:scheduling time 0.37
+[2m[36m(task pid=639623)[0m code pid 639623
+[2m[36m(task pid=639596)[0m CADE_PREFIX:scheduling time 0.45
+[2m[36m(task pid=639596)[0m code pid 639596
+[2m[36m(task pid=639615)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=639615)[0m code pid 639615
+[2m[36m(task pid=639621)[0m CADE_PREFIX:scheduling time 0.46
+[2m[36m(task pid=639621)[0m code pid 639621
+[2m[36m(task pid=639622)[0m CADE_PREFIX:scheduling time 0.57
+[2m[36m(task pid=639622)[0m code pid 639622
+[2m[36m(task pid=639605)[0m CADE_PREFIX:scheduling time 0.47
+[2m[36m(task pid=639605)[0m code pid 639605
+[2m[36m(task pid=639570)[0m CADE_PREFIX:scheduling time 1.11
+[2m[36m(task pid=639570)[0m code pid 639570
+[2m[36m(task pid=639618)[0m CADE_PREFIX:scheduling time 1.19
+[2m[36m(task pid=639618)[0m code pid 639618
+[2m[36m(task pid=639617)[0m CADE_PREFIX:scheduling time 1.18
+[2m[36m(task pid=639617)[0m code pid 639617
+[2m[36m(task pid=639637)[0m CADE_PREFIX:scheduling time 1.17
+[2m[36m(task pid=639637)[0m code pid 639637
+[2m[36m(task pid=648542)[0m CADE_PREFIX:scheduling time 11.48
+[2m[36m(task pid=648542)[0m code pid 648542
+[2m[36m(task pid=648612)[0m CADE_PREFIX:scheduling time 11.48
+[2m[36m(task pid=648612)[0m code pid 648612
+[2m[36m(task pid=648537)[0m CADE_PREFIX:scheduling time 11.48
+[2m[36m(task pid=648537)[0m code pid 648537
+[2m[36m(task pid=648543)[0m CADE_PREFIX:scheduling time 11.50
+[2m[36m(task pid=648543)[0m code pid 648543
+[2m[36m(task pid=648551)[0m CADE_PREFIX:scheduling time 11.48
+[2m[36m(task pid=648551)[0m code pid 648551
+[2m[36m(task pid=648564)[0m CADE_PREFIX:scheduling time 11.48
+[2m[36m(task pid=648564)[0m code pid 648564
+[2m[36m(task pid=648546)[0m CADE_PREFIX:scheduling time 11.49
+[2m[36m(task pid=648546)[0m code pid 648546
+[2m[36m(task pid=648534)[0m CADE_PREFIX:scheduling time 12.35
+[2m[36m(task pid=648534)[0m code pid 648534
+[2m[36m(task pid=648523)[0m CADE_PREFIX:scheduling time 12.33
+[2m[36m(task pid=648523)[0m code pid 648523
+[2m[36m(task pid=648527)[0m CADE_PREFIX:scheduling time 12.35
+[2m[36m(task pid=648527)[0m code pid 648527
+[2m[36m(task pid=648528)[0m CADE_PREFIX:scheduling time 12.34
+[2m[36m(task pid=648528)[0m code pid 648528
+[2m[36m(task pid=648538)[0m CADE_PREFIX:scheduling time 12.34
+[2m[36m(task pid=648538)[0m code pid 648538
+[2m[36m(task pid=648544)[0m CADE_PREFIX:scheduling time 12.34
+[2m[36m(task pid=648544)[0m code pid 648544
+[2m[36m(task pid=648590)[0m CADE_PREFIX:scheduling time 12.34
+[2m[36m(task pid=648590)[0m code pid 648590
+[2m[36m(task pid=648592)[0m CADE_PREFIX:scheduling time 12.33
+[2m[36m(task pid=648592)[0m code pid 648592
+[2m[36m(task pid=648531)[0m CADE_PREFIX:scheduling time 12.34
+[2m[36m(task pid=648531)[0m code pid 648531
+[2m[36m(task pid=648585)[0m CADE_PREFIX:scheduling time 12.33
+[2m[36m(task pid=648585)[0m code pid 648585
+[2m[36m(task pid=648532)[0m CADE_PREFIX:scheduling time 12.35
+[2m[36m(task pid=648532)[0m code pid 648532
+[2m[36m(task pid=648567)[0m CADE_PREFIX:scheduling time 12.63
+[2m[36m(task pid=648567)[0m code pid 648567
+[2m[36m(task pid=639599)[0m CADE_PREFIX:imports took 13.96
+[2m[36m(task pid=639587)[0m CADE_PREFIX:imports took 14.21
+[2m[36m(task pid=639599)[0m CADE_PREFIX:scheduling time 14.94
+[2m[36m(task pid=639599)[0m code pid 639599
+[2m[36m(task pid=639599)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=639599)[0m CADE_PREFIX:scheduling time 14.94
+[2m[36m(task pid=639599)[0m code pid 639599
+[2m[36m(task pid=639599)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=639599)[0m CADE_PREFIX:scheduling time 14.94
+[2m[36m(task pid=639599)[0m code pid 639599
+[2m[36m(task pid=639599)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=639599)[0m CADE_PREFIX:scheduling time 14.94
+[2m[36m(task pid=639599)[0m code pid 639599
+[2m[36m(task pid=639599)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=639599)[0m CADE_PREFIX:scheduling time 14.94
+[2m[36m(task pid=639599)[0m code pid 639599
+[2m[36m(task pid=639599)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=639599)[0m CADE_PREFIX:scheduling time 14.94
+[2m[36m(task pid=639599)[0m code pid 639599
+[2m[36m(task pid=639599)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=639587)[0m CADE_PREFIX:scheduling time 14.94
+[2m[36m(task pid=639587)[0m code pid 639587
+[2m[36m(task pid=639587)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=639587)[0m CADE_PREFIX:scheduling time 14.94
+[2m[36m(task pid=639587)[0m code pid 639587
+[2m[36m(task pid=639587)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=639587)[0m CADE_PREFIX:scheduling time 14.94
+[2m[36m(task pid=639587)[0m code pid 639587
+[2m[36m(task pid=639587)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=639587)[0m CADE_PREFIX:scheduling time 14.94
+[2m[36m(task pid=639587)[0m code pid 639587
+[2m[36m(task pid=639587)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=639587)[0m CADE_PREFIX:scheduling time 14.94
+[2m[36m(task pid=639587)[0m code pid 639587
+[2m[36m(task pid=639587)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=639587)[0m CADE_PREFIX:scheduling time 14.94
+[2m[36m(task pid=639587)[0m code pid 639587
+[2m[36m(task pid=639587)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648562)[0m CADE_PREFIX:scheduling time 15.00
+[2m[36m(task pid=648562)[0m code pid 648562
+[2m[36m(task pid=648605)[0m CADE_PREFIX:scheduling time 15.00
+[2m[36m(task pid=648605)[0m code pid 648605
+[2m[36m(task pid=648579)[0m CADE_PREFIX:scheduling time 15.00
+[2m[36m(task pid=648579)[0m code pid 648579
+[2m[36m(task pid=639628)[0m CADE_PREFIX:imports took 15.38
+[2m[36m(task pid=639591)[0m CADE_PREFIX:imports took 15.63
+[2m[33m(raylet)[0m [2023-03-23 14:24:16,386 I 648547 648547] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:16,881 I 648548 648548] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:17,003 I 648557 648557] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:17,098 I 648549 648549] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:17,133 I 648603 648603] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:17,140 I 648561 648561] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:17,181 I 648503 648503] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:17,188 I 648598 648598] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:17,200 I 648545 648545] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:17,384 I 652799 652799] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:17,406 I 652044 652044] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:17,413 I 652716 652716] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[36m(task pid=639596)[0m CADE_PREFIX:imports took 17.80
+[2m[36m(task pid=639619)[0m CADE_PREFIX:imports took 18.62
+[2m[36m(task pid=639623)[0m CADE_PREFIX:imports took 18.56
+[2m[36m(task pid=639610)[0m CADE_PREFIX:imports took 18.64
+[2m[36m(task pid=639598)[0m CADE_PREFIX:imports took 19.01
+[2m[36m(task pid=639650)[0m CADE_PREFIX:imports took 19.05
+[2m[36m(task pid=639648)[0m CADE_PREFIX:imports took 19.10
+[2m[36m(task pid=639620)[0m CADE_PREFIX:imports took 19.23
+[2m[36m(task pid=639646)[0m CADE_PREFIX:imports took 19.35
+[2m[36m(task pid=639633)[0m CADE_PREFIX:imports took 19.29
+[2m[36m(task pid=639621)[0m CADE_PREFIX:imports took 19.16
+[2m[36m(task pid=639608)[0m CADE_PREFIX:imports took 19.29
+[2m[36m(task pid=639639)[0m CADE_PREFIX:imports took 19.45
+[2m[36m(task pid=639636)[0m CADE_PREFIX:imports took 19.37
+[2m[36m(task pid=639652)[0m CADE_PREFIX:imports took 19.47
+[2m[36m(task pid=639609)[0m CADE_PREFIX:imports took 19.48
+[2m[36m(task pid=639617)[0m CADE_PREFIX:imports took 18.50
+[2m[36m(task pid=639622)[0m CADE_PREFIX:imports took 19.13
+[2m[36m(task pid=639570)[0m CADE_PREFIX:imports took 18.59
+[2m[36m(task pid=639651)[0m CADE_PREFIX:imports took 19.53
+[2m[36m(task pid=639624)[0m CADE_PREFIX:imports took 19.60
+[2m[36m(task pid=639603)[0m CADE_PREFIX:imports took 19.60
+[2m[36m(task pid=639618)[0m CADE_PREFIX:imports took 18.57
+[2m[36m(task pid=639615)[0m CADE_PREFIX:imports took 19.32
+[2m[36m(task pid=639605)[0m CADE_PREFIX:imports took 19.29
+[2m[36m(task pid=639637)[0m CADE_PREFIX:imports took 18.80
+[2m[36m(task pid=648612)[0m CADE_PREFIX:imports took 9.07
+[2m[36m(task pid=648537)[0m CADE_PREFIX:imports took 9.11
+[2m[36m(task pid=648551)[0m CADE_PREFIX:imports took 9.35
+[2m[36m(task pid=648543)[0m CADE_PREFIX:imports took 9.54
+[2m[36m(task pid=648528)[0m CADE_PREFIX:imports took 8.69
+[2m[36m(task pid=648542)[0m CADE_PREFIX:imports took 9.65
+[2m[36m(task pid=648532)[0m CADE_PREFIX:imports took 8.75
+[2m[36m(task pid=648564)[0m CADE_PREFIX:imports took 9.77
+[2m[36m(task pid=648534)[0m CADE_PREFIX:imports took 8.89
+[2m[36m(task pid=648590)[0m CADE_PREFIX:imports took 8.82
+[2m[36m(task pid=648592)[0m CADE_PREFIX:imports took 8.91
+[2m[36m(task pid=648531)[0m CADE_PREFIX:imports took 8.87
+[2m[36m(task pid=648585)[0m CADE_PREFIX:imports took 8.91
+[2m[36m(task pid=648546)[0m CADE_PREFIX:imports took 9.78
+[2m[36m(task pid=648527)[0m CADE_PREFIX:imports took 8.95
+[2m[36m(task pid=648538)[0m CADE_PREFIX:imports took 8.97
+[2m[36m(task pid=648544)[0m CADE_PREFIX:imports took 8.95
+[2m[36m(task pid=648567)[0m CADE_PREFIX:imports took 8.66
+[2m[36m(task pid=648562)[0m CADE_PREFIX:imports took 6.33
+[2m[36m(task pid=648605)[0m CADE_PREFIX:imports took 6.27
+[2m[36m(task pid=648579)[0m CADE_PREFIX:imports took 6.28
+[2m[36m(task pid=648523)[0m CADE_PREFIX:imports took 9.05
+CADE_PREFIX:num_cpus: 64
+CADE_PREFIX:num_executables: 64
+CADE_PREFIX:end-to-end time 21.39
+2023-03-23 14:24:22,622	INFO worker.py:1362 -- Connecting to existing Ray cluster at address: 10.0.43.22:6379...
+2023-03-23 14:24:22,634	INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://console.anyscale-staging.com/api/v2/sessions/ses_qauqfcuba36zrd9jsmr41ac47c/services?redirect_to=dashboard [39m[22m
+[2m[33m(raylet)[0m [2023-03-23 14:24:24,775 I 657292 657292] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:24,800 I 657265 657265] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:27,064 I 657258 657258] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:28,253 I 657251 657251] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:30,881 I 657267 657267] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:31,032 I 657275 657275] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:31,069 I 657261 657261] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:31,464 I 657268 657268] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:31,545 I 657260 657260] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:32,171 I 657249 657249] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:33,190 I 657250 657250] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:33,891 I 657280 657280] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:34,576 I 657312 657312] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:34,848 I 657256 657256] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:34,997 I 657284 657284] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:35,096 I 657288 657288] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:35,130 I 657271 657271] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:35,189 I 657252 657252] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:35,743 I 657290 657290] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:35,910 I 657253 657253] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:36,988 I 657269 657269] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:37,001 I 657257 657257] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:37,021 I 657254 657254] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:37,146 I 657270 657270] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:37,228 I 657264 657264] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:37,674 I 657310 657310] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:38,132 I 657295 657295] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:38,549 I 657302 657302] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:39,977 I 657283 657283] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:40,005 I 657286 657286] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:40,267 I 657311 657311] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:40,552 I 657266 657266] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:40,607 I 657293 657293] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:40,665 I 657299 657299] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:40,698 I 657316 657316] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:40,773 I 657306 657306] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+driver script pid 657092
+[2m[36m(task pid=648549)[0m CADE_PREFIX:scheduling time 0.36
+[2m[36m(task pid=648549)[0m code pid 648549
+[2m[36m(task pid=648545)[0m CADE_PREFIX:scheduling time 0.35
+[2m[36m(task pid=648545)[0m code pid 648545
+[2m[36m(task pid=648503)[0m CADE_PREFIX:scheduling time 0.32
+[2m[36m(task pid=648503)[0m code pid 648503
+[2m[36m(task pid=648557)[0m CADE_PREFIX:scheduling time 0.42
+[2m[36m(task pid=648557)[0m code pid 648557
+[2m[36m(task pid=648561)[0m CADE_PREFIX:scheduling time 0.44
+[2m[36m(task pid=648561)[0m code pid 648561
+[2m[36m(task pid=648548)[0m CADE_PREFIX:scheduling time 0.65
+[2m[36m(task pid=648548)[0m code pid 648548
+[2m[36m(task pid=648533)[0m CADE_PREFIX:scheduling time 1.44
+[2m[36m(task pid=648533)[0m code pid 648533
+[2m[36m(task pid=648539)[0m CADE_PREFIX:scheduling time 1.38
+[2m[36m(task pid=648539)[0m code pid 648539
+[2m[36m(task pid=648547)[0m CADE_PREFIX:scheduling time 1.37
+[2m[36m(task pid=648547)[0m code pid 648547
+[2m[36m(task pid=657265)[0m CADE_PREFIX:scheduling time 4.57
+[2m[36m(task pid=657265)[0m code pid 657265
+[2m[36m(task pid=657292)[0m CADE_PREFIX:scheduling time 4.56
+[2m[36m(task pid=657292)[0m code pid 657292
+[2m[36m(task pid=657258)[0m CADE_PREFIX:scheduling time 4.56
+[2m[36m(task pid=657258)[0m code pid 657258
+[2m[36m(task pid=657251)[0m CADE_PREFIX:scheduling time 8.52
+[2m[36m(task pid=657251)[0m code pid 657251
+[2m[36m(task pid=657267)[0m CADE_PREFIX:scheduling time 8.53
+[2m[36m(task pid=657267)[0m code pid 657267
+[2m[36m(task pid=657275)[0m CADE_PREFIX:scheduling time 8.53
+[2m[36m(task pid=657275)[0m code pid 657275
+[2m[36m(task pid=657261)[0m CADE_PREFIX:scheduling time 12.35
+[2m[36m(task pid=657261)[0m code pid 657261
+[2m[36m(task pid=657268)[0m CADE_PREFIX:scheduling time 12.35
+[2m[36m(task pid=657268)[0m code pid 657268
+[2m[36m(task pid=657260)[0m CADE_PREFIX:scheduling time 12.35
+[2m[36m(task pid=657260)[0m code pid 657260
+[2m[36m(task pid=657249)[0m CADE_PREFIX:scheduling time 12.35
+[2m[36m(task pid=657249)[0m code pid 657249
+[2m[36m(task pid=657250)[0m CADE_PREFIX:scheduling time 12.36
+[2m[36m(task pid=657250)[0m code pid 657250
+[2m[36m(task pid=657280)[0m CADE_PREFIX:scheduling time 12.35
+[2m[36m(task pid=657280)[0m code pid 657280
+[2m[36m(task pid=657312)[0m CADE_PREFIX:scheduling time 12.35
+[2m[36m(task pid=657312)[0m code pid 657312
+[2m[36m(task pid=657256)[0m CADE_PREFIX:scheduling time 12.35
+[2m[36m(task pid=657256)[0m code pid 657256
+[2m[36m(task pid=657284)[0m CADE_PREFIX:scheduling time 14.52
+[2m[36m(task pid=657284)[0m code pid 657284
+[2m[36m(task pid=657288)[0m CADE_PREFIX:scheduling time 14.52
+[2m[36m(task pid=657288)[0m code pid 657288
+[2m[36m(task pid=657252)[0m CADE_PREFIX:scheduling time 14.51
+[2m[36m(task pid=657252)[0m code pid 657252
+[2m[36m(task pid=657271)[0m CADE_PREFIX:scheduling time 14.51
+[2m[36m(task pid=657271)[0m code pid 657271
+[2m[36m(task pid=657290)[0m CADE_PREFIX:scheduling time 14.51
+[2m[36m(task pid=657290)[0m code pid 657290
+[2m[36m(task pid=657253)[0m CADE_PREFIX:scheduling time 14.50
+[2m[36m(task pid=657253)[0m code pid 657253
+[2m[36m(task pid=657269)[0m CADE_PREFIX:scheduling time 14.50
+[2m[36m(task pid=657269)[0m code pid 657269
+[2m[36m(task pid=657257)[0m CADE_PREFIX:scheduling time 14.50
+[2m[36m(task pid=657257)[0m code pid 657257
+[2m[36m(task pid=657254)[0m CADE_PREFIX:scheduling time 14.52
+[2m[36m(task pid=657254)[0m code pid 657254
+[2m[36m(task pid=648561)[0m CADE_PREFIX:imports took 15.48
+[2m[36m(task pid=648557)[0m CADE_PREFIX:imports took 15.79
+[2m[36m(task pid=648545)[0m CADE_PREFIX:imports took 16.84
+[2m[36m(task pid=648549)[0m CADE_PREFIX:imports took 17.00
+[2m[36m(task pid=648557)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648557)[0m code pid 648557
+[2m[36m(task pid=648557)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648557)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648557)[0m code pid 648557
+[2m[36m(task pid=648557)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648557)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648557)[0m code pid 648557
+[2m[36m(task pid=648557)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648557)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648557)[0m code pid 648557
+[2m[36m(task pid=648557)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648557)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648557)[0m code pid 648557
+[2m[36m(task pid=648557)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648557)[0m CADE_PREFIX:scheduling time 18.19
+[2m[36m(task pid=648557)[0m code pid 648557
+[2m[36m(task pid=648557)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648549)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648549)[0m code pid 648549
+[2m[36m(task pid=648549)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648549)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648549)[0m code pid 648549
+[2m[36m(task pid=648549)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648549)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648549)[0m code pid 648549
+[2m[36m(task pid=648549)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648549)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648549)[0m code pid 648549
+[2m[36m(task pid=648549)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648549)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648549)[0m code pid 648549
+[2m[36m(task pid=648549)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648549)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648549)[0m code pid 648549
+[2m[36m(task pid=648549)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648549)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648549)[0m code pid 648549
+[2m[36m(task pid=648549)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648545)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648545)[0m code pid 648545
+[2m[36m(task pid=648545)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648545)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648545)[0m code pid 648545
+[2m[36m(task pid=648545)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648545)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648545)[0m code pid 648545
+[2m[36m(task pid=648545)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648545)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648545)[0m code pid 648545
+[2m[36m(task pid=648545)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648545)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648545)[0m code pid 648545
+[2m[36m(task pid=648545)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648545)[0m CADE_PREFIX:scheduling time 18.19
+[2m[36m(task pid=648545)[0m code pid 648545
+[2m[36m(task pid=648545)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648561)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648561)[0m code pid 648561
+[2m[36m(task pid=648561)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648561)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648561)[0m code pid 648561
+[2m[36m(task pid=648561)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648561)[0m CADE_PREFIX:scheduling time 18.18
+[2m[36m(task pid=648561)[0m code pid 648561
+[2m[36m(task pid=648561)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=648561)[0m CADE_PREFIX:scheduling time 18.19
+[2m[36m(task pid=648561)[0m code pid 648561
+[2m[36m(task pid=648561)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657286)[0m CADE_PREFIX:scheduling time 18.25
+[2m[36m(task pid=657286)[0m code pid 657286
+[2m[36m(task pid=657311)[0m CADE_PREFIX:scheduling time 18.20
+[2m[36m(task pid=657311)[0m code pid 657311
+[2m[36m(task pid=657266)[0m CADE_PREFIX:scheduling time 18.20
+[2m[36m(task pid=657266)[0m code pid 657266
+[2m[33m(raylet)[0m [2023-03-23 14:24:41,292 I 657273 657273] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:41,432 I 657259 657259] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:41,507 I 657274 657274] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:41,840 I 657300 657300] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:41,874 I 657281 657281] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:41,956 I 657307 657307] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,061 I 657313 657313] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,070 I 657301 657301] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,091 I 657262 657262] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,107 I 657314 657314] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,142 I 657263 657263] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,170 I 657297 657297] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,190 I 657245 657245] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,208 I 657315 657315] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,209 I 657305 657305] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,261 I 657309 657309] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,279 I 657291 657291] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,323 I 660899 660899] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,382 I 661367 661367] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,455 I 662579 662579] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,461 I 661980 661980] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:42,525 I 662556 662556] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[36m(task pid=657293)[0m CADE_PREFIX:scheduling time 18.20
+[2m[36m(task pid=657293)[0m code pid 657293
+[2m[36m(task pid=657299)[0m CADE_PREFIX:scheduling time 18.20
+[2m[36m(task pid=657299)[0m code pid 657299
+[2m[36m(task pid=657316)[0m CADE_PREFIX:scheduling time 18.20
+[2m[36m(task pid=657316)[0m code pid 657316
+[2m[36m(task pid=657302)[0m CADE_PREFIX:scheduling time 18.25
+[2m[36m(task pid=657302)[0m code pid 657302
+[2m[36m(task pid=657283)[0m CADE_PREFIX:scheduling time 18.26
+[2m[36m(task pid=657283)[0m code pid 657283
+[2m[36m(task pid=648503)[0m CADE_PREFIX:imports took 17.95
+[2m[36m(task pid=657295)[0m CADE_PREFIX:scheduling time 18.27
+[2m[36m(task pid=657295)[0m code pid 657295
+[2m[36m(task pid=648548)[0m CADE_PREFIX:imports took 17.62
+[2m[36m(task pid=648539)[0m CADE_PREFIX:imports took 17.27
+[2m[36m(task pid=648547)[0m CADE_PREFIX:imports took 17.98
+[2m[36m(task pid=657258)[0m CADE_PREFIX:imports took 14.86
+[2m[36m(task pid=657292)[0m CADE_PREFIX:imports took 14.93
+[2m[36m(task pid=648533)[0m CADE_PREFIX:imports took 18.28
+[2m[36m(task pid=657265)[0m CADE_PREFIX:imports took 15.49
+[2m[36m(task pid=657267)[0m CADE_PREFIX:imports took 11.73
+[2m[36m(task pid=657251)[0m CADE_PREFIX:imports took 11.90
+[2m[36m(task pid=657275)[0m CADE_PREFIX:imports took 12.01
+[2m[36m(task pid=657312)[0m CADE_PREFIX:imports took 8.64
+[2m[36m(task pid=657256)[0m CADE_PREFIX:imports took 8.77
+[2m[36m(task pid=657250)[0m CADE_PREFIX:imports took 9.01
+[2m[36m(task pid=657249)[0m CADE_PREFIX:imports took 9.09
+[2m[36m(task pid=657280)[0m CADE_PREFIX:imports took 9.06
+[2m[36m(task pid=657252)[0m CADE_PREFIX:imports took 6.92
+[2m[36m(task pid=657257)[0m CADE_PREFIX:imports took 6.94
+[2m[36m(task pid=657269)[0m CADE_PREFIX:imports took 7.01
+[2m[36m(task pid=657288)[0m CADE_PREFIX:imports took 7.00
+[2m[36m(task pid=657268)[0m CADE_PREFIX:imports took 9.17
+[2m[36m(task pid=657261)[0m CADE_PREFIX:imports took 9.23
+[2m[36m(task pid=657284)[0m CADE_PREFIX:imports took 7.07
+[2m[36m(task pid=657271)[0m CADE_PREFIX:imports took 7.02
+[2m[36m(task pid=657290)[0m CADE_PREFIX:imports took 7.04
+[2m[36m(task pid=657253)[0m CADE_PREFIX:imports took 7.10
+[2m[36m(task pid=657254)[0m CADE_PREFIX:imports took 7.06
+[2m[36m(task pid=657260)[0m CADE_PREFIX:imports took 9.30
+[2m[36m(task pid=657299)[0m CADE_PREFIX:imports took 4.02
+[2m[36m(task pid=657286)[0m CADE_PREFIX:imports took 4.07
+[2m[36m(task pid=657311)[0m CADE_PREFIX:imports took 4.28
+[2m[36m(task pid=657302)[0m CADE_PREFIX:imports took 4.30
+[2m[36m(task pid=657293)[0m CADE_PREFIX:imports took 4.34
+[2m[36m(task pid=657316)[0m CADE_PREFIX:imports took 4.38
+[2m[36m(task pid=657295)[0m CADE_PREFIX:imports took 4.39
+[2m[36m(task pid=657283)[0m CADE_PREFIX:imports took 4.40
+[2m[36m(task pid=657266)[0m CADE_PREFIX:imports took 4.50
+CADE_PREFIX:num_cpus: 64
+CADE_PREFIX:num_executables: 64
+CADE_PREFIX:end-to-end time 22.71
+2023-03-23 14:24:49,127	INFO worker.py:1362 -- Connecting to existing Ray cluster at address: 10.0.43.22:6379...
+2023-03-23 14:24:49,140	INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://console.anyscale-staging.com/api/v2/sessions/ses_qauqfcuba36zrd9jsmr41ac47c/services?redirect_to=dashboard [39m[22m
+[2m[33m(raylet)[0m [2023-03-23 14:24:56,856 I 667378 667378] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:56,945 I 667329 667329] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:24:58,297 I 667360 667360] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:01,525 I 667375 667375] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:02,661 I 667372 667372] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:02,777 I 667337 667337] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:02,812 I 667331 667331] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:02,875 I 667354 667354] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:02,932 I 667339 667339] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:02,969 I 667344 667344] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:02,997 I 667316 667316] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:03,000 I 667353 667353] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:03,040 I 667371 667371] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:03,061 I 667359 667359] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:03,195 I 667342 667342] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:03,921 I 667341 667341] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:04,128 I 667401 667401] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:04,157 I 667370 667370] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:04,245 I 667350 667350] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:04,248 I 667398 667398] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:04,451 I 667364 667364] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:04,664 I 667387 667387] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:04,953 I 667367 667367] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:05,016 I 667373 667373] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:05,149 I 667376 667376] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:05,160 I 667351 667351] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:05,174 I 667348 667348] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:06,539 I 667368 667368] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:06,698 I 667349 667349] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:06,881 I 667377 667377] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:07,167 I 667362 667362] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:07,498 I 667369 667369] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:07,546 I 667343 667343] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+driver script pid 667019
+[2m[36m(task pid=657305)[0m CADE_PREFIX:scheduling time 0.33
+[2m[36m(task pid=657305)[0m code pid 657305
+[2m[36m(task pid=657245)[0m CADE_PREFIX:scheduling time 0.29
+[2m[36m(task pid=657245)[0m code pid 657245
+[2m[36m(task pid=657309)[0m CADE_PREFIX:scheduling time 0.33
+[2m[36m(task pid=657309)[0m code pid 657309
+[2m[36m(task pid=657291)[0m CADE_PREFIX:scheduling time 0.31
+[2m[36m(task pid=657291)[0m code pid 657291
+[2m[36m(task pid=657262)[0m CADE_PREFIX:scheduling time 0.39
+[2m[36m(task pid=657262)[0m code pid 657262
+[2m[36m(task pid=657263)[0m CADE_PREFIX:scheduling time 0.37
+[2m[36m(task pid=657263)[0m code pid 657263
+[2m[36m(task pid=657297)[0m CADE_PREFIX:scheduling time 0.42
+[2m[36m(task pid=657297)[0m code pid 657297
+[2m[36m(task pid=657281)[0m CADE_PREFIX:scheduling time 0.48
+[2m[36m(task pid=657281)[0m code pid 657281
+[2m[36m(task pid=657274)[0m CADE_PREFIX:scheduling time 0.65
+[2m[36m(task pid=657274)[0m code pid 657274
+[2m[36m(task pid=657300)[0m CADE_PREFIX:scheduling time 0.69
+[2m[36m(task pid=657300)[0m code pid 657300
+[2m[36m(task pid=657307)[0m CADE_PREFIX:scheduling time 0.87
+[2m[36m(task pid=657307)[0m code pid 657307
+[2m[36m(task pid=657301)[0m CADE_PREFIX:scheduling time 1.26
+[2m[36m(task pid=657301)[0m code pid 657301
+[2m[36m(task pid=657273)[0m CADE_PREFIX:scheduling time 1.25
+[2m[36m(task pid=657273)[0m code pid 657273
+[2m[36m(task pid=657306)[0m CADE_PREFIX:scheduling time 1.49
+[2m[36m(task pid=657306)[0m code pid 657306
+[2m[36m(task pid=667359)[0m CADE_PREFIX:scheduling time 15.14
+[2m[36m(task pid=667359)[0m code pid 667359
+[2m[36m(task pid=667316)[0m CADE_PREFIX:scheduling time 15.13
+[2m[36m(task pid=667316)[0m code pid 667316
+[2m[36m(task pid=667344)[0m CADE_PREFIX:scheduling time 15.15
+[2m[36m(task pid=667344)[0m code pid 667344
+[2m[36m(task pid=667371)[0m CADE_PREFIX:scheduling time 15.13
+[2m[36m(task pid=667371)[0m code pid 667371
+[2m[36m(task pid=667353)[0m CADE_PREFIX:scheduling time 15.15
+[2m[36m(task pid=667353)[0m code pid 667353
+[2m[36m(task pid=667342)[0m CADE_PREFIX:scheduling time 15.13
+[2m[36m(task pid=667342)[0m code pid 667342
+[2m[36m(task pid=667341)[0m CADE_PREFIX:scheduling time 15.13
+[2m[36m(task pid=667341)[0m code pid 667341
+[2m[36m(task pid=667401)[0m CADE_PREFIX:scheduling time 15.14
+[2m[36m(task pid=667401)[0m code pid 667401
+[2m[36m(task pid=667378)[0m CADE_PREFIX:scheduling time 15.16
+[2m[36m(task pid=667378)[0m code pid 667378
+[2m[36m(task pid=667329)[0m CADE_PREFIX:scheduling time 15.15
+[2m[36m(task pid=667329)[0m code pid 667329
+[2m[36m(task pid=667360)[0m CADE_PREFIX:scheduling time 15.15
+[2m[36m(task pid=667360)[0m code pid 667360
+[2m[36m(task pid=667375)[0m CADE_PREFIX:scheduling time 15.15
+[2m[36m(task pid=667375)[0m code pid 667375
+[2m[36m(task pid=667372)[0m CADE_PREFIX:scheduling time 15.14
+[2m[36m(task pid=667372)[0m code pid 667372
+[2m[36m(task pid=667337)[0m CADE_PREFIX:scheduling time 15.14
+[2m[36m(task pid=667337)[0m code pid 667337
+[2m[36m(task pid=667331)[0m CADE_PREFIX:scheduling time 15.14
+[2m[36m(task pid=667331)[0m code pid 667331
+[2m[36m(task pid=667339)[0m CADE_PREFIX:scheduling time 15.13
+[2m[36m(task pid=667339)[0m code pid 667339
+[2m[36m(task pid=667354)[0m CADE_PREFIX:scheduling time 15.14
+[2m[36m(task pid=667354)[0m code pid 667354
+[2m[36m(task pid=667370)[0m CADE_PREFIX:scheduling time 15.25
+[2m[36m(task pid=667370)[0m code pid 667370
+[2m[36m(task pid=667398)[0m CADE_PREFIX:scheduling time 15.25
+[2m[36m(task pid=667398)[0m code pid 667398
+[2m[36m(task pid=667350)[0m CADE_PREFIX:scheduling time 15.25
+[2m[36m(task pid=667350)[0m code pid 667350
+[2m[36m(task pid=657281)[0m CADE_PREFIX:imports took 15.93
+[2m[36m(task pid=657263)[0m CADE_PREFIX:imports took 16.24
+[2m[36m(task pid=657262)[0m CADE_PREFIX:imports took 17.55
+[2m[36m(task pid=657309)[0m CADE_PREFIX:imports took 17.59
+[2m[36m(task pid=657297)[0m CADE_PREFIX:imports took 17.61
+[2m[36m(task pid=657262)[0m CADE_PREFIX:scheduling time 18.48
+[2m[36m(task pid=657262)[0m code pid 657262
+[2m[36m(task pid=657262)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657262)[0m CADE_PREFIX:scheduling time 18.48
+[2m[36m(task pid=657262)[0m code pid 657262
+[2m[36m(task pid=657262)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657245)[0m CADE_PREFIX:imports took 18.17
+[2m[36m(task pid=657245)[0m CADE_PREFIX:scheduling time 18.47
+[2m[36m(task pid=657245)[0m code pid 657245
+[2m[36m(task pid=657245)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657245)[0m CADE_PREFIX:scheduling time 18.47
+[2m[36m(task pid=657245)[0m code pid 657245
+[2m[36m(task pid=657245)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657245)[0m CADE_PREFIX:scheduling time 18.48
+[2m[36m(task pid=657245)[0m code pid 657245
+[2m[36m(task pid=657245)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657245)[0m CADE_PREFIX:scheduling time 18.48
+[2m[36m(task pid=657245)[0m code pid 657245
+[2m[36m(task pid=657245)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657245)[0m CADE_PREFIX:scheduling time 18.48
+[2m[36m(task pid=657245)[0m code pid 657245
+[2m[36m(task pid=657245)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657297)[0m CADE_PREFIX:scheduling time 18.48
+[2m[36m(task pid=657297)[0m code pid 657297
+[2m[36m(task pid=657297)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657297)[0m CADE_PREFIX:scheduling time 18.48
+[2m[36m(task pid=657297)[0m code pid 657297
+[2m[36m(task pid=657297)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657297)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=657297)[0m code pid 657297
+[2m[36m(task pid=657297)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657309)[0m CADE_PREFIX:scheduling time 18.48
+[2m[36m(task pid=657309)[0m code pid 657309
+[2m[36m(task pid=657309)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657309)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=657309)[0m code pid 657309
+[2m[36m(task pid=657309)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657309)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=657309)[0m code pid 657309
+[2m[36m(task pid=657309)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657309)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=657309)[0m code pid 657309
+[2m[36m(task pid=657309)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=667362)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=667362)[0m code pid 667362
+[2m[36m(task pid=667369)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=667369)[0m code pid 667369
+[2m[36m(task pid=667343)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=667343)[0m code pid 667343
+[2m[36m(task pid=657262)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=657262)[0m code pid 657262
+[2m[36m(task pid=657262)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657262)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=657262)[0m code pid 657262
+[2m[36m(task pid=657262)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657262)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=657262)[0m code pid 657262
+[2m[36m(task pid=657262)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657262)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=657262)[0m code pid 657262
+[2m[36m(task pid=657262)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657245)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=657245)[0m code pid 657245
+[2m[36m(task pid=657245)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657245)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=657245)[0m code pid 657245
+[2m[36m(task pid=657245)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657245)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=657245)[0m code pid 657245
+[2m[36m(task pid=657245)[0m CADE_PREFIX:imports took 0.00
+[2m[33m(raylet)[0m [2023-03-23 14:25:08,060 I 667380 667380] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:08,182 I 667382 667382] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:08,253 I 667390 667390] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:08,406 I 667355 667355] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:08,832 I 667392 667392] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:09,012 I 667330 667330] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:09,210 I 667366 667366] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:09,551 I 667399 667399] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:09,583 I 667384 667384] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:09,608 I 667403 667403] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:09,635 I 667324 667324] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:09,686 I 667397 667397] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:09,741 I 667358 667358] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:09,743 I 667356 667356] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:09,846 I 667411 667411] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:09,936 I 667408 667408] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:10,025 I 667394 667394] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:10,111 I 667412 667412] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:10,118 I 667379 667379] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:10,177 I 667374 667374] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:10,211 I 667404 667404] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:10,230 I 667385 667385] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:10,238 I 667340 667340] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:10,239 I 667395 667395] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:10,241 I 667389 667389] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:10,364 I 672522 672522] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[33m(raylet)[0m [2023-03-23 14:25:10,439 I 672680 672680] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+[2m[36m(task pid=657245)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=657245)[0m code pid 657245
+[2m[36m(task pid=657245)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657297)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=657297)[0m code pid 657297
+[2m[36m(task pid=657297)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=657297)[0m CADE_PREFIX:scheduling time 18.54
+[2m[36m(task pid=657297)[0m code pid 657297
+[2m[36m(task pid=657297)[0m CADE_PREFIX:imports took 0.00
+[2m[36m(task pid=667368)[0m CADE_PREFIX:scheduling time 18.61
+[2m[36m(task pid=667368)[0m code pid 667368
+[2m[36m(task pid=667349)[0m CADE_PREFIX:scheduling time 18.61
+[2m[36m(task pid=667349)[0m code pid 667349
+[2m[36m(task pid=667377)[0m CADE_PREFIX:scheduling time 18.60
+[2m[36m(task pid=667377)[0m code pid 667377
+[2m[36m(task pid=657307)[0m CADE_PREFIX:imports took 18.01
+[2m[36m(task pid=657291)[0m CADE_PREFIX:imports took 18.73
+[2m[36m(task pid=657273)[0m CADE_PREFIX:imports took 17.84
+[2m[36m(task pid=657300)[0m CADE_PREFIX:imports took 19.46
+[2m[36m(task pid=657301)[0m CADE_PREFIX:imports took 19.16
+[2m[36m(task pid=657305)[0m CADE_PREFIX:imports took 20.14
+[2m[36m(task pid=657306)[0m CADE_PREFIX:imports took 18.91
+[2m[36m(task pid=657274)[0m CADE_PREFIX:imports took 20.12
+[2m[36m(task pid=667359)[0m CADE_PREFIX:imports took 7.52
+[2m[36m(task pid=667371)[0m CADE_PREFIX:imports took 7.53
+[2m[36m(task pid=667344)[0m CADE_PREFIX:imports took 7.79
+[2m[36m(task pid=667353)[0m CADE_PREFIX:imports took 7.83
+[2m[36m(task pid=667341)[0m CADE_PREFIX:imports took 7.87
+[2m[36m(task pid=667375)[0m CADE_PREFIX:imports took 7.85
+[2m[36m(task pid=667372)[0m CADE_PREFIX:imports took 7.84
+[2m[36m(task pid=667339)[0m CADE_PREFIX:imports took 7.84
+[2m[36m(task pid=667350)[0m CADE_PREFIX:imports took 7.72
+[2m[36m(task pid=667401)[0m CADE_PREFIX:imports took 7.87
+[2m[36m(task pid=667342)[0m CADE_PREFIX:imports took 7.89
+[2m[36m(task pid=667331)[0m CADE_PREFIX:imports took 7.89
+[2m[36m(task pid=667316)[0m CADE_PREFIX:imports took 7.94
+[2m[36m(task pid=667370)[0m CADE_PREFIX:imports took 7.87
+[2m[36m(task pid=667329)[0m CADE_PREFIX:imports took 7.90
+[2m[36m(task pid=667360)[0m CADE_PREFIX:imports took 7.90
+[2m[36m(task pid=667337)[0m CADE_PREFIX:imports took 7.99
+[2m[36m(task pid=667354)[0m CADE_PREFIX:imports took 7.91
+[2m[36m(task pid=667377)[0m CADE_PREFIX:imports took 4.48
+[2m[36m(task pid=667378)[0m CADE_PREFIX:imports took 8.02
+[2m[36m(task pid=667398)[0m CADE_PREFIX:imports took 7.94
+[2m[36m(task pid=667362)[0m CADE_PREFIX:imports took 4.90
+[2m[36m(task pid=667369)[0m CADE_PREFIX:imports took 4.87
+[2m[36m(task pid=667343)[0m CADE_PREFIX:imports took 4.91
+[2m[36m(task pid=667349)[0m CADE_PREFIX:imports took 4.84
+[2m[36m(task pid=667368)[0m CADE_PREFIX:imports took 4.96
+CADE_PREFIX:num_cpus: 64
+CADE_PREFIX:num_executables: 64
+CADE_PREFIX:end-to-end time 23.58
+CADE_PREFIX:iteration 0 done
+CADE_PREFIX:seconds since start 9.37
+CADE_PREFIX:iteration 1 done
+CADE_PREFIX:seconds since start 40.84
+CADE_PREFIX:iteration 2 done
+CADE_PREFIX:seconds since start 44.18
+CADE_PREFIX:iteration 3 done
+CADE_PREFIX:seconds since start 68.39
+CADE_PREFIX:iteration 4 done
+CADE_PREFIX:seconds since start 81.24
+CADE_PREFIX:iteration 0 done
+CADE_PREFIX:seconds since start 26.37
+CADE_PREFIX:iteration 1 done
+CADE_PREFIX:seconds since start 50.73
+CADE_PREFIX:iteration 2 done
+CADE_PREFIX:seconds since start 75.31
+CADE_PREFIX:iteration 3 done
+CADE_PREFIX:seconds since start 101.70
+CADE_PREFIX:iteration 4 done
+CADE_PREFIX:seconds since start 128.46

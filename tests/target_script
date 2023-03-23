@@ -7,6 +7,7 @@ except KeyError:
     pass
 
 with_actors = os.environ['USE_ACTORS_OR_TASKS'].lower() == 'actors'
+with_gpu = os.environ['WITH_GPU'].lower() == 'true'
 
 import ray
 import time
@@ -43,14 +44,26 @@ class Actor:
         print(f'CADE_PREFIX:imports took {dur_s:.02f}')
 
 num_cpus = os.cpu_count()
+num_gpu_present = 1
 num_executables = num_cpus
+num_gpus = (num_gpu_present / num_executables) if with_gpu else 0
 
 scheduling_start_time = time.time()
 if with_actors:
-    actors = [Actor.remote(scheduling_start_time) for _ in range(num_executables)]
+    actors = [
+        Actor.options(
+            num_gpus=num_gpus,
+        ).remote(scheduling_start_time)
+        for _ in range(num_executables)
+    ]
     ray.get([a.do_imports.remote() for a in actors])
 else:
-    ray.get([task.remote(scheduling_start_time) for _ in range(num_executables)])
+    ray.get([
+        task.options(
+            num_gpus=num_gpus,
+        ).remote(scheduling_start_time)
+        for _ in range(num_executables)
+    ])
 dur_s = time.time() - scheduling_start_time
 
 time.sleep(1)
