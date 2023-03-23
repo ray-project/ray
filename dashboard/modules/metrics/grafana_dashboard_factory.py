@@ -18,10 +18,14 @@ METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 59b692d6f (Add an exported serve dashboard json (#33409))
 GRAFANA_DASHBOARD_UID_OVERRIDE_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_DASHBOARD_UID"
 GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
     "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"
 )
+<<<<<<< HEAD
 =======
 """
 Queries for autoscaler resources.
@@ -383,6 +387,8 @@ assert len(ids) == len(
 ), f"Duplicated id found. Use unique id for each panel. {ids}"
 
 >>>>>>> 7527d4983 ([Metrics] Add device index to the GPU metrics (#33328))
+=======
+>>>>>>> 59b692d6f (Add an exported serve dashboard json (#33409))
 
 TARGET_TEMPLATE = {
     "exemplar": True,
