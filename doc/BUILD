@@ -240,22 +240,13 @@ py_test_run_all_subdirectory(
     tags = ["exclusive", "team:ml", "ray_air", "gpu"],
 )
 
-py_test(
-    name = "pytorch_resnet_finetune",
+py_test_run_all_notebooks(
     size = "large",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
+    include = ["*.ipynb"],
+    exclude = [],
+    data = [
+        "//doc/source/train/examples/pytorch:train_pytorch_examples",
+        "//doc/source/train/examples/lightning:lightning_mnist_example",
+    ],
     tags = ["exclusive", "team:ml", "gpu", "ray_air"],
-    data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
-    args = ["--path", "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb"]
-)
-
-py_test(
-    name = "lightning_mnist_example",
-    size = "large",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml", "gpu", "ray_air"],
-    data = ["//doc/source/train/examples/lightning:lightning_mnist_example"],
-    args = ["--path", "doc/source/train/examples/lightning/lightning_mnist_example.ipynb"]
 )
