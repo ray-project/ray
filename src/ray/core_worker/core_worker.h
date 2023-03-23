@@ -1119,6 +1119,27 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// interface with language bindings.
   std::unordered_map<std::string, std::vector<int64_t>> GetActorCallStats() const;
 
+  /// Add task log info for a task when it starts executing.
+  ///
+  /// It's an no-op in local mode.
+  ///
+  /// \param stdout_path Path to stdout log file.
+  /// \param stderr_path Path to stderr log file.
+  /// \param stdout_start_offset Start offset of the stdout for this task.
+  /// \param stderr_start_offset Start offset of the stderr for this task.
+  void RecordTaskLogStart(const std::string &stdout_path,
+                          const std::string &stderr_path,
+                          int64_t stdout_start_offset,
+                          int64_t stderr_start_offset) const;
+
+  /// Add task log info for a task when it finishes executing.
+  ///
+  /// It's an no-op in local mode.
+  ///
+  /// \param stdout_end_offset End offset of the stdout for this task.
+  /// \param stderr_end_offset End offset of the stderr for this task.
+  void RecordTaskLogEnd(int64_t stdout_end_offset, int64_t stderr_end_offset) const;
+
  private:
   static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);
 
