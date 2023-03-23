@@ -164,8 +164,9 @@ parts:
               - file: tune/tutorials/tune-search-spaces
                 title: "Using Search Spaces"
               - file: tune/tutorials/tune-stopping
-                title: "How to Stop and Resume"
+              - file: tune/tutorials/tune-trial-checkpoints
               - file: tune/tutorials/tune-storage
+              - file: tune/tutorials/tune-fault-tolerance
               - file: tune/tutorials/tune-metrics
                 title: "Using Callbacks and Metrics"
               - file: tune/tutorials/tune_get_data_in_and_out
@@ -205,7 +206,7 @@ parts:
                   - file: tune/examples/horovod_simple
                     title: "Horovod Example"
                   - file: tune/examples/pbt_transformers
-                    title: "Huggingface Example"
+                    title: "Hugging Face Transformers Example"
               - file: tune/examples/experiment-tracking
                 sections:
                   - file: tune/examples/tune-wandb

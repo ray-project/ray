@@ -120,10 +120,17 @@ def _setup_torch_process_group(
 
 
 def _shutdown_torch(destroy_process_group=False):
+    from ray.train.torch.train_loop_utils import get_device
+
+    devices = get_device()
+    if not isinstance(devices, list):
+        devices = [devices]
     if destroy_process_group:
         dist.destroy_process_group()
     if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+        for device in devices:
+            with torch.cuda.device(device):
+                torch.cuda.empty_cache()
 
 
 def _set_torch_distributed_env_vars():
@@ -139,7 +146,10 @@ def _set_torch_distributed_env_vars():
     os.environ["NODE_RANK"] = str(session.get_node_rank())
 
     # Makes sure Hugging Face Accelerate uses the correct device
-    os.environ["ACCELERATE_TORCH_DEVICE"] = str(get_device())
+    device = get_device()
+    if isinstance(device, list):
+        device = device[0]
+    os.environ["ACCELERATE_TORCH_DEVICE"] = str(device)
 
 
 class _TorchBackend(Backend):
