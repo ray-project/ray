@@ -701,17 +701,18 @@ def get_demand_report(lm_summary: LoadMetricsSummary):
     return demand_report
 
 
-def get_per_node_breakdown(lm_summary: LoadMetricsSummary, verbose: bool):
+def get_per_node_breakdown(lm_summary: LoadMetricsSummary, node_type_mapping: Optional[Dict[str, float]], verbose: bool) -> str:
     sio = StringIO()
 
-    node_types_by_ip = lm_summary.node_type_mapping or {}
+    if node_type_mapping is None:
+        node_type_mapping = {}
 
     print(file=sio)
     for node_ip, usage in lm_summary.usage_by_node.items():
         print(file=sio)  # Print a newline.
         node_string = f"Node: {node_ip}"
-        if node_ip in node_types_by_ip:
-            node_type = node_types_by_ip[node_ip]
+        if node_ip in node_type_mapping:
+            node_type = node_type_mapping[node_ip]
             node_string += f" ({node_type})"
 
         print(node_string, file=sio)
@@ -821,7 +822,7 @@ Resources
 {demand_report}"""
 
     if verbose and lm_summary.usage_by_node:
-        formatted_output += get_per_node_breakdown(lm_summary, verbose)
+        formatted_output += get_per_node_breakdown(lm_summary, autoscaler_summary.node_type_mapping, verbose)
 
     return formatted_output.strip()
 

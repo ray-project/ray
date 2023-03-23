@@ -392,7 +392,6 @@ class Monitor:
                     update_start_time = time.time()
                     self.autoscaler.update()
                     status["autoscaler_update_time"] = time.time() - update_start_time
-                    self.autoscaler.decorate_load_metrics_summary(load_metrics_summary)
                     autoscaler_summary = self.autoscaler.summary()
                     if autoscaler_summary:
                         status["autoscaler_report"] = asdict(autoscaler_summary)

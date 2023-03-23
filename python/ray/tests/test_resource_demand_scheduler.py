@@ -1916,7 +1916,6 @@ class AutoscalingTest(unittest.TestCase):
         print(f"Head ip: {head_ip}")
         summary = autoscaler.summary()
         lm_summary = lm.summary()
-        autoscaler.decorate_load_metrics_summary(lm_summary)
 
         assert summary.active_nodes["m4.large"] == 2
         assert summary.active_nodes["empty_node"] == 1
@@ -1947,7 +1946,7 @@ class AutoscalingTest(unittest.TestCase):
 
         assert summary_dict["failed_nodes"] == [("172.0.0.4", "m4.4xlarge")]
 
-        assert lm_summary.node_type_mapping == {
+        assert summary.node_type_mapping == {
             "172.0.0.0": "empty_node",
             "172.0.0.1": "m4.large",
             "172.0.0.2": "m4.large",
@@ -3222,10 +3221,6 @@ def test_info_string_verbose_node_types():
                 "object_store_memory": (0, 2**32),
             },
         },
-        node_type_mapping={
-            "192.168.1.1": "head-node",
-            "192.168.1.2": "gpu-worker",
-        },
     )
     autoscaler_summary = AutoscalerSummary(
         active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
@@ -3235,6 +3230,10 @@ def test_info_string_verbose_node_types():
         ],
         pending_launches={"m4.4xlarge": 2},
         failed_nodes=[("1.2.3.6", "p3.2xlarge")],
+        node_type_mapping={
+            "192.168.1.1": "head-node",
+            "192.168.1.2": "gpu-worker",
+        },
     )
 
     expected = """
