@@ -2416,18 +2416,12 @@
   team: serve
   frequency: nightly
   working_dir: jobs_tests
-<<<<<<< HEAD
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_gce_4_xlarge.yaml
-=======
   env: gce
 
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
->>>>>>> 2cc299dc9 (Add more jobs_gce tests)
   run:
     timeout: 600
     script: python workloads/jobs_remote_multi_node.py
@@ -2453,32 +2447,12 @@
   team: serve
   frequency: nightly
   working_dir: jobs_tests
-<<<<<<< HEAD
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_gce_gpu_node.yaml
-  run:
-    timeout: 600
-    script: python workloads/jobs_check_cuda_available.py
-    wait_for_nodes:
-      num_nodes: 2
-
-- name: jobs_gce_check_cuda_available
-  group: Jobs tests
-  team: serve
-  frequency: nightly
-  working_dir: jobs_tests
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_gce_gpu_node.yaml
-=======
   env: gce
 
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gce_gpu_node.yaml
 
->>>>>>> 2cc299dc9 (Add more jobs_gce tests)
   run:
     timeout: 600
     script: python workloads/jobs_check_cuda_available.py
@@ -2537,7 +2511,7 @@
 - name: runtime_env_gce_rte_many_tasks_actors
   group: Runtime env tests
   working_dir: runtime_env_tests
-
+  env: gce
   frequency: nightly
   team: serve
 
@@ -2576,7 +2550,7 @@
 - name: runtime_env_gce_wheel_urls
   group: Runtime env tests
   working_dir: runtime_env_tests
-
+  env: gce
   frequency: nightly
   team: serve
 
