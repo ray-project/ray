@@ -1,5 +1,5 @@
 import os
-from typing import List, Dict
+from typing import DefaultDict, List, Dict
 
 import requests
 import pytest
@@ -9,6 +9,7 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.utils import block_until_http_ready
 import ray.experimental.state.api as state_api
+from fastapi import FastAPI
 
 
 @pytest.fixture
@@ -213,6 +214,161 @@ def test_http_metrics_fields(serve_start_shutdown):
     assert num_deployment_errors[0]["error_code"] == "500"
     assert num_deployment_errors[0]["method"] == "GET"
     print("serve_num_deployment_http_error_requests working as expected.")
+
+
+class TestRequestContextMetrics:
+    def _generate_metrics_summary(self, metrics):
+        """Generate "route" information from metrics.
+        Args:
+            metrics: list of metrics, each item is a dictionary generated from
+                get_metric_dictionaries func.
+        Return: return a dictionary, key is deployment name, value is a set
+            including all routes.
+        """
+        metrics_summary = DefaultDict(set)
+        for request_metrcis in metrics:
+            metrics_summary[request_metrcis["deployment"]].add(request_metrcis["route"])
+        return metrics_summary
+
+    def test_request_context_pass_for_http_proxy(self, serve_start_shutdown):
+        """Test HTTP proxy passing request context"""
+
+        @serve.deployment
+        def f():
+            return "hello"
+
+        @serve.deployment
+        def g():
+            return "world"
+
+        @serve.deployment
+        def h():
+            return 1 / 0
+
+        serve.run(f.bind(), name="app1", route_prefix="/app1")
+        serve.run(g.bind(), name="app2", route_prefix="/app2")
+        serve.run(h.bind(), name="app3", route_prefix="/app3")
+
+        resp = requests.get("http://127.0.0.1:8000/app1")
+        assert resp.status_code == 200
+        assert resp.text == "hello"
+        resp = requests.get("http://127.0.0.1:8000/app2")
+        assert resp.status_code == 200
+        assert resp.text == "world"
+        resp = requests.get("http://127.0.0.1:8000/app3")
+        assert resp.status_code == 500
+
+        wait_for_condition(
+            lambda: len(
+                get_metric_dictionaries("serve_deployment_processing_latency_ms_sum")
+            )
+            == 3,
+            timeout=20,
+        )
+
+        # Check replica qps & latency
+        qps_metrics = self._generate_metrics_summary(
+            get_metric_dictionaries("serve_deployment_request_counter")
+        )
+        print(qps_metrics)
+        assert qps_metrics["app1_f"] == {"/app1"}
+        assert qps_metrics["app2_g"] == {"/app2"}
+        qps_metrics = self._generate_metrics_summary(
+            get_metric_dictionaries("serve_deployment_error_counter")
+        )
+        assert qps_metrics["app3_h"] == {"/app3"}
+
+        latency_metrics = self._generate_metrics_summary(
+            get_metric_dictionaries("serve_deployment_processing_latency_ms_sum")
+        )
+        assert len(latency_metrics) == 3
+        assert latency_metrics["app1_f"] == {"/app1"}
+        assert latency_metrics["app2_g"] == {"/app2"}
+        assert latency_metrics["app3_h"] == {"/app3"}
+
+        # Check http proxy qps & latency
+        qps_metrics = get_metric_dictionaries("serve_num_http_requests")
+        len(qps_metrics) == 3
+        assert {metric["route"] for metric in qps_metrics} == {
+            "/app1",
+            "/app2",
+            "/app3",
+        }
+
+        latency_metrics = get_metric_dictionaries("serve_http_request_latency_ms_sum")
+        assert {metric["route"] for metric in latency_metrics} == {
+            "/app1",
+            "/app2",
+            "/app3",
+        }
+
+        # Check handle qps
+        qps_metrics = self._generate_metrics_summary(
+            get_metric_dictionaries("serve_handle_request_counter")
+        )
+        assert qps_metrics["app1_f"] == {"/app1"}
+        assert qps_metrics["app2_g"] == {"/app2"}
+        assert qps_metrics["app3_h"] == {"/app3"}
+
+        # Check router qps
+        qps_metrics = self._generate_metrics_summary(
+            get_metric_dictionaries("serve_num_router_requests")
+        )
+        assert qps_metrics["app1_f"] == {"/app1"}
+        assert qps_metrics["app2_g"] == {"/app2"}
+        assert qps_metrics["app3_h"] == {"/app3"}
+
+    def test_request_context_pass_for_handle_passing(self, serve_start_shutdown):
+        """Test handle passing contexts between replicas"""
+
+        @serve.deployment
+        def g1():
+            return "ok1"
+
+        @serve.deployment
+        def g2():
+            return "ok2"
+
+        app = FastAPI()
+
+        @serve.deployment
+        @serve.ingress(app)
+        class G:
+            def __init__(self, handle1, handle2):
+                self.handle1 = handle1
+                self.handle2 = handle2
+
+            @app.get("/api")
+            async def app1(self):
+                return await (await self.handle1.remote())
+
+            @app.get("/api2")
+            async def app2(self):
+                return await (await self.handle2.remote())
+
+        serve.run(G.bind(g1.bind(), g2.bind()))
+        resp = requests.get("http://127.0.0.1:8000/api")
+        assert resp.text == '"ok1"'
+        resp = requests.get("http://127.0.0.1:8000/api2")
+        assert resp.text == '"ok2"'
+
+        # G deployment metrics:
+        #   {xxx, route:/api}, {xxx, route:/api2}
+        # g1 deployment metrics:
+        #   {xxx, route:/api}
+        # g2 deployment metrics:
+        #   {xxx, route:/api2}
+        wait_for_condition(
+            lambda: len(get_metric_dictionaries("serve_deployment_request_counter"))
+            == 4,
+            timeout=20,
+        )
+        requests_metrics = self._generate_metrics_summary(
+            get_metric_dictionaries("serve_deployment_request_counter")
+        )
+        assert requests_metrics["G"] == {"/api", "/api2"}
+        assert requests_metrics["g1"] == {"/api"}
+        assert requests_metrics["g2"] == {"/api2"}
 
 
 def test_actor_summary(serve_instance):
