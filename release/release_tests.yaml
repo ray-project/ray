@@ -1453,10 +1453,7 @@
 
   frequency: nightly
   team: ml
-<<<<<<< HEAD
   env: gce
-=======
->>>>>>> 7871714d8 (Add GCE tests for all tune_cloud tests. Use default anyscale tier.)
 
   cluster:
     cluster_env: app_config.yaml
@@ -1626,7 +1623,7 @@
 - name: tune_scalability_gce_bookkeeping_overhead
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
-
+  env: gce
   frequency: nightly
   team: ml
 
@@ -1637,7 +1634,6 @@
   run:
     timeout: 1200
     script: python workloads/test_bookkeeping_overhead.py
-    type: gce
 
   alert: tune_tests
 
@@ -1661,7 +1657,7 @@
 - name: tune_scalability_gce_durable_trainable
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
-
+  env: gce
   frequency: nightly
   team: ml
 
@@ -1672,7 +1668,6 @@
   run:
     timeout: 900
     script: python workloads/test_durable_trainable.py --bucket tune-cloud-tests
-    type: gce
     wait_for_nodes:
       num_nodes: 16
 
@@ -1702,7 +1697,7 @@
 - name: tune_scalability_gce_long_running_large_checkpoints
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
-
+  env: gce
   frequency: weekly
   team: ml
 
@@ -1713,7 +1708,6 @@
   run:
     timeout: 86400
     script: python workloads/test_long_running_large_checkpoints.py
-    type: gce
     long_running: true
 
   smoke_test:
@@ -1751,7 +1745,7 @@
 - name: tune_scalability_gce_network_overhead
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
-
+  env: gce
   frequency: weekly
   team: ml
 
@@ -1763,7 +1757,6 @@
     timeout: 900
     prepare_timeout: 1200
     script: python workloads/test_network_overhead.py
-    type: gce
     wait_for_nodes:
       num_nodes: 100
 
@@ -1816,7 +1809,7 @@
 - name: tune_scalability_gce_result_throughput_cluster
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
-
+  env: gce
   frequency: nightly-3x
   team: ml
 
@@ -1827,7 +1820,6 @@
   run:
     timeout: 600
     script: python workloads/test_result_throughput_cluster.py
-    type: gce
     wait_for_nodes:
       num_nodes: 16
 
@@ -1856,7 +1848,7 @@
 - name: tune_scalability_gce_result_throughput_single_node
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
-
+  env: gce
   frequency: nightly
   team: ml
 
@@ -1867,7 +1859,6 @@
   run:
     timeout: 600
     script: python workloads/test_result_throughput_single_node.py
-    type: gce
 
   alert: tune_tests
 
@@ -1895,7 +1886,7 @@
 - name: tune_scalability_gce_xgboost_sweep
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
-
+  env: gce
   frequency: weekly
   team: ml
 
@@ -1906,7 +1897,6 @@
   run:
     timeout: 3600
     script: python workloads/test_xgboost_sweep.py
-    type: gce
     wait_for_nodes:
       num_nodes: 16
 
