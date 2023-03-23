@@ -26,8 +26,8 @@ def _add_serve_metric_default_tags(default_tags: Dict[str, str]):
         raise ValueError(f"'{DEPLOYMENT_TAG}' tag is reserved for Ray Serve metrics")
     if REPLICA_TAG in default_tags:
         raise ValueError(f"'{REPLICA_TAG}' tag is reserved for Ray Serve metrics")
-    default_tags[DEPLOYMENT_TAG] = context.REPLICA_DEPLOYMENT_NAME
-    default_tags[REPLICA_TAG] = context.REPLICA_TAG_NAME
+    default_tags[DEPLOYMENT_TAG] = context._INTERNAL_REPLICA_CONTEXT.deployment
+    default_tags[REPLICA_TAG] = context._INTERNAL_REPLICA_CONTEXT.replica_tag
     return default_tags
 
 
