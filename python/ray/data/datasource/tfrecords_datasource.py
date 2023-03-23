@@ -1,6 +1,3 @@
-<<<<<<< Updated upstream
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union, Iterable, Iterator
-=======
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -12,7 +9,6 @@ from typing import (
     Iterator,
     List
 )
->>>>>>> Stashed changes
 import struct
 
 import numpy as np
