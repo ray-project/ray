@@ -58,7 +58,7 @@ class TrainingFailedError(RuntimeError):
     _FAILURE_CONFIG_MSG = (
         "To start a new run that will retry on training failures, set "
         "`air.RunConfig(failure_config=air.FailureConfig(max_failures))` "
-        "in the Trainer's `run_config` with `max_failures > 0`, or `max_failures = 1` "
+        "in the Trainer's `run_config` with `max_failures > 0`, or `max_failures = -1` "
         "for unlimited retries."
     )
 
