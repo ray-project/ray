@@ -4347,9 +4347,10 @@
 - name: pipelined_gce_data_ingest_benchmark_1tb
   group: data-tests
   working_dir: nightly_tests/dataset
-
+  env: gce
   frequency: nightly
   team: data
+
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute_gce.yaml
@@ -4379,7 +4380,7 @@
 - name: streaming_gce_data_ingest_benchmark_1tb
   group: data-tests
   working_dir: nightly_tests/dataset
-
+  env: gce
   frequency: nightly
   team: data
   cluster:
@@ -4595,7 +4596,7 @@
 - name: dataset_shuffle_gce_push_based_random_shuffle_1tb
   group: data-tests
   working_dir: nightly_tests
-
+  env: gce
   frequency: nightly
   team: data
   cluster:
@@ -4643,9 +4644,10 @@
 - name: dataset_shuffle_gce_push_based_random_shuffle_100tb
   group: data-tests
   working_dir: nightly_tests
-
+  env: gce
   frequency: weekly
   team: data
+
   cluster:
     cluster_env: shuffle/100tb_shuffle_app_config.yaml
     cluster_compute: shuffle/100tb_shuffle_compute_gce.yaml
@@ -4828,7 +4830,7 @@
 - name: chaos_dataset_shuffle_gce_push_based_random_shuffle_1tb
   group: data-tests
   working_dir: nightly_tests
-
+  env: gce
   stable: false
 
   frequency: nightly
