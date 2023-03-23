@@ -458,7 +458,6 @@ class TuneReporterBase(ProgressReporter):
 
 
 class TuneTerminalReporter(TuneReporterBase):
-
     def _print_heartbeat(self, trials, *sys_args):
         if self._verbosity < self._heartbeat_threshold:
             return
@@ -674,11 +673,14 @@ class AirResultProgressCallback(Callback):
         if self._verbosity < self._start_end_verbosity:
             return
         curr_time, running_time = _get_time_str(self._start_time, time.time())
+        finished_iter = 0
+        if trial.last_result and TRAINING_ITERATION in trial.last_result:
+            finished_iter = trial.last_result[TRAINING_ITERATION]
         print(
             " ".join(
                 [
                     self._addressing_tmpl.format(trial),
-                    f"({trial.last_result[TRAINING_ITERATION]} iters) "
+                    f"({finished_iter} iters) "
                     f"finished at {curr_time} (running for {running_time})",
                 ]
             )
@@ -709,9 +711,13 @@ class AirResultProgressCallback(Callback):
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
         if self._verbosity < self._start_end_verbosity:
             return
+        has_config = trial.config is not None
         print(
             " ".join(
-                [self._addressing_tmpl.format(trial), "started with configuration:"]
+                [
+                    self._addressing_tmpl.format(trial),
+                    "started with configuration:" if has_config else "started.",
+                ]
             )
         )
         self._print_config(trial)
