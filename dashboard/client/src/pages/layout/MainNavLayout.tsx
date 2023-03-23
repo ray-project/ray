@@ -192,18 +192,6 @@ const MainNavBar = () => {
       ))}
       <div className={classes.flexSpacer}></div>
       <div className={classes.actionItemsContainer}>
-        <Link
-          className={classNames(classes.actionItem, classes.backToOld)}
-          to="/node"
-        >
-          <Typography
-            variant="body2"
-            component="span"
-            className={classes.backToOldText}
-          >
-            Back to old UI
-          </Typography>
-        </Link>
         <Tooltip title="Docs">
           <IconButton
             className={classes.actionItem}
