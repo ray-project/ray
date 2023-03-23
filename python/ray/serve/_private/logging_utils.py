@@ -54,6 +54,7 @@ def log_to_stderr_filter(record: logging.LogRecord) -> bool:
 
     return record.log_to_stderr
 
+
 def configure_component_logger(
     *,
     component_name: str,

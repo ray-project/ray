@@ -431,7 +431,7 @@ class RayServeReplica:
         """
         logger.info(
             f"Started executing request {request_item.metadata.request_id}",
-            extra={"log_to_stderr": False}
+            extra={"log_to_stderr": False},
         )
 
         args, kwargs = parse_request_item(request_item)

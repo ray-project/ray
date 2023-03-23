@@ -116,7 +116,9 @@ def test_user_logs(serve_instance):
 
         def check_stderr_log(replica_tag: str):
             s = f.getvalue()
-            return all([name in s, replica_tag in s, stderr_msg in s, log_file_msg not in s])
+            return all(
+                [name in s, replica_tag in s, stderr_msg in s, log_file_msg not in s]
+            )
 
         # Only the stderr_msg should be logged to stderr.
         wait_for_condition(check_stderr_log, replica_tag=replica_tag)
@@ -124,7 +126,9 @@ def test_user_logs(serve_instance):
         def check_log_file(replica_tag: str):
             with open(log_file_name, "r") as f:
                 s = f.read()
-                return all([name in s, replica_tag in s, stderr_msg in s, log_file_msg in s])
+                return all(
+                    [name in s, replica_tag in s, stderr_msg in s, log_file_msg in s]
+                )
 
         # Both messages should be logged to the file.
         wait_for_condition(check_log_file, replica_tag=replica_tag)

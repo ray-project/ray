@@ -182,7 +182,9 @@ class LongestPrefixRouter:
         return endpoint in self.handles
 
     def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
-        logger.info(f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False})
+        logger.info(
+            f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
+        )
 
         existing_handles = set(self.handles.keys())
         routes = []
@@ -197,7 +199,10 @@ class LongestPrefixRouter:
 
         # Clean up any handles that are no longer used.
         if len(existing_handles) > 0:
-            logger.info(f"Deleting {len(existing_handles)} unused handles.", extra={"log_to_stderr": False})
+            logger.info(
+                f"Deleting {len(existing_handles)} unused handles.",
+                extra={"log_to_stderr": False},
+            )
         for endpoint in existing_handles:
             del self.handles[endpoint]
 
@@ -405,7 +410,7 @@ class HTTPProxy:
                 status=str(status_code),
                 latency_ms=latency_ms,
             ),
-            extra={"log_to_stderr": False}
+            extra={"log_to_stderr": False},
         )
         if status_code != "200":
             self.request_error_counter.inc(

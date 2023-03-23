@@ -311,7 +311,8 @@ class ActorReplicaWrapper:
 
         logger.info(
             f"Starting replica {self.replica_tag} for deployment "
-            f"{self.deployment_name}.", extra={"log_to_stderr": False}
+            f"{self.deployment_name}.",
+            extra={"log_to_stderr": False},
         )
 
         actor_def = deployment_info.actor_def
@@ -567,7 +568,9 @@ class ActorReplicaWrapper:
                 response = ReplicaHealthCheckResponse.ACTOR_CRASHED
             except RayError as e:
                 # Health check failed due to application-level exception.
-                logger.warning(f"Health check for replica {self._replica_tag} failed: {e}")
+                logger.warning(
+                    f"Health check for replica {self._replica_tag} failed: {e}"
+                )
                 response = ReplicaHealthCheckResponse.APP_FAILURE
         elif time.time() - self._last_health_check_time > self._health_check_timeout_s:
             # Health check hasn't returned and the timeout is up, consider it failed.
@@ -802,7 +805,8 @@ class DeploymentReplica(VersionedReplica):
         """
         logger.info(
             f"Stopping replica {self.replica_tag} for deployment "
-            f"{self.deployment_name}.", extra={"log_to_stderr": False}
+            f"{self.deployment_name}.",
+            extra={"log_to_stderr": False},
         )
         timeout_s = self._actor.graceful_stop()
         if not graceful:
@@ -1529,7 +1533,10 @@ class DeploymentState:
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)
                 transitioned_to_running = True
-                logger.info(f"Replica {replica.replica_tag} started successfully.", extra={"log_to_stderr": False})
+                logger.info(
+                    f"Replica {replica.replica_tag} started successfully.",
+                    extra={"log_to_stderr": False},
+                )
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed
                 if self._replica_constructor_retry_counter >= 0:

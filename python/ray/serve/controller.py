@@ -581,8 +581,10 @@ class ServeController:
                 updated_versions,
             )
 
-            logger.info("Starting deploy_serve_application "
-                        f"task for application {app_config.name}.")
+            logger.info(
+                "Starting deploy_serve_application "
+                f"task for application {app_config.name}."
+            )
             deploy_obj_ref = deploy_serve_application.options(
                 runtime_env=app_config.runtime_env
             ).remote(

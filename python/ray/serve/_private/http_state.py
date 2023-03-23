@@ -131,7 +131,7 @@ class HTTPState:
                     "listening on '{}:{}'".format(
                         name, node_id, self._config.host, self._config.port
                     ),
-                    extra={"log_to_stderr": False}
+                    extra={"log_to_stderr": False},
                 )
                 proxy = HTTPProxyActor.options(
                     num_cpus=self._config.num_cpus,
