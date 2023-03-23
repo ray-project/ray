@@ -969,7 +969,7 @@ class TaskSummaries:
                 if actor is None:
                     logger.debug(
                         f"We are missing actor info for actor {actor_id}, "
-                        "even though creation task exists: {creation_task}"
+                        f"even though creation task exists: {creation_task}"
                     )
                     [actor_name, *rest] = creation_task["func_or_class_name"].split(".")
                 else:
