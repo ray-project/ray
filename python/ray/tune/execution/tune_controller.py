@@ -41,7 +41,6 @@ from ray.util.debug import log_once
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 @DeveloperAPI
@@ -820,6 +819,11 @@ class TuneController(_TuneControllerBase):
         logger.debug(f"Terminating actor for trial {trial}: {tracked_actor}")
         self._stopping_trials.add(trial)
         self._remove_actor(tracked_actor=tracked_actor)
+
+    def _schedule_graceful_trial_stop(self, trial: Trial):
+        self._schedule_trial_export(trial)
+        if trial.status != "ERROR":
+            self._schedule_trial_stop(trial)
 
     def _schedule_trial_pause(self, trial: Trial, should_checkpoint: bool = True):
         if should_checkpoint:

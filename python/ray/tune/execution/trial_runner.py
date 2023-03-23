@@ -661,8 +661,7 @@ class _TuneControllerBase:
             self._callbacks.on_trial_complete(
                 iteration=self._iteration, trials=self._trials, trial=trial
             )
-            self._schedule_trial_export(trial)
-            self._schedule_trial_stop(trial)
+            self._schedule_graceful_trial_stop(trial)
             self._live_trials.discard(trial)
         except Exception as e:
             logger.exception("Trial %s: Error stopping trial.", trial)
@@ -674,6 +673,9 @@ class _TuneControllerBase:
                 self._process_trial_failure(
                     trial, _TuneStopTrialError(traceback.format_exc())
                 )
+
+    def _schedule_graceful_trial_stop(self, trial: Trial):
+        raise NotImplementedError
 
     ###
     # TRAIN
@@ -1448,6 +1450,10 @@ class TrialRunner(_TuneControllerBase):
         return self.trial_executor.stop_trial(
             trial, error=bool(exception), exc=exception
         )
+
+    def _schedule_graceful_trial_stop(self, trial: Trial):
+        self._schedule_trial_export(trial)
+        self._schedule_trial_stop(trial)
 
     def _schedule_trial_pause(self, trial: Trial, should_checkpoint: bool = True):
         self.trial_executor.pause_trial(trial, should_checkpoint=should_checkpoint)

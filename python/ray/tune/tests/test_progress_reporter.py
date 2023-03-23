@@ -684,7 +684,9 @@ class ProgressReporterTest(unittest.TestCase):
             os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "100"
             output = run_string_as_driver(END_TO_END_COMMAND)
             try:
-                assert EXPECTED_END_TO_END_START in output
+                # New execution path is too fast, trials are already terminated
+                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                    assert EXPECTED_END_TO_END_START in output
                 assert EXPECTED_END_TO_END_END in output
                 assert "(raylet)" not in output, "Unexpected raylet log messages"
             except Exception:
@@ -718,7 +720,9 @@ class ProgressReporterTest(unittest.TestCase):
             verbose_1_cmd = VERBOSE_CMD + "verbose=1)"
             output = run_string_as_driver(verbose_1_cmd)
             try:
-                self.assertIn(VERBOSE_EXP_OUT_1, output)
+                # New execution path is too fast, trials are already terminated
+                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                    self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
                 self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
