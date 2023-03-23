@@ -129,7 +129,7 @@ class RayServeHandle:
                 "The number of handle.remote() calls that have been "
                 "made on this handle."
             ),
-            tag_keys=("handle", "deployment"),
+            tag_keys=("handle", "deployment", "route"),
         )
         self.request_counter.set_default_tags(
             {"handle": self.handle_tag, "deployment": self.deployment_name}
@@ -221,13 +221,16 @@ class RayServeHandle:
                 1. A Ray object ref pointing to the result
                 2. The replica tag of the replica that was assigned the request
         """
+        _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
-            get_random_letters(10),  # Used for debugging.
+            _request_context.request_id,
             deployment_name,
             call_method=handle_options.method_name,
             http_arg_is_pickled=self._pickled_http_request,
+            route=_request_context.route,
         )
 
+        self.request_counter.inc(tags={"route": _request_context.route})
         result_ref, replica_tag = await self.router.assign_request(
             request_metadata, *args, **kwargs
         )
@@ -248,7 +251,6 @@ class RayServeHandle:
             final_result = await(ray_object_ref)
         """
 
-        self.request_counter.inc()
         return await self._craft_and_assign_request(
             self.deployment_name, self.handle_options, args, kwargs
         )
@@ -327,6 +329,7 @@ class RayServeSyncHandle(RayServeHandle):
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.
         """
+        
         self.request_counter.inc()
         coro = self._craft_and_assign_request(
             self.deployment_name, self.handle_options, args, kwargs

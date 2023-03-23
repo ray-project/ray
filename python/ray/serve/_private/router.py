@@ -38,6 +38,9 @@ class RequestMetadata:
     # and it needs to be deserialized by the replica.
     http_arg_is_pickled: bool = False
 
+    # HTTP route path of the request.
+    route: str = ""
+
 
 @dataclass
 class Query:
@@ -99,7 +102,7 @@ class ReplicaSet:
                 "The current number of queries to this deployment waiting"
                 " to be assigned to a replica."
             ),
-            tag_keys=("deployment", "endpoint"),
+            tag_keys=("deployment", "route"),
         )
         self.num_queued_queries_gauge.set_default_tags(
             {"deployment": self.deployment_name}
@@ -240,10 +243,9 @@ class ReplicaSet:
                 processed by the replica.
             2. ReplicaTag of the replica that the query was assigned to.
         """
-        endpoint = query.metadata.endpoint
         self.num_queued_queries += 1
         self.num_queued_queries_gauge.set(
-            self.num_queued_queries, tags={"endpoint": endpoint}
+            self.num_queued_queries, tags={"route": query.metadata.route}
         )
         await query.resolve_async_tasks()
         result_ref, assigned_replica_tag = self._try_assign_replica(query)
@@ -269,7 +271,7 @@ class ReplicaSet:
             result_ref, assigned_replica_tag = self._try_assign_replica(query)
         self.num_queued_queries -= 1
         self.num_queued_queries_gauge.set(
-            self.num_queued_queries, tags={"endpoint": endpoint}
+            self.num_queued_queries, tags={"route": query.metadata.route}
         )
         return result_ref, assigned_replica_tag
 
@@ -303,7 +305,7 @@ class Router:
         self.num_router_requests = metrics.Counter(
             "serve_num_router_requests",
             description="The number of requests processed by the router.",
-            tag_keys=("deployment",),
+            tag_keys=("deployment", "route"),
         )
         self.num_router_requests.set_default_tags({"deployment": deployment_name})
 
@@ -334,7 +336,7 @@ class Router:
     ) -> Tuple[ray.ObjectRef, ReplicaTag]:
         """Assigns a query and returns an object ref representing the result."""
 
-        self.num_router_requests.inc()
+        self.num_router_requests.inc(tags={"route": request_meta.route})
 
         result_ref, replica_tag = await self._replica_set.assign_replica(
             Query(

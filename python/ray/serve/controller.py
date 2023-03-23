@@ -23,6 +23,7 @@ from ray.serve._private.common import (
     NodeId,
     RunningReplicaInfo,
     StatusOverview,
+    ServeDeployMode,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve._private.constants import (
@@ -39,11 +40,13 @@ from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPState
 from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.long_poll import LongPollHost
+from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ApplicationDetails,
     ServeInstanceDetails,
+    HTTPOptionsSchema,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
@@ -152,6 +155,9 @@ class ServeController:
         self.application_state_manager = ApplicationStateManager(
             self.deployment_state_manager
         )
+
+        # Keep track of single-app vs multi-app
+        self.deploy_mode = ServeDeployMode.UNSET
 
         run_background_task(self.run_control_loop())
 
@@ -489,27 +495,33 @@ class ServeController:
         # ServeApplicationSchema. Eventually, after migration is complete, we should
         # deprecate such usage.
         if isinstance(config, ServeApplicationSchema):
-            config = config.to_deploy_schema()
+            applications = [config]
+            if self.deploy_mode == ServeDeployMode.MULTI_APP:
+                raise RayServeException(
+                    "You are trying to deploy a single-application config, however "
+                    "a multi-application config has been deployed to the current "
+                    "Serve instance already. Mixing single-app and multi-app is not "
+                    "allowed. Please either redeploy using the multi-application "
+                    "config format `ServeDeploySchema`, or shutdown and restart Serve "
+                    "to submit a single-app config of format `ServeApplicationSchema`. "
+                    "If you are using the REST API, you can submit a single-app config "
+                    "to the single-app API endpoint `/api/serve/deployments/`."
+                )
+            self.deploy_mode = ServeDeployMode.SINGLE_APP
         else:
-            # TODO (zcin): ServeApplicationSchema still needs to have host and port
-            # fields to support single-app mode, but in multi-app mode the host and port
-            # fields at the top-level deploy config is used instead. Eventually, after
-            # migration, we should remove these fields from ServeApplicationSchema.
-            host, port = config.host, config.port
-            for app_config in config.applications:
-                app_config_dict = app_config.dict(exclude_unset=True)
-                if "host" in app_config_dict:
-                    logger.info(
-                        f"Host {app_config_dict['host']} is set in the config for "
-                        f"application `{app_config.name}`. This will be ignored, as "
-                        f"the host {host} from the top level deploy config is used."
-                    )
-                if "port" in app_config:
-                    logger.info(
-                        f"Port {app_config_dict['port']} is set in the config for "
-                        f"application `{app_config.name}`. This will be ignored, as "
-                        f"the port {port} from the top level deploy config is used."
-                    )
+            applications = config.applications
+            if self.deploy_mode == ServeDeployMode.SINGLE_APP:
+                raise RayServeException(
+                    "You are trying to deploy a multi-application config, however "
+                    "a single-application config has been deployed to the current "
+                    "Serve instance already. Mixing single-app and multi-app is not "
+                    "allowed. Please either redeploy using the single-application "
+                    "config format `ServeApplicationSchema`, or shutdown and restart "
+                    "Serve to submit a multi-app config of format `ServeDeploySchema`. "
+                    "If you are using the REST API, you can submit a multi-app config "
+                    "to the the multi-app API endpoint `/api/serve/applications/`."
+                )
+            self.deploy_mode = ServeDeployMode.MULTI_APP
 
         if not deployment_time:
             deployment_time = time.time()
@@ -523,7 +535,7 @@ class ServeController:
 
         new_config_checkpoint = {}
 
-        for app_config in config.applications:
+        for app_config in applications:
             # Prepend app name to each deployment name
             if not _internal:
                 app_config = app_config.prepend_app_name_to_deployment_names()
@@ -577,7 +589,7 @@ class ServeController:
         existing_applications = set(
             self.application_state_manager._application_states.keys()
         )
-        new_applications = {app_config.name for app_config in config.applications}
+        new_applications = {app_config.name for app_config in applications}
         self.delete_apps(existing_applications.difference(new_applications))
 
     def delete_deployment(self, name: str):
@@ -704,8 +716,11 @@ class ServeController:
         # route_prefix is set instead in each application.
         # Eventually we want to remove route_prefix from DeploymentSchema.
         return ServeInstanceDetails(
-            host=http_config.host,
-            port=http_config.port,
+            proxy_location=http_config.location,
+            http_options=HTTPOptionsSchema(
+                host=http_config.host,
+                port=http_config.port,
+            ),
             applications=applications,
         ).dict(exclude_unset=True)
 
