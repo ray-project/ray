@@ -130,10 +130,6 @@ def create_replica_wrapper(name: str):
                 controller_name, namespace=SERVE_NAMESPACE
             )
 
-            # Set information for this actor metrics.
-            context.REPLICA_DEPLOYMENT_NAME = deployment_name
-            context.REPLICA_TAG_NAME = replica_tag
-
             # This closure initializes user code and finalizes replica
             # startup. By splitting the initialization step like this,
             # we can already access this actor before the user code
