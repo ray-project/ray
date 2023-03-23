@@ -260,9 +260,13 @@ class ReplicaSet:
             # All replicas are really busy, wait for a query to complete or the
             # config to be updated.
             if num_finished == 0:
-                logger.debug("All replicas are busy, waiting for a free replica.")
+                logger.debug(
+                    "All replicas are busy or embargoed, waiting for a free replica."
+                )
                 await asyncio.wait(
-                    self._all_query_refs + [self.config_updated_event.wait()],
+                    self._all_query_refs
+                    + [self.config_updated_event.wait()]
+                    + [asyncio.sleep(EMBARGO_TIMEOUT_S / 2)],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 if self.config_updated_event.is_set():
