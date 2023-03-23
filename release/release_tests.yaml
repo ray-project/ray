@@ -2376,6 +2376,11 @@
   frequency: nightly
   team: ml
 
+  # It seems this test only succeeds the 2nd try.
+  # Mark as unstable for now.
+  # TODO(jungong) : figure out why.
+  stable: false
+
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 2_g4dn_12xlarge.yaml
