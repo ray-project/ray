@@ -16,5 +16,6 @@ requests
 protobuf >= 3.15.3, != 3.19.5
 pytz
 retry
+google-cloud-storage
 git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray
 git+https://github.com/ray-project/lightgbm_ray.git#lightgbm_ray
