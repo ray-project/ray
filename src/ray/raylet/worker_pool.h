@@ -745,7 +745,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   int first_job_driver_wait_num_python_workers_;
 
   /// The number of prestarted default Python workers.
-  const int num_prestart_python_workers_;
+  const int num_prestart_python_workers;
 
   /// This map tracks the latest infos of unfinished jobs.
   absl::flat_hash_map<JobID, rpc::JobConfig> all_jobs_;

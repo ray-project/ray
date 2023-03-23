@@ -95,7 +95,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       first_job_registered_python_worker_count_(0),
       first_job_driver_wait_num_python_workers_(
           std::min(num_prestarted_python_workers, maximum_startup_concurrency)),
-      num_prestart_python_workers_(num_prestarted_python_workers),
+      num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(io_service),
       get_time_(get_time) {
   RAY_CHECK(maximum_startup_concurrency > 0);
@@ -161,9 +161,7 @@ void WorkerPool::Start() {
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
 
-  if (num_prestart_python_workers_ > 0) {
-    PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers_);
-  }
+  PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
 }
 
 // NOTE(kfstorm): The node manager cannot be passed via WorkerPool constructor because the
@@ -446,9 +444,10 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   // Here we consider both task workers and I/O workers.
   if (starting_workers >= maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
-    RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
+    RAY_LOG(DEBUG) << "Worker not started, exceeding maximum_startup_concurrency("
+                   << maximum_startup_concurrency_ << "), " << starting_workers
                    << " workers of language type " << static_cast<int>(language)
-                   << " pending registration";
+                   << " being started and pending registration";
     *status = PopWorkerStatus::TooManyStartingWorkerProcesses;
     process_failed_rate_limited_++;
     return {Process(), (StartupToken)-1};
