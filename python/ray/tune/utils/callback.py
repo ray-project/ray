@@ -43,7 +43,7 @@ def _create_default_callbacks(
     callbacks: Optional[List[Callback]],
     *,
     sync_config: SyncConfig,
-    air_verbosity: Optional["AirVerbosity"],
+    air_verbosity: Optional["AirVerbosity"] = None,
     metric: Optional[str] = None,
     progress_metrics: Optional[List[str]] = None,
 ):
