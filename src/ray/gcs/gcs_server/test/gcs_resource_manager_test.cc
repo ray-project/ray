@@ -74,6 +74,7 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
 
 TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
   auto node = Mocker::GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 2});
   auto node_id = NodeID::FromBinary(node->node_id());
   rpc::GetAllResourceUsageRequest get_all_request;
   rpc::GetAllResourceUsageReply get_all_reply;
@@ -82,6 +83,8 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
   gcs_resource_manager_->HandleGetAllResourceUsage(
       get_all_request, &get_all_reply, send_reply_callback);
   ASSERT_EQ(get_all_reply.resource_usage_data().batch().size(), 0);
+
+  gcs_resource_manager_->OnNodeAdd(*node);
 
   rpc::ReportResourceUsageRequest report_request;
   (*report_request.mutable_resources()->mutable_resources_available())["CPU"] = 2;
