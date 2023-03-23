@@ -230,7 +230,8 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
                                                  const rpc::ResourcesData &resources) {
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
-    node_resource_usages_[node_id].CopyFrom(resources);
+    // It will happen when the node has been deleted or hasn't been added.
+    return;
   } else {
     if (resources.resources_total_size() > 0) {
       (*iter->second.mutable_resources_total()) = resources.resources_total();
