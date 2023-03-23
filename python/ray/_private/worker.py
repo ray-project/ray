@@ -1698,16 +1698,22 @@ sys.excepthook = custom_excepthook
 
 def print_to_stdstream(data):
     should_dedup = data.get("pid") not in ["autoscaler", "raylet"]
-    metadata = data.copy()
-    del metadata["lines"]
+
     if data["is_err"]:
         if should_dedup:
-            data["lines"] = stderr_deduplicator.deduplicate(data["lines"], metadata)
-        print_worker_logs(data, sys.stderr)
+            batches = stderr_deduplicator.deduplicate(data)
+        else:
+            batches = [data]
+        sink = sys.stderr
     else:
         if should_dedup:
-            data["lines"] = stdout_deduplicator.deduplicate(data["lines"], metadata)
-        print_worker_logs(data, sys.stdout)
+            batches = stdout_deduplicator.deduplicate(data)
+        else:
+            batches = [data]
+        sink = sys.stdout
+
+    for batch in batches:
+        print_worker_logs(batch, sink)
 
 
 # Start time of this process, used for relative time logs.

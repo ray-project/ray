@@ -7,7 +7,7 @@ import sys
 import threading
 from logging.handlers import RotatingFileHandler
 import time
-from typing import Callable, Dict, List, Set, Tuple
+from typing import Callable, Dict, List, Set, Tuple, Any
 
 import ray
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
@@ -267,7 +267,10 @@ global_worker_stdstream_dispatcher = WorkerStandardStreamDispatcher()
 NUMBERS = re.compile(r"(\d+|0x[0-9a-fA-F]+)")
 
 # How many seconds of messages to buffer for log deduplicatoin.
-AGGREGATION_WINDOW_S = 3.0
+AGGREGATION_WINDOW_S = 5.0
+
+# Batch of log lines including ip, pid, lines, etc.
+LogBatch = Dict[str, Any]
 
 
 def _canonicalise_log_line(line):
@@ -287,11 +290,17 @@ class DedupState:
     # Latest instance of this log pattern.
     line: int
 
-    # Latest metadata dict for this log pattern.
-    metadata: dict
+    # Latest metadata dict for this log pattern, not including the lines field.
+    metadata: LogBatch
 
     # Set of (ip, pid) sources which have emitted this pattern.
     sources: Set[Tuple[str, int]]
+
+    # The string that should be printed to stdout.
+    def formatted(self) -> str:
+        return self.line + _color(
+            f" [repeated {self.count}x across cluster]" + _warn_once()
+        )
 
 
 class LogDeduplicator:
@@ -300,28 +309,29 @@ class LogDeduplicator:
         # This buffer is cleared if the pattern isn't seen within the window.
         self.recent: Dict[str, DedupState] = {}
 
-    def deduplicate(self, lines: List[str], metadata: dict) -> List[str]:
+    def deduplicate(self, batch: LogBatch) -> List[LogBatch]:
         """Rewrite a batch of lines to reduce duplicate log messages.
 
         Args:
-            lines: The batch of lines from a single source.
-            metadata: Dict describing the data source.
+            batch: The batch of lines from a single source.
 
         Returns:
-            Batch of deduplicated lines.
+            List of batches from this and possibly other previous sources to print.
         """
-        global _log_dedup_warned
         if not RAY_DEDUP_LOGS:
-            return lines
+            return [batch]
 
-        source = (metadata.get("ip"), metadata.get("pid"))
         now = time.time()
-        output = []
+        metadata = batch.copy()
+        del metadata["lines"]
+        source = (metadata.get("ip"), metadata.get("pid"))
+        output: List[LogBatch] = [dict(**metadata, lines=[])]
 
-        # Decide which lines to emit and which to buffer.
-        for line in lines:
+        # Decide which lines to emit from the input batch. Put the outputs in the
+        # first output log batch (output[0]).
+        for line in batch["lines"]:
             if RAY_TQDM_MAGIC in line:
-                output.append(line)
+                output[0]["lines"].append(line)
                 continue
             dedup_key = _canonicalise_log_line(line)
             if dedup_key in self.recent:
@@ -338,36 +348,29 @@ class LogDeduplicator:
                     )
                 else:
                     # Don't dedup messages from the same source, just print.
-                    output.append(line)
+                    output[0]["lines"].append(line)
             else:
                 self.recent[dedup_key] = DedupState(now, 0, line, metadata, {source})
-                output.append(line)
+                output[0]["lines"].append(line)
 
         # Flush patterns from the buffer that are older than the aggregation window.
         while self.recent:
-            if now - next(iter(self.recent.values())).timestamp > AGGREGATION_WINDOW_S:
-                dedup_key = next(iter(self.recent))
-                state = self.recent.pop(dedup_key)
-                # we already logged an instance of this line immediately when received,
-                # so don't log for count == 0
-                if state.count > 1:
-                    # (Actor pid=xxxx) [repeated 2x across cluster] ...
-                    output.append(
-                        state.line
-                        + self._color(
-                            f" [repeated {state.count}x across cluster]"
-                            + self._warn_once()
-                        )
-                    )
-                    # Continue aggregating for this key but reset timestamp and count.
-                    state.timestamp = now
-                    state.count = 0
-                    self.recent[dedup_key] = state
-                elif state.count > 0:
-                    # Aggregation wasn't fruitful, print the line and stop aggregating.
-                    output.append(line)
-            else:
+            if now - next(iter(self.recent.values())).timestamp < AGGREGATION_WINDOW_S:
                 break
+            dedup_key = next(iter(self.recent))
+            state = self.recent.pop(dedup_key)
+            # we already logged an instance of this line immediately when received,
+            # so don't log for count == 0
+            if state.count > 1:
+                # (Actor pid=xxxx) [repeated 2x across cluster] ...
+                output.append(dict(**state.metadata, lines=[state.formatted()]))
+                # Continue aggregating for this key but reset timestamp and count.
+                state.timestamp = now
+                state.count = 0
+                self.recent[dedup_key] = state
+            elif state.count > 0:
+                # Aggregation wasn't fruitful, print the line and stop aggregating.
+                output.append(dict(state.metadata, lines=[line]))
 
         return output
 
@@ -383,15 +386,7 @@ class LogDeduplicator:
                 output.append(
                     dict(
                         state.metadata,
-                        **{
-                            "lines": [
-                                state.line
-                                + self._color(
-                                    f" [repeated {state.count}x across cluster]"
-                                    + self._warn_once()
-                                )
-                            ]
-                        },
+                        lines=[state.formatted()],
                     )
                 )
             elif state.count > 0:
@@ -399,14 +394,19 @@ class LogDeduplicator:
         self.recent.clear()
         return output
 
-    def _warn_once(self) -> str:
-        if log_once("log_dedup_warning"):
-            return " (set RAY_DEDUP_LOGS=0 to disable log deduplication)"
-        else:
-            return ""
 
-    def _color(self, msg: str) -> str:
-        return "{}{}{}".format(colorama.Fore.GREEN, msg, colorama.Style.RESET_ALL)
+def _warn_once() -> str:
+    if log_once("log_dedup_warning"):
+        return (
+            " (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to "
+            "disable log deduplication)"
+        )
+    else:
+        return ""
+
+
+def _color(msg: str) -> str:
+    return "{}{}{}".format(colorama.Fore.GREEN, msg, colorama.Style.RESET_ALL)
 
 
 stdout_deduplicator = LogDeduplicator()
