@@ -341,7 +341,7 @@ class FaultTolerantActorManager:
     @DeveloperAPI
     def num_healthy_actors(self) -> int:
         """Return the number of healthy remote actors."""
-        return sum([s.is_healthy for s in self.__remote_actor_states.values()])
+        return sum(s.is_healthy for s in self.__remote_actor_states.values())
 
     @DeveloperAPI
     def total_num_restarts(self) -> int:

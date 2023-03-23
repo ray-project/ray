@@ -328,15 +328,23 @@ class TestWorkerFailures(unittest.TestCase):
                 "failure_stop_count": 4,
                 "counter": COUNTER_NAME,
             },
-            **(dict(policy_mapping_fn=(
-                lambda aid, episode, worker, **kwargs: (
-                    # Allows this test to query this different-from-training-workers
-                    # policy mapping fn.
-                    "This is the eval mapping fn" if episode is None
-                    else "main" if episode.episode_id % 2 == aid
-                    else "p{}".format(np.random.choice([0, 3]))
+            **(
+                dict(
+                    policy_mapping_fn=(
+                        lambda aid, episode, worker, **kwargs: (
+                            # Allows this test to query this
+                            # different-from-training-workers policy mapping fn.
+                            "This is the eval mapping fn"
+                            if episode is None
+                            else "main"
+                            if episode.episode_id % 2 == aid
+                            else "p{}".format(np.random.choice([0, 3]))
+                        )
+                    )
                 )
-            )) if multi_agent else {}),
+                if multi_agent
+                else {}
+            ),
         )
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
@@ -463,7 +471,7 @@ class TestWorkerFailures(unittest.TestCase):
         self._do_test_fault_fatal_but_recreate(config)
 
     def test_recreate_eval_workers_parallel_to_training_w_actor_manager_and_multi_agent(
-        self
+        self,
     ):
         # Test the case where all eval workers fail on a multi-agent env with
         # different `policy_mapping_fn` in eval- vs train workers, but we chose
@@ -474,7 +482,8 @@ class TestWorkerFailures(unittest.TestCase):
                 policies={"main", "p0", "p1"},
                 policy_mapping_fn=(
                     lambda aid, episode, worker, **kwargs: (
-                        "main" if episode.episode_id % 2 == aid
+                        "main"
+                        if episode.episode_id % 2 == aid
                         else "p{}".format(np.random.choice([0, 1]))
                     )
                 ),
@@ -487,8 +496,10 @@ class TestWorkerFailures(unittest.TestCase):
                 evaluation_config=PGConfig.overrides(
                     policy_mapping_fn=(
                         lambda aid, episode, worker, **kwargs: (
-                            "TEST" if episode is None
-                            else "main" if episode.episode_id % 2 == aid
+                            "TEST"
+                            if episode is None
+                            else "main"
+                            if episode.episode_id % 2 == aid
                             else "p0"
                         )
                     )
