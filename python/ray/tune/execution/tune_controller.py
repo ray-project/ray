@@ -157,12 +157,26 @@ class TuneController(_TuneControllerBase):
         pass
 
     def on_step_end(self):
-        for tracked_actor in self._actor_cache.flush_cached_objects():
+        force_all = False
+
+        if (
+            self._search_alg.is_finished()
+            and not self._staged_trials
+            and self._actor_cache.total_max_objects == 0
+        ):
+            # If there are no more trials coming in, no trials are pending execution,
+            # and we don't explicitly want to cache objects, we can evict the full
+            # cache.
+            force_all = True
+
+        for tracked_actor in self._actor_cache.flush_cached_objects(
+            force_all=force_all
+        ):
             logger.debug(f"Cleaning up cached actor at end of step: {tracked_actor}")
             # Unset termination callbacks as no trial is associated
             tracked_actor.set_on_stop(None)
             tracked_actor.set_on_error(None)
-            self._actor_manager.remove_actor(tracked_actor)
+            self._remove_actor(tracked_actor=tracked_actor)
 
     def step(self):
         if self.is_finished():
@@ -322,7 +336,11 @@ class TuneController(_TuneControllerBase):
         for tracked_actor in list(self._actor_to_trial):
             trial = self._actor_to_trial[tracked_actor]
             if trial not in self._stopping_trials:
-                self._actor_manager.remove_actor(tracked_actor=tracked_actor, kill=True)
+                logger.debug(
+                    f"Cleaning up running actor at end of experiment (trial {trial}): "
+                    f"{tracked_actor}"
+                )
+                self._remove_actor(tracked_actor=tracked_actor, kill=True)
                 trial = self._actor_to_trial.pop(tracked_actor)
                 self._trial_to_actor.pop(trial)
 
@@ -333,12 +351,26 @@ class TuneController(_TuneControllerBase):
             # Unset termination callbacks as no trial is associated
             tracked_actor.set_on_stop(None)
             tracked_actor.set_on_error(None)
-            self._actor_manager.remove_actor(tracked_actor, kill=True)
+            self._remove_actor(tracked_actor=tracked_actor, kill=True)
 
         start = time.monotonic()
         while time.monotonic() - start < 5 and self._actor_manager.num_total_actors:
             logger.debug("Waiting for actor manager to clean up final state")
             self._actor_manager.next(timeout=1)
+
+        print(self._actor_manager.__dict__)
+
+        self._resource_manager.clear()
+
+    def _remove_actor(self, tracked_actor: TrackedActor, kill: bool = False):
+        # Trainable.stop() is needed here for graceful shutdown.
+        # Todo: fully remove actor only after this is resolved
+        self._actor_manager.schedule_actor_task(
+            tracked_actor,
+            "stop",
+            on_error=self._actor_failed,
+        )
+        self._actor_manager.remove_actor(tracked_actor, kill=kill)
 
     ###
     # ADD ACTORS
@@ -452,7 +484,7 @@ class TuneController(_TuneControllerBase):
             original_actor = self._trial_to_actor.pop(trial)
             self._actor_to_trial.pop(original_actor)
             logger.debug(f"Removing ORIGINAL ACTOR for trial {trial}: {original_actor}")
-            self._actor_manager.remove_actor(original_actor)
+            self._remove_actor(tracked_actor=original_actor)
 
         self._trial_to_actor[trial] = cached_actor
         self._actor_to_trial[cached_actor] = trial
@@ -580,6 +612,13 @@ class TuneController(_TuneControllerBase):
         around, as it won't occupy resources needed by another trial until it's staged.
         """
         if not self._reuse_actors:
+            return False
+
+        if self._search_alg.is_finished() and not self._staged_trials:
+            logger.debug(
+                f"Not caching actor of trial {trial} as the search is over "
+                f"and no more trials are staged."
+            )
             return False
 
         tracked_actor = self._trial_to_actor[trial]
@@ -751,7 +790,7 @@ class TuneController(_TuneControllerBase):
 
         logger.debug(f"Terminating actor for trial {trial}: {tracked_actor}")
         self._stopping_trials.add(trial)
-        self._actor_manager.remove_actor(tracked_actor)
+        self._remove_actor(tracked_actor=tracked_actor)
 
     def _schedule_trial_pause(self, trial: Trial, should_checkpoint: bool = True):
         if should_checkpoint:

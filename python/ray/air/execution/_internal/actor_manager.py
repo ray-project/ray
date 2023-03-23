@@ -430,6 +430,8 @@ class RayActorManager:
         # Hard kill if requested
         ray.kill(ray_actor)
 
+        self._cleanup_actor_futures(tracked_actor)
+
         self._actor_stop_resolved(tracked_actor)
 
         return True
@@ -577,11 +579,6 @@ class RayActorManager:
                 # Schedule __ray_terminate__ future
                 ray_actor, _ = self._live_actors_to_ray_actors_resources[tracked_actor]
 
-                def on_actor_stop(*args, **kwargs):
-                    self._actor_stop_resolved(tracked_actor=tracked_actor)
-
-                stop_future = ray_actor.__ray_terminate__.remote()
-
                 # Clear state futures here to avoid resolving __ray_ready__ futures
                 for future in list(
                     self._tracked_actors_to_state_futures[tracked_actor]
@@ -597,6 +594,11 @@ class RayActorManager:
                     tracked_actor._on_stop = None
                     tracked_actor._on_error = None
 
+                def on_actor_stop(*args, **kwargs):
+                    self._actor_stop_resolved(tracked_actor=tracked_actor)
+
+                stop_future = ray_actor.__ray_terminate__.remote()
+
                 self._actor_state_events.track_future(
                     future=stop_future,
                     on_result=on_actor_stop,
@@ -607,7 +609,6 @@ class RayActorManager:
 
             else:
                 # kill = True
-                self._cleanup_actor_futures(tracked_actor)
                 self._live_actors_to_kill.add(tracked_actor)
 
         elif tracked_actor in self._pending_actors_to_attrs:
