@@ -52,7 +52,7 @@ projects:
     website: https://horovod.readthedocs.io/en/stable/ray_include.html
     repo: https://github.com/horovod/horovod
     image: ../images/horovod.png
-  - name: Hugging Face Integration
+  - name: Hugging Face Transformers Integration
     section_title: Hugging Face Transformers
     description: State-of-the-art Natural Language Processing for
       Pytorch and TensorFlow 2.0. It integrates with Ray for distributed
