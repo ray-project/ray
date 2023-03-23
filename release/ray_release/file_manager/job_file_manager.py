@@ -67,7 +67,7 @@ class JobFileManager(FileManager):
                 lambda: blob.download_to_file_name(target)
             )
 
-        if delete_after_download and self.cloud_storage_provider == "s3":
+        if delete_after_download:
             self.delete(target)
 
     def download(self, source: str, target: str):
@@ -163,6 +163,26 @@ class JobFileManager(FileManager):
 
     def delete(self, target: str, recursive: bool = False):
         def delete_fn():
+            if self.cloud_storage_provider == "s3":
+                delete_aws_fn()
+                return
+            if self.cloud_storage_provider == "gs":
+                delete_gs_fn()
+                return
+
+        def delete_gs_fn():
+            if recursive:
+                blobs = self.gs_client.list_blobs(
+                    self.bucket,
+                    prefix=target,
+                )
+                for blob in blobs:
+                    blob.delete()
+            else:
+                blob = self.gs_client.bucket(self.bucket).blob(target)
+                blob.delete()
+
+        def delete_aws_fn():
             if recursive:
                 response = self.s3_client.list_objects_v2(
                     Bucket=self.bucket, Prefix=target
@@ -179,4 +199,4 @@ class JobFileManager(FileManager):
                 initial_retry_delay_s=2,
             )
         except Exception as e:
-            logger.warning(f"Could not remove temporary S3 object: {e}")
+            logger.warning(f"Could not remove temporary cloud object: {e}")
