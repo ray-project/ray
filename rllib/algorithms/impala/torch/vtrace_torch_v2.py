@@ -1,14 +1,12 @@
-from typing import List, Union, TYPE_CHECKING
-from ray.rllib.utils.framework import try_import_tf
+from typing import List, Union
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
-_, tf, _ = try_import_tf()
-
-if TYPE_CHECKING:
-    _, tf, _ = try_import_tf()
+torch, nn = try_import_torch()
 
 
 def make_time_major(
-    tensor: Union["tf.Tensor", List["tf.Tensor"]],
+    tensor: Union["torch.Tensor", List["torch.Tensor"]],
     *,
     trajectory_len: int = None,
     recurrent_seq_len: int = None,
@@ -27,14 +25,11 @@ def make_time_major(
         drop_last: A bool indicating whether to drop the last
             trajectory item.
 
-    Note: Either `trajectory_len` or `recurrent_seq_len` must be set. `trajectory_len`
-        should be used in cases where tensor is not produced from a
-        RNN/recurrent module. `recurrent_seq_len` should be used in those cases instead.
-
     Returns:
-        A tensor with swapped axes or a list of tensors with swapped axes.
+        res: A tensor with swapped axes or a list of tensors with
+        swapped axes.
     """
-    if isinstance(tensor, list):
+    if isinstance(tensor, (list, tuple)):
         return [
             make_time_major(_tensor, trajectory_len, recurrent_seq_len, drop_last)
             for _tensor in tensor
@@ -45,33 +40,37 @@ def make_time_major(
     ), "Either trajectory_len or recurrent_seq_len must be set."
 
     if recurrent_seq_len:
-        B = tf.shape(recurrent_seq_len)[0]
-        T = tf.shape(tensor)[0] // B
+        B = recurrent_seq_len.shape[0]
+        T = tensor.shape[0] // B
     else:
+        # Important: chop the tensor into batches at known episode cut
+        # boundaries.
+        # TODO: (sven) this is kind of a hack and won't work for
+        #  batch_mode=complete_episodes.
         T = trajectory_len
-        B = tf.shape(tensor)[0] // T
-    rs = tf.reshape(tensor, tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
+        B = tensor.shape[0] // T
+    rs = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))
 
-    # swap B and T axes
-    res = tf.transpose(rs, [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
+    # Swap B and T axes.
+    res = torch.transpose(rs, 1, 0)
 
     if drop_last:
         return res[:-1]
     return res
 
 
-def vtrace_tf2(
+def vtrace_torch(
     *,
-    target_action_log_probs: "tf.Tensor",
-    behaviour_action_log_probs: "tf.Tensor",
-    discounts: "tf.Tensor",
-    rewards: "tf.Tensor",
-    values: "tf.Tensor",
-    bootstrap_value: "tf.Tensor",
-    clip_rho_threshold: Union[float, "tf.Tensor"] = 1.0,
-    clip_pg_rho_threshold: Union[float, "tf.Tensor"] = 1.0,
+    target_action_log_probs: "torch.Tensor",
+    behaviour_action_log_probs: "torch.Tensor",
+    discounts: "torch.Tensor",
+    rewards: "torch.Tensor",
+    values: "torch.Tensor",
+    bootstrap_value: "torch.Tensor",
+    clip_rho_threshold: Union[float, "torch.Tensor"] = 1.0,
+    clip_pg_rho_threshold: Union[float, "torch.Tensor"] = 1.0,
 ):
-    r"""V-trace for softmax policies implemented with tensorflow.
+    r"""V-trace for softmax policies implemented with torch.
 
     Calculates V-trace actor critic targets for softmax polices as described in
     "IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner
@@ -114,80 +113,59 @@ def vtrace_tf2(
             on rho_s in \rho_s \delta log \pi(a|x) (r + \gamma v_{s+1} - V(x_s)).
     """
     log_rhos = target_action_log_probs - behaviour_action_log_probs
-
-    discounts = tf.convert_to_tensor(discounts, dtype=tf.float32)
-    rewards = tf.convert_to_tensor(rewards, dtype=tf.float32)
-    values = tf.convert_to_tensor(values, dtype=tf.float32)
-    bootstrap_value = tf.convert_to_tensor(bootstrap_value, dtype=tf.float32)
+    discounts = convert_to_torch_tensor(discounts)
+    rewards = convert_to_torch_tensor(rewards)
+    values = convert_to_torch_tensor(values)
+    bootstrap_value = convert_to_torch_tensor(bootstrap_value)
     if clip_rho_threshold is not None:
-        clip_rho_threshold = tf.convert_to_tensor(clip_rho_threshold, dtype=tf.float32)
+        clip_rho_threshold = convert_to_torch_tensor(clip_rho_threshold)
     if clip_pg_rho_threshold is not None:
-        clip_pg_rho_threshold = tf.convert_to_tensor(
-            clip_pg_rho_threshold, dtype=tf.float32
-        )
+        clip_pg_rho_threshold = convert_to_torch_tensor(clip_pg_rho_threshold)
 
     # Make sure tensor ranks are consistent.
-    rho_rank = log_rhos.shape.ndims  # Usually 2.
-    values.shape.assert_has_rank(rho_rank)
-    bootstrap_value.shape.assert_has_rank(rho_rank - 1)
-    discounts.shape.assert_has_rank(rho_rank)
-    rewards.shape.assert_has_rank(rho_rank)
+    rho_rank = log_rhos.dim()  # Usually 2.
+    assert values.dim() == rho_rank
+    assert bootstrap_value.dim() == rho_rank - 1
+    assert discounts.dim() == rho_rank
+    assert rewards.dim() == rho_rank
     if clip_rho_threshold is not None:
-        clip_rho_threshold.shape.assert_has_rank(0)
+        assert clip_rho_threshold.dim() == 0
     if clip_pg_rho_threshold is not None:
-        clip_pg_rho_threshold.shape.assert_has_rank(0)
+        assert clip_pg_rho_threshold.dim() == 0
 
-    rhos = tf.math.exp(log_rhos)
+    rhos = torch.exp(log_rhos)
     if clip_rho_threshold is not None:
-        clipped_rhos = tf.minimum(clip_rho_threshold, rhos, name="clipped_rhos")
+        clipped_rhos = torch.clamp(rhos, max=clip_rho_threshold)
     else:
         clipped_rhos = rhos
 
-    cs = tf.minimum(1.0, rhos, name="cs")
+    cs = torch.clamp(rhos, max=1.0)
     # Append bootstrapped value to get [v1, ..., v_t+1]
-    values_t_plus_1 = tf.concat(
-        [values[1:], tf.expand_dims(bootstrap_value, 0)], axis=0
+    values_t_plus_1 = torch.cat(
+        [values[1:], torch.unsqueeze(bootstrap_value, 0)], axis=0
     )
 
     deltas = clipped_rhos * (rewards + discounts * values_t_plus_1 - values)
 
-    # All sequences are reversed, computation starts from the back.
-    sequences = (
-        tf.reverse(discounts, axis=[0]),
-        tf.reverse(cs, axis=[0]),
-        tf.reverse(deltas, axis=[0]),
-    )
+    vs_minus_v_xs = [torch.zeros_like(bootstrap_value)]
+    for i in reversed(range(len(discounts))):
+        discount_t, c_t, delta_t = discounts[i], cs[i], deltas[i]
+        vs_minus_v_xs.append(delta_t + discount_t * c_t * vs_minus_v_xs[-1])
+    vs_minus_v_xs = torch.stack(vs_minus_v_xs[1:])
 
-    # V-trace vs are calculated through a scan from the back to the
-    # beginning of the given trajectory.
-    def scanfunc(acc, sequence_item):
-        discount_t, c_t, delta_t = sequence_item
-        return delta_t + discount_t * c_t * acc
-
-    initial_values = tf.zeros_like(bootstrap_value)
-    vs_minus_v_xs = tf.nest.map_structure(
-        tf.stop_gradient,
-        tf.scan(
-            fn=scanfunc,
-            elems=sequences,
-            initializer=initial_values,
-            parallel_iterations=1,
-            name="scan",
-        ),
-    )
     # Reverse the results back to original order.
-    vs_minus_v_xs = tf.reverse(vs_minus_v_xs, [0])
+    vs_minus_v_xs = torch.flip(vs_minus_v_xs, dims=[0])
 
     # Add V(x_s) to get v_s.
-    vs = tf.add(vs_minus_v_xs, values)
+    vs = torch.add(vs_minus_v_xs, values)
 
     # Advantage for policy gradient.
-    vs_t_plus_1 = tf.concat([vs[1:], tf.expand_dims(bootstrap_value, 0)], axis=0)
+    vs_t_plus_1 = torch.cat([vs[1:], torch.unsqueeze(bootstrap_value, 0)], axis=0)
     if clip_pg_rho_threshold is not None:
-        clipped_pg_rhos = tf.minimum(clip_pg_rho_threshold, rhos)
+        clipped_pg_rhos = torch.clamp(rhos, max=clip_pg_rho_threshold)
     else:
         clipped_pg_rhos = rhos
     pg_advantages = clipped_pg_rhos * (rewards + discounts * vs_t_plus_1 - values)
 
     # Make sure no gradients backpropagated through the returned values.
-    return tf.stop_gradient(vs), tf.stop_gradient(pg_advantages)
+    return torch.detach(vs), torch.detach(pg_advantages)
