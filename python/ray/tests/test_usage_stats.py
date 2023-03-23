@@ -1165,7 +1165,7 @@ provider:
         assert payload["python_version"] == python_version
         assert payload["schema_version"] == "0.1"
         assert payload["os"] == sys.platform
-        if sys.platform == "linux":
+        if sys.platform != "linux":
             assert "glibc" not in payload
         else:
             import platform

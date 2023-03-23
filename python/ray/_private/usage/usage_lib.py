@@ -359,7 +359,11 @@ def _generate_cluster_metadata():
         )
         if sys.platform == "linux":
             # Record glibc version
-            metadata.update({"glibc": platform.libc_ver()[1]})
+            (lib, ver) = platform.libc_ver()
+            if lib != "glibc":
+                ver = "na"
+            metadata.update({"glibc": ver})
+
     return metadata
 
 
