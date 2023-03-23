@@ -392,7 +392,7 @@ def test_restore_with_different_trainer(tmpdir):
                 trainer_cls.restore(str(tmpdir))
 
         if should_warn:
-            with pytest.warns() as warn_record:
+            with pytest.warns(Warning) as warn_record:
                 check_for_raise()
                 assert any(
                     "Invalid trainer type" in str(record.message)

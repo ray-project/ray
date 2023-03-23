@@ -258,7 +258,7 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
     )
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="ray.tune.impl.tuner_internal"):
-        with pytest.warns() as warn_record:
+        with pytest.warns(Warning) as warn_record:
             tuner = Tuner.restore(
                 str(tmpdir / "restore_new_trainer"),
                 overwrite_trainable=trainer,

@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, Tuple, TYPE_CHECKING
+from typing import Dict, Any, Optional, Tuple, Union, TYPE_CHECKING
 
 from ray.air.checkpoint import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
@@ -105,5 +105,9 @@ class LightGBMTrainer(GBDTTrainer):
     def _save_model(self, model: lightgbm.LGBMModel, path: str):
         model.booster_.save_model(path)
 
-    def _model_iteration(self, model: lightgbm.LGBMModel) -> int:
+    def _model_iteration(
+        self, model: Union[lightgbm.LGBMModel, lightgbm.Booster]
+    ) -> int:
+        if isinstance(model, lightgbm.Booster):
+            return model.current_iteration()
         return model.booster_.current_iteration()
