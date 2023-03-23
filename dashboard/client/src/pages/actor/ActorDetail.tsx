@@ -94,7 +94,7 @@ const ActorDetailPage = () => {
             },
             {
               label: "Repr",
-              content: actorDetail.actorClass
+              content: actorDetail.reprName
                 ? {
                     value: actorDetail.reprName,
                   }
