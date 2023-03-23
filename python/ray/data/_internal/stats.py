@@ -286,10 +286,11 @@ class DatasetStats:
             )
 
         iter_stats = IterStatsSummary(
-            self.iter_wait_s,
             self.iter_get_s,
-            self.iter_next_batch_s,
+            self.iter_create_batch_s,
             self.iter_format_batch_s,
+            self.iter_collate_batch_s,
+            self.iter_total_blocked_s,
             self.iter_user_s,
             self.iter_total_s,
             self.iter_blocks_local,
@@ -620,14 +621,16 @@ class StageStatsSummary:
 
 @dataclass
 class IterStatsSummary:
-    # Time spent in `ray.wait()`, in seconds
-    wait_time: Timer
     # Time spent in `ray.get()`, in seconds
     get_time: Timer
-    # Time spent in `batcher.next_batch()`, in seconds
+    # Time spent in batch building, in seconds
     next_time: Timer
     # Time spent in `_format_batch_()`, in seconds
     format_time: Timer
+    # Time spent in collate fn, in seconds
+    collate_time: Timer
+    # Total time user thread is blocked by iter_batches
+    block_time: Timer
     # Time spent in user code, in seconds
     user_time: Timer
     # Total time taken by Dataset iterator, in seconds
@@ -649,17 +652,20 @@ class IterStatsSummary:
             or self.get_time.get()
         ):
             out += "\nDataset iterator time breakdown:\n"
-            out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
-            out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
+            out += "* Total time user code is blocked: {}\n".format(fmt(self.block_time.get()))
+            out += "* Total time in user code: {}\n".format(fmt(self.user_time.get()))
+            out += "* Total time overall: {}\n".format(fmt(self.total_time.get()))
             out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
             out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
             out += "* Num blocks unknown location: {}\n".format(
                 self.iter_unknown_location
             )
-            out += "* In next_batch(): {}\n".format(fmt(self.next_time.get()))
-            out += "* In format_batch(): {}\n".format(fmt(self.format_time.get()))
-            out += "* In user code: {}\n".format(fmt(self.user_time.get()))
-            out += "* Total time: {}\n".format(fmt(self.total_time.get()))
+            out += "* Batch iteration time breakdown:\n"
+            out += "    * In ray.get(): {}\n".format(fmt(self.get_time.get()))
+            out += "    * In batch creation: {}\n".format(fmt(self.next_time.get()))
+            out += "    * In batch formatting: {}\n".format(fmt(self.format_time.get()))
+            out += "    * In collate_fn: {}\n".format(fmt(self.collate_time.get()))
+            
         return out
 
 
