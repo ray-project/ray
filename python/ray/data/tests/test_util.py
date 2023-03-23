@@ -5,7 +5,7 @@ import numpy as np
 from ray.data._internal.util import _check_pyarrow_version, _split_list
 from ray.data._internal.memory_tracing import (
     trace_allocation,
-    trace_deallocation_for_batch,
+    trace_deallocation,
     leak_report,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
@@ -51,8 +51,8 @@ def test_memory_tracing(enabled):
     trace_allocation(ref1, "test1")
     trace_allocation(ref2, "test2")
     trace_allocation(ref3, "test5")
-    trace_deallocation_for_batch(ref1, "test3", free=False)
-    trace_deallocation_for_batch(ref2, "test4", free=True)
+    trace_deallocation(ref1, "test3", free=False)
+    trace_deallocation(ref2, "test4", free=True)
     ray.get(ref1)
     with pytest.raises(ray.exceptions.ObjectFreedError):
         ray.get(ref2)

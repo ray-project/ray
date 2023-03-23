@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Un
 
 import ray
 from ray.data._internal.logical.interfaces import Operator
-from ray.data._internal.memory_tracing import trace_deallocation_for_batch
+from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
@@ -78,9 +78,7 @@ class RefBundle:
         """
         should_free = self.owns_blocks and DatasetContext.get_current().eager_free
         for b in self.blocks:
-            trace_deallocation_for_batch(
-                b[0], "RefBundle.destroy_if_owned", free=should_free
-            )
+            trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=should_free)
         return self.size_bytes() if should_free else 0
 
     def get_cached_location(self) -> Optional[NodeIdStr]:
