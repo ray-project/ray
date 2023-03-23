@@ -20,6 +20,7 @@ import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import DialogWithTitle from "../common/DialogWithTitle";
 import { DurationText } from "../common/DurationText";
+import { ActorLink, NodeLink } from "../common/links";
 import rowStyles from "../common/RowStyles";
 import { Task } from "../type/task";
 import { useFilter } from "../util/hook";
@@ -259,7 +260,7 @@ const TaskTable = ({
                       arrow
                       interactive
                     >
-                      <div>{node_id ? node_id : "-"}</div>
+                      {node_id ? <NodeLink nodeId={node_id} /> : <div>-</div>}
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
@@ -269,7 +270,11 @@ const TaskTable = ({
                       arrow
                       interactive
                     >
-                      <div>{actor_id ? actor_id : "-"}</div>
+                      {actor_id ? (
+                        <ActorLink actorId={actor_id} />
+                      ) : (
+                        <div>-</div>
+                      )}
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
