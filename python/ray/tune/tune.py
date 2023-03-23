@@ -791,7 +791,7 @@ def run(
         for exp in experiments:
             search_alg.add_configurations([exp])
     else:
-        logger.info(
+        logger.debug(
             "TrialRunner resumed, ignoring new add_experiment but "
             "updating trial resources."
         )
