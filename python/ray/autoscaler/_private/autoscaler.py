@@ -51,7 +51,6 @@ from ray.autoscaler._private.resource_demand_scheduler import (
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.util import (
     ConcurrentCounter,
-    LoadMetricsSummary,
     NodeCount,
     NodeID,
     NodeIP,

@@ -1915,8 +1915,6 @@ class AutoscalingTest(unittest.TestCase):
 
         print(f"Head ip: {head_ip}")
         summary = autoscaler.summary()
-        lm_summary = lm.summary()
-
         assert summary.active_nodes["m4.large"] == 2
         assert summary.active_nodes["empty_node"] == 1
         assert len(summary.active_nodes) == 2, summary.active_nodes
