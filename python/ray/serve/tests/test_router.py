@@ -31,39 +31,6 @@ def ray_instance():
     ray.shutdown()
 
 
-def mock_task_runner():
-    @ray.remote(num_cpus=0)
-    class TaskRunnerMock:
-        def __init__(self):
-            self.query = None
-            self.queries = []
-
-        @ray.method(num_returns=2)
-        async def handle_request(self, request_metadata, *args, **kwargs):
-            self.query = Query(args, kwargs, request_metadata)
-            self.queries.append(self.query)
-            return b"", "DONE"
-
-        def get_recent_call(self):
-            return self.query
-
-        def get_all_calls(self):
-            return self.queries
-
-        def clear_calls(self):
-            self.queries = []
-
-        async def reconfigure(self, user_config):
-            return
-
-    return TaskRunnerMock.remote()
-
-
-@pytest.fixture
-def task_runner_mock_actor():
-    yield mock_task_runner()
-
-
 async def test_replica_set(ray_instance):
     signal = SignalActor.remote()
 
