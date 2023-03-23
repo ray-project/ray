@@ -472,7 +472,7 @@ class TorchMultiDistribution(Distribution):
         kl_list = [
             d.kl(o)
             for d, o in zip(
-                self._flat_child_distributions, other.flat_child_distributions
+                self._flat_child_distributions, other._flat_child_distributions
             )
         ]
         return sum(kl_list)
