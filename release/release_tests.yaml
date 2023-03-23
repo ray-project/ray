@@ -1321,17 +1321,16 @@
 
   frequency: nightly
   team: ml
+  env: gce
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_gce_4x8.yaml
+    cluster_compute: tpl_gcp_k8s_4x8.yaml
     autosuspend_mins: 60
 
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
-    type: client
-
     wait_for_nodes:
       num_nodes: 4
 
@@ -1358,6 +1357,29 @@
     timeout: 600
     script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
     type: client
+
+    wait_for_nodes:
+      num_nodes: 4
+
+  alert: tune_tests
+
+- name: tune_cloud_gce_ssh_sync
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+
+  stable: true
+  frequency: nightly
+  team: ml
+  env: gce
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_gce_4x8.yaml
+    autosuspend_mins: 60
+
+  run:
+    timeout: 600
+    script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
 
     wait_for_nodes:
       num_nodes: 4
@@ -1391,14 +1413,13 @@
 
   alert: tune_tests
 
-- name: tune_cloud_gce_ssh_sync
+- name: tune_cloud_gce_durable_upload
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
-
   stable: true
-
   frequency: nightly
   team: ml
+  env: gce
 
   cluster:
     cluster_env: app_config.yaml
@@ -1407,9 +1428,7 @@
 
   run:
     timeout: 600
-    script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
-    type: client
-
+    script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://tune-cloud-tests/durable_upload
     wait_for_nodes:
       num_nodes: 4
 
