@@ -1,11 +1,14 @@
 from collections import defaultdict
 from typing import Dict
 import pytest
+import sys
 import threading
 import time
 from ray._private.state_api_test_utils import verify_failed_task
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
+from ray._private import ray_constants
+
 import ray
 from ray.experimental.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
@@ -989,8 +992,137 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
     )
 
 
+def check_file(type, task_name, expected_log, expect_no_end=False):
+    """Check file of type = 'out'/'err'"""
+
+    def _read_file(filepath, start, end):
+        with open(filepath, "r") as f:
+            f.seek(start, 0)
+            if end is None:
+                return f.read()
+            return f.read(end - start)
+
+    tasks = list_tasks(filters=[("name", "=", f"{task_name}")], detail=True)
+    assert len(tasks) == 1
+    task = tasks[0]
+    assert task["task_log_info"] is not None
+    log_info = task["task_log_info"]
+
+    file = log_info.get(f"std{type}_file", None)
+    start_offset = log_info.get(f"std{type}_start", None)
+    end_offset = log_info.get(f"std{type}_end", None)
+    if not expect_no_end:
+        assert end_offset >= start_offset
+    else:
+        assert end_offset is None
+    assert start_offset > 0, "offsets should be > 0 with magical log prefix"
+    actual_log = _read_file(file, start_offset, end_offset)
+    assert actual_log == expected_log
+
+
+def test_task_logs_info_basic(shutdown_only):
+    """Test tasks (normal tasks/actor tasks) execution logging
+    to files have the correct task log info
+    """
+    ray.init(num_cpus=1)
+
+    def do_print(x):
+        out_msg = ""
+        err_msg = ""
+        for j in range(3):
+            out_msg += f"this is log line {j} to stdout from {x}\n"
+        print(out_msg, end="", file=sys.stdout)
+
+        for j in range(3):
+            err_msg += f"this is log line {j} to stderr from {x}\n"
+        print(err_msg, end="", file=sys.stderr)
+        return out_msg, err_msg
+
+    @ray.remote
+    class Actor:
+        def print(self, x):
+            return do_print(x)
+
+    @ray.remote
+    def task_print(x):
+        return do_print(x)
+
+    a = Actor.remote()
+    expected_logs = {}
+    for j in range(3):
+        exp_actor_out, exp_actor_err = ray.get(
+            a.print.options(name=f"actor-task-{j}").remote(f"actor-task-{j}")
+        )
+        expected_logs[f"actor-task-{j}-out"] = exp_actor_out
+        expected_logs[f"actor-task-{j}-err"] = exp_actor_err
+
+    for j in range(3):
+        exp_task_out, exp_task_err = ray.get(
+            task_print.options(name=f"normal-task-{j}").remote(f"normal-task-{j}")
+        )
+        expected_logs[f"normal-task-{j}-out"] = exp_task_out
+        expected_logs[f"normal-task-{j}-err"] = exp_task_err
+
+    def verify():
+        # verify logs
+        for j in range(3):
+            check_file("out", f"normal-task-{j}", expected_logs[f"normal-task-{j}-out"])
+            check_file("err", f"normal-task-{j}", expected_logs[f"normal-task-{j}-err"])
+            check_file("out", f"actor-task-{j}", expected_logs[f"actor-task-{j}-out"])
+            check_file("err", f"actor-task-{j}", expected_logs[f"actor-task-{j}-err"])
+            return True
+
+    wait_for_condition(verify)
+
+
+def test_task_logs_info_disabled(shutdown_only, monkeypatch):
+    """Test when redirect disabled, no task log info is available
+    due to missing log file
+    """
+    with monkeypatch.context() as m:
+        m.setenv(ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE, "1")
+
+        ray.init(num_cpus=1)
+
+        @ray.remote
+        def f():
+            print("hi")
+
+        ray.get(f.remote())
+
+        def verify():
+            tasks = list_tasks()
+
+            assert len(tasks) == 1
+            assert tasks[0].get("task_log_info") is None
+            return True
+
+        wait_for_condition(verify)
+
+
+def test_task_logs_info_running_task(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def do_print_sleep(out_msg, err_msg):
+        print(out_msg, end="", file=sys.stdout)
+        print(err_msg, end="", file=sys.stderr)
+        time.sleep(999)
+
+    err_msg = "this is log line to stderr before sleeping\n"
+    out_msg = "this is log line to stdout before sleeping\n"
+    task_name = "log-running-task"
+    do_print_sleep.options(name=task_name).remote(out_msg, err_msg)
+
+    def verify():
+        check_file("err", task_name, err_msg, expect_no_end=True)
+        check_file("out", task_name, out_msg, expect_no_end=True)
+        return True
+
+    wait_for_condition(verify)
+
+
 if __name__ == "__main__":
-    import sys
     import os
 
     if os.environ.get("PARALLEL_CI"):
