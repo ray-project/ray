@@ -47,19 +47,19 @@ class TrainingFailedError(RuntimeError):
 
     _RESTORE_MSG = (
         "The Ray Train run failed. Please inspect the previous error messages for a "
-        "cause. After fixing the issue, you can restart the run from scratch or "
-        "continue this run. To continue this run, you can use "
+        "cause. After fixing the issue (assuming that the error is not caused by "
+        "your own application logic, but rather an error such as OOM), you can restart "
+        "the run from scratch or continue this run.\n"
+        "To continue this run, you can use: "
         '`trainer = {trainer_cls_name}.restore("{path}")`.'
     )
 
     _FAILURE_CONFIG_MSG = (
-        "To start a new run that will retry on trial failures, set "
+        "To start a new run that will retry on training failures, set "
         "`air.RunConfig(failure_config=air.FailureConfig(max_failures))` "
-        "in the Trainer's run_config with `max_failures > 0` or `max_failures = 1` "
+        "in the Trainer's `run_config` with `max_failures > 0`, or `max_failures = 1` "
         "for unlimited retries."
     )
-
-    pass
 
 
 @DeveloperAPI
@@ -593,13 +593,13 @@ class BaseTrainer(abc.ABC):
         try:
             result_grid = tuner.fit()
         except TuneError as e:
-            # Catch any `TuneError`s propagated from the underlying `Tuner.fit` call
-            #   -> This includes driver errors such as errors during callbacks.
+            # Catch any `TuneError`s raised by the `Tuner.fit` call.
+            # Unwrap the `TuneError` if needed.
+            parent_error = e.__cause__ or e
+
             # Raise it to the user as a `TrainingFailedError` with a message to restore.
-            if e.__cause__:
-                raise TrainingFailedError(restore_msg) from e.__cause__
-            else:
-                raise TrainingFailedError(restore_msg) from e
+            raise TrainingFailedError(restore_msg) from parent_error
+        # Other exceptions get passed through directly (ex: on `fail_fast='raise'`)
 
         assert len(result_grid) == 1
         result = result_grid[0]
