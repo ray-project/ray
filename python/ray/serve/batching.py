@@ -231,7 +231,7 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
         >>> from ray import serve
         >>> @serve.batch(max_batch_size=50, batch_wait_timeout_s=0.5) # doctest: +SKIP
         ... async def handle_batch(batch: List[str]): # doctest: +SKIP
-        ...     return [s.lowerer() for s in batch] # doctest: +SKIP
+        ...     return [s.lower() for s in batch] # doctest: +SKIP
         >>> async def handle_single(s: str): # doctest: +SKIP
         ...     # Returns s.lower().
         ...     return await handle_batch(s) # doctest: +SKIP
