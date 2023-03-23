@@ -15,10 +15,12 @@ import multiprocessing
 import json
 import sys
 import logging
+from urllib.parse import urlparse
 from typing import Optional, List, Tuple
 
 OUTPUT_JSON_FILENAME = "output.json"
 AWS_CLI_INSTALLED = False
+GSUTIL_CLI_INSTALLED=False
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = 124  # same as bash timeout
 
@@ -51,34 +53,54 @@ def exponential_backoff_retry(
             time.sleep(retry_delay_s)
             retry_delay_s *= 2
 
-
-def run_aws_cp(source: str, target: str):
+def install_aws_cli():
     global AWS_CLI_INSTALLED
+    if not AWS_CLI_INSTALLED:
+        subprocess.run(["pip", "install", "-q", "awscli"], check=True)
+        AWS_CLI_INSTALLED = True
 
+def install_gsutil_cli():
+    global GSUTIL_CLI_INSTALLED
+    if not GSUTIL_CLI_INSTALLED:
+        subprocess.run(["pip", "install", "-q", "gsutil"], check=True)
+        AWS_CLI_INSTALLED = True
+
+def run_storage_cp(source: str, target: str):
     if not source or not target:
         return False
 
     if not Path(source).exists():
-        logger.error(f"Couldn't upload to s3: '{source}' does not exist.")
+        logger.error(f"Couldn't upload to cloud storage: '{source}' does not exist.")
         return False
 
-    if not AWS_CLI_INSTALLED:
-        # Install awscli for uploading to s3
-        subprocess.run(["pip", "install", "-q", "awscli"], check=True)
-        AWS_CLI_INSTALLED = True
+    storage_service = urlparse(target).scheme
+    cp_cmd_args = []
+    if storage_service == "s3":
+        install_aws_cli()
+        cp_cmd_args = [
+            "aws",
+            "s3",
+            "cp",
+            source,
+            target,
+            "--acl",
+            "bucket-owner-full-control",
+        ]
+    elif storage_service == "gs":
+        install_gsutil_cli()
+        cp_cmd_args = [
+            "gsutil",
+            "cp",
+            source,
+            target,
+        ]
+    else:
+        raise Exception(f'Not supporting storage service: {storage_service}')
 
     try:
         exponential_backoff_retry(
             lambda: subprocess.run(
-                [
-                    "aws",
-                    "s3",
-                    "cp",
-                    source,
-                    target,
-                    "--acl",
-                    "bucket-owner-full-control",
-                ],
+                cp_cmd_args,
                 timeout=AWS_CP_TIMEOUT,
                 check=True,
             ),
@@ -279,7 +301,7 @@ def main(
             )
 
         # Upload results.json
-        uploaded_results = run_aws_cp(
+        uploaded_results = run_storage_cp(
             os.environ.get("TEST_OUTPUT_JSON", None), results_s3_uri
         )
 
@@ -287,11 +309,11 @@ def main(
         collected_metrics = collect_metrics(workload_time_taken)
         if collected_metrics:
             # Upload prometheus metrics
-            uploaded_metrics = run_aws_cp(
+            uploaded_metrics = run_storage_cp(
                 os.environ.get("METRICS_OUTPUT_JSON", None), metrics_s3_uri
             )
 
-        uploaded_artifact = run_aws_cp(
+        uploaded_artifact = run_storage_cp(
             artifact_path,
             os.path.join(upload_s3_uri, os.environ["USER_GENERATED_ARTIFACT"])
             if "USER_GENERATED_ARTIFACT" in os.environ
@@ -322,7 +344,7 @@ def main(
         fp.write(output_json)
 
     # Upload output.json
-    run_aws_cp(str(output_json_file), output_s3_uri)
+    run_storage_cp(str(output_json_file), output_s3_uri)
 
     logger.info("### Finished ###")
     # This will be read by the AnyscaleJobRunner on the buildkite runner
