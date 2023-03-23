@@ -133,8 +133,8 @@ class TfCategorical(TfDistribution):
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
-        probs = self.probs if self.probs is not None else tf.nn.softmax(self.logits)
-        return tf.stop_gradient(self._dist.sample(sample_shape) - probs) + probs
+        # TODO(Kourosh): Find out how we can rsample here.
+        raise NotImplementedError
 
     @classmethod
     @override(Distribution)
@@ -315,7 +315,7 @@ class TfMultiCategorical(Distribution):
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
-        arr = [cat.sample() for cat in self._cats]
+        arr = [cat.rsample() for cat in self._cats]
         sample_ = tf.stack(arr, axis=1)
         return sample_
 

@@ -7,6 +7,7 @@ import gymnasium as gym
 import numpy as np
 from typing import Optional, List, Mapping, Iterable, Dict
 import tree
+from ray.rllib.utils.torch_utils import one_hot
 import abc
 
 
@@ -107,6 +108,8 @@ class TorchCategorical(TorchDistribution):
         ), "Exactly one out of `probs` and `logits` must be set!"
         self.probs = probs
         self.logits = logits
+        self.one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
+            probs=self.probs, logits=self.logits)
         super().__init__(probs=probs, logits=logits, temperature=temperature)
 
     @override(TorchDistribution)
@@ -121,6 +124,7 @@ class TorchCategorical(TorchDistribution):
             _logits = logits / temperature
         else:
             _logits = logits
+        self.temperature = temperature
         return torch.distributions.categorical.Categorical(probs, _logits)
 
     @staticmethod
@@ -131,8 +135,8 @@ class TorchCategorical(TorchDistribution):
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
-        probs = self.probs if self.probs is not None else torch.softmax(self.logits)
-        return (self._dist.sample(sample_shape) - probs).detach() + probs
+        # TODO(Kourosh): Find out how we can rsample here.
+        raise NotImplementedError
 
     @classmethod
     @override(Distribution)
@@ -311,7 +315,7 @@ class TorchMultiCategorical(Distribution):
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
-        arr = [cat.sample() for cat in self._cats]
+        arr = [cat.rsample() for cat in self._cats]
         sample_ = torch.stack(arr, dim=1)
         return sample_
 
