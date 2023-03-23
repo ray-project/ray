@@ -148,7 +148,7 @@ SERVE_GRAFANA_PANELS = [
     Panel(
         id=13,
         title="QPS per deployment",
-        description='QPS for each deployment.',
+        description="QPS for each deployment.",
         unit="qps",
         targets=[
             Target(
@@ -161,7 +161,7 @@ SERVE_GRAFANA_PANELS = [
     Panel(
         id=14,
         title="Error QPS per deployment",
-        description='Error QPS for each deplyoment.',
+        description="Error QPS for each deplyoment.",
         unit="qps",
         targets=[
             Target(
@@ -174,7 +174,7 @@ SERVE_GRAFANA_PANELS = [
     Panel(
         id=9,
         title="P50 latency per deployment",
-        description='P50 latency per deployment.',
+        description="P50 latency per deployment.",
         unit="ms",
         targets=[
             Target(
@@ -193,7 +193,7 @@ SERVE_GRAFANA_PANELS = [
     Panel(
         id=10,
         title="P90 latency per deployment",
-        description='P90 latency per deployment.',
+        description="P90 latency per deployment.",
         unit="ms",
         targets=[
             Target(
@@ -212,7 +212,7 @@ SERVE_GRAFANA_PANELS = [
     Panel(
         id=11,
         title="P99 latency per deployment",
-        description='P99 latency per deployment.',
+        description="P99 latency per deployment.",
         unit="ms",
         targets=[
             Target(
@@ -231,11 +231,11 @@ SERVE_GRAFANA_PANELS = [
     Panel(
         id=3,
         title="Queue size per deployment",
-        description="Number of requests queued per deployment. Ignores \"Route\" variable.",
+        description='Number of requests queued per deployment. Ignores "Route" variable.',
         unit="requests",
         targets=[
             Target(
-                expr='sum(ray_serve_deployment_queued_queries{{{global_filters}}}) by (deployment)',
+                expr="sum(ray_serve_deployment_queued_queries{{{global_filters}}}) by (deployment)",
                 legend="{{deployment}}",
             ),
         ],
