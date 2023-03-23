@@ -427,7 +427,9 @@ def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
     for result in result_grid:
         assert result._local_path.startswith(result_grid._local_path)
         assert result._local_path == result.path
+        assert result.path.startswith(result_grid.experiment_path)
         assert result.checkpoint._local_path.startswith(result._local_path)
+        assert result.checkpoint.path.startswith(result.path)
 
 
 def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
@@ -460,7 +462,9 @@ def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
 
     # Check .remote_path property
     assert results._remote_path.startswith("s3://bucket")
+    assert results.experiment_path.startswith("s3://bucket")
     assert best_checkpoint.uri.startswith(results._remote_path)
+    assert best_checkpoint.path.startswith(results._remote_path)
 
     # Upload path, so path should point to local_path
     assert results._remote_path == results.experiment_path
@@ -470,7 +474,9 @@ def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
         assert result._local_path.startswith(results._local_path)
         assert result._remote_path.startswith(results._remote_path)
         assert result._remote_path == result.path
+        assert result.path.startswith(results.experiment_path)
         assert result.checkpoint.uri.startswith(result._remote_path)
+        assert result.checkpoint.path.startswith(result.path)
 
 
 if __name__ == "__main__":
