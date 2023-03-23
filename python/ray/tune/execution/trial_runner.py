@@ -147,20 +147,6 @@ class _TuneControllerBase:
 
         self._sync_config = sync_config or SyncConfig()
 
-        if local_checkpoint_dir:
-            if experiment_path:
-                raise ValueError(
-                    "Only one of `local_checkpoint_dir` or `experiment_path` "
-                    "can be passed to `TrialRunner()`."
-                )
-
-            warnings.warn(
-                "The `local_checkpoint_dir` argument is deprecated and will be "
-                "removed in the future. Use `experiment_path` instead."
-            )
-
-            experiment_path = local_checkpoint_dir
-
         # Rename for better code readability
         local_experiment_path, remote_experiment_path = _split_remote_local_path(
             experiment_path, None
