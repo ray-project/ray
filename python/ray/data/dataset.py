@@ -3711,9 +3711,13 @@ class Dataset(Generic[T]):
         Returns:
             A list of remote Arrow tables created from this dataset.
         """
-        blocks: List[ObjectRef[Block]] = self.get_internal_block_refs()
+        import pyarrow as pa
 
-        if self.dataset_format() == BlockFormat.ARROW:
+        blocks: List[ObjectRef["pyarrow.Table"]] = self.get_internal_block_refs()
+        # Schema is safe to call since we have already triggered execution with
+        # get_internal_block_refs.
+        schema = self.schema(fetch_if_missing=True)
+        if isinstance(schema, pa.Schema):
             # Zero-copy path.
             return blocks
 
@@ -4310,6 +4314,7 @@ class Dataset(Generic[T]):
         pattern="for the first block.",
         insert_after=True,
     )
+    @Deprecated(message="`dataset_format` is deprecated for streaming execution.")
     def dataset_format(self) -> BlockFormat:
         """The format of the dataset's underlying data blocks. Possible values
         are: "arrow", "pandas" and "simple".
@@ -4317,6 +4322,14 @@ class Dataset(Generic[T]):
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
         """
+        context = DatasetContext.get_current()
+        if context.use_streaming_executor:
+            raise DeprecationWarning(
+                "`dataset_format` is deprecated for streaming execution. To use "
+                "`dataset_format`, you must explicitly enable bulk execution by "
+                "setting `use_streaming_executor` to False in the `DatasetContext`"
+            )
+
         # We need schema to properly validate, so synchronously
         # fetch it if necessary.
         schema = self.schema(fetch_if_missing=True)
@@ -4364,18 +4377,10 @@ class Dataset(Generic[T]):
         """Build set of aggregations for applying a single aggregation to
         multiple columns.
         """
-
         # Expand None into an aggregation for each column.
         if on is None:
-            try:
-                dataset_format = self.dataset_format()
-            except ValueError:
-                dataset_format = None
-            if dataset_format in [BlockFormat.ARROW, BlockFormat.PANDAS]:
-                # This should be cached from the .dataset_format() check, so we
-                # don't fetch and we assert that the schema is not None.
-                schema = self.schema(fetch_if_missing=False)
-                assert schema is not None
+            schema = self.schema(fetch_if_missing=True)
+            if schema is not None and not isinstance(schema, type):
                 if not skip_cols:
                     skip_cols = []
                 if len(schema.names) > 0:

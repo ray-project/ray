@@ -3745,6 +3745,11 @@ void CoreWorker::SetActorTitle(const std::string &title) {
   actor_title_ = title;
 }
 
+void CoreWorker::SetActorReprName(const std::string &repr_name) {
+  RAY_CHECK(direct_task_receiver_ != nullptr);
+  direct_task_receiver_->SetActorReprName(repr_name);
+}
+
 rpc::JobConfig CoreWorker::GetJobConfig() const {
   return worker_context_.GetCurrentJobConfig();
 }
@@ -3821,6 +3826,50 @@ std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
     return_ids[i] = ObjectID::FromIndex(task_id, i + 1);
   }
   return return_ids;
+}
+
+void CoreWorker::RecordTaskLogStart(const std::string &stdout_path,
+                                    const std::string &stderr_path,
+                                    int64_t stdout_start_offset,
+                                    int64_t stderr_start_offset) const {
+  if (options_.is_local_mode) {
+    return;
+  }
+  rpc::TaskLogInfo task_log_info;
+  task_log_info.set_stdout_file(stdout_path);
+  task_log_info.set_stderr_file(stderr_path);
+  task_log_info.set_stdout_start(stdout_start_offset);
+  task_log_info.set_stderr_start(stderr_start_offset);
+
+  auto current_task = worker_context_.GetCurrentTask();
+  RAY_CHECK(current_task)
+      << "We should have set the current task spec while executing the task.";
+  task_manager_->RecordTaskStatusEvent(
+      current_task->AttemptNumber(),
+      *current_task,
+      rpc::TaskStatus::NIL,
+      /* include_task_info */ false,
+      worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
+}
+
+void CoreWorker::RecordTaskLogEnd(int64_t stdout_end_offset,
+                                  int64_t stderr_end_offset) const {
+  if (options_.is_local_mode) {
+    return;
+  }
+  rpc::TaskLogInfo task_log_info;
+  task_log_info.set_stdout_end(stdout_end_offset);
+  task_log_info.set_stderr_end(stderr_end_offset);
+
+  auto current_task = worker_context_.GetCurrentTask();
+  RAY_CHECK(current_task)
+      << "We should have set the current task spec before executing the task.";
+  task_manager_->RecordTaskStatusEvent(
+      current_task->AttemptNumber(),
+      *current_task,
+      rpc::TaskStatus::NIL,
+      /* include_task_info */ false,
+      worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
 }
 
 ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(
