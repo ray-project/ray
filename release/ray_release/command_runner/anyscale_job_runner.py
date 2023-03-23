@@ -274,7 +274,7 @@ class AnyscaleJobRunner(JobRunner):
         try:
             tmpfile = tempfile.mkstemp(suffix=".json")[1]
             logger.info(tmpfile)
-            self.file_manager.download_from_s3(
+            self.file_manager.download_from_cloud(
                 path, tmpfile, delete_after_download=True
             )
 
@@ -329,7 +329,7 @@ class AnyscaleJobRunner(JobRunner):
         # we use the same artifact file name and extension specified by user
         # and put it under `self._DEFAULT_ARTIFACTS_DIR`.
         artifact_file_name = os.path.basename(self._artifact_path)
-        self.file_manager.download_from_s3(
+        self.file_manager.download_from_cloud(
             join_s3_paths(self.path_in_bucket, self._USER_GENERATED_ARTIFACT),
             os.path.join(self._DEFAULT_ARTIFACTS_DIR, artifact_file_name),
         )
