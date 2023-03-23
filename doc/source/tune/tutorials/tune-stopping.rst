@@ -185,4 +185,4 @@ and early stopping schedulers.
 See the following resources for more information:
 
 - :ref:`Tune Stopper API reference <tune-stoppers>`
-- For an experiment that was manually interrupted or the cluster dies unexpectedly while trials are still running, it's possible to resume the experiment. See :ref:`tune-fault-tolerance`.
+- For an experiment that was manually interrupted or the cluster dies unexpectedly while trials are still running, it's possible to resume the experiment. See :ref:`tune-fault-tolerance-ref`.

@@ -1,4 +1,4 @@
-.. _tune-fault-tolerance:
+.. _tune-fault-tolerance-ref:
 
 How to Enable Fault Tolerance in Ray Tune
 =========================================
