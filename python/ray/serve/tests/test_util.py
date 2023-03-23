@@ -1,12 +1,13 @@
-import json
 import os
-import subprocess
 import sys
+import time
+import json
 import tempfile
+import subprocess
 from copy import deepcopy
 
-import numpy as np
 import pytest
+import numpy as np
 from fastapi.encoders import jsonable_encoder
 
 import ray
@@ -20,6 +21,7 @@ from ray.serve._private.utils import (
     msgpack_deserialize,
     snake_to_camel_case,
     dict_keys_snake_to_camel_case,
+    ExpiringSet,
 )
 
 
@@ -529,6 +531,46 @@ class TestDictKeysSnakeToCamelCase:
         camel_dict = dict_keys_snake_to_camel_case(snake_dict)
         assert camel_dict["list"] is list1
         assert camel_dict["nested"]["list2"] is list2
+
+
+class TestExpiringSet:
+    def test_basic(self):
+        """Item should be available before the deadline and gone afterwards."""
+
+        exp_set = ExpiringSet(0.1)
+        exp_set.add("hello")
+        assert "hello" in exp_set
+        time.sleep(0.1)
+        assert "hello" not in exp_set
+
+    def test_update_deadline(self):
+        """An item's deadline should be reset when it's readded to the set."""
+
+        exp_set = ExpiringSet(0.1)
+        exp_set.add("hello")
+        assert "hello" in exp_set
+        time.sleep(0.02)
+        exp_set.add("hello")
+        time.sleep(0.09)
+        assert "hello" in exp_set
+        time.sleep(0.02)
+        assert "hello" not in exp_set
+
+    def test_parameter_validation(self):
+        """An ExpiringSet's lifespan should be a positive number."""
+
+        ExpiringSet(1)
+        ExpiringSet(0.000005)
+        ExpiringSet(1000000000)
+
+        with pytest.raises(ValueError):
+            ExpiringSet("hello")
+        with pytest.raises(ValueError):
+            ExpiringSet("55")
+        with pytest.raises(ValueError):
+            ExpiringSet(0)
+        with pytest.raises(ValueError):
+            ExpiringSet(-1)
 
 
 if __name__ == "__main__":

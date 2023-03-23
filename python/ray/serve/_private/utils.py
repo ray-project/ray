@@ -6,6 +6,7 @@ import pickle
 import random
 import string
 import time
+import numbers
 import traceback
 from enum import Enum
 from functools import wraps
@@ -506,13 +507,24 @@ class ExpiringSet:
         lifespan_s: The duration in seconds that any item in the set is valid.
     """
 
-    def __init__(self, lifespan_s: int):
+    def __init__(self, lifespan_s: float):
+        if not isinstance(lifespan_s, numbers.Number):
+            raise ValueError(
+                "ExpiringSet expects lifespan_s to be a number. Got value of "
+                f'type "{type(lifespan_s)}" instead: {lifespan_s}.'
+            )
+        if lifespan_s <= 0:
+            raise ValueError(
+                "ExpiringSet expects lifespan_s to be greater than 0. Got "
+                f"value of {lifespan_s} instead."
+            )
+
         self.content_deadlines = dict()
         self.lifespan_s = lifespan_s
 
     def add(self, item: Any) -> float:
         deadline = time.time() + self.lifespan_s
-        self.contents[item] = deadline
+        self.content_deadlines[item] = deadline
         return deadline
 
     def __contains__(self, item: Any):
