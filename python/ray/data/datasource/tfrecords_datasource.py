@@ -60,7 +60,7 @@ class TFRecordDatasource(FileBasedDatasource):
                     raise ValueError(
                         "`TFRecordDatasource` failed to parse `tf.train.Example` "
                         f"record in '{path}'. This error can occur if your TFRecord "
-                        f"file contains a message type other than `tf.train.Example`: {e}"
+                        f"file contains a message type other than `tf.train.Example`: {e}"  # noqa: E501
                     )
                 record_dict = _convert_example_to_dict(example, tf_schema)
                 for col_name, col_value in record_dict.items():
