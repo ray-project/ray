@@ -356,7 +356,7 @@ class TuneController(_TuneControllerBase):
 
     def _remove_actor(self, tracked_actor: TrackedActor, kill: bool = False):
         # Trainable.stop() is needed here for graceful shutdown.
-        # Todo: fully remove actor only after this is resolved
+        # Todo: Consider forceful shutdown after a timeout
         self._actor_manager.schedule_actor_task(tracked_actor, "stop")
         self._actor_manager.remove_actor(tracked_actor, kill=kill)
 
@@ -784,11 +784,13 @@ class TuneController(_TuneControllerBase):
             logger.debug(f"Will not STOP trial actor as it is not live: {trial}")
             return
 
+        tracked_actor = self._trial_to_actor[trial]
+
+        self._actor_manager.clear_actor_task_futures(tracked_actor=tracked_actor)
+
         if not exception and self._maybe_cache_trial_actor(trial):
             # Trial runner has been cached
             return
-
-        tracked_actor = self._trial_to_actor[trial]
 
         logger.debug(f"Terminating actor for trial {trial}: {tracked_actor}")
         self._stopping_trials.add(trial)
