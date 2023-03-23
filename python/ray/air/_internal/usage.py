@@ -35,6 +35,11 @@ TUNE_SEARCHERS = {
     "ZOOptSearch",
 }
 
+TUNE_SEARCHER_WRAPPER = {
+    "ConcurrencyLimiter",
+    "Repeater",
+}
+
 TUNE_SCHEDULERS = {
     "FIFOScheduler",
     "AsyncHyperBandScheduler",
@@ -87,8 +92,12 @@ def tag_searcher(searcher: Union["BasicVariantGenerator", "Searcher"]):
         # as using BasicVariantGenerator.
         record_extra_usage_tag(TagKey.TUNE_SEARCHER, "BasicVariantGenerator")
     elif isinstance(searcher, Searcher):
-        searcher_name = _find_class_name(searcher, "ray.tune.search", TUNE_SEARCHERS)
-        record_extra_usage_tag(TagKey.TUNE_SEARCHER, searcher_name)
+        searcher_name = _find_class_name(
+            searcher, "ray.tune.search", TUNE_SEARCHERS.union(TUNE_SEARCHER_WRAPPER)
+        )
+        if searcher_name in TUNE_SEARCHER_WRAPPER:
+            # ignore to avoid double tagging with wrapper name.
+            return
     else:
         assert False, (
             "Not expecting a non-BasicVariantGenerator, "
