@@ -72,7 +72,12 @@ def execute_to_legacy_bundle_iterator(
     Returns:
         The output as a bundle iterator.
     """
-    dag, stats = _get_execution_dag(executor, plan, allow_clear_input_blocks)
+    dag, stats = _get_execution_dag(
+        executor,
+        plan,
+        allow_clear_input_blocks,
+        preserve_order=False,
+    )
     if dag_rewrite:
         dag = dag_rewrite(dag)
 
@@ -116,7 +121,7 @@ def _get_execution_dag(
     executor: Executor,
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
-    preserve_order: bool = False,
+    preserve_order: bool,
 ) -> Tuple[PhysicalOperator, DatasetStats]:
     """Get the physical operators DAG from a plan."""
     # Record usage of logical operators if available.
