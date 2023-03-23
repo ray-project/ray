@@ -6,11 +6,10 @@ from dataclasses import dataclass, field, fields
 from enum import Enum, unique
 from typing import Dict, List, Optional, Set, Tuple, Union
 
-import ray.core.generated.common_pb2 as common_pb2
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
-from ray.core.generated.common_pb2 import TaskType
-from ray.core.generated.gcs_pb2 import TaskEvents
+from ray.core.generated.common_pb2 import TaskStatus, TaskType
+from ray.core.generated.gcs_pb2 import TaskEvents, TaskLogInfo
 from ray.dashboard.modules.job.common import JobInfo
 from ray.experimental.state.custom_types import (
     TypeActorStatus,
@@ -568,6 +567,9 @@ class TaskState(StateSchema):
     start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
     #: The time when the task is finished or failed. A Unix timestamp in ms.
     end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    #: The task logs info, e.g. offset into the worker log file when the task
+    #: starts/finishes.
+    task_log_info: Optional[TaskLogInfo] = state_column(detail=True, filterable=False)
     #: Task error type.
     error_type: Optional[str] = state_column(detail=False, filterable=False)
 
@@ -1372,7 +1374,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     task_state["end_time_ms"] = None
     events = []
 
-    for state in common_pb2.TaskStatus.keys():
+    for state in TaskStatus.keys():
         key = f"{state.lower()}_ts"
         if key in state_updates:
             # timestamp is recorded as nanosecond from the backend.
@@ -1395,7 +1397,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     if len(events) > 0:
         latest_state = events[-1]["state"]
     else:
-        latest_state = common_pb2.TaskStatus.Name(common_pb2.NIL)
+        latest_state = "NIL"
     task_state["state"] = latest_state
 
     return task_state
