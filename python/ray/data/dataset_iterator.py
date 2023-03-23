@@ -79,7 +79,6 @@ class DatasetIterator(abc.ABC):
         """
         raise NotImplementedError
 
-    @abc.abstractmethod
     def iter_batches(
         self,
         *,

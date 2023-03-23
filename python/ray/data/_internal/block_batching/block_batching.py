@@ -78,7 +78,7 @@ def batch_block_refs(
     Returns:
         An iterator over record batches.
     """
-
+    stats._legacy_iter_batches = True
     context = DatasetContext.get_current()
 
     if (
@@ -248,15 +248,13 @@ def _prefetch_blocks(
     sliding_window = collections.deque(
         itertools.islice(block_ref_iter, window_size), maxlen=window_size
     )
-    with stats.iter_wait_s.timer() if stats else nullcontext():
-        prefetcher.prefetch_blocks(list(sliding_window))
+    prefetcher.prefetch_blocks(list(sliding_window))
 
     while sliding_window:
         block_ref = sliding_window.popleft()
         try:
             sliding_window.append(next(block_ref_iter))
-            with stats.iter_wait_s.timer() if stats else nullcontext():
-                prefetcher.prefetch_blocks(list(sliding_window))
+            prefetcher.prefetch_blocks(list(sliding_window))
         except StopIteration:
             pass
         yield block_ref
@@ -301,7 +299,7 @@ def _blocks_to_batches(
         batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
 
     def get_iter_next_batch_s_timer():
-        return stats.iter_next_batch_s.timer() if stats else nullcontext()
+        return stats.iter_create_batch_s.timer() if stats else nullcontext()
 
     for block in block_iter:
         batcher.add(block)
