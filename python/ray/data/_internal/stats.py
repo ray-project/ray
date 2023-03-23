@@ -46,6 +46,14 @@ class Timer:
         finally:
             self.add(time.perf_counter() - time_start)
 
+    @contextmanager
+    def thread_timer(self) -> None:
+        time_start = time.thread_time()
+        try:
+            yield
+        finally:
+            self.add(time.thread_time() - time_start)
+
     def add(self, value: float) -> None:
         self._value += value
         if value < self._min:

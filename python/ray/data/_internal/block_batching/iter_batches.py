@@ -403,7 +403,7 @@ def _resolve_logical_batch(
         misses += current_miss
         unknowns += current_unknown
 
-        with stats.iter_get_s.timer() if stats else nullcontext():
+        with stats.iter_get_s.thread_timer() if stats else nullcontext():
             logical_batch.resolve()
         yield logical_batch
 
@@ -433,7 +433,7 @@ def _construct_batch_from_logical_batch(
     """
 
     for logical_batch in resolved_logical_batch_iter:
-        with stats.iter_create_batch_s.timer() if stats else nullcontext():
+        with stats.iter_create_batch_s.thread_timer() if stats else nullcontext():
             output = DelegatingBlockBuilder()
             slice_indices = [[0, None] for _ in range(len(logical_batch.blocks))]
             if logical_batch.starting_block_idx > 0:
@@ -483,7 +483,7 @@ def _format_batches(
         An iterator over batch index and the formatted batch.
     """
     for batch in block_iter:
-        with stats.iter_format_batch_s.timer() if stats else nullcontext():
+        with stats.iter_format_batch_s.thread_timer() if stats else nullcontext():
             formatted_batch = BlockAccessor.for_block(batch.data).to_batch_format(
                 batch_format
             )
@@ -505,7 +505,7 @@ def _collate(
         stats: An optional stats object to record collation time.
     """
     for batch in batch_iter:
-        with stats.iter_collate_batch_s.timer() if stats else nullcontext():
+        with stats.iter_collate_batch_s.thread_timer() if stats else nullcontext():
             batch.data = collate_fn(batch.data)
         yield batch
 
