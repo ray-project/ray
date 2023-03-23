@@ -1,5 +1,6 @@
 import copy
 import time
+import traceback
 from collections import defaultdict
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Union, Tuple, Set
@@ -720,11 +721,14 @@ class TuneController(_TuneControllerBase):
                 try:
                     on_result(trial, *args, **kwargs)
                 except Exception as e:
-                    logger.error(
+                    logger.debug(
                         f"Error handling {method_name.upper()} result "
                         f"for trial {trial}: {e}"
                     )
-                    raise e
+                    if e is TuneError or self._fail_fast == self.RAISE:
+                        raise e
+                    else:
+                        raise TuneError(traceback.format_exc())
 
         if on_error:
 
@@ -737,11 +741,14 @@ class TuneController(_TuneControllerBase):
                 try:
                     on_error(trial, exception)
                 except Exception as e:
-                    logger.error(
-                        f"Error handling {method_name.upper()} error "
+                    logger.debug(
+                        f"Error handling {method_name.upper()} failure "
                         f"for trial {trial}: {e}"
                     )
-                    raise e
+                    if e is TuneError or self._fail_fast == self.RAISE:
+                        raise e
+                    else:
+                        raise TuneError(traceback.format_exc())
 
         logger.debug(f"Future {method_name.upper()} SCHEDULED for trial {trial}")
 

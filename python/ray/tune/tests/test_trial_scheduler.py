@@ -329,6 +329,9 @@ class _MockTrialRunner:
     def _launch_trial(self, trial):
         trial.status = Trial.RUNNING
 
+    def _set_trial_status(self, trial, status):
+        trial.status = status
+
 
 class HyperbandSuite(unittest.TestCase):
     def setUp(self):
