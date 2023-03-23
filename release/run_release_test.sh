@@ -30,13 +30,16 @@ RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-ray_release/scripts/run_release_test.py}
 RAY_TEST_REPO=${RAY_TEST_REPO-https://github.com/ray-project/ray.git}
 RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
+GOOGLE_APPLICATION_CREDENTIALS=`pwd`/release/clientLibraryConfig-aws-anyscale.json
+GOOGLE_CLOUD_PROJECT=anyscale-oss-ci
 
 # This is not a great idea if your OS is different to the one
 # used in the product clusters. However, we need this in CI as reloading
 # Ray within the python process does not work for protobuf changes.
 INSTALL_MATCHING_RAY=${BUILDKITE-false}
 
-export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
+export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR GOOGLE_APPLICATION_CREDENTIALS GOOGLE_CLOUD_PROJECT
+echo $GOOGLE_APPLICATION_CREDENTIALS
 
 if [ -z "${NO_INSTALL}" ]; then
   pip install --use-deprecated=legacy-resolver -q -r requirements.txt
