@@ -299,6 +299,8 @@ class TuneController(_TuneControllerBase):
         """
         super().add_trial(trial)
 
+        logger.debug(f"Adding trial {trial} with status {trial.status}")
+
         status_str_map = {
             Trial.PENDING: self._pending_trials,
             Trial.RUNNING: self._running_trials,
@@ -358,7 +360,8 @@ class TuneController(_TuneControllerBase):
     def _remove_actor(self, tracked_actor: TrackedActor, kill: bool = False):
         # Trainable.stop() is needed here for graceful shutdown.
         # Todo: Consider forceful shutdown after a timeout
-        self._actor_manager.schedule_actor_task(tracked_actor, "stop")
+        if self._actor_manager.is_actor_started(tracked_actor=tracked_actor):
+            self._actor_manager.schedule_actor_task(tracked_actor, "stop")
         self._actor_manager.remove_actor(tracked_actor, kill=kill)
 
     ###
@@ -648,6 +651,9 @@ class TuneController(_TuneControllerBase):
         )
 
         self._set_trial_status(trial, Trial.RUNNING)
+
+        self._mark_trial_to_checkpoint(trial)
+
         if not self._schedule_trial_restore(trial):
             self._schedule_trial_train(trial)
 
@@ -660,6 +666,8 @@ class TuneController(_TuneControllerBase):
         self._stopping_trials.discard(trial)
 
         trial.set_runner(None)
+
+        self._mark_trial_to_checkpoint(trial)
 
     def _actor_failed(self, tracked_actor: TrackedActor, exception: Exception):
         trial = self._actor_to_trial[tracked_actor]

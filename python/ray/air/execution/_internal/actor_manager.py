@@ -561,7 +561,7 @@ class RayActorManager:
         """
         if tracked_actor.actor_id in self._failed_actor_ids:
             logger.debug(
-                f"Tracked actor already failed, no need to remove: " f"{tracked_actor}"
+                f"Tracked actor already failed, no need to remove: {tracked_actor}"
             )
         elif tracked_actor in self._live_actors_to_ray_actors_resources:
             # Ray actor is running.
@@ -620,7 +620,10 @@ class RayActorManager:
         Args:
             tracked_actor: Tracked actor object.
         """
-        return tracked_actor in self._live_actors_to_ray_actors_resources
+        return (
+            tracked_actor in self._live_actors_to_ray_actors_resources
+            and tracked_actor.actor_id not in self._failed_actor_ids
+        )
 
     def get_actor_resources(
         self, tracked_actor: TrackedActor
