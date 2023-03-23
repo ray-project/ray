@@ -1,18 +1,19 @@
 import os
 import time
 import json
-
-
 from pytorch_lightning.loggers.csv_logs import CSVLogger
+
+import ray
 from ray.air.config import ScalingConfig
 from ray.train.lightning import LightningTrainer, LightningConfigBuilder
 
-from lightning_utils import MNISTClassifier, MNISTDataModule
+from lightning_test_utils import MNISTClassifier, MNISTDataModule
 
 
 if __name__ == "__main__":
-    start = time.time()
+    ray.init(address="auto", runtime_env={"working_dir": os.path.dirname(__file__)})
 
+    start = time.time()
     lightning_config = (
         LightningConfigBuilder()
         .module(MNISTClassifier, feature_dim=128, lr=0.001)

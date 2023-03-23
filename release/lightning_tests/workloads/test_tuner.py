@@ -4,13 +4,16 @@ import json
 from pytorch_lightning.loggers.csv_logs import CSVLogger
 
 import ray
+import ray.tune as tune
 from ray.air.config import CheckpointConfig, ScalingConfig
 from ray.train.lightning import LightningTrainer, LightningConfigBuilder
-import ray.tune as tune
 from ray.tune.schedulers import PopulationBasedTraining
-from lightning_utils import MNISTClassifier, MNISTDataModule
+
+from lightning_test_utils import MNISTClassifier, MNISTDataModule
 
 if __name__ == "__main__":
+    ray.init(address="auto", runtime_env={"working_dir": os.path.dirname(__file__)})
+
     start = time.time()
 
     lightning_config = (
