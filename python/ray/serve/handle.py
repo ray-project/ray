@@ -269,7 +269,9 @@ class RayServeHandle:
                 ``request.query_params``.
         """
 
-        result_ref, _ = await self._internal_remote(*args, **kwargs)
+        result_ref, _ = await self._craft_and_assign_request(
+            self.deployment_name, self.handle_options, args, kwargs
+        )
         return result_ref
 
     def embargo_replica(self, replica_tag):
@@ -336,7 +338,7 @@ class RayServeSyncHandle(RayServeHandle):
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
             coro, self.router._event_loop
         )
-        return future.result()
+        return future.result()[0]
 
     def __reduce__(self):
         serialized_data = {
