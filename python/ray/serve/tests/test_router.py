@@ -66,8 +66,8 @@ async def test_replica_set(ray_instance):
     # Send two queries. They should go through the router but blocked by signal
     # actors.
     query = Query([], {}, RequestMetadata("request-id", "endpoint"))
-    first_ref = await rs.assign_replica(query)
-    second_ref = await rs.assign_replica(query)
+    first_ref = (await rs.assign_replica(query))[0]
+    second_ref = (await rs.assign_replica(query))[0]
 
     # These should be blocked by signal actor.
     with pytest.raises(ray.exceptions.GetTimeoutError):
@@ -112,7 +112,7 @@ async def test_replica_set(ray_instance):
 
     # The third request should be unblocked and sent to first replica.
     # This meas we should be able to get the object ref.
-    third_ref = await third_ref_pending_task
+    third_ref = (await third_ref_pending_task)[0]
 
     # Now we got the object ref, let's get it result.
     await signal.send.remote()
