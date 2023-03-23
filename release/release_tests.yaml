@@ -2512,7 +2512,7 @@
 - name: runtime_env_gce_rte_many_tasks_actors
   group: Runtime env tests
   working_dir: runtime_env_tests
-
+  env: gce
   frequency: nightly
   team: serve
 
@@ -2551,7 +2551,7 @@
 - name: runtime_env_gce_wheel_urls
   group: Runtime env tests
   working_dir: runtime_env_tests
-
+  env: gce
   frequency: nightly
   team: serve
 
