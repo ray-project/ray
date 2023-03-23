@@ -3913,6 +3913,22 @@
     timeout: 2400
     script: python iter_tensor_batches_benchmark.py
 
+- name: iter_tensor_batches_benchmark_multi_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: multi_node_benchmark_compute_yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
+    script: python iter_tensor_batches_benchmark.py --data-size-gb=10
+
+
 
 - name: iter_batches_benchmark_single_node
   group: data-tests
