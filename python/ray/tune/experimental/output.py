@@ -532,7 +532,7 @@ class TuneRichReporter(TuneReporterBase):
 
         layout = rich.layout.Layout()
         layout.split(
-            rich.layout.Layout(name="basic_info", size=3),
+            rich.layout.Layout(name="basic_info", size=len(heartbeat_strs)),
             rich.layout.Layout(name="table", size=table_line_num),
         )
         basic_info_table = rich.table.Table.grid()
