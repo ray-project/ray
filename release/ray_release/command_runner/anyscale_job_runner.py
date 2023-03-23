@@ -63,8 +63,9 @@ class AnyscaleJobRunner(JobRunner):
         )
         # The root s3 bucket path. result, metric, artifact files
         # will be uploaded to under it on s3.
+        cloud_storage_provider = os.environ.get("ANYSCALE_CLOUD_STORAGE_PROVIDER", "s3")
         self.upload_path = join_s3_paths(
-            f"s3://{self.file_manager.bucket}", self.path_in_bucket
+            f"{cloud_storage_provider}://{self.file_manager.bucket}", self.path_in_bucket
         )
         self.output_json = "/tmp/output.json"
         self.prepare_commands = []
