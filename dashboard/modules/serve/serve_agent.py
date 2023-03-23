@@ -12,6 +12,7 @@ from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
 )
+from ray.serve._private.constants import MULTI_APP_MIGRATION_MESSAGE
 from ray.exceptions import RayTaskError
 
 logger = logging.getLogger(__name__)
@@ -165,6 +166,17 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             return Response(
                 status=400,
                 text=repr(e),
+            )
+
+        if "name" in config.dict(exclude_unset=True):
+            error_msg = (
+                "Specifying the name of an application is only allowed for apps that "
+                "are listed as part of a multi-app config file. "
+            ) + MULTI_APP_MIGRATION_MESSAGE
+            logger.warning(error_msg)
+            return Response(
+                status=400,
+                text=error_msg,
             )
 
         client = serve_start(
