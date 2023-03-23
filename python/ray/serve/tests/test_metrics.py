@@ -410,8 +410,8 @@ class TestRequestContextMetrics:
                 self.histogram.observe(200, tags={"my_runtime_tag": "200"})
                 self.gauge.set(300, tags={"my_runtime_tag": "300"})
                 return [
-                    ray.serve.context.REPLICA_DEPLOYMENT_NAME,
-                    ray.serve.context.REPLICA_TAG_NAME,
+                    ray.serve.context._INTERNAL_REPLICA_CONTEXT.deployment,
+                    ray.serve.context._INTERNAL_REPLICA_CONTEXT.replica_tag,
                 ]
 
         serve.run(Model.bind(), name="app", route_prefix="/app")
