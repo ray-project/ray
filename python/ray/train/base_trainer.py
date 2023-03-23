@@ -16,6 +16,7 @@ from ray.air._internal.remote_storage import (
     is_non_local_path_uri,
     list_at_uri,
 )
+from ray.air._internal import usage as air_usage
 from ray.air.checkpoint import Checkpoint
 from ray.air import session
 from ray.air.config import RunConfig, ScalingConfig
@@ -168,7 +169,6 @@ class BaseTrainer(abc.ABC):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-
         self.scaling_config = (
             scaling_config if scaling_config is not None else ScalingConfig()
         )
@@ -181,6 +181,8 @@ class BaseTrainer(abc.ABC):
         self._restore_path = None
 
         self._validate_attributes()
+
+        air_usage.tag_air_trainer(self)
 
     @PublicAPI(stability="alpha")
     @classmethod
