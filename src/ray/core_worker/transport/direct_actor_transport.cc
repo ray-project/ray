@@ -187,8 +187,13 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                            << ", actor_id: " << task_spec.ActorCreationId()
                            << ", status: " << status;
         } else {
+          // Set the actor repr name if it's customized by the actor.
+          if (!actor_repr_name_.empty()) {
+            reply->set_actor_repr_name(actor_repr_name_);
+          }
           RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
-                        << ", actor_id: " << task_spec.ActorCreationId();
+                        << ", actor_id: " << task_spec.ActorCreationId()
+                        << ", actor_repr_name: " << actor_repr_name_;
         }
       }
     }
@@ -309,6 +314,10 @@ void CoreWorkerDirectTaskReceiver::Stop() {
   for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
     scheduling_queue->Stop();
   }
+}
+
+void CoreWorkerDirectTaskReceiver::SetActorReprName(const std::string &repr_name) {
+  actor_repr_name_ = repr_name;
 }
 
 }  // namespace core

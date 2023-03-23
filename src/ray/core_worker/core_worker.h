@@ -374,6 +374,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void SetActorTitle(const std::string &title);
 
+  /// Sets the actor's repr name.
+  ///
+  /// This is set explicitly rather than included as part of actor creation task spec
+  /// because it's only available after running the creation task as it might depend on
+  /// fields to be be initialized during actor creation task. The repr name will be
+  /// included as part of actor creation task reply (PushTaskReply) to GCS.
+  ///
+  /// \param repr_name Actor repr name.
+  void SetActorReprName(const std::string &repr_name);
+
   void SetCallerCreationTimestamp();
 
   /// Increase the reference count for this object ID.
