@@ -20,13 +20,12 @@ AIR_TRAINERS = {
     "XGBoostTrainer",
 }
 
+# searchers implemented by Ray Tune.
 TUNE_SEARCHERS = {
     "AxSearch",
     "BayesOptSearch",
     "TuneBOHB",
     "DragonflySearch",
-    "BlendSearch",
-    "CFO",
     "HEBOSearch",
     "HyperOptSearch",
     "NevergradSearch",
@@ -34,6 +33,13 @@ TUNE_SEARCHERS = {
     "SkOptSearch",
     "ZOOptSearch",
 }
+
+# searchers incorporated from external. mainly just flaml.
+# Since this is external library, things are subject to change.
+# This is the best we can do for now.
+FLAML_SEARCHERS = {"FLOW2"}
+
+FLAML_SEARCHER_MODULE_PATH = "flaml.tune.searcher"
 
 TUNE_SEARCHER_WRAPPER = {
     "ConcurrencyLimiter",
@@ -98,6 +104,12 @@ def tag_searcher(searcher: Union["BasicVariantGenerator", "Searcher"]):
         if searcher_name in TUNE_SEARCHER_WRAPPER:
             # ignore to avoid double tagging with wrapper name.
             return
+        if searcher_name == "Custom":
+            # try one more time to see if flaml searchers
+            searcher_name = _find_class_name(
+                searcher, FLAML_SEARCHER_MODULE_PATH, FLAML_SEARCHERS
+            )
+        record_extra_usage_tag(TagKey.TUNE_SEARCHER, searcher_name)
     else:
         assert False, (
             "Not expecting a non-BasicVariantGenerator, "
