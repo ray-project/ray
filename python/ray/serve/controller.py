@@ -581,7 +581,9 @@ class ServeController:
                 updated_versions,
             )
 
-            deploy_obj_ref = run_graph.options(
+            logger.info("Starting deploy_serve_application "
+                        f"task for application {app_config.name}.")
+            deploy_obj_ref = deploy_serve_application.options(
                 runtime_env=app_config.runtime_env
             ).remote(
                 app_config.import_path,
@@ -907,20 +909,19 @@ def _generate_deployment_config_versions(
 
 
 @ray.remote(num_cpus=0, max_calls=1)
-def run_graph(
+def deploy_serve_application(
     import_path: str,
-    graph_env: Dict,
+    runtime_env: Dict,
     deployment_override_options: List[Dict],
     deployment_versions: Dict,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = "/",
 ):
-    """
-    Build application object from user config
+    """Deploy Serve application from a user-provided config.
 
     Args:
-        import_path: Serve deployment graph's import path
-        graph_env: runtime env to run the deployment graph in
+        import_path: import path to top-level bound deployment.
+        runtime_env: runtime_env for the application.
         deployment_override_options: Dictionary of options that overrides
             deployment options set in the graph's code itself.
         deployment_versions: Versions of each deployment, each of which is
@@ -934,27 +935,26 @@ def run_graph(
         from ray import serve
         from ray.serve.api import build
 
-        # Import and build the graph
-        graph = import_attr(import_path)
-        app = build(graph, name)
+        # Import and build the application.
+        app = build(import_attr(import_path), name)
 
-        # Override options for each deployment
+        # Override options for each deployment.
         for options in deployment_override_options:
             deployment_name = options["name"]
 
-            # Merge graph-level and deployment-level runtime_envs
+            # Merge app-level and deployment-level runtime_envs.
             if "ray_actor_options" in options:
                 # If specified, get ray_actor_options from config
                 ray_actor_options = options["ray_actor_options"] or {}
             else:
-                # Otherwise, get options from graph code (and default to {} if code
-                # sets options to None)
+                # Otherwise, get options from application code (and default to {}
+                # if the code sets options to None).
                 ray_actor_options = (
                     app.deployments[deployment_name].ray_actor_options or {}
                 )
             deployment_env = ray_actor_options.get("runtime_env", {})
             merged_env = override_runtime_envs_except_env_vars(
-                graph_env, deployment_env
+                runtime_env, deployment_env
             )
             ray_actor_options.update({"runtime_env": merged_env})
             options["ray_actor_options"] = ray_actor_options
@@ -962,7 +962,7 @@ def run_graph(
             # Update the deployment's options
             app.deployments[deployment_name].set_options(**options, _internal=True)
 
-        # Run the graph locally on the cluster
+        # Run the application locally on the cluster.
         serve.run(app, name=name, route_prefix=route_prefix)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
