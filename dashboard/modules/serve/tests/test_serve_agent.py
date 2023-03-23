@@ -10,7 +10,7 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
 from ray.experimental.state.api import list_actors
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_MESSAGE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.serve.schema import ServeInstanceDetails
 from ray.serve._private.common import ApplicationStatus, DeploymentStatus, ReplicaState
@@ -568,7 +568,7 @@ def test_get_serve_instance_details(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
-def test_deploy_single_then_multi(ray_start_stop):
+def test_put_single_then_multi(ray_start_stop):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     multi_app_config = {
@@ -607,7 +607,7 @@ def test_deploy_single_then_multi(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
-def test_deploy_multi_then_single(ray_start_stop):
+def test_put_multi_then_single(ray_start_stop):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     multi_app_config = {
@@ -653,6 +653,18 @@ def test_deploy_multi_then_single(ray_start_stop):
 
     # The original applications should still be up and running
     check_apps()
+
+
+@pytest.mark.parametrize("name", ["", "my_app"])
+def test_put_single_with_name(ray_start_stop, name):
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    single_app_config = {"name": name, "import_path": world_import_path}
+
+    resp = requests.put(GET_OR_PUT_URL, json=single_app_config, timeout=30)
+    assert resp.status_code == 400
+    # Error should tell user specifying the name is not allowed
+    assert "name" in resp.text
+    assert MULTI_APP_MIGRATION_MESSAGE in resp.text
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
