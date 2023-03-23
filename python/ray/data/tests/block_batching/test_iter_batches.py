@@ -8,6 +8,7 @@ import pandas as pd
 import pyarrow as pa
 
 import ray
+from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata
 from ray.data._internal.block_batching.interfaces import (
     Batch,
@@ -29,9 +30,9 @@ from ray.data._internal.block_batching.iter_batches import (
 
 def block_generator(
     num_rows: int, num_blocks: int
-) -> Iterator[Tuple[Block, BlockMetadata]]:
+) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
     for i in range(num_blocks):
-        yield pa.table({"foo": [i] * num_rows}), BlockMetadata(
+        yield ray.put(pa.table({"foo": [i] * num_rows})), BlockMetadata(
             num_rows=num_rows,
             size_bytes=0,
             schema=None,
@@ -46,15 +47,19 @@ def logical_batch_generator(
     logical_batch_iter = _bundle_block_refs_to_logical_batches(
         block_generator(num_rows=num_rows, num_blocks=num_blocks), batch_size=batch_size
     )
+    return logical_batch_iter
 
-    # Force resolve to True for testing purposes.
+
+def resolved_logical_batch_generator(
+    num_rows: int, num_blocks: int, batch_size: int = None
+):
+    logical_batch_iter = logical_batch_generator(num_rows, num_blocks, batch_size)
     for logical_batch in logical_batch_iter:
-        logical_batch._resolved = True
-        logical_batch._blocks = logical_batch.block_refs
+        logical_batch.resolve()
         yield logical_batch
 
 
-def test_bundle_block_refs_to_logical_batches():
+def test_bundle_block_refs_to_logical_batches(ray_start_regular_shared):
     # Case 1: `batch_size` is None.
     num_blocks = 4
     num_rows_per_block = 2
@@ -137,7 +142,7 @@ def test_bundle_block_refs_to_logical_batches():
     ]
 
 
-def test_local_shuffle_logical_batches():
+def test_local_shuffle_logical_batches(ray_start_regular_shared):
     # Case 1: Shuffle buffer min size is smaller than a batch.
     # In this case, there is effectively no shuffling since the buffer
     # never contains more than 1 batch.
@@ -178,7 +183,7 @@ def test_local_shuffle_logical_batches():
 
 
 @pytest.mark.parametrize("num_batches_to_prefetch", [1, 2])
-def test_prefetch_batches_locally(num_batches_to_prefetch):
+def test_prefetch_batches_locally(ray_start_regular_shared, num_batches_to_prefetch):
     class DummyPrefetcher(BlockPrefetcher):
         def __init__(self):
             self.windows = []
@@ -215,20 +220,18 @@ def test_prefetch_batches_locally(num_batches_to_prefetch):
     assert output_batches == logical_batches
 
 
-@patch.object(ray.data._internal.block_batching.interfaces.LogicalBatch, "resolve")
-def test_resolve_logical_batches(mock):
+def test_resolve_logical_batches(ray_start_regular_shared):
     logical_batches = list(logical_batch_generator(1, 1))
     resolved_iter = _resolve_logical_batch(iter(logical_batches))
-    assert next(resolved_iter) == logical_batches[0]
-    mock.assert_called_once()
+    assert next(resolved_iter).blocks == ray.get(logical_batches[0].block_refs)
 
 
 @pytest.mark.parametrize("block_size", [1, 10])
-def test_construct_batch_from_logical_batch(block_size):
+def test_construct_batch_from_logical_batch(ray_start_regular_shared, block_size):
     num_blocks = 5
     batch_size = 3
     logical_batches = list(
-        logical_batch_generator(block_size, num_blocks, batch_size=batch_size)
+        resolved_logical_batch_generator(block_size, num_blocks, batch_size=batch_size)
     )
 
     created_batches = list(_construct_batch_from_logical_batch(iter(logical_batches)))
@@ -239,9 +242,9 @@ def test_construct_batch_from_logical_batch(block_size):
 
 
 @pytest.mark.parametrize("batch_format", ["pandas", "numpy", "pyarrow"])
-def test_format_batches(batch_format):
+def test_format_batches(ray_start_regular_shared, batch_format):
     batches = [
-        Batch(i, data[0], None)
+        Batch(i, ray.get(data[0]), None)
         for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
     ]
     batch_iter = _format_batches(batches, batch_format=batch_format)
@@ -257,12 +260,12 @@ def test_format_batches(batch_format):
             assert isinstance(batch.data["foo"], np.ndarray)
 
 
-def test_collate():
+def test_collate(ray_start_regular_shared):
     def collate_fn(batch):
         return pa.table({"bar": [1] * 2})
 
     batches = [
-        Batch(i, data[0], None)
+        Batch(i, ray.get(data[0]), None)
         for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
     ]
     batch_iter = _collate(batches, collate_fn=collate_fn)
