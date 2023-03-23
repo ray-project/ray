@@ -2318,6 +2318,7 @@
   group: Jobs tests
   working_dir: jobs_tests
   env: gce
+  env: gce
   frequency: nightly
   team: serve
 
