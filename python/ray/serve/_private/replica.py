@@ -213,13 +213,20 @@ def create_replica_wrapper(name: str):
             to PENDING_INITIALIZATION startup state.
 
             Returns:
-                The PID, actor ID, node ID, node IP of the replica.
+                The PID, actor ID, node ID, node IP, and log file path of the replica.
             """
+
+            log_file_path = None
+            for handler in logger.handlers:
+                if isinstance(handler, logging.handlers.RotatingFileHandler):
+                    log_file_path = handler.baseFilename
+
             return (
                 os.getpid(),
                 ray.get_runtime_context().get_actor_id(),
                 ray.get_runtime_context().get_node_id(),
                 ray.util.get_node_ip_address(),
+                log_file_path,
             )
 
         async def is_initialized(
