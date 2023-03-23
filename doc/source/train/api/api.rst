@@ -157,7 +157,7 @@ HuggingFace
 
     ~train.huggingface.HuggingFaceTrainer
     ~train.huggingface.HuggingFaceCheckpoint
-
+    ~train.huggingface.accelerate.AccelerateTrainer
 
 Scikit-Learn
 ~~~~~~~~~~~~

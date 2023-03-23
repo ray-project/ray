@@ -642,6 +642,23 @@ class TestServeDeploySchema:
             ServeDeploySchema.parse_obj(deploy_config_dict)
         assert option in str(e.value)
 
+    def test_deploy_empty_name(self):
+        """The application configs inside a deploy config should have nonempty names."""
+
+        deploy_config_dict = {
+            "applications": [
+                {
+                    "name": "",
+                    "route_prefix": "/app1",
+                    "import_path": "module.graph",
+                },
+            ],
+        }
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        # Error message should be descriptive, mention name must be nonempty
+        assert "name" in str(e.value) and "empty" in str(e.value)
+
 
 class TestServeStatusSchema:
     def get_valid_serve_status_schema(self):

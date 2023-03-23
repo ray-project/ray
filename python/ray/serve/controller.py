@@ -35,6 +35,7 @@ from ray.serve._private.constants import (
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+    MULTI_APP_MIGRATION_MESSAGE,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
@@ -320,16 +321,25 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            deployment_time, config_checkpoints_dict = pickle.loads(checkpoint)
+            deployment_time, deploy_mode, config_checkpoints_dict = pickle.loads(
+                checkpoint
+            )
             applications = [
                 app_config_dict
                 for app_config_dict, _ in config_checkpoints_dict.values()
             ]
-            self.deploy_apps(
-                ServeDeploySchema.parse_obj({"applications": applications}),
-                deployment_time,
-                False,
-            )
+            if deploy_mode == ServeDeployMode.SINGLE_APP:
+                self.deploy_apps(
+                    ServeApplicationSchema.parse_obj(applications[0]),
+                    deployment_time,
+                    False,
+                )
+            else:
+                self.deploy_apps(
+                    ServeDeploySchema.parse_obj({"applications": applications}),
+                    deployment_time,
+                    False,
+                )
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
         """Used for testing.
@@ -496,6 +506,14 @@ class ServeController:
         # ServeApplicationSchema. Eventually, after migration is complete, we should
         # deprecate such usage.
         if isinstance(config, ServeApplicationSchema):
+            if "name" in config.dict(exclude_unset=True):
+                error_msg = (
+                    "Specifying the name of an application is only allowed for apps "
+                    "that are listed as part of a multi-app config file. "
+                ) + MULTI_APP_MIGRATION_MESSAGE
+                logger.warning(error_msg)
+                raise RayServeException(error_msg)
+
             applications = [config]
             if self.deploy_mode == ServeDeployMode.MULTI_APP:
                 raise RayServeException(
@@ -532,7 +550,7 @@ class ServeController:
         if config_checkpoint is None:
             config_checkpoints_dict = {}
         else:
-            _, config_checkpoints_dict = pickle.loads(config_checkpoint)
+            _, _, config_checkpoints_dict = pickle.loads(config_checkpoint)
 
         new_config_checkpoint = {}
 
@@ -579,7 +597,7 @@ class ServeController:
 
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            pickle.dumps((deployment_time, new_config_checkpoint)),
+            pickle.dumps((deployment_time, self.deploy_mode, new_config_checkpoint)),
         )
 
         # Delete live applications not listed in config
@@ -718,6 +736,7 @@ class ServeController:
                 host=http_config.host,
                 port=http_config.port,
             ),
+            deploy_mode=self.deploy_mode,
             applications=applications,
         ).dict(exclude_unset=True)
 
@@ -754,7 +773,7 @@ class ServeController:
     def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Optional[Dict]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            _, config_checkpoints_dict = pickle.loads(checkpoint)
+            _, _, config_checkpoints_dict = pickle.loads(checkpoint)
             if name in config_checkpoints_dict:
                 config, _ = config_checkpoints_dict[name]
                 return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)

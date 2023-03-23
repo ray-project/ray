@@ -23,7 +23,9 @@ from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_NAMESPACE,
+    SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.common import ServeDeployMode
 from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve._private import api as _private_api
@@ -411,20 +413,6 @@ def run(
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 @click.option(
-    "--multi-app",
-    "-m",
-    is_flag=True,
-    help=(
-        "A toggle between single-application and multi-application mode.\n\n"
-        "- If a single application was deployed through a config of the format "
-        "ServeApplicationSchema, then `serve config` should be used without setting "
-        'flag to fetch the current config for the default app with name="".\n'
-        "- If multiple applications were deployed through a config of the format "
-        "ServeDeploySchema, then `serve config` should be used with this flag set to "
-        "get the current app configs of all live applications on the Ray Cluster."
-    ),
-)
-@click.option(
     "--name",
     "-n",
     required=False,
@@ -434,46 +422,40 @@ def run(
         "will only fetch the config for the specified application."
     ),
 )
-def config(address: str, multi_app: bool, name: Optional[str]):
-    # Backwards compatible single-app behavior: displays the config for default app "".
-    if not multi_app and name is None:
-        app_info = ServeSubmissionClient(address).get_info()
-        print(yaml.safe_dump(app_info, sort_keys=False))
-    # Multi-app support
-    else:
-        if multi_app and name is not None:
-            cli_logger.error("Cannot set both `--multi-app` and `--name`.")
-            return
+def config(address: str, name: Optional[str]):
+    serve_details = ServeInstanceDetails(
+        **ServeSubmissionClient(address).get_serve_details()
+    )
 
-        serve_details = ServeInstanceDetails(
-            **ServeSubmissionClient(address).get_serve_details()
-        )
-
-        # Fetch app configs for all live applications on the cluster
-        if multi_app:
-            print(
-                "\n---\n\n".join(
-                    yaml.safe_dump(
-                        app.deployed_app_config.dict(exclude_unset=True),
-                        sort_keys=False,
-                    )
-                    for app in serve_details.applications.values()
-                )
+    if serve_details.deploy_mode != ServeDeployMode.MULTI_APP:
+        if name is not None:
+            raise click.ClickException(
+                "A single-app config was deployed to this cluster, so fetching an "
+                "application config by name is not allowed."
             )
+        name = SERVE_DEFAULT_APP_NAME
 
-        # Fetch a specific app config by name.
-        elif name is not None:
-            if name not in serve_details.applications:
-                cli_logger.error(f'Application "{name}" does not exist.')
-            else:
-                print(
-                    yaml.safe_dump(
-                        serve_details.applications.get(name).deployed_app_config.dict(
-                            exclude_unset=True
-                        ),
-                        sort_keys=False,
-                    )
+    # Fetch app configs for all live applications on the cluster
+    if name is None:
+        print(
+            "\n---\n\n".join(
+                yaml.safe_dump(
+                    app.deployed_app_config.dict(exclude_unset=True),
+                    sort_keys=False,
                 )
+                for app in serve_details.applications.values()
+            ),
+            end="",
+        )
+    # Fetch a specific app config by name.
+    else:
+        if name not in serve_details.applications:
+            config = ServeApplicationSchema.get_empty_schema_dict()
+        else:
+            config = serve_details.applications.get(name).deployed_app_config.dict(
+                exclude_unset=True
+            )
+        print(yaml.safe_dump(config, sort_keys=False), end="")
 
 
 @cli.command(
@@ -525,18 +507,19 @@ def status(address: str, name: Optional[str]):
     if name is None:
         if len(serve_details.applications) == 0:
             print("There are no applications running on this cluster.")
-
-        print(
-            "\n---\n\n".join(
-                yaml.safe_dump(
-                    # Ensure exception tracebacks in app_status are printed correctly
-                    process_dict_for_yaml_dump(application.get_status_dict()),
-                    default_flow_style=False,
-                    sort_keys=False,
-                )
-                for application in serve_details.applications.values()
+        else:
+            print(
+                "\n---\n\n".join(
+                    yaml.safe_dump(
+                        # Ensure exception traceback in app_status are printed correctly
+                        process_dict_for_yaml_dump(application.get_status_dict()),
+                        default_flow_style=False,
+                        sort_keys=False,
+                    )
+                    for application in serve_details.applications.values()
+                ),
+                end="",
             )
-        )
     else:
         if name not in serve_details.applications:
             cli_logger.error(f'Application "{name}" does not exist.')
@@ -549,7 +532,8 @@ def status(address: str, name: Optional[str]):
                     ),
                     default_flow_style=False,
                     sort_keys=False,
-                )
+                ),
+                end="",
             )
 
 
