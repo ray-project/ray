@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, random_split
 from torchvision.datasets import MNIST
 from torchvision import transforms
 
+
 class MNISTClassifier(pl.LightningModule):
     def __init__(self, lr, feature_dim):
         super(MNISTClassifier, self).__init__()
