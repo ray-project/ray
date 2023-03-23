@@ -33,9 +33,6 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
 
             return os.getpid()
 
-        def __repr__(self) -> str:
-            return "Foo1"
-
     @ray.remote(num_cpus=0, resources={"infeasible_actor": 1})
     class InfeasibleActor:
         pass
@@ -79,7 +76,6 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
             assert actor_response["requiredResources"] == {}
             assert actor_response["endTime"] == 0
             assert actor_response["exitDetail"] == "-"
-            assert actor_response["reprName"] == "Foo1"
             for a in actors.values():
                 # "exitDetail always exits from the response"
                 assert "exitDetail" in a

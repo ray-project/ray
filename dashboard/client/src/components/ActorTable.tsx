@@ -141,25 +141,6 @@ const ActorTable = ({
       ),
     },
     {
-      label: "Repr",
-      helpInfo: (
-        <Typography>
-          The repr name of the actor instance defined by __repr__. For example,
-          this actor will have repr "Actor1"
-          <br />
-          <br />
-          @ray.remote
-          <br />
-          class Actor:
-          <br />
-          &emsp;def __repr__(self):
-          <br />
-          &emsp;&emsp;return "Actor1"
-          <br />
-        </Typography>
-      ),
-    },
-    {
       label: "State",
       helpInfo: (
         <Typography>
@@ -372,7 +353,6 @@ const ActorTable = ({
               ({
                 actorId,
                 actorClass,
-                reprName,
                 jobId,
                 placementGroupId,
                 pid,
@@ -427,9 +407,6 @@ const ActorTable = ({
                   </TableCell>
                   <TableCell align="center">{actorClass}</TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
-                  <TableCell align="center">
-                    {reprName ? reprName : "-"}
-                  </TableCell>
                   <TableCell align="center">
                     <StatusChip type="actor" status={state} />
                   </TableCell>

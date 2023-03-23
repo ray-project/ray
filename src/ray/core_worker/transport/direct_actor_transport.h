@@ -94,12 +94,6 @@ class CoreWorkerDirectTaskReceiver {
 
   void Stop();
 
-  /// Set the actor repr name for an actor.
-  ///
-  /// The actor repr name is only available after actor creation task has been run since
-  /// the repr name could include data only initialized during the creation task.
-  void SetActorReprName(const std::string &repr_name);
-
  private:
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.
@@ -141,9 +135,6 @@ class CoreWorkerDirectTaskReceiver {
   /// Whether this actor executes tasks out of order with respect to client submission
   /// order.
   bool execute_out_of_order_ = false;
-  /// The repr name of the actor instance for an anonymous actor.
-  /// This is only available after the actor creation task.
-  std::string actor_repr_name_ = "";
 };
 
 }  // namespace core

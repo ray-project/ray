@@ -57,7 +57,6 @@ def actor_table_data_to_dict(message):
         "className",
         "startTime",
         "endTime",
-        "reprName",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
@@ -142,7 +141,6 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             "exitDetail",
             "startTime",
             "endTime",
-            "reprName",
         )
 
         def process_actor_data_from_pubsub(actor_id, actor_table_data):

@@ -622,21 +622,10 @@ class StateAPIManager:
                 detail=summary_by == "lineage",
             )
         )
-
         if summary_by == "func_name":
             summary_results = TaskSummaries.to_summary_by_func_name(tasks=result.result)
         else:
-            # We will need the actors info for actor tasks.
-            actors = await self.list_actors(
-                option=ListApiOptions(
-                    timeout=option.timeout,
-                    limit=RAY_MAX_LIMIT_FROM_API_SERVER,
-                    detail=True,
-                )
-            )
-            summary_results = TaskSummaries.to_summary_by_lineage(
-                tasks=result.result, actors=actors.result
-            )
+            summary_results = TaskSummaries.to_summary_by_lineage(tasks=result.result)
         summary = StateSummary(node_id_to_summary={"cluster": summary_results})
         warnings = result.warnings
         if (

@@ -30,7 +30,6 @@ export type Actor = {
     [key: string]: number;
   };
   exitDetail: string;
-  reprName: string;
 };
 
 export type ActorDetail = {

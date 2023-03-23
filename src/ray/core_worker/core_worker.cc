@@ -3745,11 +3745,6 @@ void CoreWorker::SetActorTitle(const std::string &title) {
   actor_title_ = title;
 }
 
-void CoreWorker::SetActorReprName(const std::string &repr_name) {
-  RAY_CHECK(direct_task_receiver_ != nullptr);
-  direct_task_receiver_->SetActorReprName(repr_name);
-}
-
 rpc::JobConfig CoreWorker::GetJobConfig() const {
   return worker_context_.GetCurrentJobConfig();
 }

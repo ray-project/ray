@@ -155,11 +155,6 @@ message ActorTableData {
   optional bytes node_id = 29;
   // Placement group ID if the actor requires a placement group.
   optional bytes placement_group_id = 30;
-  // The repr name of the actor if specified with a customized repr method, e.g. __repr__
-  // This field is only available after the actor creation task has been run since it
-  // might depend on actor fields to be initialized in __init__.
-  // Default to empty string if no customized repr is defined.
-  string repr_name = 31;
 }
 
 message ErrorTableData {
