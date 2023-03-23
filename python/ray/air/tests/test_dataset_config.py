@@ -378,9 +378,9 @@ def test_randomize_block_order(ray_start_4_cpus):
 
     def checker(shard, results):
         assert len(results[0]) == 5, results
-        # Randomize block order for bulk ingest only executes once at the
-        # beginning, not once per epoch.
-        assert results[0] == results[1], results
+        # In streaming executor, the randomization in each epoch can be different, so
+        # we eliminate the ordering in comparison.
+        assert set(results[0]) == set(results[1]), results
         stats = shard.stats()
         assert "RandomizeBlockOrder: 5/5 blocks executed" in stats, stats
 
@@ -397,7 +397,7 @@ def test_make_local_dataset_iterator(ray_start_4_cpus):
         assert len(results[0]) == 5, results
         assert results[0] != results[1], results
         stats = shard.stats()
-        assert "RandomizeBlockOrder: 5/5 blocks executed in 0s" in stats, stats
+        assert "RandomizeBlockOrder: 5/5 blocks executed in" in stats, stats
 
     ds = ray.data.range_table(5)
     test = TestStream(
