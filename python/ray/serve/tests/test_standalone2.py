@@ -6,8 +6,6 @@ from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
 from typing import Dict, Set
 from concurrent.futures.thread import ThreadPoolExecutor
-from functools import partial
-from pydantic import ValidationError
 
 import pytest
 import requests
