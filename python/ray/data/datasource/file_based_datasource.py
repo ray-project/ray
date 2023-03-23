@@ -486,6 +486,7 @@ class _FileBasedDatasourceReader(Reader):
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
                 import time
+
                 with open_input_source(fs, read_path, **open_stream_args) as f:
                     start_time = time.time()
                     for data in read_stream(f, read_path, **reader_args):
@@ -784,7 +785,6 @@ def _unwrap_arrow_serialization_workaround(kwargs: dict) -> dict:
 def _resolve_kwargs(
     kwargs_fn: Callable[[], Dict[str, Any]], **kwargs
 ) -> Dict[str, Any]:
-
     if kwargs_fn:
         kwarg_overrides = kwargs_fn()
         kwargs.update(kwarg_overrides)

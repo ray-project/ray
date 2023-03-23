@@ -7,7 +7,7 @@ from typing import (
     Union,
     Iterable,
     Iterator,
-    List
+    List,
 )
 import struct
 
@@ -39,26 +39,68 @@ class TFRecordDatasource(FileBasedDatasource):
 
         batched_example_dicts = []
         example_batch_size = 256 * 8
+        pa_column_to_type = {}
         for record in _read_records(f, path):
-            # if len(batched_example_dicts) == example_batch_size:
-            #     yield pa.Table.from_pylist(batched_example_dicts)
-            #     batched_example_dicts = []
-            # else:
-            example = tf.train.Example()
-            try:
-                example.ParseFromString(record)
-            except DecodeError as e:
-                raise ValueError(
-                    "`TFRecordDatasource` failed to parse `tf.train.Example` "
-                    f"record in '{path}'. This error can occur if your TFRecord "
-                    f"file contains a message type other than `tf.train.Example`: {e}"
+            if len(batched_example_dicts) >= example_batch_size:
+                pa_schema = pa.schema(
+                    [
+                        (col_name, col_pa_type)
+                        for col_name, col_pa_type in pa_column_to_type.items()
+                    ]
                 )
-            record_dict = _convert_example_to_dict(example, tf_schema)
+                print("===> yieldling:", batched_example_dicts)
+                print("===> schema:", pa_schema)
+                yield pa.Table.from_pylist(batched_example_dicts, pa_schema)
+                batched_example_dicts = []
+            else:
+                example = tf.train.Example()
+                try:
+                    example.ParseFromString(record)
+                except DecodeError as e:
+                    raise ValueError(
+                        "`TFRecordDatasource` failed to parse `tf.train.Example` "
+                        f"record in '{path}'. This error can occur if your TFRecord "
+                        f"file contains a message type other than `tf.train.Example`: {e}"
+                    )
+                record_dict = _convert_example_to_dict(example, tf_schema)
+                for col_name, col_value in record_dict.items():
+                    if (
+                        col_name not in pa_column_to_type
+                        or pa.types.is_null(pa_column_to_type[col_name])
+                        or (
+                            pa.types.is_list(pa_column_to_type[col_name])
+                            and pa.types.is_null(pa_column_to_type[col_name].value_type)
+                        )
+                    ):
+                        if isinstance(col_value, list) and len(col_value) > 0:
+                            col_elem = col_value[0]
+                        else:
+                            col_elem = col_value
+
+                        if isinstance(col_elem, int):
+                            col_type = pa.int64()
+                        elif isinstance(col_elem, float):
+                            col_type = pa.float32()
+                        elif isinstance(col_elem, bytes):
+                            col_type = pa.binary()
+                        else:
+                            col_type = pa.null()
+                        if isinstance(col_value, list):
+                            col_type = pa.list_(col_type)
+                        pa_column_to_type[col_name] = col_type
+
             batched_example_dicts.append(record_dict)
-        yield pa.Table.from_pylist(batched_example_dicts)
-            # yield pa.Table.from_pydict(_convert_example_to_dict(example, tf_schema))
-            # yield [_convert_example_to_dict(example, tf_schema)] # 50s
-            
+        pa_schema = pa.schema(
+            [
+                (col_name, col_pa_type)
+                for col_name, col_pa_type in pa_column_to_type.items()
+            ]
+        )
+        print("===> yieldling:", batched_example_dicts)
+        print("===> schema:", pa_schema)
+        yield pa.Table.from_pylist(batched_example_dicts, pa_schema)
+        batched_example_dicts = []
+        # yield [_convert_example_to_dict(example, tf_schema)] # 50s
 
     def _write_block(
         self,
@@ -152,7 +194,7 @@ def _get_single_true_type(dct) -> str:
 def _get_feature_value(
     feature: "tf.train.Feature",
     schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
-)  -> Union[List[Union[int, float, bytes]], Union[int, float, bytes]]:
+) -> Union[List[Union[int, float, bytes]], Union[int, float, bytes]]:
     import pyarrow as pa
 
     underlying_feature_type = {
