@@ -1,3 +1,6 @@
+<<<<<<< Updated upstream
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union, Iterable, Iterator
+=======
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -7,7 +10,9 @@ from typing import (
     Union,
     Iterable,
     Iterator,
+    List
 )
+>>>>>>> Stashed changes
 import struct
 
 import numpy as np
@@ -36,7 +41,13 @@ class TFRecordDatasource(FileBasedDatasource):
 
         tf_schema: Optional["schema_pb2.Schema"] = reader_args.get("tf_schema", None)
 
+        batched_example_dicts = []
+        example_batch_size = 256 * 8
         for record in _read_records(f, path):
+            # if len(batched_example_dicts) == example_batch_size:
+            #     yield pa.Table.from_pylist(batched_example_dicts)
+            #     batched_example_dicts = []
+            # else:
             example = tf.train.Example()
             try:
                 example.ParseFromString(record)
@@ -46,8 +57,12 @@ class TFRecordDatasource(FileBasedDatasource):
                     f"record in '{path}'. This error can occur if your TFRecord "
                     f"file contains a message type other than `tf.train.Example`: {e}"
                 )
-
-            yield pa.Table.from_pydict(_convert_example_to_dict(example, tf_schema))
+            record_dict = _convert_example_to_dict(example, tf_schema)
+            batched_example_dicts.append(record_dict)
+        yield pa.Table.from_pylist(batched_example_dicts)
+            # yield pa.Table.from_pydict(_convert_example_to_dict(example, tf_schema))
+            # yield [_convert_example_to_dict(example, tf_schema)] # 50s
+            
 
     def _write_block(
         self,
@@ -76,7 +91,7 @@ class TFRecordDatasource(FileBasedDatasource):
 def _convert_example_to_dict(
     example: "tf.train.Example",
     tf_schema: Optional["schema_pb2.Schema"],
-) -> Dict[str, "pyarrow.Array"]:
+) -> Dict[str, Union[List[Union[int, float, bytes]], Union[int, float, bytes]]]:
     record = {}
     schema_dict = {}
     # Convert user-specified schema into dict for convenient mapping
@@ -141,7 +156,7 @@ def _get_single_true_type(dct) -> str:
 def _get_feature_value(
     feature: "tf.train.Feature",
     schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
-) -> "pyarrow.Array":
+)  -> Union[List[Union[int, float, bytes]], Union[int, float, bytes]]:
     import pyarrow as pa
 
     underlying_feature_type = {
@@ -204,7 +219,7 @@ def _get_feature_value(
         if len(value) == 0:
             type_ = pa.null()
         type_ = pa.list_(type_)
-    return pa.array([value], type=type_)
+    return value
 
 
 def _value_to_feature(
