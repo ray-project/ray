@@ -287,7 +287,7 @@
 - name: air_benchmark_gce_torch_batch_prediction_gpu_1x1_20gb
   group: AIR tests
   working_dir: air_tests/air_benchmarks
-
+  env: gce
   frequency: nightly
   team: ml
 
@@ -305,7 +305,7 @@
 - name: air_benchmark_gce_torch_batch_prediction_gpu_4x4_100gb
   group: AIR tests
   working_dir: air_tests/air_benchmarks
-
+  env: gce
   frequency: nightly
   team: ml
 
@@ -515,7 +515,7 @@
 - name: air_benchmark_gce_pytorch_training_e2e_gpu_1x1_20gb
   group: AIR tests
   working_dir: air_tests/air_benchmarks
-
+  env: gce
   frequency: nightly
   team: ml
 
@@ -551,7 +551,7 @@
 - name: air_benchmark_gce_pytorch_training_e2e_gpu_4x4_100gb
   group: AIR tests
   working_dir: air_tests/air_benchmarks
-
+  env: gce
   frequency: nightly
   team: ml
 
