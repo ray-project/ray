@@ -68,7 +68,7 @@ class JobFileManager(FileManager):
             )
 
         if delete_after_download:
-            self.delete(target)
+            self.delete(key)
 
     def download(self, source: str, target: str):
         # Attention: Only works for single files at the moment
