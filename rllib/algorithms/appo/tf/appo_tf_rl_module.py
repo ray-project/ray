@@ -27,6 +27,10 @@ class APPOTfRLModule(PPOTfRLModule):
         self.old_encoder.trainable = False
 
     @override(PPOTfRLModule)
+    def target_networks(self):
+        return [(self.old_pi, self.pi), (self.old_encoder, self.encoder)]
+
+    @override(PPOTfRLModule)
     def output_specs_train(self) -> List[str]:
         return [
             SampleBatch.ACTION_DIST,

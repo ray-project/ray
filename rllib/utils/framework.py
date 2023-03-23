@@ -113,17 +113,10 @@ def try_import_tf(error: bool = False):
 class _TFStub:
     def __init__(self) -> None:
         self.keras = _KerasStub()
-        self.Tensor = _TensorStub
 
     def __bool__(self):
         # if tf should return False
         return False
-
-
-# Fake module for tf.Tensor
-class _TensorStub:
-    def __init__(self, *a, **kw):
-        raise ImportError("Could not import `tensorflow`. Try pip install tensorflow.")
 
 
 # Fake module for tf.keras.

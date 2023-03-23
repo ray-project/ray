@@ -4,7 +4,7 @@ import datetime
 import gymnasium as gym
 import json
 import pathlib
-from typing import Any, Dict, Mapping, Optional, Type, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Mapping, Optional, Type, Tuple, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import (
@@ -28,7 +28,7 @@ from ray.rllib.models.specs.checker import (
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.utils.typing import SampleBatchType, NetworkType
 from ray.rllib.utils.serialization import (
     gym_space_from_dict,
     gym_space_to_dict,
@@ -593,3 +593,14 @@ class RLModule(abc.ABC):
         marl_module = MultiAgentRLModule()
         marl_module.add_module(DEFAULT_POLICY_ID, self)
         return marl_module
+
+    def target_networks(self) -> List[Tuple[NetworkType, NetworkType]]:
+        """Returns a list of (target, current) networks.
+
+        This is used for identifying the target networks that are used for stabilizing
+        the updates of the current trainable networks of this RLModule.
+
+        Returns:
+            A list of (target, current) networks.
+        """
+        raise NotImplementedError

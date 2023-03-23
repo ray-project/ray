@@ -153,6 +153,7 @@ class APPOConfig(ImpalaConfig):
                 `kl_coeff` automatically).
             tau: The factor by which to update the target policy network towards
                 the current policy network. Can range between 0 and 1.
+                e.g. updated_param = tau * current_param + (1 - tau) * target_param
             target_update_frequency: The number of training updates to wait before
                 updating the target policy and tuning the kl loss coefficients that are
                 used during training. Note that this is only applicable when using the

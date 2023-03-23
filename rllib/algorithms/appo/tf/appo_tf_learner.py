@@ -6,6 +6,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import OLD_ACTION_DIST_KEY
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaHPs, ImpalaTfLearner
+from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.utils.annotations import override
@@ -49,6 +50,7 @@ class AppoHPs(ImpalaHPs):
             and the target policy towards the total loss for module updates.
         tau: The factor by which to update the target policy network towards
                 the current policy network. Can range between 0 and 1.
+                e.g. updated_param = tau * current_param + (1 - tau) * target_param
 
     """
 
@@ -187,9 +189,9 @@ class APPOTfLearner(ImpalaTfLearner):
 
         return {
             self.TOTAL_LOSS_KEY: total_loss,
-            "policy_loss": mean_pi_loss,
-            "vf_loss": mean_vf_loss,
-            "entropy": mean_entropy_loss,
+            POLICY_LOSS_KEY: mean_pi_loss,
+            VF_LOSS_KEY: mean_vf_loss,
+            ENTROPY_KEY: mean_entropy_loss,
             LEARNER_RESULTS_KL_KEY: mean_kl_loss,
         }
 
@@ -215,38 +217,38 @@ class APPOTfLearner(ImpalaTfLearner):
         super().remove_module(module_id)
         self.kl_coeffs.pop(module_id)
 
-    def _update_module_target_pi(self):
+    def _update_module_target_networks(self, module_id: ModuleID):
         """Update the target policy of each module with the current policy.
 
         Do that update via polyak averaging.
 
+        Args:
+            module_id: The module whose target networks need to be updated.
+
         """
-        module_ids = self.module.keys()
-        for module_id in module_ids:
-            module = self.module[module_id]
-            old_encoder = module.old_encoder
-            old_pi = module.old_pi
-            current_encoder = module.encoder
-            current_pi = module.pi
+        module = self.module[module_id]
 
-            encoder_old_current_pair = {"old": old_encoder, "current": current_encoder}
-            pi_old_current_pair = {"old": old_pi, "current": current_pi}
-            for network_pair in [encoder_old_current_pair, pi_old_current_pair]:
-                for old_var, current_var in zip(
-                    network_pair["old"].variables, network_pair["current"].variables
-                ):
-                    updated_var = self.tau * current_var + (1.0 - self.tau) * old_var
-                    old_var.assign(updated_var)
+        target_current_network_pairs = module.target_networks()
+        for target_network, current_network in target_current_network_pairs:
+            for old_var, current_var in zip(
+                target_network.variables, current_network.variables
+            ):
+                updated_var = self.tau * current_var + (1.0 - self.tau) * old_var
+                old_var.assign(updated_var)
 
-    def _update_module_kl_coeff(self):
+    def _update_module_kl_coeff(self, module_id: ModuleID):
         """Dynamically update the KL loss coefficients of each module with.
 
         The update is completed using the mean KL divergence between the action
         distributions current policy and old policy of each module. That action
         distribution is computed during the most recent update/call to `compute_loss`.
 
+        Args:
+            module_id: The module whose KL loss coefficient to update.
+
         """
-        for module_id, sampled_kl in self.sampled_kls.items():
+        if module_id in self.sampled_kls:
+            sampled_kl = self.sampled_kls[module_id]
             # Update the current KL value based on the recently measured value.
             # Increase.
             if sampled_kl > 2.0 * self.kl_target:
@@ -255,7 +257,10 @@ class APPOTfLearner(ImpalaTfLearner):
             elif sampled_kl < 0.5 * self.kl_target:
                 self.kl_coeffs[module_id] *= 0.5
 
-    def additional_update(self, **kwargs) -> Mapping[ModuleID, Any]:
-        self._update_module_target_pi()
-        self._update_module_kl_coeff()
+    @override(ImpalaTfLearner)
+    def additional_update_per_module(
+        self, module_id: ModuleID, **kwargs
+    ) -> Mapping[str, Any]:
+        self._update_module_target_networks(module_id)
+        self._update_module_kl_coeff(module_id)
         return {}
