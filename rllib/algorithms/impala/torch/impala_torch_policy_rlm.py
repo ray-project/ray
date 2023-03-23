@@ -41,6 +41,9 @@ class ImpalaTorchPolicyWithRLModule(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
         )
 
+        # TODO: Don't require users to call this manually.
+        self._initialize_loss_from_dummy_batch()
+
     @Deprecated(new="ImpalaTorchLearner.compute_loss_per_module()", error=False)
     @override(TorchPolicyV2)
     def loss(
