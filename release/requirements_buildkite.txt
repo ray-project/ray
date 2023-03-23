@@ -10,3 +10,4 @@ pydantic < 1.10.0
 pyyaml
 requests
 retry
+google-cloud-storage
