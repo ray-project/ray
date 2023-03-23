@@ -1,12 +1,11 @@
 import collections
 import itertools
-import queue
 import sys
-import threading
 from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.data._internal.block_batching.util import _make_async_gen
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data._internal.memory_tracing import trace_deallocation
@@ -144,82 +143,41 @@ def batch_blocks(
     This means that this function does not support block prefetching.
     """
 
-    batch_iter = _format_batches(
-        _blocks_to_batches(
-            block_iter=blocks,
+    def _iterator_fn(base_iterator: Iterator[Block]) -> Iterator[DataBatch]:
+        batch_iter = _format_batches(
+            _blocks_to_batches(
+                block_iter=base_iterator,
+                stats=stats,
+                batch_size=batch_size,
+                drop_last=drop_last,
+                shuffle_buffer_min_size=shuffle_buffer_min_size,
+                shuffle_seed=shuffle_seed,
+                ensure_copy=ensure_copy,
+            ),
+            batch_format=batch_format,
             stats=stats,
-            batch_size=batch_size,
-            drop_last=drop_last,
-            shuffle_buffer_min_size=shuffle_buffer_min_size,
-            shuffle_seed=shuffle_seed,
-            ensure_copy=ensure_copy,
-        ),
-        batch_format=batch_format,
-        stats=stats,
-    )
+        )
 
-    if collate_fn is not None:
+        if collate_fn is not None:
 
-        def batch_fn_iter(iterator: Iterator[DataBatch]) -> Iterator[DataBatch]:
-            for batch in iterator:
-                yield collate_fn(batch)
+            def batch_fn_iter(iterator: Iterator[DataBatch]) -> Iterator[DataBatch]:
+                for batch in iterator:
+                    yield collate_fn(batch)
 
-        batch_iter = batch_fn_iter(batch_iter)
+            batch_iter = batch_fn_iter(batch_iter)
+        yield from batch_iter
 
     if prefetch_batches > 0:
-        batch_iter = _make_async_gen(batch_iter, prefetch_buffer_size=prefetch_batches)
+        batch_iter = _make_async_gen(
+            blocks, fn=_iterator_fn, num_workers=prefetch_batches
+        )
+    else:
+        batch_iter = _iterator_fn(blocks)
 
     for formatted_batch in batch_iter:
         user_timer = stats.iter_user_s.timer() if stats else nullcontext()
         with user_timer:
             yield formatted_batch
-
-
-def _make_async_gen(
-    base_iterator: Iterator[T], prefetch_buffer_size: int = 1
-) -> Iterator[T]:
-    """Returns a new iterator with elements fetched from the base_iterator
-    in an async fashion using a background thread.
-
-    Args:
-        base_iterator: The iterator to asynchronously fetch from.
-        prefetch_buffer_size: The maximum number of items to prefetch. Increasing the
-            size allows for more computation overlap for very expensive downstream UDFs.
-            However it comes at the cost of additional memory overhead. Defaults to 1.
-
-    Returns:
-        An iterator with the same elements as the base_iterator.
-    """
-
-    fetch_queue = queue.Queue(maxsize=prefetch_buffer_size)
-
-    sentinel = object()
-
-    def _async_fetch():
-        for item in base_iterator:
-            fetch_queue.put(item, block=True)
-
-        # Indicate done adding items.
-        fetch_queue.put(sentinel, block=True)
-
-    # Start a background thread which iterates through the base iterator,
-    # triggering execution and adding results to the queue until it is full.
-    # Iterating through the iterator returned by this function pulls
-    # ready items from the queue, allowing the background thread to continue execution.
-
-    fetch_thread = threading.Thread(target=_async_fetch)
-    fetch_thread.start()
-
-    while True:
-        next_item = fetch_queue.get(block=True)
-        if next_item is not sentinel:
-            yield next_item
-        fetch_queue.task_done()
-        if next_item is sentinel:
-            break
-
-    fetch_queue.join()
-    fetch_thread.join()
 
 
 def _resolve_blocks(
