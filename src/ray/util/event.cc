@@ -82,16 +82,9 @@ std::string LogEventReporter::EventToString(const rpc::Event &event,
                                             const json &custom_fields) {
   json j;
 
-  auto time_stamp = event.timestamp();
-  time_t epoch_time_as_time_t = time_stamp / 1000000;
+  auto timestamp = event.timestamp();
 
-  absl::Time absl_time = absl::FromTimeT(epoch_time_as_time_t);
-  std::stringstream time_stamp_buffer;
-  time_stamp_buffer << absl::FormatTime(
-                           "%Y-%m-%d %H:%M:%S.", absl_time, absl::LocalTimeZone())
-                    << std::setw(6) << std::setfill('0') << time_stamp % 1000000;
-
-  j["time_stamp"] = time_stamp_buffer.str();
+  j["timestamp"] = timestamp;
   j["severity"] = Event_Severity_Name(event.severity());
   j["label"] = event.label();
   j["event_id"] = event.event_id();
@@ -103,7 +96,7 @@ std::string LogEventReporter::EventToString(const rpc::Event &event,
   j["custom_fields"] = custom_fields;
 
   // the final string is like:
-  // {"time_stamp":"2020-08-29 14:18:15.998084","severity":"INFO","label":"label
+  // {"timestamp":"<timestamp>","severity":"INFO","label":"label
   // 1","event_id":"de150792ceb151c815d359d4b675fcc6266a","source_type":"CORE_WORKER","host_name":"Macbool.local","pid":"20830","message":"send
   // message 1","custom_fields":{"task_id":"task 1","job_id":"job 1","node_id":"node 1"}}
 
@@ -299,7 +292,7 @@ void RayEvent::SendMessage(const std::string &message) {
     event.set_severity(severity_);
     event.set_label(label_);
     event.set_message(message);
-    event.set_timestamp(current_sys_time_us());
+    event.set_timestamp(current_time_s());
 
     auto mp = context.GetCustomFields();
     for (const auto &pair : mp) {

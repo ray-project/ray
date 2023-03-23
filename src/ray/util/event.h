@@ -75,7 +75,7 @@ namespace ray {
   if (ray::RayEvent::IsLevelEnabled(                                                  \
           ::ray::rpc::Event_Severity::Event_Severity_##event_type) &&                 \
       RAY_EVENT_TIME_DELTA > RAY_EVENT_TIME_PERIOD)                                   \
-  RAY_EVENT(::ray::rpc::Event_Severity::Event_Severity_##event_type, label)
+  RAY_EVENT(event_type, label)
 
 #define RAY_EVENT(event_type, label)                                            \
   if (ray::RayEvent::IsLevelEnabled(                                            \

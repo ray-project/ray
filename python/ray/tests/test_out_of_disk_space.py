@@ -217,5 +217,37 @@ def test_actor(shutdown_only):
         assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
+def test_ood_events(shutdown_only):
+    local_fs_capacity_threshold = calculate_capacity_threshold(200 * 1024 * 1024)
+    ray.init(
+        num_cpus=1,
+        object_store_memory=80 * 1024 * 1024,
+        _system_config={
+            "local_fs_capacity_threshold": local_fs_capacity_threshold,
+            "local_fs_monitor_interval_ms": 10,
+        },
+    )
+    ref = ray.put(np.random.rand(20 * 1024 * 1024))
+    del ref
+    # create a temp file so that the disk size is over the threshold.
+    # ray.put doesn't work is that fallback allocation uses mmaped file
+    # that doesn't neccssary allocate disk spaces.
+    with create_tmp_file(250 * 1024 * 1024):
+        time.sleep(1)
+        with pytest.raises(ray.exceptions.OutOfDiskError):
+            ray.put(np.random.rand(20 * 1024 * 1024))
+        # delete tmp file to reclaim space back.
+
+    time.sleep(1)
+    ray.put(np.random.rand(20 * 1024 * 1024))
+    events = ray.experimental.state.api.list_cluster_events()
+    assert len(events) == 1
+    assert (
+        "Object creation will fail if spilling is required" in events[0]["message"]
+    )  # noqa
+    assert events[0]["severity"] == "ERROR"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
