@@ -1078,7 +1078,7 @@ py_test(
     name = "test_impala_learner",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/impala/tests/tf/test_impala_learner.py"]
+    srcs = ["algorithms/impala/tests/test_impala_learner.py"]
 )
 
 # MARWIL
