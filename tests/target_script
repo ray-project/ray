@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+
+import os
+try:
+    del os.environ['RAY_RUNTIME_ENV_HOOK']
+except KeyError:
+    pass
+
+with_actors = os.environ['USE_ACTORS_OR_TASKS'].lower() == 'actors'
+
+import ray
+import time
+
+print('driver script pid', os.getpid())
+
+@ray.remote
+def task(scheduling_start_time):
+    dur_s = time.time() - scheduling_start_time
+    print(f'CADE_PREFIX:scheduling time {dur_s:.02f}')
+    ctx = ray.runtime_context.get_runtime_context()
+    assert ctx.runtime_env == {}, f"expected runtime env to be empty, got {ctx.runtime_env}"
+
+    print('code pid', os.getpid())
+
+
+    start = time.time()
+    import torch
+    import tensorflow
+    dur_s = time.time() - start
+    print(f'CADE_PREFIX:imports took {dur_s:.02f}')
+
+@ray.remote
+class Actor:
+    def __init__(self, scheduling_start_time):
+        dur_s = time.time() - scheduling_start_time
+        print(f'CADE_PREFIX:scheduling time {dur_s:.02f}')
+
+    def do_imports(self):
+        start = time.time()
+        import torch
+        import tensorflow
+        dur_s = time.time() - start
+        print(f'CADE_PREFIX:imports took {dur_s:.02f}')
+
+num_cpus = os.cpu_count()
+num_executables = num_cpus
+
+scheduling_start_time = time.time()
+if with_actors:
+    actors = [Actor.remote(scheduling_start_time) for _ in range(num_executables)]
+    ray.get([a.do_imports.remote() for a in actors])
+else:
+    ray.get([task.remote(scheduling_start_time) for _ in range(num_executables)])
+dur_s = time.time() - scheduling_start_time
+
+time.sleep(1)
+
+print(f'CADE_PREFIX:num_cpus: {num_cpus}')
+print(f'CADE_PREFIX:num_executables: {num_executables}')
+print(f'CADE_PREFIX:end-to-end time {dur_s:.02f}')

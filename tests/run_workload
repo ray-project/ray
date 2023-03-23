@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+
+import subprocess
+import os
+import time
+
+os.environ['USE_ACTORS_OR_TASKS'] = 'actors'
+
+def run_test(iterations):
+    start_time = time.time()
+    for i in range(iterations):
+        subprocess.check_call("python target_script", shell=True)
+        s_since_start = time.time() - start_time
+        print(f'CADE_PREFIX:iteration {i} done')
+        print(f'CADE_PREFIX:seconds since start {s_since_start:.02f}')
+
+subprocess.check_call("bash start_with_preload", shell=True)
+time.sleep(20)
+run_test(iterations=5)
+
+subprocess.check_call("bash start_without_preload", shell=True)
+time.sleep(20)
+run_test(iterations=5)

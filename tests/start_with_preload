@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+ray stop --force
+
+ulimit -n 65536 && \
+    RAY_BACKEND_LOG_LEVEL=debug \
+    RAY_preload_python_modules=torch,tensorflow \
+    RAY_start_initial_python_workers_for_first_job=true \
+    ray start --head --port=6379 --dashboard-port=8265 --no-monitor --redis-password='' --object-manager-port=8076 --node-manager-port=8912 --metrics-export-port=8085 --dashboard-agent-listen-port=52365 --dashboard-agent-grpc-port=6823
