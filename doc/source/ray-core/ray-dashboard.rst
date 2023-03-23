@@ -14,12 +14,12 @@ Common Workflows
 
 Here are common workflows when using the Ray dashboard.
 
-- :ref:`See the metrics graphs <dash-metrics-view>`.
-- :ref:`See the progress of your job <dash-workflow-job-progress>`.
+- :ref:`View the metrics graphs <dash-metrics-view>`.
+- :ref:`View the progress of your job <dash-workflow-job-progress>`.
 - :ref:`Find the application logs or error messages of failed tasks or actors <dash-workflow-logs>`.
 - :ref:`Profile, trace dump, and visualize the timeline of the Ray jobs, tasks, or actors <dashboard-profiling>`.
 - :ref:`Analyze the CPU and memory usage of the cluster, tasks and actors <dash-workflow-cpu-memory-analysis>`.
-- :ref:`See individual state of task, actor, placement group <dash-workflow-state-apis>`, and :ref:`nodes (machines from a cluster) <dash-node-view>` which is equivalent to :ref:`Ray state APIs <state-api-overview-ref>`.
+- :ref:`View the individual state of task, actor, placement group <dash-workflow-state-apis>`, and :ref:`nodes (machines from a cluster) <dash-node-view>` which is equivalent to :ref:`Ray state APIs <state-api-overview-ref>`.
 - :ref:`View the hardware utilization (CPU, GPU, memory) <dash-workflow-resource-utilization>`.
 
 Getting Started
@@ -47,7 +47,7 @@ Ray cluster comes with the dashboard. See :ref:`Cluster Monitoring <monitor-clus
 .. note:: 
 
   When using the Ray dashboard, it is highly recommended to also set up Prometheus and Grafana. 
-  Ray dashboard has a tight integration with these tools, and core features such as :ref:`Metrics View <dash-metrics-view>` won't work without them.
+  They are necessary for critical features such as :ref:`Metrics View <dash-metrics-view>`.
   See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana.
 
 How to Guides
@@ -107,12 +107,13 @@ This allows users to identify tasks and actors that may be consuming more resour
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/node_cpu_by_comp.png
     :align: center
 
-Per component CPU graph. 0.379 cores mean that it uses 40% of a single CPU core. If the name starts with ``ray::``, that's the name of the Ray processes. ``raylet``, ``agent``, ``dashboard``, ``gcs`` mean the system components.
+
+Per component CPU graph. 0.379 cores mean that it uses 40% of a single CPU core. Ray process names start with ``ray::``. ``raylet``, ``agent``, ``dashboard``, or ``gcs`` are system components.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/node_memory_by_comp.png
     :align: center
 
-Per component memory graph. If the name starts with ``ray::``, that's the name of the Ray processes. ``raylet``, ``agent``, ``dashboard``, ``gcs`` mean the system components.
+Per component memory graph. Ray process names start with ``ray::``. ``raylet``, ``agent``, ``dashboard``, or ``gcs`` are system components.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/cluster_page.png
     :align: center
@@ -121,8 +122,8 @@ Additionally, users can see a snapshot of hardware utilization from the :ref:`cl
 
 .. _dash-workflow-resource-utilization:
 
-See the Resource Utilization
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+View the Resource Utilization
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray requires users to specify the number of :ref:`resources <logical-resources>` their tasks and actors will use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``. 
 These values are used for scheduling, but may not always match the actual resource utilization (physical resource utilization).
@@ -138,7 +139,7 @@ The :ref:`logical resources <logical-resources>` usage.
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/physical_resource.png
     :align: center
 
-The physical resourcecs (hardware) usage. Ray provides CPU, GPU, Memory, GRAM, disk, and network usage of each hardware in a cluster.
+The physical resources (hardware) usage. Ray provides CPU, GPU, Memory, GRAM, disk, and network usage for each machine in a cluster.
 
 .. _dash-overview:
 
@@ -152,23 +153,23 @@ The overview page provides a high-level status of the Ray cluster.
 
 **Overview Metrics**
 
-Overview metrics page provides the cluster-level hardware utilization and the autoscaling status (number of pending, active, and failed nodes).
+The Overview Metrics page provides the cluster-level hardware utilization and autoscaling status (number of pending, active, and failed nodes).
 
 **Recent Jobs**
 
-Recent jobs card provides a list of recently submitted Ray jobs.
+The Recent Jobs card provides a list of recently submitted Ray jobs.
 
 **Event View**
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/event-page.png
     :align: center
 
-The event view lets you see a list of events associated with a specific type (e.g., autoscaler or job) in a chronological order. The equivalent information is also accessible via CLI commands ``ray list cluster-events`` :ref:`(Ray state APIs)<state-api-overview-ref>`.
+The Event View displays a list of events associated with a specific type (e.g., autoscaler or job) in chronological order. The same information is accessible with the ``ray list cluster-events`` :ref:`(Ray state APIs)<state-api-overview-ref>` CLI commands .
 
-2 types of events are available.
+Two types of events are available.
 
 - Job: Events related to :ref:`Ray job submission APIs <jobs-quickstart>`.
-- Autoscaler: Events related to :ref:`Ray autoscaler <cluster-autoscaler>`
+- Autoscaler: Events related to the :ref:`Ray autoscaler <cluster-autoscaler>`.
 
 .. _dash-jobs-view:
 
@@ -178,7 +179,7 @@ Jobs View
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/jobs.png
     :align: center
 
-The Jobs view lets you monitor the different jobs that ran on your Ray cluster.
+The Jobs View lets you monitor the different jobs that ran on your Ray cluster.
 
 A job is a ray workload that uses Ray APIs (e.g., ``ray.init``). It can be submitted directly (e.g., by executing a Python script within a head node) or via :ref:`Ray job API <jobs-quickstart>`.
 
@@ -198,8 +199,8 @@ You can profile Ray jobs by clicking on the “Stack Trace” or “CPU Flame Gr
 
 .. _dash-workflow-job-progress:
 
-Advanced Task/Actor Breakdown
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Advanced Task and Actor Breakdown
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/advanced-progress.png
     :align: left
@@ -207,7 +208,7 @@ Advanced Task/Actor Breakdown
 The job page allows you to see tasks and actors broken down by their states. 
 Tasks and actors are grouped and nested by default. You can see the nested entries by clicking the expand button.
 
-Tasks/actors are grouped and nested by the following criteria.
+Tasks and actors are grouped and nested by the following criteria.
 
 - All tasks and actors are grouped together, and you can view individual entries by expanding the corresponding row.
 - Tasks are grouped by their ``name`` attribute (e.g., ``task.options(name="<name_here>").remote()``).
@@ -218,7 +219,7 @@ Tasks/actors are grouped and nested by the following criteria.
 
 .. note:: 
 
-  Ray dashboard can only display/retrieve up to 10K tasks at a time. If there are more than 10K tasks from your job,
+  Ray dashboard can only display or retrieve up to 10K tasks at a time. If there are more than 10K tasks from your job,
   they are unaccounted. The number of unaccounted tasks is available from the task breakdown.
 
 Task Timeline
@@ -248,14 +249,14 @@ Ray Status
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/ray-status.png
     :align: center
 
-The job page displays the output of the helpful CLI tool ``ray status``, which shows the autoscaler status of the Ray cluster.
+The job page displays the output of the CLI tool ``ray status``, which shows the autoscaler status of the Ray cluster.
 
 The left page shows the autoscaling status, including pending, active, and failed nodes. 
-The right page displays the cluster's demands, which lists demanded resources that cannot be scheduled to the cluster at the moment. This page is useful for debugging resource deadlocks or slow scheduling.
+The right page displays the cluster's demands, which are resources that cannot be scheduled to the cluster at the moment. This page is useful for debugging resource deadlocks or slow scheduling.
 
 .. note:: 
 
-  The output shows the aggregated information across the cluster (not by a job). If you run more than one job, some of the demands may come from other jobs.
+  The output shows the aggregated information across the cluster (not by job). If you run more than one job, some of the demands may come from other jobs.
 
 .. _dash-workflow-state-apis:  
 
@@ -266,12 +267,12 @@ Task Table, Actor Table, Placement Group Table
     :align: center
 
 The dashboard shows a table with the status of the job's tasks, actors, and placement groups. 
-This information is the same as what you would get from the :ref:`Ray state APIs <state-api-overview-ref>`.
+You get the same information from the :ref:`Ray state APIs <state-api-overview-ref>`.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/task-table.png
     :align: center
 
-You can expand the collapse and see a list of each task, actor, and placement group.
+You can expand the table to see a list of each task, actor, and placement group.
 
 .. _dash-node-view:
 
@@ -361,50 +362,52 @@ There is also a convenient button to open the grafana UI from the dashboard. The
 
 .. _dash-logs-view:
 
-Logs view
+Logs View
 ---------
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/logs.png
     :align: center
 
-The logs view lets you view all the ray logs that are in your cluster. It is organized by node and log file name. Many log links in the other pages will link to this view and filter the list so the relevant logs appear.
+The logs view lets you view all the ray logs that are in your cluster. It is organized by node and log file name. Many log links in the other pages link to this view and filter the list so the relevant logs appear.
 
-To learn the log file structure of Ray, see the :ref:`Logging directory structure page <logging-directory-structure>`
+To understand the log file structure of Ray, see the :ref:`Logging directory structure page <logging-directory-structure>`.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/logs-content.png
     :align: center
 
-The log viewer provides various search functionality to help find the log messages you are looking for.
+The logs view provides search functionality to help you find specific log messages.
 
 Advanced Usage
 --------------
 
-Change the dashboard ports
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Changing Dashboard Ports
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabbed:: Single-node local cluster
 
-  If you need to customize the port on which the dashboard will run, you can pass
+  **CLI**
+
+  To customize the port on which the dashboard runs, you can pass
   the ``--dashboard-port`` argument with ``ray start`` in the command line.
 
-.. tabbed:: Python
+  **ray.init**
 
   If you need to customize the port on which the dashboard will run, you can pass the
   keyword argument ``dashboard_port`` in your call to ``ray.init()``.
 
 .. tabbed:: VM Cluster Launcher
 
-  To customize the dashboard port while using the "VM cluster launcher", simply include the "ray start --head --dashboard-port" argument 
+  To disable the dashboard while using the "VM cluster launcher", include the "ray start --head --include-dashboard=False" argument 
   and specify the desired port number in the "head_start_ray_commands" section of the `cluster launcher's YAML file <https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172>`_.
 
-.. tabbed:: Kubernetes
+.. tabbed:: Kuberay
 
   See the `Specifying non-default ports <https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#specifying-non-default-ports>`_ page.
 
-Viewing built-in dashboard API metrics
+Viewing Built-in Dashboard API Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The dashboard is powered by a server that serves both the UI code and the data about the cluster via API endpoints.
-There are basic prometheus metrics that are emitted for each of these API endpoints:
+There are basic Prometheus metrics that are emitted for each of these API endpoints:
 
 `ray_dashboard_api_requests_count_requests_total`: Collects the total count of requests. This is tagged by endpoint, method, and http_status.
 
@@ -416,7 +419,7 @@ For example, you can view the p95 duration of all requests with this query:
 
   histogram_quantile(0.95, sum(rate(ray_dashboard_api_requests_duration_seconds_bucket[5m])) by (le))
 
-These metrics can be queried via prometheus or grafana UI. Instructions on how to set these tools up can be found :ref:`here <ray-metrics>`.
+These metrics can be queried via Prometheus or Grafana UI. Instructions on how to set these tools up can be found :ref:`here <ray-metrics>`.
 
 
 Running Behind a Reverse Proxy
@@ -455,30 +458,32 @@ Below is an example with a `traefik <https://doc.traefik.io/traefik/getting-star
         [[http.services.dashboard.loadBalancer.servers]]
           url = "http://localhost:8265"
 
-How to disable the dashboard
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Disabling the Dashboard
+~~~~~~~~~~~~~~~~~~~~~~~
 Dashboard is included in the `ray[default]` installation by default and automatically started.
 
 To disable the dashboard, use the following arguments `--include-dashboard`.
 
-.. tabbed:: CLI
+.. tabbed:: Single-node local cluster
 
-    .. code-block:: bash
+  **CLI**
 
-        ray start --include-dashboard=False
+  .. code-block:: bash
 
-.. tabbed:: Python
+      ray start --include-dashboard=False
 
-    .. code-block:: python
+  **ray.init**
 
-        ray.init(include_dashboard=False)
+  .. code-block:: python
+
+      ray.init(include_dashboard=False)
 
 .. tabbed:: VM Cluster Launcher
 
-  To disable the dashboard while using the "VM cluster launcher", simply include the "ray start --head --include-dashboard=False" argument 
+  To disable the dashboard while using the "VM cluster launcher", include the "ray start --head --include-dashboard=False" argument 
   in the "head_start_ray_commands" section of the `cluster launcher's YAML file <https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172>`_.
 
-.. tabbed:: Kubernetes
+.. tabbed:: Kuberay
 
   TODO
 
@@ -599,3 +604,4 @@ Resources
 - `Ray Summit observability talk <https://www.youtube.com/watch?v=v_JzurOkdVQ>`_
 - `Ray metrics blog <https://www.anyscale.com/blog/monitoring-and-debugging-ray-workloads-ray-metrics>`_
 - `Ray dashboard roadmap <https://github.com/ray-project/ray/issues/30097#issuecomment-1445756658>`_
+- `Observability Training Module <https://github.com/ray-project/ray-educational-materials/blob/main/Observability/Ray_observability_part_1.ipynb>`_
