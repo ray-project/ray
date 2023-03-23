@@ -1,6 +1,7 @@
 # Production requirements. This is what readthedocs.org picks up
 
 # Python / ML libraries
+accelerate>=0.17.0
 click
 colorama
 colorful

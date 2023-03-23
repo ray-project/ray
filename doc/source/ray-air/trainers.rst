@@ -19,7 +19,7 @@ There are three broad categories of Trainers that AIR offers:
 
 * :ref:`Deep Learning Trainers <air-trainers-dl>` (Pytorch, Tensorflow, Horovod)
 * :ref:`Tree-based Trainers <air-trainers-tree>` (XGboost, LightGBM)
-* :ref:`Other ML frameworks <air-trainers-other>` (HuggingFace, Scikit-Learn, RLlib)
+* :ref:`Other ML frameworks <air-trainers-other>` (Hugging Face, Scikit-Learn, RLlib)
 
 Trainer Basics
 --------------
@@ -140,8 +140,11 @@ To use this trainer, you will need to first run ``pip install -U lightgbm-ray``.
 Other Trainers
 --------------
 
-HuggingFace Trainer
-~~~~~~~~~~~~~~~~~~~
+Hugging Face
+~~~~~~~~~~~~
+
+Transformers
+************
 
 :class:`HuggingFaceTrainer <ray.train.huggingface.HuggingFaceTrainer>` further extends :class:`TorchTrainer <ray.train.torch.TorchTrainer>`, built
 for interoperability with the HuggingFace Transformers library.
@@ -163,6 +166,32 @@ training via Pytorch DDP.
         :language: python
         :start-after: __hf_trainer_start__
         :end-before: __hf_trainer_end__
+
+Accelerate
+**********
+
+If you prefer a more fine-grained Hugging Face API than what Transformers provides, you can use :class:`AccelerateTrainer <ray.train.huggingface.accelerate.AccelerateTrainer>`
+to run training functions making use of Hugging Face Accelerate. Similarly to :class:`HuggingFaceTrainer <ray.train.huggingface.HuggingFaceTrainer>`, :class:`AccelerateTrainer <ray.train.huggingface.accelerate.AccelerateTrainer>`
+is also an extension of :class:`TorchTrainer <ray.train.torch.TorchTrainer>`.
+
+:class:`AccelerateTrainer <ray.train.huggingface.accelerate.AccelerateTrainer>` allows you to pass an Accelerate configuration file generated with ``accelerate config`` to be applied on all training workers.
+This ensures that the worker environments are set up correctly for Accelerate, allowing you to take advantage of Accelerate APIs and integrations such as DeepSpeed and FSDP
+just as you would if you were running Accelerate without Ray.
+
+.. note::
+    ``AccelerateTrainer`` will override some settings set with ``accelerate config``, mainly related to
+    the topology and networking. See the :class:`AccelerateTrainer <ray.train.huggingface.accelerate.AccelerateTrainer>`
+    API reference for more details.
+
+Aside from Accelerate support, the usage is identical to :class:`TorchTrainer <ray.train.torch.TorchTrainer>`, meaning you define your own training function
+and use the :ref:`Session <air-session-ref>` API to report metrics, save checkpoints etc.
+
+
+.. dropdown:: Code example
+
+    .. literalinclude:: doc_code/accelerate_trainer.py
+        :language: python
+
 
 
 Scikit-Learn Trainer
