@@ -461,8 +461,9 @@ class _FileBasedDatasourceReader(Reader):
                 if partitioning is not None:
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
-
+                import time
                 with open_input_source(fs, read_path, **open_stream_args) as f:
+                    start_time = time.time()
                     for data in read_stream(f, read_path, **reader_args):
                         if partitions:
                             data = convert_block_to_tabular_block(data, column_name)
@@ -470,9 +471,11 @@ class _FileBasedDatasourceReader(Reader):
 
                         output_buffer.add_block(data)
                         if output_buffer.has_next():
+                            print(f"===> yield time: {time.time() - start_time}")
                             yield output_buffer.next()
             output_buffer.finalize()
             if output_buffer.has_next():
+                print(f"===> yield time: {time.time() - start_time}")
                 yield output_buffer.next()
 
         # fix https://github.com/ray-project/ray/issues/24296

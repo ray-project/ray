@@ -1,4 +1,18 @@
+<<<<<<< Updated upstream
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union, Iterable, Iterator
+=======
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Optional,
+    Union,
+    Iterable,
+    Iterator,
+    List
+)
+>>>>>>> Stashed changes
 import struct
 
 import numpy as np
@@ -25,7 +39,15 @@ class TFRecordDatasource(FileBasedDatasource):
         import pyarrow as pa
         import tensorflow as tf
 
-        for record in _read_records(f):
+        tf_schema: Optional["schema_pb2.Schema"] = reader_args.get("tf_schema", None)
+
+        batched_example_dicts = []
+        example_batch_size = 256 * 8
+        for record in _read_records(f, path):
+            # if len(batched_example_dicts) == example_batch_size:
+            #     yield pa.Table.from_pylist(batched_example_dicts)
+            #     batched_example_dicts = []
+            # else:
             example = tf.train.Example()
             try:
                 example.ParseFromString(record)
@@ -35,8 +57,12 @@ class TFRecordDatasource(FileBasedDatasource):
                     f"record in '{path}'. This error can occur if your TFRecord "
                     f"file contains a message type other than `tf.train.Example`: {e}"
                 )
-
-            yield pa.Table.from_pydict(_convert_example_to_dict(example))
+            record_dict = _convert_example_to_dict(example, tf_schema)
+            batched_example_dicts.append(record_dict)
+        yield pa.Table.from_pylist(batched_example_dicts)
+            # yield pa.Table.from_pydict(_convert_example_to_dict(example, tf_schema))
+            # yield [_convert_example_to_dict(example, tf_schema)] # 50s
+            
 
     def _write_block(
         self,
@@ -64,17 +90,8 @@ class TFRecordDatasource(FileBasedDatasource):
 
 def _convert_example_to_dict(
     example: "tf.train.Example",
-) -> Dict[
-    str,
-    Union[
-        List[bytes],
-        List[List[bytes]],
-        List[float],
-        List[List[float]],
-        List[int],
-        List[List[int]],
-    ],
-]:
+    tf_schema: Optional["schema_pb2.Schema"],
+) -> Dict[str, Union[List[Union[int, float, bytes]], Union[int, float, bytes]]]:
     record = {}
     for feature_name, feature in example.features.feature.items():
         value = _get_feature_value(feature)
@@ -108,24 +125,77 @@ def _convert_arrow_table_to_examples(
 
 def _get_feature_value(
     feature: "tf.train.Feature",
-) -> Union[List[bytes], List[float], List[int]]:
-    values = (
-        feature.bytes_list.value,
-        feature.float_list.value,
-        feature.int64_list.value,
-    )
-    # Exactly one of `bytes_list`, `float_list`, and `int64_list` should contain data.
-    assert sum(bool(value) for value in values) == 1
+    schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
+)  -> Union[List[Union[int, float, bytes]], Union[int, float, bytes]]:
+    import pyarrow as pa
 
-    if feature.bytes_list.value:
-        return list(feature.bytes_list.value)
-    if feature.float_list.value:
-        return list(feature.float_list.value)
-    if feature.int64_list.value:
-        return list(feature.int64_list.value)
+    underlying_feature_type = {
+        "bytes": feature.HasField("bytes_list"),
+        "float": feature.HasField("float_list"),
+        "int": feature.HasField("int64_list"),
+    }
+    # At most one of `bytes_list`, `float_list`, and `int64_list`
+    # should contain values. If none contain data, this indicates
+    # an empty feature value.
+    assert sum(bool(value) for value in underlying_feature_type.values()) <= 1
+
+    if schema_feature_type is not None:
+        try:
+            from tensorflow_metadata.proto.v0 import schema_pb2
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError(
+                "To use TensorFlow schemas, please install "
+                "the tensorflow-metadata package."
+            )
+        # If a schema is specified, compare to the underlying type
+        specified_feature_type = {
+            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES,
+            "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
+            "int": schema_feature_type == schema_pb2.FeatureType.INT,
+        }
+        und_type = _get_single_true_type(underlying_feature_type)
+        spec_type = _get_single_true_type(specified_feature_type)
+        if und_type is not None and und_type != spec_type:
+            raise ValueError(
+                "Schema field type mismatch during read: specified type is "
+                f"{spec_type}, but underlying type is {und_type}",
+            )
+        # Override the underlying value type with the type in the user-specified schema.
+        underlying_feature_type = specified_feature_type
+
+    if underlying_feature_type["bytes"]:
+        value = feature.bytes_list.value
+        type_ = pa.binary()
+    elif underlying_feature_type["float"]:
+        value = feature.float_list.value
+        type_ = pa.float32()
+    elif underlying_feature_type["int"]:
+        value = feature.int64_list.value
+        type_ = pa.int64()
+    else:
+        value = []
+        type_ = pa.null()
+    value = list(value)
+    if len(value) == 1 and schema_feature_type is None:
+        # Use the value itself if the features contains a single value.
+        # This is to give better user experience when writing preprocessing UDF on
+        # these single-value lists.
+        value = value[0]
+    else:
+        # If the feature value is empty and no type is specified in the user-provided
+        # schema, set the type to null for now to allow pyarrow to construct a valid
+        # Array; later, infer the type from other records which have non-empty values
+        # for the feature.
+        if len(value) == 0:
+            type_ = pa.null()
+        type_ = pa.list_(type_)
+    return value
 
 
-def _value_to_feature(value: Union[bytes, float, int, List]) -> "tf.train.Feature":
+def _value_to_feature(
+    value: Union["pyarrow.Scalar", "pyarrow.Array"],
+    schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
+) -> "tf.train.Feature":
     import tensorflow as tf
 
     # A Feature stores a list of values.
