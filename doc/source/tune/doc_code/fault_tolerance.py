@@ -23,7 +23,7 @@ tuner = tune.Tuner(
     trainable,
     param_space={"num_epochs": 10},
     run_config=air.RunConfig(
-        local_dir="~/ray_results", name="experiment_fault_tolerance"
+        local_dir="~/ray_results", name="tune_fault_tolerance_guide"
     ),
 )
 tuner.fit()
@@ -80,7 +80,7 @@ class LargeModel:
         # Load weights based on the `model_id`...
 
 
-def trainable(config):
+def train_fn(config):
     # Retrieve the model from the object store.
     model = ray.get(config["model_ref"])
     print(model.model_id)
@@ -91,13 +91,16 @@ def trainable(config):
 model_refs = [ray.put(LargeModel(1)), ray.put(LargeModel(2))]
 
 tuner = tune.Tuner(
-    trainable,
+    train_fn,
     # Tune over the object references!
-    param_space={"model_ref": tune.grid_search([model_refs])},
+    param_space={"model_ref": tune.grid_search(model_refs)},
     run_config=air.RunConfig(local_dir="~/ray_results", name="restore_object_refs"),
 )
 tuner.fit()
 # __ft_restore_objrefs_initial_end__
+
+if ray.is_initialized():
+    ray.shutdown()
 
 # __ft_restore_objrefs_restored_start__
 # Re-create the objects and put them in the object store.
@@ -107,7 +110,7 @@ param_space = {
 
 tuner = tune.Tuner.restore(
     "~/ray_results/restore_object_refs",
-    trainable=trainable,
+    trainable=train_fn,
     # Re-specify the `param_space` to update the object references.
     param_space=param_space,
     resume_errored=True,
