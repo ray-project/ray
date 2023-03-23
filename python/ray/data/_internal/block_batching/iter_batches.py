@@ -464,7 +464,7 @@ def _construct_batch_from_logical_batch(
                 batch = BlockAccessor.for_block(batch)
                 batch = batch.slice(0, batch.num_rows(), copy=True)
 
-        yield Batch(logical_batch.batch_idx, batch, logical_batch)
+        yield Batch(logical_batch.batch_idx, batch)
 
 
 def _format_batches(
