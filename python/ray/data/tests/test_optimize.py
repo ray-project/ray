@@ -68,7 +68,7 @@ def test_memory_sanity(shutdown_only):
     info = ray.init(num_cpus=1, object_store_memory=500e6)
     ds = ray.data.range(10)
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
-    ds.fully_executed()
+    ds.cache()
     meminfo = memory_summary(info.address_info["address"], stats_only=True)
 
     # Sanity check spilling is happening as expected.
@@ -170,7 +170,7 @@ def test_memory_release_lazy(shutdown_only):
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
-    ds.fully_executed()
+    ds.cache()
     meminfo = memory_summary(info.address_info["address"], stats_only=True)
     assert "Spilled" not in meminfo, meminfo
 
@@ -188,7 +188,7 @@ def test_memory_release_lazy_shuffle(shutdown_only):
             # Should get fused into single stage.
             ds = ds.lazy()
             ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
-            ds.random_shuffle().fully_executed()
+            ds.random_shuffle().cache()
             meminfo = memory_summary(info.address_info["address"], stats_only=True)
             assert "Spilled" not in meminfo, meminfo
             return
@@ -224,12 +224,12 @@ def test_lazy_fanout(shutdown_only, local_path):
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
     # Test content.
-    assert ds2.fully_executed().take() == [
+    assert ds2.cache().take() == [
         {"one": 3, "two": "a"},
         {"one": 4, "two": "b"},
         {"one": 5, "two": "c"},
     ]
-    assert ds3.fully_executed().take() == [
+    assert ds3.cache().take() == [
         {"one": 3, "two": "a"},
         {"one": 4, "two": "b"},
         {"one": 5, "two": "c"},
@@ -254,8 +254,8 @@ def test_lazy_fanout(shutdown_only, local_path):
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
     # Test content.
-    assert ds2.fully_executed().take() == list(range(2, 12))
-    assert ds3.fully_executed().take() == list(range(2, 12))
+    assert ds2.cache().take() == list(range(2, 12))
+    assert ds3.cache().take() == list(range(2, 12))
     # Test that first map is executed twice.
     assert ray.get(map_counter.get.remote()) == 2 * 10 + 10 + 10
 
@@ -268,10 +268,10 @@ def test_lazy_fanout(shutdown_only, local_path):
     ds1 = ds.map(inc)
     ds2 = ds.map(inc)
     # Test content.
-    assert ds1.fully_executed().take() == list(range(2, 12))
-    assert ds2.fully_executed().take() == list(range(2, 12))
-    # Test that first map is executed twice, because ds1.fully_executed()
-    # clears up the previous snapshot blocks, and ds2.fully_executed()
+    assert ds1.cache().take() == list(range(2, 12))
+    assert ds2.cache().take() == list(range(2, 12))
+    # Test that first map is executed twice, because ds1.cache()
+    # clears up the previous snapshot blocks, and ds2.cache()
     # has to re-execute ds.map(inc) again.
     assert ray.get(map_counter.get.remote()) == 2 * 10 + 10 + 10
 
@@ -303,12 +303,12 @@ def test_stage_linking(ray_start_regular_shared):
     assert ds._plan._last_optimized_stages is None
     ds = ds.map(lambda x: x + 1)
     assert len(ds._plan._stages_before_snapshot) == 0
-    _assert_has_stages(ds._plan._stages_after_snapshot, ["map"])
+    _assert_has_stages(ds._plan._stages_after_snapshot, ["Map"])
     assert ds._plan._last_optimized_stages is None
-    ds = ds.fully_executed()
-    _assert_has_stages(ds._plan._stages_before_snapshot, ["map"])
+    ds = ds.cache()
+    _assert_has_stages(ds._plan._stages_before_snapshot, ["Map"])
     assert len(ds._plan._stages_after_snapshot) == 0
-    _assert_has_stages(ds._plan._last_optimized_stages, ["read->map"])
+    _assert_has_stages(ds._plan._last_optimized_stages, ["ReadRange->Map"])
 
 
 def test_optimize_reorder(ray_start_regular_shared):
@@ -317,11 +317,11 @@ def test_optimize_reorder(ray_start_regular_shared):
     context.optimize_fuse_read_stages = True
     context.optimize_reorder_stages = True
 
-    ds = ray.data.range(10).randomize_block_order().map_batches(dummy_map)
+    ds = ray.data.range(10).randomize_block_order().map_batches(dummy_map).cache()
     expect_stages(
         ds,
         2,
-        ["read->MapBatches(dummy_map)", "randomize_block_order"],
+        ["ReadRange->MapBatches(dummy_map)", "RandomizeBlockOrder"],
     )
 
     ds2 = (
@@ -329,11 +329,12 @@ def test_optimize_reorder(ray_start_regular_shared):
         .randomize_block_order()
         .repartition(10)
         .map_batches(dummy_map)
+        .cache()
     )
     expect_stages(
         ds2,
         3,
-        ["read->randomize_block_order", "repartition", "MapBatches(dummy_map)"],
+        ["ReadRange->RandomizeBlockOrder", "Repartition", "MapBatches(dummy_map)"],
     )
 
 
@@ -346,7 +347,45 @@ def test_window_randomize_fusion(ray_start_regular_shared):
     pipe = ray.data.range(100).randomize_block_order().window().map_batches(dummy_map)
     pipe.take()
     stats = pipe.stats()
-    assert "read->randomize_block_order->MapBatches(dummy_map)" in stats, stats
+    assert "ReadRange->RandomizeBlockOrder->MapBatches(dummy_map)" in stats, stats
+
+
+def test_write_fusion(ray_start_regular_shared, tmp_path):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+    context.optimize_fuse_read_stages = True
+    context.optimize_fuse_shuffle_stages = True
+
+    path = os.path.join(tmp_path, "out")
+    ds = ray.data.range(100).map_batches(lambda x: x)
+    ds.write_csv(path)
+    stats = ds._write_ds.stats()
+    assert "ReadRange->MapBatches(<lambda>)->Write" in stats, stats
+
+    ds = (
+        ray.data.range(100)
+        .map_batches(lambda x: x)
+        .random_shuffle()
+        .map_batches(lambda x: x)
+    )
+    ds.write_csv(path)
+    stats = ds._write_ds.stats()
+    assert "ReadRange->MapBatches(<lambda>)" in stats, stats
+    assert "RandomShuffle" in stats, stats
+    assert "MapBatches(<lambda>)->Write" in stats, stats
+
+
+def test_write_doesnt_reorder_randomize_block(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "out")
+    ds = ray.data.range(100).randomize_block_order().map_batches(lambda x: x)
+    ds.write_csv(path)
+    stats = ds._write_ds.stats()
+
+    # The randomize_block_order will switch order with the following map_batches,
+    # but not the tailing write operator.
+    assert "ReadRange->MapBatches(<lambda>)" in stats, stats
+    assert "RandomizeBlockOrder" in stats, stats
+    assert "Write" in stats, stats
 
 
 def test_optimize_fuse(ray_start_regular_shared):
@@ -368,8 +407,8 @@ def test_optimize_fuse(ray_start_regular_shared):
         build_pipe(),
         1,
         [
-            "read->MapBatches(dummy_map)->MapBatches(dummy_map)->random_shuffle_map",
-            "random_shuffle_reduce",
+            "ReadRange->MapBatches(dummy_map)->MapBatches(dummy_map)->RandomShuffleMap",  # noqa: E501
+            "RandomShuffleReduce",
         ],
     )
 
@@ -380,9 +419,9 @@ def test_optimize_fuse(ray_start_regular_shared):
         build_pipe(),
         1,
         [
-            "read",
-            "MapBatches(dummy_map)->MapBatches(dummy_map)->random_shuffle_map",
-            "random_shuffle_reduce",
+            "Read",
+            "MapBatches(dummy_map)->MapBatches(dummy_map)->RandomShuffleMap",
+            "RandomShuffleReduce",
         ],
     )
 
@@ -393,10 +432,10 @@ def test_optimize_fuse(ray_start_regular_shared):
         build_pipe(),
         2,
         [
-            "read",
+            "Read",
             "MapBatches(dummy_map)->MapBatches(dummy_map)",
-            "random_shuffle_map",
-            "random_shuffle_reduce",
+            "RandomShuffleMap",
+            "RandomShuffleReduce",
         ],
     )
 
@@ -407,11 +446,11 @@ def test_optimize_fuse(ray_start_regular_shared):
         build_pipe(),
         3,
         [
-            "read",
+            "Read",
             "MapBatches(dummy_map)",
             "MapBatches(dummy_map)",
-            "random_shuffle_map",
-            "random_shuffle_reduce",
+            "RandomShuffleMap",
+            "RandomShuffleReduce",
         ],
     )
 
@@ -443,7 +482,7 @@ def test_optimize_equivalent_remote_args(ray_start_regular_shared):
                 pipe,
                 1,
                 [
-                    "read->MapBatches(dummy_map)->MapBatches(dummy_map)",
+                    "ReadRange->MapBatches(dummy_map)->MapBatches(dummy_map)",
                 ],
             )
 
@@ -458,13 +497,15 @@ def test_optimize_equivalent_remote_args(ray_start_regular_shared):
                 pipe,
                 1,
                 [
-                    "read->MapBatches(dummy_map)->random_shuffle_map",
-                    "random_shuffle_reduce",
+                    "ReadRange->MapBatches(dummy_map)->RandomShuffleMap",
+                    "RandomShuffleReduce",
                 ],
             )
 
 
-def test_optimize_incompatible_stages(ray_start_regular_shared):
+def test_optimize_incompatible_stages(shutdown_only):
+    ray.shutdown()
+    ray.init(num_cpus=2)
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
@@ -481,9 +522,9 @@ def test_optimize_incompatible_stages(ray_start_regular_shared):
         pipe,
         2,
         [
-            "read->MapBatches(dummy_map)",
-            "MapBatches(dummy_map)->random_shuffle_map",
-            "random_shuffle_reduce",
+            "ReadRange->MapBatches(dummy_map)",
+            "MapBatches(dummy_map)->RandomShuffleMap",
+            "RandomShuffleReduce",
         ],
     )
 
@@ -496,15 +537,17 @@ def test_optimize_incompatible_stages(ray_start_regular_shared):
         pipe,
         3,
         [
-            "read->MapBatches(dummy_map)",
+            "ReadRange->MapBatches(dummy_map)",
             "MapBatches(dummy_map)",
-            "random_shuffle_map",
-            "random_shuffle_reduce",
+            "RandomShuffleMap",
+            "RandomShuffleReduce",
         ],
     )
 
 
-def test_optimize_callable_classes(ray_start_regular_shared, tmp_path):
+def test_optimize_callable_classes(shutdown_only, tmp_path):
+    ray.shutdown()
+    ray.init(num_cpus=2)
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
@@ -564,7 +607,7 @@ def test_optimize_callable_classes(ray_start_regular_shared, tmp_path):
         pipe,
         1,
         [
-            "read->MapBatches(CallableFn)->MapBatches(CallableFn)",
+            "ReadParquet->MapBatches(CallableFn)->MapBatches(CallableFn)",
         ],
     )
 
@@ -600,7 +643,7 @@ def test_optimize_callable_classes(ray_start_regular_shared, tmp_path):
         pipe,
         1,
         [
-            "read->MapBatches(<lambda>)->MapBatches(CallableFn)",
+            "ReadParquet->MapBatches(<lambda>)->MapBatches(CallableFn)",
         ],
     )
 
@@ -660,6 +703,15 @@ def test_optimize_lazy_reuse_base_data(
     ds.take()
     num_reads = ray.get(counter.get.remote())
     assert num_reads == num_blocks, num_reads
+
+
+def test_require_preserve_order(ray_start_regular_shared):
+    ds = ray.data.range(100).map_batches(lambda x: x).sort()
+    assert ds._plan.require_preserve_order()
+    ds2 = ray.data.range(100).map_batches(lambda x: x).zip(ds)
+    assert ds2._plan.require_preserve_order()
+    ds3 = ray.data.range(100).map_batches(lambda x: x).repartition(10)
+    assert not ds3._plan.require_preserve_order()
 
 
 if __name__ == "__main__":

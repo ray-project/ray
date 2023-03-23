@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.block import (
@@ -7,9 +7,10 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
 )
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.types import ObjectRef
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.util.annotations import PublicAPI
+from typing import Iterable
 
 if TYPE_CHECKING:
     import pymongoarrow.api
@@ -37,15 +38,14 @@ class MongoDatasource(Datasource):
     def create_reader(self, **kwargs) -> Reader:
         return _MongoDatasourceReader(**kwargs)
 
-    def do_write(
+    def write(
         self,
-        blocks: List[ObjectRef[Block]],
-        metadata: List[BlockMetadata],
-        ray_remote_args: Optional[Dict[str, Any]],
+        blocks: Iterable[Block],
+        ctx: TaskContext,
         uri: str,
         database: str,
         collection: str,
-    ) -> List[ObjectRef[WriteResult]]:
+    ) -> WriteResult:
         import pymongo
 
         _validate_database_collection_exist(
@@ -59,15 +59,16 @@ class MongoDatasource(Datasource):
             client = pymongo.MongoClient(uri)
             write(client[database][collection], block)
 
-        if ray_remote_args is None:
-            ray_remote_args = {}
-
-        write_block = cached_remote_fn(write_block).options(**ray_remote_args)
-        write_tasks = []
+        builder = DelegatingBlockBuilder()
         for block in blocks:
-            write_task = write_block.remote(uri, database, collection, block)
-            write_tasks.append(write_task)
-        return write_tasks
+            builder.add_block(block)
+        block = builder.build()
+
+        write_block(uri, database, collection, block)
+
+        # TODO: decide if we want to return richer object when the task
+        # succeeds.
+        return "ok"
 
 
 class _MongoDatasourceReader(Reader):

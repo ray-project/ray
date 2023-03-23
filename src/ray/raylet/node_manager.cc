@@ -1061,10 +1061,8 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
     failed_nodes_cache_.insert(node_id);
   }
 
-  // TODO(swang): Also clean up any lease requests owned by the failed worker
-  // from the task queues. This is only necessary for lease requests that are
-  // infeasible, since requests that are fulfilled will get canceled during
-  // dispatch.
+  cluster_task_manager_->CancelAllTaskOwnedBy(worker_id);
+
   for (const auto &pair : leased_workers_) {
     auto &worker = pair.second;
     const auto owner_worker_id =
@@ -1340,7 +1338,9 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     RAY_CHECK(pid >= 0);
     worker->SetProcess(Process::FromPid(pid));
     // Compute a dummy driver task id from a given driver.
-    const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
+    // The task id set in the worker here should be consistent with the task
+    // id set in the core worker.
+    const TaskID driver_task_id = TaskID::ForDriverTask(job_id);
     worker->AssignTaskId(driver_task_id);
     rpc::JobConfig job_config;
     job_config.ParseFromString(message->serialized_job_config()->str());
@@ -1543,6 +1543,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   }
 
   local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
+  cluster_task_manager_->CancelTaskForOwner(worker->GetAssignedTaskId());
 
   client->Close();
 

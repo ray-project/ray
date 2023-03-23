@@ -3,8 +3,6 @@ import logging
 import gymnasium as gym
 from typing import Dict, Tuple, List, Type, Union, Optional, Any
 
-import ray
-import ray.experimental.tf_utils
 from ray.rllib.algorithms.ddpg.utils import make_ddpg_models, validate_spaces
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     postprocess_nstep_and_prio,
@@ -88,10 +86,6 @@ def get_ddpg_tf_policy(
         ):
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
-
-            config = dict(
-                ray.rllib.algorithms.ddpg.ddpg.DDPGConfig().to_dict(), **config
-            )
 
             # Validate action space for DDPG
             validate_spaces(self, observation_space, action_space)
@@ -197,7 +191,7 @@ def get_ddpg_tf_policy(
             actor_op = tf.cond(
                 should_apply_actor_opt,
                 true_fn=make_apply_op,
-                false_fn=lambda: tf.no_op(),
+                false_fn=lambda: tf.constant(0, dtype=tf.int64),  # this is a no-op
             )
             critic_op = self._critic_optimizer.apply_gradients(
                 self._critic_grads_and_vars

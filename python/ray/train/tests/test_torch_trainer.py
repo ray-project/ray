@@ -247,10 +247,8 @@ def test_single_worker_failure(ray_start_4_cpus):
 #     assert "You have reported a checkpoint" in output
 
 
-@pytest.mark.parametrize(
-    "num_gpus_per_worker,expected_devices", [(0.5, [0]), (1, [0]), (2, [0, 1])]
-)
-def test_tune_torch_get_device_gpu(num_gpus_per_worker, expected_devices):
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
+def test_tune_torch_get_device_gpu(num_gpus_per_worker):
     """Tests if GPU ids are set correctly when running train concurrently in nested actors
     (for example when used with Tune).
     """
@@ -278,7 +276,11 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker, expected_devices):
             # the other is taken by the other sample) so device index should be 0.
             # For the multiple GPU case, each worker has 2 visible devices so device
             # index should be either 0 or 1. It doesn't matter which.
-            assert train.torch.get_device().index in expected_devices
+            devices = train.torch.get_device()
+            if isinstance(devices, list):
+                assert sorted([device.index for device in devices]) == [0, 1]
+            else:
+                assert train.torch.get_device().index == 0
 
         @ray.remote(num_cpus=0)
         class TrialActor:
@@ -376,6 +378,27 @@ def test_torch_amp_with_custom_get_state(ray_start_4_cpus):
     )
     results = trainer.fit()
     assert results.checkpoint
+
+
+def test_torch_env_vars(ray_start_4_cpus):
+    """Check that env vars are set as expected."""
+
+    def train_func(config):
+        assert os.environ["LOCAL_RANK"] == str(session.get_local_rank())
+        assert os.environ["RANK"] == str(session.get_world_rank())
+        assert os.environ["LOCAL_WORLD_SIZE"] == str(session.get_local_world_size())
+        assert os.environ["WORLD_SIZE"] == str(session.get_world_size())
+        assert os.environ["NODE_RANK"] == str(session.get_node_rank())
+
+        assert os.environ["ACCELERATE_TORCH_DEVICE"] == str(train.torch.get_device())
+
+    num_workers = 1
+    scaling_config = ScalingConfig(num_workers=num_workers)
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+    )
+    trainer.fit()
 
 
 if __name__ == "__main__":

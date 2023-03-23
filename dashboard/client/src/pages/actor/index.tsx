@@ -23,7 +23,7 @@ const Actors = () => {
         pageInfo={{
           id: "actors",
           title: "Actors",
-          path: "/new/actors",
+          path: "/actors",
         }}
       />
       <TitleCard title="ACTORS">

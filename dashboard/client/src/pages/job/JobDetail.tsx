@@ -1,15 +1,19 @@
 import { Box, Grid, makeStyles, Typography } from "@material-ui/core";
-import dayjs from "dayjs";
-import React, { useContext } from "react";
+import React, { useContext, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
+import { formatDateFromTimeMs } from "../../common/formatUtils";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+} from "../../common/ProfilingLink";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
-import { UnifiedJob } from "../../type/job";
+import { NestedJobProgressLink, UnifiedJob } from "../../type/job";
 import ActorList from "../actor/ActorList";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
@@ -25,17 +29,18 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-type JobDetailChartsPageProps = {
-  newIA?: boolean;
-};
-
-export const JobDetailChartsPage = ({
-  newIA = false,
-}: JobDetailChartsPageProps) => {
+export const JobDetailChartsPage = () => {
   const classes = useStyle();
   const { job, msg, params } = useJobDetail();
   const jobId = params.id;
 
+  const [taskListFilter, setTaskListFilter] = useState<string>();
+  const [taskTableExpanded, setTaskTableExpanded] = useState(false);
+  const taskTableRef = useRef<HTMLDivElement>(null);
+
+  const [actorListFilter, setActorListFilter] = useState<string>();
+  const [actorTableExpanded, setActorTableExpanded] = useState(false);
+  const actorTableRef = useRef<HTMLDivElement>(null);
   const { cluster_status } = useRayStatus();
 
   const formatNodeStatus = (cluster_status: string) => {
@@ -74,7 +79,7 @@ export const JobDetailChartsPage = ({
           // See format_info_string in util.py
           if (i.startsWith("-----") || i.startsWith("=====")) {
             // Separator
-            return <div />;
+            return <div key={key} />;
           } else if (i.endsWith(":")) {
             return (
               <div key={key}>
@@ -82,7 +87,7 @@ export const JobDetailChartsPage = ({
               </div>
             );
           } else if (i === "") {
-            return <br />;
+            return <br key={key} />;
           } else {
             return <div key={key}>{i}</div>;
           }
@@ -103,6 +108,40 @@ export const JobDetailChartsPage = ({
       </div>
     );
   }
+
+  const handleClickLink = (link: NestedJobProgressLink) => {
+    if (link.type === "task") {
+      setTaskListFilter(link.id);
+      if (!taskTableExpanded) {
+        setTaskTableExpanded(true);
+        setTimeout(() => {
+          // Wait a few ms to give the collapsible view some time to render.
+          taskTableRef.current?.scrollIntoView();
+        }, 50);
+      } else {
+        taskTableRef.current?.scrollIntoView();
+      }
+    } else if (link.type === "actor") {
+      setActorListFilter(link.id);
+      if (!actorTableExpanded) {
+        setActorTableExpanded(true);
+        setTimeout(() => {
+          // Wait a few ms to give the collapsible view some time to render.
+          actorTableRef.current?.scrollIntoView();
+        }, 50);
+      } else {
+        actorTableRef.current?.scrollIntoView();
+      }
+    }
+  };
+
+  const handleTaskListFilterChange = () => {
+    setTaskListFilter(undefined);
+  };
+
+  const handleActorListFilterChange = () => {
+    setActorListFilter(undefined);
+  };
 
   return (
     <div className={classes.root}>
@@ -157,29 +196,43 @@ export const JobDetailChartsPage = ({
               label: "Started at",
               content: {
                 value: job.start_time
-                  ? dayjs(Number(job.start_time)).format("YYYY/MM/DD HH:mm:ss")
+                  ? formatDateFromTimeMs(job.start_time)
                   : "-",
               },
             },
             {
               label: "Ended at",
               content: {
-                value: job.end_time
-                  ? dayjs(Number(job.end_time)).format("YYYY/MM/DD HH:mm:ss")
-                  : "-",
+                value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
               },
             },
             {
-              label: "Logs",
-              content: <JobLogsLink job={job} newIA />,
+              label: "Actions",
+              content: (
+                <div>
+                  <JobLogsLink job={job} />
+                  <br />
+                  <CpuProfilingLink
+                    pid={job.driver_info?.pid}
+                    ip={job.driver_info?.node_ip_address}
+                    type="Driver"
+                  />
+                  <br />
+                  <CpuStackTraceLink
+                    pid={job.driver_info?.pid}
+                    ip={job.driver_info?.node_ip_address}
+                    type="Driver"
+                  />
+                </div>
+              ),
             },
           ]}
         />
       </TitleCard>
-      <TitleCard title="Tasks">
-        <JobProgressBar jobId={jobId} job={job} />
+      <TitleCard title="Tasks (beta)">
+        <JobProgressBar jobId={jobId} job={job} onClickLink={handleClickLink} />
       </TitleCard>
-      <TitleCard title="Task Timeline">
+      <TitleCard title="Task Timeline (beta)">
         <TaskTimeline jobId={jobId} />
       </TitleCard>
       <Grid container>
@@ -223,13 +276,36 @@ export const JobDetailChartsPage = ({
         </Grid>
       </Grid>
       <TitleCard>
-        <CollapsibleSection title="Task Table">
-          <TaskList jobId={jobId} />
+        <CollapsibleSection
+          ref={taskTableRef}
+          title="Task Table"
+          expanded={taskTableExpanded}
+          onExpandButtonClick={() => {
+            setTaskTableExpanded(!taskTableExpanded);
+          }}
+        >
+          <TaskList
+            jobId={jobId}
+            filterToTaskId={taskListFilter}
+            onFilterChange={handleTaskListFilterChange}
+          />
         </CollapsibleSection>
       </TitleCard>
       <TitleCard>
-        <CollapsibleSection title="Actors">
-          <ActorList jobId={jobId} />
+        <CollapsibleSection
+          ref={actorTableRef}
+          title="Actors"
+          expanded={actorTableExpanded}
+          onExpandButtonClick={() => {
+            setActorTableExpanded(!actorTableExpanded);
+          }}
+        >
+          <ActorList
+            jobId={jobId}
+            filterToActorId={actorListFilter}
+            onFilterChange={handleActorListFilterChange}
+            detailPathPrefix="actors"
+          />
         </CollapsibleSection>
       </TitleCard>
       <TitleCard>
@@ -250,27 +326,19 @@ type JobLogsLinkProps = {
     | "submission_id"
     | "type"
   >;
-  newIA?: boolean;
 };
 
 export const JobLogsLink = ({
   job: { driver_agent_http_address, driver_info, job_id, submission_id, type },
-  newIA = false,
 }: JobLogsLinkProps) => {
   const { ipLogMap } = useContext(GlobalContext);
 
   let link: string | undefined;
 
-  const baseLink = newIA ? "/new/logs" : "/log";
-
   if (driver_agent_http_address) {
-    link = `${baseLink}/${encodeURIComponent(
-      `${driver_agent_http_address}/logs`,
-    )}`;
+    link = `/logs/${encodeURIComponent(`${driver_agent_http_address}/logs`)}`;
   } else if (driver_info && ipLogMap[driver_info.node_ip_address]) {
-    link = `${baseLink}/${encodeURIComponent(
-      ipLogMap[driver_info.node_ip_address],
-    )}`;
+    link = `/logs/${encodeURIComponent(ipLogMap[driver_info.node_ip_address])}`;
   }
 
   if (link) {

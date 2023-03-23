@@ -119,25 +119,25 @@ METRICS_GAUGES = {
         "node_gpus_available",
         "Total GPUs available on a ray node",
         "percentage",
-        ["ip", "SessionName"],
+        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gpus_utilization": Gauge(
         "node_gpus_utilization",
         "Total GPUs usage on a ray node",
         "percentage",
-        ["ip", "SessionName"],
+        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gram_used": Gauge(
         "node_gram_used",
         "Total GPU RAM usage on a ray node",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gram_available": Gauge(
         "node_gram_available",
         "Total GPU RAM available on a ray node",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_disk_io_read": Gauge(
         "node_disk_io_read", "Total read from disk", "bytes", ["ip", "SessionName"]
@@ -822,47 +822,74 @@ class ReporterAgent(
             gauge=METRICS_GAUGES["node_mem_total"], value=mem_total, tags={"ip": ip}
         )
 
+        # The output example of gpustats.
+        """
+        {'index': 0,
+        'uuid': 'GPU-36e1567d-37ed-051e-f8ff-df807517b396',
+        'name': 'NVIDIA A10G',
+        'temperature_gpu': 20,
+        'fan_speed': 0,
+        'utilization_gpu': 1,
+        'utilization_enc': 0,
+        'utilization_dec': 0,
+        'power_draw': 51,
+        'enforced_power_limit': 300,
+        'memory_used': 0,
+        'memory_total': 22731,
+        'processes': []}
+        """
         # -- GPU per node --
         gpus = stats["gpus"]
         gpus_available = len(gpus)
 
         if gpus_available:
-            gpus_utilization, gram_used, gram_total = 0, 0, 0
+            gpu_tags = {"ip": ip}
             for gpu in gpus:
+                gpus_utilization, gram_used, gram_total = 0, 0, 0
                 # Consume GPU may not report its utilization.
                 if gpu["utilization_gpu"] is not None:
                     gpus_utilization += gpu["utilization_gpu"]
                 gram_used += gpu["memory_used"]
                 gram_total += gpu["memory_total"]
+                gpu_index = gpu.get("index")
+                gpu_name = gpu.get("name")
 
-            gram_available = gram_total - gram_used
+                gram_available = gram_total - gram_used
 
-            gpus_available_record = Record(
-                gauge=METRICS_GAUGES["node_gpus_available"],
-                value=gpus_available,
-                tags={"ip": ip},
-            )
-            gpus_utilization_record = Record(
-                gauge=METRICS_GAUGES["node_gpus_utilization"],
-                value=gpus_utilization,
-                tags={"ip": ip},
-            )
-            gram_used_record = Record(
-                gauge=METRICS_GAUGES["node_gram_used"], value=gram_used, tags={"ip": ip}
-            )
-            gram_available_record = Record(
-                gauge=METRICS_GAUGES["node_gram_available"],
-                value=gram_available,
-                tags={"ip": ip},
-            )
-            records_reported.extend(
-                [
-                    gpus_available_record,
-                    gpus_utilization_record,
-                    gram_used_record,
-                    gram_available_record,
-                ]
-            )
+                if gpu_index is not None:
+                    gpu_tags = {"ip": ip, "GpuIndex": str(gpu_index)}
+                    if gpu_name:
+                        gpu_tags["GpuDeviceName"] = gpu_name
+
+                    # There's only 1 GPU per each index, so we record 1 here.
+                    gpus_available_record = Record(
+                        gauge=METRICS_GAUGES["node_gpus_available"],
+                        value=1,
+                        tags=gpu_tags,
+                    )
+                    gpus_utilization_record = Record(
+                        gauge=METRICS_GAUGES["node_gpus_utilization"],
+                        value=gpus_utilization,
+                        tags=gpu_tags,
+                    )
+                    gram_used_record = Record(
+                        gauge=METRICS_GAUGES["node_gram_used"],
+                        value=gram_used,
+                        tags=gpu_tags,
+                    )
+                    gram_available_record = Record(
+                        gauge=METRICS_GAUGES["node_gram_available"],
+                        value=gram_available,
+                        tags=gpu_tags,
+                    )
+                    records_reported.extend(
+                        [
+                            gpus_available_record,
+                            gpus_utilization_record,
+                            gram_used_record,
+                            gram_available_record,
+                        ]
+                    )
 
         # -- Disk per node --
         disk_io_stats = stats["disk_io"]
@@ -907,10 +934,8 @@ class ReporterAgent(
             value=disk_io_speed_stats[3],
             tags={"ip": ip},
         )
-        used, free = 0, 0
-        for entry in stats["disk"].values():
-            used += entry.used
-            free += entry.free
+        used = stats["disk"]["/"].used
+        free = stats["disk"]["/"].free
         disk_utilization = float(used / (used + free)) * 100
         disk_usage_record = Record(
             gauge=METRICS_GAUGES["node_disk_usage"], value=used, tags={"ip": ip}

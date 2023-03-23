@@ -5,6 +5,7 @@ from collections import OrderedDict
 
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
+from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
 from ray.serve._private.deployment_method_node import DeploymentMethodNode
 from ray.serve._private.deployment_node import DeploymentNode
 from ray.serve._private.deployment_function_node import DeploymentFunctionNode
@@ -199,7 +200,7 @@ def transform_ray_dag_to_serve_dag(
             deployment_name = deployment_shell.name
 
         if name:
-            deployment_name = f"{name}_{deployment_name}"
+            deployment_name = name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment_name
 
         # Set the route prefix, prefer the one user supplied,
         # otherwise set it to /deployment_name
@@ -264,7 +265,7 @@ def transform_ray_dag_to_serve_dag(
             )
 
         if name:
-            deployment_name = f"{name}_{deployment_name}"
+            deployment_name = name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment_name
 
         return DeploymentFunctionNode(
             dag_node._body,

@@ -1,3 +1,11 @@
+import sys
+
+# Short term workaround for https://github.com/ray-project/ray/issues/32435
+# Datasets currently has a hard dependency on pandas, so it doesn't need to be delayed.
+# ray.data import is still eager for all ray imports for Python 3.6:
+if sys.version_info >= (3, 7):
+    import pandas  # noqa
+
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.dataset import Dataset
@@ -32,6 +40,7 @@ from ray.data.read_api import (  # noqa: F401
     read_numpy,
     read_parquet,
     read_parquet_bulk,
+    read_sql,
     read_text,
     read_mongo,
     read_tfrecords,
@@ -77,6 +86,7 @@ __all__ = [
     "read_mongo",
     "read_parquet",
     "read_parquet_bulk",
+    "read_sql",
     "read_tfrecords",
     "set_progress_bars",
     "Preprocessor",

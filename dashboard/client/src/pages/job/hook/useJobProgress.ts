@@ -43,7 +43,7 @@ const useFetchStateApiProgressByTaskName = (
 ) => {
   return useSWR(
     jobId ? ["useJobProgressByTaskName", jobId] : null,
-    async (_, jobId) => {
+    async ([_, jobId]) => {
       const rsp = await getStateApiJobProgressByTaskName(jobId);
       setMsg(rsp.data.msg);
 
@@ -213,6 +213,7 @@ const formatToJobProgressGroup = (
     progress: formattedProgress,
     children: nestedJobProgress.children.map(formatToJobProgressGroup),
     type: nestedJobProgress.type,
+    link: nestedJobProgress.link,
   };
 };
 
@@ -253,7 +254,7 @@ export const useJobProgressByLineage = (
 
   const { data } = useSWR(
     jobId ? ["useJobProgressByLineageAndName", jobId] : null,
-    async (_, jobId) => {
+    async ([_, jobId]) => {
       const rsp = await getStateApiJobProgressByLineage(jobId);
       setMsg(rsp.data.msg);
 

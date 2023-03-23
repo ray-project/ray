@@ -40,10 +40,13 @@ export const ClusterUtilizationCard = ({
 }: ClusterUtilizationCardProps) => {
   const classes = useStyles();
 
-  const { grafanaHost, prometheusHealth, sessionName } =
-    useContext(GlobalContext);
-  const path =
-    "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=41";
+  const {
+    grafanaHost,
+    prometheusHealth,
+    sessionName,
+    grafanaDefaultDashboardUid = "rayDefaultDashboard",
+  } = useContext(GlobalContext);
+  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=41`;
   const timeRangeParams = "&from=now-30m&to=now";
 
   return (
@@ -64,7 +67,7 @@ export const ClusterUtilizationCard = ({
             frameBorder="0"
           />
           <div className={classes.links}>
-            <LinkWithArrow text="View all metrics" to="/new/metrics" />
+            <LinkWithArrow text="View all metrics" to="/metrics" />
           </div>
         </React.Fragment>
       )}

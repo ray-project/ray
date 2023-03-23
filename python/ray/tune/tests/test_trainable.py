@@ -17,6 +17,7 @@ from ray.air._internal.remote_storage import (
     delete_at_uri,
 )
 from ray.tune.logger import NoopLogger
+from ray.tune.syncer import _DefaultSyncer
 from ray.tune.trainable import wrap_function
 
 
@@ -205,17 +206,28 @@ def test_checkpoint_object_no_sync(tmpdir):
 
 
 @pytest.mark.parametrize("hanging", [True, False])
-def test_sync_timeout(tmpdir, hanging):
+def test_sync_timeout(tmpdir, monkeypatch, hanging):
+    monkeypatch.setenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "0")
+
     orig_upload_fn = upload_to_uri
 
     def _hanging_upload(*args, **kwargs):
         time.sleep(200 if hanging else 0)
         orig_upload_fn(*args, **kwargs)
 
+    class HangingSyncer(_DefaultSyncer):
+        def _sync_up_command(self, local_path: str, uri: str, exclude: list = None):
+            return (
+                _hanging_upload,
+                dict(local_path=local_path, uri=uri, exclude=exclude),
+            )
+
     trainable = SavingTrainable(
         "object",
         remote_checkpoint_dir=f"memory:///test/location_hanging_{hanging}",
-        sync_timeout=0.5,
+        sync_config=tune.SyncConfig(
+            upload_dir="memory:///test/", syncer=HangingSyncer(sync_timeout=0.5)
+        ),
     )
 
     with patch("ray.air.checkpoint.upload_to_uri", _hanging_upload):

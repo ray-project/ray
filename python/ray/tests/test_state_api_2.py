@@ -14,12 +14,15 @@ from ray._private.test_utils import wait_for_condition
 
 
 def test_timeline(shutdown_only):
-    ray.init()
+    ray.init(num_cpus=8)
     job_id = ray.get_runtime_context().get_job_id()
+    TASK_SLEEP_TIME_S = 1
 
     @ray.remote
     def f():
-        pass
+        import time
+
+        time.sleep(TASK_SLEEP_TIME_S)
 
     @ray.remote
     class Actor:
@@ -125,11 +128,25 @@ def test_timeline(shutdown_only):
                 event["args"]["func_or_class_name"]
                 == tasks[task_id]["func_or_class_name"]
             )  # noqa
+            # Make sure the duration is correct.
+            # duration is in microseconds.
+            # Since the task sleeps for TASK_SLEEP_TIME_S,
+            # task:execute should have a similar sleep time.
+            if event["cat"] == "task:execute":
+                assert (
+                    TASK_SLEEP_TIME_S * 1e6 * 0.9
+                    < event["dur"]
+                    < TASK_SLEEP_TIME_S * 1e6 * 1.1
+                )  # noqa
         # Make sure the worker id is correct.
         worker_id_from_event = index_to_workers[event["tid"]].split(":")[1]
         node_id_from_event = index_to_nodes[event["pid"]].split(" ")[1]
         assert tasks[task_id]["worker_id"] == worker_id_from_event
         assert tasks[task_id]["node_id"] == nodes[node_id_from_event]["node_id"]
+
+    # Verify the number of metadata events are correct.
+    metadata_events = list(filter(lambda e: e["ph"] == "M", result))
+    assert len(metadata_events) == len(index_to_workers) + len(index_to_nodes)
 
 
 def test_timeline_request(shutdown_only):

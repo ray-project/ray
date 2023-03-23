@@ -62,7 +62,7 @@ Objects from the outer scope of the `training_function` will also be automatical
 TL;DR - use the `param_space` argument to specify small, serializable constants and variables.
 ```
 
-The first way of passing inputs into Trainables is the [*search space*](tune-key-concepts-search-spaces) (it may also be called *parameter space* or *config*). In the Trainable itself, it maps to the `config` dict passed in as an argument to the function. You define the search space using the `param_space` argument of the `Tuner`. The search space is a dict and may be composed of [*distributions*](<tune-sample-docs>), which will sample a different value for each Trial, or of constant values. The search space may be composed of nested dictionaries, and those in turn can have distributions as well.
+The first way of passing inputs into Trainables is the [*search space*](tune-key-concepts-search-spaces) (it may also be called *parameter space* or *config*). In the Trainable itself, it maps to the `config` dict passed in as an argument to the function. You define the search space using the `param_space` argument of the `Tuner`. The search space is a dict and may be composed of [*distributions*](<tune-search-space>), which will sample a different value for each Trial, or of constant values. The search space may be composed of nested dictionaries, and those in turn can have distributions as well.
 
 ```{warning}
 Each value in the search space will be saved directly in the Trial metadata. This means that every value in the search space **must** be serializable and take up a small amount of memory.
@@ -116,7 +116,7 @@ tuner = Tuner(
 TL;DR - use the `tune.with_parameters` util function to specify large constant parameters.
 ```
 
-If we have large objects that are constant across Trials, we can use the [`tune.with_parameters`](tune-with-parameters) utility to pass them into the Trainable directly. The objects will be stored in the [Ray object store](serialization-guide) so that each Trial worker may access them to obtain a local copy to use in its process.
+If we have large objects that are constant across Trials, we can use the {func}`tune.with_parameters <ray.tune.with_parameters>` utility to pass them into the Trainable directly. The objects will be stored in the [Ray object store](serialization-guide) so that each Trial worker may access them to obtain a local copy to use in its process.
 
 ```{tip}
 Objects put into the Ray object store must be serializable.

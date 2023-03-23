@@ -24,6 +24,9 @@ def generate_filter_fn() -> Callable[
             for row in block.iter_rows():
                 if row_fn(row):
                     builder.add(row)
-            return [builder.build()]
+            # NOTE: this yields an empty block if all rows are filtered out.
+            # This causes different behavior between filter and other map-like
+            # functions. We should revisit and try to get rid of this logic.
+            yield builder.build()
 
     return fn

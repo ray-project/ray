@@ -12,6 +12,14 @@ to use Ray Tune with Tensorboard, you can find more information in our
     :img-top-cls: pt-5 w-75 d-block mx-auto
 
     ---
+    :img-top: /images/aim_logo.png
+
+    +++
+    .. link-button:: tune-aim-ref
+        :type: ref
+        :text: Using Aim with Ray Tune For Experiment Management
+        :classes: btn-link btn-block stretched-link
+    ---
     :img-top: /images/comet_logo_full.png
 
     +++

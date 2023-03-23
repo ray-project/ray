@@ -31,6 +31,7 @@ from ray.tests.test_state_api import (
 from ray.experimental.state.common import (
     DEFAULT_RPC_TIMEOUT,
     SummaryApiOptions,
+    Link,
     NestedTaskSummary,
     TaskSummaries,
     DRIVER_TASK_ID_PREFIX,
@@ -500,6 +501,7 @@ def test_summarize_by_lineage():
                     state_counts={
                         "FINISHED": 2,
                     },
+                    link=Link("task", f"preprocess-{i}"),
                     children=[
                         NestedTaskSummary(
                             name="preprocess_sub_task",
@@ -509,6 +511,7 @@ def test_summarize_by_lineage():
                             state_counts={
                                 "FINISHED": 1,
                             },
+                            link=Link("task", f"preprocess-{i}-0"),
                         )
                     ],
                 )
@@ -524,6 +527,7 @@ def test_summarize_by_lineage():
                 "FINISHED": 111,
                 "RUNNING": 10,
             },
+            link=Link("actor", "tune-actor-0"),
             children=[
                 NestedTaskSummary(
                     name="TuneActor.__init__",
@@ -534,6 +538,7 @@ def test_summarize_by_lineage():
                         "FINISHED": 111,
                         "RUNNING": 10,
                     },
+                    link=Link("task", "tune-actor-init-0"),
                     children=[
                         NestedTaskSummary(
                             name="TrainActor",
@@ -554,6 +559,7 @@ def test_summarize_by_lineage():
                                         "FINISHED": 11,
                                         "RUNNING": 1,
                                     },
+                                    link=Link("actor", f"train-actor-{i}"),
                                     children=[
                                         NestedTaskSummary(
                                             name="TrainActor.__init__",
@@ -563,6 +569,7 @@ def test_summarize_by_lineage():
                                             state_counts={
                                                 "FINISHED": 1,
                                             },
+                                            link=Link("task", f"train-actor-init-{i}"),
                                         ),
                                         NestedTaskSummary(
                                             name="TrainActor.train_step_map",
@@ -584,6 +591,11 @@ def test_summarize_by_lineage():
                                                     state_counts={
                                                         "FINISHED": 1,
                                                     },
+                                                    link=Link(
+                                                        "task",
+                                                        "train-actor-train-step-map-"
+                                                        f"{i}-{j}",
+                                                    ),
                                                 )
                                                 for j in range(10)
                                             ],
@@ -596,6 +608,10 @@ def test_summarize_by_lineage():
                                             state_counts={
                                                 "RUNNING": 1,
                                             },
+                                            link=Link(
+                                                "task",
+                                                f"train-actor-train-step-reduce-{i}",
+                                            ),
                                         ),
                                     ],
                                 )
@@ -658,7 +674,6 @@ def test_summarize_by_lineage():
     assert summary.total_tasks == 20
     assert summary.total_actor_tasks == 110
     assert summary.total_actor_scheduled == 11
-    assert summary.summary[1] == expected_summary[1]
     assert summary.summary == expected_summary
 
 

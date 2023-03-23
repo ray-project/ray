@@ -46,11 +46,13 @@ class SimpleBlockBuilder(BlockBuilder[T]):
                 f"{block}"
             )
         self._items.extend(block)
-        for item in block:
-            self._size_estimator.add(item)
+        self._size_estimator.add_block(block)
 
     def num_rows(self) -> int:
         return len(self._items)
+
+    def will_build_yield_copy(self) -> bool:
+        return True
 
     def build(self) -> Block:
         return list(self._items)

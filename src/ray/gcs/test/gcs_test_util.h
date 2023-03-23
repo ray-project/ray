@@ -61,7 +61,8 @@ struct Mocker {
                               required_resources,
                               required_placement_resources,
                               "",
-                              0);
+                              0,
+                              TaskID::Nil());
     rpc::SchedulingStrategy scheduling_strategy;
     scheduling_strategy.mutable_default_scheduling_strategy();
     builder.SetActorCreationTaskSpec(actor_id,

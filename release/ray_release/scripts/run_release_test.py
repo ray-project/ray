@@ -1,12 +1,15 @@
 import os
 import sys
 from typing import Optional
+from pathlib import Path
 
 import click
 from ray_release.aws import maybe_fetch_api_token
 from ray_release.config import (
     DEFAULT_PYTHON_VERSION,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
+    DEFAULT_CORE_RUN_TYPE,
+    DEFAULT_CORE_ENV_TYPE,
     as_smoke_test,
     find_test,
     parse_python_version,
@@ -73,7 +76,10 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
 @click.option(
     "--env",
     default=None,
-    type=click.Choice(["prod", "staging"]),
+    # Get the names without suffixes of all files in "../environments"
+    type=click.Choice(
+        [x.stem for x in (Path(__file__).parent.parent / "environments").glob("*.env")]
+    ),
     help="Environment to use. Will overwrite environment used in test config.",
 )
 @click.option(
@@ -81,7 +87,10 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     default=False,
     type=bool,
     is_flag=True,
-    help="Do not terminate cluster after test.",
+    help=(
+        "Do not terminate cluster after test. "
+        "Will switch `anyscale_job` run type to `job` (Ray Job)."
+    ),
 )
 def main(
     test_name: str,
@@ -108,6 +117,13 @@ def main(
 
     if smoke_test:
         test = as_smoke_test(test)
+
+    # Several core tests have perf regression from V2 Job submission Runner.
+    # So we stick to the original implementation for now.
+    team = test.get("team")
+    if team == "core":
+        test["run"]["type"] = test["run"].get("type", DEFAULT_CORE_RUN_TYPE)
+        test["env"] = test.get("env", DEFAULT_CORE_ENV_TYPE)
 
     env_to_use = env or test.get("env", DEFAULT_ENVIRONMENT)
     env_dict = load_environment(env_to_use)
