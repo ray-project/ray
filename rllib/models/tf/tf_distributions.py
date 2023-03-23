@@ -413,8 +413,7 @@ class TfMultiDistribution(Distribution):
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         rsamples = []
         for dist in self._flat_child_distributions:
-            rsample_logp = dist.rsample(sample_shape=sample_shape, **kwargs)
-            rsample = rsample_logp
+            rsample = dist.rsample(sample_shape=sample_shape, **kwargs)
             rsamples.append(rsample)
 
         rsamples = tree.unflatten_as(self._original_struct, rsamples)

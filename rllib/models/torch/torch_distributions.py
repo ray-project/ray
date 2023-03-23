@@ -7,7 +7,6 @@ import gymnasium as gym
 import numpy as np
 from typing import Optional, List, Mapping, Iterable, Dict
 import tree
-from ray.rllib.utils.torch_utils import one_hot
 import abc
 
 
@@ -109,7 +108,8 @@ class TorchCategorical(TorchDistribution):
         self.probs = probs
         self.logits = logits
         self.one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
-            probs=self.probs, logits=self.logits)
+            probs=self.probs, logits=self.logits
+        )
         super().__init__(probs=probs, logits=logits, temperature=temperature)
 
     @override(TorchDistribution)
@@ -376,8 +376,12 @@ class TorchMultiCategorical(Distribution):
             # If temperatures are not provided, use 1.0 for all actions.
             temperatures = [1.0] * len(input_lens)
 
-        assert sum(input_lens) == logits.shape[1]
-        assert len(input_lens) == len(temperatures)
+        assert (
+            sum(input_lens) == logits.shape[1]
+        ), "input_lens must sum to logits.shape[1]"
+        assert len(input_lens) == len(
+            temperatures
+        ), "input_lens and temperatures must be same length"
 
         categoricals = [
             TorchCategorical(logits=logits, temperature=temperature)
@@ -420,8 +424,7 @@ class TorchMultiDistribution(Distribution):
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         rsamples = []
         for dist in self._flat_child_distributions:
-            rsample_logp = dist.rsample(sample_shape=sample_shape, **kwargs)
-            rsample = rsample_logp
+            rsample = dist.rsample(sample_shape=sample_shape, **kwargs)
             rsamples.append(rsample)
 
         rsamples = tree.unflatten_as(self._original_struct, rsamples)

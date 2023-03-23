@@ -24,7 +24,7 @@ from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 
 
 def _multi_action_dist_partial_helper(
-    catalog_cls: "Catalog", action_space: gym.Space, framework: str, deterministic: bool
+    catalog_cls: "Catalog", action_space: gym.Space, framework: str
 ) -> Distribution:
     """Helper method to get a partial of a MultiActionDistribution.
 
@@ -35,7 +35,6 @@ def _multi_action_dist_partial_helper(
         catalog_cls: The ModelCatalog class to use.
         action_space: The action space to get the child distribution classes for.
         framework: The framework to use.
-        deterministic: Whether to use the deterministic child distributions.
 
     Returns:
         A partial of the TorchMultiActionDistribution class.
@@ -46,7 +45,6 @@ def _multi_action_dist_partial_helper(
         lambda s: catalog_cls.get_dist_cls_from_action_space(
             action_space=s,
             framework=framework,
-            deterministic=deterministic,
         ),
         action_space_struct,
     )
@@ -224,7 +222,7 @@ class Catalog:
 
         # Create a function that can be called when framework is known to retrieve the
         # class type for action distributions
-        self.action_dist_class_fn = functools.partial(
+        self._action_dist_class_fn = functools.partial(
             self.get_dist_cls_from_action_space, action_space=self.action_space
         )
 
@@ -270,7 +268,7 @@ class Catalog:
             "By default, an action_dist_class_fn is created in the __post_init__ "
             "method."
         )
-        return self.action_dist_class_fn(framework=framework)
+        return self._action_dist_class_fn(framework=framework)
 
     @classmethod
     def get_encoder_config(
@@ -406,7 +404,6 @@ class Catalog:
         action_space: gym.Space,
         *,
         framework: Optional[str] = None,
-        deterministic: Optional[bool] = False,
     ) -> Distribution:
         """Returns a distribution class for the given action space.
 
@@ -419,12 +416,6 @@ class Catalog:
         Args:
             action_space: Action space of the target gym env.
             framework: The framework to use.
-            deterministic: Whether to return a Deterministic distribution on input
-                logits instead of a stochastic distributions. For example for Discrete
-                spaces, the stochastic is a Categorical distribution with output logits,
-                while the deterministic distribution will be to output the argmax of
-                logits directly.
-
 
         Returns:
             The distribution class for the given action space.
@@ -479,7 +470,6 @@ class Catalog:
                 catalog_cls=cls,
                 action_space=action_space,
                 framework=framework,
-                deterministic=deterministic,
             )
 
             distribution_dicts[
@@ -512,16 +502,12 @@ class Catalog:
             else:
                 if len(action_space.shape) > 1:
                     raise UnsupportedSpaceException(
-                        "Action space has multiple dimensions "
-                        "{}. ".format(action_space.shape)
-                        + "Consider reshaping this into a single dimension, "
-                        "using a custom action distribution, "
-                        "using a Tuple action space, or the multi-agent API."
+                        f"Action space has multiple dimensions {action_space.shape}. "
+                        f"Consider reshaping this into a single dimension, using a "
+                        f"custom action distribution, using a Tuple action space, "
+                        f"or the multi-agent API."
                     )
-                if deterministic:
-                    return distribution_dicts[DistEnum.Deterministic]
-                else:
-                    return distribution_dicts[DistEnum.DiagGaussian]
+                return distribution_dicts[DistEnum.DiagGaussian]
 
         # Discrete Space -> Categorical.
         elif isinstance(action_space, Discrete):
