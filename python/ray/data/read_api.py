@@ -56,6 +56,7 @@ from ray.data.datasource import (
     ReadTask,
     TextDatasource,
     TFRecordDatasource,
+    WebDatasetDatasource,
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
@@ -1181,6 +1182,65 @@ def read_tfrecords(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         tf_schema=tf_schema,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_webdataset(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+    partition_filter: Optional[PathPartitionFilter] = None,
+    decoder: Optional[Union[bool, str, callable, list]] = True,
+    fileselect: Optional[Union[list, callable]] = None,
+    filerename: Optional[Union[list, callable]] = None,
+    suffixes: Optional[Union[list, callable]] = None,
+    verbose_open: bool = False,
+) -> Dataset[PandasRow]:
+    """Create a dataset from WebDataset files.
+
+    Args:
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The filesystem implementation to read from.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files in the dataset.
+        arrow_open_stream_args: Key-word arguments passed to
+            ``pyarrow.fs.FileSystem.open_input_stream``. To read a compressed TFRecord file,
+            pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``, use
+            ``arrow_open_stream_args={'compression_type': 'gzip'}``).
+        meta_provider: File metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
+        partition_filter: Path-based partition filter, if any. Can be used
+            with a custom callback to read only selected partitions of a dataset.
+        decoder: A function or list of functions to decode the data.
+        fileselect: A callable or list of glob patterns to select files.
+        filerename: A function or list of tuples to rename files prior to grouping.
+        suffixes: A function or list of suffixes to select for creating samples.
+        verbose_open: Whether to print the file names as they are opened.
+
+    Returns:
+        A :class:`~ray.data.Dataset` that contains the example features.
+
+    Raises:
+        ValueError: If a file contains a message that isn't a ``tf.train.Example``.
+    """  # noqa: E501
+    return read_datasource(
+        WebDatasetDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
+        decoder=decoder,
+        fileselect=fileselect,
+        filerename=filerename,
+        suffixes=suffixes,
+        verbose_open=verbose_open,
     )
 
 

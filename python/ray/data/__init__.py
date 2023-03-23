@@ -44,6 +44,7 @@ from ray.data.read_api import (  # noqa: F401
     read_text,
     read_mongo,
     read_tfrecords,
+    read_webdataset,
 )
 
 
@@ -88,6 +89,7 @@ __all__ = [
     "read_parquet_bulk",
     "read_sql",
     "read_tfrecords",
+    "read_webdataset",
     "set_progress_bars",
     "Preprocessor",
 ]
