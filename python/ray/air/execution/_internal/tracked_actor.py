@@ -31,6 +31,17 @@ class TrackedActor:
         self._on_stop = on_stop
         self._on_error = on_error
 
+    def set_on_start(self, on_start: Optional[Callable[["TrackedActor"], None]]):
+        self._on_start = on_start
+
+    def set_on_stop(self, on_stop: Optional[Callable[["TrackedActor"], None]]):
+        self._on_stop = on_stop
+
+    def set_on_error(
+        self, on_error: Optional[Callable[["TrackedActor", Exception], None]]
+    ):
+        self._on_error = on_error
+
     def __repr__(self):
         return f"<TrackedActor {self.actor_id}>"
 

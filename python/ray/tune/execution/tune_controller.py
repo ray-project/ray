@@ -1,4 +1,5 @@
 import copy
+import time
 from collections import defaultdict
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Union, Tuple, Set
@@ -156,7 +157,12 @@ class TuneController(_TuneControllerBase):
         pass
 
     def on_step_end(self):
-        self._actor_cache.flush_cached_objects()
+        for tracked_actor in self._actor_cache.flush_cached_objects():
+            logger.debug(f"Cleaning up cached actor at end of step: {tracked_actor}")
+            # Unset termination callbacks as no trial is associated
+            tracked_actor.set_on_stop(None)
+            tracked_actor.set_on_error(None)
+            self._actor_manager.remove_actor(tracked_actor)
 
     def step(self):
         if self.is_finished():
@@ -320,7 +326,19 @@ class TuneController(_TuneControllerBase):
                 trial = self._actor_to_trial.pop(tracked_actor)
                 self._trial_to_actor.pop(trial)
 
-        self._actor_cache.flush_cached_objects(force_all=True)
+        for tracked_actor in self._actor_cache.flush_cached_objects(force_all=True):
+            logger.debug(
+                f"Cleaning up cached actor at end of experiment: {tracked_actor}"
+            )
+            # Unset termination callbacks as no trial is associated
+            tracked_actor.set_on_stop(None)
+            tracked_actor.set_on_error(None)
+            self._actor_manager.remove_actor(tracked_actor, kill=True)
+
+        start = time.monotonic()
+        while time.monotonic() - start < 5 and self._actor_manager.num_total_actors:
+            logger.debug("Waiting for actor manager to clean up final state")
+            self._actor_manager.next(timeout=1)
 
     ###
     # ADD ACTORS
