@@ -47,6 +47,13 @@ def access_log_msg(*, method: str, status: str, latency_ms: float):
     return f"{method.upper()} {status.upper()} {latency_ms:.1f}ms"
 
 
+def get_logger_file_path() -> Optional[str]:
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    for handler in logger.handlers:
+        if isinstance(handler, logging.handlers.RotatingFileHandler):
+            return handler.baseFilename
+
+
 def configure_component_logger(
     *,
     component_name: str,
