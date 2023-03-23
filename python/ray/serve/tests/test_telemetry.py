@@ -244,6 +244,7 @@ class Stub:
 stub_app = Stub.bind()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize("version", ["v1", "v2"])
 def test_rest_api(manage_ray, tmp_dir, version):
     """
