@@ -39,7 +39,7 @@ GOOGLE_CLOUD_PROJECT=anyscale-oss-ci
 INSTALL_MATCHING_RAY=${BUILDKITE-false}
 
 export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR GOOGLE_APPLICATION_CREDENTIALS GOOGLE_CLOUD_PROJECT
-echo $GOOGLE_APPLICATION_CREDENTIALS
+echo "Path to google credentials: ${GOOGLE_APPLICATION_CREDENTIALS}"
 
 if [ -z "${NO_INSTALL}" ]; then
   pip install --use-deprecated=legacy-resolver -q -r requirements.txt
