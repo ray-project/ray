@@ -100,6 +100,13 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
   gcs_resource_manager_->HandleGetAllResourceUsage(
       get_all_request, &get_all_reply2, send_reply_callback);
   ASSERT_EQ(get_all_reply2.resource_usage_data().batch().size(), 0);
+
+  // This will be ignored since the node is dead.
+  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, report_request.resources());
+  rpc::GetAllResourceUsageReply get_all_reply3;
+  gcs_resource_manager_->HandleGetAllResourceUsage(
+      get_all_request, &get_all_reply3, send_reply_callback);
+  ASSERT_EQ(get_all_reply3.resource_usage_data().batch().size(), 0);
 }
 
 TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
