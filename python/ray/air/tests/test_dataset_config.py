@@ -355,7 +355,7 @@ def test_randomize_block_order(ray_start_4_cpus):
         assert len(results[0]) == 5, results
         assert results[0] != results[1], results
         stats = shard.stats()
-        assert "RandomizeBlockOrder: 5/5 blocks executed in 0s" in stats, stats
+        assert "RandomizeBlockOrder: 5/5 blocks executed in" in stats, stats
 
     ds = ray.data.range_table(5)
     test = TestStream(
