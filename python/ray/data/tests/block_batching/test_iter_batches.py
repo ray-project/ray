@@ -299,16 +299,14 @@ def test_restore_from_original_order():
     idx = [batch.batch_idx for batch in ordered]
     assert idx == [0, 1, 2, 3]
 
+
 # Test for 3 cases
 # 1. Batch size is less than block size
 # 2. Batch size is more than block size
 # 3. Block size is not divisble by batch size
 @pytest.mark.parametrize("batch_size", [1, 4, 3])
 @pytest.mark.parametrize("drop_last", [True, False])
-def test_iter_batches_e2e(
-    ray_start_regular_shared, batch_size, drop_last
-):
-
+def test_iter_batches_e2e(ray_start_regular_shared, batch_size, drop_last):
     def collate_fn(batch: pd.DataFrame):
         return batch + 1
 
@@ -348,6 +346,7 @@ def test_iter_batches_e2e_async(ray_start_regular_shared):
     2. In the collate_fn to simulate expensive slicing/formatting/collation
     3. In the user thread to simulate training.
     """
+
     def collate_fn(batch):
         time.sleep(2)
         return batch

@@ -6,7 +6,6 @@ from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 import ray
 from ray.data._internal.block_batching.interfaces import BlockPrefetcher
 from ray.data._internal.block_batching.util import (
-    _make_async_gen,
     WaitBlockPrefetcher,
     ActorBlockPrefetcher,
 )
@@ -42,7 +41,6 @@ def batch_block_refs(
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
-    prefetch_batches: int = 0,
 ) -> Iterator[DataBatch]:
     """Create formatted batches of data from 1 or more block object references.
 
@@ -76,12 +74,6 @@ def batch_block_refs(
         shuffle_seed: The seed to use for the local random shuffle.
         ensure_copy: Whether batches are always copied from the underlying base
             blocks (not zero-copy views).
-        prefetch_batches: The number of batches to fetch ahead of the current batch to
-            process. If set to greater than 0, a separate thread will be used to fetch
-            the specified amount of formatted batches from blocks. This improves
-            performance for non-CPU bound UDFs, allowing batch fetching compute and
-            formatting to be overlapped with the UDF. Defaults to 0 (no prefetching
-            enabled).
 
     Returns:
         An iterator over record batches.
@@ -119,7 +111,6 @@ def batch_block_refs(
         shuffle_buffer_min_size=shuffle_buffer_min_size,
         shuffle_seed=shuffle_seed,
         ensure_copy=ensure_copy,
-        prefetch_batches=prefetch_batches,
     )
 
 
@@ -134,7 +125,6 @@ def batch_blocks(
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
-    prefetch_batches: int = 0,
 ) -> Iterator[DataBatch]:
     """Create formatted batches of data from 1 or more blocks.
 
@@ -167,12 +157,7 @@ def batch_blocks(
             batch_iter = batch_fn_iter(batch_iter)
         yield from batch_iter
 
-    if prefetch_batches > 0:
-        batch_iter = _make_async_gen(
-            blocks, fn=_iterator_fn, num_workers=prefetch_batches
-        )
-    else:
-        batch_iter = _iterator_fn(blocks)
+    batch_iter = _iterator_fn(blocks)
 
     for formatted_batch in batch_iter:
         user_timer = stats.iter_user_s.timer() if stats else nullcontext()
@@ -278,6 +263,68 @@ def _prefetch_blocks(
         trace_deallocation(
             block_ref, "block_batching._prefetch_blocks", free=eager_free
         )
+
+
+def _blocks_to_batches(
+    block_iter: Iterator[Block],
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
+    batch_size: Optional[int] = None,
+    drop_last: bool = False,
+    shuffle_buffer_min_size: Optional[int] = None,
+    shuffle_seed: Optional[int] = None,
+    ensure_copy: bool = False,
+) -> Iterator[Block]:
+    """Given an iterator over blocks, returns an iterator over blocks
+    of the appropriate bacth size.
+
+    If the shuffling configurations are specified, then the
+    output blocks contain shuffled data.
+
+    Args:
+        block_iter: An iterator over blocks.
+        stats: Dataset stats object used to store block batching time.
+        batch_size: Record batch size, or None to let the system pick.
+        drop_last: Whether to drop the last batch if it's incomplete.
+        ensure_copy: Whether batches are always copied from the underlying base
+            blocks (not zero-copy views).
+
+    Returns:
+        An iterator over blocks of the given size that are potentially shuffled.
+    """
+    if shuffle_buffer_min_size is not None:
+        batcher = ShufflingBatcher(
+            batch_size=batch_size,
+            shuffle_buffer_min_size=shuffle_buffer_min_size,
+            shuffle_seed=shuffle_seed,
+        )
+    else:
+        batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
+
+    def get_iter_next_batch_s_timer():
+        return stats.iter_next_batch_s.timer() if stats else nullcontext()
+
+    for block in block_iter:
+        batcher.add(block)
+        while batcher.has_batch():
+            with get_iter_next_batch_s_timer():
+                batch = batcher.next_batch()
+            yield batch
+
+    # Signal to the batcher that there are no more blocks to add.
+    batcher.done_adding()
+
+    # Get any leftover batches in ShufflingBatcher.
+    while batcher.has_batch():
+        with get_iter_next_batch_s_timer():
+            batch = batcher.next_batch()
+        yield batch
+
+    # Get any remaining data.
+    if not drop_last and batcher.has_any():
+        with get_iter_next_batch_s_timer():
+            batch = batcher.next_batch()
+        yield batch
+
 
 def _format_batches(
     block_iter: Iterator[Block],

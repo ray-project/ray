@@ -51,8 +51,12 @@ from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.dataset_iterator.dataset_iterator_impl import DatasetIteratorImpl
-from ray.data._internal.dataset_iterator.stream_split_dataset_iterator import StreamSplitDatasetIterator
+from ray.data._internal.dataset_iterator.dataset_iterator_impl import (
+    DatasetIteratorImpl,
+)
+from ray.data._internal.dataset_iterator.stream_split_dataset_iterator import (
+    StreamSplitDatasetIterator,
+)
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -2927,13 +2931,15 @@ class Dataset(Generic[T]):
     def iter_batches(
         self,
         *,
-        prefetch_blocks: int = 0,
+        prefetch_batches: int = 0,
         batch_size: Optional[int] = 256,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        # Deprecated.
+        prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the dataset.
 
@@ -2945,8 +2951,12 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Args:
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 0 (no prefetching enabled.) This is still
+                an alpha API. You can revert back to the old prefetching behavior by
+                setting `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -2976,6 +2986,7 @@ class Dataset(Generic[T]):
             )
 
         return self.iterator().iter_batches(
+            prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,

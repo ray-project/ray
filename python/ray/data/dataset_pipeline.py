@@ -28,7 +28,9 @@ from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
-from ray.data._internal.dataset_iterator.pipelined_dataset_iterator import PipelinedDatasetIterator
+from ray.data._internal.dataset_iterator.pipelined_dataset_iterator import (
+    PipelinedDatasetIterator,
+)
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF
@@ -793,7 +795,6 @@ class DatasetPipeline(Generic[T]):
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Optional[str] = "default",
-        prefetch_batches: int = 0,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -808,7 +809,6 @@ class DatasetPipeline(Generic[T]):
                 batch_size=batch_size,
                 compute=compute,
                 batch_format=batch_format,
-                prefetch_batches=prefetch_batches,
                 fn_args=fn_args,
                 fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,

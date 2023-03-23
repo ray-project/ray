@@ -6,7 +6,6 @@ from typing import Any, Callable, Iterator, List, Tuple, TypeVar
 import ray
 from ray.types import ObjectRef
 from ray.actor import ActorHandle
-from ray.types import ObjectRef
 from ray.data.block import Block
 from ray.data._internal.block_batching.interfaces import BlockPrefetcher
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -41,7 +40,7 @@ def _make_async_gen(
     if num_workers <= 0:
         yield from fn(base_iterator)
         return
-    
+
     def convert_to_threadsafe_iterator(base_iterator: Iterator[T]) -> Iterator[T]:
         class ThreadSafeIterator:
             def __init__(self, it):
@@ -98,8 +97,11 @@ def _make_async_gen(
         if num_threads_finished >= num_workers:
             break
 
+
 def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
-    """Given a list of object references, returns how many are already on the local node, how many require fetching from another node, and how many have unknown locations."""
+    """Given a list of object references, returns how many are already on the local
+    node, how many require fetching from another node, and how many have unknown
+    locations."""
     current_node_id = ray.get_runtime_context().get_node_id()
 
     locs = ray.experimental.get_object_locations(refs)

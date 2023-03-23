@@ -92,6 +92,7 @@ def test_calculate_ref_hits(ray_start_regular_shared):
     assert misses == 0
     assert unknowns == 0
 
+
 if __name__ == "__main__":
     import sys
 
