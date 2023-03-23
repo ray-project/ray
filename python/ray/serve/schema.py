@@ -372,7 +372,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
             if v.count(".") < 1:
                 raise ValueError(
                     f'Got invalid import path "{v}". An '
-                    "import path must contain at least on dot or colon "
+                    "import path must contain at least one dot or colon "
                     "separating the module (and potentially submodules) from "
                     'the deployment graph. E.g.: "module.deployment_graph".'
                 )
