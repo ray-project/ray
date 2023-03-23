@@ -113,7 +113,7 @@ class MyCallbacks(DefaultCallbacks):
     def on_learn_on_batch(
         self, *, policy: Policy, train_batch: SampleBatch, result: dict, **kwargs
     ) -> None:
-        result["sum_actions_in_train_batch"] = np.sum(train_batch["actions"])
+        result["sum_actions_in_train_batch"] = train_batch["actions"].sum()
         print(
             "policy.learn_on_batch() result: {} -> sum actions: {}".format(
                 policy, result["sum_actions_in_train_batch"]

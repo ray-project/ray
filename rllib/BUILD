@@ -3839,7 +3839,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=450.0"]
+    args = ["--as-test", "--stop-reward=450.0"]
 )
 
 py_test(
