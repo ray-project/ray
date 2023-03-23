@@ -221,6 +221,8 @@ if __name__ == "__main__":
         get_worker_log_file_name(args.worker_type)
     )
     configure_log_file(out_file, err_file)
+    ray._private.worker.global_worker.set_out_file(out_file)
+    ray._private.worker.global_worker.set_err_file(err_file)
 
     if mode == ray.WORKER_MODE:
         ray._private.worker.global_worker.main_loop()
