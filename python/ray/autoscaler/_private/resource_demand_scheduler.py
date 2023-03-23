@@ -940,6 +940,10 @@ def _fits(node: ResourceDict, resources: ResourceDict) -> bool:
 
 def _inplace_subtract(node: ResourceDict, resources: ResourceDict) -> None:
     for k, v in resources.items():
+        if v == 0:
+            # This is an edge case since some reasonable programs/computers can
+            # do `ray.autoscaler.sdk.request_resources({"GPU": 0}"})`.
+            continue
         assert k in node, (k, node)
         node[k] -= v
         assert node[k] >= 0.0, (node, k, v)

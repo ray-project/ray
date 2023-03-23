@@ -3,6 +3,7 @@ import asyncio
 from importlib import import_module
 import inspect
 import logging
+import os
 import pickle
 import time
 from typing import Any, Callable, Optional, Tuple, Dict
@@ -38,6 +39,7 @@ from ray.serve._private.utils import (
     merge_dict,
 )
 from ray.serve._private.version import DeploymentVersion
+
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -210,9 +212,15 @@ def create_replica_wrapper(name: str):
             At this time, the replica can transition from PENDING_ALLOCATION
             to PENDING_INITIALIZATION startup state.
 
-            Return the NodeID of this replica
+            Returns:
+                The PID, actor ID, node ID, node IP of the replica.
             """
-            return ray.get_runtime_context().get_node_id()
+            return (
+                os.getpid(),
+                ray.get_runtime_context().get_actor_id(),
+                ray.get_runtime_context().get_node_id(),
+                ray.util.get_node_ip_address(),
+            )
 
         async def is_initialized(
             self, user_config: Optional[Any] = None, _after: Optional[Any] = None
@@ -295,7 +303,7 @@ class RayServeReplica:
             description=(
                 "The number of queries that have been processed in this replica."
             ),
-            tag_keys=("deployment", "replica"),
+            tag_keys=("deployment", "replica", "route"),
         )
         self.request_counter.set_default_tags(
             {"deployment": self.deployment_name, "replica": self.replica_tag}
@@ -306,7 +314,7 @@ class RayServeReplica:
             description=(
                 "The number of exceptions that have occurred in this replica."
             ),
-            tag_keys=("deployment", "replica"),
+            tag_keys=("deployment", "replica", "route"),
         )
         self.error_counter.set_default_tags(
             {"deployment": self.deployment_name, "replica": self.replica_tag}
@@ -327,7 +335,7 @@ class RayServeReplica:
             "serve_deployment_processing_latency_ms",
             description="The latency for queries to be processed.",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("deployment", "replica"),
+            tag_keys=("deployment", "replica", "route"),
         )
         self.processing_latency_tracker.set_default_tags(
             {"deployment": self.deployment_name, "replica": self.replica_tag}
@@ -441,6 +449,7 @@ class RayServeReplica:
                 self.replica_tag, request_item.metadata.request_id
             )
         )
+
         args, kwargs = parse_request_item(request_item)
 
         method_to_call = None
@@ -466,7 +475,7 @@ class RayServeReplica:
                     result = await method_to_call(*args, **kwargs)
 
             result = await self.ensure_serializable_response(result)
-            self.request_counter.inc()
+            self.request_counter.inc(tags={"route": request_item.metadata.route})
         except Exception as e:
             logger.exception(f"Request failed due to {type(e).__name__}:")
             success = False
@@ -479,7 +488,7 @@ class RayServeReplica:
             if method_to_call is not None:
                 function_name = method_to_call.__name__
             result = wrap_to_ray_error(function_name, e)
-            self.error_counter.inc()
+            self.error_counter.inc(tags={"route": request_item.metadata.route})
 
         return result, success
 
@@ -509,16 +518,23 @@ class RayServeReplica:
             num_running_requests = self._get_handle_request_stats()["running"]
             self.num_processing_items.set(num_running_requests)
 
+            # Set request context variables for subsequent handle so that
+            # handle can pass the correct request context to subsequent replicas.
+            ray.serve.context._serve_request_context.set(
+                ray.serve.context.RequestContext(
+                    request.metadata.route, request.metadata.request_id
+                )
+            )
+
             start_time = time.time()
             result, success = await self.invoke_single(request)
             latency_ms = (time.time() - start_time) * 1000
-
-            self.processing_latency_tracker.observe(latency_ms)
-
+            self.processing_latency_tracker.observe(
+                latency_ms, tags={"route": request.metadata.route}
+            )
             logger.info(
                 access_log_msg(
-                    method="HANDLE",
-                    route=request.metadata.call_method,
+                    method=request.metadata.call_method,
                     status="OK" if success else "ERROR",
                     latency_ms=latency_ms,
                 )
