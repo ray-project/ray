@@ -12,7 +12,7 @@ from ray.data._internal.block_batching.util import (
 )
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
-from ray.data._internal.memory_tracing import trace_deallocation
+from ray.data._internal.memory_tracing import trace_deallocation_for_batch
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
@@ -254,7 +254,7 @@ def _prefetch_blocks(
     if num_blocks_to_prefetch == 0:
         for block_ref in block_ref_iter:
             yield block_ref
-            trace_deallocation(
+            trace_deallocation_for_batch(
                 block_ref, "block_batching._prefetch_blocks", free=eager_free
             )
 
@@ -275,7 +275,7 @@ def _prefetch_blocks(
         except StopIteration:
             pass
         yield block_ref
-        trace_deallocation(
+        trace_deallocation_for_batch(
             block_ref, "block_batching._prefetch_blocks", free=eager_free
         )
 

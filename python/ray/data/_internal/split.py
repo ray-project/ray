@@ -5,7 +5,7 @@ from typing import Union, Iterable, Tuple, List
 import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.memory_tracing import trace_deallocation
+from ray.data._internal.memory_tracing import trace_deallocation_for_batch
 from ray.data.block import (
     Block,
     BlockPartition,
@@ -205,10 +205,10 @@ def _split_all_blocks(
     # only be consumed by the owner).
     if owned_by_consumer:
         for b in blocks_splitted:
-            trace_deallocation(b, "split._split_all_blocks")
+            trace_deallocation_for_batch(b, "split._split_all_blocks")
     else:
         for b in blocks_splitted:
-            trace_deallocation(b, "split._split_all_blocks", free=False)
+            trace_deallocation_for_batch(b, "split._split_all_blocks", free=False)
 
     return itertools.chain.from_iterable(all_blocks_split_results)
 

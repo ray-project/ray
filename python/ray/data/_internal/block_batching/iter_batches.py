@@ -274,7 +274,7 @@ def collate(
         yield batch
 
 
-def trace_deallocation(
+def trace_deallocation_for_batch(
     batch_iter: Iterator[Batch], eager_free: bool
 ) -> Iterator[Batch]:
     """Trace deallocation of the underlying block references for each batch.

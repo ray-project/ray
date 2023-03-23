@@ -23,7 +23,7 @@ from ray.data._internal.block_batching.iter_batches import (
     construct_batch_from_logical_batch,
     format_batches,
     collate,
-    trace_deallocation,
+    trace_deallocation_for_batch,
     restore_from_original_order,
 )
 
@@ -279,7 +279,7 @@ def test_collate(ray_start_regular_shared):
 @pytest.mark.parametrize("eager_free", [True, False])
 def test_trace_deallocation(mock, eager_free):
     batches = [Batch(0, 0, LogicalBatch(0, [0], 0, None, 1))]
-    batch_iter = trace_deallocation(iter(batches), eager_free=eager_free)
+    batch_iter = trace_deallocation_for_batch(iter(batches), eager_free=eager_free)
     # Test that the underlying batch is not modified.
     assert next(batch_iter) == batches[0]
     mock.assert_called_once_with(0, loc="iter_batches", free=eager_free)
