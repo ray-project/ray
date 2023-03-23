@@ -329,7 +329,7 @@ class RayServeSyncHandle(RayServeHandle):
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.
         """
-        
+
         self.request_counter.inc()
         coro = self._craft_and_assign_request(
             self.deployment_name, self.handle_options, args, kwargs
