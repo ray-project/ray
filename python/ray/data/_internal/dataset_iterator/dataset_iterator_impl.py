@@ -1,5 +1,4 @@
 from typing import TYPE_CHECKING, Optional, Union, Iterator, Tuple
-import time
 import warnings
 
 from ray.types import ObjectRef
@@ -23,13 +22,17 @@ class DatasetIteratorImpl(DatasetIterator):
 
     def __repr__(self) -> str:
         return f"DatasetIterator({self._base_dataset})"
-    
-    def _to_block_iterator(self) -> Tuple[Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]]:
+
+    def _to_block_iterator(
+        self,
+    ) -> Tuple[
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+    ]:
         ds = self._base_dataset
         block_iterator, stats, executor = ds._plan.execute_to_iterator()
         ds._current_executor = executor
         return block_iterator, stats
-    
+
     def stats(self) -> str:
         return self._base_dataset.stats()
 

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING,Optional, Union, Iterator, Tuple
+from typing import TYPE_CHECKING, Optional, Union, Iterator, Tuple
 import warnings
 
 from ray.types import ObjectRef
@@ -28,8 +28,12 @@ class PipelinedDatasetIterator(DatasetIterator):
 
         ds = next(self._epoch_iterator)
         return ds
-    
-    def _to_block_iterator(self) -> Tuple[Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]]:
+
+    def _to_block_iterator(
+        self,
+    ) -> Tuple[
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+    ]:
         ds = self._get_next_dataset()
         return ds.iterator()._to_block_iterator()
 

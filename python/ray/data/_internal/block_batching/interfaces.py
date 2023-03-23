@@ -68,7 +68,6 @@ class Batch:
 
     batch_idx: int
     data: DataBatch
-    logical_batch: LogicalBatch
 
 
 class BlockPrefetcher:

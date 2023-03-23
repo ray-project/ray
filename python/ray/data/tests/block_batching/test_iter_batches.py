@@ -2,7 +2,6 @@ from copy import copy
 import pytest
 import time
 from typing import Iterator, List, Tuple
-from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -25,7 +24,6 @@ from ray.data._internal.block_batching.iter_batches import (
     _construct_batch_from_logical_batch,
     _format_batches,
     _collate,
-    _trace_deallocation,
     _restore_from_original_order,
 )
 
@@ -246,7 +244,7 @@ def test_construct_batch_from_logical_batch(ray_start_regular_shared, block_size
 @pytest.mark.parametrize("batch_format", ["pandas", "numpy", "pyarrow"])
 def test_format_batches(ray_start_regular_shared, batch_format):
     batches = [
-        Batch(i, ray.get(data[0]), None)
+        Batch(i, ray.get(data[0]))
         for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
     ]
     batch_iter = _format_batches(batches, batch_format=batch_format)
@@ -267,7 +265,7 @@ def test_collate(ray_start_regular_shared):
         return pa.table({"bar": [1] * 2})
 
     batches = [
-        Batch(i, ray.get(data[0]), None)
+        Batch(i, ray.get(data[0]))
         for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
     ]
     batch_iter = _collate(batches, collate_fn=collate_fn)
@@ -277,22 +275,12 @@ def test_collate(ray_start_regular_shared):
         assert batch.data == pa.table({"bar": [1] * 2})
 
 
-@patch.object(ray.data._internal.block_batching.iter_batches, "trace_deallocation")
-@pytest.mark.parametrize("eager_free", [True, False])
-def test_trace_deallocation(mock, eager_free):
-    batches = [Batch(0, 0, LogicalBatch(0, [0], 0, None, 1))]
-    batch_iter = _trace_deallocation(iter(batches), eager_free=eager_free)
-    # Test that the underlying batch is not modified.
-    assert next(batch_iter) == batches[0]
-    mock.assert_called_once_with(0, loc="iter_batches", free=eager_free)
-
-
 def test_restore_from_original_order():
     base_iterator = [
-        Batch(1, None, None),
-        Batch(0, None, None),
-        Batch(3, None, None),
-        Batch(2, None, None),
+        Batch(1, None),
+        Batch(0, None),
+        Batch(3, None),
+        Batch(2, None),
     ]
 
     ordered = list(_restore_from_original_order(iter(base_iterator)))

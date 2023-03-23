@@ -19,7 +19,6 @@ from ray.data._internal.block_batching.util import (
     WaitBlockPrefetcher,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats
 
 if sys.version_info >= (3, 7):
@@ -67,8 +66,7 @@ def iter_batches(
         2. Perform the necessary batch slicing to construct full batches.
         3. Format the batches to the provided batch format.
         4. Apply the collate function
-    5. Trace deallocation and eagerly clear block references if necessary.
-    6. Fetch outputs from the threadpool, maintaining order of the batches.
+    5. Fetch outputs from the threadpool, maintaining order of the batches.
 
     Args:
         block_refs: An iterator over block object references and their corresponding
@@ -115,8 +113,6 @@ def iter_batches(
     else:
         prefetcher = WaitBlockPrefetcher()
 
-    eager_free = clear_block_after_read and context.eager_free
-
     def _async_iter_batches(
         block_refs: Iterator[ObjectRef[Block]],
     ) -> Iterator[DataBatch]:
@@ -151,10 +147,7 @@ def iter_batches(
             num_threadpool_workers=prefetch_batches,
         )
 
-        # Step 5: Trace deallocation
-        batch_iter = _trace_deallocation(batch_iter, eager_free=eager_free)
-
-        # Step 6: Restore original order.
+        # Step 5: Restore original order.
         batch_iter: Iterator[Batch] = _restore_from_original_order(batch_iter)
 
         for batch in batch_iter:
@@ -514,22 +507,6 @@ def _collate(
     for batch in batch_iter:
         with stats.iter_collate_batch_s.timer() if stats else nullcontext():
             batch.data = collate_fn(batch.data)
-        yield batch
-
-
-def _trace_deallocation(
-    batch_iter: Iterator[Batch], eager_free: bool
-) -> Iterator[Batch]:
-    """Trace deallocation of the underlying block references for each batch.
-
-    Args:
-        batch_iter: An iterator over batches.
-        eager_free: Whether to eagerly free the object reference from the object store.
-    """
-    for batch in batch_iter:
-        block_refs = batch.logical_batch.block_refs
-        for block_ref in block_refs:
-            trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
         yield batch
 
 

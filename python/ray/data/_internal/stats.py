@@ -34,6 +34,9 @@ class Timer:
 
     def __init__(self):
         self._value: float = 0
+        self._min: float = float("inf")
+        self._max: float = 0
+        self._total_count: float = 0
 
     @contextmanager
     def timer(self) -> None:
@@ -41,13 +44,27 @@ class Timer:
         try:
             yield
         finally:
-            self._value += time.perf_counter() - time_start
+            self.add(time.perf_counter() - time_start)
 
     def add(self, value: float) -> None:
         self._value += value
+        if value < self._min:
+            self._min = value
+        if value > self._max:
+            self._max = value
+        self._total_count += 1
 
     def get(self) -> float:
         return self._value
+
+    def min(self) -> float:
+        return self._min
+
+    def max(self) -> float:
+        return self._max
+
+    def avg(self) -> float:
+        return self._value / self._total_count
 
 
 class _DatasetStatsBuilder:
@@ -675,10 +692,32 @@ class IterStatsSummary:
                 self.iter_unknown_location
             )
             out += "* Batch iteration time breakdown:\n"
-            out += "    * In ray.get(): {}\n".format(fmt(self.get_time.get()))
-            out += "    * In batch creation: {}\n".format(fmt(self.next_time.get()))
-            out += "    * In batch formatting: {}\n".format(fmt(self.format_time.get()))
-            out += "    * In collate_fn: {}\n".format(fmt(self.collate_time.get()))
+            out += "    * In ray.get(): {} min, {} max, {} avg, {} total\n".format(
+                fmt(self.get_time.min()),
+                fmt(self.get_time.max()),
+                fmt(self.get_time.avg()),
+                fmt(self.get_time.get()),
+            )
+            out += "    * In batch creation: {} min, {} max, {} avg, {} total\n".format(
+                fmt(self.next_time.min()),
+                fmt(self.next_time.max()),
+                fmt(self.next_time.avg()),
+                fmt(self.next_time.get()),
+            )
+            out += (
+                "    * In batch formatting: {} min, {} max, {} avg, {} total\n".format(
+                    fmt(self.format_time.min()),
+                    fmt(self.format_time.max()),
+                    fmt(self.format_time.avg()),
+                    fmt(self.format_time.get()),
+                )
+            )
+            out += "    * In collate_fn: {} min, {} max, {} avg, {} total\n".format(
+                fmt(self.collate_time.min()),
+                fmt(self.collate_time.max()),
+                fmt(self.collate_time.avg()),
+                fmt(self.collate_time.get()),
+            )
 
         return out
 
