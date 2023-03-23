@@ -163,6 +163,17 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 
+    default_dashboard_agent_listen_port = (
+        ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
+    )
+    import os
+
+    if (
+        os.environ.get("BYTED_RAY_POD_IP") is not None
+        and os.environ.get("BYTED_RAY_UNDERLAY_NETWORK") is None
+    ):
+        default_dashboard_agent_listen_port = os.environ.get("PORT3")
+
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address
@@ -180,6 +191,7 @@ if __name__ == "__main__":
         gcs_address=args.gcs_address,
         session_name=args.session_name,
         webui=args.webui,
+        dashboard_agent_listen_port=default_dashboard_agent_listen_port,
     )
     node = ray._private.node.Node(
         ray_params,
