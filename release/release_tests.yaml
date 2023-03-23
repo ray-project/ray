@@ -2317,7 +2317,7 @@
 - name: jobs_gce_basic_local_working_dir
   group: Jobs tests
   working_dir: jobs_tests
-
+  env: gce
   frequency: nightly
   team: serve
 
@@ -2371,6 +2371,26 @@
 
   alert: default
 
+- name: jobs_gce_basic_remote_working_dir
+  group: Jobs tests
+  working_dir: jobs_tests
+  env: gce
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_gce_4_xlarge.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/jobs_basic.py --working-dir "https://github.com/anyscale/job-services-cuj-examples/archive/refs/heads/main.zip"
+    wait_for_nodes:
+      num_nodes: 4
+
+
+  alert: default
+
 - name: jobs_basic_remote_working_dir
   group: Jobs tests
   working_dir: jobs_tests
@@ -2396,9 +2416,18 @@
   team: serve
   frequency: nightly
   working_dir: jobs_tests
+<<<<<<< HEAD
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gce_4_xlarge.yaml
+=======
+  env: gce
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_gce_4_xlarge.yaml
+
+>>>>>>> 2cc299dc9 (Add more jobs_gce tests)
   run:
     timeout: 600
     script: python workloads/jobs_remote_multi_node.py
@@ -2424,6 +2453,7 @@
   team: serve
   frequency: nightly
   working_dir: jobs_tests
+<<<<<<< HEAD
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gce_gpu_node.yaml
@@ -2441,6 +2471,14 @@
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gce_gpu_node.yaml
+=======
+  env: gce
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_gce_gpu_node.yaml
+
+>>>>>>> 2cc299dc9 (Add more jobs_gce tests)
   run:
     timeout: 600
     script: python workloads/jobs_check_cuda_available.py
