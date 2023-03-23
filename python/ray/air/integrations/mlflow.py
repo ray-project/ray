@@ -37,6 +37,7 @@ def setup_mlflow(
     experiment_id: Optional[str] = None,
     experiment_name: Optional[str] = None,
     tracking_token: Optional[str] = None,
+    artifact_location: Optional[str] = None,
     create_experiment_if_not_exists: bool = False,
     tags: Optional[Dict] = None,
     rank_zero_only: bool = True,
@@ -84,6 +85,9 @@ def setup_mlflow(
             want to log to a Databricks server, for example. This value will
             be used to set the MLFLOW_TRACKING_TOKEN environment variable on
             all the remote training processes.
+        artifact_location: The location to store run artifacts.
+            If not provided, MLFlow picks an appropriate default.
+            Ignored if experiment already exists.
         create_experiment_if_not_exists: Whether to create an
             experiment with the provided name if it does not already
             exist. Defaults to False.
@@ -176,6 +180,8 @@ def setup_mlflow(
         experiment_id=experiment_id or mlflow_config.get("experiment_id", None),
         experiment_name=experiment_name or mlflow_config.get("experiment_name", None),
         tracking_token=tracking_token or mlflow_config.get("tracking_token", None),
+        artifact_location=artifact_location
+        or mlflow_config.get("artifact_location", None),
         create_experiment_if_not_exists=create_experiment_if_not_exists,
     )
 
