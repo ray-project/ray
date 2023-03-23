@@ -260,6 +260,7 @@ def _generate_grafana_panels(
         template["fill"] = panel.fill
         template["stack"] = panel.stack
         template["linewidth"] = panel.linewidth
+        template["legend"]["rightSide"] = panel.legendToTheRight
         out.append(template)
     return out
 

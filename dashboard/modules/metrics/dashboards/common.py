@@ -54,6 +54,7 @@ class Panel:
     stack: bool = True
     linewidth: int = 1
     grid_pos: Optional[GridPos] = None
+    legendToTheRight: bool = False
 
 
 @dataclass
