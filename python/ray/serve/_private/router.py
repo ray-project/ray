@@ -70,6 +70,7 @@ class ReplicaSet:
         self,
         deployment_name,
         event_loop: asyncio.AbstractEventLoop,
+        embargo_timeout: float = EMBARGO_TIMEOUT_S,
     ):
         self.deployment_name = deployment_name
         self.in_flight_queries: Dict[RunningReplicaInfo, set] = dict()
@@ -93,7 +94,7 @@ class ReplicaSet:
         else:
             self.config_updated_event = asyncio.Event(loop=event_loop)
 
-        self.deny_set = ExpiringSet(EMBARGO_TIMEOUT_S)
+        self.deny_set = ExpiringSet(embargo_timeout)
 
         self.num_queued_queries = 0
         self.num_queued_queries_gauge = metrics.Gauge(

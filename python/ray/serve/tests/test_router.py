@@ -2,8 +2,10 @@
 Unit tests for the router class. Please don't add any test that will involve
 controller or the actual replica wrapper, use mock if necessary.
 """
-import asyncio
 import copy
+import time
+import asyncio
+from typing import Set
 
 import pytest
 
@@ -154,6 +156,62 @@ async def test_replica_set(ray_instance):
         (await replica.actor_handle.num_queries.remote()) for replica in replicas
     }
     assert num_queries_set == {2, 1}
+
+
+async def test_embargo_replica(ray_instance):
+    EMBARGO_TIMEOUT_S = 1
+
+    @ray.remote(num_cpus=0)
+    class MockReplica:
+        def __init__(self, replica_tag: str):
+            self.tag = replica_tag
+
+        @ray.method(num_returns=2)
+        async def handle_request(self, request):
+            return b"", self.tag
+
+    rs = ReplicaSet(
+        "fake_deployment", get_or_create_event_loop(), embargo_timeout=EMBARGO_TIMEOUT_S
+    )
+    replica_tags = ["1", "2", "3"]
+    replicas = [
+        RunningReplicaInfo(
+            deployment_name="my_deployment",
+            replica_tag=tag,
+            actor_handle=MockReplica.remote(tag),
+            max_concurrent_queries=15,
+        )
+        for tag in replica_tags
+    ]
+    rs.update_running_replicas(replicas)
+
+    async def get_available_replica_tags(num_checks=5) -> Set[str]:
+        """Get the available replicas' tags. Checks num_checks times."""
+
+        tags = set()
+        for _ in range(num_checks):
+            query = Query([], {}, RequestMetadata("request-id", "endpoint"))
+            _, tag = await rs.assign_replica(query)
+            tags.add(tag)
+        return tags
+
+    # ReplicaSet should have assigned at least one request to each replica
+    assert (await get_available_replica_tags()) == set(replica_tags)
+
+    embargo_tag = replica_tags.pop()
+    rs.embargo_replica(embargo_tag)
+
+    # Embargoed replica should not be assigned
+    assert (await get_available_replica_tags(3)) == set(replica_tags)
+
+    # Embargoed replica should still be stored
+    assert embargo_tag in [
+        replica_info.replica_tag for replica_info in rs.in_flight_queries.keys()
+    ]
+
+    # After timeout, embargo should be accessible again
+    time.sleep(EMBARGO_TIMEOUT_S)
+    assert embargo_tag in (await get_available_replica_tags())
 
 
 if __name__ == "__main__":
