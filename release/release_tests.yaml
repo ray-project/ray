@@ -598,7 +598,7 @@
 - name: ray-data-gce-bulk-ingest-file-size-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
-
+  env: gce
   stable: false
 
   frequency: nightly
@@ -632,7 +632,7 @@
 - name: ray-data-gce-bulk-ingest-out-of-core-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
-
+  env: gce
   stable: false
 
   frequency: nightly
@@ -666,7 +666,7 @@
 - name: ray-data-gce-bulk-ingest-heterogeneity-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
-
+  env: gce
   stable: false
 
   frequency: nightly
