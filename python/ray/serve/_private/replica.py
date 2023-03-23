@@ -39,7 +39,6 @@ from ray.serve._private.utils import (
     merge_dict,
 )
 from ray.serve._private.version import DeploymentVersion
-from ray.serve import context
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
