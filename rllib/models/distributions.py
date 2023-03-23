@@ -224,9 +224,11 @@ class Distribution(abc.ABC):
         return DistributionPartial
 
     def to_deterministic(self) -> "Distribution":
-        """Returns a new distribution that is deterministic.
+        """Returns a deterministic equivalent for this distribution.
 
-        Returns:
-            A new distribution that is deterministic.
+        Specifically, the deterministic equivalent for a Categorical distribution is a
+        Deterministic distribution that selects the action with maximum logit value.
+        Generally, the choice of the deterministic replacement is informed by
+        established conventions.
         """
         raise NotImplementedError

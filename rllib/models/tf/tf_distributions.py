@@ -4,7 +4,6 @@ the code. This matches the design pattern of torch distribution which developers
 already be familiar with.
 """
 import gymnasium as gym
-import functools
 import tree
 import numpy as np
 from typing import Optional, List, Mapping, Iterable, Dict
@@ -15,13 +14,12 @@ from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.typing import TensorType, Union, Tuple
-from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 
 _, tf, _ = try_import_tf()
 tfp = try_import_tfp()
 
-# TODO (Kourosh) Write unittest for this class similar to torch distirbutions.
+# TODO (Kourosh) Write unittest for this class similar to torch distributions.
 
 
 @DeveloperAPI
@@ -59,14 +57,6 @@ class TfDistribution(Distribution, abc.ABC):
     def rsample(
         self, *, sample_shape=()
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-
-        # rsample is not implemented in tfp. So we need to make a placeholder for it.
-        rsample = self._rsample(sample_shape)
-        return rsample
-
-    @OverrideToImplementCustomLogic
-    def _rsample(self, sample_shape=()):
-        """Returns a sample from the distribution, while maintaining the gradient."""
         raise NotImplementedError
 
 
@@ -138,12 +128,13 @@ class TfCategorical(TfDistribution):
     @staticmethod
     @override(Distribution)
     def required_input_dim(space: gym.Space, **kwargs) -> int:
+        assert isinstance(space, gym.spaces.Discrete)
         return int(space.n)
 
-    @override(TfDistribution)
-    def _rsample(self, sample_shape=()):
-        # TODO (Kourosh) Implement Categorical sampling using grad-passthrough trick.
-        raise NotImplementedError
+    @override(Distribution)
+    def rsample(self, sample_shape=()):
+        probs = self.probs if self.probs is not None else tf.nn.softmax(self.logits)
+        return tf.stop_gradient(self._dist.sample(sample_shape) - probs) + probs
 
     @classmethod
     @override(Distribution)
@@ -215,11 +206,11 @@ class TfDiagGaussian(TfDistribution):
     @staticmethod
     @override(Distribution)
     def required_input_dim(space: gym.Space, **kwargs) -> int:
+        assert isinstance(space, gym.spaces.Box)
         return int(np.prod(space.shape, dtype=np.int32) * 2)
 
-    @override(TfDistribution)
-    def _rsample(self, sample_shape=()):
-        """Implements reparameterization trick."""
+    @override(Distribution)
+    def rsample(self, sample_shape=()):
         eps = tf.random.normal(sample_shape)
         return self._dist.loc + eps * self._dist.scale
 
@@ -268,6 +259,7 @@ class TfDeterministic(Distribution):
         shape = sample_shape + self.loc.shape
         return tf.ones(shape, dtype=self.loc.dtype) * self.loc
 
+    @override(Distribution)
     def rsample(
         self,
         *,
@@ -291,6 +283,7 @@ class TfDeterministic(Distribution):
     @staticmethod
     @override(Distribution)
     def required_input_dim(space: gym.Space, **kwargs) -> int:
+        assert isinstance(space, gym.spaces.Box)
         return int(np.prod(space.shape, dtype=np.int32))
 
     @classmethod
@@ -312,41 +305,43 @@ class TfMultiCategorical(Distribution):
         categoricals: List[TfCategorical],
     ):
         super().__init__()
-        self.cats = categoricals
+        self._cats = categoricals
 
     @override(Distribution)
     def sample(self) -> TensorType:
-        arr = [cat.sample() for cat in self.cats]
+        arr = [cat.sample() for cat in self._cats]
         sample_ = tf.stack(arr, axis=1)
         return sample_
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
-        # TODO (Kourosh) Implement Categorical sampling using grad-passthrough trick.
-        raise NotImplementedError
+        arr = [cat.sample() for cat in self._cats]
+        sample_ = tf.stack(arr, axis=1)
+        return sample_
 
     @override(Distribution)
     def logp(self, value: tf.Tensor) -> TensorType:
         actions = tf.unstack(tf.cast(value, tf.int32), axis=1)
-        logps = tf.stack([cat.logp(act) for cat, act in zip(self.cats, actions)])
+        logps = tf.stack([cat.logp(act) for cat, act in zip(self._cats, actions)])
         return tf.reduce_sum(logps, axis=0)
 
     @override(Distribution)
     def entropy(self) -> TensorType:
         return tf.reduce_sum(
-            tf.stack([cat.entropy() for cat in self.cats], axis=1), axis=1
+            tf.stack([cat.entropy() for cat in self._cats], axis=1), axis=1
         )
 
     @override(Distribution)
     def kl(self, other: Distribution) -> TensorType:
         kls = tf.stack(
-            [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)], axis=1
+            [cat.kl(oth_cat) for cat, oth_cat in zip(self._cats, other.cats)], axis=1
         )
         return tf.reduce_sum(kls, axis=1)
 
     @staticmethod
     @override(Distribution)
     def required_input_dim(space: gym.Space, **kwargs) -> int:
+        assert isinstance(space, gym.spaces.MultiDiscrete)
         return int(np.sum(space.nvec))
 
     @classmethod
@@ -387,7 +382,7 @@ class TfMultiCategorical(Distribution):
         return TfMultiCategorical(categoricals=categoricals)
 
     def to_deterministic(self) -> "TfMultiDistribution":
-        return TfMultiDistribution([cat.to_deterministic() for cat in self.cats])
+        return TfMultiDistribution([cat.to_deterministic() for cat in self._cats])
 
 
 @DeveloperAPI
@@ -406,8 +401,8 @@ class TfMultiDistribution(Distribution):
                 instantiate the child distributions from `logits`.
         """
         super().__init__()
-        self.original_struct = child_distribution_struct
-        self.flat_child_distributions = tree.flatten(child_distribution_struct)
+        self._original_struct = child_distribution_struct
+        self._flat_child_distributions = tree.flatten(child_distribution_struct)
 
     @override(Distribution)
     def rsample(
@@ -417,12 +412,12 @@ class TfMultiDistribution(Distribution):
         **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         rsamples = []
-        for dist in self.flat_child_distributions:
+        for dist in self._flat_child_distributions:
             rsample_logp = dist.rsample(sample_shape=sample_shape, **kwargs)
             rsample = rsample_logp
             rsamples.append(rsample)
 
-        rsamples = tree.unflatten_as(self.original_struct, rsamples)
+        rsamples = tree.unflatten_as(self._original_struct, rsamples)
         return rsamples
 
     @override(Distribution)
@@ -430,7 +425,7 @@ class TfMultiDistribution(Distribution):
         # Single tensor input (all merged).
         if isinstance(value, (tf.Tensor, np.ndarray)):
             split_indices = []
-            for dist in self.flat_child_distributions:
+            for dist in self._flat_child_distributions:
                 if isinstance(dist, TfCategorical):
                     split_indices.append(1)
                 elif (
@@ -452,8 +447,7 @@ class TfMultiDistribution(Distribution):
 
         def map_(val, dist):
             # Remove extra dimension if present.
-            shape = val.shape
-            if len(shape) > 1 and val.shape[-1] == 1:
+            if len(val.shape) > 1 and val.shape[-1] == 1:
                 val = tf.squeeze(val, axis=-1)
 
             return dist.logp(val)
@@ -461,30 +455,30 @@ class TfMultiDistribution(Distribution):
         # Remove extra categorical dimension and take the logp of each
         # component.
         flat_logps = tree.map_structure(
-            map_, split_value, self.flat_child_distributions
+            map_, split_value, self._flat_child_distributions
         )
 
-        return functools.reduce(lambda a, b: a + b, flat_logps)
+        return sum(flat_logps)
 
     @override(Distribution)
     def kl(self, other):
         kl_list = [
             d.kl(o)
             for d, o in zip(
-                self.flat_child_distributions, other.flat_child_distributions
+                self._flat_child_distributions, other.flat_child_distributions
             )
         ]
-        return functools.reduce(lambda a, b: a + b, kl_list)
+        return sum(kl_list)
 
     @override(Distribution)
     def entropy(self):
-        entropy_list = [d.entropy() for d in self.flat_child_distributions]
-        return functools.reduce(lambda a, b: a + b, entropy_list)
+        entropy_list = [d.entropy() for d in self._flat_child_distributions]
+        return sum(entropy_list)
 
     @override(Distribution)
     def sample(self):
         child_distributions_struct = tree.unflatten_as(
-            self.original_struct, self.flat_child_distributions
+            self._original_struct, self._flat_child_distributions
         )
         return tree.map_structure(lambda s: s.sample(), child_distributions_struct)
 
@@ -543,9 +537,9 @@ class TfMultiDistribution(Distribution):
 
     def to_deterministic(self) -> "TfMultiDistribution":
         flat_deterministic_dists = [
-            dist.to_deterministic for dist in self.flat_child_distributions
+            dist.to_deterministic for dist in self._flat_child_distributions
         ]
         deterministic_dists = tree.unflatten_as(
-            self.original_struct, flat_deterministic_dists
+            self._original_struct, flat_deterministic_dists
         )
         return TfMultiDistribution(deterministic_dists)

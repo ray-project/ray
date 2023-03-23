@@ -4,11 +4,8 @@ This file holds framework-agnostic components for PPO's RLModules.
 
 import abc
 
-import gymnasium as gym
-
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.utils.annotations import ExperimentalAPI
-from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.core.models.base import ActorCriticEncoder
 
 
