@@ -11,7 +11,7 @@ from typing import Callable, Dict, Iterable, List
 import numpy as np
 
 import ray
-from ray.experimental.raysort import constants, logging_utils, sortlib, tracing_utils
+from ray.experimental.raysort import constants, sortlib, tracing_utils
 from ray.experimental.raysort.types import (
     BlockInfo,
     ByteCount,
@@ -21,6 +21,8 @@ from ray.experimental.raysort.types import (
     RecordCount,
 )
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+logger = logging.getLogger(__name__)
 
 Args = argparse.Namespace
 
@@ -150,12 +152,11 @@ def _get_part_path(mnt: Path, part_id: PartId, kind="input") -> Path:
 def generate_part(
     args: Args, part_id: PartId, size: RecordCount, offset: RecordCount
 ) -> PartInfo:
-    logging_utils.init()
     pinfo = _part_info(args, part_id)
     subprocess.run(
         [constants.GENSORT_PATH, f"-b{offset}", f"{size}", pinfo.path], check=True
     )
-    logging.info(f"Generated input {pinfo}")
+    logger.info(f"Generated input {pinfo}")
     return pinfo
 
 
@@ -169,7 +170,7 @@ def generate_input(args: Args):
         tasks.append(generate_part.remote(args, part_id, size, offset))
         offset += size
     assert offset == constants.bytes_to_records(args.total_data_size), args
-    logging.info(f"Generating {len(tasks)} partitions")
+    logger.info(f"Generating {len(tasks)} partitions")
     parts = ray.get(tasks)
     with open(constants.INPUT_MANIFEST_FILE, "w") as fout:
         writer = csv.writer(fout)
@@ -215,7 +216,6 @@ def _dummy_sort_and_partition(
 def mapper(
     args: Args, mapper_id: PartId, boundaries: List[int], path: Path
 ) -> List[np.ndarray]:
-    logging_utils.init()
     part = _load_partition(args, path)
     sort_fn = (
         _dummy_sort_and_partition if args.skip_sorting else sortlib.sort_and_partition
@@ -393,7 +393,7 @@ def sort_main(args: Args):
             writer = csv.writer(fout)
             writer.writerows(reducer_results)
 
-    logging.info(ray._private.internal_api.memory_summary(stats_only=True))
+    logger.info(ray._private.internal_api.memory_summary(stats_only=True))
 
 
 # ------------------------------------------------------------
@@ -404,16 +404,15 @@ def sort_main(args: Args):
 def _run_valsort(args: List[str]):
     proc = subprocess.run([constants.VALSORT_PATH] + args, capture_output=True)
     if proc.returncode != 0:
-        logging.critical("\n" + proc.stderr.decode("ascii"))
+        logger.critical("\n" + proc.stderr.decode("ascii"))
         raise RuntimeError(f"Validation failed: {args}")
 
 
 @ray.remote
 def validate_part(path: Path):
-    logging_utils.init()
     sum_path = path + ".sum"
     _run_valsort(["-o", sum_path, path])
-    logging.info(f"Validated output {path}")
+    logger.info(f"Validated output {path}")
     with open(sum_path, "rb") as fin:
         return os.path.getsize(path), fin.read()
 
@@ -425,7 +424,7 @@ def validate_output(args: Args):
     results = []
     for _, node, path in partitions:
         results.append(validate_part.options(**_node_res(node)).remote(path))
-    logging.info(f"Validating {len(results)} partitions")
+    logger.info(f"Validating {len(results)} partitions")
     results = ray.get(results)
     total = sum(s for s, _ in results)
     assert total == args.total_data_size, total - args.total_data_size
@@ -434,7 +433,7 @@ def validate_output(args: Args):
         fout.write(all_checksum)
         fout.flush()
         _run_valsort(["-s", fout.name])
-    logging.info("All OK!")
+    logger.info("All OK!")
 
 
 # ------------------------------------------------------------
@@ -447,11 +446,10 @@ def init(args: Args):
         ray.init(resources={"worker": os.cpu_count()})
     else:
         ray.init(address=args.ray_address)
-    logging_utils.init()
-    logging.info(args)
+    logger.info(args)
     os.makedirs(constants.WORK_DIR, exist_ok=True)
     resources = ray.cluster_resources()
-    logging.info(resources)
+    logger.info(resources)
     args.num_workers = resources["worker"]
     progress_tracker = tracing_utils.create_progress_tracker(args)
     return progress_tracker

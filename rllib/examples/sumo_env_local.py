@@ -23,7 +23,6 @@ from ray.rllib.algorithms.ppo import ppo
 from ray.rllib.examples.simulators.sumo import marlenvironment
 from ray.rllib.utils.test_utils import check_learning_achieved
 
-logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger("ppotrain")
 
 parser = argparse.ArgumentParser()
