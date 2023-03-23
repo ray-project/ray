@@ -157,7 +157,7 @@ class RayActorManager:
         # Track failed actors
         self._failed_actor_ids: Set[int] = set()
 
-    def next(self, timeout: Optional[Union[int, float]] = None) -> None:
+    def next(self, timeout: Optional[Union[int, float]] = None) -> bool:
         """Yield control to event manager to await the next event and invoke callbacks.
 
         Calling this method will wait for up to ``timeout`` seconds for the next
@@ -180,6 +180,9 @@ class RayActorManager:
         Args:
             timeout: Timeout in seconds to wait for next event.
 
+        Returns:
+            True if at least one event was processed.
+
         """
         # First issue any pending forceful actor kills
         actor_killed = self._try_kill_actor()
@@ -189,7 +192,7 @@ class RayActorManager:
 
         # If an actor was killed, this was our event, and we return.
         if actor_killed:
-            return
+            return True
 
         # Otherwise, collect all futures and await the next.
         resource_futures = self._resource_manager.get_resource_futures()
@@ -211,7 +214,7 @@ class RayActorManager:
         ready, _ = ray.wait(all_futures, num_returns=1, timeout=timeout)
 
         if not ready:
-            return
+            return False
 
         [future] = ready
 
@@ -230,6 +233,7 @@ class RayActorManager:
             )
 
         self._try_start_actors()
+        return True
 
     def _actor_start_resolved(self, tracked_actor: TrackedActor, future: ray.ObjectRef):
         """Callback to be invoked when actor started"""

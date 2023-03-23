@@ -199,7 +199,13 @@ class TuneController(_TuneControllerBase):
         self._maybe_add_actors()
 
         # Handle one event
-        self._actor_manager.next(timeout=1)
+        if not self._actor_manager.next(timeout=1):
+            # If there are no actors running, warn about potentially
+            # insufficient resources
+            if not self._actor_manager.num_live_actors:
+                self._insufficient_resources_manager.on_no_available_trials(
+                    self.get_trials()
+                )
 
         # Maybe stop whole experiment
         self._stop_experiment_if_needed()
@@ -784,6 +790,10 @@ class TuneController(_TuneControllerBase):
             self._process_trial_failure(trial, exception=exception)
 
     def _schedule_trial_stop(self, trial: Trial, exception: Optional[Exception] = None):
+        if trial.status == Trial.ERROR:
+            logger.debug(f"Not requesting trial STOP as it is ERROR already: {trial}")
+            return
+
         logger.debug(f"Requesting to STOP actor for trial {trial}")
 
         trial.saving_to = None
@@ -970,13 +980,19 @@ class TuneController(_TuneControllerBase):
         if not trial.export_formats or len(trial.export_formats) <= 0:
             return
 
-        self._schedule_trial_task(
+        # Todo: We are waiting here synchronously until the task resolved.
+        # Instead, we should schedule the trial stop after the export resolved.
+        # This requires changes in TrialRunner, which we can remove once the
+        # legacy execution path has been removed.
+        future = self._schedule_trial_task(
             trial=trial,
             method_name="export_model",
             args=(trial.export_formats,),
             on_result=None,
             on_error=self._trial_task_failure,
+            _return_future=True,
         )
+        self._actor_manager._actor_task_events.resolve_future(future)
 
     ###
     # RESET
