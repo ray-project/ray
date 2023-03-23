@@ -141,12 +141,11 @@ const NAV_ITEMS = [
     path: "/jobs",
     id: "jobs",
   },
-  // TODO(aguo): Add this nav button in once the page is fully implemented.
-  // {
-  //   title: "Serve",
-  //   path: "/serve",
-  //   id: "serve",
-  // },
+  {
+    title: "Serve",
+    path: "/serve",
+    id: "serve",
+  },
   {
     title: "Cluster",
     path: "/cluster",
@@ -193,18 +192,6 @@ const MainNavBar = () => {
       ))}
       <div className={classes.flexSpacer}></div>
       <div className={classes.actionItemsContainer}>
-        <Link
-          className={classNames(classes.actionItem, classes.backToOld)}
-          to="/node"
-        >
-          <Typography
-            variant="body2"
-            component="span"
-            className={classes.backToOldText}
-          >
-            Back to old UI
-          </Typography>
-        </Link>
         <Tooltip title="Docs">
           <IconButton
             className={classes.actionItem}
@@ -246,6 +233,7 @@ const useMainNavBreadcrumbsStyles = makeStyles((theme) =>
     },
     breadcrumbItem: {
       fontWeight: 500,
+      color: "#8C9196",
       "&:not(:first-child)": {
         marginLeft: theme.spacing(1),
       },
