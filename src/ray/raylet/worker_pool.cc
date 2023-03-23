@@ -100,6 +100,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       periodical_runner_(io_service),
       get_time_(get_time) {
   RAY_CHECK(maximum_startup_concurrency > 0);
+  RAY_LOG(DEBUG) << "worker_pool got num_prestart_python_workers_ " << num_prestart_python_workers_;
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
   // metric not existing at all).

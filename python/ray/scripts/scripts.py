@@ -606,6 +606,10 @@ def start(
         )
         temp_dir = None
 
+
+    # TODO productionize
+    should_start_initial_python_workers_for_first_job = os.environ.get('RAY_start_initial_python_workers_for_first_job', 'False').lower() == 'true'
+
     redirect_output = None if not no_redirect_output else True
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
@@ -641,6 +645,7 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
+        start_initial_python_workers_for_first_job=should_start_initial_python_workers_for_first_job,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
