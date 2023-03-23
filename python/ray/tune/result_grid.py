@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from typing import Optional, Union
 
 import pandas as pd
@@ -254,7 +253,7 @@ class ResultGrid:
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
-            _local_path=str(Path(trial.local_path)) if trial.local_path else None,
+            _local_path=trial.local_path,
             _remote_path=trial.remote_path,
             metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
                 trial.local_path
