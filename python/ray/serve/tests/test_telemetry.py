@@ -41,6 +41,11 @@ def start_telemetry_app():
 
     Ray should be initialized before calling this method.
 
+    NOTE: If you're running the TelemetryReceiver Serve app to check telemetry,
+    remember that the receiver itself is counted in the telemetry. E.g. if you
+    deploy a Serve app other than the receiver, the number of apps in the
+    cluster is 2- not 1– since the receiver is also running.
+
     Returns a handle to a TelemetryStorage actor. You can use this actor
     to access the latest telemetry reports.
     """
@@ -117,11 +122,19 @@ def test_fastapi_detected(reset_ray, monkeypatch, tmp_path):
             lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
         )
         report = ray.get(storage_handle.get_report.remote())
+
+        # Check all telemetry relevant to the Serve apps on this cluster
         assert int(report["extra_usage_tags"]["serve_fastapi_used"]) == 1
         assert report["extra_usage_tags"]["serve_api_version"] == "v2"
         assert int(report["extra_usage_tags"]["serve_num_apps"]) == 2
         assert int(report["extra_usage_tags"]["serve_num_deployments"]) == 2
         assert int(report["extra_usage_tags"]["serve_num_gpu_deployments"]) == 0
+
+        # Check that Serve telemetry not relevant to the running apps is omitted
+        assert "serve_dag_driver_used" not in report
+        assert "serve_http_adapter_used" not in report
+        assert "serve_grpc_ingress_used" not in report
+        assert "serve_rest_api_version" not in report
 
 
 if __name__ == "__main__":
