@@ -340,7 +340,6 @@ install_pip_packages() {
     if [ "${OSTYPE}" = msys ] && [ "${python_version}" = "3.8" ]; then
       { echo "WARNING: Pillow binaries not available on Windows; cannot build docs"; } 2> /dev/null
     else
-      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
       pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
     fi
   fi
