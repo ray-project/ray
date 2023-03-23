@@ -1,4 +1,4 @@
-cloud_id: cld_tPsS3nQz8p5cautbyWgEdr4y  # anyscale_gce_cloud
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west1
 allowed_azs: 
     - us-west1-c
