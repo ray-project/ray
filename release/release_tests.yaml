@@ -3096,7 +3096,6 @@
 
   frequency: nightly
   team: core
-  env: staging
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_large_scale.yaml
