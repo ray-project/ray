@@ -94,6 +94,14 @@ const ActorDetailPage = () => {
                 : { value: "-" },
             },
             {
+              label: "Repr",
+              content: actorDetail.reprName
+                ? {
+                    value: actorDetail.reprName,
+                  }
+                : { value: "-" },
+            },
+            {
               label: "Job ID",
               content: actorDetail.jobId
                 ? {
