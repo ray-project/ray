@@ -221,12 +221,12 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_actor_info(
-        self, timeout: int = None, limit: int = None, show_dead_jobs: bool = False
+        self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllActorInfoReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
-        request = GetAllActorInfoRequest(limit=limit, show_dead_jobs=show_dead_jobs)
+        request = GetAllActorInfoRequest(limit=limit)
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
             request, timeout=timeout
         )

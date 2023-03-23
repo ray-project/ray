@@ -89,7 +89,6 @@ from ray.experimental.state.common import (
     DEFAULT_RPC_TIMEOUT,
     ActorState,
     ListApiOptions,
-    StateResource,
     SummaryApiOptions,
     NodeState,
     ObjectState,
@@ -1953,22 +1952,10 @@ ray.get(a.ready.remote())
 """
     run_string_as_driver(script)
 
-    client = StateApiClient()
-
-    def list_actors(show_dead_jobs: bool):
-        return client.list(
-            StateResource.ACTORS,
-            options=ListApiOptions(show_dead_jobs=show_dead_jobs),
-            raise_on_missing_output=True,
-        )
-
     def verify():
-        actors_with_dead_jobs = list_actors(show_dead_jobs=True)
+        actors_with_dead_jobs = list_actors()
         assert len(actors_with_dead_jobs) == 1
         assert actors_with_dead_jobs[0]["state"] == "DEAD"
-
-        actors_no_dead_jobs = list_actors(show_dead_jobs=False)
-        assert len(actors_no_dead_jobs) == 0
 
         return True
 

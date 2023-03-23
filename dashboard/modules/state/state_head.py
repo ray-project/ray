@@ -194,9 +194,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         timeout = int(req.query.get("timeout", 30))
         filters = self._get_filters_from_req(req)
         detail = convert_string_to_type(req.query.get("detail", False), bool)
-        show_dead_jobs = convert_string_to_type(
-            req.query.get("show_dead_jobs", True), bool
-        )
         exclude_driver = convert_string_to_type(
             req.query.get("exclude_driver", True), bool
         )
@@ -206,7 +203,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             timeout=timeout,
             filters=filters,
             detail=detail,
-            show_dead_jobs=show_dead_jobs,
             exclude_driver=exclude_driver,
         )
 
