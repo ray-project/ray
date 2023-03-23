@@ -7,7 +7,7 @@ max_workers: 0
 
 head_node_type:
     name: head_node
-    instance_type: a2-ultragpu-1g # aws g4dn.8xlarge
+    instance_type: a2-highgpu-1g # aws g4dn.8xlarge
 
 worker_node_types:
     - name: worker_node
