@@ -164,7 +164,9 @@ ray.get([actor.ready.remote() for actor in actors])
     """
     # Wait until the state API returns the # of actors are 0
     # becasue entries are GC'ed by GCS.
-    wait_for_condition(lambda: len(list_actors()) == 0, timeout=60)
+    wait_for_condition(
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 0, timeout=60
+    )
     # DEAD count shouldn't be changed.
     wait_for_condition(
         lambda: actors_by_state(info) == expected,
