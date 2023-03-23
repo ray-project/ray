@@ -18,7 +18,6 @@ import org.apache.logging.log4j.core.config.builder.api.RootLoggerComponentBuild
 import org.apache.logging.log4j.core.config.builder.impl.BuiltConfiguration;
 
 public class LoggingUtil {
-
   private static boolean setup = false;
 
   public static synchronized void setupLogging(RayConfig rayConfig) {
@@ -87,7 +86,8 @@ public class LoggingUtil {
               "java-worker-" + jobIdHex + "-" + SystemUtil.pid(),
               config.getString("ray.logging.pattern")),
           maxFileSize,
-          maxBackupFiles);
+          maxBackupFiles,
+          null);
       rootLoggerBuilder.add(globalConfigBuilder.newAppenderRef(javaWorkerLogName));
       globalConfigBuilder.add(rootLoggerBuilder);
       /// Setup user loggers.
@@ -101,7 +101,8 @@ public class LoggingUtil {
             rayConfig.logDir,
             new RayConfig.LoggerConf(conf.loggerName, conf.fileName, logPattern),
             maxFileSize,
-            maxBackupFiles);
+            maxBackupFiles,
+            jobIdHex);
       }
       Configurator.reconfigure(globalConfigBuilder.build());
     }
@@ -112,10 +113,11 @@ public class LoggingUtil {
       String logDir,
       RayConfig.LoggerConf userLoggerConf,
       String maxFileSize,
-      String maxBackupFiles) {
+      String maxBackupFiles,
+      String jobIdHex) {
     LoggerComponentBuilder userLoggerBuilder =
         globalConfigBuilder.newAsyncLogger(userLoggerConf.loggerName);
-    setupLogger(globalConfigBuilder, logDir, userLoggerConf, maxFileSize, maxBackupFiles);
+    setupLogger(globalConfigBuilder, logDir, userLoggerConf, maxFileSize, maxBackupFiles, jobIdHex);
     userLoggerBuilder
         .add(globalConfigBuilder.newAppenderRef(userLoggerConf.loggerName))
         .addAttribute("additivity", false);
@@ -127,7 +129,8 @@ public class LoggingUtil {
       String logDir,
       RayConfig.LoggerConf userLoggerConf,
       String maxFileSize,
-      String maxBackupFiles) {
+      String maxBackupFiles,
+      String jobIdHex) {
     LayoutComponentBuilder layoutBuilder =
         globalConfigBuilder
             .newLayout("PatternLayout")
@@ -143,8 +146,10 @@ public class LoggingUtil {
         globalConfigBuilder
             .newComponent("DefaultRolloverStrategy")
             .addAttribute("max", maxBackupFiles);
-    final String logFileName =
-        userLoggerConf.fileName.replace("%p", String.valueOf(SystemUtil.pid()));
+    String logFileName = userLoggerConf.fileName.replace("%p", String.valueOf(SystemUtil.pid()));
+    if (jobIdHex != null) {
+      logFileName = logFileName.replace("%j", jobIdHex);
+    }
     final String logPath = logDir + "/" + logFileName + ".log";
     final String rotatedLogPath = logDir + "/" + logFileName + ".%i.log";
     AppenderComponentBuilder userLoggerAppenderBuilder =
