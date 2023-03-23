@@ -1316,12 +1316,27 @@ class Algorithm(Trainable):
         restored = workers.probe_unhealthy_workers()
 
         if restored:
-            from_worker = workers.local_worker() or self.workers.local_worker()
-            state = ray.put(from_worker.get_state())
+            # Figure out whether we are restoring a worker from the eval worker set.
+            is_eval_worker_set = False
+            from_worker = workers.local_worker()
+            if from_worker is None:
+                from_worker = self.workers.local_worker()
+                is_eval_worker_set = workers is self.evaluation_workers
+
+            # Get the state of the correct (reference) worker. E.g. The local worker
+            # of the main WorkerSet.
+            state = from_worker.get_state()
+            # For the evaluation set, we need to adjust the `policy_mapping_fn` and
+            # `is_policy_to_train` fn from the original evaluation config.
+            if is_eval_worker_set:
+                state["policy_mapping_fn"] = self.evaluation_config.policy_mapping_fn
+                state["is_policy_to_train"] = self.evaluation_config.policies_to_train
+
             # By default, entire local worker state is synced after restoration
             # to bring these workers up to date.
+            state_ref = ray.put(state)
             workers.foreach_worker(
-                func=lambda w: w.set_state(ray.get(state)),
+                func=lambda w: w.set_state(ray.get(state_ref)),
                 remote_worker_ids=restored,
                 local_worker=False,
                 timeout_seconds=self.config.worker_restore_timeout_s,
@@ -3079,29 +3094,12 @@ class Algorithm(Trainable):
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
 
-    @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
-    def _make_workers(
-        self,
-        *,
-        env_creator: EnvCreator,
-        validate_env: Optional[Callable[[EnvType, EnvContext], None]],
-        policy_class: Type[Policy],
-        config: AlgorithmConfigDict,
-        num_workers: int,
-        local_worker: bool = True,
-    ) -> WorkerSet:
-        return WorkerSet(
-            env_creator=env_creator,
-            validate_env=validate_env,
-            default_policy_class=policy_class,
-            config=config,
-            num_workers=num_workers,
-            local_worker=local_worker,
-            logdir=self.logdir,
-        )
+    @Deprecated(new="construct WorkerSet(...) instance directly", error=True)
+    def _make_workers(self, *args, **kwargs):
+        pass
 
-    def validate_config(self, config) -> None:
-        # TODO: Deprecate. All logic has been moved into the AlgorithmConfig classes.
+    @Deprecated(new="AlgorithmConfig.validate()", error=False)
+    def validate_config(self, config):
         pass
 
     @staticmethod

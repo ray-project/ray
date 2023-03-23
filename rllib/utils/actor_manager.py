@@ -785,10 +785,12 @@ class FaultTolerantActorManager:
     ) -> List[int]:
         """Ping all unhealthy actors to try bringing them back.
 
-        Returns:
-            A list of actor ids that are restored.
+        Args:
             timeout_seconds: Timeout to avoid pinging hanging workers indefinitely.
             mark_healthy: Whether to mark actors healthy if they respond to the ping.
+
+        Returns:
+            A list of actor ids that are restored.
         """
         unhealthy_actor_ids = [
             actor_id
