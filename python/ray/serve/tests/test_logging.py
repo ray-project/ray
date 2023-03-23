@@ -190,9 +190,7 @@ def test_context_information_in_logging(serve_instance):
 
         # Check the component log
         expected_log_infos = [
-            f"{resp['request_id']} {resp['route']} http_proxy.py",
             f"{resp['request_id']} {resp['route']} replica.py",
-            f"{resp2['request_id']} {resp2['route']} http_proxy.py",
             f"{resp2['request_id']} {resp2['route']} replica.py",
         ]
 
