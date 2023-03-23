@@ -120,8 +120,10 @@ def main(
 
     # Several core tests have perf regression from V2 Job submission Runner.
     # So we stick to the original implementation for now.
+    #
+    # Unless this is a GCE environment then we need to run them as Anyscale job
     team = test.get("team")
-    if team == "core":
+    if team == "core" and test["env"] != "gce":
         test["run"]["type"] = test["run"].get("type", DEFAULT_CORE_RUN_TYPE)
         test["env"] = test.get("env", DEFAULT_CORE_ENV_TYPE)
 
