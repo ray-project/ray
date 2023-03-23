@@ -697,11 +697,14 @@ class AirResultProgressCallback(Callback):
     ):
         if self._verbosity < self._intermediate_result_verbosity:
             return
+        saved_iter = "?"
+        if trial.last_result and TRAINING_ITERATION in trial.last_result:
+            saved_iter = trial.last_result[TRAINING_ITERATION]
         print(
             " ".join(
                 [
                     self._addressing_tmpl.format(trial),
-                    f"saved checkpoint for iter {trial.last_result[TRAINING_ITERATION]}"
+                    f"saved checkpoint for iter {saved_iter}"
                     f" at {checkpoint.dir_or_data}",
                 ]
             )
