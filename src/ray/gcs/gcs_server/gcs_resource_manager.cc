@@ -230,7 +230,9 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
                                                  const rpc::ResourcesData &resources) {
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
-    // It will happen when the node has been deleted or hasn't been added.
+    // It will only happen when the node has been deleted.
+    // If the node is not registered to GCS,
+    // we are guaranteed that no resource usage will be reported.
     return;
   } else {
     if (resources.resources_total_size() > 0) {
