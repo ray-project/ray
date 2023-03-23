@@ -43,6 +43,7 @@ schema = {
         "min_workers": {"type": ["null", "integer"]},
         "max_workers": {"type": ["null", "integer"]},
         "head_node_instance_type": {"type": ["null", "string"]},
+        "glibc": {"type": ["null", "string"]},
         "worker_node_instance_types": {
             "type": ["null", "array"],
             "items": {"type": "string"},
