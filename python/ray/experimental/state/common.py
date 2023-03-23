@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
-from ray.core.generated.gcs_pb2 import TaskEvents
+from ray.core.generated.gcs_pb2 import TaskEvents, TaskLogInfo
 from ray.dashboard.modules.job.common import JobInfo
 from ray.experimental.state.custom_types import (
     TypeActorStatus,
