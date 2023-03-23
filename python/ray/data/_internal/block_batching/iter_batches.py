@@ -13,7 +13,7 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.memory_tracing import trace_deallocation
 
 
-def _bundle_block_refs_to_logical_batches(
+def bundle_block_refs_to_logical_batches(
     block_ref_iterator: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     batch_size: Optional[int],
     drop_last: bool = False,
@@ -84,7 +84,7 @@ def _bundle_block_refs_to_logical_batches(
         global_index += 1
 
 
-def _local_shuffle_logical_batches(
+def local_shuffle_logical_batches(
     logical_batch_iterator: Iterator[LogicalBatch],
     shuffle_buffer_min_size: int,
     shuffle_seed: Optional[int] = None,
@@ -119,7 +119,7 @@ def _local_shuffle_logical_batches(
         global_counter += 1
 
 
-def _prefetch_batches_locally(
+def prefetch_batches_locally(
     logical_batch_iter: Iterator[LogicalBatch],
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
@@ -176,17 +176,19 @@ def _prefetch_batches_locally(
         yield batch
 
 
-def _resolve_logical_batch(logical_batch_iter: Iterator[LogicalBatch]):
+def resolve_logical_batch(
+    logical_batch_iter: Iterator[LogicalBatch],
+) -> Iterator[LogicalBatch]:
     """Resolves the block references for each logical batch."""
     for logical_batch in logical_batch_iter:
         logical_batch.resolve()
         yield logical_batch
 
 
-def _construct_batch_from_logical_batch(
+def construct_batch_from_logical_batch(
     resolved_logical_batch_iter: Iterator[LogicalBatch],
     ensure_copy: bool = False,
-) -> Iterator[Tuple[int, Block]]:
+) -> Iterator[Batch]:
     """Given an iterator over logical batches, returns an iterator over actual
     constructed batches.
 
@@ -234,9 +236,9 @@ def _construct_batch_from_logical_batch(
         yield Batch(logical_batch.batch_idx, batch, logical_batch)
 
 
-def _format_batches(
+def format_batches(
     block_iter: Iterator[Batch],
-    batch_format: str,
+    batch_format: Optional[str],
 ) -> Iterator[Batch]:
     """Given an iterator of blocks, returns an iterator of formatted batches.
 
@@ -256,10 +258,10 @@ def _format_batches(
         yield batch
 
 
-def _collate(
+def collate(
     batch_iter: Iterator[Batch],
     collate_fn: Optional[Callable[[DataBatch], Any]],
-) -> Iterator[Tuple[int, Any]]:
+) -> Iterator[Batch]:
     """Returns an iterator with the provided collate_fn applied to items of the batch
     iterator.
 
@@ -272,7 +274,7 @@ def _collate(
         yield batch
 
 
-def _trace_deallocation(
+def trace_deallocation(
     batch_iter: Iterator[Batch], eager_free: bool
 ) -> Iterator[Batch]:
     """Trace deallocation of the underlying block references for each batch.
@@ -288,7 +290,7 @@ def _trace_deallocation(
         yield batch
 
 
-def _restore_from_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
+def restore_from_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
     """Restores the original order of the provided `batch_iter`
 
     This function will yield items from `base_iterator` in the correct order based on

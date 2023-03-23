@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, DataBatch
+from ray.data.block import Block
 
 
 @dataclass
@@ -67,7 +67,7 @@ class Batch:
     """
 
     batch_idx: int
-    data: DataBatch
+    data: Any
     logical_batch: LogicalBatch
 
 

@@ -16,15 +16,15 @@ from ray.data._internal.block_batching.interfaces import (
     BlockPrefetcher,
 )
 from ray.data._internal.block_batching.iter_batches import (
-    _bundle_block_refs_to_logical_batches,
-    _local_shuffle_logical_batches,
-    _prefetch_batches_locally,
-    _resolve_logical_batch,
-    _construct_batch_from_logical_batch,
-    _format_batches,
-    _collate,
-    _trace_deallocation,
-    _restore_from_original_order,
+    bundle_block_refs_to_logical_batches,
+    local_shuffle_logical_batches,
+    prefetch_batches_locally,
+    resolve_logical_batch,
+    construct_batch_from_logical_batch,
+    format_batches,
+    collate,
+    trace_deallocation,
+    restore_from_original_order,
 )
 
 
@@ -44,7 +44,7 @@ def block_generator(
 def logical_batch_generator(
     num_rows: int, num_blocks: int, batch_size: int = None
 ) -> Iterator[LogicalBatch]:
-    logical_batch_iter = _bundle_block_refs_to_logical_batches(
+    logical_batch_iter = bundle_block_refs_to_logical_batches(
         block_generator(num_rows=num_rows, num_blocks=num_blocks), batch_size=batch_size
     )
     return logical_batch_iter
@@ -66,7 +66,7 @@ def test_bundle_block_refs_to_logical_batches(ray_start_regular_shared):
     batch_size = None
     block_iter = block_generator(num_rows=num_rows_per_block, num_blocks=num_blocks)
     block_refs = list(block_iter)
-    logical_batch_iter = _bundle_block_refs_to_logical_batches(
+    logical_batch_iter = bundle_block_refs_to_logical_batches(
         iter(block_refs), batch_size=batch_size
     )
     logical_batches = list(logical_batch_iter)
@@ -83,7 +83,7 @@ def test_bundle_block_refs_to_logical_batches(ray_start_regular_shared):
     batch_size = 1
     block_iter = block_generator(num_rows=num_rows_per_block, num_blocks=num_blocks)
     block_refs = list(block_iter)
-    logical_batch_iter = _bundle_block_refs_to_logical_batches(
+    logical_batch_iter = bundle_block_refs_to_logical_batches(
         iter(block_refs), batch_size=batch_size
     )
     logical_batches = list(logical_batch_iter)
@@ -100,7 +100,7 @@ def test_bundle_block_refs_to_logical_batches(ray_start_regular_shared):
     batch_size = 2
     block_iter = block_generator(num_rows=num_rows_per_block, num_blocks=num_blocks)
     block_refs = list(block_iter)
-    logical_batch_iter = _bundle_block_refs_to_logical_batches(
+    logical_batch_iter = bundle_block_refs_to_logical_batches(
         iter(block_refs), batch_size=batch_size
     )
     logical_batches = list(logical_batch_iter)
@@ -115,7 +115,7 @@ def test_bundle_block_refs_to_logical_batches(ray_start_regular_shared):
     batch_size = 3
     block_iter = block_generator(num_rows=num_rows_per_block, num_blocks=num_blocks)
     block_refs = list(block_iter)
-    logical_batch_iter = _bundle_block_refs_to_logical_batches(
+    logical_batch_iter = bundle_block_refs_to_logical_batches(
         iter(block_refs), batch_size=batch_size
     )
     logical_batches = list(logical_batch_iter)
@@ -132,7 +132,7 @@ def test_bundle_block_refs_to_logical_batches(ray_start_regular_shared):
     batch_size = 3
     block_iter = block_generator(num_rows=num_rows_per_block, num_blocks=num_blocks)
     block_refs = list(block_iter)
-    logical_batch_iter = _bundle_block_refs_to_logical_batches(
+    logical_batch_iter = bundle_block_refs_to_logical_batches(
         iter(block_refs), batch_size=batch_size, drop_last=True
     )
     logical_batches = list(logical_batch_iter)
@@ -152,7 +152,7 @@ def test_local_shuffle_logical_batches(ray_start_regular_shared):
     shuffle_buffer_min_size = 1
     logical_batches = list(logical_batch_generator(num_rows_per_block, num_blocks))
     shuffled_batches = list(
-        _local_shuffle_logical_batches(
+        local_shuffle_logical_batches(
             iter(logical_batches),
             shuffle_buffer_min_size=shuffle_buffer_min_size,
             shuffle_seed=shuffle_seed,
@@ -167,7 +167,7 @@ def test_local_shuffle_logical_batches(ray_start_regular_shared):
     shuffle_buffer_min_size = 2
     logical_batches = list(logical_batch_generator(num_rows_per_block, num_blocks))
     shuffled_batches = list(
-        _local_shuffle_logical_batches(
+        local_shuffle_logical_batches(
             iter(logical_batches),
             shuffle_buffer_min_size=shuffle_buffer_min_size,
             shuffle_seed=shuffle_seed,
@@ -194,7 +194,7 @@ def test_prefetch_batches_locally(ray_start_regular_shared, num_batches_to_prefe
     num_blocks = 10
     prefetcher = DummyPrefetcher()
     logical_batches = list(logical_batch_generator(1, num_blocks))
-    prefetch_batch_iter = _prefetch_batches_locally(
+    prefetch_batch_iter = prefetch_batches_locally(
         iter(logical_batches),
         prefetcher=prefetcher,
         num_batches_to_prefetch=num_batches_to_prefetch,
@@ -222,7 +222,7 @@ def test_prefetch_batches_locally(ray_start_regular_shared, num_batches_to_prefe
 
 def test_resolve_logical_batches(ray_start_regular_shared):
     logical_batches = list(logical_batch_generator(1, 1))
-    resolved_iter = _resolve_logical_batch(iter(logical_batches))
+    resolved_iter = resolve_logical_batch(iter(logical_batches))
     assert next(resolved_iter).blocks == ray.get(logical_batches[0].block_refs)
 
 
@@ -234,7 +234,7 @@ def test_construct_batch_from_logical_batch(ray_start_regular_shared, block_size
         resolved_logical_batch_generator(block_size, num_blocks, batch_size=batch_size)
     )
 
-    created_batches = list(_construct_batch_from_logical_batch(iter(logical_batches)))
+    created_batches = list(construct_batch_from_logical_batch(iter(logical_batches)))
 
     for i, batch in enumerate(created_batches):
         assert i == batch.batch_idx
@@ -247,7 +247,7 @@ def test_format_batches(ray_start_regular_shared, batch_format):
         Batch(i, ray.get(data[0]), None)
         for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
     ]
-    batch_iter = _format_batches(batches, batch_format=batch_format)
+    batch_iter = format_batches(batches, batch_format=batch_format)
 
     for i, batch in enumerate(batch_iter):
         assert batch.batch_idx == i
@@ -268,7 +268,7 @@ def test_collate(ray_start_regular_shared):
         Batch(i, ray.get(data[0]), None)
         for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
     ]
-    batch_iter = _collate(batches, collate_fn=collate_fn)
+    batch_iter = collate(batches, collate_fn=collate_fn)
 
     for i, batch in enumerate(batch_iter):
         assert batch.batch_idx == i
@@ -279,7 +279,7 @@ def test_collate(ray_start_regular_shared):
 @pytest.mark.parametrize("eager_free", [True, False])
 def test_trace_deallocation(mock, eager_free):
     batches = [Batch(0, 0, LogicalBatch(0, [0], 0, None, 1))]
-    batch_iter = _trace_deallocation(iter(batches), eager_free=eager_free)
+    batch_iter = trace_deallocation(iter(batches), eager_free=eager_free)
     # Test that the underlying batch is not modified.
     assert next(batch_iter) == batches[0]
     mock.assert_called_once_with(0, loc="iter_batches", free=eager_free)
@@ -293,7 +293,7 @@ def test_restore_from_original_order():
         Batch(2, None, None),
     ]
 
-    ordered = list(_restore_from_original_order(iter(base_iterator)))
+    ordered = list(restore_from_original_order(iter(base_iterator)))
     idx = [batch.batch_idx for batch in ordered]
     assert idx == [0, 1, 2, 3]
 
