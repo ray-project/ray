@@ -222,6 +222,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     reply->mutable_resource_usage_data()->CopyFrom(batch);
   }
 
+  RAY_CHECK_EQ(reply->resource_usage_data().batch().size(), num_alive_nodes_);
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
@@ -282,11 +283,13 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   data.set_node_id(node.node_id());
   data.set_node_manager_address(node.node_manager_address());
   node_resource_usages_.emplace(NodeID::FromBinary(node.node_id()), std::move(data));
+  num_alive_nodes_++;
 }
 
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
   node_resource_usages_.erase(node_id);
   cluster_resource_manager_.RemoveNode(scheduling::NodeID(node_id.Binary()));
+  num_alive_nodes_--;
 }
 
 void GcsResourceManager::UpdatePlacementGroupLoad(
