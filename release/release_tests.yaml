@@ -2317,7 +2317,7 @@
 - name: jobs_gce_basic_local_working_dir
   group: Jobs tests
   working_dir: jobs_tests
-
+  env: gce
   frequency: nightly
   team: serve
 
@@ -2354,6 +2354,26 @@
 
   alert: default
 
+- name: jobs_gce_basic_remote_working_dir
+  group: Jobs tests
+  working_dir: jobs_tests
+  env: gce
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_gce_4_xlarge.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/jobs_basic.py --working-dir "https://github.com/anyscale/job-services-cuj-examples/archive/refs/heads/main.zip"
+    wait_for_nodes:
+      num_nodes: 4
+
+
+  alert: default
+
 - name: jobs_basic_remote_working_dir
   group: Jobs tests
   working_dir: jobs_tests
@@ -2374,6 +2394,23 @@
 
   alert: default
 
+- name: jobs_gce_remote_multi_node
+  group: Jobs tests
+  team: serve
+  frequency: nightly
+  working_dir: jobs_tests
+  env: gce
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_gce_4_xlarge.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/jobs_remote_multi_node.py
+    wait_for_nodes:
+      num_nodes: 4
+
 - name: jobs_remote_multi_node
   group: Jobs tests
   team: serve
@@ -2388,6 +2425,23 @@
     wait_for_nodes:
       num_nodes: 4
 
+- name: jobs_gce_check_cuda_available
+  group: Jobs tests
+  team: serve
+  frequency: nightly
+  working_dir: jobs_tests
+  env: gce
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_gce_gpu_node.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/jobs_check_cuda_available.py
+    wait_for_nodes:
+      num_nodes: 2
+
 - name: jobs_check_cuda_available
   group: Jobs tests
   team: serve
@@ -2399,6 +2453,20 @@
   run:
     timeout: 600
     script: python workloads/jobs_check_cuda_available.py
+    wait_for_nodes:
+      num_nodes: 2
+
+- name: jobs_gce_specify_num_gpus
+  group: Jobs tests
+  team: serve
+  frequency: nightly
+  working_dir: jobs_tests
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_gce_gpu_worker.yaml
+  run:
+    timeout: 600
+    script: python workloads/jobs_specify_num_gpus.py --working-dir "workloads"
     wait_for_nodes:
       num_nodes: 2
 
