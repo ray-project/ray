@@ -21,9 +21,13 @@ import { ClusterDetailInfoPage } from "./pages/node/ClusterDetailInfoPage";
 import { ClusterLayout } from "./pages/node/ClusterLayout";
 import NodeDetailPage from "./pages/node/NodeDetail";
 import { OverviewPage } from "./pages/overview/OverviewPage";
-import { ServeApplicationDetailPage } from "./pages/serve/ServeApplicationDetailPage";
+import {
+  ServeApplicationDetailLayout,
+  ServeApplicationDetailPage,
+} from "./pages/serve/ServeApplicationDetailPage";
 import { ServeApplicationsListPage } from "./pages/serve/ServeApplicationsListPage";
 import { ServeLayout } from "./pages/serve/ServeLayout";
+import { ServeReplicaDetailPage } from "./pages/serve/ServeReplicaDetailPage";
 import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
 
@@ -191,9 +195,15 @@ const App = () => {
                 <Route element={<ServeLayout />} path="serve">
                   <Route element={<ServeApplicationsListPage />} path="" />
                   <Route
-                    element={<ServeApplicationDetailPage />}
-                    path="applications/:name"
-                  />
+                    element={<ServeApplicationDetailLayout />}
+                    path="applications/:applicationName"
+                  >
+                    <Route element={<ServeApplicationDetailPage />} path="" />
+                    <Route
+                      element={<ServeReplicaDetailPage />}
+                      path=":deploymentName/:replicaId"
+                    />
+                  </Route>
                 </Route>
                 <Route element={<LogsLayout />} path="logs">
                   {/* TODO(aguo): Refactor Logs component to use optional query
