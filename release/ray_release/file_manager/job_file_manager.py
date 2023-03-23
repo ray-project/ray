@@ -22,7 +22,13 @@ class JobFileManager(FileManager):
 
         self.sdk = self.cluster_manager.sdk
         self.s3_client = boto3.client("s3")
-        self.bucket = str(RELEASE_AWS_BUCKET)
+        cloud_storage_provider = os.environ.get("ANYSCALE_CLOUD_STORAGE_PROVIDER", "s3")
+        if cloud_storage_provider == "s3":
+            self.bucket = str(RELEASE_AWS_BUCKET)
+        elif cloud_storage_provider == "gs":
+            self.bucket = "anyscale-oss-dev-bucket"
+        else:
+            raise Exception(f"Non supported anyscale service provider: {cloud_storage_provider}")
         self.job_manager = JobManager(cluster_manager)
         # Backward compatible
         if "ANYSCALE_RAY_DIR" in anyscale.__dict__:
