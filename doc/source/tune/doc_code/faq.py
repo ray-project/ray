@@ -439,3 +439,67 @@ if not MOCK:
     )
     tuner.fit()
     # __no_chdir_end__
+
+
+# __iter_experimentation_initial_start__
+from ray import air, tune
+from ray.air import Checkpoint, session
+import random
+
+
+def trainable(config):
+    for epoch in range(1, config["num_epochs"]):
+        # Do some training...
+
+        session.report(
+            {"score": random.random()},
+            checkpoint=Checkpoint.from_dict({"model_state_dict": {"x": 1}}),
+        )
+
+
+tuner = tune.Tuner(
+    trainable,
+    param_space={"num_epochs": 10, "hyperparam": tune.grid_search([1, 2, 3])},
+    tune_config=tune.TuneConfig(metric="score", mode="max"),
+)
+result_grid = tuner.fit()
+
+best_result = result_grid.get_best_result()
+best_checkpoint = best_result.checkpoint
+# __iter_experimentation_initial_end__
+
+
+# __iter_experimentation_resume_start__
+import ray
+
+
+def trainable(config):
+    # Add logic to handle the initial checkpoint.
+    checkpoint_ref = config["start_from_checkpoint"]
+    checkpoint: Checkpoint = ray.get(checkpoint_ref)
+    model_state_dict = checkpoint.to_dict()["model_state_dict"]
+    # Initialize a model from the checkpoint...
+
+    for epoch in range(1, config["num_epochs"]):
+        # Do some training...
+
+        session.report(
+            {"score": random.random()},
+            checkpoint=Checkpoint.from_dict({"model_state_dict": {"x": 1}}),
+        )
+
+
+new_tuner = tune.Tuner(
+    trainable,
+    param_space={
+        "num_epochs": 10,
+        "hyperparam": tune.grid_search([4, 5, 6]),
+        # Put the best checkpoint from above into the object store.
+        # This way, all trials will be able to access the checkpoint,
+        # regardless of which node they are on.
+        "start_from_checkpoint": ray.put(best_checkpoint),
+    },
+    tune_config=tune.TuneConfig(metric="score", mode="max"),
+)
+result_grid = new_tuner.fit()
+# __iter_experimentation_resume_end__
