@@ -5,6 +5,7 @@ import tempfile
 from typing import Optional
 
 import boto3
+from google.cloud import storage
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import FileDownloadError, FileUploadError
@@ -22,13 +23,14 @@ class JobFileManager(FileManager):
 
         self.sdk = self.cluster_manager.sdk
         self.s3_client = boto3.client("s3")
-        cloud_storage_provider = os.environ.get("ANYSCALE_CLOUD_STORAGE_PROVIDER", "s3")
-        if cloud_storage_provider == "s3":
+        self.gs_client = storage.Client()
+        self.cloud_storage_provider = os.environ.get("ANYSCALE_CLOUD_STORAGE_PROVIDER", "s3")
+        if self.cloud_storage_provider == "s3":
             self.bucket = str(RELEASE_AWS_BUCKET)
-        elif cloud_storage_provider == "gs":
+        elif self.cloud_storage_provider == "gs":
             self.bucket = "anyscale-oss-dev-bucket"
         else:
-            raise Exception(f"Non supported anyscale service provider: {cloud_storage_provider}")
+            raise Exception(f"Non supported anyscale service provider: {self.cloud_storage_provider}")
         self.job_manager = JobManager(cluster_manager)
         # Backward compatible
         if "ANYSCALE_RAY_DIR" in anyscale.__dict__:
@@ -47,19 +49,25 @@ class JobFileManager(FileManager):
         location = f"tmp/{generate_tmp_s3_path()}"
         return location
 
-    def download_from_s3(
+    def download_from_cloud(
         self, key: str, target: str, delete_after_download: bool = False
     ):
-        # s3 -> local target
-        self._run_with_retry(
-            lambda: self.s3_client.download_file(
-                Bucket=self.bucket,
-                Key=key,
-                Filename=target,
+        if self.cloud_storage_provider == "s3":
+            self._run_with_retry(
+                lambda: self.s3_client.download_file(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Filename=target,
+                )
             )
-        )
+        if self.cloud_storage_provider == "gs":
+            bucket = self.gs_client.bucket(self.bucket)
+            blob = bucket.blob(key)
+            self._run_with_retry(
+                lambda: blob.download_to_file_name(target)
+            )
 
-        if delete_after_download:
+        if delete_after_download and self.cloud_storage_provider == "s3":
             self.delete(target)
 
     def download(self, source: str, target: str):
@@ -81,7 +89,7 @@ class JobFileManager(FileManager):
         if retcode != 0:
             raise FileDownloadError(f"Error downloading file {source} to {target}")
 
-        self.download_from_s3(remote_upload_to, target, delete_after_download=True)
+        self.download_from_cloud(remote_upload_to, target, delete_after_download=True)
 
     def _push_local_dir(self):
         remote_upload_to = self._generate_tmp_s3_path()
