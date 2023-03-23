@@ -301,6 +301,14 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
             .experimental(_disable_preprocessor_api=True)
             .resources(num_gpus=1)
         )
+
+        # (Artur): This test only works under the old ModelV2 API because we
+        # don't offer arbitrarily complex Models under the RLModules API without
+        # preprocessors. Such input spaces require custom implementations of the
+        # input space.
+        # TODO (Artur): Delete this test once we remove ModelV2 API.
+        config.rl_module(_enable_rl_module_api=False)
+
         check_support("PPO", config, check_bounds=True, tf2=True)
 
 

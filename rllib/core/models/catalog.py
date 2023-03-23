@@ -539,9 +539,7 @@ class Catalog:
             raise NotImplementedError(f"Unsupported action space: `{action_space}`")
 
     @staticmethod
-    def get_preprocessor(
-        observation_space: gym.Space, **kwargs
-    ) -> Preprocessor:
+    def get_preprocessor(observation_space: gym.Space, **kwargs) -> Preprocessor:
         """Returns a suitable preprocessor for the given observation space.
 
         Args:
