@@ -1457,7 +1457,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_gcp_k8s_4x8.yaml
+    cluster_compute: tpl_gce_4x8.yaml
     autosuspend_mins: 60
 
   run:
