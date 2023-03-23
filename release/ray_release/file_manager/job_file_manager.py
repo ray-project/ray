@@ -64,7 +64,7 @@ class JobFileManager(FileManager):
             bucket = self.gs_client.bucket(self.bucket)
             blob = bucket.blob(key)
             self._run_with_retry(
-                lambda: blob.download_to_file_name(target)
+                lambda: blob.download_to_filename(target)
             )
 
         if delete_after_download and self.cloud_storage_provider == "s3":
