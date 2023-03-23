@@ -1,15 +1,14 @@
-from typing import Optional
+import enum
 import functools
+from typing import Optional
 
 import gymnasium as gym
 import numpy as np
 import tree
-
-from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
-from ray.rllib.core.models.base import ModelConfig
 from ray.rllib.core.models.base import Encoder
+from ray.rllib.core.models.base import ModelConfig
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.core.models.configs import (
     MLPEncoderConfig,
@@ -23,6 +22,7 @@ from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 
 
 def _multi_action_dist_partial_helper(
@@ -439,6 +439,18 @@ class Catalog:
         Returns:
             The distribution class for the given action space.
         """
+        # This method is structured in two steps:
+        # Firstly, construct a dictionary containing the available distribution classes.
+        # Secondly, return the correct distribution class for the given action space.
+
+        # Step 1: Construct the dictionary.
+
+        class DistEnum(enum.Enum):
+            Categorical = "Categorical"
+            DiagGaussian = "Gaussian"
+            Deterministic = "Deterministic"
+            MultiDistribution = "MultiDistribution"
+            MultiCategorical = "MultiCategorical"
 
         if framework == "torch":
             from ray.rllib.models.torch.torch_distributions import (
@@ -448,9 +460,9 @@ class Catalog:
             )
 
             distribution_dicts = {
-                "deterministic": TorchDeterministic,
-                "gaussian": TorchDiagGaussian,
-                "categorical": TorchCategorical,
+                DistEnum.Deterministic: TorchDeterministic,
+                DistEnum.DiagGaussian: TorchDiagGaussian,
+                DistEnum.Categorical: TorchCategorical,
             }
         elif framework == "tf":
             from ray.rllib.models.tf.tf_distributions import (
@@ -460,9 +472,9 @@ class Catalog:
             )
 
             distribution_dicts = {
-                "deterministic": TfDeterministic,
-                "gaussian": TfDiagGaussian,
-                "categorical": TfCategorical,
+                DistEnum.Deterministic: TfDeterministic,
+                DistEnum.DiagGaussian: TfDiagGaussian,
+                DistEnum.Categorical: TfCategorical,
             }
         else:
             raise ValueError(
@@ -480,7 +492,9 @@ class Catalog:
                 deterministic=deterministic,
             )
 
-            distribution_dicts["multidist"] = partial_multi_action_distribution_cls
+            distribution_dicts[
+                DistEnum.MultiDistribution
+            ] = partial_multi_action_distribution_cls
 
         # Only add a MultiCategorical distribution class to the dict if we can compute
         # its components (we need a MultiDiscrete space for this).
@@ -493,8 +507,10 @@ class Catalog:
             )
 
             distribution_dicts[
-                "multicategorical"
+                DistEnum.MultiCategorical
             ] = partial_multi_categorical_distribution_cls
+
+        # Step 2: Return the correct distribution class for the given action space.
 
         # Box space -> DiagGaussian OR Deterministic.
         if isinstance(action_space, Box):
@@ -513,17 +529,17 @@ class Catalog:
                         "using a Tuple action space, or the multi-agent API."
                     )
                 if deterministic:
-                    return distribution_dicts["deterministic"]
+                    return distribution_dicts[DistEnum.Deterministic]
                 else:
-                    return distribution_dicts["gaussian"]
+                    return distribution_dicts[DistEnum.DiagGaussian]
 
         # Discrete Space -> Categorical.
         elif isinstance(action_space, Discrete):
-            return distribution_dicts["categorical"]
+            return distribution_dicts[DistEnum.Categorical]
 
         # Tuple/Dict Spaces -> MultiAction.
         elif isinstance(action_space, (Tuple, Dict)):
-            return distribution_dicts["multidist"]
+            return distribution_dicts[DistEnum.MultiDistribution]
 
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
@@ -532,7 +548,7 @@ class Catalog:
 
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, MultiDiscrete):
-            return distribution_dicts["multicategorical"]
+            return distribution_dicts[DistEnum.MultiCategorical]
 
         # Unknown type -> Error.
         else:

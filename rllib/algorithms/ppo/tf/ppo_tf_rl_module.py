@@ -89,8 +89,7 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         # Actions
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
         action_dist = self.action_dist_cls.from_logits(action_logits)
-        deterministic_action_dist = action_dist.to_deterministic()
-        output[SampleBatch.ACTION_DIST] = deterministic_action_dist
+        output[SampleBatch.ACTION_DIST] = action_dist.to_deterministic()
 
         return output
 
