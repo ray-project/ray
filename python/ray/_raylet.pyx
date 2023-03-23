@@ -854,6 +854,8 @@ cdef void execute_task(
                 class_name = actor.__class__.__name__
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
+
+            worker.record_task_log_start()
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
@@ -908,6 +910,11 @@ cdef void execute_task(
                                         core_worker.get_current_task_id()),
                                      exc_info=True)
                     raise e
+                finally:
+                    # Record the task logs end offsets regardless of
+                    # task execution results.
+                    worker.record_task_log_end()
+
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
                     # all return values as a single object.
@@ -2777,6 +2784,16 @@ cdef class CoreWorker:
                     CCoreWorkerProcess.GetCoreWorker().GetNumLeasesRequested())
 
         return (num_tasks_submitted, num_leases_requested)
+
+    def record_task_log_start(self, stdout_path, stderr_path,
+                              int64_t out_start_offset, int64_t err_start_offset):
+        CCoreWorkerProcess.GetCoreWorker() \
+            .RecordTaskLogStart(stdout_path, stderr_path,
+                                out_start_offset, err_start_offset)
+
+    def record_task_log_end(self, int64_t out_end_offset, int64_t err_end_offset):
+        CCoreWorkerProcess.GetCoreWorker() \
+            .RecordTaskLogEnd(out_end_offset, err_end_offset)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
