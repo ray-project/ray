@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
-from ray.core.generated.gcs_pb2 import TaskEvents
+from ray.core.generated.gcs_pb2 import TaskEvents, TaskLogInfo
 from ray.dashboard.modules.job.common import JobInfo
 from ray.experimental.state.custom_types import (
     TypeActorStatus,
@@ -383,6 +383,8 @@ class ActorState(StateSchema):
     is_detached: bool = state_column(filterable=False, detail=True)
     #: The placement group id that's associated with this actor.
     placement_group_id: str = state_column(detail=True, filterable=True)
+    #: Actor's repr name if a customized __repr__ method exists, else empty string.
+    repr_name: str = state_column(detail=True, filterable=True)
 
 
 @dataclass(init=True)
@@ -567,6 +569,9 @@ class TaskState(StateSchema):
     start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
     #: The time when the task is finished or failed. A Unix timestamp in ms.
     end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    #: The task logs info, e.g. offset into the worker log file when the task
+    #: starts/finishes.
+    task_log_info: Optional[TaskLogInfo] = state_column(detail=True, filterable=False)
     #: Task error type.
     error_type: Optional[str] = state_column(detail=False, filterable=False)
 
@@ -838,7 +843,9 @@ class TaskSummaries:
         )
 
     @classmethod
-    def to_summary_by_lineage(cls, *, tasks: List[Dict]) -> "TaskSummaries":
+    def to_summary_by_lineage(
+        cls, *, tasks: List[Dict], actors: List[Dict]
+    ) -> "TaskSummaries":
         """
         This summarizes tasks by lineage.
         i.e. A task will be grouped with another task if they have the
@@ -877,6 +884,8 @@ class TaskSummaries:
             type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
             if type_enum == TaskType.ACTOR_CREATION_TASK:
                 actor_creation_task_id_for_actor_id[task["actor_id"]] = task["task_id"]
+
+        actor_dict = {actor["actor_id"]: actor for actor in actors}
 
         def get_or_create_task_group(task_id: str) -> Optional[NestedTaskSummary]:
             """
@@ -949,6 +958,7 @@ class TaskSummaries:
             Returns None if there is missing data about the actor or one of its parents.
             """
             key = f"actor:{actor_id}"
+            actor = actor_dict.get(actor_id)
             if key not in task_group_by_id:
                 creation_task_id = actor_creation_task_id_for_actor_id.get(actor_id)
                 creation_task = tasks_by_id.get(creation_task_id)
@@ -959,8 +969,21 @@ class TaskSummaries:
                     # tree at that node.
                     return None
 
-                # TODO(aguo): Get actor name from actors state-api.
-                [actor_name, *rest] = creation_task["func_or_class_name"].split(".")
+                # TODO(rickyx)
+                # We are using repr name for grouping actors if exists,
+                # else use class name. We should be using some group_name in the future.
+                if actor is None:
+                    logger.debug(
+                        f"We are missing actor info for actor {actor_id}, "
+                        f"even though creation task exists: {creation_task}"
+                    )
+                    [actor_name, *rest] = creation_task["func_or_class_name"].split(".")
+                else:
+                    actor_name = (
+                        actor["repr_name"]
+                        if actor["repr_name"]
+                        else actor["class_name"]
+                    )
 
                 task_group_by_id[key] = NestedTaskSummary(
                     name=actor_name,
