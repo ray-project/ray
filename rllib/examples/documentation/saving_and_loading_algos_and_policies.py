@@ -246,8 +246,9 @@ ppo_policy = ppo.get_policy()
 
 # __export-models-1-begin__
 ppo_policy.export_model("/tmp/my_nn_model")
-# .. check /tmp/my_nn_model/ for the keras model files. You should be able to recover
-# the keras model via:
+# .. check /tmp/my_nn_model/ for the model files.
+
+# For Keras You should be able to recover the model via:
 # keras_model = tf.saved_model.load("/tmp/my_nn_model/")
 # And pass in a Pendulum-v1 observation:
 # results = keras_model(tf.convert_to_tensor(
@@ -270,7 +271,7 @@ ppo_policy.export_model("/tmp/my_nn_model")
 
 # __export-models-2-begin__
 checkpoint_dir = ppo_policy.export_checkpoint("tmp/ppo_policy")
-# .. check /tmp/ppo_policy/model/ for the keras model files.
+# .. check /tmp/ppo_policy/model/ for the model files.
 # You should be able to recover the keras model via:
 # keras_model = tf.saved_model.load("/tmp/ppo_policy/model")
 # And pass in a Pendulum-v1 observation:
@@ -285,7 +286,7 @@ checkpoint_dir = ppo_policy.export_checkpoint("tmp/ppo_policy")
 # __export-models-3-begin__
 checkpoint_dir = ppo.save()
 # .. check `checkpoint_dir` for the Algorithm checkpoint files.
-# You should be able to recover the keras model via:
+# For keras you should be able to recover the model via:
 # keras_model = tf.saved_model.load(checkpoint_dir + "/policies/default_policy/model/")
 # And pass in a Pendulum-v1 observation
 # results = keras_model(tf.convert_to_tensor(
@@ -297,6 +298,6 @@ checkpoint_dir = ppo.save()
 
 # __export-models-as-onnx-begin__
 # Using the same Policy object, we can also export our NN Model in the ONNX format:
-ppo_policy.export_model("/tmp/my_nn_model", onnx=True)
+ppo_policy.export_model("/tmp/my_nn_model", onnx=False)
 
 # __export-models-as-onnx-end__
