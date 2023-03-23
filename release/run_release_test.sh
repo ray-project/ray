@@ -30,7 +30,7 @@ RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-ray_release/scripts/run_release_test.py}
 RAY_TEST_REPO=${RAY_TEST_REPO-https://github.com/ray-project/ray.git}
 RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
-GOOGLE_APPLICATION_CREDENTIALS=`pwd`/release/clientLibraryConfig-aws-anyscale.json
+GOOGLE_APPLICATION_CREDENTIALS=`pwd`/clientLibraryConfig-aws-anyscale.json
 GOOGLE_CLOUD_PROJECT=anyscale-oss-ci
 
 # This is not a great idea if your OS is different to the one
