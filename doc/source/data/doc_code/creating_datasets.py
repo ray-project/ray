@@ -566,13 +566,22 @@ import gcsfs
 
 # Create a tabular Dataset by reading a Parquet file from GCS, passing the configured
 # GCSFileSystem.
-# NOTE: This example is not runnable as-is; you'll need to point it at your GCS bucket
+# NOTE: This example is not runnable as-is; you need to point it at your GCS bucket
 # and configure your GCP project and credentials.
-ds = ray.data.read_parquet(
-    "gs://path/to/file.parquet",
-    filesystem=gcsfs.GCSFileSystem(project="my-google-project"),
-)
+path = "gs://path/to/file.parquet"
+filesystem = gcsfs.GCSFileSystem(project="my-google-project")
+ds = ray.data.read_parquet(path, filesystem=filesystem)
 # __read_parquet_gcs_end__
+# fmt: on
+
+
+# fmt: off
+# __validate_parquet_gcs_begin__
+print(filesystem.ls(path))
+# ['path/to/file.parquet']
+print(filesystem.open(path))
+# <File-like object GCSFileSystem, path/to/file.parquet>
+# __validate_parquet_gcs_end__
 # fmt: on
 
 # fmt: off
