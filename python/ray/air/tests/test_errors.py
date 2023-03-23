@@ -83,7 +83,7 @@ def test_trainable_error_with_tuner(ray_start_4_cpus, fail_fast, trainable_type)
     tuner = Tuner(
         trainable=trainable,
         run_config=RunConfig(
-            name=f"test_tuner_errors-fail_fast={fail_fast}-trainable_type={trainable_type}",
+            name=f"tuner_errors-fail_fast={fail_fast}-trainable_type={trainable_type}",
             failure_config=FailureConfig(fail_fast=fail_fast),
         ),
         tune_config=TuneConfig(num_samples=2),

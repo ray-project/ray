@@ -13,7 +13,7 @@ from sklearn.utils import shuffle
 
 from ray import tune
 from ray.air import session
-from ray.air.config import RunConfig, ScalingConfig, FailureConfig
+from ray.air.config import RunConfig, ScalingConfig
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
