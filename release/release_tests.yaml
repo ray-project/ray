@@ -1014,9 +1014,9 @@
 # Lightning tests
 #######################
 
-# Naming convention: lightning_{accelerator}_{mode}_{#cpus}+{#gpus}
+# Naming convention: lightning_{accelerator}_{mode}_{#cpu}_{#gpu}
 
-- name: lightning_gpu_train_3x16+3
+- name: lightning_gpu_train_3x16_3x1
   group: Lightning tests
   working_dir: lightning_tests
 
@@ -1035,7 +1035,7 @@
 
   alert: default
 
-- name: lightning_gpu_tune_3x16+3
+- name: lightning_gpu_tune_3x16_3x1
   group: Lightning tests
   working_dir: lightning_tests
 
