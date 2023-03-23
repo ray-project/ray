@@ -652,8 +652,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {
         // Pub this state for dashboard showing
-        RAY_CHECK_OK(gcs_publisher_->PublishActor(
-            actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
+        RAY_CHECK_OK(gcs_publisher_->PublishActor(actor_id, actor_table_data, nullptr));
       }));
 
   RemoveUnresolvedActor(actor);
