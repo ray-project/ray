@@ -779,10 +779,11 @@ def test_run_runtime_env(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_config_port1(ray_start_stop):
+@pytest.mark.parametrize("config_file", ["basic_graph.yaml", "basic_multi.yaml"])
+def test_run_config_port1(ray_start_stop, config_file):
     """Test that `serve run` defaults to port 8000."""
     config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
+        os.path.dirname(__file__), "test_config_files", config_file
     )
     p = subprocess.Popen(["serve", "run", config_file_name])
     wait_for_condition(
@@ -794,10 +795,13 @@ def test_run_config_port1(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_config_port2(ray_start_stop):
+@pytest.mark.parametrize(
+    "config_file", ["basic_graph_http.yaml", "basic_multi_http.yaml"]
+)
+def test_run_config_port2(ray_start_stop, config_file):
     """If config file specifies a port, the default port value should not be used."""
     config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
+        os.path.dirname(__file__), "test_config_files", config_file
     )
     p = subprocess.Popen(["serve", "run", config_file_name])
     wait_for_condition(
@@ -809,10 +813,13 @@ def test_run_config_port2(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_config_port3(ray_start_stop):
+@pytest.mark.parametrize(
+    "config_file", ["basic_graph_http.yaml", "basic_multi_http.yaml"]
+)
+def test_run_config_port3(ray_start_stop, config_file):
     """If port is specified as argument to `serve run`, it should override config."""
     config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
+        os.path.dirname(__file__), "test_config_files", config_file
     )
     p = subprocess.Popen(["serve", "run", "--port=8010", config_file_name])
     wait_for_condition(
