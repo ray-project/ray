@@ -1,9 +1,10 @@
 import { makeStyles } from "@material-ui/core";
-import dayjs from "dayjs";
 import React, { useContext } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { DurationText } from "../../common/DurationText";
+import { formatDateFromTimeMs } from "../../common/formatUtils";
+import { generateNodeLink } from "../../common/links";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
@@ -107,6 +108,9 @@ const ActorDetailPage = () => {
                 ? {
                     value: actorDetail.address?.rayletId,
                     copyableValue: actorDetail.address?.rayletId,
+                    link: actorDetail.address.rayletId
+                      ? generateNodeLink(actorDetail.address.rayletId)
+                      : undefined,
                   }
                 : { value: "-" },
             },
@@ -123,9 +127,7 @@ const ActorDetailPage = () => {
               label: "Started at",
               content: {
                 value: actorDetail.startTime
-                  ? dayjs(Number(actorDetail.startTime)).format(
-                      "YYYY/MM/DD HH:mm:ss",
-                    )
+                  ? formatDateFromTimeMs(actorDetail.startTime)
                   : "-",
               },
             },
@@ -133,9 +135,7 @@ const ActorDetailPage = () => {
               label: "Ended at",
               content: {
                 value: actorDetail.endTime
-                  ? dayjs(Number(actorDetail.endTime)).format(
-                      "YYYY/MM/DD HH:mm:ss",
-                    )
+                  ? formatDateFromTimeMs(actorDetail.endTime)
                   : "-",
               },
             },
@@ -168,7 +168,7 @@ const ActorDetailPage = () => {
                 <div>
                   <Link
                     target="_blank"
-                    to={`/log/${encodeURIComponent(
+                    to={`/logs/${encodeURIComponent(
                       ipLogMap[actorDetail.address?.ipAddress],
                     )}?fileName=${actorDetail.jobId}-${actorDetail.pid}`}
                   >
