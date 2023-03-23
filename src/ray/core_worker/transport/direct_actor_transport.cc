@@ -141,7 +141,10 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       // System errors occurred while executing the task.
       reply->set_task_execution_error(status.ToString());
     } else if (!task_execution_error.empty()) {
-      // Application errors occurred.
+      // Application errors occurred while executing the task.
+      // We could get the errors from return_objects, but it would require deserializing
+      // the serialized error message. So we just record the error message directly while
+      // executing the task.
       reply->set_task_execution_error(task_execution_error);
     }
 

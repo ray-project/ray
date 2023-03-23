@@ -51,6 +51,8 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                 RAY_LOG(INFO) << "Actor creation failed and we will not be retrying the "
                                  "creation task, actor id = "
                               << actor_id << ", task id = " << task_id;
+                // Update the task execution error to be CreationTaskError.
+                push_task_reply.set_task_execution_error(status.ToString());
               } else {
                 RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
               }

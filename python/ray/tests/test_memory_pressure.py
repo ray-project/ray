@@ -16,7 +16,6 @@ from ray._private.utils import get_system_memory
 from ray._private.utils import get_used_memory
 from ray._private.state_api_test_utils import verify_failed_task
 
-from ray.experimental.state.api import list_tasks
 from ray.experimental.state.state_manager import StateDataSourceClient
 
 

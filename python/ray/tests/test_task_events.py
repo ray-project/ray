@@ -222,7 +222,10 @@ def test_failed_task_unschedulable(shutdown_only):
         verify_failed_task,
         name="task-unschedulable",
         error_type="TASK_UNSCHEDULABLE_ERROR",
-        error_message="The node specified via NodeAffinitySchedulingStrategy doesn't exist any more or is infeasible",
+        error_message=(
+            "The node specified via NodeAffinitySchedulingStrategy"
+            " doesn't exist any more or is infeasible"
+        ),
     )
 
 

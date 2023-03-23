@@ -908,9 +908,9 @@ cdef void execute_task(
                         and core_worker.get_current_task_retry_exceptions()
                     ):
                         logger.debug("Task failed with retryable exception:"
-                                    " {}.".format(
+                                     " {}.".format(
                                         core_worker.get_current_task_id()),
-                                    exc_info=True)
+                                     exc_info=True)
                     else:
                         logger.debug("Task failed with unretryable exception:"
                                      " {}.".format(
@@ -1113,7 +1113,8 @@ cdef execute_task_with_cancellation_handler(
                      is_application_error,
                      c_defined_concurrency_groups,
                      c_name_of_concurrency_group_to_execute,
-                     is_reattempt, execution_info, title, task_name, task_execution_error)
+                     is_reattempt, execution_info, title, task_name,
+                     task_execution_error)
 
         # Check for cancellation.
         PyErr_CheckSignals()

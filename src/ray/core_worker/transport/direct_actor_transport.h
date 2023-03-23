@@ -58,7 +58,7 @@ class CoreWorkerDirectTaskReceiver {
       ReferenceCounter::ReferenceTableProto *borrower_refs,
       bool *is_retryable_error,
       bool *is_application_error,
-      std::string* task_execution_error)>;
+      std::string *task_execution_error)>;
 
   using OnTaskDone = std::function<Status()>;
 

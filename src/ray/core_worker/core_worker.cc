@@ -2627,7 +2627,7 @@ Status CoreWorker::ExecuteTask(
     task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
   }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
-                << ", status=" << status;
+                 << ", status=" << status;
 
   std::ostringstream stream;
   if (status.IsCreationTaskError()) {
