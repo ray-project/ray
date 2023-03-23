@@ -137,6 +137,10 @@ message PushTaskReply {
   bool is_application_error = 6;
   // Whether the task was cancelled before it started running (i.e. while queued).
   bool was_cancelled_before_running = 7;
+  // The pushed task executing error detail message. Generated from the status of
+  // task execution callback.
+  // Default to empty string (not set) when no error happens.
+  string task_execution_error = 8;
 }
 
 message DirectActorCallArgWaitCompleteRequest {

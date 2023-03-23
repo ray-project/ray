@@ -88,17 +88,22 @@ def test_failed_task_error(shutdown_only):
     ray.init(_system_config=_SYSTEM_CONFIG)
 
     # Test failed task with TASK_EXECUTION_EXCEPTION
+    error_msg_str = "fail is expected to fail"
+
     @ray.remote
     def fail(x=None):
         if x is not None:
             time.sleep(x)
-        raise ValueError("fail is expected to failed")
+        raise ValueError(error_msg_str)
 
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(fail.options(name="fail").remote())
 
     wait_for_condition(
-        verify_failed_task, name="fail", error_type="TASK_EXECUTION_EXCEPTION"
+        verify_failed_task,
+        name="fail",
+        error_type="TASK_EXECUTION_EXCEPTION",
+        error_message=error_msg_str,
     )
 
     # Test canceled tasks with TASK_CANCELLED
@@ -111,19 +116,28 @@ def test_failed_task_error(shutdown_only):
         ray.cancel(t)
         ray.get(t)
 
+    # Cancel task doesn't have additional error message
     wait_for_condition(
-        verify_failed_task, name="sleep-cancel", error_type="TASK_CANCELLED"
+        verify_failed_task,
+        name="sleep-cancel",
+        error_type="TASK_CANCELLED",
+        error_message="",
     )
 
     # Test task failed when worker killed :WORKER_DIED
     @ray.remote(max_retries=0)
     def die():
-        exit(1)
+        exit(27)
 
     with pytest.raises(ray.exceptions.WorkerCrashedError):
         ray.get(die.options(name="die-worker").remote())
 
-    wait_for_condition(verify_failed_task, name="die-worker", error_type="WORKER_DIED")
+    wait_for_condition(
+        verify_failed_task,
+        name="die-worker",
+        error_type="WORKER_DIED",
+        error_message="Worker exits with an exit code 27",
+    )
 
     # Test actor task failed with actor dead: ACTOR_DIED
     @ray.remote
@@ -136,7 +150,12 @@ def test_failed_task_error(shutdown_only):
         ray.kill(a)
         ray.get(a.f.options(name="actor-killed").remote())
 
-    wait_for_condition(verify_failed_task, name="actor-killed", error_type="ACTOR_DIED")
+    wait_for_condition(
+        verify_failed_task,
+        name="actor-killed",
+        error_type="ACTOR_DIED",
+        error_message="The actor is dead because it was killed by `ray.kill`",
+    )
 
 
 def test_failed_task_failed_due_to_node_failure(ray_start_cluster):
@@ -169,7 +188,12 @@ ray.get(x)
     # Kill the node
     cluster.remove_node(node)
 
-    wait_for_condition(verify_failed_task, name="node-killed", error_type="NODE_DIED")
+    wait_for_condition(
+        verify_failed_task,
+        name="node-killed",
+        error_type="NODE_DIED",
+        error_message="Task failed due to the node dying",
+    )
 
 
 def test_failed_task_unschedulable(shutdown_only):
@@ -195,6 +219,7 @@ def test_failed_task_unschedulable(shutdown_only):
         verify_failed_task,
         name="task-unschedulable",
         error_type="TASK_UNSCHEDULABLE_ERROR",
+        error_message="The node specified via NodeAffinitySchedulingStrategy doesn't exist any more or is infeasible",
     )
 
 
@@ -240,7 +265,6 @@ def test_failed_task_runtime_env_setup(shutdown_only):
     bad_env = RuntimeEnv(conda={"dependencies": ["_this_does_not_exist"]})
     with pytest.raises(
         RuntimeEnvSetupError,
-        match="ResolvePackageNotFound",
     ):
         ray.get(f.options(runtime_env=bad_env, name="task-runtime-env-failed").remote())
 
@@ -248,6 +272,7 @@ def test_failed_task_runtime_env_setup(shutdown_only):
         verify_failed_task,
         name="task-runtime-env-failed",
         error_type="RUNTIME_ENV_SETUP_FAILED",
+        error_message="ResolvePackageNotFound",
     )
 
 

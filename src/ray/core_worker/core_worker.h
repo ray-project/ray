@@ -1250,7 +1250,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
           *dynamic_return_objects,
       ReferenceCounter::ReferenceTableProto *borrowed_refs,
       bool *is_retryable_error,
-      bool *is_application_error);
+      bool *is_application_error,
+      std::string *task_execution_error);
 
   /// Put an object in the local plasma store.
   Status PutInLocalPlasmaStore(const RayObject &object,

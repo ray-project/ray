@@ -433,17 +433,15 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                     rpc::RequestWorkerLeaseReply::
                         SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED) {
                   error_type = rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
-                  error_info.mutable_runtime_env_setup_failed_error()->set_error_message(
-                      reply.scheduling_failure_message());
                 } else if (reply.failure_type() ==
                            rpc::RequestWorkerLeaseReply::
                                SCHEDULING_CANCELLED_UNSCHEDULABLE) {
                   error_type = rpc::ErrorType::TASK_UNSCHEDULABLE_ERROR;
-                  *(error_info.mutable_error_message()) =
-                      reply.scheduling_failure_message();
                 } else {
                   error_type = rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED;
                 }
+                error_info.set_error_message(reply.scheduling_failure_message());
+
                 tasks_to_fail = std::move(scheduling_key_entry.task_queue);
                 scheduling_key_entry.task_queue.clear();
                 if (scheduling_key_entry.CanDelete()) {
@@ -517,6 +515,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               RAY_CHECK(worker_type_ == WorkerType::DRIVER);
               error_type = rpc::ErrorType::LOCAL_RAYLET_DIED;
               error_status = status;
+              error_info.set_error_message(status.ToString());
               tasks_to_fail = std::move(scheduling_key_entry.task_queue);
               scheduling_key_entry.task_queue.clear();
               if (scheduling_key_entry.CanDelete()) {
@@ -650,8 +649,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
                      !reply.is_retryable_error() ||
                      !task_finisher_->RetryTaskIfPossible(
                          task_id,
-                         gcs::GetRayErrorInfo(
-                             rpc::ErrorType::TASK_EXECUTION_EXCEPTION))) {
+                         gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+                                              reply.task_execution_error()))) {
             task_finisher_->CompletePendingTask(
                 task_id, reply, addr.ToProto(), reply.is_application_error());
           }

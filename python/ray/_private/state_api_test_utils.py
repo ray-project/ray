@@ -309,13 +309,14 @@ def periodic_invoke_state_apis_with_actor(*args, **kwargs) -> ActorHandle:
     return actor
 
 
-def verify_failed_task(name: str, error_type: str) -> bool:
+def verify_failed_task(name: str, error_type: str, error_message: str) -> bool:
     """
     Check if a task with 'name' has failed with the exact error type 'error_type'
     """
-    tasks = list_tasks(filters=[("name", "=", name)])
+    tasks = list_tasks(filters=[("name", "=", name)], detail=True)
     assert len(tasks) == 1, tasks
     t = tasks[0]
     assert t["state"] == "FAILED", t
     assert t["error_type"] == error_type, t
+    assert error_message in t.get("error_message", None)
     return True

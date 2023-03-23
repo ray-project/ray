@@ -126,15 +126,24 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
     bool is_retryable_error = false;
     bool is_application_error = false;
+    std::string task_execution_error = "";
     auto status = task_handler_(task_spec,
                                 resource_ids,
                                 &return_objects,
                                 &dynamic_return_objects,
                                 reply->mutable_borrowed_refs(),
                                 &is_retryable_error,
-                                &is_application_error);
+                                &is_application_error,
+                                &task_execution_error);
     reply->set_is_retryable_error(is_retryable_error);
     reply->set_is_application_error(is_application_error);
+    if (!status.ok()) {
+      // System errors occurred while executing the task.
+      reply->set_task_execution_error(status.ToString());
+    } else if (!task_execution_error.empty()) {
+      // Application errors occurred.
+      reply->set_task_execution_error(task_execution_error);
+    }
 
     bool objects_valid = return_objects.size() == num_returns;
     for (const auto &return_object : return_objects) {
