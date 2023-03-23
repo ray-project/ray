@@ -7,6 +7,7 @@ from tempfile import NamedTemporaryFile
 from typing import Dict, Set
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
+from pydantic import ValidationError
 
 import pytest
 import requests
@@ -1265,25 +1266,46 @@ class TestDeployApp:
         self.check_multi_app()
 
     def test_deploy_multi_app_deleting(self, client: ServeControllerClient):
-        """Remove an application from a config, it should reach a deleting state."""
+        """Test deleting an application by removing from config."""
 
         config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
         client.deploy_apps(config)
         self.check_multi_app()
 
+        # Delete app2
         del config.applications[1]
         client.deploy_apps(config)
 
-        def check_app_status(app, status):
-            details = ray.get(client._controller.get_serve_instance_details.remote())
-            return details["applications"][app]["status"] == status
-
-        wait_for_condition(
-            partial(check_app_status, "app2", ApplicationStatus.DELETING)
+        # Fetch details immediately afterwards, should parse correctly
+        details = ray.get(client._controller.get_serve_instance_details.remote())
+        ServeInstanceDetails(**details)
+        # We don't enforce that the state is deleting here because that could cause
+        # flaky test performance. The app could have been deleted by the time of query
+        assert (
+            "app2" not in details["applications"]
+            or details["applications"]["app2"]["status"] == ApplicationStatus.DELETING
         )
-        print("app2 is in a DELETING state.")
-        wait_for_condition(partial(check_app_status, "app1", ApplicationStatus.RUNNING))
-        print("app1 is in a RUNNING state.")
+
+        info_valid = True
+
+        def check_app_status():
+            global info_valid
+            try:
+                # Fetch details, should always parse correctly
+                details = ray.get(
+                    client._controller.get_serve_instance_details.remote()
+                )
+                ServeInstanceDetails(**details)
+                return (
+                    details["applications"]["app1"]["status"]
+                    == ApplicationStatus.RUNNING
+                )
+            except Exception:
+                info_valid = False
+
+        wait_for_condition(check_app_status)
+        # Check that all all details fetched from controller parsed correctly
+        assert info_valid
 
     def test_deploy_nonexistent_deployment(self, client: ServeControllerClient):
         """Remove an application from a config, it should reach a deleting state."""
