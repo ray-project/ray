@@ -290,39 +290,35 @@ class _ResourceUpdater:
         )
         self._last_resource_refresh = time.time()
 
-    def debug_string(self, total_resources: Dict[str, Any]) -> str:
+    def debug_string(self, total_allocated_resources: Dict[str, Any]) -> str:
         """Returns a human readable message for printing to the console."""
         if self._last_resource_refresh > 0:
-            status = (
-                "Resources requested: {}/{} CPUs, {}/{} GPUs, "
-                "{}/{} GiB heap, {}/{} GiB objects".format(
-                    total_resources.pop("CPU", 0),
-                    self._avail_resources.cpu,
-                    total_resources.pop("GPU", 0),
-                    self._avail_resources.gpu,
-                    _to_gb(total_resources.pop("memory", 0.0)),
-                    _to_gb(self._avail_resources.memory),
-                    _to_gb(total_resources.pop("object_store_memory", 0.0)),
-                    _to_gb(self._avail_resources.object_store_memory),
-                )
+            status = "Logical resource usage: {}/{} CPUs, {}/{} GPUs".format(
+                total_allocated_resources.pop("CPU", 0),
+                self._avail_resources.cpu,
+                total_allocated_resources.pop("GPU", 0),
+                self._avail_resources.gpu,
             )
             customs = ", ".join(
                 [
                     "{}/{} {}".format(
-                        total_resources.get(name, 0.0),
+                        total_allocated_resources.get(name, 0.0),
                         self._avail_resources.get_res_total(name),
                         name,
                     )
                     for name in self._avail_resources.custom_resources
                     if not name.startswith(NODE_ID_PREFIX)
-                    and (total_resources.get(name, 0.0) > 0 or "_group_" not in name)
+                    and (
+                        total_allocated_resources.get(name, 0.0) > 0
+                        or "_group_" not in name
+                    )
                 ]
             )
             if customs:
                 status += f" ({customs})"
             return status
         else:
-            return "Resources requested: ?"
+            return "Logical resource usage: ?"
 
     def get_num_cpus(self) -> int:
         self.update_avail_resources()
