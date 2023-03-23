@@ -233,10 +233,12 @@ The following metrics are exposed by Ray Serve:
    * - ``serve_deployment_request_counter`` [**]
      - * deployment
        * replica
+       * route
      - The number of queries that have been processed in this replica.
    * - ``serve_deployment_error_counter`` [**]
      - * deployment
        * replica
+       * route
      - The number of exceptions that have occurred in the deployment.
    * - ``serve_deployment_replica_starts`` [**]
      - * deployment
@@ -249,6 +251,7 @@ The following metrics are exposed by Ray Serve:
    * - ``serve_deployment_processing_latency_ms`` [**]
      - * deployment
        * replica
+       * route
      - The latency for queries to be processed.
    * - ``serve_replica_processing_queries`` [**]
      - * deployment
@@ -265,22 +268,25 @@ The following metrics are exposed by Ray Serve:
      - The number of non-200 HTTP responses.
    * - ``serve_num_router_requests`` [*]
      - * deployment
+       * route
      - The number of requests processed by the router.
    * - ``serve_handle_request_counter`` [**]
      - * handle
        * deployment
+       * route
      - The number of requests processed by this ServeHandle.
    * - ``serve_deployment_queued_queries`` [*]
      - * deployment
-       * endpoint
+       * route
      - The number of queries for this deployment waiting to be assigned to a replica.
    * - ``serve_num_deployment_http_error_requests`` [*]
      - * deployment
        * error_code
        * method
+       * route
      - The number of non-200 HTTP responses returned by each deployment.
    * - ``serve_http_request_latency_ms`` [*]
-     - * endpoint
+     - * route
      - The end-to-end latency of HTTP requests (measured from the Serve HTTP proxy).
 ```
 [*] - only available when using HTTP calls  

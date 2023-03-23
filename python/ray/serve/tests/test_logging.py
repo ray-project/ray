@@ -5,11 +5,13 @@ import time
 import sys
 
 import requests
+import starlette
 import pytest
 
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
+import re
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):
@@ -69,7 +71,7 @@ def test_handle_access_log(serve_instance):
                 [
                     name in s,
                     replica_tag in s,
-                    method_name in s,
+                    method_name.upper() in s,
                     ("ERROR" if fail else "OK") in s,
                     "ms" in s,
                     ("blah blah blah" in s and "RuntimeError" in s)
@@ -200,6 +202,68 @@ def test_deprecated_deployment_logger(serve_instance):
             return "deployment" in s and "replica" in s and "count" in s
 
         wait_for_condition(counter_log_success)
+
+
+def test_context_information_in_logging(serve_instance):
+    """Make sure all context information exist in the log message"""
+
+    logger = logging.getLogger("ray.serve")
+
+    @serve.deployment
+    def fn(*args):
+        logger.info("user func")
+        request_context = ray.serve.context._serve_request_context.get()
+        return {
+            "request_id": request_context.request_id,
+            "route": request_context.route,
+        }
+
+    @serve.deployment
+    class Model:
+        def __call__(self, req: starlette.requests.Request):
+            logger.info("user log message from class method")
+            request_context = ray.serve.context._serve_request_context.get()
+            return {
+                "request_id": request_context.request_id,
+                "route": request_context.route,
+            }
+
+    serve.run(fn.bind(), name="app1", route_prefix="/fn")
+    serve.run(Model.bind(), name="app2", route_prefix="/class_method")
+
+    f = io.StringIO()
+    with redirect_stderr(f):
+        resp = requests.get("http://127.0.0.1:8000/fn").json()
+        resp2 = requests.get("http://127.0.0.1:8000/class_method").json()
+
+        # Check the component log
+        expected_log_infos = [
+            f"{resp['request_id']} {resp['route']} http_proxy.py",
+            f"{resp['request_id']} {resp['route']} replica.py",
+            f"{resp2['request_id']} {resp2['route']} http_proxy.py",
+            f"{resp2['request_id']} {resp2['route']} replica.py",
+        ]
+
+        # Check User log
+        user_log_regexes = [
+            f".*{resp['request_id']} {resp['route']}.* user func.*",
+            f".*{resp2['request_id']} {resp2['route']}.* user log "
+            "message from class method.*",
+        ]
+
+        def check_log():
+            logs_content = ""
+            for _ in range(20):
+                time.sleep(0.1)
+                logs_content = f.getvalue()
+                if logs_content:
+                    break
+            for expected_log_info in expected_log_infos:
+                assert expected_log_info in logs_content
+            for regex in user_log_regexes:
+                assert re.findall(regex, logs_content) != []
+
+        check_log()
 
 
 if __name__ == "__main__":
