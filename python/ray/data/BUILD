@@ -12,6 +12,13 @@ py_library(
 )
 
 py_test_module_list(
+    files = glob(["tests/block_batching/test_*.py"]),
+    size = "medium",
+    tags = ["team:ml", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
     files = glob(["tests/preprocessors/test_*.py"]),
     size = "small",
     tags = ["team:ml", "exclusive", "ray_air"],
