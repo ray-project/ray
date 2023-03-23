@@ -271,6 +271,9 @@ class ApplicationStateManager:
                 name,
                 self.deployment_state_manager,
             )
+        record_extra_usage_tag(
+            TagKey.SERVE_NUM_APPS, str(len(self._application_states))
+        )
         return self._application_states[name].deploy(deployment_args)
 
     def get_deployments(self, app_name: str) -> List[str]:
@@ -333,9 +336,6 @@ class ApplicationStateManager:
             self.deployment_state_manager,
             deploy_obj_ref=deploy_obj_ref,
             deployment_time=deployment_time,
-        )
-        record_extra_usage_tag(
-            TagKey.SERVE_NUM_APPS, str(len(self._application_states))
         )
 
     def get_deployment_timestamp(self, name: str) -> float:
