@@ -2,6 +2,7 @@ import collections
 from dataclasses import dataclass
 import time
 from contextlib import contextmanager
+import threading
 from typing import Dict, List, Optional, Set, Tuple, Union, Any
 
 import numpy as np
@@ -38,6 +39,8 @@ class Timer:
         self._max: float = 0
         self._total_count: float = 0
 
+        self.lock = threading.Lock()
+
     @contextmanager
     def timer(self) -> None:
         time_start = time.perf_counter()
@@ -52,7 +55,8 @@ class Timer:
         try:
             yield
         finally:
-            self.add(time.thread_time() - time_start)
+            with self.lock():
+                self.add(time.thread_time() - time_start)
 
     def add(self, value: float) -> None:
         self._value += value
