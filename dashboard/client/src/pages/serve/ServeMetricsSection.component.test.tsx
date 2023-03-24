@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import React, { PropsWithChildren } from "react";
 import { GlobalContext } from "../../App";
-import { Metrics } from "./Metrics";
+import { ServeMetricsSection } from "./ServeMetricsSection";
 
 const Wrapper = ({ children }: PropsWithChildren<{}>) => {
   return (
@@ -51,34 +51,29 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
   );
 };
 
-describe("Metrics", () => {
+describe("ServeMetricsSection", () => {
   it("renders", async () => {
-    expect.assertions(5);
+    expect.assertions(4);
 
-    render(<Metrics />, { wrapper: Wrapper });
+    render(<ServeMetricsSection />, { wrapper: Wrapper });
     await screen.findByText(/View in Grafana/);
     expect(screen.getByText(/5 minutes/)).toBeVisible();
-    expect(screen.getByText(/Tasks and Actors/)).toBeVisible();
-    expect(screen.getByText(/Ray Resource Usage/)).toBeVisible();
-    expect(screen.getByText(/Hardware Utilization/)).toBeVisible();
-    expect(
-      screen.queryByText(
-        /Set up Prometheus and Grafana for better Ray Dashboard experience/,
-      ),
-    ).toBeNull();
+    expect(screen.getByTitle("QPS per route")).toBeInTheDocument();
+    expect(screen.getByTitle("Error QPS per route")).toBeInTheDocument();
+    expect(screen.getByTitle("P90 latency per route")).toBeInTheDocument();
   });
 
-  it("renders warning when ", async () => {
+  it("renders nothing when grafana is not available", async () => {
     expect.assertions(5);
 
-    render(<Metrics />, { wrapper: MetricsDisabledWrapper });
-    await screen.findByText(
-      /Set up Prometheus and Grafana for better Ray Dashboard experience/,
-    );
+    render(<ServeMetricsSection />, { wrapper: MetricsDisabledWrapper });
+    // Wait .1 seconds for render to finish
+    await waitFor(() => new Promise((r) => setTimeout(r, 100)));
+
     expect(screen.queryByText(/View in Grafana/)).toBeNull();
     expect(screen.queryByText(/5 minutes/)).toBeNull();
-    expect(screen.queryByText(/Tasks and Actors/)).toBeNull();
-    expect(screen.queryByText(/Ray Resource Usage/)).toBeNull();
-    expect(screen.queryByText(/Hardware Utilization/)).toBeNull();
+    expect(screen.queryByTitle("QPS per route")).toBeNull();
+    expect(screen.queryByTitle("Error QPS per route")).toBeNull();
+    expect(screen.queryByTitle("P90 latency per route")).toBeNull();
   });
 });
