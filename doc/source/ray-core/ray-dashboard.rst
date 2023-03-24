@@ -183,7 +183,7 @@ The Jobs View lets you monitor the different jobs that ran on your Ray cluster.
 
 A job is a ray workload that uses Ray APIs (e.g., ``ray.init``). It can be submitted directly (e.g., by executing a Python script within a head node) or via :ref:`Ray job API <jobs-quickstart>`.
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard/job_list.png
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/job_list.png
     :align: center
 
 The job page displays a list of active, finished, and failed jobs, and clicking on an ID allows users to view detailed information about that job. 
