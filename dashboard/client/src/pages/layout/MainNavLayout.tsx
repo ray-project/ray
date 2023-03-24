@@ -9,6 +9,7 @@ import classNames from "classnames";
 import React, { useContext } from "react";
 import { RiBookMarkLine, RiFeedbackLine } from "react-icons/ri/";
 import { Link, Outlet } from "react-router-dom";
+import { GlobalContext } from "../../App";
 import Logo from "../../logo.svg";
 import { MainNavContext, useMainNavState } from "./mainNavContext";
 
@@ -21,7 +22,7 @@ const useStyles = makeStyles((theme) =>
       position: "fixed",
       width: "100%",
       backgroundColor: "white",
-      zIndex: 10000,
+      zIndex: 1000,
     },
   }),
 );
@@ -142,6 +143,11 @@ const NAV_ITEMS = [
     id: "jobs",
   },
   {
+    title: "Serve",
+    path: "/serve",
+    id: "serve",
+  },
+  {
     title: "Cluster",
     path: "/cluster",
     id: "cluster",
@@ -167,13 +173,19 @@ const MainNavBar = () => {
   const classes = useMainNavBarStyles();
   const { mainNavPageHierarchy } = useContext(MainNavContext);
   const rootRouteId = mainNavPageHierarchy[0]?.id;
+  const { metricsContextLoaded, grafanaHost } = useContext(GlobalContext);
+
+  let navItems = NAV_ITEMS;
+  if (!metricsContextLoaded || grafanaHost === "DISABLED") {
+    navItems = navItems.filter(({ id }) => id !== "metrics");
+  }
 
   return (
     <div className={classes.root}>
       <Link className={classes.logo} to="/">
         <img width={28} src={Logo} alt="Ray" />
       </Link>
-      {NAV_ITEMS.map(({ title, path, id }) => (
+      {navItems.map(({ title, path, id }) => (
         <Typography key={id}>
           <Link
             className={classNames(classes.navItem, {
@@ -187,18 +199,6 @@ const MainNavBar = () => {
       ))}
       <div className={classes.flexSpacer}></div>
       <div className={classes.actionItemsContainer}>
-        <Link
-          className={classNames(classes.actionItem, classes.backToOld)}
-          to="/node"
-        >
-          <Typography
-            variant="body2"
-            component="span"
-            className={classes.backToOldText}
-          >
-            Back to old UI
-          </Typography>
-        </Link>
         <Tooltip title="Docs">
           <IconButton
             className={classes.actionItem}
@@ -240,6 +240,7 @@ const useMainNavBreadcrumbsStyles = makeStyles((theme) =>
     },
     breadcrumbItem: {
       fontWeight: 500,
+      color: "#8C9196",
       "&:not(:first-child)": {
         marginLeft: theme.spacing(1),
       },
