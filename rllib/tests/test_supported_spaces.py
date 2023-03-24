@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 ACTION_SPACES_TO_TEST = {
     # Test discrete twice here until we support multi_binary action spaces
     "discrete": Discrete(5),
-    "vector1d": Box(-1.0, 1.0, (5,), dtype=np.float32),
+    "continuous": Box(-1.0, 1.0, (5,), dtype=np.float32),
     "int_actions": Box(0, 3, (2, 3), dtype=np.int32),
     "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
     "tuple": Tuple([Discrete(2), Discrete(3), Box(-1.0, 1.0, (5,), dtype=np.float32)]),
@@ -48,7 +48,7 @@ ACTION_SPACES_TO_TEST = {
 OBSERVATION_SPACES_TO_TEST = {
     "multi_binary": MultiBinary([3, 10, 10]),
     "discrete": Discrete(5),
-    "vector1d": Box(-1.0, 1.0, (5,), dtype=np.float32),
+    "continuous": Box(-1.0, 1.0, (5,), dtype=np.float32),
     "vector2d": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
     "image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
     "vizdoomgym": Box(-1.0, 1.0, (240, 320, 3), dtype=np.float32),
@@ -62,10 +62,10 @@ OBSERVATION_SPACES_TO_TEST = {
 }
 
 # The action spaces that we test RLModules with
-RLMODULE_SUPPORTED_ACTION_SPACES = ["discrete", "vector1d"]
+RLMODULE_SUPPORTED_ACTION_SPACES = ["discrete", "continuous"]
 
 # The observation spaces that we test RLModules with
-RLMODULE_SUPPORTED_OBSERVATION_SPACES = ["discrete", "vector1d", "image"]
+RLMODULE_SUPPORTED_OBSERVATION_SPACES = ["discrete", "continuous", "image"]
 
 DEFAULT_OBSERVATION_SPACE = DEFAULT_ACTION_SPACE = "discrete"
 
@@ -137,7 +137,7 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
                     else:
                         assert isinstance(algo.get_policy().model, VisionNet)
                 # 1D input: Expect FCNet.
-                elif o_name == "vector1d":
+                elif o_name == "continuous":
                     if fw == "torch":
                         assert isinstance(algo.get_policy().model, TorchFCNet)
                     else:
