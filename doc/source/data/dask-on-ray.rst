@@ -76,7 +76,7 @@ any Dask `.compute() <https://docs.dask.org/en/latest/api.html#dask.compute>`__
 call.
 Here's an example:
 
-.. literalinclude:: ../../../python/ray/util/dask/examples/dask_ray_scheduler_example.py
+.. literalinclude:: ./doc_code/dask_on_ray_scheduler_example.py
     :language: python
 
 .. note::
@@ -141,7 +141,7 @@ aggregations): those downstream computations will be faster since that base coll
 computation was kicked off early and referenced by all downstream computations, often
 via shared memory.
 
-.. literalinclude:: ../../../python/ray/util/dask/examples/dask_ray_persist_example.py
+.. literalinclude:: ./doc_code/dask_on_ray_persist_example.py
     :language: python
 
 
@@ -160,7 +160,7 @@ globally via the ``.compute(ray_remote_args={...})`` API, which will
 serve as a default for all Ray tasks launched via the Dask workload. Annotations on
 individual Dask operations will override this global default.
 
-.. literalinclude:: ../../../python/ray/util/dask/examples/dask_ray_annotate_example.py
+.. literalinclude:: ./doc_code/dask_on_ray_annotate_example.py
     :language: python
 
 Note that you may need to disable graph optimizations since it can break annotations,
@@ -175,7 +175,7 @@ Dask-on-Ray provides a Dask DataFrame optimizer that leverages Ray's ability to
 execute multiple-return tasks in order to speed up shuffling by as much as 4x on Ray.
 Simply set the `dataframe_optimize` configuration option to our optimizer function, similar to how you specify the Dask-on-Ray scheduler:
 
-.. literalinclude:: ../../../python/ray/util/dask/examples/dask_ray_shuffle_optimization.py
+.. literalinclude:: ./doc_code/dask_on_ray_shuffle_optimization.py
     :language: python
 
 Callbacks
@@ -192,28 +192,10 @@ such as progress reporting, diagnostics, caching, etc., is simple.
 Here's an example that measures and logs the execution time of each task using
 the ``ray_pretask`` and ``ray_posttask`` hooks:
 
-.. code-block:: python
-
-   from ray.util.dask import RayDaskCallback
-   from timeit import default_timer as timer
-
-
-   class MyTimerCallback(RayDaskCallback):
-      def _ray_pretask(self, key, object_refs):
-         # Executed at the start of the Ray task.
-         start_time = timer()
-         return start_time
-
-      def _ray_posttask(self, key, result, pre_state):
-         # Executed at the end of the Ray task.
-         execution_time = timer() - pre_state
-         print(f"Execution time for task {key}: {execution_time}s")
-
-
-   with MyTimerCallback():
-      # Any .compute() calls within this context will get MyTimerCallback()
-      # as a Dask-Ray callback.
-      z.compute(scheduler=ray_dask_get)
+.. literalinclude:: ./doc_code/dask_on_ray_callbacks.py
+    :language: python
+    :start-after: __timer_callback_begin__
+    :end-before: __timer_callback_end__
 
 The following Ray-specific callbacks are provided:
 
@@ -244,79 +226,34 @@ When creating your own callbacks, you can use
 :class:`RayDaskCallback <ray.util.dask.callbacks.RayDaskCallback>`
 directly, passing the callback functions as constructor arguments:
 
-.. code-block:: python
-
-   def my_presubmit_cb(task, key, deps):
-      print(f"About to submit task {key}!")
-
-   with RayDaskCallback(ray_presubmit=my_presubmit_cb):
-      z.compute(scheduler=ray_dask_get)
+.. literalinclude:: ./doc_code/dask_on_ray_callbacks.py
+    :language: python
+    :start-after: __ray_dask_callback_direct_begin__
+    :end-before: __ray_dask_callback_direct_end__
 
 or you can subclass it, implementing the callback methods that you need:
 
-.. code-block:: python
-
-   class MyPresubmitCallback(RayDaskCallback):
-      def _ray_presubmit(self, task, key, deps):
-         print(f"About to submit task {key}!")
-
-   with MyPresubmitCallback():
-      z.compute(scheduler=ray_dask_get)
+.. literalinclude:: ./doc_code/dask_on_ray_callbacks.py
+    :language: python
+    :start-after: __ray_dask_callback_subclass_begin__
+    :end-before: __ray_dask_callback_subclass_end__
 
 You can also specify multiple callbacks:
 
-.. code-block:: python
-
-   # The hooks for both MyTimerCallback and MyPresubmitCallback will be
-   # called.
-   with MyTimerCallback(), MyPresubmitCallback():
-      z.compute(scheduler=ray_dask_get)
+.. literalinclude:: ./doc_code/dask_on_ray_callbacks.py
+    :language: python
+    :start-after: __multiple_callbacks_begin__
+    :end-before: __multiple_callbacks_end__
 
 Combining Dask callbacks with an actor yields simple patterns for stateful data
 aggregation, such as capturing task execution statistics and caching results.
 Here is an example that does both, caching the result of a task if its
 execution time exceeds some user-defined threshold:
 
-.. code-block:: python
-
-   @ray.remote
-   class SimpleCacheActor:
-      def __init__(self):
-         self.cache = {}
-
-      def get(self, key):
-         # Raises KeyError if key isn't in cache.
-         return self.cache[key]
-
-      def put(self, key, value):
-         self.cache[key] = value
-
-
-   class SimpleCacheCallback(RayDaskCallback):
-      def __init__(self, cache_actor_handle, put_threshold=10):
-         self.cache_actor = cache_actor_handle
-         self.put_threshold = put_threshold
-
-      def _ray_presubmit(self, task, key, deps):
-         try:
-            return ray.get(self.cache_actor.get.remote(str(key)))
-         except KeyError:
-            return None
-
-      def _ray_pretask(self, key, object_refs):
-         start_time = timer()
-         return start_time
-
-      def _ray_posttask(self, key, result, pre_state):
-         execution_time = timer() - pre_state
-         if execution_time > self.put_threshold:
-            self.cache_actor.put.remote(str(key), result)
-
-
-   cache_actor = SimpleCacheActor.remote()
-   cache_callback = SimpleCacheCallback(cache_actor, put_threshold=2)
-   with cache_callback:
-      z.compute(scheduler=ray_dask_get)
+.. literalinclude:: ./doc_code/dask_on_ray_callbacks.py
+    :language: python
+    :start-after: __caching_actor_begin__
+    :end-before: __caching_actor_end__
 
 .. note::
   The existing Dask scheduler callbacks (``start``, ``start_state``,

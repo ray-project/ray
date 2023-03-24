@@ -5,7 +5,13 @@ import dask.array as da
 
 # Start Ray.
 # Tip: If connecting to an existing cluster, use ray.init(address="auto").
-ray.init()
+ray.init(
+    resources={
+        "custom_resource": 1,
+        "other_custom_resource": 1,
+        "another_custom_resource": 1,
+    }
+)
 
 # Use our Dask config helper to set the scheduler to ray_dask_get globally,
 # without having to specify it on each compute call.
