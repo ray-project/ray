@@ -374,7 +374,6 @@ class Monitor:
                 load_metrics_summary = self.load_metrics.summary()
                 status = {
                     "gcs_request_time": gcs_request_time,
-                    "load_metrics_report": asdict(load_metrics_summary),
                     "time": time.time(),
                     "monitor_pid": os.getpid(),
                 }
@@ -390,7 +389,9 @@ class Monitor:
                     )
                 elif self.autoscaler:
                     # Process autoscaling actions
+                    update_start_time = time.time()
                     self.autoscaler.update()
+                    status["autoscaler_update_time"] = time.time() - update_start_time
                     autoscaler_summary = self.autoscaler.summary()
                     if autoscaler_summary:
                         status["autoscaler_report"] = asdict(autoscaler_summary)
@@ -435,6 +436,7 @@ class Monitor:
 
                     self.event_summarizer.clear()
 
+                status["load_metrics_report"] = asdict(load_metrics_summary)
                 as_json = json.dumps(status)
                 if _internal_kv_initialized():
                     _internal_kv_put(
