@@ -54,7 +54,7 @@ tuner.fit()
 # fmt: off
 # __block_move_begin__
 import ray
-from ray.data.context import DatasetContext
+from ray.data import DatasetContext
 
 ctx = DatasetContext.get_current()
 ctx.optimize_fuse_stages = False
