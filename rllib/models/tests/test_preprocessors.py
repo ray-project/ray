@@ -87,7 +87,7 @@ class TestPreprocessors(unittest.TestCase):
             check_compute_single_action(algo)
             algo.stop()
 
-    def test_preprocessing_disabled_rlmodules(self):
+    def test_preprocessing_with_rlmodules(self):
         config = (
             ppo.PPOConfig()
             .environment(
@@ -104,13 +104,14 @@ class TestPreprocessors(unittest.TestCase):
             .training(train_batch_size=10, sgd_minibatch_size=1, num_sgd_iter=1)
             # Set this to True to enforce no preprocessors being used.
             .experimental(_disable_preprocessor_api=True)
+            .framework("torch")
         )
 
         # TODO (Artur): No need to manually enable RLModules here since we have not
         #  fully migrated. Clear this up after migration.
         config.rl_module(_enable_rl_module_api=True)
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
             algo = config.build()
             results = algo.train()
             check_train_results(results)
