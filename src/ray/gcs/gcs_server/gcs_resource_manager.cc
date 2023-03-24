@@ -222,7 +222,8 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     reply->mutable_resource_usage_data()->CopyFrom(batch);
   }
 
-  RAY_CHECK_EQ(reply->resource_usage_data().batch().size(), num_alive_nodes_);
+  RAY_CHECK_EQ(static_cast<size_t>(reply->resource_usage_data().batch().size()),
+               num_alive_nodes_);
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
