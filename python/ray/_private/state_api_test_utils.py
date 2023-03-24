@@ -323,5 +323,5 @@ def verify_failed_task(
     if isinstance(error_message, str):
         error_message = [error_message]
     for msg in error_message:
-        assert msg in t["error_message"], t
+        assert msg in t.get("error_message", None), t
     return True

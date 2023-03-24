@@ -517,7 +517,14 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               RAY_CHECK(worker_type_ == WorkerType::DRIVER);
               error_type = rpc::ErrorType::LOCAL_RAYLET_DIED;
               error_status = status;
-              error_info.set_error_message(status.ToString());
+              // Grpc errors are not helpful at all. So we are overwriting it.
+              std::stringstream ss;
+              ss << "The worker failed to receive a response from the local raylet"
+                 << "(id: " << NodeID::FromBinary(raylet_address.raylet_id()).Hex()
+                 << " ,ip: " << raylet_address.ip_address() << ") "
+                 << "because the raylet is "
+                    "unavailable (crashed).";
+              error_info.set_error_message(ss.str());
               tasks_to_fail = std::move(scheduling_key_entry.task_queue);
               scheduling_key_entry.task_queue.clear();
               if (scheduling_key_entry.CanDelete()) {

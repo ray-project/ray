@@ -271,7 +271,6 @@ message ActorDeathCause {
 // Indicates that this actor is marked as DEAD due to runtime environment setup failure.
 message RuntimeEnvFailedContext {
   // TODO(sang,lixin) Get this error message from agent.
-  // This error_message is deprecated. Use the RayErrorInfo.error_message() instead.
   string error_message = 1;
 }
 
