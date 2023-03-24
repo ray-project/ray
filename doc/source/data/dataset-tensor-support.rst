@@ -236,7 +236,7 @@ below.
 
 .. code-block::
 
-    from ray.data.context import DatasetContext
+    from ray.data import DatasetContext
 
     ctx = DatasetContext.get_current()
     ctx.enable_tensor_extension_casting = False

@@ -308,7 +308,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      make html
+      FAST=True make html
       pip install datasets==2.0.0
       RAY_MOCK_MODULES=0 make doctest
     fi
@@ -321,7 +321,7 @@ check_sphinx_links() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      make linkcheck
+      FAST=True make linkcheck
     fi
   )
 }
@@ -546,7 +546,7 @@ lint_bazel() {
 lint_bazel_pytest() {
   pip install yq
   cd "${WORKSPACE_DIR}"
-  for team in "team:ml" "team:rllib" "team:serve"; do
+  for team in "team:core" "team:ml" "team:rllib" "team:serve"; do
     # this does the following:
     # - find all py_test rules in bazel that have the specified team tag EXCEPT ones with "no_main" tag and outputs them as xml
     # - converts the xml to json
