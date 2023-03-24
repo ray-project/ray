@@ -72,7 +72,12 @@ def execute_to_legacy_bundle_iterator(
     Returns:
         The output as a bundle iterator.
     """
-    dag, stats = _get_execution_dag(executor, plan, allow_clear_input_blocks)
+    dag, stats = _get_execution_dag(
+        executor,
+        plan,
+        allow_clear_input_blocks,
+        preserve_order=False,
+    )
     if dag_rewrite:
         dag = dag_rewrite(dag)
 
@@ -85,6 +90,7 @@ def execute_to_legacy_block_list(
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
+    preserve_order: bool,
 ) -> BlockList:
     """Execute a plan with the new executor and translate it into a legacy block list.
 
@@ -93,11 +99,17 @@ def execute_to_legacy_block_list(
         plan: The legacy plan to execute.
         allow_clear_input_blocks: Whether the executor may consider clearing blocks.
         dataset_uuid: UUID of the dataset for this execution.
+        preserve_order: Whether to preserve order in execution.
 
     Returns:
         The output as a legacy block list.
     """
-    dag, stats = _get_execution_dag(executor, plan, allow_clear_input_blocks)
+    dag, stats = _get_execution_dag(
+        executor,
+        plan,
+        allow_clear_input_blocks,
+        preserve_order,
+    )
     bundles = executor.execute(dag, initial_stats=stats)
     block_list = _bundles_to_block_list(bundles)
     # Set the stats UUID after execution finishes.
@@ -109,6 +121,7 @@ def _get_execution_dag(
     executor: Executor,
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
+    preserve_order: bool,
 ) -> Tuple[PhysicalOperator, DatasetStats]:
     """Get the physical operators DAG from a plan."""
     # Record usage of logical operators if available.
@@ -125,7 +138,7 @@ def _get_execution_dag(
     # Enforce to preserve ordering if the plan has stages required to do so, such as
     # Zip and Sort.
     # TODO(chengsu): implement this for operator as well.
-    if plan.require_preserve_order():
+    if preserve_order or plan.require_preserve_order():
         executor._options.preserve_order = True
 
     return dag, stats

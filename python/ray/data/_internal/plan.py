@@ -530,15 +530,15 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
+        preserve_order: bool = False,
     ) -> BlockList:
         """Execute this plan.
-
-        This will always execute the plan using bulk execution.
 
         Args:
             allow_clear_input_blocks: Whether we should try to clear the input blocks
                 for each stage.
             force_read: Whether to force the read stage to fully execute.
+            preserve_order: Whether to preserve order in execution.
 
         Returns:
             The blocks of the output dataset.
@@ -575,6 +575,7 @@ class ExecutionPlan:
                     self,
                     allow_clear_input_blocks=allow_clear_input_blocks,
                     dataset_uuid=self._dataset_uuid,
+                    preserve_order=preserve_order,
                 )
                 # TODO(ekl) we shouldn't need to set this in the future once we move
                 # to a fully lazy execution model, unless .cache() is used. The reason
