@@ -1,9 +1,61 @@
 """This example demonstrates basic Ray Tune random search and grid search."""
 import time
+import json
 
 import ray
 from ray.air import session
 from ray import tune
+
+# "distribution" corresponds to a distribution in `ray.tune`, eg. `ray.tune.uniform`.
+# "constant" is a special key signifying this is not a distribution but a constant.
+config_json = """
+[
+    {
+        "name": "width",
+        "distribution": "uniform",
+        "lower": 0,
+        "upper": 20
+    },
+    {
+        "name": "height",
+        "distribution": "uniform",
+        "lower": -100,
+        "upper": 100
+    },
+    {
+        "name": "activation",
+        "distribution": "grid_search",
+        "values": ["relu", "tanh"]
+    },
+    {
+        "name": "steps",
+        "distribution": "constant",
+        "value": 5
+    }
+]
+"""
+
+
+def parse_config_entry(entry: dict) -> dict:
+    if not isinstance(entry, dict):
+        return entry
+    # Deal with nested dicts
+    entry = {k: parse_config_entry(v) for k, v in entry.items()}
+    if entry["distribution"] == "constant":
+        return {entry["name"]: entry["value"]}
+    return {
+        entry["name"]: getattr(tune, entry["distribution"])(
+            **{k: v for k, v in entry.items() if k not in ("name", "distribution")}
+        )
+    }
+
+
+def parse_config_json(json_string: str) -> dict:
+    raw_config = json.loads(json_string)
+    parsed_config = {}
+    for entry in raw_config:
+        parsed_config.update(parse_config_entry(entry))
+    return parsed_config
 
 
 def evaluation_fn(step, width, height):
@@ -46,12 +98,7 @@ if __name__ == "__main__":
             mode="min",
             num_samples=5 if args.smoke_test else 50,
         ),
-        param_space={
-            "steps": 5 if args.smoke_test else 100,
-            "width": tune.uniform(0, 20),
-            "height": tune.uniform(-100, 100),
-            "activation": tune.grid_search(["relu", "tanh"]),
-        },
+        param_space=parse_config_json(config_json),
     )
     results = tuner.fit()
 

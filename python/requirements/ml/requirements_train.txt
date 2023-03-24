@@ -15,7 +15,7 @@ tensorboardX==2.4.1
 # We need transformers>=4.19.0 for HuggingFaceTrainer to work (not available on py 3.6)
 # If changing the version here, also change it in HuggingFaceTrainer docstring
 transformers==4.18.0; python_version <= '3.6'
-transformers==4.19.1; python_version > '3.6'
+transformers==4.26.0; python_version > '3.6'
 # We need accelerate>=0.17.0 for AccelerateTrainer to work (not available on py 3.6)
 # If changing the version here, also change it in AccelerateTrainer docstring
 accelerate==0.5.1; python_version <= '3.6'
