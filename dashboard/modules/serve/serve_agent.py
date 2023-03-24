@@ -12,7 +12,6 @@ from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
 )
-from ray.serve._private.constants import MULTI_APP_MIGRATION_MESSAGE
 from ray.exceptions import RayTaskError
 
 logger = logging.getLogger(__name__)
@@ -158,6 +157,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         from ray.serve._private.api import serve_start
         from ray.serve.schema import ServeApplicationSchema
         from pydantic import ValidationError
+        from ray.serve._private.constants import MULTI_APP_MIGRATION_MESSAGE
         from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
         try:
