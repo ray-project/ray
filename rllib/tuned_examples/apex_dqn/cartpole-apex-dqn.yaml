@@ -13,7 +13,7 @@ cartpole-apex-dqn-training-itr:
         timesteps_total: 250000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         # Make this work with only 5 CPUs and 0 GPUs:
         num_workers: 3
         optimizer:
