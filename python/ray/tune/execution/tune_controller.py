@@ -409,7 +409,7 @@ class TuneController(_TuneControllerBase):
 
     ###
     # ADD ACTORS
-    def _maybe_add_actors(self):
+    def _maybe_add_actors(self) -> None:
         """Add actors for pending and paused trials.
 
         For actors that have not been staged, yet, we request an actor.
@@ -447,7 +447,7 @@ class TuneController(_TuneControllerBase):
                 self._maybe_reuse_cached_actor(trial_to_run)
 
         ###
-        # 2: Start trials that are PENDING or PAUSED
+        # 2: Start trials that are PENDING
         def _maybe_add_actors(candidates: List[Trial]):
             new_candidates = []
 
@@ -541,10 +541,7 @@ class TuneController(_TuneControllerBase):
         """
         logger.debug(f"Trying to schedule new ACTOR for trial {trial}")
 
-        # Only set status to PENDING if we are not paused. Otherwise,
-        # all trials would constantly be pending and never in paused state.
-        if trial.status not in {Trial.PENDING, Trial.PAUSED}:
-            self._set_trial_status(trial, Trial.PENDING)
+        self._set_trial_status(trial, Trial.PENDING)
 
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
