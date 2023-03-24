@@ -283,6 +283,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const std::shared_ptr<ClientConnection> &connection) const;
 
   bool MaybeRefillIdlePool(bool from_PrestartWorkers, int64_t backlog_size);
+  void MaybeKillFromIdlePool(const JobID &job_id);
   void old_PrestartWorkers_Prestart(int64_t backlog_size, int64_t num_available_cpus);
   int GetNumStartingWorkers();
   size_t GetNumRunningWorkers();

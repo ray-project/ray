@@ -89,7 +89,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       node_id_(node_id),
       node_address_(node_address),
       num_workers_soft_limit_(num_workers_soft_limit),
-      maximum_startup_concurrency_(maximum_startup_concurrency),
+      //maximum_startup_concurrency_(maximum_startup_concurrency),
+      maximum_startup_concurrency_(8),
       gcs_client_(std::move(gcs_client)),
       native_library_path_(native_library_path),
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
@@ -715,6 +716,7 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
     DeleteRuntimeEnvIfPossible(job_config->runtime_env_info().serialized_runtime_env());
   }
   finished_jobs_.insert(job_id);
+  MaybeKillFromIdlePool(job_id);
 }
 
 boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
@@ -778,6 +780,7 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
     it->second.alive_started_workers.insert(worker);
     // We may have slots to start more workers now.
     TryStartIOWorkers(worker->GetLanguage());
+    MaybeRefillIdlePool(false, -1);
   }
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
@@ -1016,6 +1019,31 @@ int WorkerPool::GetNumStartingWorkers() {
     }
   }
   return starting_workers;
+}
+
+void WorkerPool::MaybeKillFromIdlePool(const JobID &job_id) {
+    std::vector<Process> to_kill;
+    std::vector<pid_t> pids_to_kill;
+
+    // For all worker processes that have the old job id, kill them.
+    for (const auto &idle_pair : idle_of_all_languages_) {
+        const auto &idle_worker = idle_pair.first;
+        const auto &idle_worker_job_id = idle_worker->GetAssignedJobId();
+
+        if (idle_worker_job_id == job_id) {
+            auto proc = idle_worker->GetProcess();
+            to_kill.push_back(proc);
+            pids_to_kill.push_back(proc.GetId());
+        }
+    }
+
+    RAY_LOG(DEBUG) << "MaybeKillFromIdlePool job_id: " << job_id
+        << ", kill the following pids " << absl::StrJoin(pids_to_kill, ",");
+
+    for (auto& proc : to_kill) {
+        // TODO need to cleanly kill (this will cause loss with unowned objects)
+        proc.Kill();
+    }
 }
 
 // Returns whether or not a refill was made.
