@@ -929,11 +929,16 @@ cdef void execute_task(
                 if (hasattr(actor_class, "__ray_actor_class__") and
                         (actor_class.__ray_actor_class__.__repr__
                          != object.__repr__)):
+                    actor_repr = repr(actor)
                     actor_magic_token = "{}{}\n".format(
-                        ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
+                        ray_constants.LOG_PREFIX_ACTOR_NAME, actor_repr)
                     # Flush on both stdout and stderr.
                     print(actor_magic_token, end="")
                     print(actor_magic_token, file=sys.stderr, end="")
+
+                    # Sets the actor repr name for the actor so other components
+                    # like GCS has such info.
+                    core_worker.set_actor_repr_name(actor_repr)
 
             if (returns[0].size() > 0 and
                     not inspect.isgenerator(outputs) and
@@ -1629,6 +1634,9 @@ cdef class CoreWorker:
 
     def set_actor_title(self, title):
         CCoreWorkerProcess.GetCoreWorker().SetActorTitle(title)
+
+    def set_actor_repr_name(self, repr_name):
+        CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
 
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
