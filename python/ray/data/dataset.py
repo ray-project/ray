@@ -2027,7 +2027,7 @@ class Dataset(Generic[T]):
             >>> # will have deterministic rounding error.
             >>> ray.data.context.DatasetContext.get_current().execution_options.preserve_order = True
             >>> ray.data.range(100).std()
-            29.01149197588202
+            29.011491975882016
             >>> ray.data.from_items([
             ...     (i, i**2)
             ...     for i in range(100)]).std(lambda x: x[1])
