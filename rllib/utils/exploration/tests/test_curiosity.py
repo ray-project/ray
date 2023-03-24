@@ -185,7 +185,7 @@ class TestCuriosity(unittest.TestCase):
                     },
                 }
             )
-            .rl_module(_enable_rl_module=False)
+            .rl_module(_enable_rl_module_api=False)
         )
 
         num_iterations = 10
