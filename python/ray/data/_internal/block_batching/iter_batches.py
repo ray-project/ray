@@ -59,6 +59,8 @@ def prefetch_batches_locally(
 
     if batch_size:
         num_rows_to_prefetch = num_batches_to_prefetch * batch_size
+    else:
+        num_rows_to_prefetch = None
 
     # Create and fetch the initial window.
     while True:
@@ -68,8 +70,12 @@ def prefetch_batches_locally(
             current_window_size += next_block_ref_and_metadata[1].num_rows
         except StopIteration:
             break
+        # Stop adding if the number of rows in this window is greater than
+        # requested batch size.
         if batch_size and current_window_size >= num_rows_to_prefetch:
             break
+        # Stop adding if batch_size is None and the number of blocks in this window
+        # is greater than requested batches to prefetch.
         elif not batch_size and len(sliding_window) >= num_batches_to_prefetch:
             break
 
