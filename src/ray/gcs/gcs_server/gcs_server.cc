@@ -222,10 +222,12 @@ void GcsServer::Stop() {
 
     gcs_task_manager_->Stop();
 
+    pubsub_handler_->Stop();
+    pubsub_handler_.reset();
+
     // Shutdown the rpc server
     rpc_server_.Shutdown();
 
-    pubsub_handler_->Stop();
     kv_manager_.reset();
 
     is_stopped_ = true;
@@ -405,20 +407,6 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       *function_manager_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
-      },
-      [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
-        boost::asio::deadline_timer timer(main_service_);
-        timer.expires_from_now(delay);
-        timer.async_wait([fn](const boost::system::error_code &error) {
-          if (error != boost::asio::error::operation_aborted) {
-            fn();
-          } else {
-            RAY_LOG(WARNING)
-                << "The GCS actor metadata garbage collector timer failed to fire. This "
-                   "could old actor metadata not being properly cleaned up. For more "
-                   "information, check logs/gcs_server.err and logs/gcs_server.out";
-          }
-        });
       },
       [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
@@ -674,7 +662,6 @@ void GcsServer::InstallEventListeners() {
   // Install job event listeners.
   gcs_job_manager_->AddJobFinishedListener([this](const rpc::JobTableData &job_data) {
     const auto job_id = JobID::FromBinary(job_data.job_id());
-    gcs_actor_manager_->OnJobFinished(job_id);
     gcs_task_manager_->OnJobFinished(job_id, job_data.end_time());
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
   });
