@@ -6,15 +6,12 @@ from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 import ray
 from ray.data._internal.block_batching.interfaces import BlockPrefetcher
 from ray.data._internal.block_batching.util import (
-<<<<<<< HEAD
-=======
     resolve_block_refs,
     blocks_to_batches,
     format_batches,
     collate,
     extract_data_from_batch,
     make_async_gen,
->>>>>>> 0feeb2d4a0a98405254ae1c6b497d79d91a08e3e
     WaitBlockPrefetcher,
     ActorBlockPrefetcher,
 )
@@ -167,16 +164,12 @@ def batch_blocks(
         batch_iter = extract_data_from_batch(batch_iter)
         yield from batch_iter
 
-<<<<<<< HEAD
-    batch_iter = _iterator_fn(blocks)
-=======
     if prefetch_batches > 0:
         batch_iter = make_async_gen(
             blocks, fn=_iterator_fn, num_workers=prefetch_batches
         )
     else:
         batch_iter = _iterator_fn(blocks)
->>>>>>> 0feeb2d4a0a98405254ae1c6b497d79d91a08e3e
 
     for formatted_batch in batch_iter:
         user_timer = stats.iter_user_s.timer() if stats else nullcontext()
@@ -219,90 +212,3 @@ def _prefetch_blocks(
         except StopIteration:
             pass
         yield block_ref
-<<<<<<< HEAD
-        trace_deallocation(
-            block_ref, "block_batching._prefetch_blocks", free=eager_free
-        )
-
-
-def _blocks_to_batches(
-    block_iter: Iterator[Block],
-    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
-    batch_size: Optional[int] = None,
-    drop_last: bool = False,
-    shuffle_buffer_min_size: Optional[int] = None,
-    shuffle_seed: Optional[int] = None,
-    ensure_copy: bool = False,
-) -> Iterator[Block]:
-    """Given an iterator over blocks, returns an iterator over blocks
-    of the appropriate bacth size.
-
-    If the shuffling configurations are specified, then the
-    output blocks contain shuffled data.
-
-    Args:
-        block_iter: An iterator over blocks.
-        stats: Dataset stats object used to store block batching time.
-        batch_size: Record batch size, or None to let the system pick.
-        drop_last: Whether to drop the last batch if it's incomplete.
-        ensure_copy: Whether batches are always copied from the underlying base
-            blocks (not zero-copy views).
-
-    Returns:
-        An iterator over blocks of the given size that are potentially shuffled.
-    """
-    if shuffle_buffer_min_size is not None:
-        batcher = ShufflingBatcher(
-            batch_size=batch_size,
-            shuffle_buffer_min_size=shuffle_buffer_min_size,
-            shuffle_seed=shuffle_seed,
-        )
-    else:
-        batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
-
-    def get_iter_next_batch_s_timer():
-        return stats.iter_create_batch_s.timer() if stats else nullcontext()
-
-    for block in block_iter:
-        batcher.add(block)
-        while batcher.has_batch():
-            with get_iter_next_batch_s_timer():
-                batch = batcher.next_batch()
-            yield batch
-
-    # Signal to the batcher that there are no more blocks to add.
-    batcher.done_adding()
-
-    # Get any leftover batches in ShufflingBatcher.
-    while batcher.has_batch():
-        with get_iter_next_batch_s_timer():
-            batch = batcher.next_batch()
-        yield batch
-
-    # Get any remaining data.
-    if not drop_last and batcher.has_any():
-        with get_iter_next_batch_s_timer():
-            batch = batcher.next_batch()
-        yield batch
-
-
-def _format_batches(
-    block_iter: Iterator[Block],
-    batch_format: str,
-    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
-) -> Iterator[DataBatch]:
-    """Given an iterator of blocks, returns an iterator of formatted batches.
-
-    Args:
-        block_iter: An iterator over blocks.
-        batch_format: The batch format to use.
-
-    Returns:
-        An iterator over formatted batches.
-    """
-    for block in block_iter:
-        with stats.iter_format_batch_s.timer() if stats else nullcontext():
-            batch = BlockAccessor.for_block(block).to_batch_format(batch_format)
-        yield batch
-=======
->>>>>>> 0feeb2d4a0a98405254ae1c6b497d79d91a08e3e
