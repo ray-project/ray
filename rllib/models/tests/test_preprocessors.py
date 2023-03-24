@@ -118,7 +118,6 @@ class TestPreprocessors(unittest.TestCase):
             check_compute_single_action(algo)
             algo.stop()
 
-
     def test_gym_preprocessors(self):
         p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v1"))
         self.assertEqual(type(p1), NoPreprocessor)
@@ -276,7 +275,6 @@ class TestPreprocessors(unittest.TestCase):
                 1.0,
             ],
         )
-
 
 
 if __name__ == "__main__":
