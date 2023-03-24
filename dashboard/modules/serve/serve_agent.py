@@ -58,6 +58,8 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         else:
             try:
                 config = await controller.get_app_config.remote()
+                if config is None:
+                    config = ServeApplicationSchema.get_empty_schema_dict()
             except ray.exceptions.RayTaskError as e:
                 # Task failure sometimes are due to GCS
                 # failure. When GCS failed, we expect a longer time
