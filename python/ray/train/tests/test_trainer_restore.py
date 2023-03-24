@@ -213,9 +213,6 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     with pytest.raises(TrainingFailedError):
         result = trainer.fit()
 
-    ray.shutdown()
-    ray.init(num_cpus=4)
-
     trainer = trainer_cls.restore(str(tmpdir / exp_name), datasets=datasets)
     result = trainer.fit()
     assert not result.error
