@@ -47,7 +47,7 @@ CONTROL_LOOP_PERIOD_S = 0.1
 HTTP_PROXY_TIMEOUT = 60
 
 #: Time that must pass before retrying an embargoed replica
-EMBARGO_TIMEOUT_S = 30
+DEFAULT_EMBARGO_TIMEOUT_S = 30
 
 #: Max retry count for allowing failures in replica constructor.
 #: If no replicas at target version is running by the time we're at

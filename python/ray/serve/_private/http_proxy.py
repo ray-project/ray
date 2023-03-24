@@ -24,13 +24,13 @@ from ray.serve._private.http_util import (
     receive_http_body,
     Response,
     set_socket_reuse_port,
+    get_replica_embargo_timeout,
 )
 from ray.serve._private.common import EndpointInfo, EndpointTag
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
-    EMBARGO_TIMEOUT_S,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
@@ -65,6 +65,8 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
         "instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in "
         "future versions."
     )
+
+EMBARGO_TIMEOUT_S = get_replica_embargo_timeout()
 
 
 async def _send_request_to_handle(handle: RayServeHandle, scope, receive, send) -> str:
@@ -128,7 +130,7 @@ async def _send_request_to_handle(handle: RayServeHandle, scope, receive, send) 
                 backoff = True
                 logger.info(
                     f"Embargoing replica {replica_tag}. This HTTP proxy "
-                    "will continue sending requests to replica after "
+                    "will start sending requests to this replica again after "
                     f"{EMBARGO_TIMEOUT_S} seconds."
                 )
                 handle.embargo_replica(replica_tag)

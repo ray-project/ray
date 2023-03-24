@@ -1300,11 +1300,18 @@ class TestServeRequestProcessingTimeoutS:
     @pytest.mark.parametrize(
         "ray_instance",
         [
-            {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"},
-            {"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"},
+            {
+                "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
+                "_SERVE_INTERNAL_EMBARGO_TIMEOUT_S": "0.2",
+            },
+            {
+                "SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
+                "_SERVE_INTERNAL_EMBARGO_TIMEOUT_S": "0.2",
+            },
             {
                 "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
                 "SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0",
+                "_SERVE_INTERNAL_EMBARGO_TIMEOUT_S": "0.2",
             },
         ],
         indirect=True,
@@ -1423,6 +1430,7 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
         {
             "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
             "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES": "5",
+            "_SERVE_INTERNAL_EMBARGO_TIMEOUT_S": "0.2",
         },
     ],
     indirect=True,

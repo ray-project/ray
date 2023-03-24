@@ -1,9 +1,10 @@
-import asyncio
-import socket
-from dataclasses import dataclass
-import inspect
+import os
 import json
+import socket
+import asyncio
+import inspect
 import logging
+from dataclasses import dataclass
 from typing import Any, Dict, Type
 
 import starlette.responses
@@ -12,7 +13,7 @@ from starlette.types import Send, ASGIApp
 from fastapi.encoders import jsonable_encoder
 
 from ray.serve.exceptions import RayServeException
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import SERVE_LOGGER_NAME, DEFAULT_EMBARGO_TIMEOUT_S
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -282,3 +283,16 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
             f"Setting SO_REUSEPORT failed because of {e}. SO_REUSEPORT is disabled."
         )
         return False
+
+
+def get_replica_embargo_timeout() -> float:
+    if os.environ.get("_SERVE_INTERNAL_EMBARGO_TIMEOUT_S") is not None:
+        logger.warning(
+            'The "_SERVE_INTERNAL_EMBARGO_TIMEOUT_S" env var has been set '
+            f'with value {os.environ.get("_SERVE_INTERNAL_EMBARGO_TIMEOUT_S")}. '
+            "This env var is meant only for testing Serve internally. It "
+            "may be ignored in future versions."
+        )
+        return float(os.environ.get("_SERVE_INTERNAL_EMBARGO_TIMEOUT_S"))
+
+    return DEFAULT_EMBARGO_TIMEOUT_S

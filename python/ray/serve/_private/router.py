@@ -1,10 +1,10 @@
-import asyncio
-from dataclasses import dataclass
-import itertools
-import logging
+import sys
 import pickle
 import random
-import sys
+import asyncio
+import logging
+import itertools
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray
@@ -14,18 +14,21 @@ from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 
 from ray.serve._private.common import RunningReplicaInfo, ReplicaTag
-from ray.serve._private.constants import SERVE_LOGGER_NAME, EMBARGO_TIMEOUT_S
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
     JavaActorHandleProxy,
     ExpiringSet,
 )
+from ray.serve._private.http_util import get_replica_embargo_timeout
 from ray.serve.generated.serve_pb2 import (
     RequestMetadata as RequestMetadataProto,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+EMBARGO_TIMEOUT_S = get_replica_embargo_timeout()
 
 
 @dataclass
