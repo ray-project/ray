@@ -234,6 +234,9 @@ class Learner:
         # if we are using gpu but we are not distributed, use this gpu for training
         self._local_gpu_idx = learner_scaling_config.local_gpu_idx
 
+        # whether self.build has already been called
+        self.built = False
+
         # These are the attributes that are set during build
         self._module: MultiAgentRLModule = None
         # These are set for properly applying optimizers and adding or removing modules.
@@ -481,7 +484,7 @@ class Learner:
             module_id: The id of the module to add.
             module_spec: The module spec of the module to add.
         """
-        self.__check_if_build_called()
+        self._check_if_build_called()
         module = module_spec.build()
 
         for i, (param_seq, optimizer) in enumerate(self.configure_optimizer(module)):
@@ -502,7 +505,7 @@ class Learner:
         Args:
             module_id: The id of the module to remove.
         """
-        self.__check_if_build_called()
+        self._check_if_build_called()
         module = self._module[module_id]
 
         if self._is_module_compatible_with_learner(module):
@@ -530,6 +533,10 @@ class Learner:
         This method should be called before the learner is used. It is responsible for
         setting up the module and optimizers.
         """
+        if self.built:
+            logger.warning("Learner already built. Skipping build.")
+            return
+        self.built = True
         self._module = self._make_module()
         for param_seq, optimizer in self.configure_optimizers():
             self._optim_to_param[optimizer] = []
@@ -727,7 +734,7 @@ class Learner:
         Returns:
             A dictionary of results, in numpy format.
         """
-        self.__check_if_build_called()
+        self._check_if_build_called()
 
         missing_module_ids = set(batch.policy_batches.keys()) - set(self._module.keys())
         if len(missing_module_ids) > 0:
@@ -766,7 +773,7 @@ class Learner:
         """
         # TODO (Kourosh): We have both get(set)_state and get(set)_weights. I think
         # having both can become confusing. Can we simplify this API requirement?
-        self.__check_if_build_called()
+        self._check_if_build_called()
         # TODO: once we figure out the optimizer format, we can set/get the state
         self._module.set_state(state.get("module_state", {}))
 
@@ -777,9 +784,37 @@ class Learner:
             The state of the optimizer and module.
 
         """
-        self.__check_if_build_called()
+        self._check_if_build_called()
         # TODO: once we figure out the optimizer format, we can set/get the state
         return {"module_state": self._module.get_state()}
+
+    def _get_metadata(self) -> Dict[str, Any]:
+        metadata = {
+            "learner_class": serialize_type(self.__class__),
+            "ray_version": ray.__version__,
+            "ray_commit": ray.__commit__,
+            "module_state_dir": "module_state",
+            "optimizer_state_dir": "optimizer_state",
+        }
+        return metadata
+
+    def _save_optimizers(self, dir: Union[str, pathlib.Path]) -> None:
+        """Save the state of the optimizer to dir
+
+        Args:
+            dir: The dir to save the state to.
+
+        """
+        pass
+
+    def _load_optimizers(self, dir: Union[str, pathlib.Path]) -> None:
+        """Load the state of the optimizer from dir
+
+        Args:
+            dir: The dir to load the state from.
+
+        """
+        pass
 
     def save_state(self, dir: Union[str, pathlib.Path]) -> None:
         """Save the state of the learner to dir
@@ -789,21 +824,18 @@ class Learner:
             NOTE: By default only the module state will be saved.
 
         """
-        self.__check_if_build_called()
+        self._check_if_build_called()
         dir = pathlib.Path(dir)
+        dir.mkdir(parents=True, exist_ok=True)
         self._module.save_to_checkpoint(dir / "module_state")
+        self._save_optimizers(dir / "optimizer_state")
         with open(dir / "learner_state.json", "w") as f:
-            metadata = {
-                "learner_class": serialize_type(self.__class__),
-                "ray_version": ray.__version__,
-                "ray_commit": ray.__commit__,
-            }
+            metadata = self._get_metadata()
             json.dump(metadata, f)
 
     def load_state(
         self,
         dir: Union[str, pathlib.Path],
-        modules_to_load: Optional[Set[ModuleID]] = None,
     ) -> None:
         """Load the state of the learner from dir
 
@@ -811,13 +843,19 @@ class Learner:
 
         Args:
             dir: The dir to load the state from.
-            modules_to_load: The ids of the RLModules to load into the MARLModule that
-                is being traing by this learner. If None, all modules will be loaded.
-
         """
-        self.__check_if_build_called()
+        self._check_if_build_called()
         dir = pathlib.Path(dir)
-        self._module.load_state(dir / "module_state", modules_to_load)
+        del self._module
+        # TODO(avnishn) from checkpoint doesn't currently support modules_to_load,
+        # but it should, so we will add it later.
+        self._module_obj = MultiAgentRLModule.from_checkpoint(dir / "module_state")
+        self._param_to_optim = {}
+        self._params = {}
+        self._optim_to_param = {}
+        self.built = False
+        self.build()
+        self._load_optimizers(dir / "optimizer_state")
 
     @abc.abstractmethod
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
@@ -903,7 +941,7 @@ class Learner:
         self._check_result(result)
         return convert_to_numpy(result)
 
-    def __check_if_build_called(self):
+    def _check_if_build_called(self):
         if self._module is None:
             raise ValueError(
                 "Learner.build() must be called after constructing a "

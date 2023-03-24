@@ -1,11 +1,13 @@
+import json
 import logging
 import numpy as np
+import pathlib
 import tree  # pip install dm-tree
 from typing import (
     Any,
     Mapping,
-    Union,
     Type,
+    Union,
     Optional,
     Callable,
     Sequence,
@@ -35,6 +37,7 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchCyclicIterator,
 )
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.serialization import convert_numpy_to_python_types
 
 
 tf1, tf, tfv = try_import_tf()
@@ -111,6 +114,43 @@ class TfLearner(Learner):
                 lambda v: tf.clip_by_value(v, -grad_clip, grad_clip), gradients_dict
             )
         return gradients_dict
+
+    @override(Learner)
+    def load_state(
+        self,
+        dir: Union[str, pathlib.Path],
+    ) -> None:
+        # this is a potentially very expensive operation since we are creating an
+        # MARL Module at build time then destroying it and creating a new one
+        # from checkpoint, but it is necessary because of complications with
+        # the way that ray tune restores failed trials.
+        with self._strategy.scope():
+            super().load_state(dir)
+
+    @override(Learner)
+    def _save_optimizers(self, dir: Union[str, pathlib.Path]) -> None:
+        dir = pathlib.Path(dir)
+        dir.mkdir(parents=True, exist_ok=True)
+        for name, optim in self._name_to_optim.items():
+            state = tf.keras.optimizers.serialize(optim)
+            state = tf.nest.map_structure(convert_numpy_to_python_types, state)
+            with open(dir / f"{name}.json", "w") as f:
+                json.dump(state, f)
+
+    @override(Learner)
+    def _load_optimizers(self, dir: Union[str, pathlib.Path]) -> None:
+        dir = pathlib.Path(dir)
+        for name in self._name_to_optim.keys():
+            with open(dir / f"{name}.json", "r") as f:
+                state = json.load(f)
+            new_optim = tf.keras.optimizers.deserialize(state)
+            old_optim = self._name_to_optim[name]
+            self._name_to_optim[name] = new_optim
+            param_seq = self._optim_to_param.pop(old_optim)
+            self._optim_to_param[new_optim] = []
+            for param_ref in param_seq:
+                self._optim_to_param[new_optim].append(param_ref)
+                self._param_to_optim[param_ref] = new_optim
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:

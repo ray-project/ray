@@ -1,7 +1,8 @@
 import gymnasium as gym
-import unittest
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
+import tempfile
+import unittest
 
 import ray
 
@@ -143,6 +144,67 @@ class TestLearner(unittest.TestCase):
                 learner.apply_gradients(gradients)
 
         check(params, expected)
+
+    def test_save_load_state(self):
+        env = gym.make("CartPole-v1")
+
+        learner1 = BCTfLearner(
+            module_spec=SingleAgentRLModuleSpec(
+                module_class=DiscreteBCTFModule,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                model_config_dict={"fcnet_hiddens": [64]},
+            ),
+            optimizer_config={"lr": 2e-3},
+            learner_scaling_config=LearnerGroupScalingConfig(),
+            framework_hyperparameters=FrameworkHPs(eager_tracing=True),
+        )
+
+        learner1.build()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            learner1.save_state(tmpdir)
+
+            learner2 = BCTfLearner(
+                module_spec=SingleAgentRLModuleSpec(
+                    module_class=DiscreteBCTFModule,
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    model_config_dict={"fcnet_hiddens": [32]},
+                ),
+                optimizer_config={"lr": 1e-3},
+                learner_scaling_config=LearnerGroupScalingConfig(),
+                framework_hyperparameters=FrameworkHPs(eager_tracing=True),
+            )
+            learner2.build()
+            learner2.load_state(tmpdir)
+            check(learner1.get_weights(), learner2.get_weights())
+
+            # check all internal optimizer state dictionaries have been updated
+            learner_1_optims_serialized = {
+                name: optim.get_config()
+                for name, optim in learner1._name_to_optim.items()
+            }
+            learner_2_optims_serialized = {
+                name: optim.get_config()
+                for name, optim in learner2._name_to_optim.items()
+            }
+            check(learner_1_optims_serialized, learner_2_optims_serialized)
+
+            learner_1_optims_serialized = [
+                optim.get_config() for optim in learner1._optim_to_param.keys()
+            ]
+            learner_2_optims_serialized = [
+                optim.get_config() for optim in learner2._optim_to_param.keys()
+            ]
+            check(learner_1_optims_serialized, learner_2_optims_serialized)
+
+            learner_1_optims_serialized = [
+                optim.get_config() for optim in learner1._param_to_optim.values()
+            ]
+            learner_2_optims_serialized = [
+                optim.get_config() for optim in learner2._param_to_optim.values()
+            ]
+            check(learner_1_optims_serialized, learner_2_optims_serialized)
 
 
 if __name__ == "__main__":

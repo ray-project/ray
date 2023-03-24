@@ -20,6 +20,26 @@ if old_gym:
     old_gym_text_class = getattr(old_gym.spaces, "Text", None)
 
 
+def convert_numpy_to_python_types(obj: Any):
+    """Convert an object that is a numpy type to a python type.
+
+    If the object is not a numpy type, it is returned unchanged.
+
+    Args:
+        obj: The object to convert.
+    """
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    else:
+        return obj
+
+
 def _serialize_ndarray(array: np.ndarray) -> str:
     """Pack numpy ndarray into Base64 encoded strings for serialization.
 
