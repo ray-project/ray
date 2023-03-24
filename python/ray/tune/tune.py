@@ -183,7 +183,7 @@ def _ray_auto_init(entrypoint: str):
     elif not ray.is_initialized():
         ray.init()
         logger.info(
-            "Initializing Ray automatically."
+            "Initializing Ray automatically. "
             "For cluster usage or custom Ray initialization, "
             f"call `ray.init(...)` before `{entrypoint}`."
         )
