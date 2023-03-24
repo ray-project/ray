@@ -174,7 +174,7 @@ def train_fn(config, data=None):
     checkpoint = session.get_checkpoint()
     start = checkpoint.to_dict()["iteration"] + 1 if checkpoint else 1
 
-    training_started_marker = Path(os.environ.get("RUN_STARTED_MARKER"))
+    training_started_marker = Path(os.environ.get("RUN_STARTED_MARKER", "asdf.py"))
 
     if training_started_marker.exists():
         training_started_marker.unlink()
