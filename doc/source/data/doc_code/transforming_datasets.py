@@ -285,25 +285,23 @@ import pandas as pd
 from typing import List
 
 # Load dataset.
-ds = ray.data.read_text("example://sms_spam_collection_subset.txt")
-# -> Dataset(num_blocks=1, num_rows=10, schema=<class 'str'>)
+ds = ray.data.from_items(["test", "string", "teststring"])
+# -> Dataset(num_blocks=1, num_rows=3, schema=<class 'str'>)
 
 # Convert to Pandas.
 def convert_to_pandas(text: List[str]) -> pd.DataFrame:
-    return pd.DataFrame({"text": text})
+    return pd.DataFrame({"text": text}, dtype="string")
 
 ds = ds.map_batches(convert_to_pandas)
 # -> MapBatches(convert_to_pandas)
-#    +- Dataset(num_blocks=1, num_rows=10, schema={text: string})
+#    +- Dataset(num_blocks=3, num_rows=3, schema=<class 'str'>)
 
 ds.show(2)
-# -> {
-#        'text': (
-#            'ham\tGo until jurong point, crazy.. Available only in bugis n great '
-#            'world la e buffet... Cine there got amore wat...'
-#        ),
-#    }
-# -> {'text': 'ham\tOk lar... Joking wif u oni...'}
+# -> {'text': 'test'}
+# -> {'text': 'string'}
+
+print(ds)
+# -> Dataset(num_blocks=3, num_rows=3, schema={text: string})
 # __writing_pandas_out_udfs_end__
 # fmt: on
 
@@ -314,8 +312,8 @@ import pyarrow as pa
 from typing import List
 
 # Load dataset.
-ds = ray.data.read_text("example://sms_spam_collection_subset.txt")
-# -> Dataset(num_blocks=1, num_rows=10, schema=<class 'str'>)
+ds = ray.data.from_items(["test", "string", "teststring"])
+# -> Dataset(num_blocks=1, num_rows=3, schema=<class 'str'>)
 
 # Convert to Arrow.
 def convert_to_arrow(text: List[str]) -> pa.Table:
@@ -323,16 +321,14 @@ def convert_to_arrow(text: List[str]) -> pa.Table:
 
 ds = ds.map_batches(convert_to_arrow)
 # -> MapBatches(convert_to_arrow)
-#    +- Dataset(num_blocks=1, num_rows=10, schema={text: string})
+#    +- Dataset(num_blocks=1, num_rows=3, schema=<class 'str'>)
 
 ds.show(2)
-# -> {
-#        'text': (
-#            'ham\tGo until jurong point, crazy.. Available only in bugis n great '
-#            'world la e buffet... Cine there got amore wat...'
-#        ),
-#    }
-# -> {'text': 'ham\tOk lar... Joking wif u oni...'}
+# -> {'text': 'test'}
+# -> {'text': 'string'}
+
+print(ds)
+# -> Dataset(num_blocks=3, num_rows=3, schema={text: string})
 # __writing_arrow_out_udfs_end__
 # fmt: on
 
