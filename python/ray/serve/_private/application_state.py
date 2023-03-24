@@ -1,5 +1,6 @@
 import traceback
 from typing import Dict, List
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.common import (
@@ -274,6 +275,9 @@ class ApplicationStateManager:
                 name,
                 self.deployment_state_manager,
             )
+        record_extra_usage_tag(
+            TagKey.SERVE_NUM_APPS, str(len(self._application_states))
+        )
         return self._application_states[name].deploy(deployment_args)
 
     def get_deployments(self, app_name: str) -> List[str]:
@@ -350,5 +354,10 @@ class ApplicationStateManager:
             app.update()
             if app.ready_to_be_deleted:
                 apps_to_be_deleted.append(name)
-        for app_name in apps_to_be_deleted:
-            del self._application_states[app_name]
+
+        if len(apps_to_be_deleted) > 0:
+            for app_name in apps_to_be_deleted:
+                del self._application_states[app_name]
+            record_extra_usage_tag(
+                TagKey.SERVE_NUM_APPS, str(len(self._application_states))
+            )

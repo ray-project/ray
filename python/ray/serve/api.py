@@ -45,6 +45,7 @@ from ray.serve._private.utils import (
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
+    record_serve_tag,
 )
 
 from ray.serve._private import api as _private_api
@@ -200,6 +201,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
             async def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
+                record_serve_tag("SERVE_FASTAPI_USED", "1")
                 install_serve_encoders_to_fastapi()
 
                 self._serve_app = frozen_app

@@ -1132,7 +1132,7 @@ provider:
         reporter = StatusReporter.remote()
 
         @ray.remote(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
-        class ServeInitator:
+        class ServeInitiator:
             def __init__(self):
                 # This is used in the worker process
                 # so it won't be tracked as library usage.
@@ -1155,7 +1155,7 @@ provider:
 
         # We need to start a serve with runtime env to make this test
         # work with minimal installation.
-        s = ServeInitator.remote()
+        s = ServeInitiator.remote()
         ray.get(s.ready.remote())
 
         """
@@ -1204,6 +1204,7 @@ provider:
             "dashboard_metrics_grafana_enabled": "False",
             "dashboard_metrics_prometheus_enabled": "False",
             "serve_num_deployments": "1",
+            "serve_num_gpu_deployments": "0",
             "serve_api_version": "v1",
             "actor_num_created": "0",
             "pg_num_created": "0",
