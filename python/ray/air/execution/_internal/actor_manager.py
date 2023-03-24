@@ -564,7 +564,7 @@ class RayActorManager:
             kill: If set, will forcefully terminate the actor instead of gracefully
                 scheduling termination.
             stop_future: If set, use this future to track actor termination.
-                Otherwise, schedule a ``__ray_terminate__`` future instead.
+                Otherwise, schedule a ``__ray_terminate__`` future.
         """
         if tracked_actor.actor_id in self._failed_actor_ids:
             logger.debug(
