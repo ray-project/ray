@@ -21,9 +21,13 @@ import { ClusterDetailInfoPage } from "./pages/node/ClusterDetailInfoPage";
 import { ClusterLayout } from "./pages/node/ClusterLayout";
 import NodeDetailPage from "./pages/node/NodeDetail";
 import { OverviewPage } from "./pages/overview/OverviewPage";
-import { ServeApplicationDetailPage } from "./pages/serve/ServeApplicationDetailPage";
+import {
+  ServeApplicationDetailLayout,
+  ServeApplicationDetailPage,
+} from "./pages/serve/ServeApplicationDetailPage";
 import { ServeApplicationsListPage } from "./pages/serve/ServeApplicationsListPage";
 import { ServeLayout } from "./pages/serve/ServeLayout";
+import { ServeReplicaDetailPage } from "./pages/serve/ServeReplicaDetailPage";
 import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
 
@@ -40,6 +44,12 @@ export type GlobalContextType = {
   nodeMapByIp: { [key: string]: string };
   ipLogMap: { [key: string]: string };
   namespaceMap: { [key: string]: string[] };
+  /**
+   * Whether the initial metrics context has been fetched or not.
+   * This can be used to determine the difference between Grafana
+   * not being set up vs the status not being fetched yet.
+   */
+  metricsContextLoaded: boolean;
   /**
    * The host that is serving grafana. Only set if grafana is
    * running as detected by the grafana healthcheck endpoint.
@@ -63,6 +73,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMapByIp: {},
   ipLogMap: {},
   namespaceMap: {},
+  metricsContextLoaded: false,
   grafanaHost: undefined,
   grafanaDefaultDashboardUid: undefined,
   prometheusHealth: undefined,
@@ -75,6 +86,7 @@ const App = () => {
     nodeMapByIp: {},
     ipLogMap: {},
     namespaceMap: {},
+    metricsContextLoaded: false,
     grafanaHost: undefined,
     grafanaDefaultDashboardUid: undefined,
     prometheusHealth: undefined,
@@ -113,6 +125,7 @@ const App = () => {
       } = await getMetricsInfo();
       setContext((existingContext) => ({
         ...existingContext,
+        metricsContextLoaded: true,
         grafanaHost,
         grafanaDefaultDashboardUid,
         sessionName,
@@ -191,9 +204,15 @@ const App = () => {
                 <Route element={<ServeLayout />} path="serve">
                   <Route element={<ServeApplicationsListPage />} path="" />
                   <Route
-                    element={<ServeApplicationDetailPage />}
-                    path="applications/:name"
-                  />
+                    element={<ServeApplicationDetailLayout />}
+                    path="applications/:applicationName"
+                  >
+                    <Route element={<ServeApplicationDetailPage />} path="" />
+                    <Route
+                      element={<ServeReplicaDetailPage />}
+                      path=":deploymentName/:replicaId"
+                    />
+                  </Route>
                 </Route>
                 <Route element={<LogsLayout />} path="logs">
                   {/* TODO(aguo): Refactor Logs component to use optional query
