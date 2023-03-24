@@ -442,3 +442,11 @@ py_test(
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
+
+py_test(
+    name = "test_dataset_webdataset",
+    size = "medium",
+    srcs = ["tests/test_dataset_webdataset.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
