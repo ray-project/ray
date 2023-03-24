@@ -2113,9 +2113,7 @@ class DeploymentStateManager:
                 self._deployment_states[
                     deployment_name
                 ] = self._create_deployment_state(deployment_name)
-            record_extra_usage_tag(
-                TagKey.SERVE_NUM_DEPLOYMENTS, str(len(self._deployment_states))
-            )
+            self._record_deployment_usage()
 
         return self._deployment_states[deployment_name].deploy(deployment_info)
 
@@ -2203,6 +2201,28 @@ class DeploymentStateManager:
             del self._deployment_states[tag]
 
         if len(deleted_tags):
-            record_extra_usage_tag(
-                TagKey.SERVE_NUM_DEPLOYMENTS, str(len(self._deployment_states))
-            )
+            self._record_deployment_usage()
+
+    def _record_deployment_usage(self):
+        record_extra_usage_tag(
+            TagKey.SERVE_NUM_DEPLOYMENTS, str(len(self._deployment_states))
+        )
+
+        num_gpu_deployments = 0
+        for deployment_state in self._deployment_states.values():
+            if (
+                deployment_state.target_info is not None
+                and deployment_state.target_info.replica_config is not None
+                and deployment_state.target_info.replica_config.ray_actor_options
+                is not None
+                and (
+                    deployment_state.target_info.replica_config.ray_actor_options.get(
+                        "num_gpus", 0
+                    )
+                    > 0
+                )
+            ):
+                num_gpu_deployments += 1
+        record_extra_usage_tag(
+            TagKey.SERVE_NUM_GPU_DEPLOYMENTS, str(num_gpu_deployments)
+        )

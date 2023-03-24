@@ -46,6 +46,20 @@ enum TagKey {
   SERVE_NUM_DEPLOYMENTS = 6;
   // The GCS storage type, which could be memory or redis.
   GCS_STORAGE = 7;
+  // The total number of running serve deployments that use a GPU as a string.
+  SERVE_NUM_GPU_DEPLOYMENTS = 8;
+  // Whether or not a FastAPI deployment was used ("1" if used).
+  SERVE_FASTAPI_USED = 9;
+  // Whether or not a DAGDriver was used ("1" if used).
+  SERVE_DAG_DRIVER_USED = 10;
+  // Whether or not an HTTP adapter was used in a DAGDriver ("1" if used).
+  SERVE_HTTP_ADAPTER_USED = 11;
+  // Whether or not a gRPCIngress was used ("1" if used).
+  SERVE_GRPC_INGRESS_USED = 12;
+  // The Serve REST API version ("v1", "v2").
+  SERVE_REST_API_VERSION = 13;
+  // The number of serve apps running in the cluster as a string.
+  SERVE_NUM_APPS = 14;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of
