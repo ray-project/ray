@@ -472,7 +472,7 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 @pytest.mark.skipif(
     os.environ.get("TUNE_NEW_EXECUTION") == "1",
-    reason=("BOHB does not currently work with the new execution backend."),
+    reason="BOHB does not currently work with the new execution backend.",
 )
 class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):

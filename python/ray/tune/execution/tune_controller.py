@@ -392,12 +392,12 @@ class TuneController(_TuneControllerBase):
             )
             self._schedule_trial_stop(trial)
 
-        self._cleanup_stopping_actors(force_all=True)
-
         start = time.monotonic()
         while time.monotonic() - start < 5 and self._actor_manager.num_total_actors:
             logger.debug("Waiting for actor manager to clean up final state")
             self._actor_manager.next(timeout=1)
+
+        self._cleanup_stopping_actors(force_all=True)
 
         self._actor_manager.cleanup()
 

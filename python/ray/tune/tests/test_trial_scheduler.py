@@ -1,5 +1,6 @@
 from collections import Counter
 import os
+import pytest
 import json
 import random
 import unittest
@@ -806,6 +807,10 @@ class BOHBSuite(unittest.TestCase):
             [t.status for t in trials], [Trial.PAUSED, Trial.PENDING, Trial.PAUSED]
         )
 
+    @pytest.mark.skipif(
+        os.environ.get("TUNE_NEW_EXECUTION") == "1",
+        reason="BOHB does not currently work with the new execution backend.",
+    )
     def testNonstopBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -2428,6 +2433,4 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))
