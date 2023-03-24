@@ -1,536 +1,0 @@
-1/64 stopped.2/64 stopped.3/64 stopped.4/64 stopped.5/64 stopped.6/64 stopped.7/64 stopped.8/64 stopped.9/64 stopped.10/64 stopped.11/64 stopped.12/64 stopped.13/64 stopped.14/64 stopped.15/64 stopped.16/64 stopped.17/64 stopped.18/64 stopped.19/64 stopped.20/64 stopped.21/64 stopped.22/64 stopped.23/64 stopped.24/64 stopped.25/64 stopped.26/64 stopped.27/64 stopped.28/64 stopped.29/64 stopped.30/64 stopped.31/64 stopped.32/64 stopped.33/64 stopped.34/64 stopped.35/64 stopped.36/64 stopped.37/64 stopped.38/64 stopped.39/64 stopped.40/64 stopped.41/64 stopped.42/64 stopped.43/64 stopped.44/64 stopped.45/64 stopped.46/64 stopped.47/64 stopped.48/64 stopped.49/64 stopped.50/64 stopped.51/64 stopped.52/64 stopped.53/64 stopped.54/64 stopped.55/64 stopped.56/64 stopped.57/64 stopped.58/64 stopped.59/64 stopped.60/64 stopped.61/64 stopped.62/64 stopped.63/64 stopped.64/64 stopped.1/1 stopped.[32mStopped all 65 Ray processes.[39m
-
-Local node IP: 10.0.27.129
-2023-03-24 15:24:59,666	ERROR services.py:1200 -- Failed to start the dashboard , return code 0
-2023-03-24 15:24:59,666	ERROR services.py:1225 -- Error should be written to 'dashboard.log' or 'dashboard.err'. We are printing the last 20 lines for you. See 'https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure' to find where the log file is.
-2023-03-24 15:24:59,666	ERROR services.py:1269 -- 
-The last 20 lines of /tmp/ray/session_2023-03-24_15-24-57_606000_2057826/logs/dashboard.log (it contains the error message from the dashboard): 
-    return future.result()
-  File "/data/pypi/lib/python3.10/site-packages/ray/dashboard/dashboard.py", line 70, in run
-    await self.dashboard_head.run()
-  File "/data/pypi/lib/python3.10/site-packages/ray/dashboard/head.py", line 302, in run
-    self.http_server = await self._configure_http_server(modules)
-  File "/data/pypi/lib/python3.10/site-packages/ray/dashboard/head.py", line 143, in _configure_http_server
-    http_server = HttpServerDashboardHead(
-  File "/data/pypi/lib/python3.10/site-packages/ray/dashboard/http_server_head.py", line 93, in __init__
-    raise ex
-  File "/data/pypi/lib/python3.10/site-packages/ray/dashboard/http_server_head.py", line 84, in __init__
-    build_dir = setup_static_dir()
-  File "/data/pypi/lib/python3.10/site-packages/ray/dashboard/http_server_head.py", line 42, in setup_static_dir
-    raise dashboard_utils.FrontendNotFoundError(
-ray.dashboard.utils.FrontendNotFoundError: [Errno 2] Dashboard build directory not found. If installing from source, please follow the additional steps required to build the dashboard(cd python/ray/dashboard/client && npm ci && npm run build): '/data/pypi/lib/python3.10/site-packages/ray/dashboard/client/build'
-
-2023-03-24 15:24:59,508	ERROR base_events.py:1752 -- Unclosed client session
-client_session: <aiohttp.client.ClientSession object at 0x7f126c443760>
-2023-03-24 15:24:59,508	ERROR base_events.py:1752 -- Unclosed client session
-client_session: <aiohttp.client.ClientSession object at 0x7f126c4436d0>
-2023-03-24 15:24:59,508	ERROR base_events.py:1752 -- Unclosed client session
-
---------------------
-Ray runtime started.
---------------------
-
-Next steps
-  To add another node to this Ray cluster, run
-    ray start --address='10.0.27.129:6379'
-  
-  To connect to this Ray cluster, run `ray.init()` as usual:
-    import ray
-    ray.init()
-  
-  To connect to this Ray instance from outside of the cluster, for example 
-  when connecting to a remote cluster from your laptop, make sure the
-  dashboard is accessible and use the Ray Jobs API. For example:
-  
-  See https://docs.ray.io/en/latest/cluster/running-applications/job-submission/index.html
-  for more information on connecting to the Ray cluster from a remote client.
-  
-  To see the status of the cluster, use
-    ray status
-  
-  If connection fails, check your firewall settings and network configuration.
-  
-  To terminate the Ray runtime, run
-    ray stop
-Sleeping for 40 seconds
-Sleeping for 39 seconds
-Sleeping for 38 seconds
-Sleeping for 37 seconds
-Sleeping for 36 seconds
-Sleeping for 35 seconds
-Sleeping for 34 seconds
-Sleeping for 33 seconds
-Sleeping for 32 seconds
-Sleeping for 31 seconds
-Sleeping for 30 seconds
-Sleeping for 29 seconds
-Sleeping for 28 seconds
-Sleeping for 27 seconds
-Sleeping for 26 seconds
-Sleeping for 25 seconds
-Sleeping for 24 seconds
-Sleeping for 23 seconds
-Sleeping for 22 seconds
-Sleeping for 21 seconds
-Sleeping for 20 seconds
-Sleeping for 19 seconds
-Sleeping for 18 seconds
-Sleeping for 17 seconds
-Sleeping for 16 seconds
-Sleeping for 15 seconds
-Sleeping for 14 seconds
-Sleeping for 13 seconds
-Sleeping for 12 seconds
-Sleeping for 11 seconds
-Sleeping for 10 seconds
-Sleeping for 9 seconds
-Sleeping for 8 seconds
-Sleeping for 7 seconds
-Sleeping for 6 seconds
-Sleeping for 5 seconds
-Sleeping for 4 seconds
-Sleeping for 3 seconds
-Sleeping for 2 seconds
-Sleeping for 1 seconds
-2023-03-24 15:25:40,890	INFO worker.py:1362 -- Connecting to existing Ray cluster at address: 10.0.27.129:6379...
-2023-03-24 15:25:40,899	INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://console.anyscale-staging.com/api/v2/sessions/ses_qauqfcuba36zrd9jsmr41ac47c/services?redirect_to=dashboard [39m[22m
-[2m[36m(MetricsActor pid=2058863)[0m metrics actor job_id 01000000
-driver script pid 2072525
-2023-03-24 15:25:41,667	INFO worker.py:1362 -- Connecting to existing Ray cluster at address: 10.0.27.129:6379...
-2023-03-24 15:25:41,676	INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://console.anyscale-staging.com/api/v2/sessions/ses_qauqfcuba36zrd9jsmr41ac47c/services?redirect_to=dashboard [39m[22m
-[2m[36m(task pid=2058868)[0m scheduling time 0.12
-[2m[36m(task pid=2058868)[0m task pid 2058868
-[2m[36m(task pid=2058868)[0m task job id 02000000
-[2m[36m(task pid=2058868)[0m imports took 0.00
-[2m[36m(task pid=2058814)[0m scheduling time 0.12
-[2m[36m(task pid=2058814)[0m task pid 2058814
-[2m[36m(task pid=2058814)[0m task job id 02000000
-[2m[36m(task pid=2058814)[0m imports took 0.00
-[2m[36m(task pid=2058831)[0m scheduling time 0.12
-[2m[36m(task pid=2058831)[0m task pid 2058831
-[2m[36m(task pid=2058831)[0m task job id 02000000
-[2m[36m(task pid=2058831)[0m imports took 0.00
-[2m[36m(task pid=2058859)[0m scheduling time 0.07
-[2m[36m(task pid=2058859)[0m task pid 2058859
-[2m[36m(task pid=2058859)[0m task job id 02000000
-[2m[36m(task pid=2058859)[0m imports took 0.00
-[2m[36m(task pid=2058838)[0m scheduling time 0.07
-[2m[36m(task pid=2058838)[0m task pid 2058838
-[2m[36m(task pid=2058838)[0m task job id 02000000
-[2m[36m(task pid=2058838)[0m imports took 0.00
-[2m[36m(task pid=2058849)[0m scheduling time 0.07
-[2m[36m(task pid=2058849)[0m task pid 2058849
-[2m[36m(task pid=2058849)[0m task job id 02000000
-[2m[36m(task pid=2058849)[0m imports took 0.00
-[2m[36m(task pid=2058813)[0m scheduling time 0.08
-[2m[36m(task pid=2058813)[0m task pid 2058813
-[2m[36m(task pid=2058813)[0m task job id 02000000
-[2m[36m(task pid=2058813)[0m imports took 0.00
-[2m[36m(task pid=2058830)[0m scheduling time 0.07
-[2m[36m(task pid=2058830)[0m task pid 2058830
-[2m[36m(task pid=2058830)[0m task job id 02000000
-[2m[36m(task pid=2058830)[0m imports took 0.00
-[2m[36m(task pid=2058834)[0m scheduling time 0.08
-[2m[36m(task pid=2058834)[0m task pid 2058834
-[2m[36m(task pid=2058834)[0m task job id 02000000
-[2m[36m(task pid=2058834)[0m imports took 0.00
-[2m[36m(task pid=2058841)[0m scheduling time 0.08
-[2m[36m(task pid=2058841)[0m task pid 2058841
-[2m[36m(task pid=2058841)[0m task job id 02000000
-[2m[36m(task pid=2058841)[0m imports took 0.00
-[2m[36m(task pid=2058845)[0m scheduling time 0.07
-[2m[36m(task pid=2058845)[0m task pid 2058845
-[2m[36m(task pid=2058845)[0m task job id 02000000
-[2m[36m(task pid=2058845)[0m imports took 0.00
-[2m[36m(task pid=2058815)[0m scheduling time 0.08
-[2m[36m(task pid=2058815)[0m task pid 2058815
-[2m[36m(task pid=2058815)[0m task job id 02000000
-[2m[36m(task pid=2058815)[0m imports took 0.00
-[2m[36m(task pid=2058848)[0m scheduling time 0.06
-[2m[36m(task pid=2058848)[0m task pid 2058848
-[2m[36m(task pid=2058848)[0m task job id 02000000
-[2m[36m(task pid=2058848)[0m imports took 0.00
-[2m[36m(task pid=2058846)[0m scheduling time 0.08
-[2m[36m(task pid=2058846)[0m task pid 2058846
-[2m[36m(task pid=2058846)[0m task job id 02000000
-[2m[36m(task pid=2058846)[0m imports took 0.00
-[2m[36m(task pid=2058819)[0m scheduling time 0.06
-[2m[36m(task pid=2058819)[0m task pid 2058819
-[2m[36m(task pid=2058819)[0m task job id 02000000
-[2m[36m(task pid=2058819)[0m imports took 0.00
-[2m[36m(task pid=2058856)[0m scheduling time 0.08
-[2m[36m(task pid=2058856)[0m task pid 2058856
-[2m[36m(task pid=2058856)[0m task job id 02000000
-[2m[36m(task pid=2058856)[0m imports took 0.00
-[2m[36m(task pid=2058828)[0m scheduling time 0.07
-[2m[36m(task pid=2058828)[0m task pid 2058828
-[2m[36m(task pid=2058828)[0m task job id 02000000
-[2m[36m(task pid=2058828)[0m imports took 0.00
-[2m[36m(task pid=2058875)[0m scheduling time 0.08
-[2m[36m(task pid=2058875)[0m task pid 2058875
-[2m[36m(task pid=2058875)[0m task job id 02000000
-[2m[36m(task pid=2058875)[0m imports took 0.00
-[2m[36m(task pid=2058873)[0m scheduling time 0.07
-[2m[36m(task pid=2058873)[0m task pid 2058873
-[2m[36m(task pid=2058873)[0m task job id 02000000
-[2m[36m(task pid=2058873)[0m imports took 0.00
-[2m[36m(task pid=2058843)[0m scheduling time 0.08
-[2m[36m(task pid=2058843)[0m task pid 2058843
-[2m[36m(task pid=2058843)[0m task job id 02000000
-[2m[36m(task pid=2058843)[0m imports took 0.00
-[2m[36m(task pid=2058876)[0m scheduling time 0.06
-[2m[36m(task pid=2058876)[0m task pid 2058876
-[2m[36m(task pid=2058876)[0m task job id 02000000
-[2m[36m(task pid=2058876)[0m imports took 0.00
-[2m[36m(task pid=2058839)[0m scheduling time 0.10
-[2m[36m(task pid=2058839)[0m task pid 2058839
-[2m[36m(task pid=2058839)[0m task job id 02000000
-[2m[36m(task pid=2058839)[0m imports took 0.00
-[2m[36m(task pid=2058829)[0m scheduling time 0.07
-[2m[36m(task pid=2058829)[0m task pid 2058829
-[2m[36m(task pid=2058829)[0m task job id 02000000
-[2m[36m(task pid=2058829)[0m imports took 0.00
-[2m[36m(task pid=2058807)[0m scheduling time 0.07
-[2m[36m(task pid=2058807)[0m task pid 2058807
-[2m[36m(task pid=2058807)[0m task job id 02000000
-[2m[36m(task pid=2058807)[0m imports took 0.00
-[2m[36m(task pid=2058835)[0m scheduling time 0.06
-[2m[36m(task pid=2058835)[0m task pid 2058835
-[2m[36m(task pid=2058835)[0m task job id 02000000
-[2m[36m(task pid=2058835)[0m imports took 0.00
-[2m[36m(task pid=2058874)[0m scheduling time 0.05
-[2m[36m(task pid=2058874)[0m task pid 2058874
-[2m[36m(task pid=2058874)[0m task job id 02000000
-[2m[36m(task pid=2058874)[0m imports took 0.00
-[2m[36m(task pid=2058809)[0m scheduling time 0.06
-[2m[36m(task pid=2058809)[0m task pid 2058809
-[2m[36m(task pid=2058809)[0m task job id 02000000
-[2m[36m(task pid=2058809)[0m imports took 0.00
-[2m[36m(task pid=2058871)[0m scheduling time 0.05
-[2m[36m(task pid=2058871)[0m task pid 2058871
-[2m[36m(task pid=2058871)[0m task job id 02000000
-[2m[36m(task pid=2058871)[0m imports took 0.00
-[2m[36m(task pid=2058852)[0m scheduling time 0.07
-[2m[36m(task pid=2058852)[0m task pid 2058852
-[2m[36m(task pid=2058852)[0m task job id 02000000
-[2m[36m(task pid=2058852)[0m imports took 0.00
-[2m[36m(task pid=2058864)[0m scheduling time 0.05
-[2m[36m(task pid=2058864)[0m task pid 2058864
-[2m[36m(task pid=2058864)[0m task job id 02000000
-[2m[36m(task pid=2058864)[0m imports took 0.00
-[2m[36m(task pid=2058816)[0m scheduling time 0.07
-[2m[36m(task pid=2058816)[0m task pid 2058816
-[2m[36m(task pid=2058816)[0m task job id 02000000
-[2m[36m(task pid=2058816)[0m imports took 0.00
-[2m[36m(task pid=2058861)[0m scheduling time 0.06
-[2m[36m(task pid=2058861)[0m task pid 2058861
-[2m[36m(task pid=2058861)[0m task job id 02000000
-[2m[36m(task pid=2058861)[0m imports took 0.00
-[2m[36m(task pid=2058869)[0m scheduling time 0.06
-[2m[36m(task pid=2058869)[0m task pid 2058869
-[2m[36m(task pid=2058869)[0m task job id 02000000
-[2m[36m(task pid=2058869)[0m imports took 0.00
-[2m[36m(task pid=2058850)[0m scheduling time 0.06
-[2m[36m(task pid=2058850)[0m task pid 2058850
-[2m[36m(task pid=2058850)[0m task job id 02000000
-[2m[36m(task pid=2058850)[0m imports took 0.00
-[2m[36m(task pid=2058817)[0m scheduling time 0.05
-[2m[36m(task pid=2058817)[0m task pid 2058817
-[2m[36m(task pid=2058817)[0m task job id 02000000
-[2m[36m(task pid=2058817)[0m imports took 0.00
-[2m[36m(task pid=2058844)[0m scheduling time 0.05
-[2m[36m(task pid=2058844)[0m task pid 2058844
-[2m[36m(task pid=2058844)[0m task job id 02000000
-[2m[36m(task pid=2058844)[0m imports took 0.00
-[2m[36m(task pid=2058870)[0m scheduling time 0.06
-[2m[36m(task pid=2058870)[0m task pid 2058870
-[2m[36m(task pid=2058870)[0m task job id 02000000
-[2m[36m(task pid=2058870)[0m imports took 0.00
-[2m[36m(task pid=2058853)[0m scheduling time 0.05
-[2m[36m(task pid=2058853)[0m task pid 2058853
-[2m[36m(task pid=2058853)[0m task job id 02000000
-[2m[36m(task pid=2058853)[0m imports took 0.00
-[2m[36m(task pid=2058865)[0m scheduling time 0.06
-[2m[36m(task pid=2058865)[0m task pid 2058865
-[2m[36m(task pid=2058865)[0m task job id 02000000
-[2m[36m(task pid=2058865)[0m imports took 0.00
-[2m[36m(task pid=2058872)[0m scheduling time 0.07
-[2m[36m(task pid=2058872)[0m task pid 2058872
-[2m[36m(task pid=2058872)[0m task job id 02000000
-[2m[36m(task pid=2058872)[0m imports took 0.00
-[2m[36m(task pid=2058825)[0m scheduling time 0.12
-[2m[36m(task pid=2058825)[0m task pid 2058825
-[2m[36m(task pid=2058825)[0m task job id 02000000
-[2m[36m(task pid=2058825)[0m imports took 0.00
-[2m[36m(task pid=2058837)[0m scheduling time 0.13
-[2m[36m(task pid=2058837)[0m task pid 2058837
-[2m[36m(task pid=2058837)[0m task job id 02000000
-[2m[36m(task pid=2058837)[0m imports took 0.00
-[2m[36m(task pid=2058847)[0m scheduling time 0.12
-[2m[36m(task pid=2058847)[0m task pid 2058847
-[2m[36m(task pid=2058847)[0m task job id 02000000
-[2m[36m(task pid=2058847)[0m imports took 0.00
-[2m[36m(task pid=2058820)[0m scheduling time 0.12
-[2m[36m(task pid=2058820)[0m task pid 2058820
-[2m[36m(task pid=2058820)[0m task job id 02000000
-[2m[36m(task pid=2058820)[0m imports took 0.00
-[2m[36m(task pid=2058822)[0m scheduling time 0.12
-[2m[36m(task pid=2058822)[0m task pid 2058822
-[2m[36m(task pid=2058822)[0m task job id 02000000
-[2m[36m(task pid=2058822)[0m imports took 0.00
-[2m[36m(task pid=2058812)[0m scheduling time 0.12
-[2m[36m(task pid=2058812)[0m task pid 2058812
-[2m[36m(task pid=2058812)[0m task job id 02000000
-[2m[36m(task pid=2058812)[0m imports took 0.00
-[2m[36m(task pid=2058857)[0m scheduling time 0.13
-[2m[36m(task pid=2058857)[0m task pid 2058857
-[2m[36m(task pid=2058857)[0m task job id 02000000
-[2m[36m(task pid=2058857)[0m imports took 0.00
-[2m[36m(task pid=2058842)[0m scheduling time 0.12
-[2m[36m(task pid=2058842)[0m task pid 2058842
-[2m[36m(task pid=2058842)[0m task job id 02000000
-[2m[36m(task pid=2058842)[0m imports took 0.00
-[2m[36m(task pid=2058840)[0m scheduling time 0.12
-[2m[36m(task pid=2058840)[0m task pid 2058840
-[2m[36m(task pid=2058840)[0m task job id 02000000
-[2m[36m(task pid=2058840)[0m imports took 0.00
-[2m[36m(task pid=2058818)[0m scheduling time 0.12
-[2m[36m(task pid=2058818)[0m task pid 2058818
-[2m[36m(task pid=2058818)[0m task job id 02000000
-[2m[36m(task pid=2058818)[0m imports took 0.00
-[2m[36m(task pid=2058810)[0m scheduling time 0.12
-[2m[36m(task pid=2058810)[0m task pid 2058810
-[2m[36m(task pid=2058810)[0m task job id 02000000
-[2m[36m(task pid=2058810)[0m imports took 0.00
-[2m[36m(task pid=2058811)[0m scheduling time 0.12
-[2m[36m(task pid=2058811)[0m task pid 2058811
-[2m[36m(task pid=2058811)[0m task job id 02000000
-[2m[36m(task pid=2058811)[0m imports took 0.00
-[2m[36m(task pid=2058866)[0m scheduling time 0.12
-[2m[36m(task pid=2058866)[0m task pid 2058866
-[2m[36m(task pid=2058866)[0m task job id 02000000
-[2m[36m(task pid=2058866)[0m imports took 0.00
-[2m[36m(task pid=2058858)[0m scheduling time 0.12
-[2m[36m(task pid=2058858)[0m task pid 2058858
-[2m[36m(task pid=2058858)[0m task job id 02000000
-[2m[36m(task pid=2058858)[0m imports took 0.00
-[2m[36m(task pid=2058851)[0m scheduling time 0.12
-[2m[36m(task pid=2058851)[0m task pid 2058851
-[2m[36m(task pid=2058851)[0m task job id 02000000
-[2m[36m(task pid=2058851)[0m imports took 0.00
-[2m[36m(task pid=2058867)[0m scheduling time 0.12
-[2m[36m(task pid=2058867)[0m task pid 2058867
-[2m[36m(task pid=2058867)[0m task job id 02000000
-[2m[36m(task pid=2058867)[0m imports took 0.00
-[2m[36m(task pid=2058862)[0m scheduling time 0.12
-[2m[36m(task pid=2058862)[0m task pid 2058862
-[2m[36m(task pid=2058862)[0m task job id 02000000
-[2m[36m(task pid=2058862)[0m imports took 0.00
-[2m[36m(task pid=2058826)[0m scheduling time 0.13
-[2m[36m(task pid=2058826)[0m task pid 2058826
-[2m[36m(task pid=2058826)[0m task job id 02000000
-[2m[36m(task pid=2058826)[0m imports took 0.00
-[2m[36m(task pid=2058808)[0m scheduling time 0.12
-[2m[36m(task pid=2058808)[0m task pid 2058808
-[2m[36m(task pid=2058808)[0m task job id 02000000
-[2m[36m(task pid=2058808)[0m imports took 0.00
-[2m[36m(task pid=2058824)[0m scheduling time 0.13
-[2m[36m(task pid=2058824)[0m task pid 2058824
-[2m[36m(task pid=2058824)[0m task job id 02000000
-[2m[36m(task pid=2058824)[0m imports took 0.00
-[2m[36m(task pid=2058827)[0m scheduling time 0.13
-[2m[36m(task pid=2058827)[0m task pid 2058827
-[2m[36m(task pid=2058827)[0m task job id 02000000
-[2m[36m(task pid=2058827)[0m imports took 0.00
-[2m[36m(task pid=2058821)[0m scheduling time 0.14
-[2m[36m(task pid=2058821)[0m task pid 2058821
-[2m[36m(task pid=2058821)[0m task job id 02000000
-[2m[36m(task pid=2058821)[0m imports took 0.00
-[2m[36m(MetricsActor pid=2058863)[0m report_completion scheduling plus imports of 62: 0.17
-num_cpus: 64
-num_executables: 62
-iteration 0 done
-scheduling+imports time 0.17
-Sleeping for 40 seconds
-Sleeping for 39 seconds
-Sleeping for 38 seconds
-Sleeping for 37 seconds
-Sleeping for 36 seconds
-Sleeping for 35 seconds
-Sleeping for 34 seconds
-Sleeping for 33 seconds
-Sleeping for 32 seconds
-[2m[33m(raylet)[0m [2023-03-24 15:25:54,493 I 2073960 2073960] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-Sleeping for 31 seconds
-[2m[36m(pid=2073960)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:25:54,770 I 2073966 2073966] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073966)[0m importing torch
-Sleeping for 30 seconds
-[2m[33m(raylet)[0m [2023-03-24 15:25:55,510 I 2073963 2073963] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073963)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:25:55,846 I 2073965 2073965] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073965)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:25:56,175 I 2073976 2073976] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:25:56,203 I 2073964 2073964] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073976)[0m importing torch
-[2m[36m(pid=2073964)[0m importing torch
-Sleeping for 29 seconds
-[2m[33m(raylet)[0m [2023-03-24 15:25:56,503 I 2073977 2073977] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073977)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:25:56,629 I 2073975 2073975] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073975)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:25:56,795 I 2073970 2073970] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073970)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:25:56,900 I 2073974 2073974] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:25:56,912 I 2074256 2074256] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073974)[0m importing torch
-[2m[36m(pid=2074256)[0m importing torch
-[2m[36m(pid=2073960)[0m importing tensorflow
-Sleeping for 28 seconds
-[2m[36m(pid=2073966)[0m importing tensorflow
-[2m[36m(pid=2073963)[0m importing tensorflow
-Sleeping for 27 seconds
-[2m[36m(pid=2073965)[0m importing tensorflow
-[2m[33m(raylet)[0m [2023-03-24 15:25:58,696 I 2073973 2073973] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:25:58,723 I 2073982 2073982] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073976)[0m importing tensorflow
-[2m[36m(pid=2073973)[0m importing torch
-[2m[36m(pid=2073982)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:25:58,890 I 2073972 2073972] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073964)[0m importing tensorflow
-[2m[36m(pid=2073977)[0m importing tensorflow
-[2m[36m(pid=2073972)[0m importing torch
-Sleeping for 26 seconds
-[2m[36m(pid=2073975)[0m importing tensorflow
-[2m[36m(pid=2073970)[0m importing tensorflow
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,103 I 2074264 2074264] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,122 I 2073981 2073981] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073981)[0m importing torch
-[2m[36m(pid=2074264)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,317 I 2073984 2073984] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,318 I 2073967 2073967] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,325 I 2073979 2073979] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073967)[0m importing torch
-[2m[36m(pid=2073984)[0m importing torch
-[2m[36m(pid=2073979)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,406 I 2074255 2074255] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,442 I 2073987 2073987] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,449 I 2073968 2073968] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073987)[0m importing torch
-[2m[36m(pid=2074255)[0m importing torch
-[2m[36m(pid=2073968)[0m importing torch
-Sleeping for 25 seconds
-[2m[36m(pid=2073974)[0m importing tensorflow
-[2m[36m(pid=2074256)[0m importing tensorflow
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,638 I 2074060 2074060] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,646 I 2073986 2073986] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2074060)[0m importing torch
-[2m[36m(pid=2073986)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,805 I 2073980 2073980] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,877 I 2074056 2074056] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073980)[0m importing torch
-[2m[36m(pid=2074056)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,954 I 2073969 2073969] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,965 I 2073988 2073988] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:00,972 I 2074062 2074062] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073969)[0m importing torch
-[2m[36m(pid=2073988)[0m importing torch
-[2m[36m(pid=2074062)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:26:01,126 I 2073971 2073971] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:01,135 I 2074061 2074061] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:01,199 I 2074260 2074260] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2074260)[0m importing torch
-[2m[36m(pid=2074061)[0m importing torch
-[2m[36m(pid=2073971)[0m importing torch
-Sleeping for 24 seconds
-[2m[33m(raylet)[0m [2023-03-24 15:26:01,810 I 2074191 2074191] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2074191)[0m importing torch
-[2m[36m(pid=2073973)[0m importing tensorflow
-[2m[33m(raylet)[0m [2023-03-24 15:26:02,099 I 2074063 2074063] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:02,168 I 2074267 2074267] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2074063)[0m importing torch
-[2m[36m(pid=2074267)[0m importing torch
-[2m[36m(pid=2073982)[0m importing tensorflow
-[2m[33m(raylet)[0m [2023-03-24 15:26:02,362 I 2075034 2075034] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073972)[0m importing tensorflow
-[2m[36m(pid=2075034)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:26:02,406 I 2074055 2074055] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-Sleeping for 23 seconds[2m[36m(pid=2074055)[0m importing torch
-
-[2m[33m(raylet)[0m [2023-03-24 15:26:02,538 I 2074464 2074464] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2074264)[0m importing tensorflow
-[2m[36m(pid=2074464)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:26:03,082 I 2074057 2074057] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073981)[0m importing tensorflow
-[2m[36m(pid=2074057)[0m importing torch
-[2m[36m(pid=2073967)[0m importing tensorflow
-[2m[36m(pid=2074060)[0m importing tensorflow
-[2m[33m(raylet)[0m [2023-03-24 15:26:03,442 I 2074393 2074393] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:03,452 I 2074064 2074064] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073979)[0m importing tensorflow
-[2m[36m(pid=2074064)[0m importing torch
-[2m[36m(pid=2074393)[0m importing torch
-Sleeping for 22 seconds
-[2m[33m(raylet)[0m [2023-03-24 15:26:03,481 I 2074462 2074462] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2074462)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:26:03,776 I 2074058 2074058] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2074058)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:26:03,823 I 2074259 2074259] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:03,858 I 2073983 2073983] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:03,888 I 2074053 2074053] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2074255)[0m importing tensorflow
-[2m[36m(pid=2073983)[0m importing torch
-[2m[36m(pid=2074259)[0m importing torch
-[2m[36m(pid=2074053)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:26:03,934 I 2074268 2074268] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:03,978 I 2074262 2074262] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:03,994 I 2074463 2074463] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:03,995 I 2073978 2073978] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:03,997 I 2074059 2074059] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:04,000 I 2074392 2074392] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:04,001 I 2074040 2074040] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:04,010 I 2075003 2075003] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:04,033 I 2075002 2075002] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:04,034 I 2074054 2074054] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2074062)[0m importing tensorflow
-[2m[36m(pid=2074040)[0m importing torch
-[2m[36m(pid=2074268)[0m importing torch
-[2m[36m(pid=2075003)[0m importing torch
-[2m[36m(pid=2074059)[0m importing torch
-[2m[36m(pid=2073978)[0m importing torch
-[2m[36m(pid=2074392)[0m importing torch
-[2m[36m(pid=2074463)[0m importing torch
-[2m[36m(pid=2074262)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:26:04,039 I 2073985 2073985] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:04,040 I 2074434 2074434] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:04,042 I 2074924 2074924] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:04,043 I 2074458 2074458] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[33m(raylet)[0m [2023-03-24 15:26:04,046 I 2074459 2074459] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2075002)[0m importing torch
-[2m[36m(pid=2074054)[0m importing torch
-[2m[36m(pid=2074924)[0m importing torch
-[2m[36m(pid=2074458)[0m importing torch
-[2m[36m(pid=2074434)[0m importing torch
-[2m[36m(pid=2073985)[0m importing torch
-[2m[36m(pid=2074459)[0m importing torch
-[2m[33m(raylet)[0m [2023-03-24 15:26:04,089 I 2075033 2075033] logging.cc:230: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
-[2m[36m(pid=2073984)[0m importing tensorflow
-[2m[36m(pid=2073987)[0m importing tensorflow
-[2m[36m(pid=2073986)[0m importing tensorflow
-[2m[36m(pid=2073980)[0m importing tensorflow
-[2m[36m(pid=2073969)[0m importing tensorflow
-[2m[36m(pid=2073988)[0m importing tensorflow
-[2m[36m(pid=2074061)[0m importing tensorflow
-[2m[36m(pid=2075033)[0m importing torch
-[2m[36m(pid=2074056)[0m importing tensorflow
-[2m[36m(pid=2074260)[0m importing tensorflow
-[2m[36m(pid=2074191)[0m importing tensorflow
-[2m[36m(pid=2074063)[0m importing tensorflow
-[2m[36m(pid=2075034)[0m importing tensorflow
-Sleeping for 21 seconds
-[2m[36m(pid=2073968)[0m importing tensorflow
-[2m[36m(pid=2073971)[0m importing tensorflow
-[2m[36m(pid=2074267)[0m importing tensorflow
-[2m[36m(pid=2074055)[0m importing tensorflow
-[2m[36m(pid=2074464)[0m importing tensorflow
-[2m[36m(pid=2074057)[0m importing tensorflow

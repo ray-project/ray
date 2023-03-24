@@ -1,56 +1,0 @@
-1/42 stopped.2/42 stopped.3/42 stopped.4/42 stopped.5/42 stopped.6/42 stopped.7/42 stopped.8/42 stopped.9/42 stopped.10/42 stopped.11/42 stopped.12/42 stopped.13/42 stopped.14/42 stopped.15/42 stopped.16/42 stopped.17/42 stopped.18/42 stopped.19/42 stopped.20/42 stopped.21/42 stopped.22/42 stopped.23/42 stopped.24/42 stopped.25/42 stopped.26/42 stopped.27/42 stopped.28/42 stopped.29/42 stopped.30/42 stopped.31/42 stopped.32/42 stopped.33/42 stopped.34/42 stopped.35/42 stopped.36/42 stopped.37/42 stopped.38/42 stopped.39/42 stopped.40/42 stopped.41/42 stopped.42/42 stopped.1/1 stopped.[32mStopped all 43 Ray processes.[39m
-
-Local node IP: 10.0.27.129
-2023-03-24 14:51:50,968	ERROR services.py:1200 -- Failed to start the dashboard , return code 0
-2023-03-24 14:51:50,968	ERROR services.py:1225 -- Error should be written to 'dashboard.log' or 'dashboard.err'. We are printing the last 20 lines for you. See 'https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure' to find where the log file is.
-2023-03-24 14:51:50,968	ERROR services.py:1269 -- 
-The last 20 lines of /tmp/ray/session_2023-03-24_14-51-48_910273_1675009/logs/dashboard.log (it contains the error message from the dashboard): 
-    return future.result()
-  File "/data/pypi/lib/python3.10/site-packages/ray/dashboard/dashboard.py", line 70, in run
-    await self.dashboard_head.run()
-  File "/data/pypi/lib/python3.10/site-packages/ray/dashboard/head.py", line 302, in run
-    self.http_server = await self._configure_http_server(modules)
-  File "/data/pypi/lib/python3.10/site-packages/ray/dashboard/head.py", line 143, in _configure_http_server
-    http_server = HttpServerDashboardHead(
-  File "/data/pypi/lib/python3.10/site-packages/ray/dashboard/http_server_head.py", line 93, in __init__
-    raise ex
-  File "/data/pypi/lib/python3.10/site-packages/ray/dashboard/http_server_head.py", line 84, in __init__
-    build_dir = setup_static_dir()
-  File "/data/pypi/lib/python3.10/site-packages/ray/dashboard/http_server_head.py", line 42, in setup_static_dir
-    raise dashboard_utils.FrontendNotFoundError(
-ray.dashboard.utils.FrontendNotFoundError: [Errno 2] Dashboard build directory not found. If installing from source, please follow the additional steps required to build the dashboard(cd python/ray/dashboard/client && npm ci && npm run build): '/data/pypi/lib/python3.10/site-packages/ray/dashboard/client/build'
-
-2023-03-24 14:51:50,800	ERROR base_events.py:1752 -- Unclosed client session
-client_session: <aiohttp.client.ClientSession object at 0x7f906c24b7c0>
-2023-03-24 14:51:50,800	ERROR base_events.py:1752 -- Unclosed client session
-client_session: <aiohttp.client.ClientSession object at 0x7f906c24b730>
-2023-03-24 14:51:50,800	ERROR base_events.py:1752 -- Unclosed client session
-
---------------------
-Ray runtime started.
---------------------
-
-Next steps
-  To add another node to this Ray cluster, run
-    ray start --address='10.0.27.129:6379'
-  
-  To connect to this Ray cluster, run `ray.init()` as usual:
-    import ray
-    ray.init()
-  
-  To connect to this Ray instance from outside of the cluster, for example 
-  when connecting to a remote cluster from your laptop, make sure the
-  dashboard is accessible and use the Ray Jobs API. For example:
-  
-  See https://docs.ray.io/en/latest/cluster/running-applications/job-submission/index.html
-  for more information on connecting to the Ray cluster from a remote client.
-  
-  To see the status of the cluster, use
-    ray status
-  
-  If connection fails, check your firewall settings and network configuration.
-  
-  To terminate the Ray runtime, run
-    ray stop
-2023-03-24 14:51:51,548	INFO worker.py:1362 -- Connecting to existing Ray cluster at address: 10.0.27.129:6379...
-2023-03-24 14:51:51,556	INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://console.anyscale-staging.com/api/v2/sessions/ses_qauqfcuba36zrd9jsmr41ac47c/services?redirect_to=dashboard [39m[22m
