@@ -21,7 +21,7 @@ LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
 
 @dataclass
 class AppoHPs(ImpalaHPs):
-    """Hyper-parameters for IMPALA.
+    """Hyper-parameters for APPO.
 
     Attributes:
         rollout_frag_or_episode_len: The length of a rollout fragment or episode.

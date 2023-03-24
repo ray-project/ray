@@ -395,7 +395,9 @@ class APPO(Impala):
         elif config["framework"] == "tf":
             if config._enable_rl_module_api:
                 raise ValueError(
-                    "RLlib's RLModule and Learner API is not supported for" " tf1."
+                    "RLlib's RLModule and Learner API is not supported for"
+                    " tf1. Use "
+                    "framework='tf2' instead."
                 )
             from ray.rllib.algorithms.appo.appo_tf_policy import APPOTF1Policy
 

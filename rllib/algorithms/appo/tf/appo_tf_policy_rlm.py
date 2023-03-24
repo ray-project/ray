@@ -61,9 +61,9 @@ class APPOTfPolicyWithRLModule(
         KLCoeffMixin.__init__(self, config)
         GradStatsMixin.__init__(self)
         EagerTFPolicyV2.__init__(self, observation_space, action_space, config)
+        # construct the target model and make its weights the same as the model
         self.target_model = self.make_rl_module()
         self.target_model.set_weights(self.model.get_weights())
-        # construct the target model and make its weights the same as the model
 
         # Initiate TargetNetwork ops after loss initialization.
         self.maybe_initialize_optimizer_and_loss()
