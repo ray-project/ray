@@ -15,10 +15,10 @@ def run_test(iterations):
         print(f'CADE_PREFIX:iteration {i} done')
         print(f'CADE_PREFIX:seconds since start {s_since_start:.02f}')
 
-subprocess.check_call("bash start_with_preload", shell=True)
-time.sleep(20)
+#subprocess.check_call("bash start_with_preload", shell=True)
+#time.sleep(20)
 run_test(iterations=5)
 
-subprocess.check_call("bash start_without_preload", shell=True)
-time.sleep(20)
-run_test(iterations=5)
+#subprocess.check_call("bash start_without_preload", shell=True)
+#time.sleep(20)
+#run_test(iterations=5)

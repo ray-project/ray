@@ -1038,7 +1038,7 @@ void WorkerPool::MaybeKillFromIdlePool(const JobID &job_id) {
     }
 
     RAY_LOG(DEBUG) << "MaybeKillFromIdlePool job_id: " << job_id
-        << ", kill the following pids " << absl::StrJoin(pids_to_kill, ",");
+        << ", kill the following pids (" << pids_to_kill.size() << "): " << absl::StrJoin(pids_to_kill, ",");
 
     for (auto& proc : to_kill) {
         // TODO need to cleanly kill (this will cause loss with unowned objects)

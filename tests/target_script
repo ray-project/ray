@@ -26,7 +26,8 @@ def task(scheduling_start_time):
     ctx = ray.runtime_context.get_runtime_context()
     assert ctx.runtime_env == {}, f"expected runtime env to be empty, got {ctx.runtime_env}"
 
-    print('code pid', os.getpid())
+    print('task pid', os.getpid())
+    print(f'task job id {ctx.get_job_id()}')
 
 
     start = time.time()
@@ -50,6 +51,10 @@ class Actor:
         import tensorflow
         dur_s = time.time() - start
         print(f'CADE_PREFIX:imports took {dur_s:.02f}')
+
+        ctx = ray.runtime_context.get_runtime_context()
+        assert ctx.runtime_env == {}, f"expected runtime env to be empty, got {ctx.runtime_env}"
+        print(f'actor job id {ctx.get_job_id()}')
 
 num_cpus = os.cpu_count()
 num_gpu_present = 1
