@@ -298,7 +298,7 @@ def upload_to_uri(
         )
 
     if not exclude:
-        _ensure_directory(bucket_path)
+        _ensure_directory(uri)
         _pyarrow_fs_copy_files(local_path, bucket_path, destination_filesystem=fs)
     else:
         # Walk the filetree and upload
