@@ -60,8 +60,48 @@ class Actor:
         while not ray.get(metrics_actor.run_has_ended.remote()):
             time.sleep(1)
 
+@ray.remote(num_cpus=1)
+class MetricsActor:
+    def __init__(self):
+        ctx = ray.runtime_context.get_runtime_context()
+        print(f"metrics actor job_id {ctx.get_job_id()}")
 
-metrics_actor = ray.get_actor(name="metrics", namespace="metrics_ns")
+        self.run_size = 0
+        self.completed = 0
+        self.run_start_time = 0
+        self.run_dur_s = None
+
+    def ready(self):
+        return True
+
+    def begin_run(self, num):
+        self.run_size = num
+        self.completed = 0
+        self.run_start_time = time.time()
+        self.run_dur_s = None
+
+    def report_completion(self):
+        self.completed += 1
+        if self.run_dur_s is None and self.run_has_ended():
+            self.run_dur_s = time.time() - self.run_start_time
+            print(f'report_completion scheduling plus imports of {self.run_size}: {self.run_dur_s:.02f}')
+
+    def run_has_ended(self):
+        assert self.run_size > 0
+        return self.completed == self.run_size
+
+    def get_last_dur_s(self):
+        return self.run_dur_s
+
+def create_metrics_actor():
+    metrics_actor = MetricsActor.options(name="metrics", namespace="metrics_ns").remote()
+    ray.get(metrics_actor.ready.remote())
+    return metrics_actor
+
+try:
+    metrics_actor = ray.get_actor(name="metrics", namespace="metrics_ns")
+except ValueError:
+    metrics_actor = create_metrics_actor()
 
 num_cpus = os.cpu_count()
 num_gpu_present = 1
