@@ -375,7 +375,7 @@ py_test(
     name = "test_raydp_dataset",
     size = "medium",
     srcs = ["tests/test_raydp_dataset.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "dataset_integration"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
