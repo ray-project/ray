@@ -9,8 +9,8 @@ They can be then used to schedule Ray tasks and actors packed as close as possib
 
 Here are some real-world use cases:
 
-- **Machine Learning Training**: :ref:`Ray Train <train-docs>` uses the placement group APIs enables gang scheduling by reserving a group of resources across Ray cluster. Gang scheduling is a critical technique to enable all-or-nothing scheduling for deep learning training. 
-- **Hyperparameter Tuning**: :ref:`Ray Tune <tune-main>` uses the placement group APIs to reserve a group of resources for each trial, which mitigates the risk of resource deadlock among trials (In a given machine learning training task, each trial only has a partial schedule of training workers allocated to it. As a result, none of the trials can fully schedule all of the available workers for training).
+- **Distributed Machine Learning Training**: Distributed Training (e.g., :ref:`Ray Train <train-docs>`) uses the placement group APIs enables gang scheduling by reserving a group of resources across Ray cluster. Gang scheduling is a critical technique to enable all-or-nothing scheduling for deep learning training. 
+- **Hyperparameter Tuning**: Hyperparameter tuning (e.g., :ref:`Ray Tune <tune-main>`) uses the placement group APIs to reserve a group of resources for each trial, which mitigates the risk of resource deadlock among trials (In a given machine learning training task, each trial only has a partial schedule of training workers allocated to it. As a result, none of the trials can fully schedule all of the available workers for training).
 
 Key Concepts
 ------------
@@ -25,25 +25,28 @@ A bundle must be able to fit on a single node on the Ray cluster. For example, i
 Placement Group
 ~~~~~~~~~~~~~~~
 
-A **placement group** reserves the resources from the cluster. The reserved resources can only be used by tasks or actors that use the :ref:`scheduling API <ray-placement-group-schedule-tasks-actors-ref>`, ``PlacementGroupSchedulingStrategy``.
+A **placement group** reserves the resources from the cluster. The reserved resources can only be used by tasks or actors that use the :ref:`PlacementGroupSchedulingStrategy <ray-placement-group-schedule-tasks-actors-ref>`.
 
 - Placement groups are represented by a list of bundles. For example, ``{"CPU": 1} * 4`` means you'd like to reserve 4 bundles of 1 CPU (i.e., it reserves 4 CPUs).
 - Bundles are then placed according to the :ref:`placement strategies <pgroup-strategy>` across nodes on the cluster.
 - After the placement group is created, tasks or actors can be then scheduled according to the placement group and even on individual bundles.
 
-Schedule a Placement Group (Reserve Resources)
-----------------------------------------------
+Create a Placement Group (Reserve Resources)
+--------------------------------------------
 
-Ray placement group can be created by the ``ray.util.placement_group`` API. Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`. 
+Ray placement group can be created by :func:`ray.util.placement_group() <ray.util.placement_group>`. 
+Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`. 
 Note that each bundle must be able to fit on a single node on the Ray cluster.
 For example, if you only have a 8 CPU node, and if you have a bundle that requires ``{"CPU": 9}``,
 this bundle cannot be scheduled.
 
 Bundles are specified by a list of dictionaries, e.g., ``[{"CPU": 1}, {"CPU": 1, "GPU": 1}]``).
 
-- ``CPU`` will correspond with ``num_cpus`` as used in ``ray.remote``
-- ``GPU`` will correspond with ``num_gpus`` as used in ``ray.remote``
-- Other resources will correspond with ``resources`` as used in ``ray.remote`` (E.g., ``ray.init(resources={"disk": 1})`` can have a bundle of ``{"disk": 1}``).
+- ``CPU`` corresponds to ``num_cpus`` as used in :func:`ray.remote <ray.remote>`.
+- ``GPU`` corresponds to ``num_gpus`` as used in :func:`ray.remote <ray.remote>`.
+- ``memory`` corresponds to ``memory`` as used in :func:`ray.remote <ray.remote>`
+- Other resources corresponds to ``resources`` as used in :func:`ray.remote <ray.remote>` (E.g., ``ray.init(resources={"disk": 1})`` can have a bundle of ``{"disk": 1}``).
+
 
 .. tabbed:: Python
 
@@ -58,7 +61,7 @@ Bundles are specified by a list of dictionaries, e.g., ``[{"CPU": 1}, {"CPU": 1,
 
       # Initialize Ray.
       import ray
-      # 2 CPUs and 2 GPUs bundles.
+      # Create a single node Ray cluster with 2 CPUs and 2 GPUs
       ray.init(num_cpus=2, num_gpus=2)
 
       # Reserve a placement group of 1 bundle that reserves 1 CPU and 1 GPU.
@@ -102,7 +105,7 @@ Bundles are specified by a list of dictionaries, e.g., ``[{"CPU": 1}, {"CPU": 1,
 
 Placement group scheduling is asynchronous. The `ray.util.placement_group` returns immediately. You can block your program until
 the placement group is ready using the `ready` (compatible with ``ray.get``) or `wait` (block the program until the placement group is ready) API. 
-**It is recommended to verify placement groups are ready** before using it to schedule tasks and actors. 
+**It is recommended to verify placement groups are ready** before using them to schedule tasks and actors. 
 
 .. tabbed:: Python
 
@@ -145,20 +148,20 @@ the placement group is ready using the `ready` (compatible with ``ray.get``) or 
         std::cout << group.GetName() << std::endl;
       }
 
-Placement groups are atomically created - meaning that if there exists a bundle that cannot fit in any of the current nodes, then the entire placement group will not be ready. 
+Placement groups are atomically created - meaning that if there exists a bundle that cannot fit in any of the current nodes, then the entire placement group will not be ready and no resources are reserved.. 
 
 .. tabbed:: Python
 
     .. code-block:: python
 
       import ray
-      # 2 CPUs and 2 GPUs bundles.
+      # Create a single node Ray cluster with 1 CPUs and 1 GPUs
       ray.init(num_cpus=1, num_gpus=1)
 
       # The second bundle {GPU: 2} cannot be satisfied. Since the placement group
       # scheduling is atomic this won't be ready until there will be other 
-      # node that has more than 2 GPUs.
-      pg = placement_group([{"CPU": 1}, {"GPU": 2}], strategy="STRICT_PACK")
+      # node that has >= 2 GPUs.
+      pg = placement_group([{"CPU": 1}, {"GPU": 2}])
       # This will raise the timeout exception!
       ray.get(pg.ready(), timeout=5)
 
@@ -167,9 +170,9 @@ If there's not enough resources to create a placement group, it is in the pendin
 When the placement group cannot be scheduled in any way, it is called "infeasible". 
 For example, you'd like to schedule ``{"CPU": 4}`` bundle, but you only have a single node with 2 CPUs.
 Infeasible placement groups will be pending until resources are available. 
-The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed. 
+The Ray Autoscaler is aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed. 
 
-If Ray Autoscaler cannot provide resources to schedule a placement group, Ray does *not* print a warning about infeasible tasks. 
+If Ray Autoscaler cannot provide resources to schedule a placement group, Ray does *not* print a warning about infeasible groups and tasks and actors that use the groups. 
 You can observe the scheduling state of the placement group from the :ref:`dashboard or state APIs <ray-placement-group-observability-ref>`.
 
 .. _ray-placement-group-schedule-tasks-actors-ref:
@@ -187,7 +190,7 @@ You can schedule actors/tasks on the placement group using
 
     .. code-block:: python
 
-      @ray.remote
+      @ray.remote(num_cpus=1)
       class Actor:
         def __init__(self):
           pass
@@ -354,8 +357,8 @@ a :ref:`detached actor <actor-lifetimes>`, the lifetime is scoped to a detached 
 In Ray, driver means the Python script that calls ``ray.init``.
 
 Reserved resources (bundles) from the placement group is automatically freed when a driver or detached actor
-that creates placement group exits. If you'd like to free the reserved resources, you can also remove the placement
-group using ``remove_placement_group`` API (note that it is also an asynchronous API).
+that creates placement group exits. If you'd like to free the reserved resources manually, you can also remove the placement
+group using :func:`remove_placement_group <ray.util.remove_placement_group>` API (note that it is also an asynchronous API).
 
 .. note::
 
@@ -448,10 +451,12 @@ From the above tools, you can see the state of the placement group. The definiti
 - `High level state <https://github.com/ray-project/ray/blob/03a9d2166988b16b7cbf51dac0e6e586455b28d8/src/ray/protobuf/gcs.proto#L579>`_
 - `Details <https://github.com/ray-project/ray/blob/03a9d2166988b16b7cbf51dac0e6e586455b28d8/src/ray/protobuf/gcs.proto#L524>`_
 
+SANG-TODO Diagrams
+
 .. _pgroup-strategy:
 
-[Advanced] Placment Strategy
-----------------------------
+Placement Strategy
+------------------
 
 Often, you'd like to reserve bundles with placement constraints. For example, you'd like to pack your bundles to the same
 node or spread out to multiple nodes as much as possible.
@@ -515,8 +520,8 @@ child tasks/actors, you should specify the below option when you call child task
 
 .. _placement-group-detached:
 
-[Advanced] Placement Group Lifetimes Control
---------------------------------------------
+[Advanced] Detached Placement Group
+-----------------------------------
 
 .. tabbed:: Python
 
