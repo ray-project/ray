@@ -71,6 +71,15 @@ Distributed Training Examples using Ray Train
         :type: ref
         :text: End-to-end Horovod Training Example
         :classes: btn-link btn-block stretched-link trainHorovod
+    
+    ---
+    :img-top: /images/pytorch_lightning_small.png
+
+    +++
+    .. link-button:: lightning_mnist_example
+        :type: ref
+        :text: End-to-end PyTorch Lightning Training Example
+        :classes: btn-link btn-block stretched-link trainLightning
 
 
 Ray Train Examples Using Loggers & Callbacks
