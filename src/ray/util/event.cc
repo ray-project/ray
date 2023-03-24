@@ -207,6 +207,15 @@ void RayEventContext::UpdateCustomFields(
 /// RayEvent
 ///
 static rpc::Event_Severity severity_threshold_ = rpc::Event_Severity::Event_Severity_INFO;
+static std::atomic<bool> emit_event_to_log_file_ = false;
+
+static void SetEmitEventToLogFile(bool emit_event_to_log_file) {
+  emit_event_to_log_file_ = emit_event_to_log_file;
+}
+
+void RayEvent::SetEmitToLogFile(bool emit_to_log_file) {
+  SetEmitEventToLogFile(emit_to_log_file);
+}
 
 static void SetEventLevel(const std::string &event_level) {
   std::string level = event_level;
@@ -237,6 +246,8 @@ void RayEvent::ReportEvent(const std::string &severity,
       severity_ele, EventLevelToLogLevel(severity_ele), label, file_name, line_number)
       << message;
 }
+
+bool RayEvent::EmitToLogFile() { return emit_event_to_log_file_; }
 
 bool RayEvent::IsLevelEnabled(rpc::Event_Severity event_level) {
   return event_level >= severity_threshold_;
@@ -304,11 +315,12 @@ void RayEvent::SendMessage(const std::string &message) {
   } else {
     event_id = kEmptyEventIdHex;
   }
-  // TODO(sang): Reneable event logging feature.
-  // if (ray::RayLog::IsLevelEnabled(log_severity_)) {
-  //   ::ray::RayLog(file_name_, line_number_, log_severity_)
-  //       << "[ Event " << event_id << " " << custom_fields_.dump() << " ] " << message;
-  // }
+  if (EmitToLogFile()) {
+    if (ray::RayLog::IsLevelEnabled(log_severity_)) {
+      ::ray::RayLog(file_name_, line_number_, log_severity_)
+          << "[ Event " << event_id << " " << custom_fields_.dump() << " ] " << message;
+    }
+  }
 }
 
 static absl::once_flag init_once_;
@@ -316,15 +328,20 @@ static absl::once_flag init_once_;
 void RayEventInit(rpc::Event_SourceType source_type,
                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir,
-                  const std::string &event_level) {
-  absl::call_once(init_once_, [&source_type, &custom_fields, &log_dir, &event_level]() {
-    RayEventContext::Instance().SetEventContext(source_type, custom_fields);
-    auto event_dir = std::filesystem::path(log_dir) / std::filesystem::path("events");
-    ray::EventManager::Instance().AddReporter(
-        std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
-    SetEventLevel(event_level);
-    RAY_LOG(INFO) << "Ray Event initialized for " << Event_SourceType_Name(source_type);
-  });
+                  const std::string &event_level,
+                  bool emit_event_to_log_file) {
+  absl::call_once(
+      init_once_,
+      [&source_type, &custom_fields, &log_dir, &event_level, emit_event_to_log_file]() {
+        RayEventContext::Instance().SetEventContext(source_type, custom_fields);
+        auto event_dir = std::filesystem::path(log_dir) / std::filesystem::path("events");
+        ray::EventManager::Instance().AddReporter(
+            std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
+        SetEventLevel(event_level);
+        SetEmitEventToLogFile(emit_event_to_log_file);
+        RAY_LOG(INFO) << "Ray Event initialized for "
+                      << Event_SourceType_Name(source_type);
+      });
 }
 
 }  // namespace ray

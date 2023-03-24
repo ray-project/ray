@@ -473,6 +473,8 @@ TEST_F(EventTest, TestRayCheckAbort) {
   custom_fields.emplace("node_id", "node 1");
   custom_fields.emplace("job_id", "job 1");
   custom_fields.emplace("task_id", "task 1");
+  // RayEventInit(rpc::Event_SourceType::Event_SourceType_RAYLET, custom_fields, log_dir,
+  // "info", true);
   ray::RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET, custom_fields);
   EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
@@ -581,6 +583,7 @@ TEST_F(EventTest, TestLogLevel) {
 }
 
 TEST_F(EventTest, TestLogEvent) {
+  ray::RayEvent::SetEmitToLogFile(true);
   // Initialize log level to error
   ray::RayLog::StartRayLog("event_test", ray::RayLogLevel::ERROR, log_dir);
   EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
@@ -639,25 +642,31 @@ TEST_F(EventTest, TestLogEvent) {
   EXPECT_THAT(vc[3], testing::HasSubstr(" E "));
   EXPECT_THAT(vc[3], testing::HasSubstr("Event"));
   EXPECT_THAT(vc[3], testing::HasSubstr("test fatal 2"));
+  // Can't add this to teardown because they are friend  class.
+  ray::RayEvent::SetEmitToLogFile(false);
+  ray::RayEvent::SetLevel("info");
 }
 
 TEST_F(EventTest, VerifyOnlyNthOccurenceEventLogged) {
   EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
   const std::string kLogStr = "this is a test log";
-  static int counter = 0;
-  for (int i = 0; i < 9; i++) {
-    counter++;
-    RAY_EVENT_EVERY_N(WARNING, "label") << kLogStr;
+  auto start_time = std::chrono::steady_clock::now().time_since_epoch();
+  size_t num_iterations = 0;
+  // printed 30, 60, 90, 120ms 4 times.
+  while (std::chrono::steady_clock::now().time_since_epoch() - start_time <
+         std::chrono::milliseconds(100)) {
+    num_iterations++;
+    RAY_EVENT_EVERY_MS(INFO, "label", 30) << kLogStr;
   }
 
   std::vector<rpc::Event> &result = TestEventReporter::event_list;
 
-  EXPECT_EQ(result.size(), 3);
-  RAY_LOG(INFO) << result[0];
+  EXPECT_EQ(result.size(), 4);
+  // RAY_LOG(INFO) << result[0];
 
-  CheckEventDetail(result[0], "", "", "", "COMMON", "WARNING", "label", kLogStr);
-  CheckEventDetail(result[1], "", "", "", "COMMON", "WARNING", "label", kLogStr);
-  CheckEventDetail(result[2], "", "", "", "COMMON", "WARNING", "label", kLogStr);
+  for (auto &event_log : result) {
+    CheckEventDetail(event_log, "", "", "", "COMMON", "INFO", "label", kLogStr);
+  }
 }
 
 }  // namespace ray

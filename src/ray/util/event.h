@@ -268,6 +268,11 @@ class RayEvent {
   /// \return True if input event level is not lower than the threshold.
   static bool IsLevelEnabled(rpc::Event_Severity event_level);
 
+  /// Return whether or not the event should be logged to a log file.
+  ///
+  /// \return True if event should be logged.
+  static bool EmitToLogFile();
+
   static RayLogLevel EventLevelToLogLevel(const rpc::Event_Severity &severity);
 
   ~RayEvent();
@@ -283,6 +288,8 @@ class RayEvent {
 
   // Only for test
   static void SetLevel(const std::string &event_level);
+  // Only for test
+  static void SetEmitToLogFile(bool emit_to_log_file);
 
   FRIEND_TEST(EventTest, TestLogLevel);
 
@@ -307,10 +314,13 @@ class RayEvent {
 /// \param log_dir The log directory to generate event subdirectory.
 /// \param event_level The input event level. It should be one of "info","warning",
 /// "error" and "fatal". You can also use capital letters for the options above.
+/// \param emit_event_to_log_file if True, it will emit the event to the process log file
+/// (e.g., gcs_server.out). Otherwise, event will only be recorded to the event log file.
 /// \return void.
 void RayEventInit(rpc::Event_SourceType source_type,
                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir,
-                  const std::string &event_level = "warning");
+                  const std::string &event_level = "warning",
+                  bool emit_event_to_log_file = false);
 
 }  // namespace ray

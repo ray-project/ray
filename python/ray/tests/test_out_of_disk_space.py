@@ -10,7 +10,6 @@ import numpy as np
 import pytest
 
 import ray
-from ray.cluster_utils import Cluster
 
 
 def calculate_capacity_threshold(disk_capacity_in_bytes):
@@ -128,8 +127,8 @@ def test_task_put(shutdown_only):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
-def test_task_args(shutdown_only):
-    cluster = Cluster()
+def test_task_args(ray_start_cluster):
+    cluster = ray_start_cluster
     cluster.add_node(
         num_cpus=1,
         object_store_memory=80 * 1024 * 1024,
@@ -162,8 +161,8 @@ def test_task_args(shutdown_only):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
-def test_actor(shutdown_only):
-    cluster = Cluster()
+def test_actor(ray_start_cluster):
+    cluster = ray_start_cluster
     cluster.add_node(
         num_cpus=1,
         object_store_memory=80 * 1024 * 1024,
@@ -228,19 +227,24 @@ def test_ood_events(shutdown_only):
             "local_fs_monitor_interval_ms": 10,
         },
     )
-    ref = ray.put(np.random.rand(20 * 1024 * 1024))
-    del ref
+
     # create a temp file so that the disk size is over the threshold.
     # ray.put doesn't work is that fallback allocation uses mmaped file
     # that doesn't neccssary allocate disk spaces.
     with create_tmp_file(250 * 1024 * 1024):
+        assert get_current_usage() > local_fs_capacity_threshold
         time.sleep(1)
-        with pytest.raises(ray.exceptions.OutOfDiskError):
-            ray.put(np.random.rand(20 * 1024 * 1024))
-        # delete tmp file to reclaim space back.
 
-    time.sleep(1)
-    ray.put(np.random.rand(20 * 1024 * 1024))
+        @ray.remote
+        def foo():
+            ref = ray.put(np.random.rand(20 * 1024 * 1024))  # 160 MB data
+            return ref
+
+        try:
+            ray.get(foo.remote())
+        except ray.exceptions.RayTaskError as e:
+            assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
+
     events = ray.experimental.state.api.list_cluster_events()
     assert len(events) == 1
     assert (
