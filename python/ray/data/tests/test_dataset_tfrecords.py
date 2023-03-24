@@ -269,25 +269,7 @@ def _features_to_schema(features: "tf.train.Features") -> "schema_pb2.Schema":
 
 
 def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
-    if not ray.data.context.DatasetContext.get_current().use_streaming_executor:
-        assert ds_expected.take() == ds_actual.take()
-    else:
-        # In streaming, we set batch_format to "default" (because calling
-        # ds.dataset_format() will still invoke bulk execution and we want
-        # to avoid that). As a result, it's receiving PandasRow (the defaut
-        # batch format), which doesn't have the same ordering of columns as
-        # the ArrowRow.
-        from ray.data.block import BlockAccessor
-
-        def get_rows(ds):
-            rows = []
-            for batch in ds.iter_batches(batch_size=None, batch_format="pyarrow"):
-                batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
-                for row in batch.iter_rows():
-                    rows.append(row)
-            return rows
-
-        assert get_rows(ds_expected) == get_rows(ds_actual)
+    assert ds_expected.take() == ds_actual.take()
 
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))
@@ -363,6 +345,34 @@ def test_read_tfrecords(
     assert np.array_equal(df["bytes_list"][0], np.array([b"def", b"1234"]))
     assert np.array_equal(df["bytes_partial"][0], np.array([], dtype=np.bytes_))
     assert np.array_equal(df["bytes_empty"][0], np.array([], dtype=np.bytes_))
+
+
+@pytest.mark.parametrize("ignore_missing_paths", [True, False])
+def test_read_tfrecords_ignore_missing_paths(
+    ray_start_regular_shared, tmp_path, ignore_missing_paths
+):
+    import tensorflow as tf
+
+    example = tf_records_empty()[0]
+
+    path = os.path.join(tmp_path, "data.tfrecords")
+    with tf.io.TFRecordWriter(path=path) as writer:
+        writer.write(example.SerializeToString())
+
+    paths = [
+        path,
+        "missing.tfrecords",
+    ]
+
+    if ignore_missing_paths:
+        ds = ray.data.read_tfrecords(paths, ignore_missing_paths=ignore_missing_paths)
+        assert ds.input_files() == [path]
+    else:
+        with pytest.raises(FileNotFoundError):
+            ds = ray.data.read_tfrecords(
+                paths, ignore_missing_paths=ignore_missing_paths
+            )
+            ds.fully_executed()
 
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))
@@ -602,15 +612,11 @@ def test_read_with_invalid_schema(
     # which should raise a `ValueError`.
     ds.write_tfrecords(tmp_path)
     with pytest.raises(ValueError) as e:
-        ray.data.read_tfrecords(
-            tmp_path, tf_schema=tf_schema_wrong_name
-        ).fully_executed()
+        ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema_wrong_name).cache()
     assert "Found extra unexpected feature" in str(e.value.args[0])
 
     with pytest.raises(ValueError) as e:
-        ray.data.read_tfrecords(
-            tmp_path, tf_schema=tf_schema_wrong_type
-        ).fully_executed()
+        ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema_wrong_type).cache()
     assert str(e.value.args[0]) == (
         "Schema field type mismatch during read: "
         "specified type is int, but underlying type is bytes"
