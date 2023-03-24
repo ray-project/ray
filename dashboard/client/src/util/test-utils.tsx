@@ -11,7 +11,7 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
     ipLogMap: {},
     namespaceMap: {},
     grafanaHost: undefined,
-    grafanaDefaultDashboardUid: undefined,
+    dashboardUids: undefined,
     prometheusHealth: undefined,
     sessionName: undefined,
   };

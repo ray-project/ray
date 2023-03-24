@@ -40,12 +40,10 @@ export const ClusterUtilizationCard = ({
 }: ClusterUtilizationCardProps) => {
   const classes = useStyles();
 
-  const {
-    grafanaHost,
-    prometheusHealth,
-    sessionName,
-    grafanaDefaultDashboardUid = "rayDefaultDashboard",
-  } = useContext(GlobalContext);
+  const { grafanaHost, prometheusHealth, sessionName, dashboardUids } =
+    useContext(GlobalContext);
+  const grafanaDefaultDashboardUid =
+    dashboardUids?.default ?? "rayDefaultDashboard";
   const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=41`;
   const timeRangeParams = "&from=now-30m&to=now";
 
