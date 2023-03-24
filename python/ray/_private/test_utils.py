@@ -1595,6 +1595,12 @@ def simulate_storage(
     elif storage_type == "s3":
         from moto.server import ThreadedMotoServer
 
+        old_env = os.environ
+        os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+        os.environ["AWS_SECURITY_TOKEN"] = "testing"
+        os.environ["AWS_SESSION_TOKEN"] = "testing"
+
         root = root or uuid.uuid4().hex
         s3_server = f"http://localhost:{port}"
         server = ThreadedMotoServer(port=port)
@@ -1602,6 +1608,9 @@ def simulate_storage(
         url = f"s3://{root}?region={region}&endpoint_override={s3_server}"
         yield url
         server.stop()
+
+        os.environ = old_env
+
     else:
         raise NotImplementedError(f"Unknown storage type: {storage_type}")
 
@@ -1797,7 +1806,7 @@ def wandb_populate_run_location_hook():
 
 
 def safe_write_to_results_json(
-    result: str,
+    result: dict,
     default_file_name: str = "/tmp/release_test_output.json",
     env_var: Optional[str] = "TEST_OUTPUT_JSON",
 ):
@@ -1810,3 +1819,5 @@ def safe_write_to_results_json(
     with open(test_output_json_tmp, "wt") as f:
         json.dump(result, f)
     os.replace(test_output_json_tmp, test_output_json)
+    logger.info(f"Wrote results to {test_output_json}")
+    logger.info(json.dumps(result))

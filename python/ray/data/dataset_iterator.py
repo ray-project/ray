@@ -1,9 +1,9 @@
 import abc
 import numpy as np
-import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Iterator
 
-from ray.data.block import DataBatch
+from ray.data.block import BlockAccessor, DataBatch, T
+from ray.data.row import TableRow
 from ray.util.annotations import PublicAPI
 from ray.data._internal.util import _is_tensor_schema
 
@@ -13,12 +13,6 @@ if TYPE_CHECKING:
     import torch
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
     from ray.data.dataset import TensorFlowTensorBatchType
-
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
 
 
 @PublicAPI(stability="beta")
@@ -60,7 +54,7 @@ class DatasetIterator(abc.ABC):
         *,
         prefetch_blocks: int = 0,
         batch_size: int = 256,
-        batch_format: Literal["default", "numpy", "pandas"] = "default",
+        batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -89,7 +83,9 @@ class DatasetIterator(abc.ABC):
                 tables to Pandas and tensors to NumPy), "pandas" to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
                 to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
+                ``Dict[str, numpy.ndarray]`` for tabular datasets, or None to return
+                the underlying block exactly as is with no additional formatting.
+                The default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -102,6 +98,37 @@ class DatasetIterator(abc.ABC):
             An iterator over record batches.
         """
         raise NotImplementedError
+
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
+        """Return a local row iterator over the dataset.
+
+        If the dataset is a tabular dataset (Arrow/Pandas blocks), dict-like mappings
+        :py:class:`~ray.data.row.TableRow` are yielded for each row by the iterator.
+        If the dataset is not tabular, the raw row is yielded.
+
+        Examples:
+            >>> import ray
+            >>> dataset = ray.data.range(10)
+            >>> next(iter(dataset.iterator().iter_rows()))
+            0
+
+        Time complexity: O(1)
+
+        Args:
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+
+        Returns:
+            An iterator over rows of the dataset.
+        """
+        for batch in self.iter_batches(
+            batch_size=None,
+            prefetch_blocks=prefetch_blocks,
+            batch_format=None,
+        ):
+            batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
+            for row in batch.iter_rows():
+                yield row
 
     @abc.abstractmethod
     def stats(self) -> str:
@@ -136,13 +163,10 @@ class DatasetIterator(abc.ABC):
 
         Examples:
             >>> import ray
-            >>> for batch in ray.data.range( # doctest: +SKIP
-            ...     12,
-            ... ).iterator().iter_torch_batches(batch_size=4):
-            ...     print(batch.shape) # doctest: +SKIP
-            torch.Size([4, 1])
-            torch.Size([4, 1])
-            torch.Size([4, 1])
+            >>> for row in ray.data.range(
+            ...     1000000
+            ... ).iterator().iter_rows(): # doctest: +SKIP
+            ...     print(row) # doctest: +SKIP
 
         Time complexity: O(1)
 
@@ -497,7 +521,17 @@ class DatasetIterator(abc.ABC):
             ...     "s3://anonymous@air-example-data/iris.csv"
             ... )
             >>> it = ds.iterator(); it
-            DatasetIterator(Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64}))
+            DatasetIterator(Dataset(
+               num_blocks=1,
+               num_rows=150,
+               schema={
+                  sepal length (cm): double,
+                  sepal width (cm): double,
+                  petal length (cm): double,
+                  petal width (cm): double,
+                  target: int64
+               }
+            ))
 
             If your model accepts a single tensor as input, specify a single feature column.
 
@@ -518,7 +552,17 @@ class DatasetIterator(abc.ABC):
             >>> it = preprocessor.transform(ds).iterator()
             >>> it
             DatasetIterator(Concatenator
-            +- Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64}))
+            +- Dataset(
+                  num_blocks=1,
+                  num_rows=150,
+                  schema={
+                     sepal length (cm): double,
+                     sepal width (cm): double,
+                     petal length (cm): double,
+                     petal width (cm): double,
+                     target: int64
+                  }
+               ))
             >>> it.to_tf("features", "target")  # doctest: +SKIP
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 

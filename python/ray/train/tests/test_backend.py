@@ -34,9 +34,17 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 def gen_execute_special(special_f):
     def execute_async_special(self, f):
         """Runs f on worker 0, special_f on other workers."""
-        futures = [self.workers[0].actor._RayTrainWorker__execute.remote(f)]
+        futures = [
+            self.workers[0]
+            .actor._RayTrainWorker__execute.options(name=f.__name__)
+            .remote(f)
+        ]
         for worker in self.workers[1:]:
-            futures.append(worker.actor._RayTrainWorker__execute.remote(special_f))
+            futures.append(
+                worker.actor._RayTrainWorker__execute.options(
+                    name=special_f.__name__
+                ).remote(special_f)
+            )
         return futures
 
     return execute_async_special

@@ -325,6 +325,9 @@ with patch("ray.tune.progress_reporter._get_trial_location",
 # Add "verbose=3)" etc
 
 
+@pytest.mark.skipif(
+    "AIR_VERBOSITY" in os.environ, reason="console v2 doesn't work with this v1 test."
+)
 class ProgressReporterTest(unittest.TestCase):
     def setUp(self) -> None:
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"
@@ -439,7 +442,7 @@ class ProgressReporterTest(unittest.TestCase):
             else:
                 t.status = "RUNNING"
             t.trial_id = "%05d" % i
-            t.local_dir = "/foo"
+            t.local_experiment_path = "/foo"
             t.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
             t.evaluated_params = {"a": i, "b": i * 2, "n/k/0": i, "n/k/1": 2 * i}
@@ -569,7 +572,7 @@ class ProgressReporterTest(unittest.TestCase):
             t = Mock()
             t.status = "RUNNING"
             t.trial_id = "%05d" % i
-            t.local_dir = "/foo"
+            t.local_experiment_path = "/foo"
             t.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
             t.evaluated_params = {"a": i}
@@ -603,7 +606,7 @@ class ProgressReporterTest(unittest.TestCase):
             else:
                 t.status = "RUNNING"
             t.trial_id = "%05d" % i
-            t.local_dir = "/foo"
+            t.local_experiment_path = "/foo"
             t.location = "here"
             t.config = {"a": i}
             t.evaluated_params = {"a": i}
@@ -795,7 +798,7 @@ class ProgressReporterTest(unittest.TestCase):
             t = Mock()
             t.status = "TERMINATED"
             t.trial_id = "%05d" % i
-            t.local_dir = "/foo"
+            t.local_experiment_path = "/foo"
             t.location = "here"
             t.config = {"verylong" * 20: i}
             t.evaluated_params = {"verylong" * 20: i}

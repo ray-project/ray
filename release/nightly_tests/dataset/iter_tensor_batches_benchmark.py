@@ -24,7 +24,7 @@ def iter_torch_batches(
             num_batches += 1
     print(
         "iter_torch_batches done, block_format:",
-        ds.dataset_format(),
+        "pyarrow",
         "num_rows:",
         ds.count(),
         "num_blocks:",
@@ -58,7 +58,7 @@ def to_tf(
 def run_iter_tensor_batches_benchmark(benchmark: Benchmark):
     ds = ray.data.read_images(
         "s3://anonymous@air-example-data-2/1G-image-data-synthetic-raw"
-    ).fully_executed()
+    ).cache()
 
     # Repartition both to align the block sizes so we can zip them.
     ds = ds.repartition(ds.num_blocks())

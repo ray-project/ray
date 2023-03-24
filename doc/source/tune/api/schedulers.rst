@@ -172,7 +172,7 @@ This can be enabled by setting the ``scheduler`` parameter of ``tune.TuneConfig`
 
 When the PBT scheduler is enabled, each trial variant is treated as a member of the population.
 Periodically, **top-performing trials are checkpointed**
-(this requires your Trainable to support :ref:`save and restore <tune-function-checkpointing>`).
+(this requires your Trainable to support :ref:`save and restore <tune-trial-checkpoint>`).
 **Low-performing trials clone the hyperparameter configurations of top performers and
 perturb them** slightly in the hopes of discovering even better hyperparameter settings.
 **Low-performing trials also resume from the checkpoints of the top performers**, allowing
@@ -261,7 +261,7 @@ PB2 can be enabled by setting the ``scheduler`` parameter of ``tune.TuneConfig``
 
 When the PB2 scheduler is enabled, each trial variant is treated as a member of the population.
 Periodically, top-performing trials are checkpointed (this requires your Trainable to
-support :ref:`save and restore <tune-function-checkpointing>`).
+support :ref:`save and restore <tune-trial-checkpoint>`).
 Low-performing trials clone the checkpoints of top performers and perturb the configurations
 in the hope of discovering an even better variation.
 
@@ -308,9 +308,9 @@ It wraps around another scheduler and uses its decisions.
     which will let your model know about the new resources assigned. You can also obtain the current trial resources
     by calling ``Trainable.trial_resources``.
 
-* If you are using the functional API for tuning, the current trial resources can be
-    obtained by calling `tune.get_trial_resources()` inside the training function.
-    The function should be able to :ref:`load and save checkpoints <tune-function-checkpointing>`
+* If you are using the functional API for tuning, get the current trial resources obtained by calling
+    `tune.get_trial_resources()` inside the training function.
+    The function should be able to :ref:`load and save checkpoints <tune-function-trainable-checkpointing>`
     (the latter preferably every iteration).
 
 An example of this in use can be found here: :doc:`/tune/examples/includes/xgboost_dynamic_resources_example`.
