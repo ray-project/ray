@@ -32,7 +32,7 @@ class PipelinedDatasetIterator(DatasetIterator):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "default",
+        batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -59,7 +59,7 @@ class PipelinedDatasetIterator(DatasetIterator):
         if name == "_base_dataset_pipeline":
             raise AttributeError
 
-        if hasattr(self._base_dataset_pipeline, name):
+        if hasattr(self._base_dataset_pipeline, name) and not name.startswith("_"):
             # Warning for backwards compatibility. TODO: remove this method in 2.5.
             warnings.warn(
                 "session.get_dataset_shard returns a ray.data.DatasetIterator "
