@@ -692,7 +692,6 @@ class Trial:
 
     @property
     def remote_path(self) -> Optional[str]:
-        assert self.local_path, "Trial {}: logdir not initialized.".format(self)
         if not self._remote_experiment_path or not self.relative_logdir:
             return None
         uri = URI(self._remote_experiment_path)

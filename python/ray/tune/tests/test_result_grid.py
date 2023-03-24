@@ -240,7 +240,7 @@ def test_result_grid_repr():
         Result(
             metrics={"loss": 1.0},
             checkpoint=Checkpoint(data_dict={"weight": 1.0}),
-            log_dir=Path("./log_1"),
+            _local_path=str(Path("./log_1")),
             error=None,
             metrics_dataframe=None,
             best_checkpoints=None,
@@ -248,7 +248,7 @@ def test_result_grid_repr():
         Result(
             metrics={"loss": 2.0},
             checkpoint=Checkpoint(data_dict={"weight": 2.0}),
-            log_dir=Path("./log_2"),
+            _local_path=str(Path("./log_2")),
             error=RuntimeError(),
             metrics_dataframe=None,
             best_checkpoints=None,
@@ -265,13 +265,13 @@ def test_result_grid_repr():
     expected_repr = """ResultGrid<[
   Result(
     metrics={'loss': 1.0},
-    log_dir=PosixPath('log_1'),
+    path='log_1',
     checkpoint=Checkpoint(data_dict={'weight': 1.0})
   ),
   Result(
     error='RuntimeError',
     metrics={'loss': 2.0},
-    log_dir=PosixPath('log_2'),
+    path='log_2',
     checkpoint=Checkpoint(data_dict={'weight': 2.0})
   )
 ]>"""
@@ -412,8 +412,24 @@ def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
     for (checkpoint, _) in result_grid[0].best_checkpoints:
         assert checkpoint
         assert "moved_ray_results" in checkpoint._local_path
+        assert checkpoint._local_path.startswith(result_grid._local_path)
+
         checkpoint_data.append(checkpoint.to_dict()["it"])
     assert set(checkpoint_data) == {5, 6}
+
+    # Check local_path property
+    assert Path(result_grid._local_path).parent.name == "moved_ray_results"
+
+    # No upload path, so path should point to local_path
+    assert result_grid._local_path == result_grid.experiment_path
+
+    # Check Result objects
+    for result in result_grid:
+        assert result._local_path.startswith(result_grid._local_path)
+        assert result._local_path == result.path
+        assert result.path.startswith(result_grid.experiment_path)
+        assert result.checkpoint._local_path.startswith(result._local_path)
+        assert result.checkpoint.path.startswith(result.path)
 
 
 def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
@@ -429,7 +445,7 @@ def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
 
     tuner = tune.Tuner(
         trainable,
-        run_config=air.RunConfig(sync_config=sync_config, local_dir=local_dir),
+        run_config=air.RunConfig(sync_config=sync_config, local_dir=str(local_dir)),
         tune_config=tune.TuneConfig(
             metric="metric",
             mode="max",
@@ -443,6 +459,24 @@ def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
         best_checkpoint.get_internal_representation()
         == results._experiment_analysis.best_checkpoint.get_internal_representation()
     )
+
+    # Check .remote_path property
+    assert results._remote_path.startswith("s3://bucket")
+    assert results.experiment_path.startswith("s3://bucket")
+    assert best_checkpoint.uri.startswith(results._remote_path)
+    assert best_checkpoint.path.startswith(results._remote_path)
+
+    # Upload path, so path should point to local_path
+    assert results._remote_path == results.experiment_path
+
+    # Check Result objects
+    for result in results:
+        assert result._local_path.startswith(results._local_path)
+        assert result._remote_path.startswith(results._remote_path)
+        assert result._remote_path == result.path
+        assert result.path.startswith(results.experiment_path)
+        assert result.checkpoint.uri.startswith(result._remote_path)
+        assert result.checkpoint.path.startswith(result.path)
 
 
 if __name__ == "__main__":
