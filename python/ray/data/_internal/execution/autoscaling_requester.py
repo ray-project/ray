@@ -10,6 +10,12 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 # will be purged.
 RESOURCE_REQUEST_TIMEOUT = 60
 
+# When the autoscaling is driven by memory pressure and there are abundunt
+# CPUs to support incremental CPUs needed to launch more tasks, we'll translate
+# memory pressure into an artificial request of CPUs. The amount of CPUs we'll
+# request is ARTIFICIAL_CPU_SCALING_FACTOR * ray.cluster_resources()["CPU"].
+ARTIFICIAL_CPU_SCALING_FACTOR = 1.2
+
 
 @ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)
 class AutoscalingRequester:
@@ -59,12 +65,19 @@ class AutoscalingRequester:
                     num_cpus += r["CPU"]
             return num_cpus
 
-        # Round up to exceed total cluster CPUs so it can actually upscale.
+        # Round up CPUs to exceed total cluster CPUs so it can actually upscale.
+        # This is to handle the issue where the autoscaling is driven by memory
+        # pressure (rather than CPUs) from streaming executor. In such case, simply
+        # asking for incremental CPUs (e.g. 1 CPU for each ready operator) may not
+        # actually be able to trigger autoscaling if existing CPUs in cluster can
+        # already satisfy the incremental CPUs request.
         num_cpus = get_cpus(req)
         if num_cpus > 0:
             total = ray.cluster_resources()
             if "CPU" in total and num_cpus <= total["CPU"]:
-                delta = 1 + math.ceil(total["CPU"]) - num_cpus
+                delta = (
+                    math.ceil(ARTIFICIAL_CPU_SCALING_FACTOR * total["CPU"]) - num_cpus
+                )
                 req.extend([{"CPU": 1}] * delta)
 
         return req
