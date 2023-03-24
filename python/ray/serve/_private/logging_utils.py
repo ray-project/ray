@@ -47,14 +47,20 @@ def access_log_msg(*, method: str, status: str, latency_ms: float):
     return f"{method.upper()} {status.upper()} {latency_ms:.1f}ms"
 
 
+def log_to_stderr_filter(record: logging.LogRecord) -> bool:
+    """Filters log records based on a parameter in the `extra` dictionary."""
+    if not hasattr(record, "log_to_stderr") or record.log_to_stderr is None:
+        return True
+
+    return record.log_to_stderr
+
+
 def configure_component_logger(
     *,
     component_name: str,
     component_id: str,
     component_type: Optional[str] = None,
     log_level: int = logging.INFO,
-    log_to_stream: bool = True,
-    log_to_file: bool = True,
     max_bytes: Optional[int] = None,
     backup_count: Optional[int] = None,
 ):
@@ -84,32 +90,31 @@ def configure_component_logger(
 
     logging.setLogRecordFactory(record_factory)
 
-    if log_to_stream:
-        stream_handler = logging.StreamHandler()
-        stream_handler.setFormatter(ServeFormatter(component_name, component_id))
-        logger.addHandler(stream_handler)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(ServeFormatter(component_name, component_id))
+    stream_handler.addFilter(log_to_stderr_filter)
+    logger.addHandler(stream_handler)
 
-    if log_to_file:
-        logs_dir = os.path.join(
-            ray._private.worker._global_node.get_logs_dir_path(), "serve"
-        )
-        os.makedirs(logs_dir, exist_ok=True)
-        if max_bytes is None:
-            max_bytes = ray._private.worker._global_node.max_bytes
-        if backup_count is None:
-            backup_count = ray._private.worker._global_node.backup_count
-        if component_type is not None:
-            component_name = f"{component_type}_{component_name}"
-        log_file_name = LOG_FILE_FMT.format(
-            component_name=component_name, component_id=component_id
-        )
-        file_handler = logging.handlers.RotatingFileHandler(
-            os.path.join(logs_dir, log_file_name),
-            maxBytes=max_bytes,
-            backupCount=backup_count,
-        )
-        file_handler.setFormatter(ServeFormatter(component_name, component_id))
-        logger.addHandler(file_handler)
+    logs_dir = os.path.join(
+        ray._private.worker._global_node.get_logs_dir_path(), "serve"
+    )
+    os.makedirs(logs_dir, exist_ok=True)
+    if max_bytes is None:
+        max_bytes = ray._private.worker._global_node.max_bytes
+    if backup_count is None:
+        backup_count = ray._private.worker._global_node.backup_count
+    if component_type is not None:
+        component_name = f"{component_type}_{component_name}"
+    log_file_name = LOG_FILE_FMT.format(
+        component_name=component_name, component_id=component_id
+    )
+    file_handler = logging.handlers.RotatingFileHandler(
+        os.path.join(logs_dir, log_file_name),
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+    )
+    file_handler.setFormatter(ServeFormatter(component_name, component_id))
+    logger.addHandler(file_handler)
 
 
 class LoggingContext:
