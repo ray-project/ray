@@ -25,6 +25,8 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 class TFRecordDatasource(FileBasedDatasource):
+    """TFRecord datasource, for reading and writing TFRecord files."""
+
     _FILE_EXTENSION = "tfrecords"
 
     def _read_stream(
@@ -143,7 +145,6 @@ def _get_feature_value(
     schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
 ) -> "pyarrow.Array":
     import pyarrow as pa
-    from tensorflow_metadata.proto.v0 import schema_pb2
 
     underlying_feature_type = {
         "bytes": feature.HasField("bytes_list"),
@@ -156,7 +157,14 @@ def _get_feature_value(
     assert sum(bool(value) for value in underlying_feature_type.values()) <= 1
 
     if schema_feature_type is not None:
-        # If a schema is specified, compare to the
+        try:
+            from tensorflow_metadata.proto.v0 import schema_pb2
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError(
+                "To use TensorFlow schemas, please install "
+                "the tensorflow-metadata package."
+            )
+        # If a schema is specified, compare to the underlying type
         specified_feature_type = {
             "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES,
             "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
@@ -207,7 +215,6 @@ def _value_to_feature(
 ) -> "tf.train.Feature":
     import tensorflow as tf
     import pyarrow as pa
-    from tensorflow_metadata.proto.v0 import schema_pb2
 
     if isinstance(value, pa.ListScalar):
         # Use the underlying type of the ListScalar's value in
@@ -230,6 +237,13 @@ def _value_to_feature(
     assert sum(bool(value) for value in underlying_value_type.values()) <= 1
 
     if schema_feature_type is not None:
+        try:
+            from tensorflow_metadata.proto.v0 import schema_pb2
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError(
+                "To use TensorFlow schemas, please install "
+                "the tensorflow-metadata package."
+            )
         specified_feature_type = {
             "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES,
             "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
