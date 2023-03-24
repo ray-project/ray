@@ -10,6 +10,7 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
     nodeMapByIp: {},
     ipLogMap: {},
     namespaceMap: {},
+    metricsContextLoaded: true,
     grafanaHost: undefined,
     grafanaDefaultDashboardUid: undefined,
     prometheusHealth: undefined,
