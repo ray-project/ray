@@ -4,7 +4,7 @@ from typing import List, Tuple
 from ray.rllib.utils.typing import NetworkType
 
 
-class RLModuleWithTargetNetworks(abc.ABC):
+class RLModuleWithTargetNetworksInterface(abc.ABC):
     """An RLModule Mixin for adding an interface for target networks.
 
     This is used for identifying the target networks that are used for stabilizing
@@ -12,7 +12,7 @@ class RLModuleWithTargetNetworks(abc.ABC):
     """
 
     @abc.abstractmethod
-    def target_networks(self) -> List[Tuple[NetworkType, NetworkType]]:
+    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
         """Returns a list of (target, current) networks.
 
         This is used for identifying the target networks that are used for stabilizing

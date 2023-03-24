@@ -4,8 +4,8 @@ from typing import List
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 from ray.rllib.core.models.base import ACTOR
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
-from ray.rllib.core.rl_module.rl_module_with_target_networks import (
-    RLModuleWithTargetNetworks,
+from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
+    RLModuleWithTargetNetworksInterface,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -18,10 +18,12 @@ OLD_ACTION_DIST_KEY = "old_action_dist"
 OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
 
 
-class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworks):
+class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         catalog = self.config.get_catalog()
+        # old pi and old encoder are the "target networks" that are used for
+        # the stabilization of the updates of the current pi and encoder.
         self.old_pi = catalog.build_pi_head(framework=self.framework)
         self.old_encoder = catalog.build_actor_critic_encoder(framework=self.framework)
         self.old_pi.set_weights(self.pi.get_weights())
@@ -29,8 +31,8 @@ class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworks):
         self.old_pi.trainable = False
         self.old_encoder.trainable = False
 
-    @override(RLModuleWithTargetNetworks)
-    def target_networks(self):
+    @override(RLModuleWithTargetNetworksInterface)
+    def get_target_network_pairs(self):
         return [(self.old_pi, self.pi), (self.old_encoder, self.encoder)]
 
     @override(PPOTfRLModule)

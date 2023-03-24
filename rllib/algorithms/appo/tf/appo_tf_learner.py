@@ -209,7 +209,7 @@ class APPOTfLearner(ImpalaTfLearner):
         """
         module = self.module[module_id]
 
-        target_current_network_pairs = module.target_networks()
+        target_current_network_pairs = module.get_target_network_pairs()
         for target_network, current_network in target_current_network_pairs:
             for old_var, current_var in zip(
                 target_network.variables, current_network.variables
