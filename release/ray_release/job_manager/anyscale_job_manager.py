@@ -7,7 +7,6 @@ from typing import Any, Dict, Optional, Tuple
 
 from anyscale.sdk.anyscale_client.models import (
     CreateProductionJob,
-    CreateProductionJobConfig,
     HaJobStates,
 )
 from anyscale.controllers.job_controller import JobController, terminal_state
@@ -72,7 +71,7 @@ class AnyscaleJobManager:
                     name=self.cluster_manager.cluster_name,
                     description=f"Smoke test: {self.cluster_manager.smoke_test}",
                     project_id=self.cluster_manager.project_id,
-                    config=CreateProductionJobConfig(
+                    config=dict(
                         entrypoint=full_cmd,
                         runtime_env=runtime_env,
                         build_id=self.cluster_manager.cluster_env_build_id,
