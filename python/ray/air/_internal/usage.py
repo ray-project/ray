@@ -37,7 +37,7 @@ TUNE_SEARCHERS = {
 # These are just wrappers around real searchers.
 # We don't want to double tag in this case, otherwise, the real tag
 # will be overwritten.
-TUNE_SEARCHER_WRAPPER = {
+TUNE_SEARCHER_WRAPPERS = {
     "ConcurrencyLimiter",
     "Repeater",
 }
@@ -71,9 +71,9 @@ def _find_class_name(obj, allowed_module_path_prefix: str, whitelist: Set[str]):
         The class name to be tagged with telemetry.
     """
     module_path = obj.__module__
-    if module_path.startswith(allowed_module_path_prefix):
-        cls_name = obj.__class__.__name__
-        return cls_name if cls_name in whitelist else "Custom"
+    cls_name = obj.__class__.__name__
+    if module_path.startswith(allowed_module_path_prefix) and cls_name in whitelist:
+        return cls_name
     else:
         return "Custom"
 
@@ -95,9 +95,9 @@ def tag_searcher(searcher: Union["BasicVariantGenerator", "Searcher"]):
         record_extra_usage_tag(TagKey.TUNE_SEARCHER, "BasicVariantGenerator")
     elif isinstance(searcher, Searcher):
         searcher_name = _find_class_name(
-            searcher, "ray.tune.search", TUNE_SEARCHERS.union(TUNE_SEARCHER_WRAPPER)
+            searcher, "ray.tune.search", TUNE_SEARCHERS.union(TUNE_SEARCHER_WRAPPERS)
         )
-        if searcher_name in TUNE_SEARCHER_WRAPPER:
+        if searcher_name in TUNE_SEARCHER_WRAPPERS:
             # ignore to avoid double tagging with wrapper name.
             return
         record_extra_usage_tag(TagKey.TUNE_SEARCHER, searcher_name)
