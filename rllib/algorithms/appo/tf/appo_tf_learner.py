@@ -5,7 +5,8 @@ from typing import Any, Dict, Mapping
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import OLD_ACTION_DIST_KEY
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
-from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaHPs, ImpalaTfLearner
+from ray.rllib.algorithms.impala.impala_base_learner import ImpalaHPs
+from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
