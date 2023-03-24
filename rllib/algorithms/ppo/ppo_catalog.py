@@ -58,10 +58,6 @@ class PPOCatalog(Catalog):
             3,
         ), "This simple PPO Module only supports 1D and 3D observation spaces."
 
-        assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
-            "This simple PPO Module only supports Discrete and Box action spaces.",
-        )
-
         # Replace EncoderConfig by ActorCriticEncoderConfig
         self.actor_critic_encoder_config = ActorCriticEncoderConfig(
             base_encoder_config=self.encoder_config,
@@ -128,11 +124,10 @@ class PPOCatalog(Catalog):
         """
         # Get action_distribution_cls to find out about the output dimension for pi_head
         action_distribution_cls = self.get_action_dist_cls(framework=framework)
-        self.pi_head_config.output_dims = (
-            action_distribution_cls.required_model_output_shape(
-                space=self.action_space, model_config=self.model_config_dict
-            )
+        required_output_dim = action_distribution_cls.required_input_dim(
+            space=self.action_space, model_config=self.model_config_dict
         )
+        self.pi_head_config.output_dims = (required_output_dim,)
         return self.pi_head_config.build(framework=framework)
 
     def build_vf_head(self, framework: str) -> Model:
