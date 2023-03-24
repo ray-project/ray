@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 
-def base_plus_ext(path: str):
+def _base_plus_ext(path: str):
     """Split off all file extensions.
 
     Returns base, allext.
@@ -135,7 +135,7 @@ def _tar_file_iterator(
 
 def _group_by_keys(
     data: List[Dict[str, Any]],
-    keys: callable = base_plus_ext,
+    keys: callable = _base_plus_ext,
     suffixes: Optional[Union[list, callable]] = None,
     meta: dict = None,
 ):
