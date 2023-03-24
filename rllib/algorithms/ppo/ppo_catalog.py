@@ -14,15 +14,15 @@ def _check_if_diag_gaussian(action_distribution_cls, framework):
     if framework == "torch":
         from ray.rllib.models.torch.torch_distributions import TorchDiagGaussian
 
-        assert type(action_distribution_cls) == TorchDiagGaussian, (
-            "free_log_std is only supported for DiagGaussian " "action distributions."
-        )
+        assert (
+            type(action_distribution_cls) == TorchDiagGaussian
+        ), "free_log_std is only supported for DiagGaussian action distributions."
     elif framework == "tf":
         from ray.rllib.models.tf.tf_distributions import TfDiagGaussian
 
-        assert type(action_distribution_cls) == TfDiagGaussian, (
-            "free_log_std is only supported for DiagGaussian " "action distributions."
-        )
+        assert (
+            type(action_distribution_cls) == TfDiagGaussian
+        ), "free_log_std is only supported for DiagGaussian action distributions."
     else:
         raise ValueError(f"Framework {framework} not supported for " f"free_log_std.")
 
@@ -142,9 +142,6 @@ class PPOCatalog(Catalog):
             _check_if_diag_gaussian(
                 action_distribution_cls=action_distribution_cls, framework=framework
             )
-            assert (
-                required_output_dim % 2 == 0
-            ), "free_log_std requires an even output dimension."
             self.pi_head_config = FreeStdMLPHeadConfig(
                 mlp_head_config=self.pi_head_config
             )
