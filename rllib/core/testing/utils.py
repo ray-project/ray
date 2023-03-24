@@ -92,12 +92,16 @@ def get_optimizer_default_class(framework: str) -> Type[Optimizer]:
 def get_learner(
     framework: str,
     env: "gym.Env",
+    learning_rate: float = 1e-3,
     is_multi_agent: bool = False,
 ) -> "Learner":
 
     _cls = get_learner_class(framework)
     spec = get_module_spec(framework=framework, env=env, is_multi_agent=is_multi_agent)
-    return _cls(module_spec=spec, optimizer_config={"lr": 0.1})
+    # adding learning rate as a configurable parameter to avoid hardcoding it
+    # and information leakage across tests that rely on knowing the LR value
+    # that is used in the learner.
+    return _cls(module_spec=spec, optimizer_config={"lr": learning_rate})
 
 
 @DeveloperAPI

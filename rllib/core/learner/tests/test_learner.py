@@ -16,7 +16,7 @@ from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 
-def get_learner() -> Learner:
+def get_learner(learning_rate=1e-3) -> Learner:
     env = gym.make("CartPole-v1")
 
     learner = BCTfLearner(
@@ -26,7 +26,9 @@ def get_learner() -> Learner:
             action_space=env.action_space,
             model_config_dict={"fcnet_hiddens": [32]},
         ),
-        optimizer_config={"lr": 1e-3},
+        # made this a configurable hparam to avoid information leakage in tests where we
+        # need to know what the learning rate is.
+        optimizer_config={"lr": learning_rate},
         learner_scaling_config=LearnerGroupScalingConfig(),
         framework_hyperparameters=FrameworkHPs(eager_tracing=True),
     )
@@ -113,7 +115,8 @@ class TestLearner(unittest.TestCase):
         all variables the updated parameters follow the SGD update rule.
         """
         env = gym.make("CartPole-v1")
-        learner = get_learner()
+        lr = 1e-3
+        learner = get_learner(lr)
 
         learner.add_module(
             module_id="test",
@@ -133,7 +136,6 @@ class TestLearner(unittest.TestCase):
         # calculated the expected new params based on gradients of all ones.
         params = learner.module["test"].trainable_variables
         n_steps = 100
-        lr = 1e-3
         expected = [param - n_steps * lr * np.ones(param.shape) for param in params]
         for _ in range(n_steps):
             with tf.GradientTape() as tape:

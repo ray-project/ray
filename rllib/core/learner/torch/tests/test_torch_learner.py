@@ -17,9 +17,12 @@ from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.core.testing.utils import get_learner
 
 
-def _get_learner() -> Learner:
+def _get_learner(learning_rate: float = 1e-3) -> Learner:
     env = gym.make("CartPole-v1")
-    learner = get_learner("torch", env)
+    # adding learning rate as a configurable parameter to avoid hardcoding it
+    # and information leakage across tests that rely on knowing the LR value
+    # that is used in the learner.
+    learner = get_learner("torch", env, learning_rate=learning_rate)
     learner.build()
 
     return learner
@@ -102,10 +105,8 @@ class TestLearner(unittest.TestCase):
         all variables the updated parameters follow the SGD update rule.
         """
         env = gym.make("CartPole-v1")
-        learner = _get_learner()
-
-        # add a test module with SGD optimizer with a known lr
-        lr = 0.1
+        learning_rate = 1e-3
+        learner = _get_learner(learning_rate)
 
         learner.add_module(
             module_id="test",
@@ -126,7 +127,7 @@ class TestLearner(unittest.TestCase):
         params = learner.get_parameters(learner.module["test"])
         n_steps = 100
         expected = [
-            convert_to_numpy(param) - n_steps * lr * np.ones(param.shape)
+            convert_to_numpy(param) - n_steps * learning_rate * np.ones(param.shape)
             for param in params
         ]
         for _ in range(n_steps):
