@@ -20,7 +20,8 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.learner.learner import (
     FrameworkHPs,
     Learner,
-    ParamOptimizerPairs,
+    ParamOptimizerPair,
+    NamedParamOptimizerPairs,
     Optimizer,
     ParamType,
     ParamDictType,
@@ -59,15 +60,13 @@ class TorchLearner(Learner):
     @override(Learner)
     def configure_optimizer_per_module(
         self, module_id: ModuleID
-    ) -> ParamOptimizerPairs:
+    ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
         lr = self._optimizer_config["lr"]
-        pair = [
-            (
-                self.get_parameters(module),
-                torch.optim.Adam(self.get_parameters(module), lr=lr),
-            )
-        ]
+        pair = (
+            self.get_parameters(module),
+            torch.optim.Adam(self.get_parameters(module), lr=lr),
+        )
         return pair
 
     @override(Learner)

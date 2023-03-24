@@ -55,7 +55,9 @@ logger = logging.getLogger(__name__)
 
 Optimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
 ParamType = Union["torch.Tensor", "tf.Variable"]
-ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
+ParamOptimizerPair = Tuple[Sequence[ParamType], Optimizer]
+ParamOptimizerPairs = List[ParamOptimizerPair]
+NamedParamOptimizerPairs = List[Tuple[str, Tuple[Sequence[ParamType], Optimizer]]]
 ParamRef = Hashable
 ParamDictType = Dict[ParamRef, ParamType]
 
@@ -278,38 +280,80 @@ class Learner:
             model parameters and optimizer is a deep learning optimizer.
         """
         pairs = []
+        name_to_optim = {}
         for module_id in self._module.keys():
             if self._is_module_compatible_with_learner(self._module[module_id]):
-                pair = self.configure_optimizer_per_module(module_id)
-                for i, p in enumerate(pair):
-                    self._name_to_optim[f"{module_id}_optim_{i}"] = p[1]
-                pairs.extend(pair)
+                (
+                    module_pairs,
+                    module_name_to_optim,
+                ) = self._configure_optimizers_per_module_helper(module_id)
+                pairs.extend(module_pairs)
+                name_to_optim.update(module_name_to_optim)
+        self._name_to_optim = name_to_optim
         return pairs
+
+    def _configure_optimizers_per_module_helper(
+        self, module_id: ModuleID
+    ) -> Tuple[ParamOptimizerPairs, Dict[str, Optimizer]]:
+        """Configures the optimizers for the given module_id.
+
+        This method is a helper method for processing the output of
+        configure_optimizer_per_module into a dictionary of names mapping to optimizers
+        and a list of ParamOptimizerPairs. Developers should call this method
+        instead of configure_optimizer_per_module, but users should still override
+        configure_optimizer_per_module.
+
+        Args:
+            module_id: The module_id of the module to configure optimizers for.
+
+        Returns:
+            A tuple of a list of ParamOptimizerPairs and a dictionary of names mapping
+            from optimizer names to optimizers.
+
+        """
+        pairs = []
+        name_to_optim = {}
+        pair_or_pairs: Union[
+            ParamOptimizerPair, NamedParamOptimizerPairs
+        ] = self.configure_optimizer_per_module(module_id)
+        if isinstance(pair_or_pairs, tuple):
+            # pairs is a singleParamOptimizerPair
+            pair = pair_or_pairs
+            name_to_optim[f"{module_id}"] = pair[1]
+            pairs.append(pair)
+        else:
+            # pairs is a NamedParamOptimizerPairs
+            for name, pair in pairs:
+                name_to_optim[f"{module_id}_{name}"] = pair[1]
+                pairs.append(pair)
+        return pairs, name_to_optim
 
     @OverrideToImplementCustomLogic
     def configure_optimizer_per_module(
         self, module_id: ModuleID
-    ) -> ParamOptimizerPairs:
+    ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         """Configures an optimizer for the given module_id.
 
         This method is by default called for each RLModule that is apart of the greater
         Mulit-Agent RLModule, that is being trained by the Learner, and any new module
         that is being added to the Multi-Agent RLModule during training via a call to
-        `add_module`. The method should construct a ParamOptimizerPairs.
+        `add_module`. The method should construct a ParamOptimizerPair or
+        NamedParamOptimizerPairs.
 
         So for example, if one were to implement this function for a PPORLModule (which
         has a value function network and policy network) with different optimizers for
-        the policy, then `configure_optimizer_per_module` should return a list of
-        tuples, the first tuple contains the parameters of the policy network
-        followed by the optimizer for those parameters, and the second tuple contains
-        the parameters of the value function network followed by the optimizer for
-        those parameters.
+        the policy, then `configure_optimizer_per_module` should return a
+        NamedOptimizerPairs: a list of tuples, where the format of each tuple is
+        (optimizer_name, (parameters, optimizer)). optimizer_name is a string to
+        identify the optimizer e.g. "policy_optim", "value_optim", etc. parameters is
+        the parameters of the network that the optimizer is optimizing, and optimizer
+        is the optimizer instance itself.
 
-        If one wanted to instead use one optimizer for both the policy and value
-        funtion network, then `configure_optimizer_per_module` should return a list
-        with only one tuple, where the first element of the tuple is a list of the
-        parameters of both the policy and value function network, and the second is
-        the optimizer for those parameters.
+        If one wanted to instead use one optimizer for both whole RLModule, then
+        `configure_optimizer_per_module` should return a  ParamOptimizerPair:
+        a tuple, where the format of the tuple is (parameters, optimizer). parameters is
+        the parameters of the RLModule that the optimizer is optimizing, and optimizer
+        is the optimizer instance itself.
 
         One can use the parameter `module_id` to determine which module to configure
         the optimizer for, in the case where different optimizers are required for
@@ -489,16 +533,19 @@ class Learner:
 
         self._module.add_module(module_id, module)
 
-        for i, (param_seq, optimizer) in enumerate(
-            self.configure_optimizer_per_module(module_id)
-        ):
+        (
+            param_optimizer_pair,
+            name_to_optimizer,
+        ) = self._configure_optimizers_per_module_helper(module_id)
+
+        for (param_seq, optimizer) in param_optimizer_pair:
             self._optim_to_param[optimizer] = []
             for param in param_seq:
                 param_ref = self.get_param_ref(param)
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
-            self._name_to_optim[f"{module_id}_optim_{i}"] = optimizer
+        self._name_to_optim.update(name_to_optimizer)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def remove_module(self, module_id: ModuleID) -> None:

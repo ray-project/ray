@@ -17,7 +17,8 @@ from typing import (
 from ray.rllib.core.learner.learner import (
     FrameworkHPs,
     Learner,
-    ParamOptimizerPairs,
+    ParamOptimizerPair,
+    NamedParamOptimizerPairs,
     Optimizer,
     ParamType,
     ParamDictType,
@@ -67,12 +68,10 @@ class TfLearner(Learner):
     @override(Learner)
     def configure_optimizer_per_module(
         self, module_id: ModuleID
-    ) -> ParamOptimizerPairs:
+    ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
         lr = self._optimizer_config["lr"]
-        pair = [
-            (self.get_parameters(module), tf.keras.optimizers.Adam(learning_rate=lr))
-        ]
+        pair = (self.get_parameters(module), tf.keras.optimizers.Adam(learning_rate=lr))
         return pair
 
     @override(Learner)
