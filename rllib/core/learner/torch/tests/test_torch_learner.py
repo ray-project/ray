@@ -1,13 +1,15 @@
 import gymnasium as gym
 import unittest
-import torch
 import numpy as np
+import tempfile
+import torch
 
 import ray
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
+from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -137,6 +139,63 @@ class TestLearner(unittest.TestCase):
             learner.apply_gradients(gradients)
 
         check(params, expected)
+
+    def test_save_load_state(self):
+        env = gym.make("CartPole-v1")
+
+        learner1 = BCTorchLearner(
+            module_spec=SingleAgentRLModuleSpec(
+                module_class=DiscreteBCTorchModule,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                model_config_dict={"fcnet_hiddens": [64]},
+            ),
+            optimizer_config={"lr": 2e-3},
+        )
+
+        learner1.build()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            learner1.save_state(tmpdir)
+
+            learner2 = BCTorchLearner(
+                module_spec=SingleAgentRLModuleSpec(
+                    module_class=DiscreteBCTorchModule,
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    model_config_dict={"fcnet_hiddens": [32]},
+                ),
+                optimizer_config={"lr": 1e-3},
+            )
+            learner2.build()
+            learner2.load_state(tmpdir)
+            check(learner1.get_weights(), learner2.get_weights())
+
+            # check all internal optimizer state dictionaries have been updated
+            learner_1_optims_serialized = {
+                name: optim.state_dict()
+                for name, optim in learner1._name_to_optim.items()
+            }
+            learner_2_optims_serialized = {
+                name: optim.state_dict()
+                for name, optim in learner2._name_to_optim.items()
+            }
+            check(learner_1_optims_serialized, learner_2_optims_serialized)
+
+            learner_1_optims_serialized = [
+                optim.state_dict() for optim in learner1._optim_to_param.keys()
+            ]
+            learner_2_optims_serialized = [
+                optim.state_dict() for optim in learner2._optim_to_param.keys()
+            ]
+            check(learner_1_optims_serialized, learner_2_optims_serialized)
+
+            learner_1_optims_serialized = [
+                optim.state_dict() for optim in learner1._param_to_optim.values()
+            ]
+            learner_2_optims_serialized = [
+                optim.state_dict() for optim in learner2._param_to_optim.values()
+            ]
+            check(learner_1_optims_serialized, learner_2_optims_serialized)
 
 
 if __name__ == "__main__":
