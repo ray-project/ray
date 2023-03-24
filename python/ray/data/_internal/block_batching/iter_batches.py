@@ -1,6 +1,5 @@
 import collections
-import heapq
-from typing import Iterator, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple
 
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata
@@ -113,12 +112,14 @@ def restore_from_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
     (base_iterator) must be present.
     """
     next_index_required = 0
-    buffer: List[Batch] = []
+    buffer: Dict[int, Batch] = {}
     for batch in batch_iter:
-        heapq.heappush(buffer, (batch.batch_idx, batch))
-        if buffer[0][0] == next_index_required:
-            yield heapq.heappop(buffer)[1]
+        assert batch.batch_idx not in buffer
+        buffer[batch.batch_idx] = batch
+        while next_index_required in buffer:
+            yield buffer.pop(next_index_required)
             next_index_required += 1
 
-    while len(buffer) > 0:
-        yield heapq.heappop(buffer)[1]
+    while next_index_required in buffer:
+        yield buffer.pop(next_index_required)
+        next_index_required += 1
