@@ -4,7 +4,6 @@ from typing import (
     Callable,
     Dict,
     Optional,
-    Tuple,
     Union,
     Iterable,
     Iterator,
@@ -24,6 +23,8 @@ if TYPE_CHECKING:
     import tensorflow as tf
     from tensorflow_metadata.proto.v0 import schema_pb2
 
+TF_RECORD_VALUE_TYPE = Union[int, float, bytes]
+
 
 @PublicAPI(stability="alpha")
 class TFRecordDatasource(FileBasedDatasource):
@@ -40,6 +41,36 @@ class TFRecordDatasource(FileBasedDatasource):
 
         batched_example_dicts = []
         example_batch_size = 256 * 8
+        all_column_names = set()
+
+        def _unwrap_single_value_list_columns(batched_example_dicts):
+            col_is_all_single_value_lists = {
+                col_name: True for col_name in all_column_names
+            }
+            col_has_single_value_list = {
+                col_name: False for col_name in all_column_names
+            }
+            for dct in batched_example_dicts:
+                for col_name, col_val in dct.items():
+                    if isinstance(col_val, list) and len(col_val) > 1:
+                        col_is_all_single_value_lists[col_name] = False
+                    if isinstance(col_val, list) and len(col_val) == 1:
+                        col_has_single_value_list[col_name] = True
+
+            columns_to_unwrap = [
+                c
+                for c in col_is_all_single_value_lists
+                if col_is_all_single_value_lists[c] and col_has_single_value_list[c]
+            ]
+            for col_unwrap in columns_to_unwrap:
+                for idx, dct in enumerate(batched_example_dicts):
+                    if col_unwrap in batched_example_dicts[idx]:
+                        if len(batched_example_dicts[idx][col_unwrap]) == 1:
+                            batched_example_dicts[idx][col_unwrap] = dct[col_unwrap][0]
+                        else:  # column is an empty list
+                            batched_example_dicts[idx][col_unwrap] = None
+            return batched_example_dicts
+
         for record in _read_records(f, path):
             example = tf.train.Example()
             try:
@@ -48,21 +79,29 @@ class TFRecordDatasource(FileBasedDatasource):
                 raise ValueError(
                     "`TFRecordDatasource` failed to parse `tf.train.Example` "
                     f"record in '{path}'. This error can occur if your TFRecord "
-                    f"file contains a message type other than `tf.train.Example`: {e}"  # noqa: E501
+                    f"file contains a message type other than `tf.train.Example`: {e}"
                 )
             record_dict = _convert_example_to_dict(example, tf_schema)
+            for feature_name in record_dict:
+                all_column_names.add(feature_name)
             batched_example_dicts.append(record_dict)
             if len(batched_example_dicts) >= example_batch_size:
-                print("===> yieldling limit:", batched_example_dicts)
-                mapping = {k: [r.get(k) for r in batched_example_dicts] for k in batched_example_dicts[0]} if batched_example_dicts else {}
-                print("===> mapping:", mapping)
-                yield pa.Table.from_pydict(mapping) 
+                # If a schema is specified, skip single-value list unwrapping
+                if not tf_schema:
+                    batched_example_dicts = _unwrap_single_value_list_columns(
+                        batched_example_dicts
+                    )
+                yield pa.Table.from_pylist(batched_example_dicts)
                 batched_example_dicts = []
 
-        print("===> yieldling:", batched_example_dicts)
-        mapping = {k: [pa.array(r.get(k)) for r in batched_example_dicts] for k in batched_example_dicts[0]} if batched_example_dicts else {}
-        print("===> mapping:", mapping)
-        yield pa.Table.from_pydict(mapping) 
+        # Yield the remaining records, skipping single-value list unwrapping if
+        # a schema is specified.
+        if not tf_schema:
+            batched_example_dicts = _unwrap_single_value_list_columns(
+                batched_example_dicts
+            )
+        yield pa.Table.from_pylist(batched_example_dicts)
+        batched_example_dicts = []
 
     def _write_block(
         self,
@@ -91,7 +130,7 @@ class TFRecordDatasource(FileBasedDatasource):
 def _convert_example_to_dict(
     example: "tf.train.Example",
     tf_schema: Optional["schema_pb2.Schema"],
-) -> Dict[str, "pyarrow.Array"]:
+) -> Dict[str, Union[List[TF_RECORD_VALUE_TYPE], TF_RECORD_VALUE_TYPE]]:
     record = {}
     schema_dict = {}
     # Convert user-specified schema into dict for convenient mapping
@@ -156,9 +195,7 @@ def _get_single_true_type(dct) -> str:
 def _get_feature_value(
     feature: "tf.train.Feature",
     schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
-) -> "pyarrow.Array":
-    import pyarrow as pa
-
+) -> Union[List[TF_RECORD_VALUE_TYPE], TF_RECORD_VALUE_TYPE]:
     underlying_feature_type = {
         "bytes": feature.HasField("bytes_list"),
         "float": feature.HasField("float_list"),
@@ -193,31 +230,14 @@ def _get_feature_value(
         underlying_feature_type = specified_feature_type
     if underlying_feature_type["bytes"]:
         value = feature.bytes_list.value
-        type_ = pa.binary()
     elif underlying_feature_type["float"]:
         value = feature.float_list.value
-        type_ = pa.float32()
     elif underlying_feature_type["int"]:
         value = feature.int64_list.value
-        type_ = pa.int64()
     else:
         value = []
-        type_ = pa.null()
     value = list(value)
-    if len(value) == 1 and schema_feature_type is None:
-        # Use the value itself if the features contains a single value.
-        # This is to give better user experience when writing preprocessing UDF on
-        # these single-value lists.
-        value = value[0]
-    else:
-        # If the feature value is empty and no type is specified in the user-provided
-        # schema, set the type to null for now to allow pyarrow to construct a valid
-        # Array; later, infer the type from other records which have non-empty values
-        # for the feature.
-        if len(value) == 0:
-            type_ = pa.null()
-        type_ = pa.list_(type_)
-    return pa.array([value], type=type_)
+    return value
 
 
 def _value_to_feature(
