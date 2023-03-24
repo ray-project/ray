@@ -1998,8 +1998,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         # Initialize the filter dict
         self._update_filter_dict(updated_policy_dict)
 
-        # Call callback policy init hooks
-        self._call_callbacks_on_create_policy()
+        # Call callback policy init hooks (only if the added policy did not exist
+        # before).
+        if policy is None:
+            self._call_callbacks_on_create_policy()
 
         if self.worker_index == 0:
             logger.info(f"Built policy map: {self.policy_map}")
