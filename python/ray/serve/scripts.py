@@ -214,12 +214,12 @@ def deploy(config_file_name: str, address: str):
 
 
 @cli.command(
-    short_help="Run a Serve app.",
+    short_help="Run Serve application(s).",
     help=(
-        "Runs the Serve app from the specified import path (e.g. "
-        "my_script:my_bound_deployment) or YAML config.\n\n"
-        "If using a YAML config, existing deployments with no code changes "
-        "will not be redeployed.\n\n"
+        "Runs the Serve application from the specified import path (e.g. my_script:"
+        "my_bound_deployment) or application(s) from a YAML config.\n\n"
+        "If using a YAML config, existing deployments with no code changes in an "
+        "application will not be redeployed.\n\n"
         "Any import path must lead to a FunctionNode or ClassNode object. "
         "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
@@ -248,7 +248,7 @@ def deploy(config_file_name: str, address: str):
     default=None,
     required=False,
     help=(
-        "Directory containing files that your job will run in. Can be a "
+        "Directory containing files that your application(s) will run in. Can be a "
         "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
         "This overrides the working_dir in --runtime-env if both are "
         "specified. This will be passed to ray.init() as the default for "
@@ -322,24 +322,56 @@ def run(
     )
 
     if pathlib.Path(config_or_import_path).is_file():
+        is_config = True
         config_path = config_or_import_path
         cli_logger.print(f'Deploying from config file: "{config_path}".')
 
         with open(config_path, "r") as config_file:
             config_dict = yaml.safe_load(config_file)
-            # If host or port is specified as a CLI argument, they should take priority
-            # over config values.
-            config_dict.setdefault("host", DEFAULT_HTTP_HOST)
-            if host is not None:
-                config_dict["host"] = host
 
-            config_dict.setdefault("port", DEFAULT_HTTP_PORT)
-            if port is not None:
-                config_dict["port"] = port
+            try:
+                config = ServeDeploySchema.parse_obj(config_dict)
+                if gradio:
+                    raise click.ClickException(
+                        "The gradio visualization feature of `serve run` does not yet "
+                        "have support for multiple applications."
+                    )
 
-            config = ServeApplicationSchema.parse_obj(config_dict)
-        is_config = True
+                # If host or port is specified as a CLI argument, they should take
+                # priority over config values.
+                if host is None:
+                    if "http_options" in config_dict:
+                        host = config_dict["http_options"].get(
+                            "host", DEFAULT_HTTP_HOST
+                        )
+                    else:
+                        host = DEFAULT_HTTP_HOST
+                if port is None:
+                    if "http_options" in config_dict:
+                        port = config_dict["http_options"].get(
+                            "port", DEFAULT_HTTP_PORT
+                        )
+                    else:
+                        port = DEFAULT_HTTP_PORT
+            except ValidationError as v2_err:
+                try:
+                    config = ServeApplicationSchema.parse_obj(config_dict)
+                    # If host or port is specified as a CLI argument, they should take
+                    # priority over config values.
+                    if host is None:
+                        host = config_dict.get("host", DEFAULT_HTTP_HOST)
+                    if port is None:
+                        port = config_dict.get("port", DEFAULT_HTTP_PORT)
+                except ValidationError as v1_err:
+                    # If we find the field "applications" in the config, most likely
+                    # user is trying to deploy a multi-application config
+                    if "applications" in config_dict:
+                        raise v2_err from None
+                    else:
+                        raise v1_err from None
+
     else:
+        is_config = False
         if host is None:
             host = DEFAULT_HTTP_HOST
         if port is None:
@@ -347,25 +379,13 @@ def run(
         import_path = config_or_import_path
         cli_logger.print(f'Deploying from import path: "{import_path}".')
         node = import_attr(import_path)
-        is_config = False
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
-
-    if is_config:
-        client = _private_api.serve_start(
-            detached=True,
-            http_options={
-                "host": config.host,
-                "port": config.port,
-                "location": "EveryNode",
-            },
-        )
-    else:
-        client = _private_api.serve_start(
-            detached=True,
-            http_options={"host": host, "port": port, "location": "EveryNode"},
-        )
+    client = _private_api.serve_start(
+        detached=True,
+        http_options={"host": host, "port": port, "location": "EveryNode"},
+    )
 
     try:
         if is_config:

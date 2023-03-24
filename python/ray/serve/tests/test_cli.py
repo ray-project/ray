@@ -274,7 +274,7 @@ def test_deploy_multi_app(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_put_duplicate_apps(ray_start_stop):
+def test_deploy_duplicate_apps(ray_start_stop):
     """If a config with duplicate app names is deployed, `serve deploy` should fail.
     The response should clearly indicate a validation error.
     """
@@ -291,7 +291,7 @@ def test_put_duplicate_apps(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_put_duplicate_routes(ray_start_stop):
+def test_deploy_duplicate_routes(ray_start_stop):
     """If a config with duplicate routes is deployed, the PUT request should fail.
     The response should clearly indicate a validation error.
     """
@@ -680,6 +680,43 @@ def test_run_application(ray_start_stop):
     print("Kill successful! Deployment is not reachable over HTTP.")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_multi_app(ray_start_stop):
+    """Deploys valid multi-app config file via `serve run`."""
+
+    # Deploy via config file
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
+    )
+
+    print('Running config file "pizza_world.yaml".')
+    p = subprocess.Popen(["serve", "run", "--address=auto", config_file_name])
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/app1").text == "wonderful world",
+        timeout=15,
+    )
+    print('Application "app1" is reachable over HTTP.')
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+        == "12 pizzas please!",
+        timeout=15,
+    )
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+        == "20 pizzas please!",
+        timeout=15,
+    )
+    print("Run successful! Deployments are live and reachable over HTTP. Killing run.")
+
+    p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
+    p.wait()
+    with pytest.raises(requests.exceptions.ConnectionError):
+        requests.post("http://localhost:8000/app1")
+    with pytest.raises(requests.exceptions.ConnectionError):
+        requests.post("http://localhost:8000/app2", json=["ADD", 0])
+    print("Kill successful! Deployments are not reachable over HTTP.")
+
+
 @serve.deployment
 class Macaw:
     def __init__(self, color, name="Mulligan", surname=None):
@@ -776,10 +813,11 @@ def test_run_runtime_env(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_config_port1(ray_start_stop):
+@pytest.mark.parametrize("config_file", ["basic_graph.yaml", "basic_multi.yaml"])
+def test_run_config_port1(ray_start_stop, config_file):
     """Test that `serve run` defaults to port 8000."""
     config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
+        os.path.dirname(__file__), "test_config_files", config_file
     )
     p = subprocess.Popen(["serve", "run", config_file_name])
     wait_for_condition(
@@ -791,10 +829,13 @@ def test_run_config_port1(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_config_port2(ray_start_stop):
+@pytest.mark.parametrize(
+    "config_file", ["basic_graph_http.yaml", "basic_multi_http.yaml"]
+)
+def test_run_config_port2(ray_start_stop, config_file):
     """If config file specifies a port, the default port value should not be used."""
     config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
+        os.path.dirname(__file__), "test_config_files", config_file
     )
     p = subprocess.Popen(["serve", "run", config_file_name])
     wait_for_condition(
@@ -806,10 +847,13 @@ def test_run_config_port2(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_config_port3(ray_start_stop):
+@pytest.mark.parametrize(
+    "config_file", ["basic_graph_http.yaml", "basic_multi_http.yaml"]
+)
+def test_run_config_port3(ray_start_stop, config_file):
     """If port is specified as argument to `serve run`, it should override config."""
     config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
+        os.path.dirname(__file__), "test_config_files", config_file
     )
     p = subprocess.Popen(["serve", "run", "--port=8010", config_file_name])
     wait_for_condition(
@@ -894,23 +938,23 @@ def test_build(ray_start_stop, node):
         print("Delete succeeded! Node is not reachable over HTTP.")
 
 
-TestBuildApp1Node = global_f.options(route_prefix="/app1").bind()
-TestBuildApp2Node = NoArgDriver.options(route_prefix="/app2").bind(global_f.bind())
+TestApp1Node = global_f.options(route_prefix="/app1").bind()
+TestApp2Node = NoArgDriver.options(route_prefix="/app2").bind(global_f.bind())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_build_multi_app(ray_start_stop):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
 
-        print('Building nodes "TestBuildApp1Node" and "TestBuildApp2Node".')
+        print('Building nodes "TestApp1Node" and "TestApp2Node".')
         # Build an app
         subprocess.check_output(
             [
                 "serve",
                 "build",
                 "--multi-app",
-                "ray.serve.tests.test_cli.TestBuildApp1Node",
-                "ray.serve.tests.test_cli.TestBuildApp2Node",
+                "ray.serve.tests.test_cli.TestApp1Node",
+                "ray.serve.tests.test_cli.TestApp2Node",
                 "-o",
                 tmp.name,
             ]
