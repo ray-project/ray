@@ -189,6 +189,7 @@ def generate_serve_grafana_dashboard() -> Tuple[str, str]:
     """
     return _generate_grafana_dashboard(serve_dashboard_config)
 
+
 def generate_serve_deployment_grafana_dashboard() -> Tuple[str, str]:
     """
     Generates the dashboard output for the serve dashboard and returns
@@ -198,7 +199,6 @@ def generate_serve_deployment_grafana_dashboard() -> Tuple[str, str]:
       Tuple with format content, uid
     """
     return _generate_grafana_dashboard(serve_deployment_dashboard_config)
-
 
 
 def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:

@@ -24,7 +24,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
     Panel(
         id=2,
         title="QPS per replica",
-        description='QPS for each replica.',
+        description="QPS for each replica.",
         unit="qps",
         targets=[
             Target(
@@ -37,7 +37,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
     Panel(
         id=3,
         title="Error QPS per replica",
-        description='Error QPS for each replica.',
+        description="Error QPS for each replica.",
         unit="qps",
         targets=[
             Target(
@@ -50,7 +50,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
     Panel(
         id=4,
         title="P50 latency per replica",
-        description='P50 latency per replica.',
+        description="P50 latency per replica.",
         unit="ms",
         targets=[
             Target(
@@ -69,7 +69,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
     Panel(
         id=5,
         title="P90 latency per replica",
-        description='P90 latency per replica.',
+        description="P90 latency per replica.",
         unit="ms",
         targets=[
             Target(
@@ -88,7 +88,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
     Panel(
         id=6,
         title="P99 latency per replica",
-        description='P99 latency per replica.',
+        description="P99 latency per replica.",
         unit="ms",
         targets=[
             Target(
@@ -107,11 +107,11 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
     Panel(
         id=7,
         title="Queue size per deployment",
-        description="Number of requests queued per deployment. Ignores \"Replica\" and \"Route\" variable.",
+        description='Number of requests queued per deployment. Ignores "Replica" and "Route" variable.',
         unit="requests",
         targets=[
             Target(
-                expr='sum(ray_serve_deployment_queued_queries{{{global_filters}}}) by (deployment)',
+                expr="sum(ray_serve_deployment_queued_queries{{{global_filters}}}) by (deployment)",
                 legend="{{deployment}}",
             ),
         ],
@@ -132,6 +132,6 @@ serve_deployment_dashboard_config = DashboardConfig(
     name="SERVE_DEPLOYMENT",
     default_uid="rayServeDeploymentDashboard",
     panels=SERVE_DEPLOYMENT_GRAFANA_PANELS,
-    standard_global_filters=["deployment=~\"$Deployment\"","replica=~\"$Replica\""],
+    standard_global_filters=['deployment=~"$Deployment"', 'replica=~"$Replica"'],
     base_json_file_name="serve_deployment_grafana_dashboard_base.json",
 )

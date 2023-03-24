@@ -265,7 +265,10 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             ),
             "w",
         ) as f:
-            content, self._dashboard_uids["serve_deployment"] = generate_serve_deployment_grafana_dashboard()
+            (
+                content,
+                self._dashboard_uids["serve_deployment"],
+            ) = generate_serve_deployment_grafana_dashboard()
             f.write(content)
 
     def _create_default_prometheus_configs(self):
