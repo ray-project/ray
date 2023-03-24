@@ -303,7 +303,7 @@ NODE_DEFAULT_IP = "127.0.0.1"
 MACH_PAGE_SIZE_BYTES = 4096
 
 # The max number of bytes for task execution error message.
-MAX_TASK_EXECUTION_ERROR_LEN = 500
+MAX_APPLICATION_ERROR_LEN = 500
 
 # Max 64 bit integer value, which is needed to ensure against overflow
 # in C++ when passing integer values cross-language.

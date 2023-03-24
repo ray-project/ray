@@ -46,7 +46,8 @@ struct CoreWorkerOptions {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_retryable_error,
-      bool *is_application_error,
+      // Application error string, empty if no error.
+      std::string *application_error,
       // The following 2 parameters `defined_concurrency_groups` and
       // `name_of_concurrency_group_to_execute` are used for Python
       // asyncio actor only.
@@ -55,9 +56,7 @@ struct CoreWorkerOptions {
       // used for actor creation task.
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
       const std::string name_of_concurrency_group_to_execute,
-      bool is_reattempt,
-      // Error string if task fails to execute.
-      std::string *task_execution_error)>;
+      bool is_reattempt)>;
 
   CoreWorkerOptions()
       : store_socket(""),

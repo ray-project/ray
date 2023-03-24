@@ -111,19 +111,45 @@ def test_failed_task_error(shutdown_only):
 
     # Test canceled tasks with TASK_CANCELLED
     @ray.remote
-    def sleep():
-        time.sleep(999)
+    def not_running():
+        raise ValueError("should not be run")
 
     with pytest.raises(ray.exceptions.TaskCancelledError):
-        t = sleep.options(name="sleep-cancel").remote()
+        t = not_running.options(name="cancel-before-running").remote()
         ray.cancel(t)
         ray.get(t)
 
     # Cancel task doesn't have additional error message
     wait_for_condition(
         verify_failed_task,
-        name="sleep-cancel",
+        name="cancel-before-running",
         error_type="TASK_CANCELLED",
+        error_message="",
+    )
+
+    @ray.remote
+    def loop():
+        while True:
+            pass
+
+    t = loop.options(name="cancel-while-running").remote()
+
+    def running():
+        t = list_tasks(filters=[("name", "=", "cancel-while-running")])
+        return t[0]["state"] == "RUNNING"
+
+    wait_for_condition(running)
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.cancel(t)
+        ray.get(t)
+
+    # TODO: we should make this TASK_CANCELLED.
+    # https://github.com/ray-project/ray/issues/32826
+    wait_for_condition(
+        verify_failed_task,
+        name="cancel-while-running",
+        error_type="TASK_EXECUTION_EXCEPTION",
         error_message="",
     )
 
