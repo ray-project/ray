@@ -152,7 +152,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=ray_data,learning_tests,-multi_gpu,-gpu,-tf_only,-tf2_only
+      --test_tag_filters=learning_tests_with_ray_data,-multi_gpu,-gpu,-tf_only,-tf2_only
       --test_arg=--framework=torch
       rllib/...
 
@@ -168,7 +168,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=ray_data,learning_tests,-multi_gpu,-gpu,-torch_only
+      --test_tag_filters=learning_tests_with_ray_data,-multi_gpu,-gpu,-torch_only
       --test_arg=--framework=tf2
       rllib/...
 
@@ -183,7 +183,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=ray_data,-learning_tests,-multi_gpu,-gpu
+      --test_tag_filters=ray_data,-learning_tests_with_ray_data,-multi_gpu,-gpu
       rllib/...
 
 - label: ":brain: RLlib: Algorithm, Model and other tests"

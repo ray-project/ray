@@ -247,7 +247,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_cql",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "ray_data"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
@@ -263,7 +263,7 @@ py_test(
 py_test(
    name = "learning_tests_pendulum_crr",
    main = "tests/run_regression_tests.py",
-   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "ray_data"],
+   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
    size = "large",
    srcs = ["tests/run_regression_tests.py"],
    # Include an offline json data file as well.
@@ -277,7 +277,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_crr",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "ray_data"],
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_with_ray_data"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
@@ -291,7 +291,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_crr_expectation",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "ray_data"],
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_with_ray_data"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
@@ -392,7 +392,7 @@ py_test(
 py_test(
    name = "learning_tests_pendulum_dt",
    main = "tests/run_regression_tests.py",
-   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "ray_data"],
+   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
    size = "large",
    srcs = ["tests/run_regression_tests.py"],
    # Include an offline json data file as well.
@@ -406,7 +406,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_dt",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "ray_data"],
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_with_ray_data"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
