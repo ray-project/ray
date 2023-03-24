@@ -108,6 +108,7 @@ class TuneController(_TuneControllerBase):
         self._actor_cleanup_timeout: int = int(
             os.environ.get("TUNE_FORCE_TRIAL_CLEANUP_S", "600")
         )
+        self._actor_force_cleanup_timeout: int = 10
 
         # Reuse actors
         self._reuse_actors = reuse_actors  # reuse_actors
@@ -206,8 +207,16 @@ class TuneController(_TuneControllerBase):
         while times and (
             force_all or time.monotonic() - times[0][0] > self._actor_cleanup_timeout
         ):
+            if (
+                time.monotonic() - times[0][0] < self._actor_force_cleanup_timeout
+            ) and self._actor_manager.is_actor_started(tracked_actor=times[0][1]):
+                # Even if force_all=True, we give the actors time to clean up
+                self._actor_manager.next(timeout=1)
+                continue
+
             _, tracked_actor = times.popleft()
             if self._actor_manager.is_actor_started(tracked_actor=tracked_actor):
+                logger.debug(f"Forcefully killing actor: {tracked_actor}")
                 self._actor_manager.remove_actor(tracked_actor=tracked_actor, kill=True)
             self._stopping_actors.pop(tracked_actor)
 
@@ -382,6 +391,7 @@ class TuneController(_TuneControllerBase):
             logger.debug("Waiting for actor manager to clean up final state")
             self._actor_manager.next(timeout=1)
 
+        logger.debug("Force cleanup of remaining actors")
         self._cleanup_stopping_actors(force_all=True)
 
         self._actor_manager.cleanup()
