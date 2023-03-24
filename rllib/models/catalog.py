@@ -736,24 +736,32 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_preprocessor(env: gym.Env, options: Optional[dict] = None) -> Preprocessor:
+    def get_preprocessor(
+        env: gym.Env, options: Optional[dict] = None, include_multi_binary: bool = False
+    ) -> Preprocessor:
         """Returns a suitable preprocessor for the given env.
 
         This is a wrapper for get_preprocessor_for_space().
         """
 
-        return ModelCatalog.get_preprocessor_for_space(env.observation_space, options)
+        return ModelCatalog.get_preprocessor_for_space(
+            env.observation_space, options, include_multi_binary
+        )
 
     @staticmethod
     @DeveloperAPI
     def get_preprocessor_for_space(
-        observation_space: gym.Space, options: dict = None
+        observation_space: gym.Space,
+        options: dict = None,
+        include_multi_binary: bool = False,
     ) -> Preprocessor:
         """Returns a suitable preprocessor for the given observation space.
 
         Args:
             observation_space: The input observation space.
             options: Options to pass to the preprocessor.
+            include_multi_binary: Whether to include the MultiBinaryPreprocessor in
+                the possible preprocessors returned by this method.
 
         Returns:
             preprocessor: Preprocessor for the observations.
@@ -768,7 +776,9 @@ class ModelCatalog:
                     )
                 )
 
-        cls = get_preprocessor(observation_space)
+        cls = get_preprocessor(
+            observation_space, include_multi_binary=include_multi_binary
+        )
         prep = cls(observation_space, options)
 
         if prep is not None:

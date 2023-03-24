@@ -1,5 +1,5 @@
 import gymnasium as gym
-from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple, MultiBinary
 import numpy as np
 import unittest
 
@@ -14,6 +14,7 @@ from ray.rllib.models.preprocessors import (
     OneHotPreprocessor,
     AtariRamPreprocessor,
     GenericPixelPreprocessor,
+    MultiBinaryPreprocessor,
 )
 from ray.rllib.utils.test_utils import (
     check,
@@ -151,6 +152,21 @@ class TestPreprocessors(unittest.TestCase):
             list(pp.transform((0, np.array([1, 2, 3], np.float32)))),
             [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]],
         )
+
+    def test_multi_binary_preprocessor(self):
+        observation_space = MultiBinary(5)
+        # Firstly, exclude MultiBinary from the list of preprocessors.
+        pp = ModelCatalog.get_preprocessor_for_space(
+            observation_space, include_multi_binary=False
+        )
+        # Scondly, include MultiBinary with the list of preprocessors.
+        self.assertTrue(isinstance(pp, NoPreprocessor))
+        pp = ModelCatalog.get_preprocessor_for_space(
+            observation_space, include_multi_binary=True
+        )
+        self.assertTrue(isinstance(pp, MultiBinaryPreprocessor))
+        self.assertEqual(pp.observation_space.shape, (5,))
+        check(pp.transform(np.array([0, 1, 0, 1, 1])), [0, 1, 0, 1, 1])
 
     def test_dict_flattening_preprocessor(self):
         space = Dict(
