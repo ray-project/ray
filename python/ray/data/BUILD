@@ -85,7 +85,7 @@ py_test(
 py_test(
     name = "test_block_batching",
     size = "medium",
-    srcs = ["tests/test_block_batching.py"],
+    srcs = ["tests/block_batching/test_block_batching.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

@@ -293,9 +293,11 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/modin/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/modin/...
     # Dask tests and examples.
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/dask/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/dask/...
+    # RayDP tests and examples.
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/data/tests/test_raydp_dataset.py
 
 - label: ":potable_water: Dataset datasource integration tests (Python 3.7)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
@@ -336,50 +338,14 @@
     - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
     - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data python/ray/air/...
 
-- label: "Dataset tests (Arrow 10)"
+- label: "Dataset tests (Arrow 11)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
   instance_size: medium
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/install-java.sh
-    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=10.* ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data python/ray/air/...
-
-- label: "Dataset tests (Arrow 9)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
-  instance_size: medium
-  parallelism: 3
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/install-java.sh
-    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=9.* ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data python/ray/air/...
-
-- label: "Dataset tests (Arrow 8)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
-  instance_size: medium
-  parallelism: 3
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/install-java.sh
-    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=8.* ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data python/ray/air/...
-
-- label: "Dataset tests (Arrow 7)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
-  instance_size: medium
-  parallelism: 3
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/install-java.sh
-    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=7.* ./ci/env/install-dependencies.sh
+    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=11.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-dataset_integration python/ray/data/...
     - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data python/ray/air/...
