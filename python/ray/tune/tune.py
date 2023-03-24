@@ -868,7 +868,9 @@ def run(
             stack.enter_context(air_progress_reporter.with_live())
 
         try:
-            while not runner.is_finished() and not experiment_interrupted_event.is_set():
+            while (
+                not runner.is_finished() and not experiment_interrupted_event.is_set()
+            ):
                 runner.step()
                 if has_verbosity(Verbosity.V1_EXPERIMENT):
                     _report_progress(runner, progress_reporter)
