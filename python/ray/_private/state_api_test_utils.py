@@ -311,7 +311,12 @@ def periodic_invoke_state_apis_with_actor(*args, **kwargs) -> ActorHandle:
 
 
 def summarize_worker_startup_time():
-    workers = list_workers(detail=True, filters=[("worker_type", "=", "WORKER")])
+    workers = list_workers(
+        detail=True,
+        filters=[("worker_type", "=", "WORKER")],
+        limit=10000,
+        raise_on_missing_output=False,
+    )
     time_to_launch = []
     time_to_initialize = []
     for worker in workers:
