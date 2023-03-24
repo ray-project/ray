@@ -22,6 +22,8 @@ Preprocessors are primitives that can be used to transform input data into featu
 
 A Preprocessor is fitted during Training, and applied at runtime in both Training and Serving on data batches in the same way. AIR comes with a collection of built-in preprocessors, and you can also define your own with simple templates.
 
+See the documentation on :ref:`Preprocessors <air-preprocessor-ref>`.
+
 .. literalinclude:: doc_code/air_key_concepts.py
     :language: python
     :start-after: __air_preprocessors_start__
