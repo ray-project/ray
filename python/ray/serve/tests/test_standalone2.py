@@ -1359,6 +1359,88 @@ class TestServeRequestProcessingTimeoutS:
         serve.shutdown()
 
 
+class TestEmbargoReplica:
+    @pytest.mark.parametrize(
+        "ray_instance",
+        [
+            {
+                "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "1",
+                "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES": "0",
+            },
+        ],
+        indirect=True,
+    )
+    def test_embargo_stalled_replica(self, ray_instance):
+        @ray.remote
+        class PidTracker:
+            def __init__(self):
+                self.pids = set()
+
+            def add_pid(self, pid: int) -> None:
+                self.pids.add(pid)
+
+            def get_pids(self) -> Set[int]:
+                return self.pids
+
+            def clear_pids(self) -> None:
+                self.pids.clear()
+
+        pid_tracker = PidTracker.remote()
+        signal_actor = SignalActor.remote()
+
+        @serve.deployment(num_replicas=2)
+        async def waiter():
+            import os
+
+            print("Got forwarded request")
+
+            ray.get(pid_tracker.add_pid.remote(os.getpid()))
+
+            # First Waiter replica will hang indefinitely. All other proceed.
+            num_waiters = await signal_actor.cur_num_waiters.remote()
+            if num_waiters == 0:
+                print("Waiting")
+                await signal_actor.wait.remote()
+            return "Success!"
+
+        serve.run(waiter.bind())
+
+        with ThreadPoolExecutor() as pool:
+            print("Sending first request. This request should hang.")
+            pool.submit(requests.get, "http://localhost:8000")
+
+            wait_for_condition(
+                lambda: len(ray.get(pid_tracker.get_pids.remote())) == 1,
+                retry_interval_ms=500,
+                timeout=5,
+            )
+
+            print("Sleeping until first request times out.")
+            time.sleep(1)
+
+            # Clear out the first request's pid
+            hanging_pid = list(ray.get(pid_tracker.get_pids.remote()))[0]
+            ray.get(pid_tracker.clear_pids.remote())
+
+            print("Submitting follow-up requests. These should finish quickly.")
+            valid_futs = []
+            for _ in range(10):
+                valid_futs.append(pool.submit(requests.get, "http://localhost:8000"))
+
+            print("Finished submitting. Waiting for all requests to finish.")
+            for fut in valid_futs:
+                wait_for_condition(lambda: fut.done(), timeout=2)
+                assert fut.result().text == "Success!"
+
+        # All requests should be sent to the live replica only
+        assert len(ray.get(pid_tracker.get_pids.remote())) == 1
+        assert list(ray.get(pid_tracker.get_pids.remote()))[0] != hanging_pid
+
+        signal_actor.send.remote()
+
+        serve.shutdown()
+
+
 @pytest.mark.parametrize(
     "ray_instance",
     [

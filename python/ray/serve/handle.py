@@ -240,7 +240,7 @@ class RayServeHandle:
     async def _internal_remote(self, *args, **kwargs) -> Tuple[ray.ObjectRef, str]:
         """Issue an asynchronous request to the deployment.
 
-        Returns a asyncio task whose results can be waited for infintely or
+        Returns an asyncio task whose results can be waited for infintely or
         retrieved using ray.wait or ray.get (or ``await object_ref``),
         respectively. Also returns the replica_tag of the replica processing
         the request.
