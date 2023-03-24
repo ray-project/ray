@@ -94,7 +94,7 @@ class TfMLP(tf.keras.Model):
                 )
             )
         if output_activation != "linear":
-            output_activation = get_activation_fn(output_activation, framework="tf")
+            output_activation = get_activation_fn(output_activation, framework="tf2")
             final_layer = tf.keras.layers.Dense(
                 output_dim,
                 activation=output_activation,

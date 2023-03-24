@@ -27,7 +27,6 @@ def _framework_implemented(torch: bool = True, tf2: bool = True):
     if torch:
         accepted.append("torch")
     if tf2:
-        accepted.append("tf")
         accepted.append("tf2")
 
     def decorator(fn: Callable) -> Callable:

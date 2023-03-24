@@ -17,7 +17,7 @@ def _check_if_diag_gaussian(action_distribution_cls, framework):
         assert (
             type(action_distribution_cls) == TorchDiagGaussian
         ), "free_log_std is only supported for DiagGaussian action distributions."
-    elif framework == "tf":
+    elif framework == "tf2":
         from ray.rllib.models.tf.tf_distributions import TfDiagGaussian
 
         assert (
@@ -102,7 +102,7 @@ class PPOCatalog(Catalog):
         configuring the behavior of a PPORLModuleBase implementation.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The ActorCriticEncoder.
@@ -127,7 +127,7 @@ class PPOCatalog(Catalog):
         the behavior of a PPORLModuleBase implementation.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The policy head.
@@ -156,7 +156,7 @@ class PPOCatalog(Catalog):
         configuring the behavior of a PPORLModuleBase implementation.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The value function head.
