@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from zipfile import ZipFile
 
 from filelock import FileLock
+from python.ray.util.annotations import DeveloperAPI
 
 from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
@@ -589,10 +590,11 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
     return local_dir
 
 
+@DeveloperAPI
 async def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
-    gcs_aio_client: GcsAioClient,
+    gcs_aio_client: Optional[GcsAioClient],
     logger: Optional[logging.Logger] = default_logger,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
@@ -614,6 +616,7 @@ async def download_and_unpack_package(
         IOError: If the download fails.
         ImportError: If smart_open is not installed and a remote URI is used.
         NotImplementedError: If the protocol of the URI is not supported.
+        ValueError: If the GCS client is not provided when downloading from GCS.
 
     """
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
@@ -630,6 +633,11 @@ async def download_and_unpack_package(
         else:
             protocol, pkg_name = parse_uri(pkg_uri)
             if protocol == Protocol.GCS:
+                if gcs_aio_client is None:
+                    raise ValueError(
+                        "GCS client must be provided to download from GCS."
+                    )
+
                 # Download package from the GCS.
                 code = await gcs_aio_client.internal_kv_get(
                     pkg_uri.encode(), namespace=None, timeout=None
