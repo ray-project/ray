@@ -42,8 +42,8 @@ class TfModel(Model, tf.keras.Model, abc.ABC):
         if not is_output_decorated(self.__call__):
             _raise_not_decorated_exception("output")
 
-    @check_input_specs("input_spec", cache=True)
-    @check_output_specs("output_spec", cache=True)
+    @check_input_specs("input_spec")
+    @check_output_specs("output_spec")
     def __call__(self, input_dict: NestedDict, **kwargs) -> NestedDict:
         """Returns the output of this model for the given input.
 
