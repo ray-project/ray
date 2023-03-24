@@ -197,7 +197,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_progress_reporter.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "test_progress_reporter"],
+    tags = ["team:ml", "exclusive"],
 )
 
 py_test(

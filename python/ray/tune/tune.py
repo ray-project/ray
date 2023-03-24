@@ -159,8 +159,8 @@ def _report_progress(
     trials = runner.get_trials()
     if reporter.should_report(trials, done=done):
         sched_debug_str = runner.scheduler_alg.debug_string()
-        executor_debug_str = runner.trial_executor.debug_string()
-        reporter.report(trials, done, sched_debug_str, executor_debug_str)
+        used_resources_str = runner.trial_executor._used_resources_string()
+        reporter.report(trials, done, sched_debug_str, used_resources_str)
 
 
 def _report_air_progress(
