@@ -8,7 +8,9 @@ if sys.version_info >= (3, 7):
 
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.progress_bar import set_progress_bars
+from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
 from ray.data.dataset import Dataset
+from ray.data.context import DatasetContext
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data.dataset_pipeline import DatasetPipeline
 from ray.data.datasource import Datasource, ReadTask
@@ -44,6 +46,7 @@ from ray.data.read_api import (  # noqa: F401
     read_text,
     read_mongo,
     read_tfrecords,
+    read_webdataset,
 )
 
 
@@ -55,9 +58,12 @@ _cached_cls = None
 __all__ = [
     "ActorPoolStrategy",
     "Dataset",
+    "DatasetContext",
     "DatasetIterator",
     "DatasetPipeline",
     "Datasource",
+    "ExecutionOptions",
+    "ExecutionResources",
     "ReadTask",
     "from_dask",
     "from_items",
@@ -88,6 +94,7 @@ __all__ = [
     "read_parquet_bulk",
     "read_sql",
     "read_tfrecords",
+    "read_webdataset",
     "set_progress_bars",
     "Preprocessor",
 ]
