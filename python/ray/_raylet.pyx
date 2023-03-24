@@ -611,8 +611,9 @@ cdef store_task_errors(
     # Pass the failure object back to the CoreWorker.
     # We also cap the size of the error message to the last
     # MAX_APPLICATION_ERROR_LEN characters of the error message.
-    application_error[0] = str(failure_object)[
-        -ray_constants.MAX_APPLICATION_ERROR_LEN:]
+    if application_error != NULL:
+        application_error[0] = str(failure_object)[
+            -ray_constants.MAX_APPLICATION_ERROR_LEN:]
 
     errors = []
     for _ in range(returns[0].size()):
@@ -1131,7 +1132,10 @@ cdef execute_task_with_cancellation_handler(
                 # to differentiate between mid-task or not.
                 False,  # task_exception
                 actor, execution_info.function_name,
-                task_type, title, returns, application_error)
+                task_type, title, returns,
+                # application_error: we are passing NULL since we don't want the
+                # cancel tasks to fail.
+                NULL)
     finally:
         with current_task_id_lock:
             current_task_id = None

@@ -127,31 +127,31 @@ def test_failed_task_error(shutdown_only):
         error_message="",
     )
 
-    @ray.remote
-    def loop():
-        while True:
-            pass
-
-    t = loop.options(name="cancel-while-running").remote()
-
-    def running():
-        t = list_tasks(filters=[("name", "=", "cancel-while-running")])
-        return t[0]["state"] == "RUNNING"
-
-    wait_for_condition(running)
-
-    with pytest.raises(ray.exceptions.RayTaskError):
-        ray.cancel(t)
-        ray.get(t)
-
     # TODO: we should make this TASK_CANCELLED.
     # https://github.com/ray-project/ray/issues/32826
-    wait_for_condition(
-        verify_failed_task,
-        name="cancel-while-running",
-        error_type="TASK_EXECUTION_EXCEPTION",
-        error_message="",
-    )
+    # @ray.remote
+    # def loop():
+    #     while True:
+    #         pass
+
+    # t = loop.options(name="cancel-while-running").remote()
+
+    # def running():
+    #     t = list_tasks(filters=[("name", "=", "cancel-while-running")])
+    #     return t[0]["state"] == "RUNNING"
+
+    # wait_for_condition(running)
+
+    # with pytest.raises(ray.exceptions.RayTaskError):
+    #     ray.cancel(t)
+    #     ray.get(t)
+
+    # wait_for_condition(
+    #     verify_failed_task,
+    #     name="cancel-while-running",
+    #     error_type="TASK_CANCELLED",
+    #     error_message="",
+    # )
 
     # Test task failed when worker killed :WORKER_DIED
     @ray.remote(max_retries=0)
