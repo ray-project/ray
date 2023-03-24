@@ -458,7 +458,7 @@ class TestCatalog(unittest.TestCase):
 
         class MyCustomCatalog(PPOCatalog):
             def __post_init__(self):
-                self.action_dist_class_fn = functools.partial(
+                self._action_dist_class_fn = functools.partial(
                     self.get_dist_cls_from_action_space, action_space=self.action_space
                 )
                 self.latent_dims = (10,)

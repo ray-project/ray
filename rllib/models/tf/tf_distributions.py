@@ -99,12 +99,20 @@ class TfCategorical(TfDistribution):
         temperature: float = 1.0,
     ) -> None:
         # We assert this here because to_deterministic makes this assumption.
-        assert not (
-            probs is not None and logits is not None
-        ), "Only one of `probs` or `logits` can be set!"
+        assert (probs is None) != (
+            logits is None
+        ), "Exactly one out of `probs` and `logits` must be set!"
+
+        if logits is not None:
+            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
+            _logits = logits / temperature
+            probs = tf.nn.nn.functional.softmax(_logits, dim=-1)
+
         self.probs = probs
         self.logits = logits
-        super().__init__(probs=probs, logits=logits, temperature=temperature)
+        self.temperature = temperature
+        self.one_hot = tfp.distributions.OneHotCategorical(probs=probs)
+        super().__init__(probs=probs)
 
     @override(Distribution)
     def logp(self, value: TensorType, **kwargs) -> TensorType:
@@ -133,8 +141,8 @@ class TfCategorical(TfDistribution):
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
-        # TODO(Kourosh): Find out how we can rsample here.
-        raise NotImplementedError
+        one_hot_sample = self.one_hot.sample(sample_shape)
+        return tf.stop_gradients(one_hot_sample - self.probs) + self.probs
 
     @classmethod
     @override(Distribution)

@@ -105,27 +105,26 @@ class TorchCategorical(TorchDistribution):
         assert (probs is None) != (
             logits is None
         ), "Exactly one out of `probs` and `logits` must be set!"
+
+        if logits is not None:
+            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
+            _logits = logits / temperature
+            probs = torch.nn.functional.softmax(_logits, dim=-1)
+
         self.probs = probs
         self.logits = logits
+        self.temperature = temperature
         self.one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
-            probs=self.probs, logits=self.logits
+            probs=probs
         )
-        super().__init__(probs=probs, logits=logits, temperature=temperature)
+        super().__init__(probs=probs)
 
     @override(TorchDistribution)
     def _get_torch_distribution(
         self,
         probs: torch.Tensor = None,
-        logits: torch.Tensor = None,
-        temperature: float = 1.0,
     ) -> "torch.distributions.Distribution":
-        if logits is not None:
-            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-            _logits = logits / temperature
-        else:
-            _logits = logits
-        self.temperature = temperature
-        return torch.distributions.categorical.Categorical(probs, _logits)
+        return torch.distributions.categorical.Categorical(probs)
 
     @staticmethod
     @override(Distribution)
@@ -135,8 +134,8 @@ class TorchCategorical(TorchDistribution):
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
-        # TODO(Kourosh): Find out how we can rsample here.
-        raise NotImplementedError
+        one_hot_sample = self.one_hot.sample(sample_shape)
+        return (one_hot_sample - self.probs).detach() + self.probs
 
     @classmethod
     @override(Distribution)
