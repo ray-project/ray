@@ -82,7 +82,7 @@ class LightningConfigBuilder:
         self._model_checkpoint_config = {}
 
     def module(
-        self, cls: Type[pl.LightningModule], **kwargs
+        self, cls: Optional[Type[pl.LightningModule]] = None, **kwargs
     ) -> "LightningConfigBuilder":
         """Set up the Pytorch Lightning module class.
 
@@ -92,14 +92,7 @@ class LightningConfigBuilder:
                 class definition instead of a class instance.
             **kwargs: The initialization argument list of your lightning module.
         """
-        if not isclass(cls):
-            raise ValueError("'module_class' must be a class, not a class instance.")
-        if not issubclass(cls, pl.LightningModule):
-            raise ValueError(
-                "'module_class' must be a subclass of 'pl.LightningModule'!"
-            )
         self._module_class = cls
-
         self._module_init_config.update(**kwargs)
         return self
 
@@ -150,7 +143,21 @@ class LightningConfigBuilder:
 
     def build(self) -> Dict["str", Any]:
         """Build and return a config dictionary to pass into LightningTrainer"""
-        return self.__dict__.copy()
+        config_dict = self.__dict__.copy()
+
+        if self._module_class:
+            if not isclass(self._module_class):
+                raise ValueError(
+                    "'module_class' must be a class, not a class instance."
+                )
+            if not issubclass(self._module_class, pl.LightningModule):
+                raise ValueError(
+                    "'module_class' must be a subclass of 'pl.LightningModule'!"
+                )
+        else:
+            # Avoid default key-value pair to adapt with Ray Tune scheduler.
+            config_dict.pop("_module_class")
+        return config_dict
 
 
 @PublicAPI(stability="alpha")
@@ -183,10 +190,8 @@ class LightningTrainer(TorchTrainer):
     using the arguments provided in ``LightningConfigBuilder.fit_params()`` and then
     run ``pytorch_lightning.Trainer.fit``.
 
-    TODO(yunxuanx): make this example testable
-
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import torch
             import torch.nn.functional as F
@@ -196,7 +201,8 @@ class LightningTrainer(TorchTrainer):
             from torchvision import transforms
             import pytorch_lightning as pl
             from ray.air.config import ScalingConfig
-            from ray.train.lightning import LightningTrainer, LightningConfig
+            from ray.train.lightning import LightningTrainer, LightningConfigBuilder
+
 
             class MNISTClassifier(pl.LightningModule):
                 def __init__(self, lr, feature_dim):
@@ -216,7 +222,7 @@ class LightningTrainer(TorchTrainer):
                     x, y = batch
                     y_hat = self(x)
                     loss = torch.nn.functional.cross_entropy(y_hat, y)
-                    self.log('train_loss', loss)
+                    self.log("train_loss", loss)
                     return loss
 
                 def validation_step(self, val_batch, batch_idx):
@@ -237,9 +243,8 @@ class LightningTrainer(TorchTrainer):
                     return optimizer
 
             # Prepare MNIST Datasets
-            transform = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307,), (0.3081,))]
+            transform = transforms.Compose(
+                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
             )
             mnist_train = MNIST(
                 './data', train=True, download=True, transform=transform
@@ -253,8 +258,8 @@ class LightningTrainer(TorchTrainer):
             mnist_train = Subset(mnist_train, range(1000))
             mnist_train = Subset(mnist_train, range(500))
 
-            train_loader = DataLoader(mnist_train, batch_size=32, shuffle=True)
-            val_loader = DataLoader(mnist_val, batch_size=32, shuffle=False)
+            train_loader = DataLoader(mnist_train, batch_size=128, shuffle=True)
+            val_loader = DataLoader(mnist_val, batch_size=128, shuffle=False)
 
             lightning_config = (
                 LightningConfigBuilder()
@@ -271,7 +276,14 @@ class LightningTrainer(TorchTrainer):
                 lightning_config=lightning_config,
                 scaling_config=scaling_config,
             )
-            results = trainer.fit()
+            result = trainer.fit()
+            result
+
+    .. testoutput::
+        :hide:
+        :options: +ELLIPSIS
+
+        ...
 
     Args:
         lightning_config: Configuration for setting up the Pytorch Lightning Trainer.
