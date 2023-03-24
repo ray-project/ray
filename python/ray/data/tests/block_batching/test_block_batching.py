@@ -2,8 +2,6 @@ import pytest
 from typing import List
 from unittest import mock
 
-import numpy as np
-import pandas as pd
 import pyarrow as pa
 
 from ray.data.block import Block
@@ -12,8 +10,6 @@ from ray.data._internal.block_batching.block_batching import (
     batch_block_refs,
     batch_blocks,
     _prefetch_blocks,
-    _blocks_to_batches,
-    _format_batches,
 )
 
 
@@ -38,9 +34,9 @@ def test_batch_block_refs():
 
 def test_batch_blocks():
     with mock.patch(
-        "ray.data._internal.block_batching.block_batching._blocks_to_batches"
+        "ray.data._internal.block_batching.block_batching.blocks_to_batches"
     ) as mock_batch, mock.patch(
-        "ray.data._internal.block_batching.block_batching._format_batches"
+        "ray.data._internal.block_batching.block_batching.format_batches"
     ) as mock_format:
         block_iter = block_generator(2, 2)
         batch_iter = batch_blocks(block_iter)
@@ -77,6 +73,7 @@ def test_prefetch_blocks(num_blocks_to_prefetch):
     assert all(len(window) == num_blocks_to_prefetch for window in windows)
 
 
+<<<<<<< HEAD
 @pytest.mark.parametrize("block_size", [1, 10])
 @pytest.mark.parametrize("drop_last", [True, False])
 def test_blocks_to_batches(block_size, drop_last):
@@ -119,6 +116,46 @@ def test_format_batches(batch_format):
         elif batch_format == "numpy":
             assert isinstance(batch, dict)
             assert isinstance(batch["foo"], np.ndarray)
+=======
+# Test for 3 cases
+# 1. Batch size is less than block size
+# 2. Batch size is more than block size
+# 3. Block size is not divisble by batch size
+@pytest.mark.parametrize("batch_size", [4, 10, 7])
+def test_async_batch_fetching(batch_size):
+    blocks = block_generator(num_blocks=5, num_rows=8)
+
+    def sleep_batch_format(batch_iter, *args, **kwargs):
+        for batch in batch_iter:
+            time.sleep(2)
+            yield batch
+
+    with mock.patch(
+        "ray.data._internal.block_batching.util.format_batches",
+        sleep_batch_format,
+    ):
+        batch_iter = batch_blocks(
+            batch_size=batch_size, blocks=blocks, prefetch_batches=1
+        )
+        outputs = []
+        start_time = time.time()
+        for batch in batch_iter:
+            time.sleep(3)
+            outputs.append(batch)
+        end_time = time.time()
+
+    total_time = end_time - start_time
+    # Total time should be based on number of times the udf is called
+    # (which is equal to len(outputs)).
+    # The 2 seconds sleep in sleep_batch_format is overlapped, so does not count
+    # towards total time.
+    assert total_time < len(outputs) * 3 + 3
+
+    # There should be no dropped rows.
+    assert sum(len(output_batch) for output_batch in outputs) == 40, sum(
+        len(output_batch) for output_batch in outputs
+    )  # 5 blocks with 8 rows each.
+>>>>>>> 0feeb2d4a0a98405254ae1c6b497d79d91a08e3e
 
 
 if __name__ == "__main__":
