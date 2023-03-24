@@ -45,6 +45,12 @@ export type GlobalContextType = {
   ipLogMap: { [key: string]: string };
   namespaceMap: { [key: string]: string[] };
   /**
+   * Whether the initial metrics context has been fetched or not.
+   * This can be used to determine the difference between Grafana
+   * not being set up vs the status not being fetched yet.
+   */
+  metricsContextLoaded: boolean;
+  /**
    * The host that is serving grafana. Only set if grafana is
    * running as detected by the grafana healthcheck endpoint.
    */
@@ -67,6 +73,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMapByIp: {},
   ipLogMap: {},
   namespaceMap: {},
+  metricsContextLoaded: false,
   grafanaHost: undefined,
   grafanaDefaultDashboardUid: undefined,
   prometheusHealth: undefined,
@@ -79,6 +86,7 @@ const App = () => {
     nodeMapByIp: {},
     ipLogMap: {},
     namespaceMap: {},
+    metricsContextLoaded: false,
     grafanaHost: undefined,
     grafanaDefaultDashboardUid: undefined,
     prometheusHealth: undefined,
@@ -117,6 +125,7 @@ const App = () => {
       } = await getMetricsInfo();
       setContext((existingContext) => ({
         ...existingContext,
+        metricsContextLoaded: true,
         grafanaHost,
         grafanaDefaultDashboardUid,
         sessionName,
