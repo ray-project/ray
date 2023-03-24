@@ -31,8 +31,8 @@ In a single async thread, do the following:
     3. Perform the necessary batch slicing to construct full batches, possibly
         shuffling if necessary.
     4. Then, in a threadpool consisting of `prefetch_batches` threads:
-        3. Format the batches to the provided batch format.
-        4. Apply the collate function.
+        a. Format the batches to the provided batch format.
+        b. Apply the collate function.
     5. Fetch outputs from the threadpool, maintaining order of the batches.
 """
 
@@ -57,34 +57,31 @@ def prefetch_batches_locally(
     sliding_window = collections.deque()
     current_window_size = 0
 
-    if batch_size:
+    if batch_size is None:
         num_rows_to_prefetch = num_batches_to_prefetch * batch_size
     else:
         num_rows_to_prefetch = None
 
     # Create and fetch the initial window.
-    while True:
+    # Stop adding if the number of rows in this window is greater than requested
+    # batch size, or if the batch size is None and the number of blocks in this window
+    # is greater than requested batches to prefetch.
+    while (batch_size is not None and current_window_size >= num_rows_to_prefetch) or (
+        batch_size is None and len(sliding_window) >= num_batches_to_prefetch
+    ):
         try:
             next_block_ref_and_metadata = next(block_ref_iter)
-            sliding_window.append(next_block_ref_and_metadata)
-            current_window_size += next_block_ref_and_metadata[1].num_rows
         except StopIteration:
             break
-        # Stop adding if the number of rows in this window is greater than
-        # requested batch size.
-        if batch_size and current_window_size >= num_rows_to_prefetch:
-            break
-        # Stop adding if batch_size is None and the number of blocks in this window
-        # is greater than requested batches to prefetch.
-        elif not batch_size and len(sliding_window) >= num_batches_to_prefetch:
-            break
+        sliding_window.append(next_block_ref_and_metadata)
+        current_window_size += next_block_ref_and_metadata[1].num_rows
 
     prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
 
     while sliding_window:
         block_ref, metadata = sliding_window.popleft()
         current_window_size -= metadata.num_rows
-        if not batch_size or current_window_size < num_rows_to_prefetch:
+        if batch_size is None or current_window_size < num_rows_to_prefetch:
             try:
                 sliding_window.append(next(block_ref_iter))
                 prefetcher.prefetch_blocks(
@@ -95,7 +92,7 @@ def prefetch_batches_locally(
         yield block_ref
 
 
-def restore_from_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
+def restore_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
     """Restores the original order of the provided `batch_iter`
 
     This function will yield items from `base_iterator` in the correct order based on

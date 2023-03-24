@@ -71,7 +71,8 @@ def resolve_block_refs(
 
         # TODO(amogkam): Optimized further by batching multiple references in a single
         # `ray.get()` call.
-        block = ray.get(block_ref)
+        with stats.iter_get_s.timer() if stats else nullcontext():
+            block = ray.get(block_ref)
         trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
         yield block
 
