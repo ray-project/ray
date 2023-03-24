@@ -1,7 +1,7 @@
 import copy
 import time
 import traceback
-from collections import defaultdict
+from collections import defaultdict, deque
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Union, Tuple, Set
 
@@ -100,9 +100,14 @@ class TuneController(_TuneControllerBase):
         self._failed_trials: Set[Trial] = set()
 
         self._resetting_trials: Set[Trial] = set()
-        self._stopping_trials: Set[Trial] = set()
-
         self._staged_trials: Set[Trial] = set()
+
+        # Removed actors
+        self._stopping_actors: Dict[TrackedActor, float] = {}
+        self._earliest_stopping_actor: float = float("inf")
+        self._actor_cleanup_timeout: int = int(
+            os.environ.get("TUNE_FORCE_TRIAL_CLEANUP_S", "600")
+        )
 
         # Reuse actors
         self._reuse_actors = reuse_actors  # reuse_actors
@@ -158,6 +163,7 @@ class TuneController(_TuneControllerBase):
 
     def on_step_end(self):
         self._cleanup_cached_actors(force_all=False)
+        self._cleanup_stopping_actors(force_all=False)
 
     def _cleanup_cached_actors(self, force_all: bool = False):
         if (
@@ -179,6 +185,35 @@ class TuneController(_TuneControllerBase):
             tracked_actor.set_on_error(None)
             self._remove_actor(tracked_actor=tracked_actor)
 
+    def _cleanup_stopping_actors(self, force_all: bool = False):
+        now = time.monotonic()
+
+        if (
+            not force_all
+            and now - self._earliest_stopping_actor > self._actor_cleanup_timeout
+        ):
+            # If the earliest actor to timeout has not reached the timeout, return
+            return
+
+        # This is a bit costly, so we want to avoid running it too often
+        times = deque(
+            sorted(
+                (timestamp, tracked_actor)
+                for tracked_actor, timestamp in self._stopping_actors.items()
+            )
+        )
+
+        while times and (
+            force_all or time.monotonic() - times[0][0] > self._actor_cleanup_timeout
+        ):
+            _, tracked_actor = times.popleft()
+            self._actor_manager.remove_actor(tracked_actor=tracked_actor, kill=True)
+
+        if times:
+            self._earliest_stopping_actor = times[0][0]
+        else:
+            self._earliest_stopping_actor = float("inf")
+
     def step(self):
         if self.is_finished():
             raise TuneError("Called step when all trials finished?")
@@ -198,7 +233,7 @@ class TuneController(_TuneControllerBase):
         self._maybe_add_actors()
 
         # Handle one event
-        if not self._actor_manager.next(timeout=1):
+        if not self._actor_manager.next(timeout=0.1):
             # If there are no actors running, warn about potentially
             # insufficient resources
             if not self._actor_manager.num_live_actors:
@@ -348,26 +383,31 @@ class TuneController(_TuneControllerBase):
 
         for tracked_actor in list(self._actor_to_trial):
             trial = self._actor_to_trial[tracked_actor]
-            if trial not in self._stopping_trials:
-                logger.debug(
-                    f"Cleaning up running actor at end of experiment (trial {trial}): "
-                    f"{tracked_actor}"
-                )
-                self._remove_actor(tracked_actor=tracked_actor)
+            logger.debug(
+                f"Scheduling trial stop at end of experiment (trial {trial}): "
+                f"{tracked_actor}"
+            )
+            self._schedule_trial_stop(trial)
 
         start = time.monotonic()
         while time.monotonic() - start < 5 and self._actor_manager.num_total_actors:
             logger.debug("Waiting for actor manager to clean up final state")
             self._actor_manager.next(timeout=1)
 
+        self._cleanup_stopping_actors(force_all=True)
+
         self._actor_manager.cleanup()
 
-    def _remove_actor(self, tracked_actor: TrackedActor, kill: bool = False):
-        # Trainable.stop() is needed here for graceful shutdown.
-        # Todo: Consider forceful shutdown after a timeout
-        if self._actor_manager.is_actor_started(tracked_actor=tracked_actor):
-            self._actor_manager.schedule_actor_task(tracked_actor, "stop")
-        self._actor_manager.remove_actor(tracked_actor, kill=kill)
+    def _remove_actor(self, tracked_actor: TrackedActor):
+        stop_future = self._actor_manager.schedule_actor_task(
+            tracked_actor, "stop", _return_future=True
+        )
+        now = time.monotonic()
+        self._stopping_actors[tracked_actor] = now
+        self._earliest_stopping_actor = min(self._earliest_stopping_actor, now)
+        self._actor_manager.remove_actor(
+            tracked_actor, kill=False, stop_future=stop_future
+        )
 
     ###
     # ADD ACTORS
@@ -663,16 +703,15 @@ class TuneController(_TuneControllerBase):
             self._schedule_trial_train(trial)
 
     def _actor_stopped(self, tracked_actor: TrackedActor):
-        trial = self._actor_to_trial.pop(tracked_actor)
+        if tracked_actor in self._actor_to_trial:
+            trial = self._actor_to_trial.pop(tracked_actor)
+            logger.debug(f"Actor STOPPED for trial {trial}: {tracked_actor}")
+            self._trial_to_actor.pop(trial)
+            trial.set_runner(None)
 
-        logger.debug(f"Actor STOPPED for trial {trial}: {tracked_actor}")
+        logger.debug(f"Actor STOPPED: {tracked_actor}")
 
-        self._trial_to_actor.pop(trial)
-        self._stopping_trials.discard(trial)
-
-        trial.set_runner(None)
-
-        self._mark_trial_to_checkpoint(trial)
+        self._stopping_actors.pop(tracked_actor)
 
     def _actor_failed(self, tracked_actor: TrackedActor, exception: Exception):
         trial = self._actor_to_trial[tracked_actor]
@@ -812,12 +851,19 @@ class TuneController(_TuneControllerBase):
 
         self._actor_manager.clear_actor_task_futures(tracked_actor=tracked_actor)
 
+        self._mark_trial_to_checkpoint(trial)
+
         if not exception and self._maybe_cache_trial_actor(trial):
             # Trial runner has been cached
             return
 
         logger.debug(f"Terminating actor for trial {trial}: {tracked_actor}")
-        self._stopping_trials.add(trial)
+
+        tracked_actor = self._trial_to_actor.pop(trial)
+        self._actor_to_trial.pop(tracked_actor)
+
+        trial.set_runner(None)
+
         self._remove_actor(tracked_actor=tracked_actor)
 
     def _schedule_graceful_trial_stop(self, trial: Trial):
@@ -883,7 +929,14 @@ class TuneController(_TuneControllerBase):
         trial: Trial,
         storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> _TrackedCheckpoint:
+    ) -> Optional[_TrackedCheckpoint]:
+        if trial not in self._trial_to_actor:
+            logger.debug(
+                f"Trial SAVE requested for trial {trial} but trial is already "
+                f"stopping. Ignoring."
+            )
+            return None
+
         result = result or trial.last_result
 
         if storage == CheckpointStorage.MEMORY:
@@ -1076,7 +1129,7 @@ class TuneController(_TuneControllerBase):
             "_stopped_trials",
             "_failed_trials",
             "_resetting_trials",
-            "_stopping_trials",
+            "_stopping_actors",
             "_staged_trials",
             "_actor_cache",
         ]:

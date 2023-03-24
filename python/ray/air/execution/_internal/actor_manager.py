@@ -543,6 +543,7 @@ class RayActorManager:
         self,
         tracked_actor: TrackedActor,
         kill: bool = False,
+        stop_future: Optional[ray.ObjectRef] = None,
     ) -> None:
         """Remove a tracked actor.
 
@@ -562,6 +563,8 @@ class RayActorManager:
             tracked_actor: Tracked actor to be removed.
             kill: If set, will forcefully terminate the actor instead of gracefully
                 scheduling termination.
+            stop_future: If set, use this future to track actor termination.
+                Otherwise, schedule a ``__ray_terminate__`` future instead.
         """
         if tracked_actor.actor_id in self._failed_actor_ids:
             logger.debug(
@@ -592,7 +595,12 @@ class RayActorManager:
                 def on_actor_stop(*args, **kwargs):
                     self._actor_stop_resolved(tracked_actor=tracked_actor)
 
-                stop_future = ray_actor.__ray_terminate__.remote()
+                if stop_future:
+                    # If the stop future was schedule via the actor manager,
+                    # discard (track it as state future instead).
+                    self._actor_task_events.discard_future(stop_future)
+                else:
+                    stop_future = ray_actor.__ray_terminate__.remote()
 
                 self._actor_state_events.track_future(
                     future=stop_future,

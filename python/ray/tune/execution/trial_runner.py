@@ -584,6 +584,9 @@ class _TuneControllerBase:
         # based on all results
         final_decision = self._queued_trial_decisions.pop(trial.trial_id, None)
         if final_decision:
+            logger.debug(
+                f"Executing final queued decision for {trial}: {final_decision}"
+            )
             self._execute_action(trial, final_decision)
 
     def _schedule_trial_stop(self, trial: Trial, exception: Optional[Exception] = None):
@@ -854,7 +857,7 @@ class _TuneControllerBase:
         trial: Trial,
         storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> _TrackedCheckpoint:
+    ) -> Optional[_TrackedCheckpoint]:
         raise NotImplementedError
 
     def _on_saving_result(self, trial, checkpoint_value: Union[ray.ObjectRef, str]):
@@ -1466,7 +1469,7 @@ class TrialRunner(_TuneControllerBase):
         trial: Trial,
         storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> _TrackedCheckpoint:
+    ) -> Optional[_TrackedCheckpoint]:
         return self.trial_executor.save(trial, storage=storage, result=result)
 
     def _schedule_trial_export(self, trial: Trial):
