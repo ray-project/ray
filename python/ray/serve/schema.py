@@ -13,7 +13,6 @@ from ray.serve._private.common import (
     ServeDeployMode,
 )
 from ray.serve.config import DeploymentMode
-from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -444,39 +443,6 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         return config
 
-    def prepend_app_name_to_deployment_names(self):
-        """Prepend the app name to all deployment names listed in the config."""
-        app_config = self.dict(exclude_unset=True)
-
-        if "deployments" in app_config and not self.name == "":
-            for idx, deployment in enumerate(app_config["deployments"]):
-                deployment["name"] = (
-                    self.name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment["name"]
-                )
-                app_config["deployments"][idx] = deployment
-
-        return ServeApplicationSchema.parse_obj(app_config)
-
-    def remove_app_name_from_deployment_names(self):
-        """Remove the app name prefix from all deployment names listed in the config.
-
-        This method should only be called on configs that have been processed internally
-        through prepend_app_name_to_deployment_names, which appends the app name prefix
-        to every deployment name.
-        """
-        app_config = self.dict(exclude_unset=True)
-        if "deployments" in app_config and not self.name == "":
-            for idx, deployment in enumerate(app_config["deployments"]):
-                prefix = self.name + DEPLOYMENT_NAME_PREFIX_SEPARATOR
-                # This method should not be called on any config that's not processed
-                # internally & returned by prepend_app_name_to_deployment_names
-                assert deployment["name"].startswith(prefix)
-
-                deployment["name"] = deployment["name"][len(prefix) :]
-                app_config["deployments"][idx] = deployment
-
-        return ServeApplicationSchema.parse_obj(app_config)
-
 
 @PublicAPI(stability="alpha")
 class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
@@ -691,7 +657,7 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     last_deployed_time_s: float = Field(
         description="The time at which the application was deployed."
     )
-    deployed_app_config: ServeApplicationSchema = Field(
+    deployed_app_config: Optional[ServeApplicationSchema] = Field(
         description=(
             "The exact copy of the application config that was submitted to the "
             "cluster. This will include all of, and only, the options that were "

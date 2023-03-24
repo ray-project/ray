@@ -1269,6 +1269,68 @@ class TestDeployApp:
         # The original applications should still be up and running
         self.check_multi_app()
 
+    def test_deploy_multi_app_deleting(self, client: ServeControllerClient):
+        """Test deleting an application by removing from config."""
+
+        config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
+        client.deploy_apps(config)
+        self.check_multi_app()
+
+        # Delete app2
+        del config.applications[1]
+        client.deploy_apps(config)
+
+        # Fetch details immediately afterwards, should parse correctly
+        details = ray.get(client._controller.get_serve_instance_details.remote())
+        ServeInstanceDetails(**details)
+        # We don't enforce that the state is deleting here because that could cause
+        # flaky test performance. The app could have been deleted by the time of query
+        assert (
+            "app2" not in details["applications"]
+            or details["applications"]["app2"]["status"] == ApplicationStatus.DELETING
+        )
+
+        info_valid = True
+
+        def check_app_status():
+            global info_valid
+            try:
+                # Fetch details, should always parse correctly
+                details = ray.get(
+                    client._controller.get_serve_instance_details.remote()
+                )
+                ServeInstanceDetails(**details)
+                return (
+                    details["applications"]["app1"]["status"]
+                    == ApplicationStatus.RUNNING
+                )
+            except Exception:
+                info_valid = False
+
+        wait_for_condition(check_app_status)
+        # Check that all all details fetched from controller parsed correctly
+        assert info_valid
+
+    def test_deploy_nonexistent_deployment(self, client: ServeControllerClient):
+        """Remove an application from a config, it should reach a deleting state."""
+
+        config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
+        # Change names to invalid names that don't contain "deployment" or "application"
+        config.applications[1].name = "random1"
+        config.applications[1].deployments[0].name = "random2"
+        client.deploy_apps(config)
+
+        def check_app_message():
+            details = ray.get(client._controller.get_serve_instance_details.remote())
+            # The error message should be descriptive
+            # e.g. no deployment "x" in application "y"
+            return (
+                "application" in details["applications"]["random1"]["message"]
+                and "deployment" in details["applications"]["random1"]["message"]
+            )
+
+        wait_for_condition(check_app_message)
+
 
 class TestServeRequestProcessingTimeoutS:
     @pytest.mark.parametrize(
