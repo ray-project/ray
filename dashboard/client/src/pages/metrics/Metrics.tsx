@@ -6,8 +6,7 @@ import {
   Paper,
   TextField,
 } from "@material-ui/core";
-import { Alert } from "@material-ui/lab";
-import classNames from "classnames";
+import { Alert, AlertProps } from "@material-ui/lab";
 import React, { useContext, useEffect, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
 
@@ -45,7 +44,7 @@ const useStyles = makeStyles((theme) =>
     },
     topBar: {
       position: "sticky",
-      top: 0,
+      top: MAIN_NAV_HEIGHT,
       width: "100%",
       display: "flex",
       flexDirection: "row",
@@ -55,9 +54,6 @@ const useStyles = makeStyles((theme) =>
       boxShadow: "0px 1px 0px #D2DCE6",
       zIndex: 1,
       height: 36,
-    },
-    topBarNewIA: {
-      top: MAIN_NAV_HEIGHT,
     },
     timeRangeButton: {
       marginLeft: theme.spacing(2),
@@ -193,11 +189,7 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
   },
 ];
 
-type MetricsProps = {
-  newIA?: boolean;
-};
-
-export const Metrics = ({ newIA = false }: MetricsProps) => {
+export const Metrics = () => {
   const classes = useStyles();
   const {
     grafanaHost,
@@ -228,18 +220,14 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
         pageInfo={{
           id: "metrics",
           title: "Metrics",
-          path: "/new/metrics",
+          path: "/metrics",
         }}
       />
       {grafanaHost === undefined || !prometheusHealth ? (
         <GrafanaNotRunningAlert className={classes.alert} />
       ) : (
         <div>
-          <Paper
-            className={classNames(classes.topBar, {
-              [classes.topBarNewIA]: newIA,
-            })}
-          >
+          <Paper className={classes.topBar}>
             <Button
               href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}`}
               target="_blank"
@@ -311,24 +299,42 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
   );
 };
 
-export const GrafanaNotRunningAlert = ({ className }: ClassNameProps) => {
+const useGrafanaNotRunningAlertStyles = makeStyles((theme) =>
+  createStyles({
+    heading: {
+      fontWeight: 500,
+    },
+  }),
+);
+
+export type GrafanaNotRunningAlertProps = {
+  severity?: AlertProps["severity"];
+} & ClassNameProps;
+
+export const GrafanaNotRunningAlert = ({
+  className,
+  severity = "warning",
+}: GrafanaNotRunningAlertProps) => {
+  const classes = useGrafanaNotRunningAlertStyles();
+
   const { grafanaHost, prometheusHealth } = useContext(GlobalContext);
   return grafanaHost === undefined || !prometheusHealth ? (
-    <Alert className={className} severity="warning">
-      Grafana or prometheus server not detected. Please make sure both services
-      are running and refresh this page. See:{" "}
+    <Alert className={className} severity={severity}>
+      <span className={classes.heading}>
+        Set up Prometheus and Grafana for better Ray Dashboard experience
+      </span>
+      <br />
+      <br />
+      Time-series charts are hidden because either Prometheus or Grafana server
+      is not detected. Follow{" "}
       <a
         href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
         target="_blank"
         rel="noreferrer"
       >
-        https://docs.ray.io/en/latest/ray-observability/ray-metrics.html
-      </a>
-      .
-      <br />
-      If you are hosting grafana on a separate machine or using a non-default
-      port, please set the RAY_GRAFANA_HOST env var to point to your grafana
-      server when launching ray.
+        these instructions
+      </a>{" "}
+      to set them up and refresh this page. .
     </Alert>
   ) : null;
 };

@@ -41,6 +41,7 @@ export const ClusterUtilizationCard = ({
   const classes = useStyles();
 
   const {
+    metricsContextLoaded,
     grafanaHost,
     prometheusHealth,
     sessionName,
@@ -49,6 +50,10 @@ export const ClusterUtilizationCard = ({
   const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=41`;
   const timeRangeParams = "&from=now-30m&to=now";
 
+  if (!metricsContextLoaded || grafanaHost === "DISABLED") {
+    return null;
+  }
+
   return (
     <OverviewCard className={classNames(classes.root, className)}>
       {/* TODO (aguo): Switch this to overall utilization graph */}
@@ -56,7 +61,7 @@ export const ClusterUtilizationCard = ({
       {grafanaHost === undefined || !prometheusHealth ? (
         <div className={classes.noGraph}>
           <Typography variant="h3">Cluster utilization</Typography>
-          <GrafanaNotRunningAlert className={classes.alert} />
+          <GrafanaNotRunningAlert className={classes.alert} severity="info" />
         </div>
       ) : (
         <React.Fragment>
@@ -67,7 +72,7 @@ export const ClusterUtilizationCard = ({
             frameBorder="0"
           />
           <div className={classes.links}>
-            <LinkWithArrow text="View all metrics" to="/new/metrics" />
+            <LinkWithArrow text="View all metrics" to="/metrics" />
           </div>
         </React.Fragment>
       )}
