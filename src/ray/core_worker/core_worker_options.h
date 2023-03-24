@@ -56,6 +56,7 @@ struct CoreWorkerOptions {
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
       const std::string name_of_concurrency_group_to_execute,
       bool is_reattempt,
+      // Error string if task fails to execute.
       std::string *task_execution_error)>;
 
   CoreWorkerOptions()

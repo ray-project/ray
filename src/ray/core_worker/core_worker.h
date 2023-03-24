@@ -1272,6 +1272,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///                     objects whose IDs we passed to the task in its
   ///                     arguments and recursively, any object IDs that were
   ///                     contained in those objects.
+  /// \param results[out] is_retryable_error Whether the task failed with a retryable
+  ///                     error.
+  /// \param results[out] is_application_error Whether the task failed with an
+  ///                     application error.
+  /// \param results[out] task_execution_error The error message if the
+  ///                     task failed during execution. This could happen for system
+  ///                     errors or application errors.
   /// \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,

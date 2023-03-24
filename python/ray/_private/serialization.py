@@ -332,7 +332,7 @@ class SerializationContext:
                 # TODO(sang): Assert instead once actor also reports error messages.
                 error_msg = ""
                 if error_info.HasField("runtime_env_setup_failed_error"):
-                    error_msg = error_info.error_message
+                    error_msg = error_info.runtime_env_setup_failed_error.error_message
                 return RuntimeEnvSetupError(error_message=error_msg)
             elif error_type == ErrorType.Value("TASK_PLACEMENT_GROUP_REMOVED"):
                 return TaskPlacementGroupRemoved()

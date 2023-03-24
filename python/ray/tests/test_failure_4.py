@@ -558,6 +558,7 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
     # The lease request should wait inside raylet
     # since there is no available resources.
     ret = func.options(name="task-local-raylet-dead").remote()
+
     # Waiting for the lease request to reach raylet.
     def task_running():
         tasks = list_tasks(filters=[("name", "=", "task-local-raylet-dead")])
@@ -576,7 +577,7 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
         verify_failed_task,
         name="task-local-raylet-dead",
         error_type="LOCAL_RAYLET_DIED",
-        error_message="The worker failed to receive a response from the local raylet"
+        error_message="The worker failed to receive a response from the local raylet",
     )
 
 

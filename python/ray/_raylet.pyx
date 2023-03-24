@@ -609,7 +609,10 @@ cdef store_task_errors(
                                       actor_repr=actor_repr)
 
     # Pass the failure object back to the CoreWorker.
-    task_execution_error[0] = str(failure_object)
+    # We also cap the size of the error message to the last
+    # MAX_TASK_EXECUTION_ERROR_LEN characters of the error message.
+    task_execution_error[0] = str(failure_object)[
+        -ray_constants.MAX_TASK_EXECUTION_ERROR_LEN:]
 
     errors = []
     for _ in range(returns[0].size()):

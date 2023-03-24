@@ -1424,8 +1424,8 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
 
     # Parse error info
     if latest_state == "FAILED":
-        if state_updates.get("error_info", None):
-            error_info = state_updates["error_info"]
+        error_info = state_updates.get("error_info", None)
+        if error_info:
             task_state["error_message"] = error_info.get("error_message", "")
             task_state["error_type"] = error_info.get("error_type", "")
 

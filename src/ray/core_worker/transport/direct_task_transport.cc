@@ -435,6 +435,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                     rpc::RequestWorkerLeaseReply::
                         SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED) {
                   error_type = rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
+                  error_info.mutable_runtime_env_setup_failed_error()->set_error_message(
+                      reply.scheduling_failure_message());
                 } else if (reply.failure_type() ==
                            rpc::RequestWorkerLeaseReply::
                                SCHEDULING_CANCELLED_UNSCHEDULABLE) {
