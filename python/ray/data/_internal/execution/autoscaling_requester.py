@@ -10,7 +10,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 # will be purged.
 RESOURCE_REQUEST_TIMEOUT = 60
 
-# When the autoscaling is driven by memory pressure and there are abundunt
+# When the autoscaling is driven by memory pressure and there are abundant
 # CPUs to support incremental CPUs needed to launch more tasks, we'll translate
 # memory pressure into an artificial request of CPUs. The amount of CPUs we'll
 # request is ARTIFICIAL_CPU_SCALING_FACTOR * ray.cluster_resources()["CPU"].
