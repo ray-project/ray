@@ -68,7 +68,10 @@ def test_prefetch_batches_locally(num_batches_to_prefetch, batch_size):
             # block.
             assert len(prefetcher.windows) == previous_num_windows + 1
             previous_num_windows = len(prefetcher.windows)
-        elif batch_size is not None and remaining_rows > batch_size * num_batches_to_prefetch:
+        elif (
+            batch_size is not None
+            and remaining_rows > batch_size * num_batches_to_prefetch
+        ):
             # Test that we are actually prefetching in advance if this is not the last
             # batch.
             assert len(prefetcher.windows) == previous_num_windows + 1
