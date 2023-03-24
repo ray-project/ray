@@ -102,7 +102,6 @@ def batch_block_refs(
             prefetcher=prefetcher,
             stats=stats,
             num_blocks_to_prefetch=prefetch_blocks,
-            clear_block_after_read=clear_block_after_read,
         ),
         stats=stats,
         eager_free=eager_free,
