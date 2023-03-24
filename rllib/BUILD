@@ -1078,7 +1078,7 @@ py_test(
     name = "test_impala_learner",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/impala/tests/tf/test_impala_learner.py"]
+    srcs = ["algorithms/impala/tests/test_impala_learner.py"]
 )
 
 # MARWIL
@@ -2651,28 +2651,46 @@ py_test(
 )
 
 py_test(
-     name = "tests/test_supported_spaces_impala_appo",
+     name = "tests/test_supported_spaces_appo",
      main = "tests/test_supported_spaces.py",
      tags = ["team:rllib", "tests_dir"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesIMPALAAPPO"]
+     args = ["TestSupportedSpacesAPPO"]
  )
 
 py_test(
-     name = "tests/test_supported_spaces_a3c_ppo",
+     name = "tests/test_supported_spaces_impala",
      main = "tests/test_supported_spaces.py",
      tags = ["team:rllib", "tests_dir"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesA3CPPO"]
+     args = ["TestSupportedSpacesIMPALA"]
+ )
+
+py_test(
+     name = "tests/test_supported_spaces_a3c",
+     main = "tests/test_supported_spaces.py",
+     tags = ["team:rllib", "tests_dir"],
+     size = "large",
+     srcs = ["tests/test_supported_spaces.py"],
+     args = ["TestSupportedSpacesA3C"]
+ )
+
+py_test(
+     name = "tests/test_supported_spaces_ppo",
+     main = "tests/test_supported_spaces.py",
+     tags = ["team:rllib", "tests_dir"],
+     size = "large",
+     srcs = ["tests/test_supported_spaces.py"],
+     args = ["TestSupportedSpacesPPO"]
  )
 
 py_test(
      name = "tests/test_supported_spaces_ppo_no_preproceesor_gpu",
      main = "tests/test_supported_spaces.py",
      tags = ["team:rllib", "tests_dir", "multi_gpu", "exclusive"],
-     size = "medium",
+     size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesPPONoPreprocessorGPU"]
  )
