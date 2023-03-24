@@ -176,6 +176,19 @@ def _setup_signal_catching() -> threading.Event:
     return experiment_interrupted_event
 
 
+def _ray_auto_init(entrypoint: str):
+    """Initialize Ray unless already configured."""
+    if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
+        logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
+    elif not ray.is_initialized():
+        ray.init()
+        logger.info(
+            "Initializing Ray automatically."
+            "For cluster usage or custom Ray initialization, "
+            f"call `ray.init(...)` before `{entrypoint}`."
+        )
+
+
 class _Config(abc.ABC):
     def to_dict(self) -> dict:
         """Converts this configuration to a dict format."""
@@ -435,18 +448,6 @@ def run(
     remote_run_kwargs = locals().copy()
     remote_run_kwargs.pop("_remote")
 
-    if _remote is None:
-        _remote = ray.util.client.ray.is_connected()
-
-    if _remote is True and trial_executor:
-        raise ValueError("cannot use custom trial executor")
-    elif trial_executor:
-        warnings.warn(
-            "Passing a custom `trial_executor` is deprecated and will be removed "
-            "in the future.",
-            DeprecationWarning,
-        )
-
     error_message_map = (
         {
             "entrypoint": "Tuner(...)",
@@ -460,21 +461,19 @@ def run(
             "restore_entrypoint": "tune.run(..., resume=True)",
         }
     )
+    _ray_auto_init(entrypoint=error_message_map["entrypoint"])
 
-    def _ray_auto_init():
-        """Initialize Ray unless already configured."""
-        if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
-            logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
-        elif not ray.is_initialized():
-            logger.info(
-                "Initializing Ray automatically."
-                "For cluster usage or custom Ray initialization, "
-                f"call `ray.init(...)` before `{error_message_map['entrypoint']}`."
-            )
-            ray.init()
+    if _remote is None:
+        _remote = ray.util.client.ray.is_connected()
 
-    if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
-        _ray_auto_init()
+    if _remote is True and trial_executor:
+        raise ValueError("cannot use custom trial executor")
+    elif trial_executor:
+        warnings.warn(
+            "Passing a custom `trial_executor` is deprecated and will be removed "
+            "in the future.",
+            DeprecationWarning,
+        )
 
     if _remote:
         remote_run = ray.remote(num_cpus=0)(run)
@@ -903,7 +902,7 @@ def run_experiments(
         raise ValueError("cannot use custom trial executor")
 
     if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
-        _ray_auto_init()
+        _ray_auto_init(entrypoint="tune.run_experiments(...)")
 
     if _remote:
         remote_run = ray.remote(num_cpus=0)(run_experiments)
