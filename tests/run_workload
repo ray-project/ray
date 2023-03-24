@@ -74,14 +74,13 @@ def run_test(iterations, metrics_actor):
         print(f'scheduling+imports time {dur_s:.02f}')
         sleep_verbose(40)
         
-
-subprocess.check_call("bash start_with_preload", shell=True)
+subprocess.check_call("bash start_without_preload", shell=True)
 sleep_verbose(40)
 m = create_metrics_actor()
 run_test(iterations=5, metrics_actor=m)
 del m
 
-subprocess.check_call("bash start_without_preload", shell=True)
+subprocess.check_call("bash start_with_preload", shell=True)
 sleep_verbose(40)
 m = create_metrics_actor()
 run_test(iterations=5, metrics_actor=m)
