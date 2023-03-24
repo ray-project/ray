@@ -51,7 +51,7 @@ class TFRecordDatasource(FileBasedDatasource):
                 return
             except ModuleNotFoundError as e:
                 print(f"Failed to import tfx_bsl; falling back to slow read: {e}")
-            except tf.python.framework.errors_impl.DataLossError as e:
+            except tf.errors.DataLossError as e:
                 print(
                     f"Error when batch parsing TFRecords file with provided schema; "
                     f"falling back to slow read: {e}"
