@@ -39,6 +39,7 @@ export const NodeCountCard = ({ className }: NodeCountCardProps) => {
   const classes = useStyles();
 
   const {
+    metricsContextLoaded,
     grafanaHost,
     prometheusHealth,
     sessionName,
@@ -47,12 +48,16 @@ export const NodeCountCard = ({ className }: NodeCountCardProps) => {
   const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=24`;
   const timeRangeParams = "&from=now-30m&to=now";
 
+  if (!metricsContextLoaded || grafanaHost === "DISABLED") {
+    return null;
+  }
+
   return (
     <OverviewCard className={classNames(classes.root, className)}>
       {grafanaHost === undefined || !prometheusHealth ? (
         <div className={classes.noGraph}>
           <Typography variant="h3">Node count</Typography>
-          <GrafanaNotRunningAlert className={classes.alert} />
+          <GrafanaNotRunningAlert className={classes.alert} severity="info" />
         </div>
       ) : (
         <iframe
