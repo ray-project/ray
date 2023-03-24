@@ -41,9 +41,6 @@ RELEASE_TEST_SCHEMA_FILE = os.path.join(
     RELEASE_PACKAGE_DIR, "ray_release", "schema.json"
 )
 
-DEFAULT_CORE_RUN_TYPE = "sdk_command"
-DEFAULT_CORE_ENV_TYPE = "staging_v1"
-
 
 def read_and_validate_release_test_collection(
     config_file: str, schema_file: Optional[str] = None
