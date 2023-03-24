@@ -1,11 +1,15 @@
+from collections import Counter
 import copy
+import gymnasium as gym
+from gymnasium.spaces import Box
 import logging
+import numpy as np
 import os
 import pprint
 import random
 import re
 import time
-from collections import Counter
+import tree  # pip install dm_tree
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -17,18 +21,12 @@ from typing import (
     Type,
     Union,
 )
-
-import gymnasium as gym
-import numpy as np
-import tree  # pip install dm_tree
 import yaml
-from gymnasium.spaces import Box
 
 import ray
 from ray import air, tune
-from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
-from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
     NUM_ENV_STEPS_SAMPLED,
@@ -36,6 +34,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.typing import PartialAlgorithmConfigDict, ResultDict
 from ray.tune import CLIReporter, run_experiments
+
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms import Algorithm, AlgorithmConfig
@@ -687,7 +686,7 @@ def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict
         )
 
     for pid, policy_stats in learner_info.items():
-        if pid == "batch_count" or pid == ALL_MODULES:
+        if pid == "batch_count":
             continue
 
         # Make sure each policy has the LEARNER_STATS_KEY under it.
