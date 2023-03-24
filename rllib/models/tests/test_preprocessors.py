@@ -33,6 +33,37 @@ class TestPreprocessors(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
+    def test_rlms_and_preprocessing(self):
+        config = (
+            ppo.PPOConfig()
+            .environment(
+                env="ray.rllib.examples.env.random_env.RandomEnv",
+                env_config={
+                    "config": {
+                        "observation_space": Box(-1.0, 1.0, (1,), dtype=np.int32),
+                    },
+                },
+            )
+            # Run this very quickly locally.
+            .rollouts(rollout_fragment_length=10)
+            .rollouts(num_rollout_workers=0)
+            .training(train_batch_size=10, sgd_minibatch_size=1, num_sgd_iter=1)
+            # Set this to True to enforce no preprocessors being used.
+            .experimental(_disable_preprocessor_api=True)
+            .framework("tf2")
+        )
+
+        # TODO (Artur): No need to manually enable RLModules here since we have not
+        #  fully migrated. Clear this up after migration.
+        config.rl_module(_enable_rl_module_api=True)
+
+        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
+            algo = config.build()
+            results = algo.train()
+            check_train_results(results)
+            check_compute_single_action(algo)
+            algo.stop()
+
     def test_preprocessing_disabled_modelv2(self):
         config = (
             ppo.PPOConfig()
@@ -87,36 +118,6 @@ class TestPreprocessors(unittest.TestCase):
             check_compute_single_action(algo)
             algo.stop()
 
-    def test_preprocessing_with_rlmodules(self):
-        config = (
-            ppo.PPOConfig()
-            .environment(
-                env="ray.rllib.examples.env.random_env.RandomEnv",
-                env_config={
-                    "config": {
-                        "observation_space": Box(-1.0, 1.0, (1,), dtype=np.int32),
-                    },
-                },
-            )
-            # Run this very quickly locally.
-            .rollouts(rollout_fragment_length=10)
-            .rollouts(num_rollout_workers=0)
-            .training(train_batch_size=10, sgd_minibatch_size=1, num_sgd_iter=1)
-            # Set this to True to enforce no preprocessors being used.
-            .experimental(_disable_preprocessor_api=True)
-            .framework("torch")
-        )
-
-        # TODO (Artur): No need to manually enable RLModules here since we have not
-        #  fully migrated. Clear this up after migration.
-        config.rl_module(_enable_rl_module_api=True)
-
-        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
-            algo = config.build()
-            results = algo.train()
-            check_train_results(results)
-            check_compute_single_action(algo)
-            algo.stop()
 
     def test_gym_preprocessors(self):
         p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v1"))
@@ -275,6 +276,7 @@ class TestPreprocessors(unittest.TestCase):
                 1.0,
             ],
         )
+
 
 
 if __name__ == "__main__":
