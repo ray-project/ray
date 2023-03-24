@@ -35,17 +35,54 @@ class TFRecordDatasource(FileBasedDatasource):
     def _read_stream(
         self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> Iterator[Block]:
+        tf_schema: Optional["schema_pb2.Schema"] = reader_args.get("tf_schema", None)
+        batch_size = reader_args.get("batch_size", 2048)
+
+        if tf_schema:
+            try:
+                self._fast_read_stream(path, tf_schema, batch_size)
+                return
+            except ModuleNotFoundError as e:
+                print(f"Failed to import tfx_bsl; falling back to slow read: {e}")
+        self._slow_read_stream(f, path, tf_schema, batch_size)
+
+    def _fast_read_stream(
+        self, path: str, tf_schema: "schema_pb2.Schema", batch_size=2048
+    ):
+        import pyarrow as pa
+
+        try:
+            from tfx_bsl.cc.tfx_bsl_extension.coders import ExamplesToRecordBatchDecoder
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError(
+                "To use CustomTFRecordDatasource, please install "
+                "tfx-bsl package with `pip install tfx-bsl`."
+            )
+
+        decoder = ExamplesToRecordBatchDecoder(tf_schema)
+        for record in tf.data.TFRecordDataset(path, compression_type="GZIP").batch(
+            batch_size
+        ):
+            yield pa.Table.from_batches([decoder.DecodeBatch(record.numpy())])
+
+    def _slow_read_stream(
+        self,
+        f: "pyarrow.NativeFile",
+        path: str,
+        tf_schema: Optional["schema_pb2.Schema"],
+        batch_size=2048,
+    ):
         from google.protobuf.message import DecodeError
         import pyarrow as pa
-        import tensorflow as tf
-
-        tf_schema: Optional["schema_pb2.Schema"] = reader_args.get("tf_schema", None)
 
         batched_example_dicts = []
-        example_batch_size = 256 * 8
         all_column_names = set()
 
         def _unwrap_single_value_list_columns(batched_example_dicts):
+            # For a given list of dicts (representing a batch of examples),
+            # If a column contains at LEAST one single-value list,
+            # we unwrap the list to use the single value (or None in
+            # the case of an empty list).
             col_is_all_single_value_lists = {
                 col_name: True for col_name in all_column_names
             }
@@ -58,18 +95,20 @@ class TFRecordDatasource(FileBasedDatasource):
                         col_is_all_single_value_lists[col_name] = False
                     if isinstance(col_val, list) and len(col_val) == 1:
                         col_has_single_value_list[col_name] = True
-
             columns_to_unwrap = [
                 c
                 for c in col_is_all_single_value_lists
                 if col_is_all_single_value_lists[c] and col_has_single_value_list[c]
             ]
+
             for col_unwrap in columns_to_unwrap:
                 for idx, dct in enumerate(batched_example_dicts):
                     if col_unwrap in batched_example_dicts[idx]:
                         if len(batched_example_dicts[idx][col_unwrap]) == 1:
+                            # If value is a single-element list, unwrap the list
                             batched_example_dicts[idx][col_unwrap] = dct[col_unwrap][0]
-                        else:  # column is an empty list
+                        else:
+                            # If value is an empty list, unwrap to `None`
                             batched_example_dicts[idx][col_unwrap] = None
             return batched_example_dicts
 
@@ -87,7 +126,7 @@ class TFRecordDatasource(FileBasedDatasource):
             for feature_name in record_dict:
                 all_column_names.add(feature_name)
             batched_example_dicts.append(record_dict)
-            if len(batched_example_dicts) >= example_batch_size:
+            if len(batched_example_dicts) >= batch_size:
                 # If a schema is specified, skip single-value list unwrapping
                 if not tf_schema:
                     batched_example_dicts = _unwrap_single_value_list_columns(
@@ -103,7 +142,6 @@ class TFRecordDatasource(FileBasedDatasource):
                 batched_example_dicts
             )
         yield pa.Table.from_pylist(batched_example_dicts)
-        batched_example_dicts = []
 
     def _write_block(
         self,
