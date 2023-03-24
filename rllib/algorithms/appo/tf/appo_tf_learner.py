@@ -1,8 +1,8 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Dict, Mapping
 
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import OLD_ACTION_DIST_KEY
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaHPs, ImpalaTfLearner
@@ -11,7 +11,6 @@ from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import LEARNER_STATS_KEY, ALL_MODULES
 from ray.rllib.utils.typing import TensorType
 
 _, tf, _ = try_import_tf()
@@ -75,7 +74,6 @@ class APPOTfLearner(ImpalaTfLearner):
         self.kl_coeffs = defaultdict(lambda: self._hps.kl_coeff)
         self.kl_coeff = self._hps.kl_coeff
         self.tau = self._hps.tau
-        self.sampled_kls = {}
 
     @override(TfLearner)
     def compute_loss_per_module(
@@ -195,23 +193,6 @@ class APPOTfLearner(ImpalaTfLearner):
             LEARNER_RESULTS_KL_KEY: mean_kl_loss,
         }
 
-    def compile_results(
-        self,
-        batch: MultiAgentBatch,
-        fwd_out: Mapping[str, Any],
-        postprocessed_loss: Mapping[str, Any],
-        postprocessed_gradients: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        results = super().compile_results(
-            batch, fwd_out, postprocessed_loss, postprocessed_gradients
-        )
-        module_ids = set(results.keys()) - {ALL_MODULES}
-        self.sampled_kls = {
-            module_id: results[module_id][LEARNER_STATS_KEY][LEARNER_RESULTS_KL_KEY]
-            for module_id in module_ids
-        }
-        return results
-
     @override(ImpalaTfLearner)
     def remove_module(self, module_id: str):
         super().remove_module(module_id)
@@ -236,7 +217,9 @@ class APPOTfLearner(ImpalaTfLearner):
                 updated_var = self.tau * current_var + (1.0 - self.tau) * old_var
                 old_var.assign(updated_var)
 
-    def _update_module_kl_coeff(self, module_id: ModuleID):
+    def _update_module_kl_coeff(
+        self, module_id: ModuleID, sampled_kls: Dict[ModuleID, float]
+    ):
         """Dynamically update the KL loss coefficients of each module with.
 
         The update is completed using the mean KL divergence between the action
@@ -245,10 +228,12 @@ class APPOTfLearner(ImpalaTfLearner):
 
         Args:
             module_id: The module whose KL loss coefficient to update.
+            sampled_kls: The KL divergence between the action distributions of
+                the current policy and old policy of each module.
 
         """
-        if module_id in self.sampled_kls:
-            sampled_kl = self.sampled_kls[module_id]
+        if module_id in sampled_kls:
+            sampled_kl = sampled_kls[module_id]
             # Update the current KL value based on the recently measured value.
             # Increase.
             if sampled_kl > 2.0 * self.kl_target:
@@ -259,8 +244,13 @@ class APPOTfLearner(ImpalaTfLearner):
 
     @override(ImpalaTfLearner)
     def additional_update_per_module(
-        self, module_id: ModuleID, **kwargs
+        self, module_id: ModuleID, sampled_kls: Dict[ModuleID, float], **kwargs
     ) -> Mapping[str, Any]:
+        """Update the target networks and KL loss coefficients of each module.
+
+        Args:
+
+        """
         self._update_module_target_networks(module_id)
-        self._update_module_kl_coeff(module_id)
+        self._update_module_kl_coeff(module_id, sampled_kls)
         return {}

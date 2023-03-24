@@ -14,7 +14,7 @@ import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
-from ray.rllib.algorithms.appo.tf.appo_tf_learner import AppoHPs
+from ray.rllib.algorithms.appo.tf.appo_tf_learner import AppoHPs, LEARNER_RESULTS_KL_KEY
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.execution.common import _get_shared_metrics, STEPS_SAMPLED_COUNTER
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -28,7 +28,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     NUM_AGENT_STEPS_TRAINED,
 )
-from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
+from ray.rllib.utils.metrics import ALL_MODULES, LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
     ResultDict,
 )
@@ -287,7 +287,7 @@ class APPO(Impala):
 
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
 
-        if self.config._enable_learner_api:
+        if self.config._enable_learner_api and train_results:
             # using steps trained here instead of sampled ... I'm not sure why the
             # other implemenetation uses sampled.
             # to be quite frank, im not sure if I understand how their target update
@@ -310,10 +310,16 @@ class APPO(Impala):
                 * self.config.num_sgd_iter
                 * self.config.target_update_frequency
             )
-            if cur_ts - last_update > target_update_steps_freq:
+            if (cur_ts - last_update) >= target_update_steps_freq:
+                kls_to_update = {}
+                for module_id, module_results in train_results.items():
+                    if module_id != ALL_MODULES:
+                        kls_to_update[module_id] = module_results[LEARNER_STATS_KEY][
+                            LEARNER_RESULTS_KL_KEY
+                        ]
                 self._counters[NUM_TARGET_UPDATES] += 1
                 self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
-                self.learner_group.additional_update()
+                self.learner_group.additional_update(sampled_kls=kls_to_update)
 
         else:
             cur_ts = self._counters[
