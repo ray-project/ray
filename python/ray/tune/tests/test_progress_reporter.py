@@ -325,6 +325,9 @@ with patch("ray.tune.progress_reporter._get_trial_location",
 # Add "verbose=3)" etc
 
 
+@pytest.mark.skipif(
+    "AIR_VERBOSITY" in os.environ, reason="console v2 doesn't work with this v1 test."
+)
 class ProgressReporterTest(unittest.TestCase):
     def setUp(self) -> None:
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"
