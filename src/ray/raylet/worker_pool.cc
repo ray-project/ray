@@ -167,6 +167,8 @@ void WorkerPool::Start() {
 
   if (num_prestart_python_workers_ > 0) {
     //PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers_);
+
+    // On start, fill up the pool.
     MaybeRefillIdlePool(false, -1);
   }
 }
@@ -780,6 +782,8 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
     it->second.alive_started_workers.insert(worker);
     // We may have slots to start more workers now.
     TryStartIOWorkers(worker->GetLanguage());
+
+    // Check the policy again as we have new space in startup concurrency limit.
     MaybeRefillIdlePool(false, -1);
   }
   if (IsIOWorkerType(worker_type)) {
@@ -1154,6 +1158,7 @@ void WorkerPool::TryKillingIdleWorkers() {
 
     // Why was this not set before?
     // num_prestart_python_workers_ > 0 to guard this behind improved policy flag
+    // BUGFIX: If the running size is smaller than the soft limit, then don't kill any workers.
     if (running_size <= static_cast<size_t>(2 * num_workers_soft_limit_) && num_prestart_python_workers_ > 0) {
       RAY_LOG(DEBUG) << "The worker pool has " << running_size
                      << " registered workers which is less than the soft limit of "
@@ -1183,6 +1188,7 @@ void WorkerPool::TryKillingIdleWorkers() {
     // If we are supposed to prestart python workers, then check if the idle pool is smaller than desired.
     // If so, prestart the missing python workers.
     if (num_prestart_python_workers_ > 0) {
+      // Don't kill any workers if we are below replacement level.
       bool refill_made = MaybeRefillIdlePool(false, -1);
       if (refill_made) {
         break;
@@ -1435,6 +1441,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     worker = std::move(lit->first);
     idle_of_all_languages_.erase(lit);
     idle_of_all_languages_map_.erase(worker);
+
+    // When an idle worker is taken from the cache, check to see if we should replenish it.
     MaybeRefillIdlePool(false, -1);
     break;
   }
@@ -1517,8 +1525,9 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
 
   // We should move the policy so that it knows about upcoming usage requests.
   // The rest of the system should just comport to the policy.
-  MaybeRefillIdlePool(true, backlog_size);
 
+  // When we know about an incoming task + backlog, we prestart a number of workers.
+  MaybeRefillIdlePool(true, backlog_size);
 }
 
 void WorkerPool::old_PrestartWorkers_Prestart(int64_t backlog_size, int64_t num_available_cpus) {
@@ -1602,6 +1611,8 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     }
   }
   RemoveWorker(state.idle, worker);
+
+  // When a worker is disconnected, see if we should refill
   MaybeRefillIdlePool(false, -1);
 }
 
