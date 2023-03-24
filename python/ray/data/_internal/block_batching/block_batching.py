@@ -6,14 +6,17 @@ from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 import ray
 from ray.data._internal.block_batching.interfaces import BlockPrefetcher
 from ray.data._internal.block_batching.util import (
-    _make_async_gen,
+    resolve_block_refs,
+    blocks_to_batches,
+    format_batches,
+    collate,
+    extract_data_from_batch,
+    make_async_gen,
     WaitBlockPrefetcher,
     ActorBlockPrefetcher,
 )
-from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
-from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.data.block import Block, DataBatch
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 
@@ -98,15 +101,21 @@ def batch_block_refs(
     else:
         prefetcher = WaitBlockPrefetcher()
 
-    block_iter = _resolve_blocks(
-        _prefetch_blocks(
-            block_ref_iter=block_refs,
-            prefetcher=prefetcher,
-            stats=stats,
-            num_blocks_to_prefetch=prefetch_blocks,
-            clear_block_after_read=clear_block_after_read,
+    eager_free = clear_block_after_read and DatasetContext.get_current().eager_free
+
+    block_iter = resolve_block_refs(
+        map(
+            list,
+            _prefetch_blocks(
+                block_ref_iter=block_refs,
+                prefetcher=prefetcher,
+                stats=stats,
+                num_blocks_to_prefetch=prefetch_blocks,
+                clear_block_after_read=clear_block_after_read,
+            ),
         ),
         stats=stats,
+        eager_free=eager_free,
     )
 
     yield from batch_blocks(
@@ -144,8 +153,8 @@ def batch_blocks(
     """
 
     def _iterator_fn(base_iterator: Iterator[Block]) -> Iterator[DataBatch]:
-        batch_iter = _format_batches(
-            _blocks_to_batches(
+        batch_iter = format_batches(
+            blocks_to_batches(
                 block_iter=base_iterator,
                 stats=stats,
                 batch_size=batch_size,
@@ -159,16 +168,13 @@ def batch_blocks(
         )
 
         if collate_fn is not None:
+            batch_iter = collate(batch_iter, collate_fn=collate_fn)
 
-            def batch_fn_iter(iterator: Iterator[DataBatch]) -> Iterator[DataBatch]:
-                for batch in iterator:
-                    yield collate_fn(batch)
-
-            batch_iter = batch_fn_iter(batch_iter)
+        batch_iter = extract_data_from_batch(batch_iter)
         yield from batch_iter
 
     if prefetch_batches > 0:
-        batch_iter = _make_async_gen(
+        batch_iter = make_async_gen(
             blocks, fn=_iterator_fn, num_workers=prefetch_batches
         )
     else:
@@ -180,58 +186,10 @@ def batch_blocks(
             yield formatted_batch
 
 
-def _resolve_blocks(
-    block_ref_iter: Iterator[ObjectRef[Block]],
-    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
-) -> Iterator[Block]:
-    """Given an iterator of unresolved blocks (as Ray object references), returns an
-    iterator of resolved blocks.
-
-    The length of the returned iterator may be less than the length of the original
-    if any of the references in the original iterator are None.
-
-    Args:
-        block_ref_iter: An iterator over block object references.
-        stats: Dataset stats object used to store block fetching time.
-
-    Returns:
-        An iterator over resolved blocks.
-    """
-
-    hit = 0
-    miss = 0
-    unknown = 0
-    for block_ref in block_ref_iter:
-        if block_ref is not None:
-            stats_timer = stats.iter_get_s.timer() if stats else nullcontext()
-            # Count the number of blocks that we hit locally or miss (so have to
-            # fetch from remote node). This is to measure the effectiveness of
-            # prefetch.
-            loc = ray.experimental.get_object_locations([block_ref])
-            nodes = loc[block_ref]["node_ids"]
-            if nodes:
-                current = ray.get_runtime_context().get_node_id()
-                if current in nodes:
-                    hit += 1
-                else:
-                    miss += 1
-            else:
-                unknown += 1
-            with stats_timer:
-                block = ray.get(block_ref)
-            yield block
-
-    if stats:
-        stats.iter_blocks_local = hit
-        stats.iter_blocks_remote = miss
-        stats.iter_unknown_location = unknown
-
-
 def _prefetch_blocks(
     block_ref_iter: Iterator[ObjectRef[Block]],
     prefetcher: BlockPrefetcher,
     num_blocks_to_prefetch: int,
-    clear_block_after_read: bool = False,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterable of Block Object References, returns an iterator
@@ -242,21 +200,11 @@ def _prefetch_blocks(
         block_ref_iter: An iterator over block object references.
         num_blocks_to_prefetch: The number of blocks to prefetch ahead of the
             current block during the scan.
-        clear_block_after_read: Whether to clear the block from object store
-            manually (i.e. without waiting for Python's automatic GC) after it
-            is read. Doing so will reclaim memory faster and hence reduce the
-            memory footprint. However, the caller has to ensure the safety, i.e.
-            the block will never be accessed again.
         stats: Dataset stats object used to store block wait time.
     """
-    eager_free = clear_block_after_read and DatasetContext.get_current().eager_free
-
     if num_blocks_to_prefetch == 0:
         for block_ref in block_ref_iter:
             yield block_ref
-            trace_deallocation(
-                block_ref, "block_batching._prefetch_blocks", free=eager_free
-            )
 
     window_size = num_blocks_to_prefetch
     # Create the initial set of blocks to prefetch.
@@ -275,87 +223,3 @@ def _prefetch_blocks(
         except StopIteration:
             pass
         yield block_ref
-        trace_deallocation(
-            block_ref, "block_batching._prefetch_blocks", free=eager_free
-        )
-
-
-def _blocks_to_batches(
-    block_iter: Iterator[Block],
-    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
-    batch_size: Optional[int] = None,
-    drop_last: bool = False,
-    shuffle_buffer_min_size: Optional[int] = None,
-    shuffle_seed: Optional[int] = None,
-    ensure_copy: bool = False,
-) -> Iterator[Block]:
-    """Given an iterator over blocks, returns an iterator over blocks
-    of the appropriate bacth size.
-
-    If the shuffling configurations are specified, then the
-    output blocks contain shuffled data.
-
-    Args:
-        block_iter: An iterator over blocks.
-        stats: Dataset stats object used to store block batching time.
-        batch_size: Record batch size, or None to let the system pick.
-        drop_last: Whether to drop the last batch if it's incomplete.
-        ensure_copy: Whether batches are always copied from the underlying base
-            blocks (not zero-copy views).
-
-    Returns:
-        An iterator over blocks of the given size that are potentially shuffled.
-    """
-    if shuffle_buffer_min_size is not None:
-        batcher = ShufflingBatcher(
-            batch_size=batch_size,
-            shuffle_buffer_min_size=shuffle_buffer_min_size,
-            shuffle_seed=shuffle_seed,
-        )
-    else:
-        batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
-
-    def get_iter_next_batch_s_timer():
-        return stats.iter_next_batch_s.timer() if stats else nullcontext()
-
-    for block in block_iter:
-        batcher.add(block)
-        while batcher.has_batch():
-            with get_iter_next_batch_s_timer():
-                batch = batcher.next_batch()
-            yield batch
-
-    # Signal to the batcher that there are no more blocks to add.
-    batcher.done_adding()
-
-    # Get any leftover batches in ShufflingBatcher.
-    while batcher.has_batch():
-        with get_iter_next_batch_s_timer():
-            batch = batcher.next_batch()
-        yield batch
-
-    # Get any remaining data.
-    if not drop_last and batcher.has_any():
-        with get_iter_next_batch_s_timer():
-            batch = batcher.next_batch()
-        yield batch
-
-
-def _format_batches(
-    block_iter: Iterator[Block],
-    batch_format: str,
-    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
-) -> Iterator[DataBatch]:
-    """Given an iterator of blocks, returns an iterator of formatted batches.
-
-    Args:
-        block_iter: An iterator over blocks.
-        batch_format: The batch format to use.
-
-    Returns:
-        An iterator over formatted batches.
-    """
-    for block in block_iter:
-        with stats.iter_format_batch_s.timer() if stats else nullcontext():
-            batch = BlockAccessor.for_block(block).to_batch_format(batch_format)
-        yield batch
