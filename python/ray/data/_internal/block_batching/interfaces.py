@@ -1,10 +1,12 @@
-from typing import Any, NamedTuple
+from dataclasses import dataclass
+from typing import Any
 
 from ray.types import ObjectRef
 from ray.data.block import Block, DataBatch
 
 
-class Batch(NamedTuple):
+@dataclass
+class Batch:
     """A batch of data with a corresponding index.
 
     Attributes:
@@ -17,7 +19,7 @@ class Batch(NamedTuple):
     data: DataBatch
 
 
-class CollatedBatch(NamedTuple):
+class CollatedBatch(Batch):
     """A batch of collated data with a corresponding index.
 
     Attributes:
