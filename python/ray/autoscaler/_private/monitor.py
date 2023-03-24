@@ -438,7 +438,6 @@ class Monitor:
 
                 status["load_metrics_report"] = asdict(load_metrics_summary)
                 as_json = json.dumps(status)
-                print("Dumping ", as_json)
                 if _internal_kv_initialized():
                     _internal_kv_put(
                         ray_constants.DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True
