@@ -393,7 +393,7 @@ class CallbackList(Callback):
 
     def set_state(self, state: Dict):
         """Sets the state for all callbacks contained within this list.
-        Skipps setting state for all stateless callbacks where `get_state`
+        Skips setting state for all stateless callbacks where `get_state`
         returned None."""
         for i, callback in enumerate(self._callbacks):
             callback_state = state.get(i, None)
