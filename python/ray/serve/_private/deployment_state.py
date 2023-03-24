@@ -2070,18 +2070,31 @@ class DeploymentStateManager:
         else:
             return None
 
-    def get_deployment_details(self, deployment_name: str) -> DeploymentDetails:
-        status_info = self.get_deployment_statuses([deployment_name])[0]
+    def get_deployment_details(
+        self, deployment_name: str
+    ) -> Optional[DeploymentDetails]:
+        """Gets detailed info on a deployment.
 
-        return DeploymentDetails(
-            name=deployment_name,
-            status=status_info.status,
-            message=status_info.message,
-            deployment_config=_deployment_info_to_schema(
-                deployment_name, self.get_deployment(deployment_name)
-            ),
-            replicas=self._deployment_states[deployment_name].list_replica_details(),
-        )
+        Returns:
+            DeploymentDetails: if the deployment is live.
+            None: if the deployment is deleted.
+        """
+        statuses = self.get_deployment_statuses([deployment_name])
+        if len(statuses) == 0:
+            return None
+        else:
+            status_info = statuses[0]
+            return DeploymentDetails(
+                name=deployment_name,
+                status=status_info.status,
+                message=status_info.message,
+                deployment_config=_deployment_info_to_schema(
+                    deployment_name, self.get_deployment(deployment_name)
+                ),
+                replicas=self._deployment_states[
+                    deployment_name
+                ].list_replica_details(),
+            )
 
     def get_deployment_statuses(
         self, names: List[str] = None
