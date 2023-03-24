@@ -1,3 +1,4 @@
+import io
 import dis
 import hashlib
 import importlib
@@ -124,8 +125,6 @@ class FunctionActorManager:
                 unnecessarily or fail to give warnings, but the application's
                 behavior won't change.
         """
-        import io
-
         string_file = io.StringIO()
         if sys.version_info[1] >= 7:
             dis.dis(function_or_class, file=string_file, depth=2)
@@ -460,9 +459,12 @@ class FunctionActorManager:
         try:
             serialized_actor_class = pickle.dumps(Class)
         except TypeError as e:
+            sio = io.StringIO()
+            ray.util.inspect_serializability(Class, print_file=sio)
             msg = (
                 "Could not serialize the actor class "
-                f"{actor_creation_function_descriptor.repr}. "
+                f"{actor_creation_function_descriptor.repr}:\n"
+                f"{sio.getvalue()}"
                 "Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting "  # noqa
                 "for more information."
             )

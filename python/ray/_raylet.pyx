@@ -11,6 +11,7 @@ import gc
 import inspect
 import logging
 import msgpack
+import io
 import os
 import pickle
 import setproctitle
@@ -463,11 +464,14 @@ cdef prepare_args_internal(
                 serialized_arg = worker.get_serialization_context(
                 ).serialize(arg)
             except TypeError as e:
+                sio = io.StringIO()
+                ray.util.inspect_serializability(arg, print_file=sio)
                 msg = (
                     "Could not serialize the argument "
                     f"{repr(arg)} for a task or actor "
-                    f"{function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
+                    f"{function_descriptor.repr}:\n"
+                    f"{sio.getvalue()}"
+                    "Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
                     "for more information.")
                 raise TypeError(msg) from e
             metadata = serialized_arg.metadata
