@@ -35,22 +35,36 @@ class TFRecordDatasource(FileBasedDatasource):
     def _read_stream(
         self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> Iterator[Block]:
+        import tensorflow as tf
+
         tf_schema: Optional["schema_pb2.Schema"] = reader_args.get("tf_schema", None)
         batch_size = reader_args.get("batch_size", 2048)
+        compression = reader_args.get("arrow_open_stream_args", {}).get(
+            "compression", None
+        )
 
         if tf_schema:
             try:
-                self._fast_read_stream(path, tf_schema, batch_size)
+                yield from self._fast_read_stream(
+                    path, tf_schema, batch_size, compression
+                )
                 return
             except ModuleNotFoundError as e:
                 print(f"Failed to import tfx_bsl; falling back to slow read: {e}")
-        self._slow_read_stream(f, path, tf_schema, batch_size)
+            except tf.python.framework.errors_impl.DataLossError as e:
+                print(
+                    f"Error when batch parsing TFRecords file with provided schema; "
+                    f"falling back to slow read: {e}"
+                )
+        yield from self._slow_read_stream(f, path, tf_schema, batch_size)
 
     def _fast_read_stream(
-        self, path: str, tf_schema: "schema_pb2.Schema", batch_size=2048
+        self,
+        path: str,
+        tf_schema: "schema_pb2.Schema",
+        batch_size: int = 2048,
+        compression: Optional[str] = None,
     ):
-        import pyarrow as pa
-
         try:
             from tfx_bsl.cc.tfx_bsl_extension.coders import ExamplesToRecordBatchDecoder
         except ModuleNotFoundError:
@@ -58,9 +72,14 @@ class TFRecordDatasource(FileBasedDatasource):
                 "To use CustomTFRecordDatasource, please install "
                 "tfx-bsl package with `pip install tfx-bsl`."
             )
+        import pyarrow as pa
+        import tensorflow as tf
 
-        decoder = ExamplesToRecordBatchDecoder(tf_schema)
-        for record in tf.data.TFRecordDataset(path, compression_type="GZIP").batch(
+        if compression:
+            compression = compression.upper()
+
+        decoder = ExamplesToRecordBatchDecoder(tf_schema.SerializeToString())
+        for record in tf.data.TFRecordDataset(path, compression_type=compression).batch(
             batch_size
         ):
             yield pa.Table.from_batches([decoder.DecodeBatch(record.numpy())])
@@ -74,6 +93,7 @@ class TFRecordDatasource(FileBasedDatasource):
     ):
         from google.protobuf.message import DecodeError
         import pyarrow as pa
+        import tensorflow as tf
 
         batched_example_dicts = []
         all_column_names = set()
