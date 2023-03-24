@@ -251,7 +251,11 @@ def test_default_file_metadata_provider_many_files_basic(
         df = pd.DataFrame({"one": list(range(i * 3, (i + 1) * 3))})
         dfs.append(df)
         path = os.path.join(data_path, f"test_{i}.csv")
-        paths.append(path)
+        if i % 4 == 0:
+            # Append same path multiple times to test duplicated paths.
+            paths.extend([path, path, path])
+        else:
+            paths.append(path)
         df.to_csv(path, index=False, storage_options=storage_options)
     paths, fs = _resolve_paths_and_filesystem(paths, fs)
 
