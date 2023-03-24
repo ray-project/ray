@@ -3,6 +3,7 @@ package(default_visibility = ["//visibility:public"])
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
+load("@rules_rust//proto:proto.bzl", "rust_proto_library")
 
 proto_library(
     name = "monitor_proto",
@@ -17,6 +18,16 @@ cc_proto_library(
 python_grpc_compile(
     name = "monitor_py_proto",
     deps = [":monitor_proto"],
+)
+
+filegroup(
+    name = "common_proto_file",
+    srcs = ["common.proto"],
+)
+
+filegroup(
+    name = "protobuf",
+    srcs = glob(["*.proto"]),
 )
 
 proto_library(

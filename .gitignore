@@ -7,6 +7,7 @@
 /python/ray/pyarrow_files/
 /python/ray/jars/
 /python/ray/cpp/
+/python/ray/wasm/
 /python/build
 /python/dist
 /python/python-driver-*
@@ -230,3 +231,9 @@ workflow_data/
 tag-mapping.json
 
 .bazeliskrc
+
+# WASM build files
+wasm/target/
+
+# IntelliJ files
+.ijwb/.bazelproject

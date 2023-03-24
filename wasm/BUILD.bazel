@@ -1,0 +1,108 @@
+# Bazel build
+# C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
+
+load("//bazel:ray.bzl", "COPTS")
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
+
+cc_binary(
+    name = "libray_wasm.so",
+    copts = COPTS,
+    linkopts = select({
+        "@bazel_tools//src/conditions:darwin": [
+            #TODO: Hide symbols on Mac.
+        ],
+        "@bazel_tools//src/conditions:windows": [
+            #TODO: Hide symbols on Windows.
+        ],
+        "//conditions:default": [
+            #TODO: Hide symbols on Linux.
+        ],
+    }),
+    linkshared = 1,
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        "ray_wasm_lib",
+    ],
+)
+
+cc_library(
+    name = "ray_wasm_lib",
+    srcs = glob(["src/cpp/ray/*.cc"]),
+    hdrs = glob(["include/ray/*.h"]),
+    copts = COPTS,
+    linkopts = ["-ldl"],
+    linkstatic = True,
+    strip_include_prefix = "include",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//:core_worker_lib",
+    ],
+    alwayslink = True,
+)
+
+cargo_build_script(
+    name = "wasm_worker_buildrs",
+    srcs = ["build.rs"],
+    build_script_env = {
+        "PROTOC": "$(execpath @com_google_protobuf//:protoc)",
+        "PROTO_SRCS": "$(locations //src/ray/protobuf:common_proto_file)",
+    },
+    data = [
+        "//:ray_common_headers",
+        "//src/ray/protobuf",
+        "//src/ray/protobuf:common_proto_file",
+        "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto",
+    ],
+    rustc_env = {
+    },
+    tools = [
+        "@com_google_protobuf//:protoc",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@wasm_crate_index//:prost-build",
+    ],
+)
+
+rust_binary(
+    name = "wasm_worker",
+    srcs = glob([
+        "src/rust/**/*.rs",
+    ]),
+    crate_root = "src/rust/main.rs",
+    visibility = ["//visibility:public"],
+    deps = [
+        "ray_wasm_lib",
+        "wasm_worker_buildrs",
+        "@wasm_crate_index//:clap",
+        "@wasm_crate_index//:lazy_static",
+        "@wasm_crate_index//:prost",
+        "@wasm_crate_index//:serde",
+        "@wasm_crate_index//:serde_json",
+        "@wasm_crate_index//:tracing",
+        "@wasm_crate_index//:tracing-subscriber",
+        "@wasm_crate_index//:uuid",
+    ],
+)
+
+genrule(
+    name = "ray_wasm_pkg",
+    srcs = [
+        "wasm_worker",
+        "libray_wasm.so",
+    ],
+    outs = ["ray_wasm_pkg.out"],
+    cmd = """
+        WORK_DIR="$$(pwd)" &&
+        PY_WASM_DIR="$$WORK_DIR/python/ray/wasm" &&
+        rm -rf $$PY_WASM_DIR && 
+        mkdir -p "$$PY_WASM_DIR/lib/" &&
+        cp -f $(location wasm_worker) "$$PY_WASM_DIR/" &&
+        cp -f $(locations libray_wasm.so) "$$PY_WASM_DIR/lib/" &&
+        echo "$$WORK_DIR" > $@
+    """,
+    local = True,
+    visibility = ["//visibility:public"],
+)

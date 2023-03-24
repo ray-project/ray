@@ -451,6 +451,16 @@ cc_grpc_library(
     deps = ["//src/ray/protobuf:ray_syncer_cc_proto"],
 )
 
+filegroup(
+    name = "ray_common_headers",
+    srcs = glob(
+        [
+            "src/ray/common/*.h",
+            "src/ray/common/**/*.h",
+        ],
+    ),
+)
+
 cc_library(
     name = "ray_common",
     srcs = glob(

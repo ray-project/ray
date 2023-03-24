@@ -1,0 +1,89 @@
+// Copyright 2020-2023 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+pub struct Arguments {
+    /// The address of the Ray cluster to connect to.
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_address: Option<String>,
+
+    /// Prevents external clients without the password from connecting to Redis
+    /// if provided.
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_redis_password: Option<String>,
+
+    /// A list of directories or files of dynamic libraries that specify the
+    /// search path for user code. Only searching the top level under a directory.
+    /// ':' is used as the separator.
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_code_search_path: Option<String>,
+
+    /// Assigned job id
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_job_id: Option<String>,
+
+    /// The port to use for the node manager
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_node_manager_port: Option<i32>,
+
+    /// It will specify the socket name used by the raylet if provided.
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_raylet_socket_name: Option<String>,
+
+    /// It will specify the socket name used by the plasma store if provided.
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_plasma_store_socket_name: Option<String>,
+
+    /// The path of this session.
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_session_dir: Option<String>,
+
+    /// Logs dir for workers.
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_logs_dir: Option<String>,
+
+    /// The ip address for this node.
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_node_ip_address: Option<String>,
+
+    /// The command line args to be appended as parameters of the `ray start`
+    /// command. It takes effect only if Ray head is started by a driver. Run `ray
+    /// start --help` for details.
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_head_args: Option<String>,
+
+    /// The startup token assigned to this worker process by the raylet.
+    #[arg(long, verbatim_doc_comment)]
+    pub startup_token: Option<i64>,
+
+    /// The default actor lifetime type, `detached` or `non_detached`.
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_default_actor_lifetime: Option<String>,
+
+    /// The serialized runtime env.
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_runtime_env: Option<String>,
+
+    /// The computed hash of the runtime env for this worker.
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_runtime_env_hash: Option<i32>,
+
+    /// The namespace of job. If not set,
+    /// a unique value will be randomly generated.
+    #[arg(long, verbatim_doc_comment)]
+    pub ray_job_namespace: Option<String>,
+}

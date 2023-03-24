@@ -5,6 +5,72 @@ load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
 
 ray_deps_setup()
 
+# In wasm worker, we used rust. So we need to load rust rules.
+load("@rules_rust//rust:repositories.bzl", "rules_rust_dependencies", "rust_register_toolchains")
+
+rules_rust_dependencies()
+rust_register_toolchains(edition = "2021")
+
+load("@rules_rust//crate_universe:defs.bzl", "crate", "crates_repository", "render_config")
+
+crates_repository(
+    name = "wasm_crate_index",
+    cargo_lockfile = "//wasm:Cargo.lock",
+    lockfile = "//wasm:Cargo.Bazel.lock",
+    packages = {
+        "clap": crate.spec(
+            version = "4.1.11",
+            features = ["derive"],
+        ),
+        "lazy_static": crate.spec(
+            version = "1.4.0",
+        ),
+        "prost": crate.spec(
+            version = "0.11",
+        ),
+        "prost-types": crate.spec(
+            version = "0.11",
+        ),
+        "prost-build": crate.spec(
+            version = "0.11",
+        ),
+        "tracing": crate.spec(
+            version = "0.1.37",
+        ),
+        "serde": crate.spec(
+            version = "1.0.147",
+            features = ["derive"],
+        ),
+        "serde_json": crate.spec(
+            version = "1.0.89",
+        ),
+        "uuid": crate.spec(
+            version = "1.3.0",
+            features = ["v4"],
+        ),
+        "tracing-subscriber": crate.spec(
+            version = "0.3.16",
+        ),
+    },
+    render_config = render_config(
+        default_package_name = ""
+    ),
+)
+
+load("@wasm_crate_index//:defs.bzl", "crate_repositories")
+
+crate_repositories()
+
+load("@rules_rust//proto:repositories.bzl", "rust_proto_repositories")
+
+# protobuf support in rust
+rust_proto_repositories()
+
+load("@rules_rust//proto:transitive_repositories.bzl", "rust_proto_transitive_repositories")
+
+rust_proto_transitive_repositories()
+
+# build all dependencies
 load("//bazel:ray_deps_build_all.bzl", "ray_deps_build_all")
 
 ray_deps_build_all()
