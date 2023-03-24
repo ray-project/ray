@@ -259,6 +259,7 @@ class PPOConfig(PGConfig):
 
     @override(AlgorithmConfig)
     def validate(self) -> None:
+
         # Call super's validation method.
         super().validate()
 
