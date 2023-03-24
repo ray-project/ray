@@ -6,6 +6,11 @@ try:
 except KeyError:
     pass
 
+try:
+    del os.environ['RAY_JOB_SUBMIT_HOOK']
+except KeyError:
+    pass
+
 with_actors = os.environ['USE_ACTORS_OR_TASKS'].lower() == 'actors'
 with_gpu = os.environ['WITH_GPU'].lower() == 'true'
 
@@ -29,6 +34,9 @@ def task(scheduling_start_time):
     import tensorflow
     dur_s = time.time() - start
     print(f'CADE_PREFIX:imports took {dur_s:.02f}')
+
+    time.sleep(1)
+    print('done sleeping')
 
 @ray.remote
 class Actor:

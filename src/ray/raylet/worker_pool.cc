@@ -19,6 +19,7 @@
 #include <fstream>
 
 #include "absl/strings/str_split.h"
+#include "absl/strings/str_join.h"
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
@@ -164,7 +165,8 @@ void WorkerPool::Start() {
   }
 
   if (num_prestart_python_workers_ > 0) {
-    PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers_);
+    //PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers_);
+    MaybeRefillIdlePool(false, -1);
   }
 }
 
@@ -1017,22 +1019,38 @@ int WorkerPool::GetNumStartingWorkers() {
 }
 
 // Returns whether or not a refill was made.
-bool WorkerPool::MaybeRefillIdlePool() {
+bool WorkerPool::MaybeRefillIdlePool(bool from_PrestartWorkers, int64_t backlog_size) {
+    // backlog_size == -1 -> not known.
+    // We should have super basic branch predictor that assumes new ray workload is same as old
+    // We should take backlog_size into account
+    // TODO: num_running_workers is all workers, should be only non-idle
+    // TODO: num_running_workers doesn't take into account num exiting workers
+    // TODO: some bug exists that causes processes to not be marked as idle, causing the killer to kill them.
+
     if (num_prestart_python_workers_ <= 0) {
+        if (from_PrestartWorkers) {
+            // Hardcode 64 CPUs
+            old_PrestartWorkers_Prestart(backlog_size, 64);
+            return false;
+        }
         RAY_LOG(DEBUG) << "MaybeRefillIdlePool num_prestart_python_workers_ is " << num_prestart_python_workers_ << ", not refilling";
         return false;
     }
     // For tasks, the processes can be re-used. We should simply not kill them (I assume that's why they die.).
     // For actors, we should proactively create new worker processes. Some replacement level?
 
-    int target_replacement_level = num_prestart_python_workers_ / 4;
+    int target_replacement_level = num_prestart_python_workers_;
     int num_starting_workers = GetNumStartingWorkers();
-    int missing = target_replacement_level - idle_of_all_languages_.size();
+    size_t num_non_idle_workers = GetNumNonIdleWorkers();
+
+    int missing = target_replacement_level - (idle_of_all_languages_.size() + num_non_idle_workers);
+
     int to_start = std::min(missing - num_starting_workers, maximum_startup_concurrency_);
     RAY_LOG(DEBUG) << "MaybeRefillIdlePool: target_replacement_level is " << target_replacement_level
         << ", missing is " << missing
         << ", idle is " << idle_of_all_languages_.size()
         << ", num_starting_workers is " << num_starting_workers
+        << ", num_non_idle_workers is " << num_non_idle_workers
         << ", maximum_startup_concurrency_ is " << maximum_startup_concurrency_
         << ", to_start is " << to_start;
 
@@ -1047,24 +1065,68 @@ bool WorkerPool::MaybeRefillIdlePool() {
     return false;
 }
 
-void WorkerPool::TryKillingIdleWorkers() {
-  RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
-
-  int64_t now = get_time_();
+size_t WorkerPool::GetNumRunningWorkers() {
   size_t running_size = 0;
   for (const auto &worker : GetAllRegisteredWorkers()) {
     if (!worker->IsDead() && worker->GetWorkerType() == rpc::WorkerType::WORKER) {
       running_size++;
     }
   }
+
   // Subtract the number of pending exit workers first. This will help us killing more
   // idle workers that it needs to.
   RAY_CHECK(running_size >= pending_exit_idle_workers_.size());
   running_size -= pending_exit_idle_workers_.size();
+
+  return running_size;
+}
+
+size_t WorkerPool::GetNumNonIdleWorkers() {
+  // TODO there is a bug where workers are not returned to idle pool.
+
+  size_t running_workers = GetNumRunningWorkers();
+
+  auto &worker_state = GetStateForLanguage(Language::PYTHON);
+  size_t idle_workers = worker_state.idle.size();
+  size_t num_non_idle_workers = running_workers - idle_workers;
+  return num_non_idle_workers;
+
+  //auto &worker_state = GetStateForLanguage(Language::PYTHON);
+  //size_t non_idle_size = 0;
+  //for (const auto &worker : GetAllRegisteredWorkers()) {
+  //  if (worker->IsDead() || worker->GetWorkerType() != rpc::WorkerType::WORKER) {
+  //    continue;
+  //  }
+
+  //  // Worker is idle
+  //  if (worker_state.idle.count(worker) > 0) {
+  //    continue;
+  //  }
+
+  //  non_idle_size++;
+  //}
+  //return non_idle_size;
+}
+
+void WorkerPool::TryKillingIdleWorkers() {
+  RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
+
+  int64_t now = get_time_();
+  size_t running_size = GetNumRunningWorkers();
+
   // Kill idle workers in FIFO order.
   for (const auto &idle_pair : idle_of_all_languages_) {
     const auto &idle_worker = idle_pair.first;
     const auto &job_id = idle_worker->GetAssignedJobId();
+
+    // Why was this not set before?
+    // num_prestart_python_workers_ > 0 to guard this behind improved policy flag
+    if (running_size <= static_cast<size_t>(2 * num_workers_soft_limit_) && num_prestart_python_workers_ > 0) {
+      RAY_LOG(DEBUG) << "The worker pool has " << running_size
+                     << " registered workers which is less than the soft limit of "
+                     << num_workers_soft_limit_ << ". Not attempting to kill any idle worker.";
+        break;
+    }
 
     RAY_LOG(DEBUG) << " Checking idle worker "
                    << idle_worker->GetAssignedTask().GetTaskSpecification().DebugString()
@@ -1084,20 +1146,11 @@ void WorkerPool::TryKillingIdleWorkers() {
         RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
       break;
     }
-
-    // Why was this not set before?
-    // num_prestart_python_workers_ > 0 to guard this behind improved policy flag
-    if (running_size <= static_cast<size_t>(num_workers_soft_limit_) && num_prestart_python_workers_ > 0) {
-      RAY_LOG(DEBUG) << "The worker pool has " << running_size
-                     << " registered workers which is less than the soft limit of "
-                     << num_workers_soft_limit_ << ". Not attempting to kill any worker.";
-        break;
-    }
     
     // If we are supposed to prestart python workers, then check if the idle pool is smaller than desired.
     // If so, prestart the missing python workers.
     if (num_prestart_python_workers_ > 0) {
-      bool refill_made = MaybeRefillIdlePool();
+      bool refill_made = MaybeRefillIdlePool(false, -1);
       if (refill_made) {
         break;
       }
@@ -1307,6 +1360,10 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     }
 
     // Don't allow worker reuse across jobs. Reuse worker with unassigned job_id is OK.
+    // 
+    auto jobid_a = it->first->GetAssignedJobId();
+    auto jobid_b = task_spec.JobId();
+    RAY_LOG(DEBUG) << "CachedWorker job id check a: " << jobid_a << ", a.isnil: " << jobid_a.IsNil() << ", b: " << jobid_b << ", b.isnil: " << jobid_b.IsNil();
     if (!it->first->GetAssignedJobId().IsNil() &&
         it->first->GetAssignedJobId() != task_spec.JobId()) {
       skip_cached_worker_job_mismatch++;
@@ -1315,7 +1372,10 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     }
 
     // Skip if the dynamic_options doesn't match.
-    if (LookupWorkerDynamicOptions(it->first->GetStartupToken()) != dynamic_options) {
+    auto a = LookupWorkerDynamicOptions(it->first->GetStartupToken());
+    auto b = dynamic_options;
+    RAY_LOG(DEBUG) << "CachedWorker dynamic options check. a: " << absl::StrJoin(a, ",")  << ", b: " << absl::StrJoin(b, ",");
+    if (a != b) {
       skip_cached_worker_dynamic_options_mismatch++;
       stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(1);
       continue;
@@ -1342,7 +1402,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     worker = std::move(lit->first);
     idle_of_all_languages_.erase(lit);
     idle_of_all_languages_map_.erase(worker);
-    MaybeRefillIdlePool();
+    MaybeRefillIdlePool(false, -1);
     break;
   }
 
@@ -1422,7 +1482,15 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
     // runtime env to improve initial startup performance.
   }
 
-  auto &state = GetStateForLanguage(task_spec.GetLanguage());
+  // We should move the policy so that it knows about upcoming usage requests.
+  // The rest of the system should just comport to the policy.
+  MaybeRefillIdlePool(true, backlog_size);
+
+}
+
+void WorkerPool::old_PrestartWorkers_Prestart(int64_t backlog_size, int64_t num_available_cpus) {
+  auto lang = Language::PYTHON;
+  auto &state = GetStateForLanguage(lang);
   // The number of available workers that can be used for this task spec.
   int num_usable_workers = state.idle.size();
   for (auto &entry : state.worker_processes) {
@@ -1436,7 +1504,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
     int64_t num_needed = desired_usable_workers - num_usable_workers;
     RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
                    << backlog_size << " and available CPUs " << num_available_cpus;
-    PrestartDefaultCpuWorkers(task_spec.GetLanguage(), num_needed);
+    PrestartDefaultCpuWorkers(lang, num_needed);
   }
 }
 
@@ -1501,7 +1569,7 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     }
   }
   RemoveWorker(state.idle, worker);
-  MaybeRefillIdlePool();
+  MaybeRefillIdlePool(false, -1);
 }
 
 void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) {

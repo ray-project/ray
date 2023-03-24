@@ -282,8 +282,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::shared_ptr<WorkerInterface> GetRegisteredDriver(
       const std::shared_ptr<ClientConnection> &connection) const;
 
-  bool MaybeRefillIdlePool();
+  bool MaybeRefillIdlePool(bool from_PrestartWorkers, int64_t backlog_size);
+  void old_PrestartWorkers_Prestart(int64_t backlog_size, int64_t num_available_cpus);
   int GetNumStartingWorkers();
+  size_t GetNumRunningWorkers();
+  size_t GetNumNonIdleWorkers();
 
   /// Disconnect a registered worker.
   ///
