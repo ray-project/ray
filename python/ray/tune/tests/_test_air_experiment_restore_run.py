@@ -6,11 +6,14 @@ import random
 import time
 from typing import Dict, List, Optional
 
+import ray
 from ray import air, tune
 from ray.air import Checkpoint, session
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune.experiment import Trial
 
 
+RUNNER_TYPE = os.environ.get("RUNNER_TYPE", "tuner")
 STORAGE_PATH = os.environ.get("STORAGE_PATH", "/tmp/ray_results")
 EXP_NAME = os.environ.get("EXP_NAME", "tuner_restore_integration_test")
 CALLBACK_DUMP_FILE = os.environ.get(
@@ -85,8 +88,6 @@ def train_fn(config, data=None):
 
     if training_started_marker.exists():
         training_started_marker.unlink()
-    else:
-        time.sleep(TIME_PER_ITER_S * 2)
 
     for iteration in range(start, ITERATIONS_PER_TRIAL + 1):
         time.sleep(TIME_PER_ITER_S)
@@ -97,30 +98,70 @@ def train_fn(config, data=None):
         )
 
 
-trainable = tune.with_resources(train_fn, resources={"CPU": 1})
-trainable = tune.with_parameters(trainable, data={"dummy_data": [1, 2, 3]})
-
-
 experiment_path = os.path.join(STORAGE_PATH, EXP_NAME)
 
-if tune.Tuner.can_restore(experiment_path):
-    tuner = tune.Tuner.restore(
-        experiment_path, trainable=trainable, resume_errored=True
-    )
-else:
-    tuner = tune.Tuner(
-        trainable,
-        run_config=air.RunConfig(
-            local_dir=STORAGE_PATH,
-            name=EXP_NAME,
-            checkpoint_config=air.CheckpointConfig(num_to_keep=1),
-            callbacks=[StatefulCallback()],
-        ),
-        tune_config=tune.TuneConfig(
-            num_samples=8,
-            max_concurrent_trials=2,
-            search_alg=StatefulSearcher(),
-        ),
-    )
 
-result_grid = tuner.fit()
+if RUNNER_TYPE == "tuner":
+    trainable = tune.with_resources(train_fn, resources={"CPU": 1})
+    trainable = tune.with_parameters(trainable, data={"dummy_data": [1, 2, 3]})
+
+    if tune.Tuner.can_restore(experiment_path):
+        tuner = tune.Tuner.restore(
+            experiment_path, trainable=trainable, resume_errored=True
+        )
+    else:
+        tuner = tune.Tuner(
+            trainable,
+            run_config=air.RunConfig(
+                local_dir=STORAGE_PATH,
+                name=EXP_NAME,
+                checkpoint_config=air.CheckpointConfig(num_to_keep=1),
+                callbacks=[StatefulCallback()],
+            ),
+            tune_config=tune.TuneConfig(
+                num_samples=8,
+                max_concurrent_trials=2,
+                search_alg=StatefulSearcher(),
+            ),
+        )
+
+    result_grid = tuner.fit()
+
+elif RUNNER_TYPE == "trainer":
+    dataset_size = 128
+    num_workers = 4
+
+    def train_loop_per_worker(config):
+        # Wrap the other train_fn with a check for the dataset.
+        assert session.get_dataset_shard("train").count() == dataset_size // num_workers
+        train_fn(config)
+
+    datasets = {"train": ray.data.range(dataset_size)}
+
+    if DataParallelTrainer.can_restore(experiment_path):
+        trainer = DataParallelTrainer.restore(
+            experiment_path,
+            datasets=datasets,
+            train_loop_per_worker=train_loop_per_worker,
+        )
+    else:
+        trainer = DataParallelTrainer(
+            train_loop_per_worker,
+            datasets=datasets,
+            scaling_config=air.ScalingConfig(
+                num_workers=num_workers, trainer_resources={"CPU": 0}
+            ),
+            run_config=air.RunConfig(
+                local_dir=STORAGE_PATH,
+                name=EXP_NAME,
+                checkpoint_config=air.CheckpointConfig(num_to_keep=1),
+                callbacks=[StatefulCallback()],
+            ),
+        )
+
+    result = trainer.fit()
+
+ray.shutdown()
+import gc
+
+gc.collect()

@@ -38,6 +38,9 @@ from ray.tune.result_grid import ResultGrid
 from ray.tune.analysis import ExperimentAnalysis
 
 
+_RUN_SCRIPT_FILENAME = "_test_air_experiment_restore_run.py"
+
+
 @pytest.fixture
 def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4)
@@ -62,21 +65,47 @@ def print_message(message):
     print("\n")
 
 
-def test_air_experiment_restore(ray_start_4_cpus, tmp_path):
+# @pytest.mark.parametrize("runner_type", ["tuner", "trainer"])
+@pytest.mark.parametrize("runner_type", ["trainer"])
+def test_air_experiment_restore(ray_start_4_cpus, tmp_path, runner_type):
     np.random.seed(2023)
 
-    script_path = Path(__file__).parent / "_test_tuner_restore.py"
+    script_path = Path(__file__).parent / _RUN_SCRIPT_FILENAME
 
     # Args to pass into the script as environment variables
-    exp_name = "tuner_restore_integration_test"
+    exp_name = f"{runner_type}_restore_integration_test"
+    callback_dump_file = tmp_path / f"{runner_type}-callback_dump_file.json"
     storage_path = tmp_path / "ray_results"
-    iters_per_trial = 8
-    num_trials = 8
-    total_iters = iters_per_trial * num_trials
+    if storage_path.exists():
+        import shutil
+
+        shutil.rmtree(storage_path)
+
+    run_started_marker = tmp_path / "run_started_marker"
+
     time_per_iter_s = 0.5
     max_concurrent = 2
 
-    callback_dump_file = tmp_path / "callback_dump_file.json"
+    if runner_type == "tuner":
+        iters_per_trial = 8
+        num_trials = 8
+    elif runner_type == "trainer":
+        iters_per_trial = 64
+        num_trials = 1
+
+    total_iters = iters_per_trial * num_trials
+
+    env = {
+        "RUNNER_TYPE": runner_type,
+        "STORAGE_PATH": str(storage_path),
+        "EXP_NAME": exp_name,
+        "CALLBACK_DUMP_FILE": str(callback_dump_file),
+        "RUN_STARTED_MARKER": str(run_started_marker),
+        "TIME_PER_ITER_S": str(time_per_iter_s),
+        "ITERATIONS_PER_TRIAL": str(iters_per_trial),
+        "NUM_TRIALS": str(num_trials),
+        "MAX_CONCURRENT_TRIALS": str(max_concurrent),
+    }
 
     # Pass criteria
     no_interrupts_runtime = 24.0
@@ -91,18 +120,8 @@ def test_air_experiment_restore(ray_start_4_cpus, tmp_path):
     progress_history = []
 
     while total_runtime < passing_runtime:
-        run_started_marker = tmp_path / "run_started_marker"
         run_started_marker.write_text("", encoding="utf-8")
 
-        env = {
-            "STORAGE_PATH": str(storage_path),
-            "EXP_NAME": exp_name,
-            "CALLBACK_DUMP_FILE": str(callback_dump_file),
-            "TIME_PER_ITER_S": str(time_per_iter_s),
-            "ITERATIONS_PER_TRIAL": str(iters_per_trial),
-            "MAX_CONCURRENT_TRIALS": str(max_concurrent),
-            "RUN_STARTED_MARKER": str(run_started_marker),
-        }
         run = subprocess.Popen(
             [sys.executable, script_path], env=env  # , stderr=subprocess.PIPE
         )
@@ -166,8 +185,8 @@ def test_air_experiment_restore(ray_start_4_cpus, tmp_path):
 
     # The script shouldn't have errored. (It should have finished by this point.)
     assert return_code == 0, (
-        "The script errored with return code: {return_code}.\n"
-        "Check the `_test_tuner_restore_run.py` script for any issues."
+        f"The script errored with return code: {return_code}.\n"
+        f"Check the `{_RUN_SCRIPT_FILENAME}` script for any issues."
     )
 
     # Req 1: runtime
