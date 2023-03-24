@@ -26,6 +26,7 @@ from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, RAY_GCS_RPC_TIMEOUT
 from ray.serve._private.http_util import HTTPRequestWrapper, build_starlette_request
 from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 import __main__
 
@@ -534,3 +535,34 @@ class ExpiringSet:
             return False
         else:
             return True
+
+
+serve_telemetry_tag_map = {
+    "SERVE_API_VERSION": TagKey.SERVE_API_VERSION,
+    "SERVE_NUM_DEPLOYMENTS": TagKey.SERVE_NUM_DEPLOYMENTS,
+    "GCS_STORAGE": TagKey.GCS_STORAGE,
+    "SERVE_NUM_GPU_DEPLOYMENTS": TagKey.SERVE_NUM_GPU_DEPLOYMENTS,
+    "SERVE_FASTAPI_USED": TagKey.SERVE_FASTAPI_USED,
+    "SERVE_DAG_DRIVER_USED": TagKey.SERVE_DAG_DRIVER_USED,
+    "SERVE_HTTP_ADAPTER_USED": TagKey.SERVE_HTTP_ADAPTER_USED,
+    "SERVE_GRPC_INGRESS_USED": TagKey.SERVE_GRPC_INGRESS_USED,
+    "SERVE_REST_API_VERSION": TagKey.SERVE_REST_API_VERSION,
+    "SERVE_NUM_APPS": TagKey.SERVE_NUM_APPS,
+}
+
+
+def record_serve_tag(key: str, value: str):
+    """Record telemetry.
+
+    TagKey objects cannot be pickled, so deployments can't directly record
+    telemetry using record_extra_usage_tag. They can instead call this function
+    which records telemetry for them.
+    """
+
+    if key not in serve_telemetry_tag_map:
+        raise ValueError(
+            f'The TagKey "{key}" does not exist. Expected a key from: '
+            f"{list(serve_telemetry_tag_map.keys())}."
+        )
+
+    record_extra_usage_tag(serve_telemetry_tag_map[key], value)
