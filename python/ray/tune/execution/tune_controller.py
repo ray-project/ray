@@ -422,7 +422,7 @@ class TuneController(_TuneControllerBase):
 
         Lastly, we see if we have cached actors that we can assign to a pending or
         paused trial. This can be the case when a trial has not been staged, yet,
-        for instance because the number of staging trials is too large.
+        for instance because the number of staging trials was too large.
         """
 
         ###
