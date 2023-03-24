@@ -418,7 +418,7 @@ class TuneController(_TuneControllerBase):
 
         First, we handle the trial that the scheduler chooses to run.
 
-        Then, we handle all trials that are pending or paused.
+        Then, we handle all trials that are pending.
 
         Lastly, we see if we have cached actors that we can assign to a pending or
         paused trial. This can be the case when a trial has not been staged, yet,
