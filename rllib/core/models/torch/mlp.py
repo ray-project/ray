@@ -36,3 +36,32 @@ class TorchMLPHead(TorchModel, nn.Module):
     @override(Model)
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         return self.net(inputs)
+
+
+class FreeStdMLPHead(TorchMLPHead):
+    """An MLPHead that encapsulates a floating std for Gaussian distributions."""
+
+    def __init__(self, config: ModelConfig) -> None:
+        TorchMLPHead.__init__(self, config.mlp_head_config)
+
+        self.log_std = torch.nn.Parameter(
+            torch.as_tensor([0.0] * config.output_dims[0])
+        )
+        self.register_parameter("log_std", self.log_std)
+
+    @override(Model)
+    def get_input_spec(self) -> Union[Spec, None]:
+        return TorchTensorSpec("b, h", h=self.config.input_dims[0])
+
+    @override(Model)
+    def get_output_spec(self) -> Union[Spec, None]:
+        return TorchTensorSpec("b, h", h=self.config.output_dims[0])
+
+    @override(Model)
+    def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
+        # Compute the mean and std.
+        mean = self.net(inputs)
+
+        return torch.cat(
+            [mean, self.log_std.unsqueeze(0).repeat([len(mean), 1])], axis=1
+        )

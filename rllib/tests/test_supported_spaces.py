@@ -308,7 +308,8 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
         # input space.
         # TODO (Artur): Delete this test once we remove ModelV2 API.
         config.rl_module(_enable_rl_module_api=False).training(
-            _enable_learner_api=False)
+            _enable_learner_api=False
+        )
 
         check_support("PPO", config, check_bounds=True, tf2=True)
 

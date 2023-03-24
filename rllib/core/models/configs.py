@@ -126,6 +126,38 @@ class MLPHeadConfig(ModelConfig):
 
 @ExperimentalAPI
 @dataclass
+class FreeStdMLPHeadConfig(ModelConfig):
+    """Configuration for an MLPHead with a floating second half outputs.
+
+    Attributes:
+        mlp_head_config: MLPHeadConfig for the MLPHead that produces the first half
+            of the output logits.
+    """
+
+    mlp_head_config: MLPHeadConfig = None
+
+    @_framework_implemented()
+    def build(self, framework: str = "torch") -> Model:
+        # Activation functions in TF are lower case
+        self.output_activation = _convert_to_lower_case_if_tf(
+            self.output_activation, framework
+        )
+        self.hidden_layer_activation = _convert_to_lower_case_if_tf(
+            self.hidden_layer_activation, framework
+        )
+
+        if framework == "torch":
+            from ray.rllib.core.models.torch.mlp import FreeStdTorchMLPHead
+
+            return FreeStdTorchMLPHead(self)
+        else:
+            from ray.rllib.core.models.tf.mlp import FreeStdTfMLPHead
+
+            return FreeStdTfMLPHead(self)
+
+
+@ExperimentalAPI
+@dataclass
 class CNNEncoderConfig(ModelConfig):
     """Configuration for a convolutional network.
 
