@@ -127,7 +127,7 @@ def iter_batches(
     eager_free = clear_block_after_read and DatasetContext.get_current().eager_free
 
     def _async_iter_batches(
-        block_refs: Iterator[ObjectRef[Block]],
+        block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     ) -> Iterator[DataBatch]:
 
         if prefetch_batches > 0:
@@ -138,6 +138,13 @@ def iter_batches(
                 num_batches_to_prefetch=prefetch_batches,
                 batch_size=batch_size,
             )
+        else:
+
+            def _drop_metadata(block_ref_iter):
+                for block_ref, metadata in block_ref_iter:
+                    yield block_ref
+
+            block_refs = _drop_metadata(block_refs)
 
         # Step 2: Resolve the blocks.
         block_iter = resolve_block_refs(

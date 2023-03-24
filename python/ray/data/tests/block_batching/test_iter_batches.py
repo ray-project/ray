@@ -1,3 +1,4 @@
+import itertools
 import pytest
 import time
 from typing import Iterator, List, Tuple
@@ -5,6 +6,7 @@ from typing import Iterator, List, Tuple
 import pandas as pd
 import pyarrow as pa
 
+import ray
 from ray.data.block import Block, BlockMetadata
 from ray.data._internal.block_batching.interfaces import (
     Batch,
@@ -104,7 +106,8 @@ def test_iter_batches_e2e(ray_start_regular_shared, batch_size, drop_last):
     def collate_fn(batch: pd.DataFrame):
         return batch + 1
 
-    block_refs_iter = block_generator(num_blocks=4, num_rows=2)
+    block_refs_iter = itertools.starmap(lambda block, metadata: (ray.put(block), metadata), block_generator(num_blocks=4, num_rows=2))
+
 
     output_batches = iter_batches(
         block_refs_iter,
