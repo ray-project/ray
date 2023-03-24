@@ -1005,6 +1005,48 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   }
 }
 
+int WorkerPool::GetNumStartingWorkers() {
+  auto &state = GetStateForLanguage(Language::PYTHON);
+  int starting_workers = 0;
+  for (auto &entry : state.worker_processes) {
+    if (entry.second.worker_type == rpc::WorkerType::WORKER) {
+      starting_workers += entry.second.is_pending_registration ? 1 : 0;
+    }
+  }
+  return starting_workers;
+}
+
+// Returns whether or not a refill was made.
+bool WorkerPool::MaybeRefillIdlePool() {
+    if (num_prestart_python_workers_ <= 0) {
+        RAY_LOG(DEBUG) << "MaybeRefillIdlePool num_prestart_python_workers_ is " << num_prestart_python_workers_ << ", not refilling";
+        return false;
+    }
+    // For tasks, the processes can be re-used. We should simply not kill them (I assume that's why they die.).
+    // For actors, we should proactively create new worker processes. Some replacement level?
+
+    int target_replacement_level = num_prestart_python_workers_ / 4;
+    int num_starting_workers = GetNumStartingWorkers();
+    int missing = target_replacement_level - idle_of_all_languages_.size();
+    int to_start = std::min(missing - num_starting_workers, maximum_startup_concurrency_);
+    RAY_LOG(DEBUG) << "MaybeRefillIdlePool: target_replacement_level is " << target_replacement_level
+        << ", missing is " << missing
+        << ", idle is " << idle_of_all_languages_.size()
+        << ", num_starting_workers is " << num_starting_workers
+        << ", maximum_startup_concurrency_ is " << maximum_startup_concurrency_
+        << ", to_start is " << to_start;
+
+    if (num_starting_workers >= maximum_startup_concurrency_) {
+        return false;
+    }
+
+    if (to_start > 0) {
+      PrestartDefaultCpuWorkers(Language::PYTHON, to_start);
+      return true;
+    }
+    return false;
+}
+
 void WorkerPool::TryKillingIdleWorkers() {
   RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
 
@@ -1041,6 +1083,24 @@ void WorkerPool::TryKillingIdleWorkers() {
     if (now - idle_pair.second <
         RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
       break;
+    }
+
+    // Why was this not set before?
+    // num_prestart_python_workers_ > 0 to guard this behind improved policy flag
+    if (running_size <= static_cast<size_t>(num_workers_soft_limit_) && num_prestart_python_workers_ > 0) {
+      RAY_LOG(DEBUG) << "The worker pool has " << running_size
+                     << " registered workers which is less than the soft limit of "
+                     << num_workers_soft_limit_ << ". Not attempting to kill any worker.";
+        break;
+    }
+    
+    // If we are supposed to prestart python workers, then check if the idle pool is smaller than desired.
+    // If so, prestart the missing python workers.
+    if (num_prestart_python_workers_ > 0) {
+      bool refill_made = MaybeRefillIdlePool();
+      if (refill_made) {
+        break;
+      }
     }
 
     if (idle_worker->IsDead()) {
@@ -1282,6 +1342,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     worker = std::move(lit->first);
     idle_of_all_languages_.erase(lit);
     idle_of_all_languages_map_.erase(worker);
+    MaybeRefillIdlePool();
     break;
   }
 
@@ -1344,6 +1405,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   }
 }
 
+// What is backlog_size?
+// How is this different from PrestartDefaultCpuWorkers?
 void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                                  int64_t backlog_size,
                                  int64_t num_available_cpus) {
@@ -1438,6 +1501,7 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     }
   }
   RemoveWorker(state.idle, worker);
+  MaybeRefillIdlePool();
 }
 
 void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) {
