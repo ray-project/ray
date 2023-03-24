@@ -1,2 +1,4 @@
 USE_ACTORS_OR_TASKS=tasks WITH_GPU=false ./run_workload 2>&1 | tee tasks_nogpu
 USE_ACTORS_OR_TASKS=actors WITH_GPU=false ./run_workload 2>&1 | tee actors_nogpu
+USE_ACTORS_OR_TASKS=tasks WITH_GPU=true ./run_workload 2>&1 | tee tasks_gpu
+USE_ACTORS_OR_TASKS=actors WITH_GPU=true ./run_workload 2>&1 | tee actors_gpu
