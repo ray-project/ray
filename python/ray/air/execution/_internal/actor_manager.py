@@ -637,6 +637,9 @@ class RayActorManager:
             and tracked_actor.actor_id not in self._failed_actor_ids
         )
 
+    def is_actor_failed(self, tracked_actor: TrackedActor) -> bool:
+        return tracked_actor.actor_id in self._failed_actor_ids
+
     def get_actor_resources(
         self, tracked_actor: TrackedActor
     ) -> Optional[AcquiredResources]:

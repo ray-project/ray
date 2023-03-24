@@ -103,6 +103,7 @@ class TuneController(_TuneControllerBase):
         self._staged_trials: Set[Trial] = set()
 
         # Removed actors
+        self._started_actors: Set[TrackedActor] = set()
         self._stopping_actors: Dict[TrackedActor, float] = {}
         self._earliest_stopping_actor: float = float("inf")
         self._actor_cleanup_timeout: int = int(
@@ -209,6 +210,7 @@ class TuneController(_TuneControllerBase):
             _, tracked_actor = times.popleft()
             if self._actor_manager.is_actor_started(tracked_actor=tracked_actor):
                 self._actor_manager.remove_actor(tracked_actor=tracked_actor, kill=True)
+            self._stopping_actors.pop(tracked_actor)
 
         if times:
             self._earliest_stopping_actor = times[0][0]
@@ -661,6 +663,17 @@ class TuneController(_TuneControllerBase):
 
         tracked_actor = self._trial_to_actor[trial]
 
+        if (
+            not self._actor_manager.is_actor_started(tracked_actor)
+            or self._actor_manager.is_actor_failed(tracked_actor)
+            or tracked_actor not in self._started_actors
+        ):
+            logger.debug(
+                f"Not caching actor of trial {trial} as it has not been started, yet: "
+                f"{tracked_actor}"
+            )
+            return False
+
         if not self._actor_cache.cache_object(
             trial.placement_group_factory, tracked_actor
         ):
@@ -681,6 +694,8 @@ class TuneController(_TuneControllerBase):
         return True
 
     def _actor_started(self, tracked_actor: TrackedActor, log: str = "STARTED"):
+        self._started_actors.add(tracked_actor)
+
         trial = self._actor_to_trial[tracked_actor]
 
         logger.debug(f"Actor {log} for trial {trial}: {tracked_actor}")
@@ -712,7 +727,8 @@ class TuneController(_TuneControllerBase):
 
         logger.debug(f"Actor STOPPED: {tracked_actor}")
 
-        self._stopping_actors.pop(tracked_actor)
+        self._stopping_actors.pop(tracked_actor, None)
+        self._started_actors.discard(tracked_actor)
 
     def _actor_failed(self, tracked_actor: TrackedActor, exception: Exception):
         trial = self._actor_to_trial[tracked_actor]
@@ -1130,6 +1146,7 @@ class TuneController(_TuneControllerBase):
             "_stopped_trials",
             "_failed_trials",
             "_resetting_trials",
+            "_started_actors",
             "_stopping_actors",
             "_staged_trials",
             "_actor_cache",
