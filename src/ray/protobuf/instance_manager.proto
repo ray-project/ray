@@ -1,0 +1,53 @@
+message GetInstanceManagerStateBatchRequest {}
+
+message RunningInstance {
+  bytes instance_id = 1;
+}
+
+message LaunchRequest {
+  string name = 1;
+  int count = 2;
+}
+
+message PreemptedInstance {
+  bytes instance_id = 1;
+}
+
+message GetInstanceManagerStateBatchReply {
+  bytes version = 1;
+  repeated RunningInstance running_instances = 2;
+  repeated LaunchRequest launch_requests = 3;
+  repeated PreemptedInstance preempted_instances = 4;
+}
+
+message TerminationRequest {
+  bytes instance_id = 1;
+}
+
+message ActOnInstancesRequest {
+  bytes last_seen_version = 1;
+  repeated LaunchRequest new_launch_requests = 2;
+  repeated TerminationRequest new_termination_requests = 3;
+}
+
+message ActOnInstancesReply {}
+
+message UpdateInstanceStateBatchRequest {
+  bytes last_seen_version = 1;
+  repeated RunningInstance running_instances = 2;
+  repeated LaunchRequest launch_requests = 3;
+  repeated PreemptedInstance preempted_instances = 4;
+}
+
+message UpdateInstanceStateBatchReply {}
+
+service InstanceManagerService {
+
+  rpc GetInstanceManagerStateBatch(GetInstanceManagerStateBatchRequest) returns (GetInstanceManagerStateBatchReply);
+
+  rpc ActOnInstances(ActOnInstancesRequest) returns (ActOnInstancesReply);
+
+  rpc UpdateInstanceStateBatch(UpdateInstanceStateBatchRequest) returns (UpdateInstanceStateBatchReply);
+
+
+}
