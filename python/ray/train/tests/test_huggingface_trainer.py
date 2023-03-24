@@ -16,6 +16,7 @@ from ray.train.huggingface import (
     HuggingFaceTrainer,
     HuggingFaceCheckpoint,
 )
+from ray.train.trainer import TrainingFailedError
 from ray.air.config import ScalingConfig
 from ray.train.tests._huggingface_data import train_data, validation_data
 from ray import tune
@@ -134,6 +135,11 @@ def test_e2e(ray_start_4_cpus, save_strategy):
 
 
 def test_validation(ray_start_4_cpus):
+    def fit_and_check_for_error(trainer, error_type=ValueError):
+        with pytest.raises(TrainingFailedError) as exc_info:
+            trainer.fit().error
+        assert isinstance(exc_info.value.__cause__, error_type)
+
     ray_train = ray.data.from_pandas(train_df)
     ray_validation = ray.data.from_pandas(validation_df)
     scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
@@ -152,8 +158,7 @@ def test_validation(ray_start_4_cpus):
         },
         **trainer_conf,
     )
-    with pytest.raises(RayTaskError):
-        trainer.fit().error
+    fit_and_check_for_error(trainer)
 
     # logging strategy set to no should raise an exception
     trainer = HuggingFaceTrainer(
@@ -163,8 +168,7 @@ def test_validation(ray_start_4_cpus):
         },
         **trainer_conf,
     )
-    with pytest.raises(RayTaskError):
-        trainer.fit().error
+    fit_and_check_for_error(trainer)
 
     # logging steps != eval steps should raise an exception
     trainer = HuggingFaceTrainer(
@@ -177,8 +181,7 @@ def test_validation(ray_start_4_cpus):
         },
         **trainer_conf,
     )
-    with pytest.raises(RayTaskError):
-        trainer.fit().error
+    fit_and_check_for_error(trainer)
 
     # mismatched strategies should raise an exception
     for logging_strategy, evaluation_strategy, save_strategy in (
@@ -197,11 +200,7 @@ def test_validation(ray_start_4_cpus):
             },
             **trainer_conf,
         )
-        with pytest.raises(RayTaskError):
-            trainer.fit().error
-
-    with pytest.raises(RayTaskError):
-        trainer.fit().error
+        fit_and_check_for_error(trainer)
 
 
 # Tests if checkpointing and restoring during tuning works correctly.
