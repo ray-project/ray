@@ -146,7 +146,7 @@
   instance_size: large
   commands:
     # skip on master cause we are running these test under all RLlib suites anyw/ay
-    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    - if [ "$BUILDKITE_PULL_REQUEST" = "false" ]; then exit 0; fi
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
