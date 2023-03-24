@@ -2023,11 +2023,8 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> # Make sure the streaming executor preserve order so the numeric
-            >>> # will have deterministic rounding error.
-            >>> ray.data.context.DatasetContext.get_current().execution_options.preserve_order = True
-            >>> ray.data.range(100).std()
-            29.011491975882016
+            >>> round(ray.data.range(100).std(), 5)
+            29.01149
             >>> ray.data.from_items([
             ...     (i, i**2)
             ...     for i in range(100)]).std(lambda x: x[1])
