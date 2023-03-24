@@ -3,6 +3,8 @@
 Profiling
 =========
 
+.. _ray-core-timeline:
+
 Visualizing Tasks in the Ray Timeline
 -------------------------------------
 
@@ -28,7 +30,7 @@ Python CPU Profiling in the Dashboard
 -------------------------------------
 
 The :ref:`ray-dashboard`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph"
-actions for active workers and actors.
+actions for active workers, actors, and jobs.
 
 .. image:: /images/profile.png
    :align: center
