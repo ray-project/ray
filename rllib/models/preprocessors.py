@@ -378,7 +378,7 @@ class RepeatedValuesPreprocessor(Preprocessor):
 
 
 @PublicAPI
-def get_preprocessor(space: gym.Space) -> type:
+def get_preprocessor(space: gym.Space, include_multi_binary=False) -> type:
     """Returns an appropriate preprocessor class for the given space."""
 
     _legacy_patch_shapes(space)
@@ -411,7 +411,8 @@ def get_preprocessor(space: gym.Space) -> type:
         preprocessor = DictFlatteningPreprocessor
     elif isinstance(space, Repeated):
         preprocessor = RepeatedValuesPreprocessor
-    elif isinstance(space, gym.spaces.MultiBinary):
+    # We usually only want to include this when using RLModules
+    elif isinstance(space, gym.spaces.MultiBinary) and include_multi_binary:
         preprocessor = MultiBinaryPreprocessor
     else:
         preprocessor = NoPreprocessor

@@ -2038,7 +2038,11 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 # Policies should deal with preprocessed (automatically flattened)
                 # observations if preprocessing is enabled.
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
-                    obs_space, merged_conf.model
+                    obs_space,
+                    merged_conf.model,
+                    include_multi_binary=self.config.get(
+                        "_enable_rl_module_api", False
+                    ),
                 )
                 # Original observation space should be accessible at
                 # obs_space.original_space after this step.
