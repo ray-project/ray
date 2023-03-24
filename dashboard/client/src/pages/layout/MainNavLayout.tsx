@@ -21,7 +21,7 @@ const useStyles = makeStyles((theme) =>
       position: "fixed",
       width: "100%",
       backgroundColor: "white",
-      zIndex: 10000,
+      zIndex: 1000,
     },
   }),
 );
@@ -142,6 +142,11 @@ const NAV_ITEMS = [
     id: "jobs",
   },
   {
+    title: "Serve",
+    path: "/serve",
+    id: "serve",
+  },
+  {
     title: "Cluster",
     path: "/cluster",
     id: "cluster",
@@ -187,18 +192,6 @@ const MainNavBar = () => {
       ))}
       <div className={classes.flexSpacer}></div>
       <div className={classes.actionItemsContainer}>
-        <Link
-          className={classNames(classes.actionItem, classes.backToOld)}
-          to="/node"
-        >
-          <Typography
-            variant="body2"
-            component="span"
-            className={classes.backToOldText}
-          >
-            Back to old UI
-          </Typography>
-        </Link>
         <Tooltip title="Docs">
           <IconButton
             className={classes.actionItem}
@@ -240,6 +233,7 @@ const useMainNavBreadcrumbsStyles = makeStyles((theme) =>
     },
     breadcrumbItem: {
       fontWeight: 500,
+      color: "#8C9196",
       "&:not(:first-child)": {
         marginLeft: theme.spacing(1),
       },
