@@ -194,7 +194,7 @@ ray.shutdown()
         return verify_failed_task(
             name="sleep_forever",
             error_type="ACTOR_DIED",
-            error_message=["INTENDED_SYSTEM_EXIT", "ray.kill"],
+            error_message="ray.kill",
         )
 
     wait_for_condition(verify_exit_by_ray_kill)
@@ -231,8 +231,8 @@ ray.shutdown()
         assert type == "INTENDED_USER_EXIT" and "ray.cancel" in detail
         return verify_failed_task(
             name="cancel-f",
-            error_type="TASK_CANCELLED",
-            error_message=["INTENDED_USER_EXIT", "ray.cancel"],
+            error_type="WORKER_DIED",  # Since it's a force cancel through kill signal.
+            error_message="Socket closed",
         )
 
     wait_for_condition(verify_exit_by_ray_cancel)
