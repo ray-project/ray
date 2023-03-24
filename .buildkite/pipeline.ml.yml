@@ -282,7 +282,7 @@
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_env=TUNE_NEW_EXECUTION=1
-      --test_tag_filters=-medium_instance,-py37,-soft_imports,-gpu_only,-rllib,-multinode
+      --test_tag_filters=-medium_instance,-py37,-soft_imports,-gpu_only,-rllib,-multinode,-exclude_new_execution
       python/ray/tune/...
 
 - label: ":octopus: :sunny: New execution path:Tune tests and examples (medium)"
@@ -294,7 +294,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_env=TUNE_NEW_EXECUTION=1
-      --test_tag_filters=medium_instance,-py37,-soft_imports,-gpu_only,-rllib,-multinode
+      --test_tag_filters=medium_instance,-py37,-soft_imports,-gpu_only,-rllib,-multinode,-exclude_new_execution
       python/ray/tune/...
 
 - label: ":octopus: :brain: :sunny: New execution path: Tune tests and examples {using RLlib}"
@@ -306,7 +306,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_env=TUNE_NEW_EXECUTION=1
-      --test_tag_filters=-gpu_only,rllib python/ray/tune/...
+      --test_tag_filters=-gpu_only,rllib,-exclude_new_execution python/ray/tune/...
 
 - label: ":octopus: :sunny: New execution path: Tune tests and examples. Python 3.7"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
