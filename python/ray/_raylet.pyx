@@ -137,7 +137,6 @@ import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
 from ray._private.async_compat import sync_to_async, get_new_event_loop
 from ray._private.client_mode_hook import disable_client_hook
-from ray._private.signature import DUMMY_TYPE
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
@@ -169,13 +168,6 @@ current_task_id_lock = threading.Lock()
 
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
-
-# The cached serialized dummy arg b`__RAY_DUMMY__`.
-cdef dummy_type_serialized_arg = None
-# The type of DUMMY_TYPE.
-cdef dummy_type_type = type(DUMMY_TYPE)
-# The value of DUMMY_TYPE, cdef DUMMY_TYPE to avoid global lookup.
-cdef dummy_type_value = DUMMY_TYPE
 
 
 class ObjectRefGenerator:
@@ -464,35 +456,20 @@ cdef prepare_args_internal(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
                     c_owner_address,
-                    (<ObjectRef>arg).call_site_data)))  # Avoid calling Python function
+                    arg.call_site())))
 
         else:
-            # The type check is because some custom types may not implement __eq__
-            # well. So, we only handle the args which type and value are exactly match
-            # the DUMMY_TYPE.
-            # TODO(fyrestone): Maybe we can remove the DUMMY_TYPE or make the
-            # DUMMY_TYPE None.
-            # https://github.com/ray-project/ray/pull/32478/
-            if type(arg) is dummy_type_type and arg == dummy_type_value:
-                global dummy_type_serialized_arg
-                if dummy_type_serialized_arg is None:
-                    # Cache the serialized dummy arg.
-                    dummy_type_serialized_arg = serialized_arg = \
-                        worker.get_serialization_context().serialize(arg)
-                else:
-                    serialized_arg = dummy_type_serialized_arg
-            else:
-                try:
-                    serialized_arg = worker.get_serialization_context(
-                    ).serialize(arg)
-                except TypeError as e:
-                    msg = (
-                        "Could not serialize the argument "
-                        f"{repr(arg)} for a task or actor "
-                        f"{function_descriptor.repr}. Check "
-                        "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
-                        "for more information.")
-                    raise TypeError(msg) from e
+            try:
+                serialized_arg = worker.get_serialization_context(
+                ).serialize(arg)
+            except TypeError as e:
+                msg = (
+                    "Could not serialize the argument "
+                    f"{repr(arg)} for a task or actor "
+                    f"{function_descriptor.repr}. Check "
+                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
+                    "for more information.")
+                raise TypeError(msg) from e
             metadata = serialized_arg.metadata
             if language != Language.PYTHON:
                 metadata_fields = metadata.split(b",")
@@ -877,6 +854,8 @@ cdef void execute_task(
                 class_name = actor.__class__.__name__
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
+
+            worker.record_task_log_start()
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
@@ -931,6 +910,11 @@ cdef void execute_task(
                                         core_worker.get_current_task_id()),
                                      exc_info=True)
                     raise e
+                finally:
+                    # Record the task logs end offsets regardless of
+                    # task execution results.
+                    worker.record_task_log_end()
+
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
                     # all return values as a single object.
@@ -945,11 +929,16 @@ cdef void execute_task(
                 if (hasattr(actor_class, "__ray_actor_class__") and
                         (actor_class.__ray_actor_class__.__repr__
                          != object.__repr__)):
+                    actor_repr = repr(actor)
                     actor_magic_token = "{}{}\n".format(
-                        ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
+                        ray_constants.LOG_PREFIX_ACTOR_NAME, actor_repr)
                     # Flush on both stdout and stderr.
                     print(actor_magic_token, end="")
                     print(actor_magic_token, file=sys.stderr, end="")
+
+                    # Sets the actor repr name for the actor so other components
+                    # like GCS has such info.
+                    core_worker.set_actor_repr_name(actor_repr)
 
             if (returns[0].size() > 0 and
                     not inspect.isgenerator(outputs) and
@@ -1525,7 +1514,8 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token, session_name, entrypoint):
+                  startup_token, session_name, entrypoint,
+                  worker_launch_time_ms, worker_launched_time_ms):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -1577,6 +1567,8 @@ cdef class CoreWorker:
         options.startup_token = startup_token
         options.session_name = session_name
         options.entrypoint = entrypoint
+        options.worker_launch_time_ms = worker_launch_time_ms
+        options.worker_launched_time_ms = worker_launched_time_ms
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
@@ -1642,6 +1634,9 @@ cdef class CoreWorker:
 
     def set_actor_title(self, title):
         CCoreWorkerProcess.GetCoreWorker().SetActorTitle(title)
+
+    def set_actor_repr_name(self, repr_name):
+        CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
 
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
@@ -1984,19 +1979,18 @@ cdef class CoreWorker:
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
 
-        if retry_exception_allowlist:
-            try:
-                serialized_retry_exception_allowlist = ray_pickle.dumps(
-                    retry_exception_allowlist,
-                )
-            except TypeError as e:
-                msg = (
-                    "Could not serialize the retry exception allowlist"
-                    f"{retry_exception_allowlist} for task {function_descriptor.repr}. "
-                    "Check "
-                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
-                    "for more information.")
-                raise TypeError(msg) from e
+        try:
+            serialized_retry_exception_allowlist = ray_pickle.dumps(
+                retry_exception_allowlist,
+            )
+        except TypeError as e:
+            msg = (
+                "Could not serialize the retry exception allowlist"
+                f"{retry_exception_allowlist} for task {function_descriptor.repr}. "
+                "Check "
+                "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
+                "for more information.")
+            raise TypeError(msg) from e
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -2672,10 +2666,7 @@ cdef class CoreWorker:
         eventloop, async_thread = self.get_event_loop(
             function_descriptor, specified_cgname)
         coroutine = func(*args, **kwargs)
-        if threading.get_ident() == async_thread.ident:
-            future = asyncio.ensure_future(coroutine, eventloop)
-        else:
-            future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
+        future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
         future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
@@ -2801,6 +2792,16 @@ cdef class CoreWorker:
                     CCoreWorkerProcess.GetCoreWorker().GetNumLeasesRequested())
 
         return (num_tasks_submitted, num_leases_requested)
+
+    def record_task_log_start(self, stdout_path, stderr_path,
+                              int64_t out_start_offset, int64_t err_start_offset):
+        CCoreWorkerProcess.GetCoreWorker() \
+            .RecordTaskLogStart(stdout_path, stderr_path,
+                                out_start_offset, err_start_offset)
+
+    def record_task_log_end(self, int64_t out_end_offset, int64_t err_end_offset):
+        CCoreWorkerProcess.GetCoreWorker() \
+            .RecordTaskLogEnd(out_end_offset, err_end_offset)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

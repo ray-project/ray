@@ -1,21 +1,113 @@
-from typing import Optional, Mapping, Any
+import enum
 import functools
+from typing import Optional
 
-import numpy as np
 import gymnasium as gym
+import numpy as np
+import tree
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
-from ray.rllib.core.models.base import ModelConfig
 from ray.rllib.core.models.base import Encoder
+from ray.rllib.core.models.base import ModelConfig
 from ray.rllib.core.models.configs import (
     MLPEncoderConfig,
     LSTMEncoderConfig,
     CNNEncoderConfig,
 )
 from ray.rllib.models import MODEL_DEFAULTS
+from ray.rllib.models.distributions import Distribution
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.spaces.simplex import Simplex
+from ray.rllib.utils.spaces.space_utils import flatten_space
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
+
+
+def _multi_action_dist_partial_helper(
+    catalog_cls: "Catalog", action_space: gym.Space, framework: str
+) -> Distribution:
+    """Helper method to get a partial of a MultiActionDistribution.
+
+    This is useful for when we want to create MultiActionDistributions from
+    logits only (!) later, but know the action space now already.
+
+    Args:
+        catalog_cls: The ModelCatalog class to use.
+        action_space: The action space to get the child distribution classes for.
+        framework: The framework to use.
+
+    Returns:
+        A partial of the TorchMultiActionDistribution class.
+    """
+    action_space_struct = get_base_struct_from_space(action_space)
+    flat_action_space = flatten_space(action_space)
+    child_distribution_cls_struct = tree.map_structure(
+        lambda s: catalog_cls.get_dist_cls_from_action_space(
+            action_space=s,
+            framework=framework,
+        ),
+        action_space_struct,
+    )
+    flat_distribution_clses = tree.flatten(child_distribution_cls_struct)
+
+    logit_lens = [
+        int(dist_cls.required_input_dim(space))
+        for dist_cls, space in zip(flat_distribution_clses, flat_action_space)
+    ]
+
+    if framework == "torch":
+        from ray.rllib.models.torch.torch_distributions import (
+            TorchMultiDistribution,
+        )
+
+        multi_action_dist_cls = TorchMultiDistribution
+    elif framework == "tf":
+        from ray.rllib.models.tf.tf_distributions import TfMultiDistribution
+
+        multi_action_dist_cls = TfMultiDistribution
+    else:
+        raise ValueError(f"Unsupported framework: {framework}")
+
+    partial_dist_cls = multi_action_dist_cls.get_partial_dist_cls(
+        space=action_space,
+        child_distribution_cls_struct=child_distribution_cls_struct,
+        input_lens=logit_lens,
+    )
+    return partial_dist_cls
+
+
+def _multi_categorical_dist_partial_helper(
+    action_space: gym.Space, framework: str
+) -> Distribution:
+    """Helper method to get a partial of a MultiCategorical Distribution.
+
+    This is useful for when we want to create MultiCategorical Distribution from
+    logits only (!) later, but know the action space now already.
+
+    Args:
+        action_space: The action space to get the child distribution classes for.
+        framework: The framework to use.
+
+    Returns:
+        A partial of the MultiCategorical class.
+    """
+
+    if framework == "torch":
+        from ray.rllib.models.torch.torch_distributions import TorchMultiCategorical
+
+        multi_categorical_dist_cls = TorchMultiCategorical
+    elif framework == "tf":
+        from ray.rllib.models.tf.tf_distributions import TfMultiCategorical
+
+        multi_categorical_dist_cls = TfMultiCategorical
+    else:
+        raise ValueError(f"Unsupported framework: {framework}")
+
+    partial_dist_cls = multi_categorical_dist_cls.get_partial_dist_cls(
+        space=action_space, input_lens=list(action_space.nvec)
+    )
+
+    return partial_dist_cls
 
 
 class Catalog:
@@ -101,7 +193,8 @@ class Catalog:
         This establishes an agreement between encoder and heads about the latent
         dimensions. Encoders can be built to output a latent tensor with
         `latent_dims` dimensions, and heads can be built with tensors of
-        `latent_dims` dimensions as inputs.
+        `latent_dims` dimensions as inputs. This can be safely ignored if this
+        agreement is not needed in case of modifications to the Catalog.
 
         Returns:
             The latent dimensions of the encoder.
@@ -129,7 +222,7 @@ class Catalog:
 
         # Create a function that can be called when framework is known to retrieve the
         # class type for action distributions
-        self.action_dist_class_fn = functools.partial(
+        self._action_dist_class_fn = functools.partial(
             self.get_dist_cls_from_action_space, action_space=self.action_space
         )
 
@@ -159,7 +252,7 @@ class Catalog:
         """Get the action distribution class.
 
         The default behavior is to get the action distribution from the
-        `Catalog.action_dist_cls_dict`. This can be overridden to build a custom action
+        `Catalog.action_dist_class_fn`. This can be overridden to build a custom action
         distribution as a means of configuring the behavior of a PPORLModuleBase
         implementation.
 
@@ -169,13 +262,13 @@ class Catalog:
         Returns:
             The action distribution.
         """
-        assert hasattr(self, "action_dist_class_fn"), (
-            "You must define a `Catalog.action_dist_class_fn` attribute in your "
+        assert hasattr(self, "_action_dist_class_fn"), (
+            "You must define a `Catalog._action_dist_class_fn` attribute in your "
             "Catalog subclass or override the `Catalog.action_dist_class_fn` method. "
             "By default, an action_dist_class_fn is created in the __post_init__ "
             "method."
         )
-        return self.action_dist_class_fn(framework=framework)
+        return self._action_dist_class_fn(framework=framework)
 
     @classmethod
     def get_encoder_config(
@@ -311,12 +404,11 @@ class Catalog:
         action_space: gym.Space,
         *,
         framework: Optional[str] = None,
-        deterministic: Optional[bool] = False,
-    ) -> Mapping[str, Any]:
+    ) -> Distribution:
         """Returns a distribution class for the given action space.
 
         You can get the required input dimension for the distribution by calling
-        `action_dict_cls.required_model_output_shape(action_space, model_config_dict)`
+        `action_dict_cls.required_input_dim(action_space)`
         on the retrieved class. This is useful, because the Catalog needs to find out
         about the required input dimension for the distribution before the model that
         outputs these inputs is configured.
@@ -324,16 +416,22 @@ class Catalog:
         Args:
             action_space: Action space of the target gym env.
             framework: The framework to use.
-            deterministic: Whether to return a Deterministic distribution on input
-                logits instead of a stochastic distributions. For example for Discrete
-                spaces, the stochastic is a Categorical distribution with output logits,
-                while the deterministic distribution will be to output the argmax of
-                logits directly.
-
 
         Returns:
             The distribution class for the given action space.
         """
+        # This method is structured in two steps:
+        # Firstly, construct a dictionary containing the available distribution classes.
+        # Secondly, return the correct distribution class for the given action space.
+
+        # Step 1: Construct the dictionary.
+
+        class DistEnum(enum.Enum):
+            Categorical = "Categorical"
+            DiagGaussian = "Gaussian"
+            Deterministic = "Deterministic"
+            MultiDistribution = "MultiDistribution"
+            MultiCategorical = "MultiCategorical"
 
         if framework == "torch":
             from ray.rllib.models.torch.torch_distributions import (
@@ -343,9 +441,9 @@ class Catalog:
             )
 
             distribution_dicts = {
-                "deterministic": TorchDeterministic,
-                "gaussian": TorchDiagGaussian,
-                "categorical": TorchCategorical,
+                DistEnum.Deterministic: TorchDeterministic,
+                DistEnum.DiagGaussian: TorchDiagGaussian,
+                DistEnum.Categorical: TorchCategorical,
             }
         elif framework == "tf":
             from ray.rllib.models.tf.tf_distributions import (
@@ -355,15 +453,44 @@ class Catalog:
             )
 
             distribution_dicts = {
-                "deterministic": TfDeterministic,
-                "gaussian": TfDiagGaussian,
-                "categorical": TfCategorical,
+                DistEnum.Deterministic: TfDeterministic,
+                DistEnum.DiagGaussian: TfDiagGaussian,
+                DistEnum.Categorical: TfCategorical,
             }
         else:
             raise ValueError(
                 f"Unknown framework: {framework}. Only 'torch' and 'tf2' are "
                 "supported for RLModule Catalogs."
             )
+
+        # Only add a MultiAction distribution class to the dict if we can compute its
+        # components (we need a Tuple/Dict space for this).
+        if isinstance(action_space, (Tuple, Dict)):
+            partial_multi_action_distribution_cls = _multi_action_dist_partial_helper(
+                catalog_cls=cls,
+                action_space=action_space,
+                framework=framework,
+            )
+
+            distribution_dicts[
+                DistEnum.MultiDistribution
+            ] = partial_multi_action_distribution_cls
+
+        # Only add a MultiCategorical distribution class to the dict if we can compute
+        # its components (we need a MultiDiscrete space for this).
+        if isinstance(action_space, MultiDiscrete):
+            partial_multi_categorical_distribution_cls = (
+                _multi_categorical_dist_partial_helper(
+                    action_space=action_space,
+                    framework=framework,
+                )
+            )
+
+            distribution_dicts[
+                DistEnum.MultiCategorical
+            ] = partial_multi_categorical_distribution_cls
+
+        # Step 2: Return the correct distribution class for the given action space.
 
         # Box space -> DiagGaussian OR Deterministic.
         if isinstance(action_space, Box):
@@ -375,25 +502,20 @@ class Catalog:
             else:
                 if len(action_space.shape) > 1:
                     raise UnsupportedSpaceException(
-                        "Action space has multiple dimensions "
-                        "{}. ".format(action_space.shape)
-                        + "Consider reshaping this into a single dimension, "
-                        "using a custom action distribution, "
-                        "using a Tuple action space, or the multi-agent API."
+                        f"Action space has multiple dimensions {action_space.shape}. "
+                        f"Consider reshaping this into a single dimension, using a "
+                        f"custom action distribution, using a Tuple action space, "
+                        f"or the multi-agent API."
                     )
-                if deterministic:
-                    return distribution_dicts["deterministic"]
-                else:
-                    return distribution_dicts["gaussian"]
+                return distribution_dicts[DistEnum.DiagGaussian]
 
         # Discrete Space -> Categorical.
         elif isinstance(action_space, Discrete):
-            return distribution_dicts["categorical"]
+            return distribution_dicts[DistEnum.Categorical]
 
         # Tuple/Dict Spaces -> MultiAction.
         elif isinstance(action_space, (Tuple, Dict)):
-            # TODO(Artur): Supported Tuple/Dict.
-            raise NotImplementedError("Tuple/Dict spaces not yet supported.")
+            return distribution_dicts[DistEnum.MultiDistribution]
 
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
@@ -402,8 +524,7 @@ class Catalog:
 
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, MultiDiscrete):
-            # TODO(Artur): Support multi-discrete.
-            raise NotImplementedError("MultiDiscrete spaces not yet supported.")
+            return distribution_dicts[DistEnum.MultiCategorical]
 
         # Unknown type -> Error.
         else:

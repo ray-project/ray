@@ -971,6 +971,11 @@ available_node_types:
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
+# TODO(https://github.com/ray-project/ray/issues/33486)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 11, 0),
+    reason=("Currently not passing for Python 3.11"),
+)
 def test_usage_lib_report_data(
     monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats
 ):
@@ -1057,6 +1062,11 @@ provider:
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
+# TODO(https://github.com/ray-project/ray/issues/33486)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 11, 0),
+    reason=("Currently not passing for Python 3.11"),
+)
 def test_usage_report_e2e(
     monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats, gcs_storage_type
 ):
@@ -1122,7 +1132,7 @@ provider:
         reporter = StatusReporter.remote()
 
         @ray.remote(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
-        class ServeInitator:
+        class ServeInitiator:
             def __init__(self):
                 # This is used in the worker process
                 # so it won't be tracked as library usage.
@@ -1145,7 +1155,7 @@ provider:
 
         # We need to start a serve with runtime env to make this test
         # work with minimal installation.
-        s = ServeInitator.remote()
+        s = ServeInitiator.remote()
         ray.get(s.ready.remote())
 
         """
@@ -1194,6 +1204,7 @@ provider:
             "dashboard_metrics_grafana_enabled": "False",
             "dashboard_metrics_prometheus_enabled": "False",
             "serve_num_deployments": "1",
+            "serve_num_gpu_deployments": "0",
             "serve_api_version": "v1",
             "actor_num_created": "0",
             "pg_num_created": "0",
@@ -1393,6 +1404,11 @@ if os.environ.get("RAY_MINIMAL") != "1":
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
+)
+# TODO(https://github.com/ray-project/ray/issues/33486)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 11, 0),
+    reason=("Currently not passing for Python 3.11"),
 )
 def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats):
     """

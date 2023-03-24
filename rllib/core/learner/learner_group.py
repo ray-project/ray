@@ -40,6 +40,14 @@ def _get_backend_config(learner_class: Type["Learner"]) -> str:
     return backend_config
 
 
+def _is_module_trainable(module_id: ModuleID, batch: MultiAgentBatch) -> bool:
+    """Default implemntation for is_module_trainable()
+
+    It assumes that the module is trainable by default.
+    """
+    return True
+
+
 class LearnerGroup:
     """Coordinator of Learners.
     Public API:
@@ -80,6 +88,8 @@ class LearnerGroup:
         # true. the backend executor would otherwise log a warning to the console from
         # ray train
         self._is_shut_down = False
+
+        self._is_module_trainable = _is_module_trainable
 
         if self._is_local:
             self._learner = learner_class(**learner_spec.get_params_dict())
@@ -154,6 +164,14 @@ class LearnerGroup:
         Returns:
             A list of dictionaries of results from the updates from the Learner(s)
         """
+
+        # Construct a multi-agent batch with only the trainable modules.
+        train_batch = {}
+        for module_id in batch.policy_batches.keys():
+            if self._is_module_trainable(module_id, batch):
+                train_batch[module_id] = batch.policy_batches[module_id]
+        train_batch = MultiAgentBatch(train_batch, batch.count)
+
         if self.is_local:
             if not block:
                 raise ValueError(
@@ -162,7 +180,7 @@ class LearnerGroup:
                 )
             results = [
                 self._learner.update(
-                    batch,
+                    train_batch,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                     reduce_fn=reduce_fn,
@@ -170,7 +188,7 @@ class LearnerGroup:
             ]
         else:
             results = self._distributed_update(
-                batch,
+                train_batch,
                 minibatch_size=minibatch_size,
                 num_iters=num_iters,
                 reduce_fn=reduce_fn,
@@ -388,6 +406,19 @@ class LearnerGroup:
             self._learner.set_state(state)
         else:
             self._worker_manager.foreach_actor(lambda w: w.set_state(state))
+
+    def set_is_module_trainable(
+        self, is_module_trainable: Callable[[ModuleID, MultiAgentBatch], bool] = None
+    ) -> None:
+        """Sets the function that determines whether a module is trainable.
+
+        Args:
+            is_module_trainable: A function that takes in a module id and a batch
+                and returns a boolean indicating whether the module should be trained
+                on the batch.
+        """
+        if is_module_trainable is not None:
+            self._is_module_trainable = is_module_trainable
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""
