@@ -7,6 +7,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import AgentID
+from ray.rllib.utils.numpy import convert_to_numpy
 
 
 @DeveloperAPI
@@ -109,6 +110,7 @@ def compute_advantages(
         SampleBatch.VF_PREDS in rollout or not use_critic
     ), "use_critic=True but values not found"
     assert use_critic or not use_gae, "Can't use gae without using a value function"
+    last_r = convert_to_numpy(last_r)
 
     if use_gae:
         vpred_t = np.concatenate([rollout[SampleBatch.VF_PREDS], np.array([last_r])])
