@@ -43,20 +43,11 @@ class Timer:
 
     @contextmanager
     def timer(self) -> None:
-        time_start = time.perf_counter()
-        try:
-            yield
-        finally:
-            self.add(time.perf_counter() - time_start)
-
-    @contextmanager
-    def thread_timer(self) -> None:
         time_start = time.thread_time()
         try:
             yield
         finally:
-            with self.lock:
-                self.add(time.thread_time() - time_start)
+            self.add(time.thread_time() - time_start)
 
     def add(self, value: float) -> None:
         self._value += value
@@ -248,7 +239,7 @@ class DatasetStats:
         self._legacy_iter_batches = False
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_get_s: Timer = Timer()
-        self.iter_create_batch_s: Timer = Timer()
+        self.iter_next_batch_s: Timer = Timer()
         self.iter_format_batch_s: Timer = Timer()
         self.iter_collate_batch_s: Timer = Timer()
         self.iter_total_blocked_s: Timer = Timer()
@@ -318,7 +309,7 @@ class DatasetStats:
         iter_stats = IterStatsSummary(
             self._legacy_iter_batches,
             self.iter_get_s,
-            self.iter_create_batch_s,
+            self.iter_next_batch_s,
             self.iter_format_batch_s,
             self.iter_collate_batch_s,
             self.iter_total_blocked_s,

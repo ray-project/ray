@@ -23,7 +23,7 @@ def block_generator(num_rows: int, num_blocks: int):
 
 
 def test_resolve_block_refs(ray_start_regular_shared):
-    block_refs = [[ray.put(0), ray.put(1)], [ray.put(2)]]
+    block_refs = [ray.put(0), ray.put(1), ray.put(2)]
 
     resolved_iter = resolve_block_refs(iter(block_refs))
     assert list(resolved_iter) == [0, 1, 2]

@@ -97,15 +97,12 @@ def batch_block_refs(
     eager_free = clear_block_after_read and DatasetContext.get_current().eager_free
 
     block_iter = resolve_block_refs(
-        map(
-            list,
-            _prefetch_blocks(
-                block_ref_iter=block_refs,
-                prefetcher=prefetcher,
-                stats=stats,
-                num_blocks_to_prefetch=prefetch_blocks,
-                clear_block_after_read=clear_block_after_read,
-            ),
+        _prefetch_blocks(
+            block_ref_iter=block_refs,
+            prefetcher=prefetcher,
+            stats=stats,
+            num_blocks_to_prefetch=prefetch_blocks,
+            clear_block_after_read=clear_block_after_read,
         ),
         stats=stats,
         eager_free=eager_free,
