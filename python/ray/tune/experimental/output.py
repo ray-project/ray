@@ -499,14 +499,15 @@ class TuneRichReporter(TuneReporterBase):
 
     @contextlib.contextmanager
     def with_live(self):
-        with rich.live.Live(refresh_per_second=4, redirect_stdout=True, redirect_stderr=True) as live:
+        with rich.live.Live(
+            refresh_per_second=4, redirect_stdout=True, redirect_stderr=True
+        ) as live:
             self._live = live
             yield
             self._live = None
 
-
     def _render_layout(self, heartbeat_strs: List[str], table_data: _TrialTableData):
-        # generate a nested table, the top table will write some basic info 
+        # generate a nested table, the top table will write some basic info
         # and the bottom table shows trial status.
         table = rich.table.Table(
             show_header=False,

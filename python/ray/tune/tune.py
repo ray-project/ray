@@ -86,6 +86,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 def _get_trainable(
     run_identifier: Union[Experiment, str, Type, Callable]
 ) -> Optional[Type[Trainable]]:
