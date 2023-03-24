@@ -12,8 +12,8 @@ if TYPE_CHECKING:
     import pandas as pd
 
 
-@dataclass
 @PublicAPI(stability="beta")
+@dataclass
 class Result:
     """The final result of a ML training run or a Tune trial.
 

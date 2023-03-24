@@ -148,7 +148,7 @@ setting the ``DatasetContext.use_push_based_shuffle`` flag:
 
     import ray.data
 
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.DatasetContext.get_current()
     ctx.use_push_based_shuffle = True
 
     n = 1000
