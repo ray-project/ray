@@ -186,15 +186,17 @@ def deploy(config_file_name: str, address: str):
     try:
         ServeDeploySchema.parse_obj(config)
         ServeSubmissionClient(address).deploy_applications(config)
-    except ValidationError:
+    except ValidationError as v2_err:
         try:
             ServeApplicationSchema.parse_obj(config)
             ServeSubmissionClient(address).deploy_application(config)
-        except ValidationError as e:
-            # If the config is neither a valid ServeDeploySchema nor a valid
-            # ServeApplicationSchema, surface the validation error from trying
-            # to parse as a ServeApplicationSchema
-            raise e from None
+        except ValidationError as v1_err:
+            # If we find the field "applications" in the config, most likely
+            # user is trying to deploy a multi-application config
+            if "applications" in config:
+                raise v2_err from None
+            else:
+                raise v1_err from None
         except RuntimeError as e:
             # Error deploying application
             raise e from None
