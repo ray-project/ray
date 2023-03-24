@@ -1,7 +1,7 @@
 import itertools
 import unittest
 
-from ray.rllib.core.models.configs import MLPHeadConfig
+from ray.rllib.core.models.configs import MLPHeadConfig, FreeStdMLPHeadConfig
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
@@ -9,15 +9,19 @@ tf1, tf, tfv = try_import_tf()
 
 class TestTfMLPHead(unittest.TestCase):
     def test_tf_mlp_head(self):
+
         inputs_dims_configs = [[1], [2], [1000]]
 
         list_of_hidden_layer_dims = [[], [1], [64, 64], [1000, 1000, 1000, 1000]]
 
         hidden_layer_activations = [None, "linear", "relu", "tanh", "elu", "swish"]
 
-        output_dims_configs = inputs_dims_configs
+        # Can only test even output_dims for FreeStdMLPHeadConfig.
+        output_dims_configs = [[2], [1000]]
 
         output_activations = hidden_layer_activations
+
+        free_stds = [False, True]
 
         for permutation in itertools.product(
             inputs_dims_configs,
@@ -25,6 +29,7 @@ class TestTfMLPHead(unittest.TestCase):
             hidden_layer_activations,
             output_activations,
             output_dims_configs,
+            free_stds,
         ):
             (
                 inputs_dims,
@@ -32,6 +37,7 @@ class TestTfMLPHead(unittest.TestCase):
                 hidden_layer_activation,
                 output_activation,
                 output_dims,
+                free_std,
             ) = permutation
 
             print(
@@ -41,6 +47,7 @@ class TestTfMLPHead(unittest.TestCase):
                 f"hidden_layer_activation: {hidden_layer_activation}\n"
                 f"output_activation: {output_activation}\n"
                 f"output_dims: {output_dims}\n"
+                f"free_std: {free_std}\n"
             )
 
             config = MLPHeadConfig(
@@ -50,6 +57,9 @@ class TestTfMLPHead(unittest.TestCase):
                 hidden_layer_activation=hidden_layer_activation,
                 output_activation=output_activation,
             )
+
+            if free_std:
+                config = FreeStdMLPHeadConfig(mlp_head_config=config)
 
             model = config.build(framework="tf")
 

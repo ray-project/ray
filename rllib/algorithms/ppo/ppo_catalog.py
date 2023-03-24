@@ -1,8 +1,11 @@
 import gymnasium as gym
 
 from ray.rllib.core.models.catalog import Catalog
-from ray.rllib.core.models.configs import ActorCriticEncoderConfig, MLPHeadConfig, \
-    FreeStdMLPHeadConfig
+from ray.rllib.core.models.configs import (
+    ActorCriticEncoderConfig,
+    MLPHeadConfig,
+    FreeStdMLPHeadConfig,
+)
 from ray.rllib.core.models.base import Encoder, ActorCriticEncoder, Model
 from ray.rllib.utils import override
 
@@ -12,17 +15,16 @@ def _check_if_diag_gaussian(action_distribution_cls, framework):
         from ray.rllib.models.torch.torch_distributions import TorchDiagGaussian
 
         assert type(action_distribution_cls) == TorchDiagGaussian, (
-            "free_log_std is only supported for DiagGaussian "
-            "action distributions.")
+            "free_log_std is only supported for DiagGaussian " "action distributions."
+        )
     elif framework == "tf":
         from ray.rllib.models.tf.tf_distributions import TfDiagGaussian
 
         assert type(action_distribution_cls) == TfDiagGaussian, (
-            "free_log_std is only supported for DiagGaussian "
-            "action distributions.")
+            "free_log_std is only supported for DiagGaussian " "action distributions."
+        )
     else:
-        raise ValueError(f"Framework {framework} not supported for "
-                         f"free_log_std.")
+        raise ValueError(f"Framework {framework} not supported for " f"free_log_std.")
 
 
 class PPOCatalog(Catalog):
@@ -137,11 +139,15 @@ class PPOCatalog(Catalog):
         )
         self.pi_head_config.output_dims = (required_output_dim,)
         if self.model_config_dict["free_log_std"]:
-            _check_if_diag_gaussian(action_distribution_cls=action_distribution_cls,
-                                    framework=framework)
-            assert required_output_dim % 2 == 0, "free_log_std requires an even output dimension."
+            _check_if_diag_gaussian(
+                action_distribution_cls=action_distribution_cls, framework=framework
+            )
+            assert (
+                required_output_dim % 2 == 0
+            ), "free_log_std requires an even output dimension."
             self.pi_head_config = FreeStdMLPHeadConfig(
-                mlp_head_config=self.pi_head_config)
+                mlp_head_config=self.pi_head_config
+            )
 
         return self.pi_head_config.build(framework=framework)
 

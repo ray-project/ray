@@ -104,8 +104,8 @@ class MLPHeadConfig(ModelConfig):
     hidden_layer_activation: str = "relu"
     output_activation: str = "linear"
 
-    @_framework_implemented()
-    def build(self, framework: str = "torch") -> Model:
+    def _validate(self, framework: str = "torch"):
+        """Makes sure that framework strings are valid."""
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(
             self.output_activation, framework
@@ -113,6 +113,10 @@ class MLPHeadConfig(ModelConfig):
         self.hidden_layer_activation = _convert_to_lower_case_if_tf(
             self.hidden_layer_activation, framework
         )
+
+    @_framework_implemented()
+    def build(self, framework: str = "torch") -> Model:
+        self._validate(framework=framework)
 
         if framework == "torch":
             from ray.rllib.core.models.torch.mlp import TorchMLPHead
@@ -129,6 +133,13 @@ class MLPHeadConfig(ModelConfig):
 class FreeStdMLPHeadConfig(ModelConfig):
     """Configuration for an MLPHead with a floating second half outputs.
 
+    This is a convenience wrapper around MLPHeadConfig.
+    It does not dictate the output dimensions, but instead uses the output dimensions
+    of the configured MLPHHeadConfig.
+    The output dimensions of the configured MLPHeadConfig must be even and are
+    divided by two to gain the output dimensions of the underlying MLP, while the
+    standard deviation is floating free.
+
     Attributes:
         mlp_head_config: MLPHeadConfig for the MLPHead that produces the first half
             of the output logits.
@@ -138,22 +149,28 @@ class FreeStdMLPHeadConfig(ModelConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
-        # Activation functions in TF are lower case
-        self.output_activation = _convert_to_lower_case_if_tf(
-            self.output_activation, framework
+        self.mlp_head_config._validate(framework=framework)
+
+        # Sanity check
+        assert self.input_dims is None, (
+            "input_dims must be None for "
+            "FreeStdMLPHeadConfig. This is only a "
+            "convenience wrapper around MLPHeadConfig."
         )
-        self.hidden_layer_activation = _convert_to_lower_case_if_tf(
-            self.hidden_layer_activation, framework
+        assert self.output_dims is None, (
+            "output_dims must be None for "
+            "FreeStdMLPHeadConfig. This is only a "
+            "convenience wrapper around MLPHeadConfig."
         )
 
         if framework == "torch":
-            from ray.rllib.core.models.torch.mlp import FreeStdTorchMLPHead
+            from ray.rllib.core.models.torch.mlp import TorchFreeStdMLPHead
 
-            return FreeStdTorchMLPHead(self)
+            return TorchFreeStdMLPHead(self)
         else:
-            from ray.rllib.core.models.tf.mlp import FreeStdTfMLPHead
+            from ray.rllib.core.models.tf.mlp import TfFreeStdMLPHead
 
-            return FreeStdTfMLPHead(self)
+            return TfFreeStdMLPHead(self)
 
 
 @ExperimentalAPI
