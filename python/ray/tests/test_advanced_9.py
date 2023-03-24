@@ -260,7 +260,11 @@ assert ray.get_runtime_context().get_job_id() == '02000000'
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_gcs_connection_no_leak(ray_start_cluster):
     cluster = ray_start_cluster
-    head_node = cluster.add_node()
+    head_node = cluster.add_node(
+      # TODO(clarng): prestart workers that can run the actor
+      # and remove this. https://github.com/ray-project/ray/pull/33623
+      _system_config={"enable_worker_prestart": False},
+    )
 
     gcs_server_process = head_node.all_processes["gcs_server"][0].process
     gcs_server_pid = gcs_server_process.pid
