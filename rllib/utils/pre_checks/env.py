@@ -1,6 +1,5 @@
 """Common pre-checks for all RLlib experiments."""
 from copy import copy
-import inspect
 import logging
 import numpy as np
 import traceback
@@ -158,16 +157,6 @@ def check_gym_environments(env: Union[gym.Env, "old_gym.Env"]) -> None:
                 "attribute. Your horizon will default "
                 "to infinity, and your environment will not be "
                 "reset."
-            )
-    # Raise warning if using new reset api introduces in gym 0.24
-    reset_signature = inspect.signature(env.unwrapped.reset).parameters.keys()
-    if any(k in reset_signature for k in ["seed", "return_info"]):
-        if log_once("reset_signature"):
-            logger.warning(
-                "Your env reset() method appears to take 'seed' or 'return_info'"
-                " arguments. Note that these are not yet supported in RLlib."
-                " Seeding will take place using 'env.seed()' and the info dict"
-                " will not be returned from reset."
             )
 
     # check if sampled actions and observations are contained within their
