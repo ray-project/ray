@@ -835,7 +835,8 @@ class EagerTFPolicyV2(Policy):
 
                 action_dist = fwd_out[SampleBatch.ACTION_DIST]
                 if explore:
-                    actions, logp = action_dist.sample(return_logp=True)
+                    actions = action_dist.sample()
+                    logp = action_dist.logp(actions)
                 else:
                     actions = action_dist.sample()
                     logp = None
