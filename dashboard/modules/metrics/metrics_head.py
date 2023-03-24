@@ -12,6 +12,7 @@ from urllib.parse import quote
 from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_default_grafana_dashboard,
     generate_serve_grafana_dashboard,
+    generate_serve_deployment_grafana_dashboard,
 )
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
@@ -80,7 +81,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         )
 
         # To be set later when dashboards gets generated
-        self._grafana_default_dashboard_uid = None
+        self._dashboard_uids = {}
 
         self._session = aiohttp.ClientSession()
         self._ip = dashboard_head.ip
@@ -129,7 +130,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                     message="Grafana running",
                     grafana_host=grafana_iframe_host,
                     session_name=self._session_name,
-                    grafana_default_dashboard_uid=self._grafana_default_dashboard_uid,
+                    dashboard_uids=self._dashboard_uids,
                 )
 
         except Exception as e:
@@ -245,7 +246,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         ) as f:
             (
                 content,
-                self._grafana_default_dashboard_uid,
+                self._dashboard_uids["default"],
             ) = generate_default_grafana_dashboard()
             f.write(content)
         with open(
@@ -255,7 +256,19 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             ),
             "w",
         ) as f:
-            content, _ = generate_serve_grafana_dashboard()
+            content, self._dashboard_uids["serve"] = generate_serve_grafana_dashboard()
+            f.write(content)
+        with open(
+            os.path.join(
+                self._grafana_dashboard_output_dir,
+                "serve_deployment_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            (
+                content,
+                self._dashboard_uids["serve_deployment"],
+            ) = generate_serve_deployment_grafana_dashboard()
             f.write(content)
 
     def _create_default_prometheus_configs(self):

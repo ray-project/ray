@@ -11,10 +11,14 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
     ipLogMap: {},
     namespaceMap: {},
     metricsContextLoaded: true,
-    grafanaHost: undefined,
-    grafanaDefaultDashboardUid: undefined,
-    prometheusHealth: undefined,
-    sessionName: undefined,
+    grafanaHost: "localhost:3000",
+    dashboardUids: {
+      default: "rayDefaultDashboard",
+      serve: "rayServeDashboard",
+      serveDeployment: "rayServeDeploymentDashboard",
+    },
+    prometheusHealth: true,
+    sessionName: "session-name",
   };
 
   return (
