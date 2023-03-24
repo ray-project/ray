@@ -8,7 +8,6 @@ from typing import (
     Sequence,
     Hashable,
     Optional,
-    Callable,
 )
 
 from ray.rllib.core.rl_module.rl_module import (
@@ -147,14 +146,10 @@ class TorchLearner(Learner):
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
-        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
-        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         super().add_module(
             module_id=module_id,
             module_spec=module_spec,
-            set_optimizer_fn=set_optimizer_fn,
-            optimizer_cls=optimizer_cls,
         )
 
         # we need to ddpify the module that was just added to the pool

@@ -23,6 +23,7 @@ if old_gym:
     old_gym_text_class = getattr(old_gym.spaces, "Text", None)
 
 
+@DeveloperAPI
 def convert_numpy_to_python_types(obj: Any):
     """Convert an object that is a numpy type to a python type.
 

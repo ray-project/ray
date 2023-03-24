@@ -105,10 +105,7 @@ class TestLearner(unittest.TestCase):
         learner = _get_learner()
 
         # add a test module with SGD optimizer with a known lr
-        lr = 1e-4
-
-        def set_optimizer_fn(module):
-            return [(module.parameters(), torch.optim.Adam(module.parameters(), lr=lr))]
+        lr = 0.1
 
         learner.add_module(
             module_id="test",
@@ -118,7 +115,6 @@ class TestLearner(unittest.TestCase):
                 action_space=env.action_space,
                 model_config_dict={"fcnet_hiddens": [16]},
             ),
-            set_optimizer_fn=set_optimizer_fn,
         )
 
         learner.remove_module(DEFAULT_POLICY_ID)

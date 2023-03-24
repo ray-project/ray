@@ -487,7 +487,11 @@ class Learner:
         self._check_if_build_called()
         module = module_spec.build()
 
-        for i, (param_seq, optimizer) in enumerate(self.configure_optimizer(module)):
+        self._module.add_module(module_id, module)
+
+        for i, (param_seq, optimizer) in enumerate(
+            self.configure_optimizer_per_module(module_id)
+        ):
             self._optim_to_param[optimizer] = []
             for param in param_seq:
                 param_ref = self.get_param_ref(param)
@@ -495,8 +499,6 @@ class Learner:
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
             self._name_to_optim[f"{module_id}_optim_{i}"] = optimizer
-
-        self._module.add_module(module_id, module)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def remove_module(self, module_id: ModuleID) -> None:
