@@ -89,8 +89,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       node_id_(node_id),
       node_address_(node_address),
       num_workers_soft_limit_(num_workers_soft_limit),
-      //maximum_startup_concurrency_(maximum_startup_concurrency),
-      maximum_startup_concurrency_(8),
+      maximum_startup_concurrency_(maximum_startup_concurrency),
+      //maximum_startup_concurrency_(8),
       gcs_client_(std::move(gcs_client)),
       native_library_path_(native_library_path),
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
@@ -1022,6 +1022,12 @@ int WorkerPool::GetNumStartingWorkers() {
 }
 
 void WorkerPool::MaybeKillFromIdlePool(const JobID &job_id) {
+
+    // Use old codepath in this case.
+    if (num_prestart_python_workers_ <= 0) {
+        return;
+    }
+
     std::vector<Process> to_kill;
     std::vector<pid_t> pids_to_kill;
 
@@ -1061,7 +1067,6 @@ bool WorkerPool::MaybeRefillIdlePool(bool from_PrestartWorkers, int64_t backlog_
             old_PrestartWorkers_Prestart(backlog_size, 64);
             return false;
         }
-        RAY_LOG(DEBUG) << "MaybeRefillIdlePool num_prestart_python_workers_ is " << num_prestart_python_workers_ << ", not refilling";
         return false;
     }
     // For tasks, the processes can be re-used. We should simply not kill them (I assume that's why they die.).

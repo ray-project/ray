@@ -1443,15 +1443,22 @@ def start_raylet(
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
 
-    assert resource_spec.resolved()
-    static_resources = resource_spec.to_resource_dict()
-
-    # Limit the number of workers that can be started in parallel by the
-    # raylet. However, make sure it is at least 1.
-    num_cpus_static = static_resources.get("CPU", 0)
-    maximum_startup_concurrency = max(
-        1, min(multiprocessing.cpu_count(), num_cpus_static)
-    )
+    # TODO productionize
+    #if os.environ.get("RAY_start_initial_python_workers_for_first_job", "False").lower() != "true":
+    if True:
+        assert resource_spec.resolved()
+        static_resources = resource_spec.to_resource_dict()
+        # Limit the number of workers that can be started in parallel by the
+        # raylet. However, make sure it is at least 1.
+        num_cpus_static = static_resources.get("CPU", 0)
+        maximum_startup_concurrency = max(
+            1, min(multiprocessing.cpu_count(), num_cpus_static)
+        )
+    else:
+        # TODO we should adjust 4 depending on disk banwidth.
+        maximum_startup_concurrency = max(
+            1, multiprocessing.cpu_count() // 4,
+        )
 
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
     resource_argument = ",".join(
