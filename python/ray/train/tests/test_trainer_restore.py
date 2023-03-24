@@ -5,7 +5,6 @@ import warnings
 import ray
 from ray.air import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig, session
 from ray.air._internal.remote_storage import upload_to_uri
-from ray.exceptions import RayTaskError
 from ray.train.base_trainer import BaseTrainer
 from ray.train.trainer import TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
