@@ -90,7 +90,7 @@ public class LoggingUtil {
           null);
       rootLoggerBuilder.add(globalConfigBuilder.newAppenderRef(javaWorkerLogName));
       globalConfigBuilder.add(rootLoggerBuilder);
-      // write :job_id:<job_id> to the beginning of log file to conform
+      // write `:job_id:<job_id>` to the beginning of log file to conform
       // to PR #31772
       writeJobId(rayConfig.logDir + "/" + logFileName + ".log", jobIdHex);
       /// Setup user loggers.
