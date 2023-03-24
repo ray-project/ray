@@ -12,8 +12,8 @@ if TYPE_CHECKING:
     import pandas as pd
 
 
-@dataclass
 @PublicAPI(stability="beta")
+@dataclass
 class Result:
     """The final result of a ML training run or a Tune trial.
 
@@ -29,7 +29,6 @@ class Result:
         metrics: The final metrics as reported by an Trainable.
         checkpoint: The final checkpoint of the Trainable.
         error: The execution error of the Trainable run, if the trial finishes in error.
-        path: Path pointing to the result directory on persistent storage.
         metrics_dataframe: The full result dataframe of the Trainable.
             The dataframe is indexed by iterations and contains reported
             metrics.
