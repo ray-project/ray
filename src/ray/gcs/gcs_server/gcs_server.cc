@@ -222,10 +222,12 @@ void GcsServer::Stop() {
 
     gcs_task_manager_->Stop();
 
+    pubsub_handler_->Stop();
+    pubsub_handler_.reset();
+
     // Shutdown the rpc server
     rpc_server_.Shutdown();
 
-    pubsub_handler_->Stop();
     kv_manager_.reset();
 
     is_stopped_ = true;
