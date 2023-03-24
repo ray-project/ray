@@ -1987,7 +1987,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
         return pbt
 
     def testCheckpointing(self):
-        pbt = self.basicSetup(perturbation_interval=2)
+        pbt = self.basicSetup(perturbation_interval=10)
 
         class train(tune.Trainable):
             def step(self):
@@ -2026,7 +2026,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             self.assertTrue(trial.has_checkpoint())
 
     def testCheckpointDict(self):
-        pbt = self.basicSetup(perturbation_interval=2)
+        pbt = self.basicSetup(perturbation_interval=10)
 
         class train_dict(tune.Trainable):
             def setup(self, config):
