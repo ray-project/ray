@@ -23,6 +23,7 @@ from ray.serve._private.common import (
     NodeId,
     RunningReplicaInfo,
     StatusOverview,
+    ServeDeployMode,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve._private.constants import (
@@ -33,15 +34,20 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
     SERVE_DEFAULT_APP_NAME,
+    MULTI_APP_MIGRATION_MESSAGE,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPState
 from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.long_poll import LongPollHost
+from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
+    ApplicationDetails,
+    ServeInstanceDetails,
+    HTTPOptionsSchema,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
@@ -150,6 +156,9 @@ class ServeController:
         self.application_state_manager = ApplicationStateManager(
             self.deployment_state_manager
         )
+
+        # Keep track of single-app vs multi-app
+        self.deploy_mode = ServeDeployMode.UNSET
 
         run_background_task(self.run_control_loop())
 
@@ -311,16 +320,25 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            deployment_time, config_checkpoints_dict = pickle.loads(checkpoint)
+            deployment_time, deploy_mode, config_checkpoints_dict = pickle.loads(
+                checkpoint
+            )
             applications = [
                 app_config_dict
                 for app_config_dict, _ in config_checkpoints_dict.values()
             ]
-            self.deploy_apps(
-                ServeDeploySchema.parse_obj({"applications": applications}),
-                deployment_time,
-                False,
-            )
+            if deploy_mode == ServeDeployMode.SINGLE_APP:
+                self.deploy_apps(
+                    ServeApplicationSchema.parse_obj(applications[0]),
+                    deployment_time,
+                    False,
+                )
+            else:
+                self.deploy_apps(
+                    ServeDeploySchema.parse_obj({"applications": applications}),
+                    deployment_time,
+                    False,
+                )
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
         """Used for testing.
@@ -487,27 +505,41 @@ class ServeController:
         # ServeApplicationSchema. Eventually, after migration is complete, we should
         # deprecate such usage.
         if isinstance(config, ServeApplicationSchema):
-            config = config.to_deploy_schema()
+            if "name" in config.dict(exclude_unset=True):
+                error_msg = (
+                    "Specifying the name of an application is only allowed for apps "
+                    "that are listed as part of a multi-app config file. "
+                ) + MULTI_APP_MIGRATION_MESSAGE
+                logger.warning(error_msg)
+                raise RayServeException(error_msg)
+
+            applications = [config]
+            if self.deploy_mode == ServeDeployMode.MULTI_APP:
+                raise RayServeException(
+                    "You are trying to deploy a single-application config, however "
+                    "a multi-application config has been deployed to the current "
+                    "Serve instance already. Mixing single-app and multi-app is not "
+                    "allowed. Please either redeploy using the multi-application "
+                    "config format `ServeDeploySchema`, or shutdown and restart Serve "
+                    "to submit a single-app config of format `ServeApplicationSchema`. "
+                    "If you are using the REST API, you can submit a single-app config "
+                    "to the single-app API endpoint `/api/serve/deployments/`."
+                )
+            self.deploy_mode = ServeDeployMode.SINGLE_APP
         else:
-            # TODO (zcin): ServeApplicationSchema still needs to have host and port
-            # fields to support single-app mode, but in multi-app mode the host and port
-            # fields at the top-level deploy config is used instead. Eventually, after
-            # migration, we should remove these fields from ServeApplicationSchema.
-            host, port = config.host, config.port
-            for app_config in config.applications:
-                app_config_dict = app_config.dict(exclude_unset=True)
-                if "host" in app_config_dict:
-                    logger.info(
-                        f"Host {app_config_dict['host']} is set in the config for "
-                        f"application `{app_config.name}`. This will be ignored, as "
-                        f"the host {host} from the top level deploy config is used."
-                    )
-                if "port" in app_config:
-                    logger.info(
-                        f"Port {app_config_dict['port']} is set in the config for "
-                        f"application `{app_config.name}`. This will be ignored, as "
-                        f"the port {port} from the top level deploy config is used."
-                    )
+            applications = config.applications
+            if self.deploy_mode == ServeDeployMode.SINGLE_APP:
+                raise RayServeException(
+                    "You are trying to deploy a multi-application config, however "
+                    "a single-application config has been deployed to the current "
+                    "Serve instance already. Mixing single-app and multi-app is not "
+                    "allowed. Please either redeploy using the single-application "
+                    "config format `ServeApplicationSchema`, or shutdown and restart "
+                    "Serve to submit a multi-app config of format `ServeDeploySchema`. "
+                    "If you are using the REST API, you can submit a multi-app config "
+                    "to the the multi-app API endpoint `/api/serve/applications/`."
+                )
+            self.deploy_mode = ServeDeployMode.MULTI_APP
 
         if not deployment_time:
             deployment_time = time.time()
@@ -517,11 +549,11 @@ class ServeController:
         if config_checkpoint is None:
             config_checkpoints_dict = {}
         else:
-            _, config_checkpoints_dict = pickle.loads(config_checkpoint)
+            _, _, config_checkpoints_dict = pickle.loads(config_checkpoint)
 
         new_config_checkpoint = {}
 
-        for app_config in config.applications:
+        for app_config in applications:
             # Prepend app name to each deployment name
             if not _internal:
                 app_config = app_config.prepend_app_name_to_deployment_names()
@@ -549,7 +581,11 @@ class ServeController:
                 updated_versions,
             )
 
-            deploy_obj_ref = run_graph.options(
+            logger.info(
+                "Starting deploy_serve_application "
+                f"task for application {app_config.name}."
+            )
+            deploy_obj_ref = deploy_serve_application.options(
                 runtime_env=app_config.runtime_env
             ).remote(
                 app_config.import_path,
@@ -568,14 +604,14 @@ class ServeController:
 
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            pickle.dumps((deployment_time, new_config_checkpoint)),
+            pickle.dumps((deployment_time, self.deploy_mode, new_config_checkpoint)),
         )
 
         # Delete live applications not listed in config
         existing_applications = set(
             self.application_state_manager._application_states.keys()
         )
-        new_applications = {app_config.name for app_config in config.applications}
+        new_applications = {app_config.name for app_config in applications}
         self.delete_apps(existing_applications.difference(new_applications))
 
     def delete_deployment(self, name: str):
@@ -664,6 +700,53 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
+    def get_serve_instance_details(self) -> Dict:
+        """Gets details on all applications on the cluster and system-level info.
+
+        The information includes application and deployment statuses, config options,
+        error messages, etc.
+
+        Returns:
+            Dict that follows the format of the schema ServeInstanceDetails. Currently,
+            there is a value set for every field at all schema levels, except for the
+            route_prefix in the deployment_config for each deployment.
+        """
+
+        http_config = self.get_http_config()
+        applications = {}
+
+        for (
+            app_name,
+            app_status_info,
+        ) in self.application_state_manager.list_app_statuses().items():
+            applications[app_name] = ApplicationDetails(
+                name=app_name,
+                route_prefix=self.application_state_manager.get_route_prefix(app_name),
+                docs_path=self.get_docs_path(app_name),
+                status=app_status_info.status,
+                message=app_status_info.message,
+                last_deployed_time_s=app_status_info.deployment_timestamp,
+                deployed_app_config=self.get_app_config(app_name),
+                deployments=self.application_state_manager.list_deployment_details(
+                    app_name
+                ),
+            )
+
+        # NOTE(zcin): We use exclude_unset here because we explicitly and intentionally
+        # fill in all info that should be shown to users. Currently, every field is set
+        # except for the route_prefix in the deployment_config of each deployment, since
+        # route_prefix is set instead in each application.
+        # Eventually we want to remove route_prefix from DeploymentSchema.
+        return ServeInstanceDetails(
+            proxy_location=http_config.location,
+            http_options=HTTPOptionsSchema(
+                host=http_config.host,
+                port=http_config.port,
+            ),
+            deploy_mode=self.deploy_mode,
+            applications=applications,
+        ).dict(exclude_unset=True)
+
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status
         Args:
@@ -699,7 +782,7 @@ class ServeController:
         if checkpoint is None:
             return ServeApplicationSchema.get_empty_schema_dict()
         else:
-            _, config_checkpoints_dict = pickle.loads(checkpoint)
+            _, _, config_checkpoints_dict = pickle.loads(checkpoint)
             if name not in config_checkpoints_dict:
                 return ServeApplicationSchema.get_empty_schema_dict()
             config, _ = config_checkpoints_dict[name]
@@ -828,20 +911,19 @@ def _generate_deployment_config_versions(
 
 
 @ray.remote(num_cpus=0, max_calls=1)
-def run_graph(
+def deploy_serve_application(
     import_path: str,
-    graph_env: Dict,
+    runtime_env: Dict,
     deployment_override_options: List[Dict],
     deployment_versions: Dict,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = "/",
 ):
-    """
-    Build application object from user config
+    """Deploy Serve application from a user-provided config.
 
     Args:
-        import_path: Serve deployment graph's import path
-        graph_env: runtime env to run the deployment graph in
+        import_path: import path to top-level bound deployment.
+        runtime_env: runtime_env for the application.
         deployment_override_options: Dictionary of options that overrides
             deployment options set in the graph's code itself.
         deployment_versions: Versions of each deployment, each of which is
@@ -855,27 +937,26 @@ def run_graph(
         from ray import serve
         from ray.serve.api import build
 
-        # Import and build the graph
-        graph = import_attr(import_path)
-        app = build(graph, name)
+        # Import and build the application.
+        app = build(import_attr(import_path), name)
 
-        # Override options for each deployment
+        # Override options for each deployment.
         for options in deployment_override_options:
             deployment_name = options["name"]
 
-            # Merge graph-level and deployment-level runtime_envs
+            # Merge app-level and deployment-level runtime_envs.
             if "ray_actor_options" in options:
                 # If specified, get ray_actor_options from config
                 ray_actor_options = options["ray_actor_options"] or {}
             else:
-                # Otherwise, get options from graph code (and default to {} if code
-                # sets options to None)
+                # Otherwise, get options from application code (and default to {}
+                # if the code sets options to None).
                 ray_actor_options = (
                     app.deployments[deployment_name].ray_actor_options or {}
                 )
             deployment_env = ray_actor_options.get("runtime_env", {})
             merged_env = override_runtime_envs_except_env_vars(
-                graph_env, deployment_env
+                runtime_env, deployment_env
             )
             ray_actor_options.update({"runtime_env": merged_env})
             options["ray_actor_options"] = ray_actor_options
@@ -883,7 +964,7 @@ def run_graph(
             # Update the deployment's options
             app.deployments[deployment_name].set_options(**options, _internal=True)
 
-        # Run the graph locally on the cluster
+        # Run the application locally on the cluster.
         serve.run(app, name=name, route_prefix=route_prefix)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which

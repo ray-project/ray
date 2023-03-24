@@ -32,7 +32,7 @@ class PipelinedDatasetIterator(DatasetIterator):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "default",
+        batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -57,16 +57,19 @@ class PipelinedDatasetIterator(DatasetIterator):
 
     def __getattr__(self, name):
         if name == "_base_dataset_pipeline":
-            return None
+            raise AttributeError
 
-        # Warning for backwards compatibility. TODO: remove this method in 2.5.
-        warnings.warn(
-            "session.get_dataset_shard returns a ray.data.DatasetIterator "
-            "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
-            "Use iter_torch_batches(), to_tf(), or iter_batches() to "
-            "iterate over one epoch. See "
-            "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
-            "for full DatasetIterator docs."
-        )
+        if hasattr(self._base_dataset_pipeline, name) and not name.startswith("_"):
+            # Warning for backwards compatibility. TODO: remove this method in 2.5.
+            warnings.warn(
+                "session.get_dataset_shard returns a ray.data.DatasetIterator "
+                "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
+                "Use iter_torch_batches(), to_tf(), or iter_batches() to "
+                "iterate over one epoch. See "
+                "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
+                "for full DatasetIterator docs."
+            )
 
-        return getattr(self._base_dataset_pipeline, name)
+            return getattr(self._base_dataset_pipeline, name)
+        else:
+            return super().__getattr__(name)

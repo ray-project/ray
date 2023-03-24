@@ -1,8 +1,13 @@
 from collections import defaultdict
 from typing import Dict
 import pytest
+import sys
 import threading
 import time
+from ray._private.state_api_test_utils import verify_failed_task
+from ray.exceptions import RuntimeEnvSetupError
+from ray.runtime_env import RuntimeEnv
+from ray._private import ray_constants
 
 import ray
 from ray.experimental.state.common import ListApiOptions, StateResource
@@ -12,7 +17,7 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
-from ray.experimental.state.api import StateApiClient, list_tasks
+from ray.experimental.state.api import StateApiClient, list_actors, list_tasks
 
 from ray._private.worker import RayContext
 
@@ -79,6 +84,173 @@ def test_status_task_events_metrics(shutdown_only):
         verify,
         timeout=20,
         retry_interval_ms=100,
+    )
+
+
+def test_failed_task_error(shutdown_only):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    # Test failed task with TASK_EXECUTION_EXCEPTION
+    @ray.remote
+    def fail(x=None):
+        if x is not None:
+            time.sleep(x)
+        raise ValueError("fail is expected to failed")
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(fail.options(name="fail").remote())
+
+    wait_for_condition(
+        verify_failed_task, name="fail", error_type="TASK_EXECUTION_EXCEPTION"
+    )
+
+    # Test canceled tasks with TASK_CANCELLED
+    @ray.remote
+    def sleep():
+        time.sleep(999)
+
+    with pytest.raises(ray.exceptions.TaskCancelledError):
+        t = sleep.options(name="sleep-cancel").remote()
+        ray.cancel(t)
+        ray.get(t)
+
+    wait_for_condition(
+        verify_failed_task, name="sleep-cancel", error_type="TASK_CANCELLED"
+    )
+
+    # Test task failed when worker killed :WORKER_DIED
+    @ray.remote(max_retries=0)
+    def die():
+        exit(1)
+
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(die.options(name="die-worker").remote())
+
+    wait_for_condition(verify_failed_task, name="die-worker", error_type="WORKER_DIED")
+
+    # Test actor task failed with actor dead: ACTOR_DIED
+    @ray.remote
+    class Actor:
+        def f(self):
+            time.sleep(999)
+
+    a = Actor.remote()
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.kill(a)
+        ray.get(a.f.options(name="actor-killed").remote())
+
+    wait_for_condition(verify_failed_task, name="actor-killed", error_type="ACTOR_DIED")
+
+
+def test_failed_task_failed_due_to_node_failure(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+    node = cluster.add_node(num_cpus=2)
+
+    driver_script = """
+import ray
+ray.init("auto")
+
+@ray.remote(num_cpus=2, max_retries=0)
+def sleep():
+    import time
+    time.sleep(999)
+
+x = sleep.options(name="node-killed").remote()
+ray.get(x)
+    """
+
+    run_string_as_driver_nonblocking(driver_script)
+
+    def driver_running():
+        t = list_tasks(filters=[("name", "=", "node-killed")])
+        return len(t) > 0
+
+    wait_for_condition(driver_running)
+
+    # Kill the node
+    cluster.remove_node(node)
+
+    wait_for_condition(verify_failed_task, name="node-killed", error_type="NODE_DIED")
+
+
+def test_failed_task_unschedulable(shutdown_only):
+    ray.init(num_cpus=1, _system_config=_SYSTEM_CONFIG)
+
+    node_id = ray.get_runtime_context().get_node_id()
+    policy = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+        node_id=node_id,
+        soft=False,
+    )
+
+    @ray.remote
+    def task():
+        pass
+
+    task.options(
+        scheduling_strategy=policy,
+        name="task-unschedulable",
+        num_cpus=2,
+    ).remote()
+
+    wait_for_condition(
+        verify_failed_task,
+        name="task-unschedulable",
+        error_type="TASK_UNSCHEDULABLE_ERROR",
+    )
+
+
+# TODO(rickyx): Make this work.
+# def test_failed_task_removed_placement_group(shutdown_only, monkeypatch):
+#     ray.init(num_cpus=2, _system_config=_SYSTEM_CONFIG)
+#     from ray.util.placement_group import placement_group, remove_placement_group
+#     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+#
+#     pg = placement_group([{"CPU": 2}])
+#     ray.get(pg.ready())
+#
+#     @ray.remote(num_cpus=2)
+#     def sleep():
+#         time.sleep(999)
+#
+#     with monkeypatch.context() as m:
+#         m.setenv(
+#             "RAY_testing_asio_delay_us",
+#             "NodeManagerService.grpc_server.RequestWorkerLease=3000000:3000000",
+#         )
+#
+#         sleep.options(
+#             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+#             name="task-pg-removed",
+#             max_retries=0,
+#         ).remote()
+#
+#     remove_placement_group(pg)
+#
+#     wait_for_condition(
+#         verify_failed_task,
+#         name="task-pg-removed",
+#         error_type="TASK_PLACEMENT_GROUP_REMOVED",
+#     )
+
+
+def test_failed_task_runtime_env_setup(shutdown_only):
+    @ray.remote
+    def f():
+        pass
+
+    bad_env = RuntimeEnv(conda={"dependencies": ["_this_does_not_exist"]})
+    with pytest.raises(
+        RuntimeEnvSetupError,
+        match="ResolvePackageNotFound",
+    ):
+        ray.get(f.options(runtime_env=bad_env, name="task-runtime-env-failed").remote())
+
+    wait_for_condition(
+        verify_failed_task,
+        name="task-runtime-env-failed",
+        error_type="RUNTIME_ENV_SETUP_FAILED",
     )
 
 
@@ -334,6 +506,127 @@ tune_function()
     wait_for_condition(verify)
 
 
+@ray.remote
+class ActorOk:
+    def ready(self):
+        pass
+
+
+@ray.remote
+class ActorInitFailed:
+    def __init__(self):
+        raise ValueError("Actor init is expected to fail")
+
+    def ready(self):
+        pass
+
+
+def test_actor_creation_task_ok(shutdown_only):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+    a = ActorOk.remote()
+    ray.get(a.ready.remote())
+
+    def verify():
+        tasks = list_tasks(filters=[("name", "=", "ActorOk.__init__")])
+        actors = list_actors(filters=[("class_name", "=", "ActorOk")])
+
+        assert len(tasks) == 1
+        assert len(actors) == 1
+        actor = actors[0]
+        task = tasks[0]
+        assert task["state"] == "FINISHED"
+        assert task["actor_id"] == actor["actor_id"]
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_actor_creation_task_failed(shutdown_only):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+    a = ActorInitFailed.remote()
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.ready.remote())
+
+    def verify():
+        tasks = list_tasks(filters=[("name", "=", "ActorInitFailed.__init__")])
+        actors = list_actors(filters=[("class_name", "=", "ActorInitFailed")])
+
+        assert len(tasks) == 1
+        assert len(actors) == 1
+        actor = actors[0]
+        task = tasks[0]
+        assert task["state"] == "FAILED"
+        assert task["actor_id"] == actor["actor_id"]
+        assert actor["state"] == "DEAD"
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_actor_creation_nested_failure_from_actor(shutdown_only):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    @ray.remote
+    class NestedActor:
+        def ready(self):
+            a = ActorInitFailed.remote()
+            ray.get(a.ready.remote())
+
+    a = NestedActor.remote()
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(a.ready.remote())
+
+    def verify():
+        creation_tasks = list_tasks(filters=[("type", "=", "ACTOR_CREATION_TASK")])
+        actors = list_actors()
+
+        assert len(creation_tasks) == 2
+        assert len(actors) == 2
+        for actor in actors:
+            if "NestedActor" in actor["class_name"]:
+                assert actor["state"] == "ALIVE"
+            else:
+                assert "ActorInitFailed" in actor["class_name"]
+                assert actor["state"] == "DEAD"
+
+        for task in creation_tasks:
+            if "ActorInitFailed" in task["name"]:
+                assert task["state"] == "FAILED"
+            else:
+                assert task["name"] == "NestedActor.__init__"
+                assert task["state"] == "FINISHED"
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_actor_creation_canceled(shutdown_only):
+    ray.init(num_cpus=2, _system_config=_SYSTEM_CONFIG)
+
+    # An actor not gonna be scheduled
+    a = ActorOk.options(num_cpus=10).remote()
+
+    # Kill it before it could be scheduled.
+    ray.kill(a)
+
+    def verify():
+        tasks = list_tasks(filters=[("name", "=", "ActorOk.__init__")])
+        actors = list_actors(filters=[("class_name", "=", "ActorOk")])
+
+        assert len(tasks) == 1
+        assert len(actors) == 1
+        actor = actors[0]
+        task = tasks[0]
+        assert task["state"] == "FAILED"
+        assert task["actor_id"] == actor["actor_id"]
+        assert actor["state"] == "DEAD"
+        return True
+
+    wait_for_condition(verify)
+
+
 def test_handle_driver_tasks(shutdown_only):
     ray.init(_system_config=_SYSTEM_CONFIG)
 
@@ -442,7 +735,8 @@ ray.get(parent.remote())
         timeout=10,
         retry_interval_ms=500,
     )
-    time_sleep_s = 2
+    time_sleep_s = 3
+    # Sleep for a while to allow driver job runs async.
     time.sleep(time_sleep_s)
 
     proc.kill()
@@ -466,7 +760,8 @@ ray.get(parent.remote())
 
                 duration_ms = task["end_time_ms"] - task["start_time_ms"]
                 assert (
-                    duration_ms > time_sleep_s * 1000
+                    # It takes time for the job to run
+                    duration_ms > time_sleep_s / 2 * 1000
                     and duration_ms < 2 * time_sleep_s * 1000
                 )
 
@@ -499,7 +794,7 @@ class ChildActor:
 @ray.remote
 class Actor:
     def fail_parent(self):
-        task_finish_child.remote()
+        ray.get(task_finish_child.remote())
         task_sleep_child.remote()
         raise ValueError("expected to fail.")
 
@@ -695,3 +990,142 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
         timeout=15,
         retry_interval_ms=500,
     )
+
+
+def check_file(type, task_name, expected_log, expect_no_end=False):
+    """Check file of type = 'out'/'err'"""
+
+    def _read_file(filepath, start, end):
+        with open(filepath, "r") as f:
+            f.seek(start, 0)
+            if end is None:
+                return f.read()
+            return f.read(end - start)
+
+    tasks = list_tasks(filters=[("name", "=", f"{task_name}")], detail=True)
+    assert len(tasks) == 1
+    task = tasks[0]
+    assert task["task_log_info"] is not None
+    log_info = task["task_log_info"]
+
+    file = log_info.get(f"std{type}_file", None)
+    start_offset = log_info.get(f"std{type}_start", None)
+    end_offset = log_info.get(f"std{type}_end", None)
+    if not expect_no_end:
+        assert end_offset >= start_offset
+    else:
+        assert end_offset is None
+    assert start_offset > 0, "offsets should be > 0 with magical log prefix"
+    actual_log = _read_file(file, start_offset, end_offset)
+    assert actual_log == expected_log
+
+
+def test_task_logs_info_basic(shutdown_only):
+    """Test tasks (normal tasks/actor tasks) execution logging
+    to files have the correct task log info
+    """
+    ray.init(num_cpus=1)
+
+    def do_print(x):
+        out_msg = ""
+        err_msg = ""
+        for j in range(3):
+            out_msg += f"this is log line {j} to stdout from {x}\n"
+        print(out_msg, end="", file=sys.stdout)
+
+        for j in range(3):
+            err_msg += f"this is log line {j} to stderr from {x}\n"
+        print(err_msg, end="", file=sys.stderr)
+        return out_msg, err_msg
+
+    @ray.remote
+    class Actor:
+        def print(self, x):
+            return do_print(x)
+
+    @ray.remote
+    def task_print(x):
+        return do_print(x)
+
+    a = Actor.remote()
+    expected_logs = {}
+    for j in range(3):
+        exp_actor_out, exp_actor_err = ray.get(
+            a.print.options(name=f"actor-task-{j}").remote(f"actor-task-{j}")
+        )
+        expected_logs[f"actor-task-{j}-out"] = exp_actor_out
+        expected_logs[f"actor-task-{j}-err"] = exp_actor_err
+
+    for j in range(3):
+        exp_task_out, exp_task_err = ray.get(
+            task_print.options(name=f"normal-task-{j}").remote(f"normal-task-{j}")
+        )
+        expected_logs[f"normal-task-{j}-out"] = exp_task_out
+        expected_logs[f"normal-task-{j}-err"] = exp_task_err
+
+    def verify():
+        # verify logs
+        for j in range(3):
+            check_file("out", f"normal-task-{j}", expected_logs[f"normal-task-{j}-out"])
+            check_file("err", f"normal-task-{j}", expected_logs[f"normal-task-{j}-err"])
+            check_file("out", f"actor-task-{j}", expected_logs[f"actor-task-{j}-out"])
+            check_file("err", f"actor-task-{j}", expected_logs[f"actor-task-{j}-err"])
+            return True
+
+    wait_for_condition(verify)
+
+
+def test_task_logs_info_disabled(shutdown_only, monkeypatch):
+    """Test when redirect disabled, no task log info is available
+    due to missing log file
+    """
+    with monkeypatch.context() as m:
+        m.setenv(ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE, "1")
+
+        ray.init(num_cpus=1)
+
+        @ray.remote
+        def f():
+            print("hi")
+
+        ray.get(f.remote())
+
+        def verify():
+            tasks = list_tasks()
+
+            assert len(tasks) == 1
+            assert tasks[0].get("task_log_info") is None
+            return True
+
+        wait_for_condition(verify)
+
+
+def test_task_logs_info_running_task(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def do_print_sleep(out_msg, err_msg):
+        print(out_msg, end="", file=sys.stdout)
+        print(err_msg, end="", file=sys.stderr)
+        time.sleep(999)
+
+    err_msg = "this is log line to stderr before sleeping\n"
+    out_msg = "this is log line to stdout before sleeping\n"
+    task_name = "log-running-task"
+    do_print_sleep.options(name=task_name).remote(out_msg, err_msg)
+
+    def verify():
+        check_file("err", task_name, err_msg, expect_no_end=True)
+        check_file("out", task_name, out_msg, expect_no_end=True)
+        return True
+
+    wait_for_condition(verify)
+
+
+if __name__ == "__main__":
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
