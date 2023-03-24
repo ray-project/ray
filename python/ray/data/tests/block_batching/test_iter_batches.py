@@ -9,7 +9,6 @@ from ray.data._internal.block_batching.interfaces import (
     BlockPrefetcher,
 )
 from ray.data._internal.block_batching.iter_batches import (
-    bundle_block_refs_to_logical_batches,
     prefetch_batches_locally,
     restore_from_original_order,
 )
@@ -28,112 +27,55 @@ def block_generator(
         )
 
 
-def test_bundle_block_refs_to_logical_batches():
-    # Case 1: `batch_size` is None.
-    num_blocks = 4
-    num_rows_per_block = 2
-    batch_size = None
-    block_iter = block_generator(num_rows=num_rows_per_block, num_blocks=num_blocks)
-    block_refs = list(block_iter)
-    logical_batch_iter = bundle_block_refs_to_logical_batches(
-        iter(block_refs), batch_size=batch_size
-    )
-    logical_batches = list(logical_batch_iter)
-    assert logical_batches == [
-        [block_refs[0][0]],
-        [block_refs[1][0]],
-        [block_refs[2][0]],
-        [block_refs[3][0]],
-    ]
-
-    # Case 2: Multiple batches in a block (`batch_size` is 1).
-    # There should be no overlap.
-    num_blocks = 2
-    num_rows_per_block = 2
-    batch_size = 1
-    block_iter = block_generator(num_rows=num_rows_per_block, num_blocks=num_blocks)
-    block_refs = list(block_iter)
-    logical_batch_iter = bundle_block_refs_to_logical_batches(
-        iter(block_refs), batch_size=batch_size
-    )
-    logical_batches = list(logical_batch_iter)
-    assert logical_batches == [[block_refs[0][0]], [block_refs[1][0]]]
-
-    # Case 3: Multiple blocks in a batch (`batch_size` is 2)
-    num_blocks = 4
-    num_rows_per_block = 1
-    batch_size = 2
-    block_iter = block_generator(num_rows=num_rows_per_block, num_blocks=num_blocks)
-    block_refs = list(block_iter)
-    logical_batch_iter = bundle_block_refs_to_logical_batches(
-        iter(block_refs), batch_size=batch_size
-    )
-    logical_batches = list(logical_batch_iter)
-    assert logical_batches == [
-        [block_refs[0][0], block_refs[1][0]],
-        [block_refs[2][0], block_refs[3][0]],
-    ]
-
-    # Case 4: Batches overlap across multiple blocks unevenly
-    num_blocks = 4
-    num_rows_per_block = 2
-    batch_size = 3
-    block_iter = block_generator(num_rows=num_rows_per_block, num_blocks=num_blocks)
-    block_refs = list(block_iter)
-    logical_batch_iter = bundle_block_refs_to_logical_batches(
-        iter(block_refs), batch_size=batch_size
-    )
-    logical_batches = list(logical_batch_iter)
-    assert logical_batches == [
-        [block_refs[0][0], block_refs[1][0]],
-        [block_refs[2][0]],
-        [block_refs[3][0]],  # Leftover block.
-    ]
-
-    # Case 5: Batches overlap across multiple blocks unevenly, dropping the last
-    # incomplete batch.
-    num_blocks = 4
-    num_rows_per_block = 2
-    batch_size = 3
-    block_iter = block_generator(num_rows=num_rows_per_block, num_blocks=num_blocks)
-    block_refs = list(block_iter)
-    logical_batch_iter = bundle_block_refs_to_logical_batches(
-        iter(block_refs), batch_size=batch_size, drop_last=True
-    )
-    logical_batches = list(logical_batch_iter)
-    assert logical_batches == [
-        [block_refs[0][0], block_refs[1][0]],
-        [block_refs[2][0]],
-    ]
-
-
 @pytest.mark.parametrize("num_batches_to_prefetch", [1, 2])
-def test_prefetch_batches_locally(num_batches_to_prefetch):
+@pytest.mark.parametrize("batch_size", [None, 1, 4])
+def test_prefetch_batches_locally(num_batches_to_prefetch, batch_size):
     class DummyPrefetcher(BlockPrefetcher):
         def __init__(self):
             self.windows = []
 
         def prefetch_blocks(self, blocks: List[Block]):
+            if not batch_size:
+                assert len(blocks) == num_batches_to_prefetch
+            else:
+                assert (
+                    sum(len(block) for block in blocks)
+                    >= batch_size * num_batches_to_prefetch
+                )
             self.windows.append(blocks)
 
-    num_batches = 10
+    num_blocks = 10
+    num_rows = 2
     prefetcher = DummyPrefetcher()
-    block_iter = iter([[i] for i in range(num_batches)])
+    blocks = list(block_generator(num_blocks=num_blocks, num_rows=num_rows))
     prefetch_block_iter = prefetch_batches_locally(
-        block_iter,
+        iter(blocks),
         prefetcher=prefetcher,
         num_batches_to_prefetch=num_batches_to_prefetch,
+        batch_size=batch_size,
     )
 
-    batch_count = 1
-    for _ in prefetch_block_iter:
-        batch_count += 1
-        if batch_count < num_batches:
-            # Test that we are actually prefetching.
-            assert len(prefetcher.windows) == batch_count
+    block_count = 0
+    prefetched_blocks = []
+    previous_num_windows = 1
 
-    windows = prefetcher.windows
-    assert all(len(window) == num_batches_to_prefetch for window in windows)
+    for block in prefetch_block_iter:
+        prefetched_blocks.append(block)
+        block_count += 1
+        remaining_rows = (num_blocks - block_count) * num_rows
+        if batch_size is None and block_count < num_blocks - num_batches_to_prefetch:
+            # Test that we are actually prefetching in advance if this is not the last
+            # block.
+            assert len(prefetcher.windows) == previous_num_windows + 1
+            previous_num_windows = len(prefetcher.windows)
+        elif batch_size and remaining_rows > batch_size * num_batches_to_prefetch:
+            # Test that we are actually prefetching in advance if this is not the last
+            # batch.
+            assert len(prefetcher.windows) == previous_num_windows + 1
+            previous_num_windows = len(prefetcher.windows)
+
+    # Test that original blocks are unchanged.
+    assert prefetched_blocks == [block for block, metadata, in blocks]
 
 
 def test_restore_from_original_order():

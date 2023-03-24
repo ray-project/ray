@@ -8,64 +8,40 @@ from ray.data._internal.block_batching.interfaces import (
     BlockPrefetcher,
 )
 
+"""
+The algorithm uses both pipeline parallelism and data parallelism:
 
-def bundle_block_refs_to_logical_batches(
-    block_ref_iterator: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
-    batch_size: Optional[int],
-    drop_last: bool = False,
-) -> Iterator[List[ObjectRef[Block]]]:
-    """Given an iterator of block object references, and their corresponding metadata,
-    bundles the block object references into groups of at least `batch_size`.
+If prefetch_batches=2, these are all the batches in flight:
 
+[User thread] trains on Batch 0
+   - [Fetch thread] Batch 1 in output queue
+        - [Worker thread 1] Batch 2 formatting + collating
+        - [Worker thread 2] Batch 3 formatting + collating
+        - [Raylet] Batches 4 + 5 fetched to local object store memory
 
+At any point in time there are prefetch_batches+1 batches in local heap memory
+And the next set of prefetch_batches in local object store memory
 
-    This function does not do any slicing or creation of actual batch objects.
-    """
-    batch_buffer: List[ObjectRef[Block]] = []
-    buffer_size = 0
-    original_batch_size = batch_size
+The actual steps are as follows:
 
-    if batch_size is None:
-        for block_ref, _ in block_ref_iterator:
-            yield [block_ref]
-    else:
-        while True:
-            if buffer_size < batch_size or buffer_size <= 0:
-                # Pull next block from iterator if current buffer is not enough to fill
-                # a batch.
-                try:
-                    block_ref, metadata = next(block_ref_iterator)
-                except StopIteration:
-                    break
-                batch_buffer.append(block_ref)
-                buffer_size += metadata.num_rows
-
-            else:
-                # If equal to or greater than batch size, then yield the full buffer.
-                yield batch_buffer
-                carryover_to_next_batch = buffer_size - batch_size
-                # Reset the batch size.
-                batch_size = original_batch_size
-                batch_buffer = []
-                buffer_size = 0
-                if carryover_to_next_batch > 0:
-                    # Carryover remainder to next batch so we don't prefetch too much.
-                    # Example: 4 blocks with 2 rows each. Batch size of 3.
-                    # Batch 1: Yield 2 blocks (4 total rows)
-                    # Batch 2: Only yield 1 additional block since 1 row from the
-                    # previous yield should be included in this batch.
-                    batch_size = batch_size - carryover_to_next_batch
-
-        # Yield any leftover batches if necessary.
-        assert buffer_size < original_batch_size
-        if buffer_size > 0 and not drop_last:
-            yield batch_buffer
+In a single async thread, do the following:
+    1. Trigger Ray local prefetching of `prefetch_batches` worth of block object
+        references.
+    2. Resolve (i.e. call `ray.get()`) on the block references
+    3. Perform the necessary batch slicing to construct full batches, possibly
+        shuffling if necessary.
+    4. Then, in a threadpool consisting of `prefetch_batches` threads:
+        3. Format the batches to the provided batch format.
+        4. Apply the collate function
+    5. Fetch outputs from the threadpool, maintaining order of the batches.
+"""
 
 
 def prefetch_batches_locally(
-    block_ref_iter: Iterator[List[ObjectRef[Block]]],
+    block_ref_iter: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
+    batch_size: Optional[int],
 ) -> Iterator[List[ObjectRef[Block]]]:
     """Given an iterator of batched block references, returns an iterator over the same
     block references while prefetching `num_batches_to_prefetch` batches in advance.
@@ -75,29 +51,42 @@ def prefetch_batches_locally(
         prefetcher: The prefetcher to use.
         num_batches_to_prefetch: The number of batches to prefetch ahead of the
             current batch during the scan.
+        batch_size: User specified batch size, or None to let the system pick.
     """
 
-    sliding_window = collections.deque(maxlen=num_batches_to_prefetch)
+    sliding_window = collections.deque()
+    current_window_size = 0
+
+    if batch_size:
+        num_rows_to_prefetch = num_batches_to_prefetch * batch_size
+
     # Create and fetch the initial window.
-    for _ in range(num_batches_to_prefetch):
+    while True:
         try:
-            sliding_window.append(next(block_ref_iter))
+            next_block_ref_and_metadata = next(block_ref_iter)
+            sliding_window.append(next_block_ref_and_metadata)
+            current_window_size += next_block_ref_and_metadata[1].num_rows
         except StopIteration:
             break
-    prefetcher.prefetch_blocks(
-        [block_ref for batch in list(sliding_window) for block_ref in batch]
-    )
+        if batch_size and current_window_size >= num_rows_to_prefetch:
+            break
+        elif not batch_size and len(sliding_window) >= num_batches_to_prefetch:
+            break
+
+    prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
 
     while sliding_window:
-        batch = sliding_window.popleft()
-        try:
-            sliding_window.append(next(block_ref_iter))
-            prefetcher.prefetch_blocks(
-                [block_ref for batch in list(sliding_window) for block_ref in batch]
-            )
-        except StopIteration:
-            pass
-        yield batch
+        block_ref, metadata = sliding_window.popleft()
+        current_window_size -= metadata.num_rows
+        if not batch_size or current_window_size < num_rows_to_prefetch:
+            try:
+                sliding_window.append(next(block_ref_iter))
+                prefetcher.prefetch_blocks(
+                    [block_ref for block_ref, _ in list(sliding_window)]
+                )
+            except StopIteration:
+                pass
+        yield block_ref
 
 
 def restore_from_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:

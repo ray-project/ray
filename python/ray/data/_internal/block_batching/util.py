@@ -9,7 +9,11 @@ from ray.actor import ActorHandle
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
-from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
+from ray.data._internal.block_batching.interfaces import (
+    Batch,
+    CollatedBatch,
+    BlockPrefetcher,
+)
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -169,14 +173,13 @@ def format_batches(
             formatted_batch = BlockAccessor.for_block(batch.data).to_batch_format(
                 batch_format
             )
-        batch.data = formatted_batch
-        yield batch
+        yield Batch(batch.batch_idx, formatted_batch)
 
 
 def collate(
     batch_iter: Iterator[Batch],
     collate_fn: Optional[Callable[[DataBatch], Any]],
-) -> Iterator[Batch]:
+) -> Iterator[CollatedBatch]:
     """Returns an iterator with the provided collate_fn applied to items of the batch
     iterator.
 
@@ -184,8 +187,8 @@ def collate(
         batch_iter: An iterator over formatted batches.
     """
     for batch in batch_iter:
-        batch.data = collate_fn(batch.data)
-        yield batch
+        collated_batch = collate_fn(batch.data)
+        yield CollatedBatch(batch.batch_idx, collated_batch)
 
 
 def extract_data_from_batch(batch_iter: Iterator[Batch]) -> Iterator[Any]:
