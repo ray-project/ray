@@ -84,9 +84,7 @@ from ray.util.queue import Queue
 if TYPE_CHECKING:
     from ray.tune.experimental.output import ProgressReporter as AirProgressReporter
 
-
 logger = logging.getLogger(__name__)
-
 
 def _get_trainable(
     run_identifier: Union[Experiment, str, Type, Callable]
