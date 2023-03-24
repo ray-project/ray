@@ -34,6 +34,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
     SERVE_DEFAULT_APP_NAME,
+    MULTI_APP_MIGRATION_MESSAGE,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
@@ -46,6 +47,7 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ApplicationDetails,
     ServeInstanceDetails,
+    HTTPOptionsSchema,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
@@ -318,16 +320,25 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            deployment_time, config_checkpoints_dict = pickle.loads(checkpoint)
+            deployment_time, deploy_mode, config_checkpoints_dict = pickle.loads(
+                checkpoint
+            )
             applications = [
                 app_config_dict
                 for app_config_dict, _ in config_checkpoints_dict.values()
             ]
-            self.deploy_apps(
-                ServeDeploySchema.parse_obj({"applications": applications}),
-                deployment_time,
-                False,
-            )
+            if deploy_mode == ServeDeployMode.SINGLE_APP:
+                self.deploy_apps(
+                    ServeApplicationSchema.parse_obj(applications[0]),
+                    deployment_time,
+                    False,
+                )
+            else:
+                self.deploy_apps(
+                    ServeDeploySchema.parse_obj({"applications": applications}),
+                    deployment_time,
+                    False,
+                )
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
         """Used for testing.
@@ -494,7 +505,15 @@ class ServeController:
         # ServeApplicationSchema. Eventually, after migration is complete, we should
         # deprecate such usage.
         if isinstance(config, ServeApplicationSchema):
-            config = config.to_deploy_schema()
+            if "name" in config.dict(exclude_unset=True):
+                error_msg = (
+                    "Specifying the name of an application is only allowed for apps "
+                    "that are listed as part of a multi-app config file. "
+                ) + MULTI_APP_MIGRATION_MESSAGE
+                logger.warning(error_msg)
+                raise RayServeException(error_msg)
+
+            applications = [config]
             if self.deploy_mode == ServeDeployMode.MULTI_APP:
                 raise RayServeException(
                     "You are trying to deploy a single-application config, however "
@@ -508,6 +527,7 @@ class ServeController:
                 )
             self.deploy_mode = ServeDeployMode.SINGLE_APP
         else:
+            applications = config.applications
             if self.deploy_mode == ServeDeployMode.SINGLE_APP:
                 raise RayServeException(
                     "You are trying to deploy a multi-application config, however "
@@ -529,11 +549,11 @@ class ServeController:
         if config_checkpoint is None:
             config_checkpoints_dict = {}
         else:
-            _, config_checkpoints_dict = pickle.loads(config_checkpoint)
+            _, _, config_checkpoints_dict = pickle.loads(config_checkpoint)
 
         new_config_checkpoint = {}
 
-        for app_config in config.applications:
+        for app_config in applications:
             # Prepend app name to each deployment name
             if not _internal:
                 app_config = app_config.prepend_app_name_to_deployment_names()
@@ -580,14 +600,14 @@ class ServeController:
 
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            pickle.dumps((deployment_time, new_config_checkpoint)),
+            pickle.dumps((deployment_time, self.deploy_mode, new_config_checkpoint)),
         )
 
         # Delete live applications not listed in config
         existing_applications = set(
             self.application_state_manager._application_states.keys()
         )
-        new_applications = {app_config.name for app_config in config.applications}
+        new_applications = {app_config.name for app_config in applications}
         self.delete_apps(existing_applications.difference(new_applications))
 
     def delete_deployment(self, name: str):
@@ -714,8 +734,12 @@ class ServeController:
         # route_prefix is set instead in each application.
         # Eventually we want to remove route_prefix from DeploymentSchema.
         return ServeInstanceDetails(
-            host=http_config.host,
-            port=http_config.port,
+            proxy_location=http_config.location,
+            http_options=HTTPOptionsSchema(
+                host=http_config.host,
+                port=http_config.port,
+            ),
+            deploy_mode=self.deploy_mode,
             applications=applications,
         ).dict(exclude_unset=True)
 
@@ -754,7 +778,7 @@ class ServeController:
         if checkpoint is None:
             return ServeApplicationSchema.get_empty_schema_dict()
         else:
-            _, config_checkpoints_dict = pickle.loads(checkpoint)
+            _, _, config_checkpoints_dict = pickle.loads(checkpoint)
             if name not in config_checkpoints_dict:
                 return ServeApplicationSchema.get_empty_schema_dict()
             config, _ = config_checkpoints_dict[name]
