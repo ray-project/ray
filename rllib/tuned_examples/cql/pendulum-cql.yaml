@@ -10,7 +10,7 @@ pendulum-cql:
         timesteps_total: 800000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
 
         # Use one or more offline files or "input: sampler" for online learning.
         input: 'dataset'
