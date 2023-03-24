@@ -25,14 +25,12 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.tf.tf_distributions import (
     TfCategorical,
-    TfDeterministic,
     TfDiagGaussian,
     TfMultiCategorical,
     TfMultiDistribution,
 )
 from ray.rllib.models.torch.torch_distributions import (
     TorchCategorical,
-    TorchDeterministic,
     TorchDiagGaussian,
     TorchMultiCategorical,
     TorchMultiDistribution,
@@ -213,25 +211,16 @@ class TestCatalog(unittest.TestCase):
 
         """
         TestConfig = namedtuple(
-            "TestConfig", ("action_space", "deterministic", "expected_dist_cls_dict")
+            "TestConfig", ("action_space", "expected_dist_cls_dict")
         )
         test_configs = [
             # Box
             TestConfig(
                 Box(-np.inf, np.inf, (7,), dtype=np.float32),
-                False,
                 {"torch": TorchDiagGaussian, "tf": TfDiagGaussian},
             ),
-            # Box, deterministic
-            TestConfig(
-                Box(-np.inf, np.inf, (7,), dtype=np.float32),
-                True,
-                {"torch": TorchDeterministic, "tf": TfDeterministic},
-            ),
             # Discrete
-            TestConfig(
-                Discrete(5), None, {"torch": TorchCategorical, "tf": TfCategorical}
-            ),
+            TestConfig(Discrete(5), {"torch": TorchCategorical, "tf": TfCategorical}),
             # Nested Dict
             TestConfig(
                 Dict(
@@ -240,7 +229,6 @@ class TestCatalog(unittest.TestCase):
                         "b": Dict({"c": Discrete(5)}),
                     }
                 ),
-                False,
                 {
                     "torch": TorchMultiDistribution,
                     "tf": TfMultiDistribution,
@@ -254,7 +242,6 @@ class TestCatalog(unittest.TestCase):
                         Tuple((Discrete(5), Discrete(5))),
                     )
                 ),
-                False,
                 {
                     "torch": TorchMultiDistribution,
                     "tf": TfMultiDistribution,
@@ -277,7 +264,6 @@ class TestCatalog(unittest.TestCase):
                         ),
                     }
                 ),
-                False,
                 {
                     "torch": TorchMultiDistribution,
                     "tf": TfMultiDistribution,
@@ -303,7 +289,6 @@ class TestCatalog(unittest.TestCase):
                         ),
                     )
                 ),
-                False,
                 {
                     "torch": TorchMultiDistribution,
                     "tf": TfMultiDistribution,
@@ -312,20 +297,15 @@ class TestCatalog(unittest.TestCase):
             # MultiDiscrete
             TestConfig(
                 MultiDiscrete([5, 5, 5]),
-                False,
                 {"torch": TorchMultiCategorical, "tf": TfMultiCategorical},
             ),
         ]
 
         for (
             action_space,
-            deterministic,
             expected_cls_dict,
         ) in test_configs:
-            print(
-                f"Testing action space: {action_space} and deterministic:"
-                f" {deterministic}"
-            )
+            print(f"Testing action space: {action_space}:")
             catalog = Catalog(
                 observation_space=Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
                 action_space=action_space,
@@ -339,7 +319,6 @@ class TestCatalog(unittest.TestCase):
 
                 dist_cls = catalog.get_dist_cls_from_action_space(
                     action_space=action_space,
-                    deterministic=deterministic,
                     framework=framework,
                 )
 
@@ -355,7 +334,6 @@ class TestCatalog(unittest.TestCase):
                         catalog_cls=catalog,
                         action_space=action_space,
                         framework=framework,
-                        deterministic=deterministic,
                     )
                 elif (
                     expected_cls is TorchMultiCategorical

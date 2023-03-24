@@ -106,7 +106,7 @@ class TfCategorical(TfDistribution):
         if logits is not None:
             assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
             _logits = logits / temperature
-            probs = tf.nn.nn.functional.softmax(_logits, dim=-1)
+            probs = tf.nn.softmax(_logits, axis=-1)
 
         self.probs = probs
         self.logits = logits
