@@ -38,22 +38,6 @@ using json = nlohmann::json;
 
 namespace ray {
 
-// RAY_EVENT_EVERY_N/RAY_EVENT_EVERY_MS, adaped from
-// https://github.com/google/glog/blob/master/src/glog/logging.h.in
-#define RAY_EVENT_EVERY_N_VARNAME(base, line) RAY_EVENT_EVERY_N_VARNAME_CONCAT(base, line)
-#define RAY_EVENT_EVERY_N_VARNAME_CONCAT(base, line) base##line
-
-#define RAY_EVENT_OCCURRENCES RAY_EVENT_EVERY_N_VARNAME(occurrences_, __LINE__)
-
-// Occasional event, log every n'th occurrence of an event.
-#define RAY_EVENT_EVERY_N(event_type, label, n)                             \
-  static std::atomic<uint64_t> RAY_EVENT_OCCURRENCES(0);                    \
-  if (ray::RayEvent::IsLevelEnabled(                                        \
-          ::ray::rpc::Event_Severity::Event_Severity_##event_type) &&       \
-      RAY_EVENT_OCCURRENCES.fetch_add(1) % n == 0)                          \
-  RAY_EVENT(::ray::rpc::Event_Severity::Event_Severity_##event_type, label) \
-      << "[" << RAY_EVENT_OCCURRENCES << "] "
-
 /// Macros for RAY_EVENT_EVERY_MS
 #define RAY_EVENT_TIME_PERIOD RAY_EVENT_EVERY_N_VARNAME(timePeriod_, __LINE__)
 #define RAY_EVENT_PREVIOUS_TIME_RAW RAY_EVENT_EVERY_N_VARNAME(previousTimeRaw_, __LINE__)
