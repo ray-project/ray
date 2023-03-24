@@ -141,7 +141,7 @@
       --test_arg=--framework=torch
       rllib/...
 
-- label: ":brain: RLlib: RLlib tests on ray data"
+- label: ":brain: RLlib: Learning tests Pytorch (With Ray Data)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
   instance_size: large
   commands:
@@ -152,7 +152,38 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=ray_data,
+      --test_tag_filters=ray_data,learning_tests,-multi_gpu,-gpu
+      --test_arg=--framework=torch
+      rllib/...
+
+
+- label: ":brain: RLlib: Learning tests TF2 (With Ray Data)"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
+  instance_size: large
+  commands:
+    # skip on master cause we are running these test under all RLlib suites anyw/ay
+    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=ray_data,learning_tests,-multi_gpu,-gpu
+      --test_arg=--framework=tf2
+      rllib/...
+
+- label: ":brain: RLlib: RLlib unit tests (With ray data)"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
+  instance_size: large
+  commands:
+    # skip on master cause we are running these test under all RLlib suites anyw/ay
+    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=ray_data,-learning_tests,-multi_gpu,-gpu
       rllib/...
 
 - label: ":brain: RLlib: Algorithm, Model and other tests"
