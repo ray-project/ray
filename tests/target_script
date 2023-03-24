@@ -22,46 +22,55 @@ print('driver script pid', os.getpid())
 @ray.remote
 def task(scheduling_start_time):
     dur_s = time.time() - scheduling_start_time
-    print(f'CADE_PREFIX:scheduling time {dur_s:.02f}')
+    print(f'scheduling time {dur_s:.02f}')
     ctx = ray.runtime_context.get_runtime_context()
     assert ctx.runtime_env == {}, f"expected runtime env to be empty, got {ctx.runtime_env}"
 
     print('task pid', os.getpid())
     print(f'task job id {ctx.get_job_id()}')
 
-
     start = time.time()
     import torch
     import tensorflow
     dur_s = time.time() - start
-    print(f'CADE_PREFIX:imports took {dur_s:.02f}')
+    print(f'imports took {dur_s:.02f}')
 
-    time.sleep(1)
-    print('done sleeping')
+    metrics_actor.report_completion.remote()
+    while not ray.get(metrics_actor.run_has_ended.remote()):
+        time.sleep(1)
 
 @ray.remote
 class Actor:
     def __init__(self, scheduling_start_time):
         dur_s = time.time() - scheduling_start_time
-        print(f'CADE_PREFIX:scheduling time {dur_s:.02f}')
+        print(f'scheduling time {dur_s:.02f}')
 
     def do_imports(self):
         start = time.time()
         import torch
         import tensorflow
         dur_s = time.time() - start
-        print(f'CADE_PREFIX:imports took {dur_s:.02f}')
+        print(f'imports took {dur_s:.02f}')
 
         ctx = ray.runtime_context.get_runtime_context()
         assert ctx.runtime_env == {}, f"expected runtime env to be empty, got {ctx.runtime_env}"
         print(f'actor job id {ctx.get_job_id()}')
 
+        metrics_actor.report_completion.remote()
+        while not ray.get(metrics_actor.run_has_ended.remote()):
+            time.sleep(1)
+
+
+metrics_actor = ray.get_actor(name="metrics", namespace="metrics_ns")
+
 num_cpus = os.cpu_count()
 num_gpu_present = 1
-num_executables = num_cpus
+num_executables = num_cpus - 2
 num_gpus = (num_gpu_present / num_executables) if with_gpu else 0
 
+ray.get(metrics_actor.begin_run.remote(num_executables))
 scheduling_start_time = time.time()
+
 if with_actors:
     actors = [
         Actor.options(
@@ -81,6 +90,5 @@ dur_s = time.time() - scheduling_start_time
 
 time.sleep(1)
 
-print(f'CADE_PREFIX:num_cpus: {num_cpus}')
-print(f'CADE_PREFIX:num_executables: {num_executables}')
-print(f'CADE_PREFIX:end-to-end time {dur_s:.02f}')
+print(f'num_cpus: {num_cpus}')
+print(f'num_executables: {num_executables}')

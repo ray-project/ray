@@ -4,21 +4,84 @@ import subprocess
 import os
 import time
 
+try:
+    del os.environ['RAY_RUNTIME_ENV_HOOK']
+except KeyError:
+    pass
+
+try:
+    del os.environ['RAY_JOB_SUBMIT_HOOK']
+except KeyError:
+    pass
+
+import ray
+
+@ray.remote(num_cpus=1)
+class MetricsActor:
+    def __init__(self):
+        ctx = ray.runtime_context.get_runtime_context()
+        print(f"metrics actor job_id {ctx.get_job_id()}")
+
+        self.run_size = 0
+        self.completed = 0
+        self.run_start_time = 0
+        self.run_dur_s = None
+
+    def ready(self):
+        return True
+
+    def begin_run(self, num):
+        self.run_size = num
+        self.completed = 0
+        self.run_start_time = time.time()
+        self.run_dur_s = None
+
+    def report_completion(self):
+        self.completed += 1
+        if self.run_dur_s is None and self.run_has_ended():
+            self.run_dur_s = time.time() - self.run_start_time
+            print(f'report_completion scheduling plus imports of {self.run_size}: {self.run_dur_s:.02f}')
+
+    def run_has_ended(self):
+        assert self.run_size > 0
+        return self.completed == self.run_size
+
+    def get_last_dur_s(self):
+        return self.run_dur_s
+
+def create_metrics_actor():
+    metrics_actor = MetricsActor.options(name="metrics", namespace="metrics_ns").remote()
+    ray.get(metrics_actor.ready.remote())
+    return metrics_actor
+
+
 #os.environ['USE_ACTORS_OR_TASKS'] = 'tasks'
 #os.environ['WITH_GPU'] = 'true'
 
-def run_test(iterations):
+def sleep_verbose(sec):
+    for i in range(sec):
+        print(f'Sleeping for {sec-i} seconds')
+        time.sleep(1)
+
+def run_test(iterations, metrics_actor):
     start_time = time.time()
     for i in range(iterations):
         subprocess.check_call("python target_script", shell=True)
         s_since_start = time.time() - start_time
-        print(f'CADE_PREFIX:iteration {i} done')
-        print(f'CADE_PREFIX:seconds since start {s_since_start:.02f}')
+        print(f'iteration {i} done')
+        dur_s = ray.get(metrics_actor.get_last_dur_s.remote())
+        print(f'scheduling+imports time {dur_s:.02f}')
+        sleep_verbose(20)
+        
 
-#subprocess.check_call("bash start_with_preload", shell=True)
-#time.sleep(20)
-run_test(iterations=5)
+subprocess.check_call("bash start_with_preload", shell=True)
+m = create_metrics_actor()
+sleep_verbose(7)
+run_test(iterations=5, metrics_actor=m)
+del m
 
-#subprocess.check_call("bash start_without_preload", shell=True)
-#time.sleep(20)
-#run_test(iterations=5)
+subprocess.check_call("bash start_without_preload", shell=True)
+m = create_metrics_actor()
+sleep_verbose(7)
+run_test(iterations=5, metrics_actor=m)
+del m
