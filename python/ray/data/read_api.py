@@ -1,5 +1,16 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
+
 
 import numpy as np
 
@@ -26,8 +37,10 @@ from ray.data.dataset import Dataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     BinaryDatasource,
+    Connection,
     CSVDatasource,
     Datasource,
+    SQLDatasource,
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
@@ -43,6 +56,7 @@ from ray.data.datasource import (
     ReadTask,
     TextDatasource,
     TFRecordDatasource,
+    WebDatasetDatasource,
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
@@ -1171,6 +1185,65 @@ def read_tfrecords(
     )
 
 
+@PublicAPI(stability="alpha")
+def read_webdataset(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+    partition_filter: Optional[PathPartitionFilter] = None,
+    decoder: Optional[Union[bool, str, callable, list]] = True,
+    fileselect: Optional[Union[list, callable]] = None,
+    filerename: Optional[Union[list, callable]] = None,
+    suffixes: Optional[Union[list, callable]] = None,
+    verbose_open: bool = False,
+) -> Dataset[PandasRow]:
+    """Create a dataset from WebDataset files.
+
+    Args:
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The filesystem implementation to read from.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files in the dataset.
+        arrow_open_stream_args: Key-word arguments passed to
+            ``pyarrow.fs.FileSystem.open_input_stream``. To read a compressed TFRecord file,
+            pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``, use
+            ``arrow_open_stream_args={'compression_type': 'gzip'}``).
+        meta_provider: File metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
+        partition_filter: Path-based partition filter, if any. Can be used
+            with a custom callback to read only selected partitions of a dataset.
+        decoder: A function or list of functions to decode the data.
+        fileselect: A callable or list of glob patterns to select files.
+        filerename: A function or list of tuples to rename files prior to grouping.
+        suffixes: A function or list of suffixes to select for creating samples.
+        verbose_open: Whether to print the file names as they are opened.
+
+    Returns:
+        A :class:`~ray.data.Dataset` that contains the example features.
+
+    Raises:
+        ValueError: If a file contains a message that isn't a ``tf.train.Example``.
+    """  # noqa: E501
+    return read_datasource(
+        WebDatasetDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
+        decoder=decoder,
+        fileselect=fileselect,
+        filerename=filerename,
+        suffixes=suffixes,
+        verbose_open=verbose_open,
+    )
+
+
 @PublicAPI
 def read_binary_files(
     paths: Union[str, List[str]],
@@ -1232,6 +1305,88 @@ def read_binary_files(
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_sql(
+    sql: str,
+    connection_factory: Callable[[], Connection],
+    *,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+):
+    """Read from a database that provides a
+    `Python DB API2-compliant <https://peps.python.org/pep-0249/>`_ connector.
+
+    .. note::
+
+        By default, ``read_sql`` launches multiple read tasks, and each task executes a
+        ``LIMIT`` and ``OFFSET`` to fetch a subset of the rows. However, for many
+        databases, ``OFFSET`` is slow.
+
+        As a workaround, set ``parallelism=1`` to directly fetch all rows in a single
+        task. Note that this approach requires all result rows to fit in the memory of
+        single task. If the rows don't fit, your program may raise an out of memory
+        error.
+
+    Examples:
+
+        For examples of reading from larger databases like MySQL and PostgreSQL, see
+        :ref:`Reading from SQL Databases <datasets_sql_databases>`.
+
+        .. testcode::
+
+            import sqlite3
+
+            import ray
+
+            # Create a simple database
+            connection = sqlite3.connect("example.db")
+            connection.execute("CREATE TABLE movie(title, year, score)")
+            connection.execute(
+                \"\"\"
+                INSERT INTO movie VALUES
+                    ('Monty Python and the Holy Grail', 1975, 8.2),
+                    ("Monty Python Live at the Hollywood Bowl", 1982, 7.9),
+                    ("Monty Python's Life of Brian", 1979, 8.0),
+                    ("Rocky II", 1979, 7.3)
+                \"\"\"
+            )
+            connection.commit()
+            connection.close()
+
+            def create_connection():
+                return sqlite3.connect("example.db")
+
+            # Get all movies
+            dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+            # Get movies after the year 1980
+            dataset = ray.data.read_sql(
+                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+            )
+            # Get the number of movies per year
+            dataset = ray.data.read_sql(
+                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+            )
+
+    Args:
+        sql: The SQL query to execute.
+        connection_factory: A function that takes no arguments and returns a
+            Python DB API2
+            `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
+        parallelism: The requested parallelism of the read.
+        ray_remote_args: Keyword arguments passed to :func:`ray.remote` in read tasks.
+
+    Returns:
+        A :class:`Dataset` containing the queried data.
+    """
+    datasource = SQLDatasource(connection_factory)
+    return read_datasource(
+        datasource,
+        sql=sql,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
     )
 
 

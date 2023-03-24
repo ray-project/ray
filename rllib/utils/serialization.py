@@ -1,9 +1,10 @@
 import base64
-import numpy as np
-import io
 import importlib
+import io
 import zlib
-from typing import Dict, Any, Optional, Sequence, Type, Union
+from typing import Any, Dict, Optional, Sequence, Type, Union
+
+import numpy as np
 
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -18,6 +19,9 @@ gym, old_gym = try_import_gymnasium_and_gym()
 old_gym_text_class = None
 if old_gym:
     old_gym_text_class = getattr(old_gym.spaces, "Text", None)
+
+
+NOT_SERIALIZABLE = "__not_serializable__"
 
 
 def _serialize_ndarray(array: np.ndarray) -> str:
@@ -331,8 +335,10 @@ def check_if_args_kwargs_serializable(args: Sequence[Any], kwargs: Dict[str, Any
 @DeveloperAPI
 def serialize_type(type_: Union[Type, str]) -> str:
     """Converts a type into its full classpath ([module file] + "." + [class name]).
+
     Args:
         type_: The type to convert.
+
     Returns:
         The full classpath of the given type, e.g. "ray.rllib.algorithms.ppo.PPOConfig".
     """
@@ -351,26 +357,31 @@ def deserialize_type(
     """Resolves a class path to a class.
     If the given module is already a class, it is returned as is.
     If the given module is a string, it is imported and the class is returned.
+
     Args:
         module: The classpath (str) or type to resolve.
         error: Whether to throw a ValueError if `module` could not be resolved into
             a class. If False and `module` is not resolvable, returns None.
+
     Returns:
         The resolved class or `module` (if `error` is False and no resolution possible).
+
     Raises:
         ValueError: If `error` is True and `module` cannot be resolved.
     """
+    # Already a class, return as-is.
     if isinstance(module, type):
         return module
-
+    # A string.
     elif isinstance(module, str):
         # Try interpreting (as classpath) and importing the given module.
         try:
             module_path, class_name = module.rsplit(".", 1)
             module = importlib.import_module(module_path)
             return getattr(module, class_name)
-        # Module not found.
+        # Module not found OR not a module (but a registered string?).
         except (ModuleNotFoundError, ImportError, AttributeError, ValueError) as e:
+            # Ignore if error=False.
             if error:
                 raise ValueError(
                     f"Could not deserialize the given classpath `module={module}` into "
