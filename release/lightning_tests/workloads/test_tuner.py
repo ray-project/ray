@@ -44,7 +44,6 @@ if __name__ == "__main__":
     mutation_config = (
         LightningConfigBuilder()
         .module(
-            feature_dim=[64, 128],
             lr=tune.choice([0.01, 0.001]),
         )
         .build()
@@ -76,6 +75,8 @@ if __name__ == "__main__":
     results = tuner.fit()
     best_result = results.get_best_result(metric="ptl/val_accuracy", mode="max")
     best_result
+
+    assert len(results.errors) == 0
 
     taken = time.time() - start
 
