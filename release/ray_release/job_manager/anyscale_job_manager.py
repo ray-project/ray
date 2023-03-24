@@ -66,16 +66,13 @@ class AnyscaleJobManager:
             if upload_path:
                 runtime_env["upload_path"] = upload_path
 
-        print("RANDOM STRING")
-        print(runtime_env)
-
         try:
             job_response = anyscale_client.create_job(
                 CreateProductionJob(
                     name=self.cluster_manager.cluster_name,
                     description=f"Smoke test: {self.cluster_manager.smoke_test}",
                     project_id=self.cluster_manager.project_id,
-                    config=CreateProductionJobConfig(
+                    config=dict(
                         entrypoint=full_cmd,
                         runtime_env=runtime_env,
                         build_id=self.cluster_manager.cluster_env_build_id,
