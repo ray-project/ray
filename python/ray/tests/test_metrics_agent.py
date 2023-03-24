@@ -53,7 +53,6 @@ _METRICS = [
     "ray_object_directory_lookups",
     "ray_object_directory_added_locations",
     "ray_object_directory_removed_locations",
-    "ray_process_startup_time_ms_sum",
     "ray_internal_num_processes_started",
     "ray_internal_num_spilled_tasks",
     # "ray_unintentional_worker_failures_total",
