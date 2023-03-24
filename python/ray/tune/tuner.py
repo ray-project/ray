@@ -106,17 +106,19 @@ class Tuner:
         }
         tuner = Tuner(trainable=trainer, param_space=param_space,
             run_config=RunConfig(name="my_tune_run"))
-        analysis = tuner.fit()
+        results = tuner.fit()
 
     To retry a failed tune run, you can then do
 
     .. code-block:: python
 
-        tuner = Tuner.restore(experiment_checkpoint_dir)
+        tuner = Tuner.restore(results.experiment_path)
         tuner.fit()
 
-    ``experiment_checkpoint_dir`` can be easily located near the end of the
-    console output of your first failed run.
+    ``results.experiment_path`` can be retrieved from the
+    :ref:`ResultGrid object <tune-analysis-docs>`. It can
+    also be easily seen in the log output from your first run.
+
     """
 
     # One of the following is assigned.

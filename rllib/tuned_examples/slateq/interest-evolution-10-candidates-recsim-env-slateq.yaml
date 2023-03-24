@@ -5,7 +5,7 @@ interest-evolution-recsim-env-slateq:
         episode_reward_mean: 160.0
         timesteps_total: 120000
     config:
-        framework: tf
+        framework: torch
 
         # RLlib/RecSim wrapper specific settings:
         env_config:

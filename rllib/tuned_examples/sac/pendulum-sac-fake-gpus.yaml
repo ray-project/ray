@@ -7,7 +7,7 @@ pendulum-sac-fake-gpus:
       config:
           # Works for both torch and tf.
           seed: 42
-          framework: tf
+          framework: torch
           q_model_config:
             fcnet_activation: relu
             fcnet_hiddens: [ 256, 256 ]
