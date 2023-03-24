@@ -38,6 +38,11 @@ using json = nlohmann::json;
 
 namespace ray {
 
+// RAY_EVENT_EVERY_N/RAY_EVENT_EVERY_MS, adaped from
+// https://github.com/google/glog/blob/master/src/glog/logging.h.in
+#define RAY_EVENT_EVERY_N_VARNAME(base, line) RAY_EVENT_EVERY_N_VARNAME_CONCAT(base, line)
+#define RAY_EVENT_EVERY_N_VARNAME_CONCAT(base, line) base##line
+
 /// Macros for RAY_EVENT_EVERY_MS
 #define RAY_EVENT_TIME_PERIOD RAY_EVENT_EVERY_N_VARNAME(timePeriod_, __LINE__)
 #define RAY_EVENT_PREVIOUS_TIME_RAW RAY_EVENT_EVERY_N_VARNAME(previousTimeRaw_, __LINE__)
