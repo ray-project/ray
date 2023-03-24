@@ -46,7 +46,7 @@ def _get_event(msg="empty message", job_id=None, source_type=None):
         "pid": random.randint(1, 65536),
         "label": "",
         "message": msg,
-        "time_stamp": time.time(),
+        "timestamp": time.time(),
         "severity": "INFO",
         "custom_fields": {
             "job_id": ray.JobID.from_int(random.randint(1, 100)).hex()
