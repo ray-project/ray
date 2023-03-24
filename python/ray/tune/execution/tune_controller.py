@@ -154,7 +154,7 @@ class TuneController(_TuneControllerBase):
             executor_whitelist_attr={"has_resources_for_trial", "pause_trial", "save"},
         )
 
-    def _used_resources_string(self):
+    def _used_resources_string(self) -> str:
         allocated_resources = self._actor_manager.get_live_actors_resources()
 
         return self._resource_updater.debug_string(allocated_resources)
