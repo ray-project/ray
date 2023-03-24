@@ -490,10 +490,23 @@ class WorkerState(StateSchema):
     pid: int = state_column(filterable=True)
     #: The exit detail of the worker if the worker is dead.
     exit_detail: Optional[str] = state_column(detail=True, filterable=False)
+    #: The time worker is first launched.
+    #: -1 if the value doesn't exist.
+    #: The lifecycle of worker is as follow.
+    #: worker_launch_time_ms (process startup requested).
+    #: -> worker_launched_time_ms (process started).
+    #: -> start_time_ms (worker is ready to be used).
+    #: -> end_time_ms (worker is destroyed).
+    worker_launch_time_ms: int = state_column(filterable=False, detail=True)
+    #: The time worker is succesfully launched
+    #: -1 if the value doesn't exist.
+    worker_launched_time_ms: int = state_column(filterable=False, detail=True)
     #: The time when the worker is started and initialized.
+    #: 0 if the value doesn't exist.
     start_time_ms: int = state_column(filterable=False, detail=True)
     #: The time when the worker exits. The timestamp could be delayed
     #: if the worker is dead unexpectedly.
+    #: 0 if the value doesn't exist.
     end_time_ms: int = state_column(filterable=False, detail=True)
 
 
