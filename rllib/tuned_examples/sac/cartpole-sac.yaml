@@ -6,7 +6,7 @@ cartpole-sac:
         timesteps_total: 100000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         gamma: 0.95
         target_network_update_freq: 32
         tau: 1.0

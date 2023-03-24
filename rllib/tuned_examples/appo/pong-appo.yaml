@@ -11,7 +11,7 @@ pong-appo:
         timesteps_total: 5000000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         env_config:
             frameskip: 1  # no frameskip
         vtrace: True

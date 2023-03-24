@@ -6,7 +6,7 @@ cartpole-appo:
         timesteps_total: 200000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         num_envs_per_worker: 5
         num_workers: 1
         num_gpus: 0

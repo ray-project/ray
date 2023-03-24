@@ -17,7 +17,7 @@ from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
-parser.add_argument("--framework", choices=["tf2", "tf", "torch"], default="tf")
+parser.add_argument("--framework", choices=["tf2", "tf", "torch"], default="torch")
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=2)

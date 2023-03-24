@@ -85,7 +85,7 @@ def get_cli_args():
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "torch"],
-        default="tf",
+        default="torch",
         help="The DL framework specifier.",
     )
     parser.add_argument("--eager-tracing", action="store_true")
