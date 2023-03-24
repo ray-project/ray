@@ -168,7 +168,7 @@ class TestCuriosity(unittest.TestCase):
             # the goal state.
             .rollouts(num_rollout_workers=0)
             # TODO (Kourosh): We need to provide examples on how we do curiosity with
-            # RLModule API.
+            # RLModule API
             .training(lr=0.001, _enable_learner_api=False)
             .exploration(
                 exploration_config={
