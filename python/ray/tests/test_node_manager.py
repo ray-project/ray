@@ -257,10 +257,14 @@ ds.map(leak_repro, max_retries=0)
 
 
 def num_idle_workers(count):
-    result = subprocess.check_output(
-        "ps aux | grep ray::IDLE | grep -v grep",
-        shell=True,
-    )
+    try:
+        result = subprocess.check_output(
+            "ps aux | grep ray::IDLE | grep -v grep",
+            shell=True,
+        )
+    except subprocess.CalledProcessError:
+        # Command fails if there are no idle workers
+        return count == 0
     return len(result.splitlines()) == count
 
 
@@ -276,6 +280,15 @@ def test_worker_prestart_on_node_manager_start(call_ray_start, shutdown_only):
 def test_driver_waits_for_worker_prestart(shutdown_only):
     with ray.init():
         assert num_idle_workers(get_num_cpus()), f"get_num_cpus={get_num_cpus()}"
+
+
+def test_prestart_disabed_driver_skip_wait(shutdown_only):
+    with ray.init(
+        _system_config={
+            "enable_worker_prestart": False,
+        },
+    ):
+        assert num_idle_workers(0)
 
 
 if __name__ == "__main__":

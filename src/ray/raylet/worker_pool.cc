@@ -161,7 +161,9 @@ void WorkerPool::Start() {
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
 
-  PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+  if (RayConfig::instance().enable_worker_prestart()) {
+    PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+  }
 }
 
 // NOTE(kfstorm): The node manager cannot be passed via WorkerPool constructor because the
@@ -787,8 +789,11 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 }
 
 void WorkerPool::ExecuteOnPrestartWorkersStarted(std::function<void()> callback) {
-  if (first_job_registered_ || first_job_registered_python_worker_count_ >=
-                                   first_job_driver_wait_num_python_workers_) {
+  if (first_job_registered_ ||
+      first_job_registered_python_worker_count_ >=  // Don't wait if prestart is completed
+          first_job_driver_wait_num_python_workers_ ||
+      !RayConfig::instance()
+           .enable_worker_prestart()) {  // Don't wait if worker prestart is disabled
     callback();
     return;
   }
