@@ -69,7 +69,7 @@ def resolve_block_refs(
         misses += current_miss
         unknowns += current_unknown
 
-        with stats.iter_get_s.thread_timer() if stats else nullcontext():
+        with stats.iter_get_s.timer() if stats else nullcontext():
             blocks = ray.get(block_refs)
         for block_ref in block_refs:
             trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
