@@ -204,8 +204,6 @@ class TfLearner(Learner):
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
-        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
-        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         # TODO(Avnishn):
         # WARNING:tensorflow:Using MirroredStrategy eagerly has significant overhead
@@ -219,8 +217,6 @@ class TfLearner(Learner):
             super().add_module(
                 module_id=module_id,
                 module_spec=module_spec,
-                set_optimizer_fn=set_optimizer_fn,
-                optimizer_cls=optimizer_cls,
             )
         if self._enable_tf_function:
             self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)

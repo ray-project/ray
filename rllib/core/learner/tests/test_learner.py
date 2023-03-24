@@ -115,9 +115,6 @@ class TestLearner(unittest.TestCase):
         env = gym.make("CartPole-v1")
         learner = get_learner()
 
-        # add a test module with SGD optimizer with a known lr
-        lr = 1e-4
-
         learner.add_module(
             module_id="test",
             module_spec=SingleAgentRLModuleSpec(
@@ -136,6 +133,7 @@ class TestLearner(unittest.TestCase):
         # calculated the expected new params based on gradients of all ones.
         params = learner.module["test"].trainable_variables
         n_steps = 100
+        lr = 1e-3
         expected = [param - n_steps * lr * np.ones(param.shape) for param in params]
         for _ in range(n_steps):
             with tf.GradientTape() as tape:
