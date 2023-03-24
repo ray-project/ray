@@ -374,6 +374,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void SetActorTitle(const std::string &title);
 
+  /// Sets the actor's repr name.
+  ///
+  /// This is set explicitly rather than included as part of actor creation task spec
+  /// because it's only available after running the creation task as it might depend on
+  /// fields to be be initialized during actor creation task. The repr name will be
+  /// included as part of actor creation task reply (PushTaskReply) to GCS.
+  ///
+  /// \param repr_name Actor repr name.
+  void SetActorReprName(const std::string &repr_name);
+
   void SetCallerCreationTimestamp();
 
   /// Increase the reference count for this object ID.
@@ -1118,6 +1128,27 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// num_executing, num_executed). It is a std map instead of absl due to its
   /// interface with language bindings.
   std::unordered_map<std::string, std::vector<int64_t>> GetActorCallStats() const;
+
+  /// Add task log info for a task when it starts executing.
+  ///
+  /// It's an no-op in local mode.
+  ///
+  /// \param stdout_path Path to stdout log file.
+  /// \param stderr_path Path to stderr log file.
+  /// \param stdout_start_offset Start offset of the stdout for this task.
+  /// \param stderr_start_offset Start offset of the stderr for this task.
+  void RecordTaskLogStart(const std::string &stdout_path,
+                          const std::string &stderr_path,
+                          int64_t stdout_start_offset,
+                          int64_t stderr_start_offset) const;
+
+  /// Add task log info for a task when it finishes executing.
+  ///
+  /// It's an no-op in local mode.
+  ///
+  /// \param stdout_end_offset End offset of the stdout for this task.
+  /// \param stderr_end_offset End offset of the stderr for this task.
+  void RecordTaskLogEnd(int64_t stdout_end_offset, int64_t stderr_end_offset) const;
 
  private:
   static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);

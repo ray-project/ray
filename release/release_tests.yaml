@@ -610,6 +610,61 @@
     timeout: 3600
     script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
 
+
+#####################################
+# Workspace templates release tests #
+#####################################
+
+- name: workspace_template_small_01_batch_inference
+  group: Workspace templates
+  working_dir: workspace_templates/01_batch_inference
+  python: "3.9"
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_compute: ../configs/compute/gpu/aws_small.yaml
+
+  run:
+    timeout: 600
+    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
+      --to script --output _test batch_inference.ipynb && ipython _test.py
+
+
+- name: workspace_template_small_02_many_model_training
+  group: Workspace templates
+  working_dir: workspace_templates/02_many_model_training
+  python: "3.9"
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_compute: ../configs/compute/cpu/aws_small.yaml
+
+  run:
+    timeout: 300
+    script: pip install -U -r requirements.txt
+      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
+      --to script --output _test many_model_training.ipynb && ipython _test.py
+
+
+- name: workspace_template_small_03_serving_stable_diffusion
+  group: Workspace templates
+  working_dir: workspace_templates/03_serving_stable_diffusion
+  python: "3.9"
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_compute: ../configs/compute/gpu/aws_small.yaml
+
+  run:
+    timeout: 900
+    script: pip install -U -r requirements.txt
+      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
+      --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
+
+
 #######################
 # XGBoost release tests
 #######################
@@ -1499,6 +1554,29 @@
   alert: tune_tests
 
 
+############################
+# Tune fault tolerance tests
+############################
+- name: tune_worker_fault_tolerance
+  group: Tune fault tolerance tests
+  working_dir: tune_tests/fault_tolerance_tests
+
+  stable: true
+
+  frequency: nightly-3x
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_aws_16x1.yaml
+
+  run:
+    timeout: 5400
+    script: python workloads/test_tune_worker_fault_tolerance.py
+
+    wait_for_nodes:
+      num_nodes: 16
+
 ########################
 # Golden Notebook tests
 ########################
@@ -2298,16 +2376,41 @@
   frequency: nightly
   team: ml
 
+  # It seems this test only succeeds the 2nd try.
+  # Mark as unstable for now.
+  # TODO(jungong) : figure out why.
+  stable: false
+
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 2_g4dn_12xlarge.yaml
 
   run:
     timeout: 3600
-    script: bash run.sh
+    script: bash run_train_opt_2_7b.sh
 
     wait_for_nodes:
       num_nodes: 2
+
+  alert: default
+
+- name: alpa_opt_30b_inference
+  group: Alpa tests
+  working_dir: alpa_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1_p3_16xlarge.yaml
+
+  run:
+    timeout: 3600
+    script: bash run_inference_opt_30b.sh
+
+    wait_for_nodes:
+      num_nodes: 1
 
   alert: default
 

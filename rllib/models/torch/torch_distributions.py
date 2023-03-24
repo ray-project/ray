@@ -105,23 +105,26 @@ class TorchCategorical(TorchDistribution):
         assert (probs is None) != (
             logits is None
         ), "Exactly one out of `probs` and `logits` must be set!"
+
+        if logits is not None:
+            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
+            _logits = logits / temperature
+            probs = torch.nn.functional.softmax(_logits, dim=-1)
+
         self.probs = probs
         self.logits = logits
-        super().__init__(probs=probs, logits=logits, temperature=temperature)
+        self.temperature = temperature
+        self.one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
+            probs=probs
+        )
+        super().__init__(probs=probs)
 
     @override(TorchDistribution)
     def _get_torch_distribution(
         self,
         probs: torch.Tensor = None,
-        logits: torch.Tensor = None,
-        temperature: float = 1.0,
     ) -> "torch.distributions.Distribution":
-        if logits is not None:
-            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-            _logits = logits / temperature
-        else:
-            _logits = logits
-        return torch.distributions.categorical.Categorical(probs, _logits)
+        return torch.distributions.categorical.Categorical(probs)
 
     @staticmethod
     @override(Distribution)
@@ -131,8 +134,8 @@ class TorchCategorical(TorchDistribution):
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
-        probs = self.probs if self.probs is not None else torch.softmax(self.logits)
-        return (self._dist.sample(sample_shape) - probs).detach() + probs
+        one_hot_sample = self.one_hot.sample(sample_shape)
+        return (one_hot_sample - self.probs).detach() + self.probs
 
     @classmethod
     @override(Distribution)
@@ -311,7 +314,7 @@ class TorchMultiCategorical(Distribution):
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
-        arr = [cat.sample() for cat in self._cats]
+        arr = [cat.rsample() for cat in self._cats]
         sample_ = torch.stack(arr, dim=1)
         return sample_
 
@@ -372,8 +375,12 @@ class TorchMultiCategorical(Distribution):
             # If temperatures are not provided, use 1.0 for all actions.
             temperatures = [1.0] * len(input_lens)
 
-        assert sum(input_lens) == logits.shape[1]
-        assert len(input_lens) == len(temperatures)
+        assert (
+            sum(input_lens) == logits.shape[1]
+        ), "input_lens must sum to logits.shape[1]"
+        assert len(input_lens) == len(
+            temperatures
+        ), "input_lens and temperatures must be same length"
 
         categoricals = [
             TorchCategorical(logits=logits, temperature=temperature)
@@ -416,8 +423,7 @@ class TorchMultiDistribution(Distribution):
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         rsamples = []
         for dist in self._flat_child_distributions:
-            rsample_logp = dist.rsample(sample_shape=sample_shape, **kwargs)
-            rsample = rsample_logp
+            rsample = dist.rsample(sample_shape=sample_shape, **kwargs)
             rsamples.append(rsample)
 
         rsamples = tree.unflatten_as(self._original_struct, rsamples)
@@ -468,7 +474,7 @@ class TorchMultiDistribution(Distribution):
         kl_list = [
             d.kl(o)
             for d, o in zip(
-                self._flat_child_distributions, other.flat_child_distributions
+                self._flat_child_distributions, other._flat_child_distributions
             )
         ]
         return sum(kl_list)

@@ -16,6 +16,7 @@
 # -- "crashing_cartpole" and "stateless_cartpole" to distinguish between
 #    simple CartPole and more advanced variants of it.
 # -- "fake_gpus": Tests that run using 2 fake GPUs.
+# -- "ray_data": Tests that rely on ray_data.
 
 # - Quick algo compilation/tune-train tests, tagged "quick_train".
 #   NOTE: These should be obsoleted in favor of "algorithms_dir" tests as
@@ -246,7 +247,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_cql",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "ray_data"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
@@ -262,7 +263,7 @@ py_test(
 py_test(
    name = "learning_tests_pendulum_crr",
    main = "tests/run_regression_tests.py",
-   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "ray_data"],
    size = "large",
    srcs = ["tests/run_regression_tests.py"],
    # Include an offline json data file as well.
@@ -276,7 +277,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_crr",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "ray_data"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
@@ -290,7 +291,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_crr_expectation",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "ray_data"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
@@ -391,7 +392,7 @@ py_test(
 py_test(
    name = "learning_tests_pendulum_dt",
    main = "tests/run_regression_tests.py",
-   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "ray_data"],
    size = "large",
    srcs = ["tests/run_regression_tests.py"],
    # Include an offline json data file as well.
@@ -405,7 +406,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_dt",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "ray_data"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
@@ -1033,7 +1034,7 @@ py_test(
 
 py_test(
     name = "test_dt",
-    tags = ["team:rllib", "algorithms_dir"],
+    tags = ["team:rllib", "algorithms_dir", "ray_data"],
     size = "medium",
     srcs = ["algorithms/dt/tests/test_dt.py"],
     data = ["tests/data/pendulum/large.json"],
@@ -1077,7 +1078,7 @@ py_test(
     name = "test_impala_learner",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/impala/tests/tf/test_impala_learner.py"]
+    srcs = ["algorithms/impala/tests/test_impala_learner.py"]
 )
 
 # MARWIL
@@ -1924,7 +1925,7 @@ py_test(
 
 py_test(
     name = "test_learner",
-    tags = ["team:rllib", "core"],
+    tags = ["team:rllib", "core", "ray_data"],
     size = "medium",
     srcs = ["core/learner/tests/test_learner.py"]
 )
@@ -1932,7 +1933,7 @@ py_test(
 # TODO (Kourosh): to be removed in favor of test_learner.py
 py_test(
     name = "test_torch_learner",
-    tags = ["team:rllib", "core"],
+    tags = ["team:rllib", "core", "ray_data"],
     size = "medium",
     srcs = ["core/learner/torch/tests/test_torch_learner.py"]
 )
@@ -2083,7 +2084,7 @@ py_test(
 
 py_test(
     name = "test_ope",
-    tags = ["team:rllib", "offline"],
+    tags = ["team:rllib", "offline", "ray_data"],
     size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"],
     data = ["tests/data/cartpole/small.json"],
@@ -3642,7 +3643,7 @@ py_test(
 py_test(
     name = "examples/inference_and_serving/policy_inference_after_training_with_dt_torch",
     main = "examples/inference_and_serving/policy_inference_after_training_with_dt.py",
-    tags = ["team:rllib", "exclusive", "examples"],
+    tags = ["team:rllib", "exclusive", "examples", "ray_data"],
     size = "medium",
     srcs = ["examples/inference_and_serving/policy_inference_after_training_with_dt.py"],
     data = ["tests/data/cartpole/large.json"],
