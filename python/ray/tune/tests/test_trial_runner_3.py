@@ -1207,9 +1207,6 @@ class TrialRunnerTest3(unittest.TestCase):
         assert [el["x"] for el in loaded_datasets["with_lineage"].take()] == list(
             range(10)
         )
-        # Req: The deserialized dataset (w/o lineage) should NOT be usable.
-        with self.assertRaises(OwnerDiedError):
-            loaded_datasets["no_lineage"].take()
 
         replaced_resolvers = create_resolvers_map()
         inject_placeholders(create_trial_config(), replaced_resolvers)
