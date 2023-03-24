@@ -83,7 +83,7 @@ class TuneController(_TuneControllerBase):
         self._trial_to_actor: Dict[Trial, TrackedActor] = {}
 
         # Resources <-> Trial
-        self._resources_to_pending_paused_trials: Dict[
+        self._resources_to_pending_trials: Dict[
             ResourceRequest, Set[Trial]
         ] = defaultdict(set)
 
@@ -94,7 +94,6 @@ class TuneController(_TuneControllerBase):
         self._running_trials: Set[Trial] = set()
 
         self._paused_trials: Set[Trial] = set()
-        self._paused_trials_list: List[Trial] = []
 
         self._stopped_trials: Set[Trial] = set()
         self._failed_trials: Set[Trial] = set()
@@ -303,23 +302,16 @@ class TuneController(_TuneControllerBase):
         status_str_map[current_status].remove(trial)
         status_str_map[status].add(trial)
 
-        # We keep a log for paused/pending trials for FIFO scheduling.
+        # We keep a log for pending trials for FIFO scheduling.
         # We do not need to remove from this list as we will just discard
         # items that are in this list but not in the respective set.
-        if status == Trial.PAUSED:
-            self._paused_trials_list.append(trial)
-            self._resources_to_pending_paused_trials[trial.placement_group_factory].add(
-                trial
-            )
-        elif status == Trial.PENDING:
+        if status == Trial.PENDING:
             self._pending_trials_list.append(trial)
-            self._resources_to_pending_paused_trials[trial.placement_group_factory].add(
+            self._resources_to_pending_trials[trial.placement_group_factory].add(trial)
+        else:
+            self._resources_to_pending_trials[trial.placement_group_factory].discard(
                 trial
             )
-        else:
-            self._resources_to_pending_paused_trials[
-                trial.placement_group_factory
-            ].discard(trial)
 
         trial.set_status(status)
 
@@ -354,16 +346,9 @@ class TuneController(_TuneControllerBase):
 
         status_str_map[trial.status].add(trial)
 
-        if trial.status == Trial.PAUSED:
-            self._paused_trials_list.append(trial)
-            self._resources_to_pending_paused_trials[trial.placement_group_factory].add(
-                trial
-            )
         if trial.status == Trial.PENDING:
             self._pending_trials_list.append(trial)
-            self._resources_to_pending_paused_trials[trial.placement_group_factory].add(
-                trial
-            )
+            self._resources_to_pending_trials[trial.placement_group_factory].add(trial)
 
     def _maybe_update_trial_queue(self):
         """Ask the searcher for more trials."""
@@ -484,24 +469,23 @@ class TuneController(_TuneControllerBase):
             return new_candidates + candidates
 
         self._pending_trials_list = _maybe_add_actors(self._pending_trials_list)
-        self._paused_trials_list = _maybe_add_actors(self._paused_trials_list)
 
         ###
         # 3: Start any trial that can be started with a cached actor
         if self._actor_cache.num_cached_objects:
-            for resource in self._resources_to_pending_paused_trials:
-                if not self._resources_to_pending_paused_trials[resource]:
+            for resource in self._resources_to_pending_trials:
+                if not self._resources_to_pending_trials[resource]:
                     continue
 
                 if not self._actor_cache.has_cached_object(resource):
                     continue
 
-                start_trial = self._resources_to_pending_paused_trials[resource].pop()
+                start_trial = self._resources_to_pending_trials[resource].pop()
                 logger.debug(
                     f"Trying to re-use actor for enqueued trial: {start_trial}"
                 )
                 if not self._maybe_reuse_cached_actor(start_trial):
-                    self._resources_to_pending_paused_trials[resource].add(start_trial)
+                    self._resources_to_pending_trials[resource].add(start_trial)
 
     def _maybe_reuse_cached_actor(self, trial: Trial) -> bool:
         """Maybe reuse a cached actor for a trial.
@@ -1137,12 +1121,11 @@ class TuneController(_TuneControllerBase):
             "_trial_metadata",
             "_actor_to_trial",
             "_trial_to_actor",
-            "_resources_to_pending_paused_trials",
+            "_resources_to_pending_trials",
             "_pending_trials",
             "_pending_trials_list",
             "_running_trials",
             "_paused_trials",
-            "_paused_trials_list",
             "_stopped_trials",
             "_failed_trials",
             "_resetting_trials",
