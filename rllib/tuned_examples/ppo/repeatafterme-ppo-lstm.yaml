@@ -26,4 +26,4 @@ repeat-after-me-ppo-w-lstm:
             vf_share_layers: true
         # TODO (Kourosh): Enable when LSTMs are supported.
         _enable_learner_api: false
-        _enable_rl_module_api: true
+        _enable_rl_module_api: false
