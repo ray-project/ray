@@ -1329,8 +1329,8 @@ class Algorithm(Trainable):
             # For the evaluation set, we need to adjust the `policy_mapping_fn` and
             # `is_policy_to_train` fn from the original evaluation config.
             if is_eval_worker_set:
-                state["policy_mapping_fn"] = self.evaluation_config.policy_mapping_fn
-                state["is_policy_to_train"] = self.evaluation_config.policies_to_train
+                del state["policy_mapping_fn"]
+                del state["is_policy_to_train"]
 
             # By default, entire local worker state is synced after restoration
             # to bring these workers up to date.
