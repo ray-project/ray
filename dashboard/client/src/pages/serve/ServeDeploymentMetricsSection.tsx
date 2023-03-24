@@ -32,7 +32,7 @@ const useStyles = makeStyles((theme) =>
       height: 400,
       overflow: "hidden",
       [theme.breakpoints.up("md")]: {
-        // Calculate max width based on 1/3 of the total width minus padding between cards
+        // Calculate max width based on 1/3 of the total width minus gap between cards
         width: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
       },
     },
