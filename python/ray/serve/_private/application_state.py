@@ -161,21 +161,25 @@ class ApplicationState:
                     return
                 try:
                     ray.get(finished[0])
+                    logger.info("Deploy task for app {self.name} ran successfully.")
                 except RayTaskError as e:
                     self.status = ApplicationStatus.DEPLOY_FAILED
                     # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
                     # here because the full details of the error is not displayed
                     # properly with traceback.format_exc(). RayTaskError has its own
                     # custom __str__ function.
-                    self.app_msg = f"Deployment failed:\n{str(e)}"
+                    self.app_msg = f"Deploying app '{self.name}' failed:\n{str(e)}"
                     self.deploy_obj_ref = None
+                    logger.warning(self.app_msg)
                     return
                 except RuntimeEnvSetupError:
                     self.status = ApplicationStatus.DEPLOY_FAILED
                     self.app_msg = (
-                        f"Runtime env setup failed:\n{traceback.format_exc()}"
+                        f"Runtime env setup for app '{self.name}' "
+                        f"failed:\n{traceback.format_exc()}"
                     )
                     self.deploy_obj_ref = None
+                    logger.warning(self.app_msg)
                     return
             deployments_statuses = (
                 self.deployment_state_manager.get_deployment_statuses(
