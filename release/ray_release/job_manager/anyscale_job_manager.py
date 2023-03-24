@@ -66,6 +66,9 @@ class AnyscaleJobManager:
             if upload_path:
                 runtime_env["upload_path"] = upload_path
 
+        print("RANDOM STRING")
+        print(runtime_env)
+
         try:
             job_response = anyscale_client.create_job(
                 CreateProductionJob(
