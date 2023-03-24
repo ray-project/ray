@@ -10,7 +10,7 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.impala.tf.impala_tf_learner import (
+from ray.rllib.algorithms.impala.impala_base_learner import (
     ImpalaHPs,
     _reduce_impala_results,
 )
@@ -418,7 +418,7 @@ class ImpalaConfig(AlgorithmConfig):
         lg_config = super().get_learner_group_config(module_spec)
         optim_config = lg_config.optimizer_config
         # TODO(avnishn): Make grad_clip a default parameter in algorithm_config's base
-        # class
+        #  class
         optim_config.update({"grad_clip": self.grad_clip})
         lg_config = lg_config.learner(optimizer_config=optim_config)
         return lg_config
@@ -436,6 +436,12 @@ class ImpalaConfig(AlgorithmConfig):
             from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
 
             return ImpalaTfLearner
+        elif self.framework_str == "torch":
+            from ray.rllib.algorithms.impala.torch.impala_torch_learner import (
+                ImpalaTorchLearner,
+            )
+
+            return ImpalaTorchLearner
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
@@ -446,6 +452,14 @@ class ImpalaConfig(AlgorithmConfig):
 
             return SingleAgentRLModuleSpec(
                 module_class=PPOTfRLModule, catalog_class=PPOCatalog
+            )
+        elif self.framework_str == "torch":
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+                PPOTorchRLModule,
+            )
+
+            return SingleAgentRLModuleSpec(
+                module_class=PPOTorchRLModule, catalog_class=PPOCatalog
             )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
@@ -516,21 +530,26 @@ class Impala(Algorithm):
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
+        if not config["vtrace"]:
+            raise ValueError("IMPALA with the learner API does not support non-VTrace ")
+
         if config._enable_rl_module_api:
             if config["framework"] == "tf2":
-                if config["vtrace"]:
-                    from ray.rllib.algorithms.impala.tf.impala_tf_policy_rlm import (
-                        ImpalaTfPolicyWithRLModule,
-                    )
+                from ray.rllib.algorithms.impala.tf.impala_tf_policy_rlm import (
+                    ImpalaTfPolicyWithRLModule,
+                )
 
-                    return ImpalaTfPolicyWithRLModule
-                else:
-                    raise ValueError(
-                        "IMPALA with the learner API does not support non-VTrace "
-                    )
+                return ImpalaTfPolicyWithRLModule
+            if config["framework"] == "torch":
+                from ray.rllib.algorithms.impala.torch.impala_torch_policy_rlm import (
+                    ImpalaTorchPolicyWithRLModule,
+                )
+
+                return ImpalaTorchPolicyWithRLModule
             else:
                 raise ValueError(
-                    "IMPALA with the learner API does not support non-TF2 "
+                    f"IMPALA with the learner API does not support framework "
+                    f"{config['framework']} "
                 )
         else:
             if config["framework"] == "torch":

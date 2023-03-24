@@ -47,6 +47,5 @@ transformers==4.19.1; python_version > '3.6'
 # with this pin, so we restrict the version here to <=3.7
 typeguard==2.13.0; python_version <= '3.7'
 wandb==0.13.4
-xgboost==1.6.2; python_version <= '3.7'
-xgboost==1.7.4; python_version > '3.7'
+xgboost==1.3.3
 zoopt==0.4.1

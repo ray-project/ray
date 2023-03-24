@@ -3,15 +3,11 @@ from typing import Mapping, Any, List
 from ray.rllib.algorithms.ppo.ppo_base_rl_module import PPORLModuleBase
 from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_IN
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
-from ray.rllib.models.tf.tf_distributions import (
-    TfCategorical,
-    TfDiagGaussian,
-    TfDeterministic,
-)
-
+from ray.rllib.models.distributions import Distribution
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -26,11 +22,6 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
     def __init__(self, *args, **kwargs):
         TfRLModule.__init__(self, *args, **kwargs)
         PPORLModuleBase.__init__(self, *args, **kwargs)
-
-        if self._is_discrete:
-            self.action_dist_cls = TfCategorical
-        else:
-            self.action_dist_cls = TfDiagGaussian
 
     # TODO(Artur): Comment in as soon as we support RNNs from Polciy side
     # @override(RLModule)
@@ -49,6 +40,7 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         return [
             SampleBatch.ACTION_DIST_INPUTS,
             SampleBatch.ACTION_DIST,
+            SampleBatch.ACTION_LOGP,
             SampleBatch.VF_PREDS,
             "entropy",
         ]
@@ -71,7 +63,7 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecDict:
-        return SpecDict({SampleBatch.ACTION_DIST: TfDeterministic})
+        return SpecDict({SampleBatch.ACTION_DIST: Distribution})
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -93,13 +85,8 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
 
         # Actions
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        if self._is_discrete:
-            action = tf.math.argmax(action_logits, axis=-1)
-        else:
-            action, _ = tf.split(action_logits, num_or_size_splits=2, axis=1)
-
-        action_dist = TfDeterministic(loc=action)
-        output[SampleBatch.ACTION_DIST] = action_dist
+        action_dist = self.action_dist_cls.from_logits(action_logits)
+        output[SampleBatch.ACTION_DIST] = action_dist.to_deterministic()
 
         return output
 

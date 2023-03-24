@@ -1010,6 +1010,49 @@
 
   alert: default
 
+#######################
+# Lightning tests
+#######################
+
+# Naming convention: lightning_{accelerator}_{mode}_{#cpu}_{#gpu}
+
+- name: lightning_gpu_train_3x16_3x1
+  group: Lightning tests
+  working_dir: lightning_tests
+
+  frequency: nightly-3x
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl.yaml
+
+  run:
+    timeout: 1200
+    script: python workloads/test_trainer.py
+    wait_for_nodes:
+      num_nodes: 3
+
+  alert: default
+
+- name: lightning_gpu_tune_3x16_3x1
+  group: Lightning tests
+  working_dir: lightning_tests
+
+  frequency: nightly-3x
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl.yaml
+
+  run:
+    timeout: 1200
+    script: python workloads/test_tuner.py
+    wait_for_nodes:
+      num_nodes: 3
+
+  alert: default
 
 #######################
 # ML user tests
@@ -1553,6 +1596,29 @@
 
   alert: tune_tests
 
+
+############################
+# Tune fault tolerance tests
+############################
+- name: tune_worker_fault_tolerance
+  group: Tune fault tolerance tests
+  working_dir: tune_tests/fault_tolerance_tests
+
+  stable: true
+
+  frequency: nightly-3x
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_aws_16x1.yaml
+
+  run:
+    timeout: 5400
+    script: python workloads/test_tune_worker_fault_tolerance.py
+
+    wait_for_nodes:
+      num_nodes: 16
 
 ########################
 # Golden Notebook tests
@@ -2352,6 +2418,11 @@
 
   frequency: nightly
   team: ml
+
+  # It seems this test only succeeds the 2nd try.
+  # Mark as unstable for now.
+  # TODO(jungong) : figure out why.
+  stable: false
 
   cluster:
     cluster_env: app_config.yaml
@@ -3540,11 +3611,14 @@
     cluster_env: app_config.yaml
     cluster_compute: distributed.yaml
 
+  env: staging_v1
+
   run:
     timeout: 3600
     script: python distributed/test_many_actors.py
     wait_for_nodes:
       num_nodes: 65
+    type: sdk_command
 
 
 - name: many_actors_smoke_test
@@ -3557,11 +3631,14 @@
     cluster_env: app_config.yaml
     cluster_compute: distributed_smoke_test.yaml
 
+  env: staging_v1
+
   run:
     timeout: 3600
     script: SMOKE_TEST=1 python distributed/test_many_actors.py
     wait_for_nodes:
       num_nodes: 2
+    type: sdk_command
 
 
 - name: many_tasks
@@ -3574,11 +3651,14 @@
     cluster_env: app_config.yaml
     cluster_compute: distributed.yaml
 
+  env: staging_v1
+
   run:
     timeout: 3600
     script: python distributed/test_many_tasks.py --num-tasks=10000
     wait_for_nodes:
       num_nodes: 65
+    type: sdk_command
 
 
 - name: many_pgs
@@ -3625,11 +3705,14 @@
     cluster_env: app_config.yaml
     cluster_compute: many_nodes.yaml
 
+  env: staging_v1
+
   run:
     timeout: 3600
     script: python distributed/test_many_tasks.py --num-tasks=1000
     wait_for_nodes:
       num_nodes: 250
+    type: sdk_command
 
 
 - name: scheduling_test_many_0s_tasks_many_nodes
