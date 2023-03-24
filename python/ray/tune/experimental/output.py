@@ -499,15 +499,28 @@ class TuneRichReporter(TuneReporterBase):
 
     @contextlib.contextmanager
     def with_live(self):
-        with rich.live.Live(refresh_per_second=4) as live:
+        with rich.live.Live(refresh_per_second=4, redirect_stdout=True, redirect_stderr=True) as live:
             self._live = live
             yield
             self._live = None
 
+
     def _render_layout(self, heartbeat_strs: List[str], table_data: _TrialTableData):
-        # TODO: Right now the layout is aligned at the top. See if we can aligh it
-        # to the bottom of the console.
+        # generate a nested table, the top table will write some basic info 
+        # and the bottom table shows trial status.
         table = rich.table.Table(
+            show_header=False,
+            show_edge=False,
+            show_lines=False,
+        )
+        table_basic_info = rich.table.Table(
+            show_header=False,
+            show_edge=False,
+            show_lines=False,
+        )
+        for s in heartbeat_strs:
+            table_basic_info.add_row(str(s))
+        table_trial = rich.table.Table(
             box=rich.box.SQUARE,
             expand=True,
             show_header=False,
@@ -515,32 +528,20 @@ class TuneRichReporter(TuneReporterBase):
         )
         header = table_data.header
         table_data = table_data.data
-        # count table line number so that we know the layout height to allocate.
-        table_line_num = 4
         for _ in header:
-            table.add_column(overflow="fold")
-        table.add_row(*header)
+            table_trial.add_column(overflow="fold")
+        table_trial.add_row(*header)
         for per_status_info in table_data:
             trial_infos = per_status_info.trial_infos
             more_info = per_status_info.more_info
             for trial_info in trial_infos:
-                table.add_row(*[str(_) for _ in trial_info])
-                table_line_num += 1
+                table_trial.add_row(*[str(_) for _ in trial_info])
             if more_info:
-                table.add_row(more_info)
-                table_line_num += 1
+                table_trial.add_row(more_info)
+        table.add_row(table_basic_info)
+        table.add_row(table_trial)
 
-        layout = rich.layout.Layout()
-        layout.split(
-            rich.layout.Layout(name="basic_info", size=len(heartbeat_strs)),
-            rich.layout.Layout(name="table", size=table_line_num),
-        )
-        basic_info_table = rich.table.Table.grid()
-        for s in heartbeat_strs:
-            basic_info_table.add_row(str(s))
-        layout["basic_info"].update(basic_info_table)
-        layout["table"].update(table)
-        self._live.update(layout)
+        self._live.update(table)
 
     def _print_heartbeat(self, trials, *args):
         if not rich:
