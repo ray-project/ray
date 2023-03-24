@@ -207,7 +207,8 @@ class TuneController(_TuneControllerBase):
             force_all or time.monotonic() - times[0][0] > self._actor_cleanup_timeout
         ):
             _, tracked_actor = times.popleft()
-            self._actor_manager.remove_actor(tracked_actor=tracked_actor, kill=True)
+            if self._actor_manager.is_actor_started(tracked_actor=tracked_actor):
+                self._actor_manager.remove_actor(tracked_actor=tracked_actor, kill=True)
 
         if times:
             self._earliest_stopping_actor = times[0][0]
@@ -389,12 +390,12 @@ class TuneController(_TuneControllerBase):
             )
             self._schedule_trial_stop(trial)
 
+        self._cleanup_stopping_actors(force_all=True)
+
         start = time.monotonic()
         while time.monotonic() - start < 5 and self._actor_manager.num_total_actors:
             logger.debug("Waiting for actor manager to clean up final state")
             self._actor_manager.next(timeout=1)
-
-        self._cleanup_stopping_actors(force_all=True)
 
         self._actor_manager.cleanup()
 
