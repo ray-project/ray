@@ -5,6 +5,8 @@ Ray Use Cases
 
 This page indexes common Ray use cases for scaling ML. It contains highlighted references to blogs, examples, and tutorials also located elsewhere in the Ray documentation.
 
+.. _ref-use-cases-batch-infer:
+
 Batch Inference
 ---------------
 
