@@ -3,6 +3,7 @@ package io.ray.runtime.util;
 import com.typesafe.config.Config;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.generated.Common.WorkerType;
+import java.io.FileWriter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.LoggerContext;
@@ -16,8 +17,6 @@ import org.apache.logging.log4j.core.config.builder.api.LayoutComponentBuilder;
 import org.apache.logging.log4j.core.config.builder.api.LoggerComponentBuilder;
 import org.apache.logging.log4j.core.config.builder.api.RootLoggerComponentBuilder;
 import org.apache.logging.log4j.core.config.builder.impl.BuiltConfiguration;
-
-import java.io.FileWriter;
 
 public class LoggingUtil {
   private static boolean setup = false;
@@ -85,9 +84,7 @@ public class LoggingUtil {
           globalConfigBuilder,
           rayConfig.logDir,
           new RayConfig.LoggerConf(
-              javaWorkerLogName,
-              logFileName,
-              config.getString("ray.logging.pattern")),
+              javaWorkerLogName, logFileName, config.getString("ray.logging.pattern")),
           maxFileSize,
           maxBackupFiles,
           null);
@@ -118,8 +115,8 @@ public class LoggingUtil {
     try (FileWriter writer = new FileWriter(logFilePath)) {
       writer.write(":job_id:" + jobIdHex + "\n");
     } catch (Exception e) {
-      throw new RuntimeException("Failed to write job id, " + jobIdHex +
-        ", to log file, " + logFilePath, e);
+      throw new RuntimeException(
+          "Failed to write job id, " + jobIdHex + ", to log file, " + logFilePath, e);
     }
   }
 
