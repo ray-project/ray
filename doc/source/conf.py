@@ -375,7 +375,8 @@ tag_mapping = {
     "trainMlflow": "MLflow,Training",
     "trainTuneTensorflow": "TensorFlow,Training,Tuning",
     "trainTunePyTorch": "PyTorch,Training,Tuning",
-    "trainBenchmark": "PyTorch,Training"
+    "trainBenchmark": "PyTorch,Training",
+    "trainLightning": "PyTorch,Lightning,Training"
     # TODO add and integrate tags for other libraries.
     # Tune has a proper example library
     # Serve, RLlib and AIR could use one.
