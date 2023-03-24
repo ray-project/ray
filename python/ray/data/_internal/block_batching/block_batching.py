@@ -11,7 +11,6 @@ from ray.data._internal.block_batching.util import (
     format_batches,
     collate,
     extract_data_from_batch,
-    make_async_gen,
     WaitBlockPrefetcher,
     ActorBlockPrefetcher,
 )
@@ -100,7 +99,6 @@ def batch_block_refs(
         _prefetch_blocks(
             block_ref_iter=block_refs,
             prefetcher=prefetcher,
-            stats=stats,
             num_blocks_to_prefetch=prefetch_blocks,
         ),
         stats=stats,
@@ -155,17 +153,12 @@ def batch_blocks(
         )
 
         if collate_fn is not None:
-            batch_iter = collate(batch_iter, collate_fn=collate_fn)
+            batch_iter = collate(batch_iter, collate_fn=collate_fn, stats=stats)
 
         batch_iter = extract_data_from_batch(batch_iter)
         yield from batch_iter
 
-    if prefetch_batches > 0:
-        batch_iter = make_async_gen(
-            blocks, fn=_iterator_fn, num_workers=prefetch_batches
-        )
-    else:
-        batch_iter = _iterator_fn(blocks)
+    batch_iter = _iterator_fn(blocks)
 
     for formatted_batch in batch_iter:
         user_timer = stats.iter_user_s.timer() if stats else nullcontext()
@@ -177,7 +170,6 @@ def _prefetch_blocks(
     block_ref_iter: Iterator[ObjectRef[Block]],
     prefetcher: BlockPrefetcher,
     num_blocks_to_prefetch: int,
-    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterable of Block Object References, returns an iterator
     over these object reference while prefetching `num_block_to_prefetch`

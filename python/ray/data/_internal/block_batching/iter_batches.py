@@ -9,7 +9,16 @@ from ray.data._internal.block_batching.interfaces import (
     Batch,
     BlockPrefetcher,
 )
-from ray.data._internal.block_batching.util import ActorBlockPrefetcher, WaitBlockPrefetcher, resolve_block_refs, blocks_to_batches, format_batches, collate, extract_data_from_batch, make_async_gen
+from ray.data._internal.block_batching.util import (
+    ActorBlockPrefetcher,
+    WaitBlockPrefetcher,
+    resolve_block_refs,
+    blocks_to_batches,
+    format_batches,
+    collate,
+    extract_data_from_batch,
+    make_async_gen,
+)
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DatasetContext
 
@@ -21,6 +30,7 @@ else:
     @contextmanager
     def nullcontext(enter_result=None):
         yield enter_result
+
 
 def iter_batches(
     block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
@@ -119,7 +129,7 @@ def iter_batches(
     def _async_iter_batches(
         block_refs: Iterator[ObjectRef[Block]],
     ) -> Iterator[DataBatch]:
-        
+
         if prefetch_batches > 0:
             # Step 1: Prefetch logical batches locally.
             block_refs = prefetch_batches_locally(
@@ -131,11 +141,9 @@ def iter_batches(
 
         # Step 2: Resolve the blocks.
         block_iter = resolve_block_refs(
-            block_ref_iter=block_refs, 
-            eager_free=eager_free,
-            stats=stats
+            block_ref_iter=block_refs, eager_free=eager_free, stats=stats
         )
-        
+
         # Step 3: Batch and shuffle the resolved blocks.
         batch_iter = blocks_to_batches(
             block_iter=block_iter,
@@ -144,7 +152,7 @@ def iter_batches(
             drop_last=drop_last,
             shuffle_buffer_min_size=shuffle_buffer_min_size,
             shuffle_seed=shuffle_seed,
-            ensure_copy=ensure_copy
+            ensure_copy=ensure_copy,
         )
 
         # Step 4: Use a threadpool for formatting and collation.
@@ -163,9 +171,7 @@ def iter_batches(
 
     # Run everything in a separate thread to not block the main thread when waiting
     # for streaming results.
-    async_batch_iter = make_async_gen(
-        block_refs, fn=_async_iter_batches, num_workers=1
-    )
+    async_batch_iter = make_async_gen(block_refs, fn=_async_iter_batches, num_workers=1)
 
     while True:
         with stats.iter_total_blocked_s.timer() if stats else nullcontext():
@@ -221,6 +227,7 @@ def _format_in_threadpool(
         )
     else:
         return threadpool_computations(batch_iter)
+
 
 def prefetch_batches_locally(
     block_ref_iter: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],

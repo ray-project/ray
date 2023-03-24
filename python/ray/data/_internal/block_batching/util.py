@@ -6,6 +6,7 @@ from typing import Any, Callable, Iterator, List, Optional, Tuple, TypeVar, Unio
 
 import ray
 from ray.types import ObjectRef
+from ray.actor import ActorHandle
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.block_batching.interfaces import (
@@ -196,6 +197,7 @@ def extract_data_from_batch(batch_iter: Iterator[Batch]) -> Iterator[Any]:
     for batch in batch_iter:
         yield batch.data
 
+
 def make_async_gen(
     base_iterator: Iterator[T],
     fn: Callable[[Iterator[T]], Iterator[U]],
@@ -278,6 +280,7 @@ def make_async_gen(
             output_queue.task_done()
         if num_threads_finished >= num_workers:
             break
+
 
 PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
