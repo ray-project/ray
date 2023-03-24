@@ -791,8 +791,9 @@ def run(
             search_alg.add_configurations([exp])
     else:
         logger.debug(
-            "TrialRunner resumed, ignoring new add_experiment but "
-            "updating trial resources."
+            "You have resumed the Tune run, which means that any newly specified "
+            "`Experiment`s will be ignored. "
+            "Tune will just continue what was previously running."
         )
         if resources_per_trial:
             runner.update_pending_trial_resources(resources_per_trial)
