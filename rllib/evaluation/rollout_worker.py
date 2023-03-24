@@ -2037,7 +2037,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             if self.preprocessing_enabled:
                 # Policies should deal with preprocessed (automatically flattened)
                 # observations if preprocessing is enabled.
-                preprocessor = ModelCatalog.get_preprocessor(
+                preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space,
                     merged_conf.model,
                     include_multi_binary=self.config.get(
