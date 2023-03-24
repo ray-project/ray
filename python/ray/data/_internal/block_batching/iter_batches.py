@@ -172,7 +172,7 @@ def iter_batches(
         )
 
         # Step 5: Restore original order.
-        batch_iter: Iterator[Batch] = restore_from_original_order(batch_iter)
+        batch_iter: Iterator[Batch] = restore_original_order(batch_iter)
 
         yield from extract_data_from_batch(batch_iter)
 

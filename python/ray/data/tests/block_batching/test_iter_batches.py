@@ -73,7 +73,10 @@ def test_prefetch_batches_locally(num_batches_to_prefetch, batch_size):
             # block.
             assert len(prefetcher.windows) == previous_num_windows + 1
             previous_num_windows = len(prefetcher.windows)
-        elif batch_size is not None and remaining_rows > batch_size * num_batches_to_prefetch:
+        elif (
+            batch_size is not None
+            and remaining_rows > batch_size * num_batches_to_prefetch
+        ):
             # Test that we are actually prefetching in advance if this is not the last
             # batch.
             assert len(prefetcher.windows) == previous_num_windows + 1
@@ -106,8 +109,10 @@ def test_iter_batches_e2e(ray_start_regular_shared, batch_size, drop_last):
     def collate_fn(batch: pd.DataFrame):
         return batch + 1
 
-    block_refs_iter = itertools.starmap(lambda block, metadata: (ray.put(block), metadata), block_generator(num_blocks=4, num_rows=2))
-
+    block_refs_iter = itertools.starmap(
+        lambda block, metadata: (ray.put(block), metadata),
+        block_generator(num_blocks=4, num_rows=2),
+    )
 
     output_batches = iter_batches(
         block_refs_iter,
