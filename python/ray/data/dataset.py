@@ -209,7 +209,7 @@ class Dataset(Generic[T]):
         >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
         MapBatches(<lambda>)
         +- Dataset(num_blocks=17, num_rows=1000, schema=<class 'int'>)
-        >>> # Compute max.
+        >>> # Compute maximum
         >>> ds.max()
         999
         >>> # Group the data.
