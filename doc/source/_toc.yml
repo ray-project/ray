@@ -374,11 +374,6 @@ parts:
       - file: ray-observability/monitoring-debugging/monitoring-debugging
         title: "Monitoring and Debugging"
 
-      - file: ray-references/api
-        title: References
-        sections:
-          - file: cluster/usage-stats
-
       - file: ray-contribute/stability
         title: Developer Guides
         sections:
@@ -390,3 +385,5 @@ parts:
               - file: ray-core/examples/testing-tips
           - file: ray-core/configure
           - file: ray-contribute/whitepaper
+          - file: cluster/usage-stats
+
