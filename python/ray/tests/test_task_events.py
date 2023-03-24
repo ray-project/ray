@@ -88,7 +88,7 @@ def test_status_task_events_metrics(shutdown_only):
 
 
 def test_failed_task_error(shutdown_only):
-    ray.init(_system_config=_SYSTEM_CONFIG)
+    ray.init("auto")
 
     # Test failed task with TASK_EXECUTION_EXCEPTION
     error_msg_str = "fail is expected to fail"
@@ -174,7 +174,12 @@ def test_failed_task_error(shutdown_only):
         def f(self):
             time.sleep(999)
 
+        def ready(self):
+            pass
+
     a = Actor.remote()
+    ray.get(a.ready.remote())
+
     with pytest.raises(ray.exceptions.RayActorError):
         ray.kill(a)
         ray.get(a.f.options(name="actor-killed").remote())

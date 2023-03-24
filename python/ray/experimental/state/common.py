@@ -1439,7 +1439,16 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     if latest_state == "FAILED":
         error_info = state_updates.get("error_info", None)
         if error_info:
-            task_state["error_message"] = error_info.get("error_message", "")
+            task_state["error_message"] = remove_ansi_escape_codes(
+                error_info.get("error_message", "")
+            )
             task_state["error_type"] = error_info.get("error_type", "")
 
     return task_state
+
+
+def remove_ansi_escape_codes(text: str) -> str:
+    """Remove ANSI escape codes from a string."""
+    import re
+
+    return re.sub(r"\x1b[^m]*m", "", text)

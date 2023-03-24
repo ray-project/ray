@@ -78,6 +78,7 @@ const TaskTable = ({
     },
     { label: "Duration" },
     { label: "Function or Class Name" },
+    { label: "Error Type" },
     { label: "Node Id" },
     { label: "Actor_id" },
     { label: "Worker_id" },
@@ -221,6 +222,7 @@ const TaskTable = ({
                 start_time_ms,
                 end_time_ms,
                 worker_id,
+                error_type,
               } = task;
               return (
                 <TableRow key={task_id}>
@@ -253,6 +255,9 @@ const TaskTable = ({
                     )}
                   </TableCell>
                   <TableCell align="center">{func_or_class_name}</TableCell>
+                  <TableCell align="center">
+                    {error_type ? error_type : "-"}
+                  </TableCell>
                   <TableCell align="center">
                     <Tooltip
                       className={classes.idCol}
@@ -358,14 +363,7 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
     setShowErrorDetailsDialog(true);
   };
 
-  const executeEvent = task.profiling_data?.events?.find(
-    ({ event_name }) => event_name === "task:execute",
-  );
-  const errorDetails =
-    executeEvent?.extra_data?.traceback && executeEvent?.extra_data?.type
-      ? `${executeEvent?.extra_data?.type}\n${executeEvent?.extra_data?.traceback}`
-      : undefined;
-
+  const errorDetails = task.error_message;
   return (
     <React.Fragment>
       {task?.profiling_data?.node_ip_address &&
