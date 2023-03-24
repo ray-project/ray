@@ -1,7 +1,7 @@
-.. _dataset-context-api:
+.. _execution-options-api:
 
-DatasetContext API
-==================
+ExecutionOptions API
+====================
 
 .. currentmodule:: ray.data
 
@@ -12,12 +12,12 @@ Constructor
    :toctree: doc/
    :template: autosummary/class_with_autosummary.rst
 
-   DatasetContext
+   ExecutionOptions
 
-Get DatasetContext
-------------------
+Resource Options
+----------------
 
 .. autosummary::
    :toctree: doc/
 
-   DatasetContext.get_current
+   ExecutionResources
