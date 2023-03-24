@@ -10,6 +10,7 @@ from ray.serve._private.common import (
     StatusOverview,
     DeploymentInfo,
     ReplicaState,
+    ServeDeployMode,
 )
 from ray.serve.config import DeploymentMode
 from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
@@ -553,6 +554,13 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
             )
         return v
 
+    @validator("applications")
+    def application_names_nonempty(cls, v):
+        for app in v:
+            if len(app.name) == 0:
+                raise ValueError("Application names must be nonempty.")
+        return v
+
     @root_validator
     def nested_host_and_port(cls, values):
         # TODO (zcin): ServeApplicationSchema still needs to have host and port
@@ -739,6 +747,13 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         ),
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
+    deploy_mode: ServeDeployMode = Field(
+        description=(
+            "Whether a single-app config of format ServeApplicationSchema or multi-app "
+            "config of format ServeDeploySchema was deployed to the cluster."
+        )
+    )
+    http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
     )
@@ -750,7 +765,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         Represents no Serve instance running on the cluster.
         """
 
-        return {"applications": {}}
+        return {"deploy_mode": "UNSET", "applications": {}}
 
 
 @PublicAPI(stability="beta")
