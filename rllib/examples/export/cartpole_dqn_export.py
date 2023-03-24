@@ -10,12 +10,14 @@ from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 
-ray.init(num_cpus=10)
+ray.init()
 
 
 def train_and_export_policy_and_model(algo_name, num_steps, model_dir, ckpt_dir):
     cls = get_trainable_cls(algo_name)
     config = cls.get_default_config()
+    # This Example is only for tf.
+    config.framework("tf")
     # Set exporting native (DL-framework) model files to True.
     config.export_native_model_files = True
     config.env = "CartPole-v1"
