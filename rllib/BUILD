@@ -1619,7 +1619,7 @@ py_test(
 py_test(
     name = "connectors/tests/test_agent",
     tags = ["team:rllib", "connector"],
-    size = "small",
+    size = "medium",
     srcs = ["connectors/tests/test_agent.py"]
 )
 
