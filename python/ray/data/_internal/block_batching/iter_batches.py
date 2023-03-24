@@ -19,20 +19,20 @@ If prefetch_batches=2, these are all the batches in flight:
         - [Worker thread 2] Batch 3 formatting + collating
         - [Raylet] Batches 4 + 5 fetched to local object store memory
 
-At any point in time there are prefetch_batches+1 batches in local heap memory
-And the next set of prefetch_batches in local object store memory
+At any point in time there are prefetch_batches+1 batches in local heap memory.
+And the next set of prefetch_batches in local object store memory.
 
 The actual steps are as follows:
 
 In a single async thread, do the following:
     1. Trigger Ray local prefetching of `prefetch_batches` worth of block object
         references.
-    2. Resolve (i.e. call `ray.get()`) on the block references
+    2. Resolve (i.e. call `ray.get()`) on the block references.
     3. Perform the necessary batch slicing to construct full batches, possibly
         shuffling if necessary.
     4. Then, in a threadpool consisting of `prefetch_batches` threads:
         3. Format the batches to the provided batch format.
-        4. Apply the collate function
+        4. Apply the collate function.
     5. Fetch outputs from the threadpool, maintaining order of the batches.
 """
 
