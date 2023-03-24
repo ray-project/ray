@@ -1,5 +1,5 @@
 import collections
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, Iterator, Optional, Tuple
 
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata
@@ -42,7 +42,7 @@ def prefetch_batches_locally(
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
     batch_size: Optional[int],
-) -> Iterator[List[ObjectRef[Block]]]:
+) -> Iterator[ObjectRef[Block]]:
     """Given an iterator of batched block references, returns an iterator over the same
     block references while prefetching `num_batches_to_prefetch` batches in advance.
 

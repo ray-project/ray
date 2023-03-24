@@ -48,7 +48,7 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 
 
 def resolve_block_refs(
-    block_ref_iter: Iterator[List[ObjectRef[Block]]],
+    block_ref_iter: Iterator[ObjectRef[Block]],
     eager_free: bool = False,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[Block]:
@@ -63,18 +63,17 @@ def resolve_block_refs(
     misses = 0
     unknowns = 0
 
-    for block_refs in block_ref_iter:
-        current_hit, current_miss, current_unknown = _calculate_ref_hits(block_refs)
+    for block_ref in block_ref_iter:
+        current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
         hits += current_hit
         misses += current_miss
         unknowns += current_unknown
 
-        with stats.iter_get_s.timer() if stats else nullcontext():
-            blocks = ray.get(block_refs)
-        for block_ref in block_refs:
-            trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
-        for block in blocks:
-            yield block
+        # TODO(amogkam): Optimized further by batching multiple references in a single
+        # `ray.get()` call.
+        block = ray.get(block_ref)
+        trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
+        yield block
 
     if stats:
         stats.iter_blocks_local += hits
