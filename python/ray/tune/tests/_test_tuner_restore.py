@@ -10,27 +10,17 @@ from ray import air, tune
 from ray.air import Checkpoint, session
 from ray.tune.experiment import Trial
 
-FAIL_ON = os.environ.get("FAIL_ON", "")
 
 STORAGE_PATH = os.environ.get("STORAGE_PATH", "/tmp/ray_results")
-
 EXP_NAME = os.environ.get("EXP_NAME", "tuner_restore_integration_test")
+CALLBACK_DUMP_FILE = os.environ.get(
+    "CALLBACK_DUMP_FILE", "/tmp/callback_dump_file.json"
+)
 
 TIME_PER_ITER_S = float(os.environ.get("TIME_PER_ITER_S", "0.5"))
-
-CALLBACK_DUMP_DIR = os.environ.get("CALLBACK_DUMP_DIR", "/tmp/callback_dump_dir")
-
-# 4 iterations per failure --> 2 seconds per failure
-# 11 failure hooks + 1 "no failure" --> 12 total failures
-# ~24 seconds, 48 iterations at the last failure
-
-TOTAL_FAILURES = 12
-MAX_CONCURRENT_TRIALS = 1
-ITERATIONS_PER_FAILURE = 4
-FAILURES_PER_TRIAL = 2
-
-ITERATIONS_PER_TRIAL = ITERATIONS_PER_FAILURE * FAILURES_PER_TRIAL  # 8
-NUM_TRIALS = MAX_CONCURRENT_TRIALS * (TOTAL_FAILURES // FAILURES_PER_TRIAL)  # 6
+NUM_TRIALS = int(os.environ.get("NUM_TRIALS", "8"))
+MAX_CONCURRENT_TRIALS = int(os.environ.get("MAX_CONCURRENT_TRIALS", "2"))
+ITERATIONS_PER_TRIAL = int(os.environ.get("ITERATIONS_PER_TRIAL", "8"))
 
 
 class StatefulCallback(tune.Callback):
@@ -48,8 +38,9 @@ class StatefulCallback(tune.Callback):
         self._trial_iterations[trial.trial_id].append(result["training_iteration"])
 
     def on_experiment_end(self, trials: List["Trial"], **info):
-        # Save to directory
-        pass
+        # Save callback contents to file
+        with open(CALLBACK_DUMP_FILE, "w") as f:
+            json.dump(self.get_state(), f, indent=2)
 
     def get_state(self) -> Optional[Dict]:
         return {"trial_iters": self._trial_iterations.copy()}
@@ -69,9 +60,7 @@ class StatefulSearcher(tune.search.Searcher):
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
         self._trial_count += 1
-        # Have a few trials error occasionally.
-        should_error = self._trial_count % MAX_CONCURRENT_TRIALS == 0
-        return {"id": self._trial_count, "should_error": should_error}
+        return {"id": self._trial_count}
 
     def on_trial_complete(
         self, trial_id: str, result: Optional[Dict] = None, error: bool = False
@@ -86,88 +75,6 @@ class StatefulSearcher(tune.search.Searcher):
         with open(checkpoint_path, "r") as f:
             state = json.load(f)
         self._trial_count = state["trial_count"]
-
-
-class FailingCallback(tune.Callback):
-    def __init__(self):
-        self._trial_iters_since_restore = {}
-
-    @property
-    def fail_on(self) -> str:
-        return os.environ.get("FAIL_ON", "")
-
-    def should_fail(self, trials: List["Trial"]) -> bool:
-        if len(self._trial_iters_since_restore) < MAX_CONCURRENT_TRIALS:
-            return False
-
-        should_fail = all(
-            iter >= ITERATIONS_PER_FAILURE
-            for iter in self._trial_iters_since_restore.values()
-        )
-        return should_fail
-
-    def on_step_begin(self, iteration: int, trials: List["Trial"], **info):
-        if self.should_fail(trials) and self.fail_on == "on_step_begin":
-            raise RuntimeError("on_step_begin")
-
-    def on_step_end(self, iteration: int, trials: List["Trial"], **info):
-        if self.should_fail(trials) and self.fail_on == "on_step_end":
-            raise RuntimeError("on_step_end")
-
-    def on_trial_start(
-        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
-    ):
-        if self.should_fail(trials) and self.fail_on == "on_trial_start":
-            raise RuntimeError("on_trial_start")
-
-    def on_trial_restore(
-        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
-    ):
-        if self.should_fail(trials) and self.fail_on == "on_trial_restore":
-            raise RuntimeError("on_trial_restore")
-
-    def on_trial_save(
-        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
-    ):
-        if self.should_fail(trials) and self.fail_on == "on_trial_save":
-            raise RuntimeError("on_trial_save")
-
-    def on_trial_result(
-        self,
-        iteration: int,
-        trials: List["Trial"],
-        trial: "Trial",
-        result: Dict,
-        **info,
-    ):
-        if self.should_fail(trials) and self.fail_on == "on_trial_result":
-            raise RuntimeError("on_trial_result")
-        self._trial_iters_since_restore[trial.trial_id] = result.get(
-            "iterations_since_restore", 0
-        )
-
-    def on_trial_complete(
-        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
-    ):
-        if self.should_fail(trials) and self.fail_on == "on_trial_complete":
-            raise RuntimeError("on_trial_complete")
-
-    def on_trial_error(
-        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
-    ):
-        if self.should_fail(trials) and self.fail_on == "on_trial_error":
-            raise RuntimeError("on_trial_error")
-
-    def on_checkpoint(
-        self,
-        iteration: int,
-        trials: List["Trial"],
-        trial: "Trial",
-        checkpoint,
-        **info,
-    ):
-        if self.should_fail(trials) and self.fail_on == "on_checkpoint":
-            raise RuntimeError("on_checkpoint")
 
 
 def train_fn(config, data=None):
@@ -207,8 +114,7 @@ else:
             local_dir=STORAGE_PATH,
             name=EXP_NAME,
             checkpoint_config=air.CheckpointConfig(num_to_keep=1),
-            failure_config=air.FailureConfig(max_failures=-1),
-            callbacks=[StatefulCallback(), FailingCallback()],
+            callbacks=[StatefulCallback()],
         ),
         tune_config=tune.TuneConfig(
             num_samples=8,

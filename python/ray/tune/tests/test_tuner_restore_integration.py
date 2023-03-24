@@ -8,14 +8,22 @@ Test setup:
 - Each round of 2 trials should take 4 seconds
 - Without any interrupts/restoration:
     - Minimum runtime: 4 rounds * 4 seconds / round = 16 seconds
-    - Actually running it w/o interrupts = ~24 seconds
+    - Actually running it without any interrupts = ~24 seconds
 - The test will stop the script with a SIGINT at a random time between
   4-8 iterations after restoring.
 
 Requirements:
-- With interrupts, the experiment should finish within 1.5 * 24 = 36 seconds.
+- Req 1: Reasonable runtime
+    - The experiment should finish within 1.5 * 24 = 36 seconds.
     - 1.5x is the passing threshold.
+- Req 2: Training progress persisted
+    - The experiment should progress monotonically.
+    - The experiment shouldn't "go backward" at any point.
+    - Trials shouldn't start from scratch.
+- Req 3: Searcher state saved/restored correctly
+- Req 4: Callback state saved/restored correctly
 """
+import json
 import numpy as np
 from pathlib import Path
 import pytest
@@ -38,7 +46,7 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-def kill_process(process, timeout_s=10):
+def kill_process_if_needed(process, timeout_s=10):
     kill_timeout = time.monotonic() + timeout_s
     while process.poll() is None and time.monotonic() < kill_timeout:
         time.sleep(1)
@@ -54,7 +62,7 @@ def print_message(message):
     print("\n")
 
 
-def test_tuner_restore_integration(ray_start_4_cpus, tmp_path):
+def test_air_experiment_restore(ray_start_4_cpus, tmp_path):
     np.random.seed(2023)
 
     script_path = Path(__file__).parent / "_test_tuner_restore.py"
@@ -65,7 +73,10 @@ def test_tuner_restore_integration(ray_start_4_cpus, tmp_path):
     iters_per_trial = 8
     num_trials = 8
     total_iters = iters_per_trial * num_trials
+    time_per_iter_s = 0.5
     max_concurrent = 2
+
+    callback_dump_file = tmp_path / "callback_dump_file.json"
 
     # Pass criteria
     no_interrupts_runtime = 24.0
@@ -83,12 +94,13 @@ def test_tuner_restore_integration(ray_start_4_cpus, tmp_path):
         run_started_marker = tmp_path / "run_started_marker"
         run_started_marker.write_text("", encoding="utf-8")
 
-        time_per_iter_s = 0.5
         env = {
             "STORAGE_PATH": str(storage_path),
             "EXP_NAME": exp_name,
+            "CALLBACK_DUMP_FILE": str(callback_dump_file),
             "TIME_PER_ITER_S": str(time_per_iter_s),
-            "CALLBACK_DUMP_DIR": str(tmp_path / "callback_dump_dir"),
+            "ITERATIONS_PER_TRIAL": str(iters_per_trial),
+            "MAX_CONCURRENT_TRIALS": str(max_concurrent),
             "RUN_STARTED_MARKER": str(run_started_marker),
         }
         run = subprocess.Popen(
@@ -114,10 +126,11 @@ def test_tuner_restore_integration(ray_start_4_cpus, tmp_path):
 
         print_message(
             "Training has started...\n"
-            f"Interrupting after {timeout:.2f} s\n"
+            f"Interrupting after {timeout:.2f} seconds\n"
             f"Currently at {total_runtime:.2f}/{passing_runtime} seconds"
         )
 
+        # Sleep for a random amount of time, then stop the run.
         time.sleep(timeout)
         total_runtime += timeout
 
@@ -127,7 +140,7 @@ def test_tuner_restore_integration(ray_start_4_cpus, tmp_path):
             run.send_signal(signal.SIGUSR1)
 
             # Make sure the process is stopped forcefully after a timeout.
-            kill_process(run)
+            kill_process_if_needed(run)
         else:
             print_message("Run has already terminated!")
             return_code = run.poll()
@@ -145,14 +158,54 @@ def test_tuner_restore_integration(ray_start_4_cpus, tmp_path):
             f"Currently at {total_runtime:.2f}/{passing_runtime} seconds"
         )
 
-    print("Total number of restorations:", run_iter)
-    print("Total runtime:", total_runtime)
-    print("Return code:", return_code)
+    print_message(
+        f"Total number of restorations = {run_iter}\n"
+        f"Total runtime = {total_runtime}\n"
+        f"Return code = {return_code}"
+    )
 
-    assert total_runtime < passing_runtime
-    assert return_code == 0
+    # The script shouldn't have errored. (It should have finished by this point.)
+    assert return_code == 0, (
+        "The script errored with return code: {return_code}.\n"
+        "Check the `_test_tuner_restore_run.py` script for any issues."
+    )
+
+    # Req 1: runtime
+    assert (
+        total_runtime <= passing_runtime
+    ), f"Expected runtime to be <= {passing_runtime}, but ran for: {total_runtime}"
+
+    # Req 2: training progress persisted
     # Check that progress increases monotonically (we never go backwards/start from 0)
-    assert np.all(np.diff(progress_history))
+    assert np.all(np.diff(progress_history) >= 0), (
+        f"Expected progress to increase monotonically. Instead, got:\n"
+        "{progress_history}"
+    )
+
+    # Req 3: searcher state
+    results = ResultGrid(ExperimentAnalysis(str(storage_path / exp_name)))
+    # Check that all trials have unique ids assigned by the searcher
+    ids = [result.config["id"] for result in results]
+    assert sorted(ids) == list(range(1, num_trials + 1)), (
+        "Expected the searcher to assign increasing id for each trial, but got:"
+        f"{ids}"
+    )
+
+    # Req 4: callback state
+    with open(callback_dump_file, "r") as f:
+        callback_state = json.load(f)
+
+    trial_iters = callback_state["trial_iters"]
+    for iters in trial_iters.values():
+        # Check that the callback has data for each trial, for all iters
+        # NOTE: There may be some duplicate data, due to the fact that
+        # the callback will be updated on every `on_trial_result` hook,
+        # but the trial may crash before the corresponding checkpoint gets processed.
+        assert sorted(list(set(iters))) == list(
+            range(1, iters_per_trial + 1)
+        ), f"Expected data from all iterations, but got: {iters}"
+
+    print_message("Success!")
 
 
 if __name__ == "__main__":
