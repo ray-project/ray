@@ -44,19 +44,17 @@ def bundle_block_refs_to_logical_batches(
                 # If equal to or greater than batch size, then yield the full buffer.
                 yield batch_buffer
                 carryover_to_next_batch = buffer_size - batch_size
+                # Reset the batch size.
+                batch_size = original_batch_size
                 batch_buffer = []
                 buffer_size = 0
-                assert carryover_to_next_batch >= 0
-                if carryover_to_next_batch == 0:
-                    # Reset the
-                    batch_size = original_batch_size
-                elif carryover_to_next_batch > 0:
+                if carryover_to_next_batch > 0:
                     # Carryover remainder to next batch so we don't prefetch too much.
                     # Example: 4 blocks with 2 rows each. Batch size of 3.
                     # Batch 1: Yield 2 blocks (4 total rows)
                     # Batch 2: Only yield 1 additional block since 1 row from the
                     # previous yield should be included in this batch.
-                    batch_size = original_batch_size - carryover_to_next_batch
+                    batch_size = batch_size - carryover_to_next_batch
 
         # Yield any leftover batches if necessary.
         assert buffer_size < original_batch_size
