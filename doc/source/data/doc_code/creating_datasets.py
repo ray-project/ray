@@ -335,7 +335,7 @@ ds = ray.data.read_parquet(
     "example://iris.parquet",
     columns=["sepal.length", "variety"],
     filter=pa.dataset.field("sepal.length") > 5.0,
-).fully_executed()  # Force a full read of the file.
+).cache()  # Force a full read of the file.
 # -> Dataset(num_blocks=1, num_rows=118, schema={sepal.length: double, variety: string})
 
 ds.show(2)
@@ -566,13 +566,22 @@ import gcsfs
 
 # Create a tabular Dataset by reading a Parquet file from GCS, passing the configured
 # GCSFileSystem.
-# NOTE: This example is not runnable as-is; you'll need to point it at your GCS bucket
+# NOTE: This example is not runnable as-is; you need to point it at your GCS bucket
 # and configure your GCP project and credentials.
-ds = ray.data.read_parquet(
-    "gs://path/to/file.parquet",
-    filesystem=gcsfs.GCSFileSystem(project="my-google-project"),
-)
+path = "gs://path/to/file.parquet"
+filesystem = gcsfs.GCSFileSystem(project="my-google-project")
+ds = ray.data.read_parquet(path, filesystem=filesystem)
 # __read_parquet_gcs_end__
+# fmt: on
+
+
+# fmt: off
+# __validate_parquet_gcs_begin__
+print(filesystem.ls(path))
+# ['path/to/file.parquet']
+print(filesystem.open(path))
+# <File-like object GCSFileSystem, path/to/file.parquet>
+# __validate_parquet_gcs_end__
 # fmt: on
 
 # fmt: off
@@ -591,6 +600,16 @@ ds = ray.data.read_parquet(
     filesystem=adlfs.AzureBlobFileSystem(account_name="azureopendatastorage")
 )
 # __read_parquet_az_end__
+# fmt: on
+
+# fmt: off
+# __read_compressed_begin__
+# Read a gzip-compressed CSV file from S3.
+ds = ray.data.read_csv(
+    "s3://anonymous@air-example-data/gzip_compressed.csv",
+    arrow_open_stream_args={"compression": "gzip"},
+)
+# __read_compressed_end__
 # fmt: on
 
 # __read_tfrecords_begin__

@@ -164,19 +164,19 @@ def test_empty_dataset(ray_start_regular_shared):
 
     ds = ray.data.range(1)
     ds = ds.filter(lambda x: x > 1)
-    ds.fully_executed()
+    ds.cache()
     assert str(ds) == "Dataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
 
     # Test map on empty dataset.
     ds = ray.data.from_items([])
     ds = ds.map(lambda x: x)
-    ds.fully_executed()
+    ds.cache()
     assert ds.count() == 0
 
     # Test filter on empty dataset.
     ds = ray.data.from_items([])
     ds = ds.filter(lambda: True)
-    ds.fully_executed()
+    ds.cache()
     assert ds.count() == 0
 
 
@@ -184,9 +184,9 @@ def test_schema(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
     ds2 = ray.data.range_table(10, parallelism=10)
     ds3 = ds2.repartition(5)
-    ds3.fully_executed()
+    ds3.cache()
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
-    ds4.fully_executed()
+    ds4.cache()
     assert str(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
     assert str(ds3) == "Dataset(num_blocks=5, num_rows=10, schema={value: int64})"
@@ -261,7 +261,7 @@ def test_dataset_repr(ray_start_regular_shared):
         "   +- MapBatches(<lambda>)\n"
         "      +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     )
-    ds.fully_executed()
+    ds.cache()
     assert repr(ds) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
@@ -299,7 +299,7 @@ def test_dataset_repr(ray_start_regular_shared):
 def test_limit(ray_start_regular_shared, lazy):
     ds = ray.data.range(100, parallelism=20)
     if not lazy:
-        ds = ds.fully_executed()
+        ds = ds.cache()
     for i in range(100):
         assert ds.limit(i).take(200) == list(range(i))
 
@@ -391,14 +391,7 @@ def test_convert_types(ray_start_regular_shared):
 
     arrow_ds = ray.data.range_table(1)
     assert arrow_ds.map(lambda x: "plain_{}".format(x["value"])).take() == ["plain_0"]
-    # In streaming, we set batch_format to "default" (because calling
-    # ds.dataset_format() will still invoke bulk execution and we want
-    # to avoid that). As a result, it's receiving PandasRow (the defaut
-    # batch format), which unwraps [0] to plain 0.
-    if ray.data.context.DatasetContext.get_current().use_streaming_executor:
-        assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": 0}]
-    else:
-        assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": [0]}]
+    assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": [0]}]
 
 
 def test_from_items(ray_start_regular_shared):
@@ -483,14 +476,7 @@ def test_iter_rows(ray_start_regular_shared):
     # Default ArrowRows.
     for row, t_row in zip(ds.iter_rows(), to_pylist(t)):
         assert isinstance(row, TableRow)
-        # In streaming, we set batch_format to "default" because calling
-        # ds.dataset_format() will still invoke bulk execution and we want
-        # to avoid that. As a result, it's receiving PandasRow (the defaut
-        # batch format).
-        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
-            assert isinstance(row, PandasRow)
-        else:
-            assert isinstance(row, ArrowRow)
+        assert isinstance(row, ArrowRow)
         assert row == t_row
 
     # PandasRows after conversion.
@@ -504,14 +490,7 @@ def test_iter_rows(ray_start_regular_shared):
     # Prefetch.
     for row, t_row in zip(ds.iter_rows(prefetch_blocks=1), to_pylist(t)):
         assert isinstance(row, TableRow)
-        # In streaming, we set batch_format to "default" because calling
-        # ds.dataset_format() will still invoke bulk execution and we want
-        # to avoid that. As a result, it's receiving PandasRow (the defaut
-        # batch format).
-        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
-            assert isinstance(row, PandasRow)
-        else:
-            assert isinstance(row, ArrowRow)
+        assert isinstance(row, ArrowRow)
         assert row == t_row
 
 
@@ -1389,15 +1368,15 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
     # Read/write from Ray Client will result in error.
     ray.init(address)
     with pytest.raises(ValueError):
-        ds = ray.data.read_parquet("local://" + path).fully_executed()
+        ds = ray.data.read_parquet("local://" + path).cache()
     ds = ray.data.from_pandas(df)
     with pytest.raises(ValueError):
-        ds.write_parquet("local://" + data_path).fully_executed()
+        ds.write_parquet("local://" + data_path).cache()
 
 
 def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplog):
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
-        ray.data.range(5000, parallelism=5000).fully_executed()
+        ray.data.range(5000, parallelism=5000).cache()
     assert (
         "The requested parallelism of 5000 is "
         "more than 4x the number of available CPU slots in the cluster" in caplog.text
@@ -1443,17 +1422,17 @@ def test_read_write_local_node(ray_start_cluster):
 
     local_path = "local://" + data_path
     # Plain read.
-    ds = ray.data.read_parquet(local_path).fully_executed()
+    ds = ray.data.read_parquet(local_path).cache()
     check_dataset_is_local(ds)
 
     # SPREAD scheduling got overridden when read local scheme.
     ds = ray.data.read_parquet(
         local_path, ray_remote_args={"scheduling_strategy": "SPREAD"}
-    ).fully_executed()
+    ).cache()
     check_dataset_is_local(ds)
 
     # With fusion.
-    ds = ray.data.read_parquet(local_path).map(lambda x: x).fully_executed()
+    ds = ray.data.read_parquet(local_path).map(lambda x: x).cache()
     check_dataset_is_local(ds)
 
     # Write back to local scheme.
@@ -1466,15 +1445,15 @@ def test_read_write_local_node(ray_start_cluster):
     with pytest.raises(ValueError):
         ds = ray.data.read_parquet(
             [local_path + "/test1.parquet", data_path + "/test2.parquet"]
-        ).fully_executed()
+        ).cache()
     with pytest.raises(ValueError):
         ds = ray.data.read_parquet(
             [local_path + "/test1.parquet", "example://iris.parquet"]
-        ).fully_executed()
+        ).cache()
     with pytest.raises(ValueError):
         ds = ray.data.read_parquet(
             ["example://iris.parquet", local_path + "/test1.parquet"]
-        ).fully_executed()
+        ).cache()
 
 
 @ray.remote
@@ -1580,7 +1559,7 @@ def test_polars_lazy_import(shutdown_only):
             ray.data.from_pandas(dfs)
             .map_batches(lambda t: t, batch_format="pyarrow", batch_size=None)
             .sort(key="a")
-            .fully_executed()
+            .cache()
         )
         assert any(ray.get([f.remote(True) for _ in range(parallelism)]))
 
@@ -1588,16 +1567,31 @@ def test_polars_lazy_import(shutdown_only):
         ctx.use_polars = original_use_polars
 
 
-def test_default_batch_format(shutdown_only):
+def test_batch_formats(shutdown_only):
     ds = ray.data.range(100)
     assert ds.default_batch_format() == list
+    assert isinstance(next(ds.iter_batches(batch_format=None)), list)
+    assert isinstance(next(ds.iter_batches(batch_format="default")), list)
+    assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
+    assert isinstance(next(ds.iter_batches(batch_format="numpy")), np.ndarray)
 
     ds = ray.data.range_tensor(100)
     assert ds.default_batch_format() == np.ndarray
+    assert isinstance(next(ds.iter_batches(batch_format=None)), pa.Table)
+    assert isinstance(next(ds.iter_batches(batch_format="default")), np.ndarray)
+    assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
+    assert isinstance(next(ds.iter_batches(batch_format="numpy")), np.ndarray)
 
     df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
     ds = ray.data.from_pandas(df)
     assert ds.default_batch_format() == pd.DataFrame
+    assert isinstance(next(ds.iter_batches(batch_format=None)), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="default")), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
+    assert isinstance(next(ds.iter_batches(batch_format="numpy")), dict)
 
 
 def test_dataset_schema_after_read_stats(ray_start_cluster):

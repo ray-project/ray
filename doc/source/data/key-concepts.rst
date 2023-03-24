@@ -92,7 +92,7 @@ Execution mode
 ==============
 
 Most transformations are lazy. They don't execute until you consume a dataset or call
-:meth:`Dataset.fully_executed() <ray.data.Dataset.fully_executed>`.
+:meth:`Dataset.cache() <ray.data.Dataset.cache>`.
 
 For an in-depth guide on Datasets execution, read :ref:`Execution <datasets_execution>`.
 

@@ -21,7 +21,7 @@ const useStyles = makeStyles((theme) =>
       position: "fixed",
       width: "100%",
       backgroundColor: "white",
-      zIndex: 10000,
+      zIndex: 1000,
     },
   }),
 );
@@ -133,32 +133,37 @@ const useMainNavBarStyles = makeStyles((theme) =>
 const NAV_ITEMS = [
   {
     title: "Overview",
-    path: "/new/overview",
+    path: "/overview",
     id: "overview",
   },
   {
     title: "Jobs",
-    path: "/new/jobs",
+    path: "/jobs",
     id: "jobs",
   },
   {
+    title: "Serve",
+    path: "/serve",
+    id: "serve",
+  },
+  {
     title: "Cluster",
-    path: "/new/cluster",
+    path: "/cluster",
     id: "cluster",
   },
   {
     title: "Actors",
-    path: "/new/actors",
+    path: "/actors",
     id: "actors",
   },
   {
     title: "Metrics",
-    path: "/new/metrics",
+    path: "/metrics",
     id: "metrics",
   },
   {
     title: "Logs",
-    path: "/new/logs",
+    path: "/logs",
     id: "logs",
   },
 ];
@@ -170,10 +175,9 @@ const MainNavBar = () => {
 
   return (
     <div className={classes.root}>
-      <Link className={classes.logo} to="/new">
+      <Link className={classes.logo} to="/">
         <img width={28} src={Logo} alt="Ray" />
       </Link>
-      {/* TODO (aguo): Get rid of /new prefix */}
       {NAV_ITEMS.map(({ title, path, id }) => (
         <Typography key={id}>
           <Link
@@ -188,18 +192,6 @@ const MainNavBar = () => {
       ))}
       <div className={classes.flexSpacer}></div>
       <div className={classes.actionItemsContainer}>
-        <Link
-          className={classNames(classes.actionItem, classes.backToOld)}
-          to="/node"
-        >
-          <Typography
-            variant="body2"
-            component="span"
-            className={classes.backToOldText}
-          >
-            Back to old UI
-          </Typography>
-        </Link>
         <Tooltip title="Docs">
           <IconButton
             className={classes.actionItem}
@@ -241,6 +233,7 @@ const useMainNavBreadcrumbsStyles = makeStyles((theme) =>
     },
     breadcrumbItem: {
       fontWeight: 500,
+      color: "#8C9196",
       "&:not(:first-child)": {
         marginLeft: theme.spacing(1),
       },

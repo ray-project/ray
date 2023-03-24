@@ -22,7 +22,7 @@ def test_zip(ray_start_regular_shared):
     assert ds.schema() == tuple
     assert ds.take() == [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
     with pytest.raises(ValueError):
-        ds.zip(ray.data.range(3)).fully_executed()
+        ds.zip(ray.data.range(3)).cache()
 
 
 @pytest.mark.parametrize(
@@ -66,7 +66,7 @@ def test_zip_different_num_blocks_split_smallest(
         [{str(i): i for i in range(num_cols1, num_cols1 + num_cols2)}] * n,
         parallelism=num_blocks2,
     )
-    ds = ds1.zip(ds2).fully_executed()
+    ds = ds1.zip(ds2).cache()
     num_blocks = ds._plan._snapshot_blocks.executed_num_blocks()
     assert ds.take() == [{str(i): i for i in range(num_cols1 + num_cols2)}] * n
     if should_invert:
@@ -109,6 +109,23 @@ def test_zip_arrow(ray_start_regular_shared):
     assert "{id: int64, id_1: int64, id_2: int64}" in str(ds)
     result = [r.as_pydict() for r in ds.take()]
     assert result[0] == {"id": 0, "id_1": 0, "id_2": 0}
+
+
+def test_zip_preserve_order(ray_start_regular_shared):
+    def foo(x):
+        import time
+
+        if x[0] < 5:
+            time.sleep(1)
+        return x
+
+    num_items = 10
+    items = list(range(num_items))
+    ds1 = ray.data.from_items(items, parallelism=num_items)
+    ds2 = ray.data.from_items(items, parallelism=num_items)
+    ds2 = ds2.map_batches(foo, batch_size=1)
+    result = ds1.zip(ds2).take_all()
+    assert result == list(zip(range(num_items), range(num_items))), result
 
 
 def test_empty_shuffle(ray_start_regular_shared):
@@ -159,6 +176,7 @@ def test_repartition_noshuffle(ray_start_regular_shared):
     # Test num_partitions > num_rows
     ds4 = ds.repartition(40, shuffle=False)
     assert ds4.num_blocks() == 40
+
     blocks = ray.get(ds4.get_internal_block_refs())
     assert all(isinstance(block, list) for block in blocks), blocks
     assert ds4.sum() == 190
@@ -747,38 +765,38 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs, "C": [2 * x for x in xs]})
     # Wrong type.
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).groupby("A").mean(5).fully_executed()
+        ray.data.from_pandas(df).groupby("A").mean(5).cache()
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).groupby("A").mean([5]).fully_executed()
+        ray.data.from_pandas(df).groupby("A").mean([5]).cache()
     # Empty list.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).groupby("A").mean([]).fully_executed()
+        ray.data.from_pandas(df).groupby("A").mean([]).cache()
     # Nonexistent column.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).groupby("A").mean("D").fully_executed()
+        ray.data.from_pandas(df).groupby("A").mean("D").cache()
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).groupby("A").mean(["B", "D"]).fully_executed()
+        ray.data.from_pandas(df).groupby("A").mean(["B", "D"]).cache()
     # Columns for simple Dataset.
     with pytest.raises(ValueError):
-        ray.data.from_items(xs).groupby(lambda x: x % 3 == 0).mean("A").fully_executed()
+        ray.data.from_items(xs).groupby(lambda x: x % 3 == 0).mean("A").cache()
 
     # Test bad on for global aggregation
     # Wrong type.
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).mean(5).fully_executed()
+        ray.data.from_pandas(df).mean(5).cache()
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).mean([5]).fully_executed()
+        ray.data.from_pandas(df).mean([5]).cache()
     # Empty list.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).mean([]).fully_executed()
+        ray.data.from_pandas(df).mean([]).cache()
     # Nonexistent column.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).mean("D").fully_executed()
+        ray.data.from_pandas(df).mean("D").cache()
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).mean(["B", "D"]).fully_executed()
+        ray.data.from_pandas(df).mean(["B", "D"]).cache()
     # Columns for simple Dataset.
     with pytest.raises(ValueError):
-        ray.data.from_items(xs).mean("A").fully_executed()
+        ray.data.from_items(xs).mean("A").cache()
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -998,7 +1016,7 @@ def test_groupby_map_groups_merging_invalid_result(ray_start_regular_shared):
 
     # The UDF returns None, which is invalid.
     with pytest.raises(TypeError):
-        grouped.map_groups(lambda x: None if x == [1] else x).fully_executed()
+        grouped.map_groups(lambda x: None if x == [1] else x).cache()
 
 
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
@@ -1658,7 +1676,7 @@ def test_random_shuffle_with_custom_resource(ray_start_cluster):
         parallelism=2,
         ray_remote_args={"resources": {"bar": 1}},
     )
-    ds = ds.random_shuffle(resources={"bar": 1}).fully_executed()
+    ds = ds.random_shuffle(resources={"bar": 1}).cache()
     assert "1 nodes used" in ds.stats()
     assert "2 nodes used" not in ds.stats()
 
