@@ -34,9 +34,17 @@ from ray.serve._private.constants import (
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
 
+from ray.serve._private.utils import get_random_letters
+
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-MAX_REPLICA_FAILURE_RETRIES = 10
+HTTP_REQUEST_MAX_RETRIES = int(os.environ.get("RAY_SERVE_HTTP_REQUEST_MAX_RETRIES", 10))
+assert HTTP_REQUEST_MAX_RETRIES >= 0, (
+    f"Got unexpected value {HTTP_REQUEST_MAX_RETRIES} for "
+    "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES environment variable. "
+    "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES cannot be negative."
+)
+
 DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
@@ -76,7 +84,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     # We have received all the http request conent. The next `receive`
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
-    while retries < MAX_REPLICA_FAILURE_RETRIES:
+    while retries < HTTP_REQUEST_MAX_RETRIES + 1:
         assignment_task: asyncio.Task = handle.remote(request)
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task],
@@ -90,7 +98,8 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             )
             logger.warning(
                 f"Client from {scope['client']} disconnected, cancelling the "
-                "request."
+                "request.",
+                extra={"log_to_stderr": False},
             )
             # This will make the .result() to raise cancelled error.
             assignment_task.cancel()
@@ -129,9 +138,9 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             await Response(error_message, status_code=500).send(scope, receive, send)
             return "500"
         except RayActorError:
-            logger.debug(
+            logger.info(
                 "Request failed due to replica failure. There are "
-                f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
+                f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
                 "remaining."
             )
             backoff = True
@@ -144,7 +153,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             retries += 1
             backoff = False
     else:
-        error_message = f"Task failed with {MAX_REPLICA_FAILURE_RETRIES} retries."
+        error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
         await Response(error_message, status_code=500).send(scope, receive, send)
         return "500"
 
@@ -173,7 +182,9 @@ class LongestPrefixRouter:
         return endpoint in self.handles
 
     def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
-        logger.debug(f"Got updated endpoints: {endpoints}.")
+        logger.info(
+            f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
+        )
 
         existing_handles = set(self.handles.keys())
         routes = []
@@ -187,6 +198,11 @@ class LongestPrefixRouter:
                 self.handles[endpoint] = self._get_handle(endpoint)
 
         # Clean up any handles that are no longer used.
+        if len(existing_handles) > 0:
+            logger.info(
+                f"Deleting {len(existing_handles)} unused handles.",
+                extra={"log_to_stderr": False},
+            )
         for endpoint in existing_handles:
             del self.handles[endpoint]
 
@@ -293,6 +309,7 @@ class HTTPProxy:
                 "deployment",
                 "error_code",
                 "method",
+                "route",
             ),
         )
         self.processing_latency_tracker = metrics.Histogram(
@@ -302,7 +319,7 @@ class HTTPProxy:
                 "(measured from the Serve HTTP proxy)."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("route_prefix",),
+            tag_keys=("route",),
         )
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
@@ -381,18 +398,19 @@ class HTTPProxy:
             scope["root_path"] = root_path + route_prefix
 
         start_time = time.time()
+        ray.serve.context._serve_request_context.set(
+            ray.serve.context.RequestContext(route_path, get_random_letters(10))
+        )
         status_code = await _send_request_to_handle(handle, scope, receive, send)
         latency_ms = (time.time() - start_time) * 1000.0
-        self.processing_latency_tracker.observe(
-            latency_ms, tags={"route_prefix": route_prefix}
-        )
+        self.processing_latency_tracker.observe(latency_ms, tags={"route": route_path})
         logger.info(
             access_log_msg(
                 method=scope["method"],
-                route=route_prefix,
                 status=str(status_code),
                 latency_ms=latency_ms,
-            )
+            ),
+            extra={"log_to_stderr": False},
         )
         if status_code != "200":
             self.request_error_counter.inc(
@@ -407,6 +425,7 @@ class HTTPProxy:
                     "deployment": handle.deployment_name,
                     "error_code": status_code,
                     "method": scope["method"].upper(),
+                    "route": route_path,
                 }
             )
 

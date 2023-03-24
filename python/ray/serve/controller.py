@@ -34,6 +34,8 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
     SERVE_DEFAULT_APP_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+    MULTI_APP_MIGRATION_MESSAGE,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
@@ -319,16 +321,25 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            deployment_time, config_checkpoints_dict = pickle.loads(checkpoint)
+            deployment_time, deploy_mode, config_checkpoints_dict = pickle.loads(
+                checkpoint
+            )
             applications = [
                 app_config_dict
                 for app_config_dict, _ in config_checkpoints_dict.values()
             ]
-            self.deploy_apps(
-                ServeDeploySchema.parse_obj({"applications": applications}),
-                deployment_time,
-                False,
-            )
+            if deploy_mode == ServeDeployMode.SINGLE_APP:
+                self.deploy_apps(
+                    ServeApplicationSchema.parse_obj(applications[0]),
+                    deployment_time,
+                    False,
+                )
+            else:
+                self.deploy_apps(
+                    ServeDeploySchema.parse_obj({"applications": applications}),
+                    deployment_time,
+                    False,
+                )
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
         """Used for testing.
@@ -495,6 +506,14 @@ class ServeController:
         # ServeApplicationSchema. Eventually, after migration is complete, we should
         # deprecate such usage.
         if isinstance(config, ServeApplicationSchema):
+            if "name" in config.dict(exclude_unset=True):
+                error_msg = (
+                    "Specifying the name of an application is only allowed for apps "
+                    "that are listed as part of a multi-app config file. "
+                ) + MULTI_APP_MIGRATION_MESSAGE
+                logger.warning(error_msg)
+                raise RayServeException(error_msg)
+
             applications = [config]
             if self.deploy_mode == ServeDeployMode.MULTI_APP:
                 raise RayServeException(
@@ -531,15 +550,11 @@ class ServeController:
         if config_checkpoint is None:
             config_checkpoints_dict = {}
         else:
-            _, config_checkpoints_dict = pickle.loads(config_checkpoint)
+            _, _, config_checkpoints_dict = pickle.loads(config_checkpoint)
 
         new_config_checkpoint = {}
 
         for app_config in applications:
-            # Prepend app name to each deployment name
-            if not _internal:
-                app_config = app_config.prepend_app_name_to_deployment_names()
-
             app_config_dict = app_config.dict(exclude_unset=True)
 
             # Compare new config options with old ones, set versions of new deployments
@@ -563,7 +578,11 @@ class ServeController:
                 updated_versions,
             )
 
-            deploy_obj_ref = run_graph.options(
+            logger.info(
+                "Starting deploy_serve_application "
+                f"task for application {app_config.name}."
+            )
+            deploy_obj_ref = deploy_serve_application.options(
                 runtime_env=app_config.runtime_env
             ).remote(
                 app_config.import_path,
@@ -582,7 +601,7 @@ class ServeController:
 
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            pickle.dumps((deployment_time, new_config_checkpoint)),
+            pickle.dumps((deployment_time, self.deploy_mode, new_config_checkpoint)),
         )
 
         # Delete live applications not listed in config
@@ -721,6 +740,7 @@ class ServeController:
                 host=http_config.host,
                 port=http_config.port,
             ),
+            deploy_mode=self.deploy_mode,
             applications=applications,
         ).dict(exclude_unset=True)
 
@@ -754,21 +774,13 @@ class ServeController:
             statuses.append(self.get_serve_status(name))
         return statuses
 
-    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:
+    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Optional[Dict]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-        if checkpoint is None:
-            return ServeApplicationSchema.get_empty_schema_dict()
-        else:
-            _, config_checkpoints_dict = pickle.loads(checkpoint)
-            if name not in config_checkpoints_dict:
-                return ServeApplicationSchema.get_empty_schema_dict()
-            config, _ = config_checkpoints_dict[name]
-
-            return (
-                ServeApplicationSchema.parse_obj(config)
-                .remove_app_name_from_deployment_names()
-                .dict(exclude_unset=True)
-            )
+        if checkpoint is not None:
+            _, _, config_checkpoints_dict = pickle.loads(checkpoint)
+            if name in config_checkpoints_dict:
+                config, _ = config_checkpoints_dict[name]
+                return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
 
     def get_all_deployment_statuses(self) -> List[bytes]:
         """Gets deployment status bytes for all live deployments."""
@@ -888,20 +900,19 @@ def _generate_deployment_config_versions(
 
 
 @ray.remote(num_cpus=0, max_calls=1)
-def run_graph(
+def deploy_serve_application(
     import_path: str,
-    graph_env: Dict,
+    runtime_env: Dict,
     deployment_override_options: List[Dict],
     deployment_versions: Dict,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = "/",
 ):
-    """
-    Build application object from user config
+    """Deploy Serve application from a user-provided config.
 
     Args:
-        import_path: Serve deployment graph's import path
-        graph_env: runtime env to run the deployment graph in
+        import_path: import path to top-level bound deployment.
+        runtime_env: runtime_env for the application.
         deployment_override_options: Dictionary of options that overrides
             deployment options set in the graph's code itself.
         deployment_versions: Versions of each deployment, each of which is
@@ -915,35 +926,46 @@ def run_graph(
         from ray import serve
         from ray.serve.api import build
 
-        # Import and build the graph
-        graph = import_attr(import_path)
-        app = build(graph, name)
+        # Import and build the application.
+        app = build(import_attr(import_path), name)
 
-        # Override options for each deployment
+        # Override options for each deployment.
         for options in deployment_override_options:
             deployment_name = options["name"]
+            unique_deployment_name = (
+                (name + DEPLOYMENT_NAME_PREFIX_SEPARATOR) if len(name) else ""
+            ) + deployment_name
 
-            # Merge graph-level and deployment-level runtime_envs
+            if unique_deployment_name not in app.deployments:
+                raise KeyError(
+                    f'There is no deployment named "{deployment_name}" in the '
+                    f'application "{name}".'
+                )
+
+            # Merge app-level and deployment-level runtime_envs.
             if "ray_actor_options" in options:
                 # If specified, get ray_actor_options from config
                 ray_actor_options = options["ray_actor_options"] or {}
             else:
-                # Otherwise, get options from graph code (and default to {} if code
-                # sets options to None)
+                # Otherwise, get options from application code (and default to {}
+                # if the code sets options to None).
                 ray_actor_options = (
-                    app.deployments[deployment_name].ray_actor_options or {}
+                    app.deployments[unique_deployment_name].ray_actor_options or {}
                 )
             deployment_env = ray_actor_options.get("runtime_env", {})
             merged_env = override_runtime_envs_except_env_vars(
-                graph_env, deployment_env
+                runtime_env, deployment_env
             )
             ray_actor_options.update({"runtime_env": merged_env})
             options["ray_actor_options"] = ray_actor_options
             options["version"] = deployment_versions[deployment_name]
+            options["name"] = unique_deployment_name
             # Update the deployment's options
-            app.deployments[deployment_name].set_options(**options, _internal=True)
+            app.deployments[unique_deployment_name].set_options(
+                **options, _internal=True
+            )
 
-        # Run the graph locally on the cluster
+        # Run the application locally on the cluster.
         serve.run(app, name=name, route_prefix=route_prefix)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which

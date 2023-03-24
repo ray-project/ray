@@ -15,7 +15,7 @@ from ray.data._internal.block_batching.interfaces import (
 from ray.data._internal.block_batching.iter_batches import (
     iter_batches,
     prefetch_batches_locally,
-    restore_from_original_order,
+    restore_original_order,
 )
 
 
@@ -40,7 +40,7 @@ def test_prefetch_batches_locally(num_batches_to_prefetch, batch_size):
             self.windows = []
 
         def prefetch_blocks(self, blocks: List[Block]):
-            if not batch_size:
+            if batch_size is None:
                 assert len(blocks) == num_batches_to_prefetch
             else:
                 assert (
@@ -73,7 +73,7 @@ def test_prefetch_batches_locally(num_batches_to_prefetch, batch_size):
             # block.
             assert len(prefetcher.windows) == previous_num_windows + 1
             previous_num_windows = len(prefetcher.windows)
-        elif batch_size and remaining_rows > batch_size * num_batches_to_prefetch:
+        elif batch_size is not None and remaining_rows > batch_size * num_batches_to_prefetch:
             # Test that we are actually prefetching in advance if this is not the last
             # batch.
             assert len(prefetcher.windows) == previous_num_windows + 1
@@ -91,7 +91,7 @@ def test_restore_from_original_order():
         Batch(2, None),
     ]
 
-    ordered = list(restore_from_original_order(iter(base_iterator)))
+    ordered = list(restore_original_order(iter(base_iterator)))
     idx = [batch.batch_idx for batch in ordered]
     assert idx == [0, 1, 2, 3]
 
