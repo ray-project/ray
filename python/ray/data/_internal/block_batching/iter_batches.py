@@ -1,4 +1,5 @@
 import collections
+import sys
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import ray
@@ -8,9 +9,18 @@ from ray.data._internal.block_batching.interfaces import (
     Batch,
     BlockPrefetcher,
 )
-from ray.data._internal.block_batching.util import ActorBlockPrefetcher, WaitBlockPrefetcher, resolve_block_refs, blocks_to_batches, format_batches, collate
+from ray.data._internal.block_batching.util import ActorBlockPrefetcher, WaitBlockPrefetcher, resolve_block_refs, blocks_to_batches, format_batches, collate, extract_data_from_batch, make_async_gen
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DatasetContext
+
+if sys.version_info >= (3, 7):
+    from contextlib import nullcontext
+else:
+    from contextlib import contextmanager
+
+    @contextmanager
+    def nullcontext(enter_result=None):
+        yield enter_result
 
 def iter_batches(
     block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
@@ -55,8 +65,8 @@ def iter_batches(
         3. Perform the necessary batch slicing to construct full batches, possibly
             shuffling if necessary.
         4. Then, in a threadpool consisting of `prefetch_batches` threads:
-            3. Format the batches to the provided batch format.
-            4. Apply the collate function.
+            1. Format the batches to the provided batch format.
+            2. Apply the collate function.
         5. Fetch outputs from the threadpool, maintaining order of the batches.
 
     Args:
@@ -138,24 +148,22 @@ def iter_batches(
         )
 
         # Step 4: Use a threadpool for formatting and collation.
-        batch_iter = _batch_in_threadpool(
+        batch_iter = _format_in_threadpool(
             batch_iter,
             stats=stats,
             batch_format=batch_format,
             collate_fn=collate_fn,
-            ensure_copy=ensure_copy,
             num_threadpool_workers=prefetch_batches,
         )
 
         # Step 5: Restore original order.
         batch_iter: Iterator[Batch] = restore_from_original_order(batch_iter)
 
-        for batch in batch_iter:
-            yield batch.data
+        yield from extract_data_from_batch(batch_iter)
 
     # Run everything in a separate thread to not block the main thread when waiting
     # for streaming results.
-    async_batch_iter = _make_async_gen(
+    async_batch_iter = make_async_gen(
         block_refs, fn=_async_iter_batches, num_workers=1
     )
 
@@ -169,12 +177,11 @@ def iter_batches(
             yield next_batch
 
 
-def _batch_in_threadpool(
-    logical_batch_iterator: Iterator[LogicalBatch],
+def _format_in_threadpool(
+    batch_iter: Iterator[Batch],
     stats: DatasetStats,
     batch_format: str = "default",
     collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-    ensure_copy: bool = False,
     num_threadpool_workers: int = 0,
 ) -> Iterator[Batch]:
     """Executes the batching, formatting, and collation logic in a threadpool.
@@ -188,39 +195,32 @@ def _batch_in_threadpool(
             select ``pandas.DataFrame`` or "pyarrow" to select
             ``pyarrow.Table``. Default is "default".
         collate_fn: A function to apply to each data batch before returning it.
-        ensure_copy: Whether batches are always copied from the underlying base
-            blocks (not zero-copy views).
         num_threadpool_workers: The number of threads to use in the threadpool.
     """
 
     def threadpool_computations(
-        logical_batch_iter: Iterator[LogicalBatch],
+        batch_iter: Iterator[Batch],
     ) -> Iterator[Batch]:
-        # Step 4.1: Resolve the blocks.
-        resolved_batch_iter = _resolve_logical_batch(logical_batch_iter, stats=stats)
-
-        # Step 4.2: Slice the blocks to create the batch.
-        batch_iter = _construct_batch_from_logical_batch(
-            resolved_batch_iter, ensure_copy=ensure_copy, stats=stats
-        )
-
-        # Step 4.3: Format the batches.
-        formatted_batch_iter = _format_batches(
+        # Step 4.1: Format the batches.
+        formatted_batch_iter = format_batches(
             batch_iter, batch_format=batch_format, stats=stats
         )
 
         # Step 4.4: Apply the collate function if applicable.
         if collate_fn is not None:
-            formatted_batch_iter = _collate(
+            formatted_batch_iter = collate(
                 formatted_batch_iter, collate_fn=collate_fn, stats=stats
             )
         yield from formatted_batch_iter
 
-    return _make_async_gen(
-        base_iterator=logical_batch_iterator,
-        fn=threadpool_computations,
-        num_workers=num_threadpool_workers,
-    )
+    if num_threadpool_workers > 0:
+        return make_async_gen(
+            base_iterator=batch_iter,
+            fn=threadpool_computations,
+            num_workers=num_threadpool_workers,
+        )
+    else:
+        return threadpool_computations(batch_iter)
 
 def prefetch_batches_locally(
     block_ref_iter: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],

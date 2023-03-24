@@ -178,6 +178,7 @@ def format_batches(
 def collate(
     batch_iter: Iterator[Batch],
     collate_fn: Optional[Callable[[DataBatch], Any]],
+    stats: Optional[DatasetStats],
 ) -> Iterator[CollatedBatch]:
     """Returns an iterator with the provided collate_fn applied to items of the batch
     iterator.
@@ -186,14 +187,14 @@ def collate(
         batch_iter: An iterator over formatted batches.
     """
     for batch in batch_iter:
-        collated_batch = collate_fn(batch.data)
+        with stats.iter_collate_batch_s.timer() if stats else nullcontext():
+            collated_batch = collate_fn(batch.data)
         yield CollatedBatch(batch.batch_idx, collated_batch)
 
 
 def extract_data_from_batch(batch_iter: Iterator[Batch]) -> Iterator[Any]:
     for batch in batch_iter:
         yield batch.data
-
 
 def make_async_gen(
     base_iterator: Iterator[T],

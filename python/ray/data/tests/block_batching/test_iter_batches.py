@@ -2,6 +2,7 @@ import pytest
 import time
 from typing import Iterator, List, Tuple
 
+import pandas as pd
 import pyarrow as pa
 
 from ray.data.block import Block, BlockMetadata
@@ -10,6 +11,7 @@ from ray.data._internal.block_batching.interfaces import (
     BlockPrefetcher,
 )
 from ray.data._internal.block_batching.iter_batches import (
+    iter_batches,
     prefetch_batches_locally,
     restore_from_original_order,
 )
