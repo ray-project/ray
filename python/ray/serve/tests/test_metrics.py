@@ -442,6 +442,77 @@ class TestRequestContextMetrics:
         histogram_metrics[0]["replica"] == replica_tag
         histogram_metrics[0]["deployment"] == deployment_name
 
+    def test_serve_metrics_in_ray_actor(self, serve_start_shutdown):
+        """Make sure ray.serve.metrics work in ray actor"""
+
+        @ray.remote
+        class MyActor:
+            def __init__(self):
+                self.counter = Counter(
+                    "my_counter",
+                    description="my counter metrics",
+                    tag_keys=(
+                        "my_static_tag",
+                        "my_runtime_tag",
+                    ),
+                )
+                self.counter.set_default_tags({"my_static_tag": "static_value"})
+                self.histogram = Histogram(
+                    "my_histogram",
+                    description=("my histogram "),
+                    boundaries=DEFAULT_LATENCY_BUCKET_MS,
+                    tag_keys=(
+                        "my_static_tag",
+                        "my_runtime_tag",
+                    ),
+                )
+                self.histogram.set_default_tags({"my_static_tag": "static_value"})
+                self.gauge = Gauge(
+                    "my_gauge",
+                    description=("my_gauge"),
+                    tag_keys=(
+                        "my_static_tag",
+                        "my_runtime_tag",
+                    ),
+                )
+                self.gauge.set_default_tags({"my_static_tag": "static_value"})
+
+            def test(self):
+                self.counter.inc(tags={"my_runtime_tag": "100"})
+                self.histogram.observe(200, tags={"my_runtime_tag": "200"})
+                self.gauge.set(300, tags={"my_runtime_tag": "300"})
+                return "hello"
+
+        @serve.deployment
+        class Model:
+            def __init__(self):
+                self.my_actor = MyActor.remote()
+
+            async def __call__(self):
+                return await self.my_actor.test.remote()
+
+        serve.run(Model.bind(), name="app", route_prefix="/app")
+        resp = requests.get("http://127.0.0.1:8000/app")
+        assert resp.text == "hello"
+        wait_for_condition(
+            lambda: len(get_metric_dictionaries("my_gauge")) == 1,
+            timeout=20,
+        )
+        counter_metrics = get_metric_dictionaries("my_counter")
+        assert len(counter_metrics) == 1
+        counter_metrics[0]["my_static_tag"] == "static_value"
+        counter_metrics[0]["my_runtime_tag"] == "100"
+
+        gauge_metrics = get_metric_dictionaries("my_gauge")
+        assert len(counter_metrics) == 1
+        gauge_metrics[0]["my_static_tag"] == "static_value"
+        gauge_metrics[0]["my_runtime_tag"] == "300"
+
+        histogram_metrics = get_metric_dictionaries("my_histogram_sum")
+        assert len(histogram_metrics) == 1
+        histogram_metrics[0]["my_static_tag"] == "static_value"
+        histogram_metrics[0]["my_runtime_tag"] == "200"
+
 
 def test_actor_summary(serve_instance):
     @serve.deployment
