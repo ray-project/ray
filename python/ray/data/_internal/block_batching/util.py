@@ -14,7 +14,6 @@ from ray.data._internal.block_batching.interfaces import (
     CollatedBatch,
     BlockPrefetcher,
 )
-from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -49,14 +48,12 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
-    eager_free: bool = False,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[Block]:
     """Resolves the block references for each logical batch.
 
     Args:
         block_ref_iter: An iterator over block object references.
-        eager_free: Whether to eagerly free the object reference from the object store.
         stats: An optional stats object to recording block hits and misses.
     """
     hits = 0
@@ -73,7 +70,6 @@ def resolve_block_refs(
         # `ray.get()` call.
         with stats.iter_get_s.timer() if stats else nullcontext():
             block = ray.get(block_ref)
-        trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
         yield block
 
     if stats:

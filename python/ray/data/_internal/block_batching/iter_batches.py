@@ -19,6 +19,7 @@ from ray.data._internal.block_batching.util import (
     extract_data_from_batch,
     make_async_gen,
 )
+from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DatasetContext
 
@@ -137,6 +138,7 @@ def iter_batches(
                 prefetcher=prefetcher,
                 num_batches_to_prefetch=prefetch_batches,
                 batch_size=batch_size,
+                eager_free=eager_free,
             )
         else:
 
@@ -147,9 +149,7 @@ def iter_batches(
             block_refs = _drop_metadata(block_refs)
 
         # Step 2: Resolve the blocks.
-        block_iter = resolve_block_refs(
-            block_ref_iter=block_refs, eager_free=eager_free, stats=stats
-        )
+        block_iter = resolve_block_refs(block_ref_iter=block_refs, stats=stats)
 
         # Step 3: Batch and shuffle the resolved blocks.
         batch_iter = blocks_to_batches(
@@ -241,6 +241,7 @@ def prefetch_batches_locally(
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
     batch_size: Optional[int],
+    eager_free: bool = False,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterator of batched block references, returns an iterator over the same
     block references while prefetching `num_batches_to_prefetch` batches in advance.
@@ -251,6 +252,7 @@ def prefetch_batches_locally(
         num_batches_to_prefetch: The number of batches to prefetch ahead of the
             current batch during the scan.
         batch_size: User specified batch size, or None to let the system pick.
+        eager_free: Whether to eagerly free the object reference from the object store.
     """
 
     sliding_window = collections.deque()
@@ -289,6 +291,7 @@ def prefetch_batches_locally(
             except StopIteration:
                 pass
         yield block_ref
+        trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
 
 
 def restore_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:

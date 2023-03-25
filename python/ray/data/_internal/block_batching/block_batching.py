@@ -14,6 +14,7 @@ from ray.data._internal.block_batching.util import (
     WaitBlockPrefetcher,
     ActorBlockPrefetcher,
 )
+from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import Block, DataBatch
 from ray.data.context import DatasetContext
@@ -101,9 +102,9 @@ def batch_block_refs(
             block_ref_iter=block_refs,
             prefetcher=prefetcher,
             num_blocks_to_prefetch=prefetch_blocks,
+            eager_free=eager_free,
         ),
         stats=stats,
-        eager_free=eager_free,
     )
 
     yield from batch_blocks(
@@ -171,6 +172,7 @@ def _prefetch_blocks(
     block_ref_iter: Iterator[ObjectRef[Block]],
     prefetcher: BlockPrefetcher,
     num_blocks_to_prefetch: int,
+    eager_free: bool = False,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterable of Block Object References, returns an iterator
@@ -204,3 +206,6 @@ def _prefetch_blocks(
         except StopIteration:
             pass
         yield block_ref
+        trace_deallocation(
+            block_ref, "block_batching._prefetch_blocks", free=eager_free
+        )
