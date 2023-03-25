@@ -10,7 +10,7 @@ from ray.train.huggingface.transformers import (
 
 
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
-from test_huggingface_predictor import (
+from test_transformers_predictor import (
     model_checkpoint,
     tokenizer_checkpoint,
     test_strings,
@@ -18,7 +18,7 @@ from test_huggingface_predictor import (
 )
 
 
-def test_huggingface_checkpoint(tmpdir, ray_start_runtime_env):
+def test_transformers_checkpoint(tmpdir, ray_start_runtime_env):
     model_config = AutoConfig.from_pretrained(model_checkpoint)
     model = AutoModelForCausalLM.from_config(model_config)
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
