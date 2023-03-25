@@ -544,17 +544,17 @@ py_test(
 )
 
 py_test(
-    name = "test_transformers_checkpoint",
+    name = "test_transformers_trainer_steps",
     size = "large",
-    srcs = ["tests/test_transformers_checkpoint.py"],
+    srcs = ["tests/test_transformers_trainer_steps.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
 
 py_test(
-    name = "test_transformers_checkpoint_steps",
+    name = "test_transformers_trainer",
     size = "large",
-    srcs = ["tests/test_transformers_checkpoint_steps.py"],
+    srcs = ["tests/test_transformers_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
