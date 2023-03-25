@@ -190,7 +190,7 @@ def test_cache_dataset(ray_start_regular_shared):
             print("INC")
             self.i += 1
             return self.i
-    
+
     c = Counter.remote()
 
     def inc(x):
