@@ -1,7 +1,7 @@
 # Based on
 # huggingface/notebooks/examples/language_modeling_from_scratch.ipynb
 
-# This example is tested with transformers==4.26.0
+# This example is tested with transformers==4.19.1
 
 import argparse
 import tempfile
