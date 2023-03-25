@@ -29,7 +29,7 @@ class DummyTrainer(DataParallelTrainer):
         scaling_config: Configuration for how to scale training. This is the same
             as for :class:`~ray.train.base_trainer.BaseTrainer`.
         num_epochs: How many many times to iterate through the datasets for.
-        prefetch_blocks: The number of blocks to prefetch ahead of the
+        prefetch_batches: The number of batches to prefetch ahead of the
             current block during the scan. This is the same as
             :meth:`~ray.data.dataset.Dataset.iter_batches`
         time_preprocessing_separately: Whether to time the preprocessing separately
@@ -44,16 +44,17 @@ class DummyTrainer(DataParallelTrainer):
         *args,
         scaling_config: Optional[ScalingConfig] = None,
         num_epochs: int = 1,
-        prefetch_blocks: int = 1,
+        prefetch_batches: int = 1,
         batch_size: Optional[int] = 4096,
         time_preprocessing_separately: bool = False,
-        **kwargs,
+        # Deprecated.
+        prefetch_blocks: int = 0**kwargs,
     ):
         if not scaling_config:
             scaling_config = ScalingConfig(num_workers=1)
         super().__init__(
             train_loop_per_worker=DummyTrainer.make_train_loop(
-                num_epochs, prefetch_blocks, batch_size
+                num_epochs, prefetch_batches, batch_size
             ),
             *args,
             scaling_config=scaling_config,
@@ -81,7 +82,10 @@ class DummyTrainer(DataParallelTrainer):
 
     @staticmethod
     def make_train_loop(
-        num_epochs: int, prefetch_blocks: int, batch_size: Optional[int]
+        num_epochs: int,
+        prefetch_batches: int,
+        prefetch_blocks: int,
+        batch_size: Optional[int],
     ):
         """Make a debug train loop that runs for the given amount of epochs."""
 
@@ -99,7 +103,9 @@ class DummyTrainer(DataParallelTrainer):
                 epochs_read += 1
                 batch_start = time.perf_counter()
                 for batch in data_shard.iter_batches(
-                    prefetch_blocks=prefetch_blocks, batch_size=batch_size
+                    prefetch_batches=prefetch_batches,
+                    prefetch_blocks=prefetch_blocks,
+                    batch_size=batch_size,
                 ):
                     batch_delay = time.perf_counter() - batch_start
                     batch_delays.append(batch_delay)
@@ -189,11 +195,11 @@ if __name__ == "__main__":
         "--num-epochs", "-e", type=int, default=1, help="Number of epochs to read."
     )
     parser.add_argument(
-        "--prefetch-blocks",
+        "--prefetch-batches",
         "-b",
         type=int,
         default=1,
-        help="Number of blocks to prefetch when reading data.",
+        help="Number of batches to prefetch when reading data.",
     )
 
     args = parser.parse_args()
@@ -215,7 +221,7 @@ if __name__ == "__main__":
         datasets={"train": dataset},
         preprocessor=preprocessor,
         num_epochs=args.num_epochs,
-        prefetch_blocks=args.prefetch_blocks,
+        prefetch_batches=args.prefetch_batches,
         dataset_config={"train": DatasetConfig()},
         batch_size=None,
     )

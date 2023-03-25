@@ -153,7 +153,10 @@ def test_iter_batches_e2e_async(ray_start_regular_shared):
         time.sleep(2)
         return batch
 
-    block_refs_iter = block_generator(num_blocks=20, num_rows=2)
+    block_refs_iter = itertools.starmap(
+        lambda block, metadata: (ray.put(block), metadata),
+        block_generator(num_blocks=20, num_rows=2),
+    )
     start_time = time.time()
     output_batches = iter_batches(
         block_refs_iter, batch_size=None, collate_fn=collate_fn, prefetch_batches=4

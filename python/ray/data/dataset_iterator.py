@@ -138,8 +138,6 @@ class DatasetIterator(abc.ABC):
         if not context.use_streaming_executor:
             # Always use legacy iter_batches for bulk executor.
             use_legacy = True
-            if not prefetch_blocks and prefetch_batches:
-                prefetch_blocks = prefetch_batches
         else:
             use_legacy = context.use_legacy_iter_batches
 
