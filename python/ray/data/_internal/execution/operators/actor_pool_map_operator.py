@@ -93,6 +93,11 @@ class ActorPoolMapOperator(MapOperator):
         for _ in range(self._autoscaling_policy.min_workers):
             self._start_actor()
         refs = self._actor_pool.get_pending_actor_refs()
+
+        # We synchronously wait for the initial number of actors to start. This avoids
+        # situations where the scheduler is unable to schedule downstream operators
+        # due to lack of available actors, causing an initial "pileup" of objects on
+        # upstream operators, leading to a spike in memory usage prior to steady state.
         logger.get_logger().info(
             f"{self._name}: Waiting for {len(refs)} pool actors to start..."
         )
