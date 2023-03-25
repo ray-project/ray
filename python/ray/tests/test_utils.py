@@ -52,7 +52,7 @@ def test_try_import_each_module():
     with patch("builtins.print") as mocked_print:
         with patch.dict(sys.modules, mock_sys_modules) as patched_sys_modules:
 
-            ray._private.utils.try_import_each_module(modules_to_import + [fake_module])
+            try_import_each_module(modules_to_import + [fake_module])
 
             # Verify modules are imported.
             for lib in modules_to_import:
