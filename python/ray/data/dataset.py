@@ -2029,8 +2029,8 @@ class Dataset(Generic[T]):
             ...     (i, i**2)
             ...     for i in range(100)]).std(lambda x: x[1])
             2968.1748039269296
-            >>> ray.data.range_table(100).std("value", ddof=0)
-            28.86607004772212
+            >>> round(ray.data.range_table(100).std("value", ddof=0), 5)
+            28.86607
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
             ...     for i in range(100)]).std(["A", "B"])

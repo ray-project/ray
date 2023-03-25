@@ -15,7 +15,6 @@ from freezegun import freeze_time
 import ray
 from ray.air import CheckpointConfig
 from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
-from ray.exceptions import OwnerDiedError
 from ray.rllib import _register_all
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
