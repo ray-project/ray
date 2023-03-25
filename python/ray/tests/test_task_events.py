@@ -88,7 +88,7 @@ def test_status_task_events_metrics(shutdown_only):
 
 
 def test_failed_task_error(shutdown_only):
-    ray.init("auto")
+    ray.init(_system_config=_SYSTEM_CONFIG)
 
     # Test failed task with TASK_EXECUTION_EXCEPTION
     error_msg_str = "fail is expected to fail"
