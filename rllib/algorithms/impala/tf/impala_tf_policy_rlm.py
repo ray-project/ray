@@ -1,9 +1,7 @@
 import logging
 from typing import Dict, List, Union
 
-import ray
 from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
-from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import (
     EntropyCoeffSchedule,
@@ -12,6 +10,7 @@ from ray.rllib.policy.tf_mixins import (
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import (
     explained_variance,
@@ -30,9 +29,6 @@ class ImpalaTfPolicyWithRLModule(
     EagerTFPolicyV2,
 ):
     def __init__(self, observation_space, action_space, config):
-        config = dict(
-            ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config
-        )
         validate_config(config)
         EagerTFPolicyV2.enable_eager_execution_if_necessary()
         EagerTFPolicyV2.__init__(self, observation_space, action_space, config)
@@ -48,18 +44,13 @@ class ImpalaTfPolicyWithRLModule(
     @override(EagerTFPolicyV2)
     def loss(
         self,
-        model: Union[ModelV2, "tf.keras.Model"],
+        model: PPOTfRLModule,
         dist_class,
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
-        train_batch[SampleBatch.ACTIONS]
-        train_batch[SampleBatch.ACTION_LOGP]
-        train_batch[SampleBatch.REWARDS]
-        train_batch[SampleBatch.TERMINATEDS]
-
-        seqs_len = train_batch.get(SampleBatch.SEQ_LENS)
+        seq_len = train_batch.get(SampleBatch.SEQ_LENS)
         rollout_frag_or_episode_len = (
-            self.config["rollout_fragment_length"] if not seqs_len else None
+            self.config["rollout_fragment_length"] if not seq_len else None
         )
         drop_last = self.config["vtrace_drop_last_ts"]
 
@@ -75,26 +66,26 @@ class ImpalaTfPolicyWithRLModule(
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
             trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=seqs_len,
+            recurrent_seq_len=seq_len,
             drop_last=drop_last,
         )
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
             trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=seqs_len,
+            recurrent_seq_len=seq_len,
             drop_last=drop_last,
         )
         values_time_major = make_time_major(
             values,
             trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=seqs_len,
+            recurrent_seq_len=seq_len,
             drop_last=drop_last,
         )
         bootstrap_value = values_time_major[-1]
         rewards_time_major = make_time_major(
             train_batch[SampleBatch.REWARDS],
             trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=seqs_len,
+            recurrent_seq_len=seq_len,
             drop_last=drop_last,
         )
 
@@ -106,7 +97,7 @@ class ImpalaTfPolicyWithRLModule(
                 make_time_major(
                     train_batch[SampleBatch.TERMINATEDS],
                     trajectory_len=rollout_frag_or_episode_len,
-                    recurrent_seq_len=seqs_len,
+                    recurrent_seq_len=seq_len,
                     drop_last=drop_last,
                 ),
                 dtype=tf.float32,

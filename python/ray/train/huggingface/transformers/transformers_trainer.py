@@ -102,6 +102,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
     (segfault) may be thrown.
 
     This Trainer requires ``transformers>=4.19.0`` package.
+    It is tested with ``transformers==4.19.1``.
 
     Example:
         .. code-block:: python
@@ -423,7 +424,7 @@ def _huggingface_train_loop_per_worker(config):
 
     if trainer.args.load_best_model_at_end:
         raise ValueError(
-            "As Ray AIR replaces Hugging Face checkpointing, "
+            "As Ray AIR replaces Transformers checkpointing, "
             "`load_best_model_at_end` must be set to False.\n"
             "You can obtain the AIR Checkpoint with "
             "`Result.checkpoint` returned by the `fit()` method "

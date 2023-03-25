@@ -158,6 +158,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool ShouldCaptureChildTasksInPlacementGroup()
         const CActorID &GetActorId()
         void SetActorTitle(const c_string &title)
+        void SetActorReprName(const c_string &repr_name)
         void SetWebuiDisplay(const c_string &key, const c_string &message)
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
@@ -260,6 +261,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         unordered_map[c_string, c_vector[int64_t]] GetActorCallStats() const
 
+        void RecordTaskLogStart(
+            const c_string& stdout_path,
+            const c_string& stderr_path,
+            int64_t stdout_start_offset,
+            int64_t stderr_start_offset) const
+
+        void RecordTaskLogEnd(int64_t stdout_end_offset,
+                              int64_t stderr_end_offset) const
+
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type
         CLanguage language
@@ -325,6 +335,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int startup_token
         c_string session_name
         c_string entrypoint
+        int64_t worker_launch_time_ms
+        int64_t worker_launched_time_ms
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod

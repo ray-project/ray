@@ -6,5 +6,5 @@ cartpole-pg:
         timesteps_total: 100000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         num_workers: 0

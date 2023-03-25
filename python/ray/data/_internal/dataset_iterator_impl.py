@@ -2,11 +2,8 @@ from typing import TYPE_CHECKING, Optional, Union, Iterator, Callable, Any
 import time
 import warnings
 
-from ray.air.util.data_batch_conversion import BlockFormat
-from ray.data.block import BlockAccessor, T
-from ray.data.context import DatasetContext
-from ray.data.row import TableRow
 from ray.data.block import DataBatch
+from ray.data.context import DatasetContext
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_batching import batch_block_refs
 
@@ -21,6 +18,7 @@ class DatasetIteratorImpl(DatasetIterator):
         base_dataset: "Dataset",
     ):
         self._base_dataset = base_dataset
+        self._base_context = DatasetContext.get_current()
 
     def __repr__(self) -> str:
         return f"DatasetIterator({self._base_dataset})"
@@ -30,12 +28,14 @@ class DatasetIteratorImpl(DatasetIterator):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "default",
+        batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
+
+        DatasetContext._set_current(self._base_context)
 
         ds = self._base_dataset
         block_iterator, stats, executor = ds._plan.execute_to_iterator()
@@ -56,35 +56,6 @@ class DatasetIteratorImpl(DatasetIterator):
 
         stats.iter_total_s.add(time.perf_counter() - time_start)
 
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
-        # During row-based ops, we also choose a batch format that lines up with the
-        # current dataset format in order to eliminate unnecessary copies and type
-        # conversions.
-        ctx = DatasetContext.get_current()
-        if ctx.use_streaming_executor:
-            # TODO: calling dataset_format() triggers bulk execution.
-            batch_format = "default"
-        else:
-            try:
-                dataset_format = self._base_dataset.dataset_format()
-            except ValueError:
-                # Dataset is empty or cleared, so fall back to "default".
-                batch_format = "default"
-            else:
-                batch_format = (
-                    "pyarrow"
-                    if dataset_format == BlockFormat.ARROW
-                    else "pandas"
-                    if dataset_format == BlockFormat.PANDAS
-                    else "default"
-                )
-        for batch in self.iter_batches(
-            batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
-        ):
-            batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
-            for row in batch.iter_rows():
-                yield row
-
     def stats(self) -> str:
         return self._base_dataset.stats()
 
@@ -95,7 +66,7 @@ class DatasetIteratorImpl(DatasetIterator):
         if name == "_base_dataset":
             raise AttributeError()
 
-        if hasattr(self._base_dataset, name):
+        if hasattr(self._base_dataset, name) and not name.startswith("_"):
             # Warning for backwards compatibility. TODO: remove this method in 2.5.
             warnings.warn(
                 "session.get_dataset_shard returns a ray.data.DatasetIterator "
@@ -108,5 +79,5 @@ class DatasetIteratorImpl(DatasetIterator):
             )
 
             return getattr(self._base_dataset, name)
-        else:
-            return super().__getattr__(name)
+
+        raise AttributeError()

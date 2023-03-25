@@ -52,7 +52,7 @@ class TorchConfig(BackendConfig):
         return _TorchBackend
 
 
-def _set_nccl_network_interface() -> str:
+def _set_nccl_network_interface():
     """Set the appropriate NCCL network interface to use."""
 
     if "NCCL_SOCKET_IFNAME" not in os.environ:
@@ -120,10 +120,17 @@ def _setup_torch_process_group(
 
 
 def _shutdown_torch(destroy_process_group=False):
+    from ray.train.torch.train_loop_utils import get_device
+
+    devices = get_device()
+    if not isinstance(devices, list):
+        devices = [devices]
     if destroy_process_group:
         dist.destroy_process_group()
     if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+        for device in devices:
+            with torch.cuda.device(device):
+                torch.cuda.empty_cache()
 
 
 def _set_torch_distributed_env_vars():
@@ -200,9 +207,9 @@ class _TorchBackend(Backend):
             raise RuntimeError("Distributed torch is not available.")
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchConfig):
-
         worker_group.execute(
-            _shutdown_torch, destroy_process_group=len(worker_group) > 1
+            _shutdown_torch,
+            destroy_process_group=len(worker_group) > 1,
         )
 
     def on_training_start(

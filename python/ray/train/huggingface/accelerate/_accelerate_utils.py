@@ -16,11 +16,22 @@
 
 import logging
 import os
+import sys
 from argparse import Namespace
 from typing import Optional, Tuple, Union
 import tempfile
-from contextlib import nullcontext
 from pathlib import Path
+
+
+if sys.version_info >= (3, 7):
+    from contextlib import nullcontext
+else:
+    from contextlib import contextmanager
+
+    @contextmanager
+    def nullcontext(enter_result=None):
+        yield enter_result
+
 
 try:
     from packaging.version import Version
@@ -119,12 +130,14 @@ def launch_command(args):
     elif args.multi_gpu and not args.cpu:
         multi_gpu_launcher(args)
     elif args.tpu and not args.cpu:
-        raise NotImplementedError()
+        raise NotImplementedError("")
     elif (
         defaults is not None
         and defaults.compute_environment == ComputeEnvironment.AMAZON_SAGEMAKER
     ):
-        raise NotImplementedError()
+        raise NotImplementedError(
+            "Cannot use SageMaker compute environment with Ray Train."
+        )
     else:
         simple_launcher(args)
 
@@ -139,8 +152,14 @@ def load_accelerate_config(
 
     with ctx() as tempdir:
         if isinstance(accelerate_config, dict):
+            # We save the dict to file, as Accelerate doesn't allow users to pass
+            # dicts directly. That way, we ensure the behavior is consistent with
+            # vanilla Accelerate, which has side effects when loading the file.
+            # The file is loaded by Accelerate in `launch_command`.
             tempdir = Path(tempdir)
             accelerate_config_path = str(tempdir / "accelerate_config.json")
+            # Those are the same default settings as in Accelerate.
+            # Those keys cannot be missing from the config.
             accelerate_config.setdefault("num_processes", 1)
             accelerate_config.setdefault("distributed_type", "NO")
             accelerate_config.setdefault("mixed_precision", "no")
