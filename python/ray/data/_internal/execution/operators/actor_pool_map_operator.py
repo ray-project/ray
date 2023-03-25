@@ -6,6 +6,7 @@ import ray
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
@@ -21,6 +22,8 @@ from ray.data._internal.execution.operators.map_operator import (
 )
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
+
+logger = DatasetLogger(__name__)
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
@@ -89,8 +92,11 @@ class ActorPoolMapOperator(MapOperator):
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
         for _ in range(self._autoscaling_policy.min_workers):
             self._start_actor()
-        print("Waiting for min num actors to start")
-        ray.get(self._actor_pool.get_pending_actor_refs(), timeout=10)
+        refs = self._actor_pool.get_pending_actor_refs()
+        logger.get_logger().info(
+            f"{self._name}: Waiting for {len(refs)} pool actors to start..."
+        )
+        ray.get(refs)
 
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
@@ -223,12 +229,22 @@ class ActorPoolMapOperator(MapOperator):
         pending = self._actor_pool.num_pending_actors()
         if pending:
             base += f" ({pending} pending)"
-
-        # [10GiB/40GiB/300GiB objects live/transferred/total]
-        base += f" [{self._metrics.cur} mem]"
         if self._actor_locality_enabled:
-            base += f" [{self._actor_pool._locality_hits} locality hits,"
-            base += f" {self._actor_pool._locality_misses} misses]"
+            try:
+                p = round(
+                    (
+                        self._actor_pool._locality_misses
+                        / (
+                            self._actor_pool._locality_hits
+                            + self._actor_pool._locality_misses
+                        )
+                    )
+                    * 100,
+                    1,
+                )
+            except ZeroDivisionError:
+                p = "NaN"
+            base += f" [{p}% locality]"
         else:
             base += " [locality off]"
         return base

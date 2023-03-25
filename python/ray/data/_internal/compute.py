@@ -217,8 +217,8 @@ class ActorPoolStrategy(ComputeStrategy):
                 opportunities for pipelining task dependency prefetching with
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
-            size: Shortcut to set both min and max size to this value. It is an error
-                to specify both this and min_size or max_size.
+            size: Specify a fixed size actor pool of this size. It is an error to
+                specify both `size` and `min_size` or `max_size`.
         """
         if size:
             if max_size is not None or min_size != 1:
