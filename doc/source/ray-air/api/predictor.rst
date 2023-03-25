@@ -93,6 +93,6 @@ Built-in Predictors for Library Integrations
     ~lightgbm.LightGBMPredictor
     ~tensorflow.TensorflowPredictor
     ~torch.TorchPredictor
-    ~huggingface.TransformersPredictor
+    ~huggingface.transformers.TransformersPredictor
     ~sklearn.SklearnPredictor
     ~rl.RLPredictor
