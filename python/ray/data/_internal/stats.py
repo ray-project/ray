@@ -675,49 +675,67 @@ class IterStatsSummary:
 
     def to_string(self) -> str:
         out = ""
-        out += "\nDataset iterator time breakdown:\n"
-        if self.block_time.get():
-            out += "* Total time user code is blocked: {}\n".format(
-                fmt(self.block_time.get())
+        if (
+            self.block_time.get()
+            or self.total_time.get()
+            or self.get_time.get()
+            or self.next_time.get()
+            or self.format_time.get()
+            or self.collate_time.get()
+        ):
+            out += "\nDataset iterator time breakdown:\n"
+            if self.block_time.get():
+                out += "* Total time user code is blocked: {}\n".format(
+                    fmt(self.block_time.get())
+                )
+            if self.user_time.get():
+                out += "* Total time in user code: {}\n".format(
+                    fmt(self.user_time.get())
+                )
+            if self.total_time.get():
+                out += "* Total time overall: {}\n".format(fmt(self.total_time.get()))
+            out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
+            out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
+            out += "* Num blocks unknown location: {}\n".format(
+                self.iter_unknown_location
             )
-        if self.user_time.get():
-            out += "* Total time in user code: {}\n".format(fmt(self.user_time.get()))
-        if self.total_time.get():
-            out += "* Total time overall: {}\n".format(fmt(self.total_time.get()))
-        out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
-        out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
-        out += "* Num blocks unknown location: {}\n".format(self.iter_unknown_location)
-        out += "* Batch iteration time breakdown (summed across prefetch threads):\n"
-        if self.get_time.get():
-            out += "    * In ray.get(): {} min, {} max, {} avg, {} total\n".format(
-                fmt(self.get_time.min()),
-                fmt(self.get_time.max()),
-                fmt(self.get_time.avg()),
-                fmt(self.get_time.get()),
-            )
-        if self.next_time.get():
-            out += "    * In batch creation: {} min, {} max, {} avg, {} total\n".format(
-                fmt(self.next_time.min()),
-                fmt(self.next_time.max()),
-                fmt(self.next_time.avg()),
-                fmt(self.next_time.get()),
-            )
-        if self.format_time.get():
             out += (
-                "    * In batch formatting: {} min, {} max, {} avg, {} total\n".format(
+                "* Batch iteration time breakdown (summed across prefetch threads):\n"
+            )
+            if self.get_time.get():
+                out += "    * In ray.get(): {} min, {} max, {} avg, {} total\n".format(
+                    fmt(self.get_time.min()),
+                    fmt(self.get_time.max()),
+                    fmt(self.get_time.avg()),
+                    fmt(self.get_time.get()),
+                )
+            if self.next_time.get():
+                batch_creation_str = (
+                    "    * In batch creation: {} min, {} max, " "{} avg, {} total\n"
+                )
+                out += batch_creation_str.format(
+                    fmt(self.next_time.min()),
+                    fmt(self.next_time.max()),
+                    fmt(self.next_time.avg()),
+                    fmt(self.next_time.get()),
+                )
+            if self.format_time.get():
+                format_str = (
+                    "    * In batch formatting: {} min, {} max, " "{} avg, {} total\n"
+                )
+                out += format_str.format(
                     fmt(self.format_time.min()),
                     fmt(self.format_time.max()),
                     fmt(self.format_time.avg()),
                     fmt(self.format_time.get()),
                 )
-            )
-        if self.collate_time.get():
-            out += "    * In collate_fn: {} min, {} max, {} avg, {} total\n".format(
-                fmt(self.collate_time.min()),
-                fmt(self.collate_time.max()),
-                fmt(self.collate_time.avg()),
-                fmt(self.collate_time.get()),
-            )
+            if self.collate_time.get():
+                out += "    * In collate_fn: {} min, {} max, {} avg, {} total\n".format(
+                    fmt(self.collate_time.min()),
+                    fmt(self.collate_time.max()),
+                    fmt(self.collate_time.avg()),
+                    fmt(self.collate_time.get()),
+                )
 
         return out
 
