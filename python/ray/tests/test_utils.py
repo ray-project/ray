@@ -69,14 +69,14 @@ def test_try_import_each_module():
                 if found:
                     break
 
-            assert (
-                found
-            ), f"Did not find print call with import error {mocked_print.call_args_list}"
+            assert found, (
+                "Did not find print call with import "
+                f"error {mocked_print.call_args_list}"
+            )
 
 
 if __name__ == "__main__":
     import os
-    import sys
 
     # Skip test_basic_2_client_mode for now- the test suite is breaking.
     if os.environ.get("PARALLEL_CI"):
