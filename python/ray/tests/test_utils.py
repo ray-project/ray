@@ -52,7 +52,9 @@ def test_try_import_each_module():
     with patch("builtins.print") as mocked_print:
         with patch.dict(sys.modules, mock_sys_modules) as patched_sys_modules:
 
-            try_import_each_module(modules_to_import + [fake_module])
+            try_import_each_module(
+                modules_to_import[:1] + [fake_module] + modules_to_import[1:]
+            )
 
             # Verify modules are imported.
             for lib in modules_to_import:
