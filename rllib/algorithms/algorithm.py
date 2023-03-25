@@ -643,8 +643,6 @@ class Algorithm(Trainable):
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.evaluation_config,
                 num_workers=self.config.evaluation_num_workers,
-                # Don't even create a local worker if num_workers > 0.
-                local_worker=False,
                 logdir=self.logdir,
             )
 
@@ -1301,14 +1299,14 @@ class Algorithm(Trainable):
             workers: The WorkerSet to restore. This may be Rollout or Evaluation
                 workers.
         """
+        # If `workers` is None, or
+        # 1. `workers` (WorkerSet) does not have a local worker, and
+        # 2. `self.workers` (WorkerSet used for training) does not have a local worker
+        # -> we don't have a local worker to get state from, so we can't recover
+        # remote worker in this case.
         if not workers or (
             not workers.local_worker() and not self.workers.local_worker()
         ):
-            # If workers does not exist, or
-            # 1. this WorkerSet does not have a local worker, and
-            # 2. self.workers (rollout worker set) does not have a local worker,
-            # we don't have a local worker to get state from.
-            # We can't recover remote worker in this case.
             return
 
         # This is really cheap, since probe_unhealthy_workers() is a no-op
@@ -1316,21 +1314,21 @@ class Algorithm(Trainable):
         restored = workers.probe_unhealthy_workers()
 
         if restored:
-            # Figure out whether we are restoring a worker from the eval worker set.
-            is_eval_worker_set = False
-            from_worker = workers.local_worker()
-            if from_worker is None:
-                from_worker = self.workers.local_worker()
-                is_eval_worker_set = workers is self.evaluation_workers
+            ## Figure out whether we are restoring a worker from the eval worker set.
+            #is_eval_worker_set = False
+            from_worker = workers.local_worker() or self.workers.local_worker()
+            #if from_worker is None:
+            #    from_worker = self.workers.local_worker()
+            #    is_eval_worker_set = workers is self.evaluation_workers
 
             # Get the state of the correct (reference) worker. E.g. The local worker
             # of the main WorkerSet.
             state = from_worker.get_state()
-            # For the evaluation set, we need to adjust the `policy_mapping_fn` and
-            # `is_policy_to_train` fn from the original evaluation config.
-            if is_eval_worker_set:
-                del state["policy_mapping_fn"]
-                del state["is_policy_to_train"]
+            ## For the evaluation set, we need to adjust the `policy_mapping_fn` and
+            ## `is_policy_to_train` fn from the original evaluation config.
+            #if is_eval_worker_set:
+            #    del state["policy_mapping_fn"]
+            #    del state["is_policy_to_train"]
 
             # By default, entire local worker state is synced after restoration
             # to bring these workers up to date.
@@ -1338,6 +1336,8 @@ class Algorithm(Trainable):
             workers.foreach_worker(
                 func=lambda w: w.set_state(ray.get(state_ref)),
                 remote_worker_ids=restored,
+                # Do not update the local_worker as this is the one we are synching
+                # from.
                 local_worker=False,
                 timeout_seconds=self.config.worker_restore_timeout_s,
                 # Bring back actor after successful state syncing.
