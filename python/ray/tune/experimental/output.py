@@ -1,7 +1,7 @@
-from typing import List, Dict, Optional, OrderedDict, Tuple, Any, TYPE_CHECKING
+from typing import List, Dict, Optional, Tuple, Any, TYPE_CHECKING
 
 import contextlib
-import collections
+from collections import defaultdict, OrderedDict
 from dataclasses import dataclass
 import datetime
 from enum import IntEnum
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 # defines the mapping of the key in result and the key to be printed in table.
 # Note this is ordered!
-DEFAULT_COLUMNS = collections.OrderedDict(
+DEFAULT_COLUMNS = OrderedDict(
     {
         MEAN_ACCURACY: "acc",
         MEAN_LOSS: "loss",
@@ -130,7 +130,7 @@ def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
 
 
 def _get_trials_by_state(trials: List[Trial]) -> Dict[str, List[Trial]]:
-    trials_by_state = collections.defaultdict(list)
+    trials_by_state = defaultdict(list)
     for t in trials:
         trials_by_state[t.status].append(t)
     return trials_by_state
