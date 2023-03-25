@@ -14,8 +14,8 @@ from ray._private.test_utils import wait_for_condition, raw_metrics
 import numpy as np
 from ray._private.utils import get_system_memory
 from ray._private.utils import get_used_memory
+from ray._private.state_api_test_utils import verify_failed_task
 
-from ray.experimental.state.api import list_tasks
 from ray.experimental.state.state_manager import StateDataSourceClient
 
 
@@ -391,15 +391,12 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
         verified = True
     assert verified
 
-    def verify_oom_task_error():
-        tasks = list_tasks(filters=[("name", "=", "allocate_memory")])
-        print(tasks)
-        assert len(tasks) == 1, "no retries should be expected."
-        assert tasks[0]["state"] == "FAILED"
-        assert tasks[0]["error_type"] == "OUT_OF_MEMORY"
-        return True
-
-    wait_for_condition(verify_oom_task_error)
+    wait_for_condition(
+        verify_failed_task,
+        name="allocate_memory",
+        error_type="OUT_OF_MEMORY",
+        error_message="Task was killed due to the node running low on memory",
+    )
 
     # TODO(clarng): verify log info once state api can dump log info
 
