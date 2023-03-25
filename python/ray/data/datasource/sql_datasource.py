@@ -159,7 +159,7 @@ class _SQLReader(Reader):
         columns = [column_description[0] for column_description in cursor.description]
         pydict = {column: [row[i] for row in rows] for i, column in enumerate(columns)}
         return pa.Table.from_pydict(pydict)
-        
+
     def _get_num_rows(self) -> int:
         with _connect(self.connection_factory) as cursor:
             cursor.execute(f"SELECT COUNT(*) FROM ({self.sql}) as T")
