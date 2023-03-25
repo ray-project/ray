@@ -22,6 +22,9 @@ from ray.rllib.utils.test_utils import (
     check_train_results,
     framework_iterator,
 )
+from ray.rllib.utils.framework import try_import_tf
+
+tf1, tf, tfv = try_import_tf()
 
 
 class TestPreprocessors(unittest.TestCase):
@@ -33,7 +36,7 @@ class TestPreprocessors(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_rlms_and_preprocessing(self):
+    def test_preprocessing_disabled(self):
         config = (
             ppo.PPOConfig()
             .environment(
@@ -278,6 +281,9 @@ class TestPreprocessors(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    # Call this on startup to prevet TF from complaining further down the line about
+    # not calling in on startup.
+    tf.enable_eager_execution()
     import pytest
     import sys
 
