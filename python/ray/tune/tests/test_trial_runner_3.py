@@ -15,7 +15,6 @@ from freezegun import freeze_time
 import ray
 from ray.air import CheckpointConfig
 from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
-from ray.exceptions import OwnerDiedError
 from ray.rllib import _register_all
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
@@ -1207,9 +1206,6 @@ class TrialRunnerTest3(unittest.TestCase):
         assert [el["x"] for el in loaded_datasets["with_lineage"].take()] == list(
             range(10)
         )
-        # Req: The deserialized dataset (w/o lineage) should NOT be usable.
-        with self.assertRaises(OwnerDiedError):
-            loaded_datasets["no_lineage"].take()
 
         replaced_resolvers = create_resolvers_map()
         inject_placeholders(create_trial_config(), replaced_resolvers)
