@@ -48,7 +48,8 @@ class DummyTrainer(DataParallelTrainer):
         batch_size: Optional[int] = 4096,
         time_preprocessing_separately: bool = False,
         # Deprecated.
-        prefetch_blocks: int = 0**kwargs,
+        prefetch_blocks: int = 0,
+        **kwargs,
     ):
         if not scaling_config:
             scaling_config = ScalingConfig(num_workers=1)
