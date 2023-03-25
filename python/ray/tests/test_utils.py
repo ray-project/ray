@@ -58,7 +58,7 @@ def test_try_import_each_module():
 
             # Verify modules are imported.
             for lib in modules_to_import:
-                assert lib in patched_sys_modules
+                assert lib in patched_sys_modules, f"lib {lib} not in {patched_sys_modules}"
 
             # Verify import error is printed.
             found = False
