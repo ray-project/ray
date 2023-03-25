@@ -338,7 +338,7 @@ class TestWorkerFailures(unittest.TestCase):
                             if episode is None
                             else "main"
                             if episode.episode_id % 2 == aid
-                            else "p{}".format(np.random.choice([0, 3]))
+                            else "p{}".format(np.random.choice([0, 1]))
                         )
                     )
                 )
@@ -493,17 +493,6 @@ class TestWorkerFailures(unittest.TestCase):
                 enable_async_evaluation=True,
                 evaluation_parallel_to_training=True,
                 evaluation_duration="auto",
-                evaluation_config=PGConfig.overrides(
-                    policy_mapping_fn=(
-                        lambda aid, episode, worker, **kwargs: (
-                            "TEST"
-                            if episode is None
-                            else "main"
-                            if episode.episode_id % 2 == aid
-                            else "p0"
-                        )
-                    )
-                ),
             )
             .training(model={"fcnet_hiddens": [4]})
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
