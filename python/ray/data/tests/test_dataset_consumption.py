@@ -180,6 +180,33 @@ def test_empty_dataset(ray_start_regular_shared):
     assert ds.count() == 0
 
 
+def test_cache_dataset(ray_start_regular_shared):
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.i = 0
+
+        def inc(self):
+            print("INC")
+            self.i += 1
+            return self.i
+    
+    c = Counter.remote()
+
+    def inc(x):
+        ray.get(c.inc.remote())
+        return x
+
+    ds = ray.data.range(1)
+    ds = ds.map(inc)
+    ds = ds.cache()
+
+    for _ in range(10):
+        ds.take_all()
+
+    assert ray.get(c.inc.remote()) == 2
+
+
 def test_schema(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
     ds2 = ray.data.range_table(10, parallelism=10)
