@@ -208,8 +208,8 @@ def _resolve_blocks(
             # fetch from remote node). This is to measure the effectiveness of
             # prefetch.
             loc = ray.experimental.get_object_locations([block_ref])
-            if block_ref in loc and "node_ids" in loc[block_ref]:
-                nodes = loc[block_ref]["node_ids"]
+            nodes = loc[block_ref]["node_ids"]
+            if nodes:
                 current = ray.get_runtime_context().get_node_id()
                 if current in nodes:
                     hit += 1
