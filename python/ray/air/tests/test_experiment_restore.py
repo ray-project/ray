@@ -38,7 +38,7 @@ from ray.tune.result_grid import ResultGrid
 from ray.tune.analysis import ExperimentAnalysis
 
 
-_RUN_SCRIPT_FILENAME = "_test_air_experiment_restore_run.py"
+_RUN_SCRIPT_FILENAME = "_test_experiment_restore_run.py"
 
 
 @pytest.fixture
@@ -65,8 +65,8 @@ def print_message(message):
     print("\n")
 
 
-# @pytest.mark.parametrize("runner_type", ["tuner", "trainer"])
-@pytest.mark.parametrize("runner_type", ["trainer"])
+# TODO(ml-team): "trainer" doesn't work
+@pytest.mark.parametrize("runner_type", ["tuner", "trainer"])
 def test_air_experiment_restore(tmp_path, runner_type):
     np.random.seed(2023)
 
