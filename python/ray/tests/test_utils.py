@@ -7,7 +7,9 @@ This currently expects to work for minimal installs.
 
 import pytest
 import logging
-from ray._private.utils import get_or_create_event_loop
+from ray._private.utils import get_or_create_event_loop, try_import_each_module
+from unittest.mock import patch
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,36 @@ def test_get_or_create_event_loop_new_event_loop():
         warnings.simplefilter("error")
         loop = get_or_create_event_loop()
         assert loop is not None, "new event loop should be created."
+
+
+def test_try_import_each_module():
+    mock_sys_modules = sys.modules.copy()
+    modules_to_import = ["json", "logging", "re"]
+    fake_module = "fake_import_does_not_exist"
+
+    for lib in modules_to_import:
+        if lib in mock_sys_modules:
+            del mock_sys_modules[lib]
+
+    with patch("builtins.print") as mocked_print:
+        with patch.dict(sys.modules, mock_sys_modules) as patched_sys_modules:
+
+            ray._private.utils.try_import_each_module(modules_to_import + [fake_module])
+
+            # Verify modules are imported.
+            for lib in modules_to_import:
+                assert lib in patched_sys_modules
+
+            # Verify import error is printed.
+            found = False
+            for args, _ in mocked_print.call_args_list:
+                found = any(fake_module in arg for arg in args)
+                if found:
+                    break
+
+            assert (
+                found
+            ), f"Did not find print call with import error {mocked_print.call_args_list}"
 
 
 if __name__ == "__main__":
