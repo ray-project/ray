@@ -1314,30 +1314,17 @@ class Algorithm(Trainable):
         restored = workers.probe_unhealthy_workers()
 
         if restored:
-            ## Figure out whether we are restoring a worker from the eval worker set.
-            #is_eval_worker_set = False
             from_worker = workers.local_worker() or self.workers.local_worker()
-            #if from_worker is None:
-            #    from_worker = self.workers.local_worker()
-            #    is_eval_worker_set = workers is self.evaluation_workers
-
             # Get the state of the correct (reference) worker. E.g. The local worker
             # of the main WorkerSet.
-            state = from_worker.get_state()
-            ## For the evaluation set, we need to adjust the `policy_mapping_fn` and
-            ## `is_policy_to_train` fn from the original evaluation config.
-            #if is_eval_worker_set:
-            #    del state["policy_mapping_fn"]
-            #    del state["is_policy_to_train"]
+            state_ref = ray.put(from_worker.get_state())
 
             # By default, entire local worker state is synced after restoration
             # to bring these workers up to date.
-            state_ref = ray.put(state)
             workers.foreach_worker(
                 func=lambda w: w.set_state(ray.get(state_ref)),
                 remote_worker_ids=restored,
-                # Do not update the local_worker as this is the one we are synching
-                # from.
+                # Don't update the local_worker, b/c it's the one we are synching from.
                 local_worker=False,
                 timeout_seconds=self.config.worker_restore_timeout_s,
                 # Bring back actor after successful state syncing.
