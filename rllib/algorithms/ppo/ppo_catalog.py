@@ -49,15 +49,6 @@ class PPOCatalog(Catalog):
         free_log_std = model_config_dict.get("free_log_std")
         assert not free_log_std, "free_log_std not supported yet."
 
-        assert isinstance(
-            observation_space, gym.spaces.Box
-        ), "This simple PPO Module only supports Box observation space."
-
-        assert len(observation_space.shape) in (
-            1,
-            3,
-        ), "This simple PPO Module only supports 1D and 3D observation spaces."
-
         # Replace EncoderConfig by ActorCriticEncoderConfig
         self.actor_critic_encoder_config = ActorCriticEncoderConfig(
             base_encoder_config=self.encoder_config,
