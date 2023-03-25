@@ -82,7 +82,7 @@ class DatasetIterator(abc.ABC):
     def iter_batches(
         self,
         *,
-        prefetch_batches: int = 0,
+        prefetch_batches: int = 1,
         batch_size: int = 256,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
@@ -107,9 +107,9 @@ class DatasetIterator(abc.ABC):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 0 (no prefetching enabled.) This is still
-                an alpha API. You can revert back to the old prefetching behavior by
-                setting `use_legacy_iter_batches` to True in the DatasetContext.
+                the collate_fn. Defaults to 1. This is still an alpha API. You can
+                revert back to the old prefetching behavior by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -234,7 +234,7 @@ class DatasetIterator(abc.ABC):
     def iter_torch_batches(
         self,
         *,
-        prefetch_batches: int = 0,
+        prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
@@ -267,9 +267,9 @@ class DatasetIterator(abc.ABC):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 0 (no prefetching enabled.) This is still
-                an alpha API. You can revert back to the old prefetching behavior by
-                setting `use_legacy_iter_batches` to True in the DatasetContext.
+                the collate_fn. Defaults to 1. This is still an alpha API. You can
+                revert back to the old prefetching behavior by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -339,7 +339,7 @@ class DatasetIterator(abc.ABC):
     def iter_tf_batches(
         self,
         *,
-        prefetch_batches: int = 0,
+        prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["tf.dtypes.DType", Dict[str, "tf.dtypes.DType"]]] = None,
         drop_last: bool = False,
@@ -375,9 +375,9 @@ class DatasetIterator(abc.ABC):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 0 (no prefetching enabled.) This is still
-                an alpha API. You can revert back to the old prefetching behavior by
-                setting `use_legacy_iter_batches` to True in the DatasetContext.
+                the collate_fn. Defaults to 1. This is still an alpha API. You can
+                revert back to the old prefetching behavior by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -425,7 +425,7 @@ class DatasetIterator(abc.ABC):
             Union["torch.dtype", List["torch.dtype"], Dict[str, "torch.dtype"]]
         ] = None,
         batch_size: int = 1,
-        prefetch_batches: int = 0,
+        prefetch_batches: int = 1,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -496,9 +496,9 @@ class DatasetIterator(abc.ABC):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 0 (no prefetching enabled.) This is still
-                an alpha API. You can revert back to the old prefetching behavior by
-                setting `use_legacy_iter_batches` to True in the DatasetContext.
+                the collate_fn. Defaults to 1. This is still an alpha API. You can
+                revert back to the old prefetching behavior by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
@@ -614,7 +614,7 @@ class DatasetIterator(abc.ABC):
         feature_columns: Union[str, List[str]],
         label_columns: Union[str, List[str]],
         *,
-        prefetch_batches: int = 0,
+        prefetch_batches: int = 1,
         batch_size: int = 1,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
@@ -690,9 +690,9 @@ class DatasetIterator(abc.ABC):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 0 (no prefetching enabled.) This is still
-                an alpha API. You can revert back to the old prefetching behavior by
-                setting `use_legacy_iter_batches` to True in the DatasetContext.
+                the collate_fn. Defaults to 1. This is still an alpha API. You can
+                revert back to the old prefetching behavior by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
