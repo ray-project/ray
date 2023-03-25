@@ -383,7 +383,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     if (is_application_error) {
       SetTaskStatus(it->second,
                     rpc::TaskStatus::FAILED,
-                    gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION));
+                    gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+                                         reply.task_execution_error()));
     } else {
       SetTaskStatus(it->second, rpc::TaskStatus::FINISHED);
     }
@@ -514,7 +515,9 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     SetTaskStatus(
         it->second,
         rpc::TaskStatus::FAILED,
-        ray_error_info == nullptr ? gcs::GetRayErrorInfo(error_type) : *ray_error_info);
+        (ray_error_info == nullptr
+             ? gcs::GetRayErrorInfo(error_type, (status ? status->ToString() : ""))
+             : *ray_error_info));
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
