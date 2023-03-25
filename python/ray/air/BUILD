@@ -74,6 +74,13 @@ py_test(
     deps = [":ml_lib"]
 )
 
+py_test(
+    name = "test_experiment_restore",
+    size = "large",
+    srcs = ["tests/test_experiment_restore.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
 
 py_test(
     name = "test_integration_comet",
