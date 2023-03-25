@@ -39,6 +39,13 @@ def start_connected_cluster():
     cluster.shutdown()
 
 
+@pytest.mark.skipif(
+    os.environ.get("TUNE_NEW_EXECUTION") == "1",
+    reason=(
+        "This test uses the TrialRunner directly and needs to be rewritten "
+        "for the new execution backend."
+    ),
+)
 @pytest.mark.parametrize("searcher", ["hyperopt", "skopt", "bayesopt"])
 def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     """Tests restoration of HyperOptSearch experiment on cluster shutdown
