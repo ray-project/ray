@@ -147,8 +147,9 @@ parser.add_argument(
 
 parser.add_argument(
     "--worker-preload-modules",
-    nargs='+',
-    default=[],
+    type=str,
+    required=False,
+    help="A comma-separated list of Python module names to import before accepting work.",
 )
 
 if __name__ == "__main__":
@@ -228,17 +229,8 @@ if __name__ == "__main__":
     configure_log_file(out_file, err_file)
 
     if mode == ray.WORKER_MODE and args.worker_preload_modules:
-        # TODO(cade) this splitting should not be necessary.
-        s = args.worker_preload_modules[0].split(',')
-
-        import importlib
-        for module_to_preload in s:
-            try:
-                print('importing', module_to_preload)
-                importlib.import_module(module_to_preload)
-            except ImportError as e:
-                print('Got ImportError', e)
-                pass
+        module_names_to_import = args.worker_preload_modules.split(",")
+        ray._private.utils.try_import_each_module(module_names_to_import)
 
     if mode == ray.WORKER_MODE:
         ray._private.worker.global_worker.main_loop()
