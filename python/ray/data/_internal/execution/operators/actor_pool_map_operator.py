@@ -15,6 +15,7 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
     NodeIdStr,
 )
+from ray.data._internal.execution.util import locality_string
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _map_task,
@@ -235,21 +236,9 @@ class ActorPoolMapOperator(MapOperator):
         if pending:
             base += f" ({pending} pending)"
         if self._actor_locality_enabled:
-            try:
-                p = round(
-                    (
-                        self._actor_pool._locality_misses
-                        / (
-                            self._actor_pool._locality_hits
-                            + self._actor_pool._locality_misses
-                        )
-                    )
-                    * 100,
-                    1,
-                )
-            except ZeroDivisionError:
-                p = "NaN"
-            base += f" [{p}% locality]"
+            base += " " + locality_string(
+                self._actor_pool._locality_hits, self._actor_pool._locality_misses
+            )
         else:
             base += " [locality off]"
         return base
