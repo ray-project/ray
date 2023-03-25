@@ -77,9 +77,9 @@ def resolve_block_refs(
         yield block
 
     if stats:
-        stats.iter_blocks_local += hits
-        stats.iter_blocks_remote += misses
-        stats.iter_unknown_location += unknowns
+        stats.iter_blocks_local = hits
+        stats.iter_blocks_remote = misses
+        stats.iter_unknown_location = unknowns
 
 
 def blocks_to_batches(
