@@ -217,22 +217,6 @@ py_test(
 
 py_test(
     name = "test_accelerate_trainer_gpu",
-    size = "medium",
-    srcs = ["tests/test_accelerate_trainer_gpu.py"],
-    tags = ["team:ml", "exclusive", "gpu_only"],
-    deps = [":train_lib",  ":conftest"]
-)
-
-py_test(
-    name = "test_accelerate_trainer",
-    size = "small",
-    srcs = ["tests/test_accelerate_trainer.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib",  ":conftest"]
-)
-
-py_test(
-    name = "test_accelerate_trainer_gpu",
     size = "large",
     srcs = ["tests/test_accelerate_trainer_gpu.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
