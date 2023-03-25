@@ -2,6 +2,7 @@
 This test is meant to be an integration stress test for experiment restoration.
 
 Test setup:
+(For Tuner.restore)
 - 8 trials, with a max of 2 running concurrently (--> 4 rounds of trials)
 - Each iteration takes 0.5 seconds
 - Each trial runs for 8 iterations --> 4 seconds
@@ -10,7 +11,15 @@ Test setup:
     - Minimum runtime: 4 rounds * 4 seconds / round = 16 seconds
     - Actually running it without any interrupts = ~24 seconds
 - The test will stop the script with a SIGINT at a random time between
-  4-8 iterations after restoring.
+  4-8 iterations each restore.
+(For Trainer.restore)
+- 1 trial with 4 workers
+- Each iteration takes 0.5 seconds
+- Runs for 32 iterations --> Minimum runtime = 16 seconds
+    - Actually running it without any interrupts = ~24 seconds
+- The test will stop the script with a SIGINT at a random time between
+  4-8 iterations after each restore.
+
 
 Requirements:
 - Req 1: Reasonable runtime
@@ -90,7 +99,7 @@ def test_air_experiment_restore(tmp_path, runner_type):
         iters_per_trial = 8
         num_trials = 8
     elif runner_type == "trainer":
-        iters_per_trial = 64
+        iters_per_trial = 32
         num_trials = 1
 
     total_iters = iters_per_trial * num_trials
