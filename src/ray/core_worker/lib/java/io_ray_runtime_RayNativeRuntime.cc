@@ -121,7 +121,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
          std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb,
          bool *is_retryable_error,
-         bool *is_application_error,
+         std::string *application_error,
          const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
          const std::string name_of_concurrency_group_to_execute,
          bool is_reattempt) {
@@ -171,7 +171,6 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
         // Check whether the exception is `IntentionalSystemExit`.
         jthrowable throwable = env->ExceptionOccurred();
         if (throwable) {
-          *is_application_error = true;
           Status status_to_return = Status::OK();
           if (env->IsInstanceOf(throwable,
                                 java_ray_intentional_system_exit_exception_class)) {
@@ -182,6 +181,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
           } else {
             RAY_LOG(ERROR) << "Unkown java exception was thrown while executing tasks.";
           }
+          *application_error = status_to_return.ToString();
           env->ExceptionClear();
           return status_to_return;
         }
