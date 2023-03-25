@@ -197,7 +197,7 @@ def test_air_experiment_restore(ray_start_4_cpus, tmp_path, runner_type):
     # Req 2: training progress persisted
     # Check that progress increases monotonically (we never go backwards/start from 0)
     assert np.all(np.diff(progress_history) >= 0), (
-        f"Expected progress to increase monotonically. Instead, got:\n"
+        "Expected progress to increase monotonically. Instead, got:\n"
         "{progress_history}"
     )
 
@@ -220,7 +220,7 @@ def test_air_experiment_restore(ray_start_4_cpus, tmp_path, runner_type):
         # NOTE: There may be some duplicate data, due to the fact that
         # the callback will be updated on every `on_trial_result` hook,
         # but the trial may crash before the corresponding checkpoint gets processed.
-        assert sorted(list(set(iters))) == list(
+        assert sorted(set(iters)) == list(
             range(1, iters_per_trial + 1)
         ), f"Expected data from all iterations, but got: {iters}"
 
