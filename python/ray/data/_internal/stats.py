@@ -47,7 +47,8 @@ class Timer:
         try:
             yield
         finally:
-            self.add(time.thread_time() - time_start)
+            with self.lock:
+                self.add(time.thread_time() - time_start)
 
     def add(self, value: float) -> None:
         self._value += value
