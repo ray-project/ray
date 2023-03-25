@@ -111,6 +111,7 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
 
         # Policy head
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
+
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
         output[SampleBatch.ACTION_DIST] = self.action_dist_cls.from_logits(
             logits=action_logits

@@ -827,6 +827,16 @@ class AlgorithmConfig(_Config):
         # not).
         if self._disable_action_flattening is True:
             self.model["_disable_action_flattening"] = True
+        if self.model.get("custom_preprocessor"):
+            deprecation_warning(
+                old="model_config['custom_preprocessor']",
+                help="Custom preprocessors are deprecated, "
+                "since they sometimes conflict with the built-in "
+                "preprocessors for handling complex observation spaces. "
+                "Please use wrapper classes around your environment "
+                "instead.",
+                error=True,
+            )
 
         # RLModule API only works with connectors.
         if not self.enable_connectors and self._enable_rl_module_api:
