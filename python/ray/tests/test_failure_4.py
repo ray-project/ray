@@ -7,6 +7,7 @@ import numpy as np
 import psutil
 import pytest
 from grpc._channel import _InactiveRpcError
+from ray.experimental.state.api import list_tasks
 from ray._private.state_api_test_utils import verify_failed_task
 
 import ray
@@ -557,8 +558,16 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
     # The lease request should wait inside raylet
     # since there is no available resources.
     ret = func.options(name="task-local-raylet-dead").remote()
+
     # Waiting for the lease request to reach raylet.
-    time.sleep(1)
+    def task_running():
+        tasks = list_tasks(filters=[("name", "=", "task-local-raylet-dead")])
+        assert len(tasks) == 1
+        assert tasks[0]["state"] == "PENDING_NODE_ASSIGNMENT"
+        return True
+
+    wait_for_condition(task_running)
+
     head.kill_raylet()
     with pytest.raises(LocalRayletDiedError):
         ray.get(ret)
@@ -568,6 +577,7 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
         verify_failed_task,
         name="task-local-raylet-dead",
         error_type="LOCAL_RAYLET_DIED",
+        error_message="The worker failed to receive a response from the local raylet",
     )
 
 

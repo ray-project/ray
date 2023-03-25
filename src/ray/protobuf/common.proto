@@ -208,11 +208,14 @@ enum ErrorType {
 
 /// The information per ray error type.
 message RayErrorInfo {
+  // More detailed error context for various error types.
   oneof error {
+    // for ErrorType::ACTOR_DIED
     ActorDeathCause actor_died_error = 2;
+    // for ErrorType::RUNTIME_ENV_SETUP_FAILED
     RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
-    string error_message = 4;
   }
+  string error_message = 5;
   // The type of error that caused the exception.
   ErrorType error_type = 11;
 }

@@ -1202,7 +1202,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
     // be eventually destroyed as the CoreWorker runs the creation task will exit
     // eventually due to the creation task failure.
     RunAndClearActorCreationCallbacks(
-        actor, reply, Status::CreationTaskError("Actor __init__ failed."));
+        actor, reply, Status::CreationTaskError(reply.task_execution_error()));
   } else {
     RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id
                   << ", job id = " << actor_id.JobId();
