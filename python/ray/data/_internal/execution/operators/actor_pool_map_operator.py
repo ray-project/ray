@@ -236,7 +236,7 @@ class ActorPoolMapOperator(MapOperator):
         if pending:
             base += f" ({pending} pending)"
         if self._actor_locality_enabled:
-            base += " " + locality_string(
+            base += ", " + locality_string(
                 self._actor_pool._locality_hits, self._actor_pool._locality_misses
             )
         else:

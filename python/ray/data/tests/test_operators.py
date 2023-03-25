@@ -317,7 +317,7 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
             total += 1
 
     assert total == 10, total
-    assert "10 locality hits, 0 misses" in op.progress_str()
+    assert "100% locality" in op.progress_str()
 
 
 def test_map_operator_actor_locality_stats(ray_start_regular_shared):
