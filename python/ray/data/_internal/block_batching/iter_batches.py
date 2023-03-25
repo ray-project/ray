@@ -39,7 +39,7 @@ def iter_batches(
     stats: Optional[DatasetStats] = None,
     clear_block_after_read: bool = False,
     batch_size: Optional[int] = None,
-    batch_format: str = "default",
+    batch_format: Optional[str] = "default",
     drop_last: bool = False,
     collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
@@ -94,7 +94,8 @@ def iter_batches(
             Specify "default" to use the current block format (promoting
             Arrow to pandas automatically), "pandas" to
             select ``pandas.DataFrame`` or "pyarrow" to select
-            ``pyarrow.Table``. Default is "default".
+            ``pyarrow.Table``, or None to use entire blocks
+            as batches. Default is "default".
         drop_last: Whether to drop the last batch if it's incomplete.
         collate_fn: A function to apply to each data batch before returning it.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
@@ -131,22 +132,14 @@ def iter_batches(
         block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     ) -> Iterator[DataBatch]:
 
-        if prefetch_batches > 0:
-            # Step 1: Prefetch logical batches locally.
-            block_refs = prefetch_batches_locally(
-                block_ref_iter=block_refs,
-                prefetcher=prefetcher,
-                num_batches_to_prefetch=prefetch_batches,
-                batch_size=batch_size,
-                eager_free=eager_free,
-            )
-        else:
-
-            def _drop_metadata(block_ref_iter):
-                for block_ref, metadata in block_ref_iter:
-                    yield block_ref
-
-            block_refs = _drop_metadata(block_refs)
+        # Step 1: Prefetch logical batches locally.
+        block_refs = prefetch_batches_locally(
+            block_ref_iter=block_refs,
+            prefetcher=prefetcher,
+            num_batches_to_prefetch=prefetch_batches,
+            batch_size=batch_size,
+            eager_free=eager_free,
+        )
 
         # Step 2: Resolve the blocks.
         block_iter = resolve_block_refs(block_ref_iter=block_refs, stats=stats)
@@ -193,9 +186,9 @@ def iter_batches(
 def _format_in_threadpool(
     batch_iter: Iterator[Batch],
     stats: DatasetStats,
-    batch_format: str = "default",
-    collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-    num_threadpool_workers: int = 0,
+    batch_format: Optional[str],
+    collate_fn: Optional[Callable[[DataBatch], Any]],
+    num_threadpool_workers: int,
 ) -> Iterator[Batch]:
     """Executes the batching, formatting, and collation logic in a threadpool.
 
@@ -206,7 +199,8 @@ def _format_in_threadpool(
             Specify "default" to use the current block format (promoting
             Arrow to pandas automatically), "pandas" to
             select ``pandas.DataFrame`` or "pyarrow" to select
-            ``pyarrow.Table``. Default is "default".
+            ``pyarrow.Table``, or None to use entire blocks
+            as batches.
         collate_fn: A function to apply to each data batch before returning it.
         num_threadpool_workers: The number of threads to use in the threadpool.
     """
@@ -257,6 +251,11 @@ def prefetch_batches_locally(
 
     sliding_window = collections.deque()
     current_window_size = 0
+
+    if num_batches_to_prefetch <= 0:
+        for block_ref, metadata in block_ref_iter:
+            yield block_ref
+        return
 
     if batch_size is not None:
         num_rows_to_prefetch = num_batches_to_prefetch * batch_size

@@ -687,7 +687,7 @@ class IterStatsSummary:
         out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
         out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
         out += "* Num blocks unknown location: {}\n".format(self.iter_unknown_location)
-        out += "* Batch iteration time breakdown:\n"
+        out += "* Batch iteration time breakdown (summed across prefetch threads):\n"
         if self.get_time.get():
             out += "    * In ray.get(): {} min, {} max, {} avg, {} total\n".format(
                 fmt(self.get_time.min()),
