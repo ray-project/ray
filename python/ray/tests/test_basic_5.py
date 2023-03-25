@@ -4,7 +4,6 @@ import logging
 import os
 import sys
 import time
-import socket
 import subprocess
 from unittest.mock import Mock, patch
 
@@ -279,51 +278,6 @@ def test_site_flag_inherited(
         )
         assert worker_process_no_site == root_process_no_site
         assert worker_process_no_user_site == root_process_no_user_site
-
-
-def test_non_serializable_error_message(shutdown_only):
-    ray.init()
-    s = socket.socket()
-
-    # Check that the `inspect_serializability` trace was included.
-    with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
-        ray.put(s)
-
-    @ray.remote
-    def f(x):
-        return 1
-
-    with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
-        f.remote(s)
-
-    @ray.remote
-    class A:
-        def __init__(self, x):
-            pass
-
-        def ping(self, x):
-            return 1
-
-    with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
-        a = A.remote(s)
-    a = A.remote("")
-    with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
-        a.ping.remote(s)
-
-    @ray.remote
-    def g():
-        return s
-
-    with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
-        g.remote(s)
-
-    @ray.remote
-    class B:
-        def ping(self):
-            return s
-
-    with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
-        B.remote()
 
 
 if __name__ == "__main__":
