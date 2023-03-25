@@ -11,17 +11,6 @@ Connection = Any  # A Python DB API2-compliant `Connection` object.
 Cursor = Any  # A Python DB API2-compliant `Cursor` object.
 
 
-def _cursor_to_block(cursor) -> Block:
-    import pyarrow as pa
-
-    rows = cursor.fetchall()
-    # Each `column_description` is a 7-element sequence. The first element is the column
-    # name. To learn more, read https://peps.python.org/pep-0249/#description.
-    columns = [column_description[0] for column_description in cursor.description]
-    pydict = {column: [row[i] for row in rows] for i, column in enumerate(columns)}
-    return pa.Table.from_pydict(pydict)
-
-
 @PublicAPI(stability="alpha")
 class SQLDatasource(Datasource[ArrowRow]):
     def __init__(self, connection_factory: Callable[[], Connection]):
@@ -87,7 +76,11 @@ class _SQLReader(Reader):
     NUM_SAMPLE_ROWS = 100
     MIN_ROWS_PER_READ_TASK = 50
 
-    def __init__(self, sql: str, connection_factory: Callable[[], Connection]):
+    def __init__(
+        self,
+        sql: str,
+        connection_factory: Callable[[], Connection],
+    ):
         self.sql = sql
         self.connection_factory = connection_factory
 
@@ -98,7 +91,7 @@ class _SQLReader(Reader):
         def fallback_read_fn() -> Iterable[Block]:
             with _connect(self.connection_factory) as cursor:
                 cursor.execute(self.sql)
-                block = _cursor_to_block(cursor)
+                block = self.cursor_to_block(cursor)
                 return [block]
 
         # If `parallelism` is 1, directly fetch all rows. This avoids unnecessary
@@ -157,6 +150,16 @@ class _SQLReader(Reader):
 
         return tasks
 
+    def cursor_to_block(self, cursor) -> Block:
+        import pyarrow as pa
+
+        rows = cursor.fetchall()
+        # Each `column_description` is a 7-element sequence. The first element is the column
+        # name. To learn more, read https://peps.python.org/pep-0249/#description.
+        columns = [column_description[0] for column_description in cursor.description]
+        pydict = {column: [row[i] for row in rows] for i, column in enumerate(columns)}
+        return pa.Table.from_pydict(pydict)
+        
     def _get_num_rows(self) -> int:
         with _connect(self.connection_factory) as cursor:
             cursor.execute(f"SELECT COUNT(*) FROM ({self.sql}) as T")
@@ -167,7 +170,7 @@ class _SQLReader(Reader):
             cursor.execute(
                 f"SELECT * FROM ({self.sql}) as T LIMIT {self.NUM_SAMPLE_ROWS}"
             )
-            return _cursor_to_block(cursor)
+            return self.cursor_to_block(cursor)
 
     def _create_read_fn(self, num_rows: int, offset: int):
         def read_fn() -> Iterable[Block]:
@@ -175,7 +178,7 @@ class _SQLReader(Reader):
                 cursor.execute(
                     f"SELECT * FROM ({self.sql}) as T LIMIT {num_rows} OFFSET {offset}"
                 )
-                block = _cursor_to_block(cursor)
+                block = self.cursor_to_block(cursor)
                 return [block]
 
         return read_fn
