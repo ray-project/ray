@@ -42,10 +42,7 @@ def memory_string(num_bytes: int) -> str:
 def locality_string(locality_hits: int, locality_misses) -> str:
     """Return a human-readable string for object locality stats."""
     try:
-        p = round(
-            (locality_hits / (locality_hits + locality_misses)) * 100,
-            1,
-        )
+        p = round((locality_hits / (locality_hits + locality_misses)) * 100)
     except ZeroDivisionError:
         p = 100.0
     return f"[{p}% locality]"
