@@ -72,9 +72,12 @@ if __name__ == "__main__":
                 },
             },
             gamma=0.9,
+            # TODO (Kourosh): Enable when LSTMs are supported.
+            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(_enable_rl_module_api=False)
     )
 
     if args.run == "PPO":
