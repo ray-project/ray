@@ -386,11 +386,14 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     }
   }
 
-  if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER
-    && RayConfig::instance().preload_python_modules().size() > 0) {
-      std::string serialized_preload_python_modules  = absl::StrJoin(RayConfig::instance().preload_python_modules(), ",");
-      RAY_LOG(DEBUG) << "Starting worker with preload_python_modules " << serialized_preload_python_modules;
-      worker_command_args.push_back("--worker-preload-modules=" + serialized_preload_python_modules);
+  if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER &&
+      RayConfig::instance().preload_python_modules().size() > 0) {
+    std::string serialized_preload_python_modules =
+        absl::StrJoin(RayConfig::instance().preload_python_modules(), ",");
+    RAY_LOG(DEBUG) << "Starting worker with preload_python_modules "
+                   << serialized_preload_python_modules;
+    worker_command_args.push_back("--worker-preload-modules=" +
+                                  serialized_preload_python_modules);
   }
 
   // We use setproctitle to change python worker process title,

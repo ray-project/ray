@@ -47,8 +47,9 @@ inline bool ConvertValue<bool>(const std::string &type_string, const std::string
 }
 
 template <>
-inline std::vector<std::string> ConvertValue<std::vector<std::string>>(const std::string &type_string, const std::string &value) {
-    return absl::StrSplit(value, ",");
+inline std::vector<std::string> ConvertValue<std::vector<std::string>>(
+    const std::string &type_string, const std::string &value) {
+  return absl::StrSplit(value, ",");
 }
 
 class RayConfig {

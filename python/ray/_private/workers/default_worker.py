@@ -149,7 +149,10 @@ parser.add_argument(
     "--worker-preload-modules",
     type=str,
     required=False,
-    help="A comma-separated list of Python module names to import before accepting work.",
+    help=(
+        "A comma-separated list of Python module names "
+        "to import before accepting work."
+    ),
 )
 
 if __name__ == "__main__":
