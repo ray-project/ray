@@ -5,6 +5,7 @@ from typing import Union, Callable, Iterator, List, Tuple, Any, Optional, TYPE_C
 
 import numpy as np
 
+from ray import cloudpickle
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 
 if TYPE_CHECKING:
@@ -118,7 +119,7 @@ class SimpleBlockAccessor(BlockAccessor):
         return self._items
 
     def size_bytes(self) -> int:
-        return sys.getsizeof(self._items)
+        return len(cloudpickle.dumps(self._items))
 
     def schema(self) -> Any:
         if self._items:

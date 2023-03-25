@@ -89,6 +89,8 @@ class ActorPoolMapOperator(MapOperator):
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
         for _ in range(self._autoscaling_policy.min_workers):
             self._start_actor()
+        print("Waiting for min num actors to start")
+        ray.get(self._actor_pool.get_pending_actor_refs(), timeout=10)
 
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
@@ -221,6 +223,9 @@ class ActorPoolMapOperator(MapOperator):
         pending = self._actor_pool.num_pending_actors()
         if pending:
             base += f" ({pending} pending)"
+
+        # [10GiB/40GiB/300GiB objects live/transferred/total]
+        base += f" [{self._metrics.cur} mem]"
         if self._actor_locality_enabled:
             base += f" [{self._actor_pool._locality_hits} locality hits,"
             base += f" {self._actor_pool._locality_misses} misses]"
