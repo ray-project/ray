@@ -165,6 +165,15 @@ def test_non_restartable_actor_throws_oom_error(ray_with_memory_monitor):
         value=1.0,
     )
 
+    wait_for_condition(
+        has_metric_tagged_with_value,
+        timeout=10,
+        retry_interval_ms=100,
+        addr=addr,
+        tag="Leaker.__init__",
+        value=1.0,
+    )
+
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
@@ -188,6 +197,15 @@ def test_restartable_actor_throws_oom_error(
         retry_interval_ms=100,
         addr=addr,
         tag="MemoryManager.ActorEviction.Total",
+        value=2.0,
+    )
+
+    wait_for_condition(
+        has_metric_tagged_with_value,
+        timeout=10,
+        retry_interval_ms=100,
+        addr=addr,
+        tag="Leaker.__init__",
         value=2.0,
     )
 
@@ -216,6 +234,14 @@ def test_restartable_actor_oom_retry_off_throws_oom_error(
         tag="MemoryManager.ActorEviction.Total",
         value=2.0,
     )
+    wait_for_condition(
+        has_metric_tagged_with_value,
+        timeout=10,
+        retry_interval_ms=100,
+        addr=addr,
+        tag="Leaker.__init__",
+        value=2.0,
+    )
 
 
 @pytest.mark.skipif(
@@ -236,6 +262,14 @@ def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
         retry_interval_ms=100,
         addr=addr,
         tag="MemoryManager.TaskEviction.Total",
+        value=1.0,
+    )
+    wait_for_condition(
+        has_metric_tagged_with_value,
+        timeout=10,
+        retry_interval_ms=100,
+        addr=addr,
+        tag="allocate_memory",
         value=1.0,
     )
 
@@ -392,6 +426,14 @@ def test_task_oom_no_oom_retry_fails_immediately(
         tag="MemoryManager.TaskEviction.Total",
         value=1.0,
     )
+    wait_for_condition(
+        has_metric_tagged_with_value,
+        timeout=10,
+        retry_interval_ms=100,
+        addr=addr,
+        tag="allocate_memory",
+        value=1.0,
+    )
 
 
 @pytest.mark.skipif(
@@ -421,6 +463,14 @@ def test_task_oom_only_uses_oom_retry(
         retry_interval_ms=100,
         addr=addr,
         tag="MemoryManager.TaskEviction.Total",
+        value=task_oom_retries + 1,
+    )
+    wait_for_condition(
+        has_metric_tagged_with_value,
+        timeout=10,
+        retry_interval_ms=100,
+        addr=addr,
+        tag="allocate_memory",
         value=task_oom_retries + 1,
     )
 
