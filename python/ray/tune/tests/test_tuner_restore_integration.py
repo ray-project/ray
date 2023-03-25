@@ -67,7 +67,7 @@ def print_message(message):
 
 # @pytest.mark.parametrize("runner_type", ["tuner", "trainer"])
 @pytest.mark.parametrize("runner_type", ["trainer"])
-def test_air_experiment_restore(ray_start_4_cpus, tmp_path, runner_type):
+def test_air_experiment_restore(tmp_path, runner_type):
     np.random.seed(2023)
 
     script_path = Path(__file__).parent / _RUN_SCRIPT_FILENAME
