@@ -1,4 +1,5 @@
 import builtins
+from copy import copy
 from typing import Any, Callable, Dict, Generic, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
@@ -285,34 +286,35 @@ class _RangeDatasourceReader(Reader):
             else:
                 return list(builtins.range(start, start + count))
 
+        if block_format == "arrow":
+            _check_pyarrow_version()
+            import pyarrow as pa
+
+            schema = pa.Table.from_pydict({"value": [0]}).schema
+        elif block_format == "tensor":
+            _check_pyarrow_version()
+            import pyarrow as pa
+
+            tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
+                np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
+            )
+            schema = BlockAccessor.batch_to_block(tensor).schema
+        elif block_format == "list":
+            schema = int
+        else:
+            raise ValueError("Unsupported block type", block_format)
+        if block_format == "tensor":
+            element_size = np.product(tensor_shape)
+        else:
+            element_size = 1
+
         i = 0
         while i < n:
             count = min(block_size, n - i)
-            if block_format == "arrow":
-                _check_pyarrow_version()
-                import pyarrow as pa
-
-                schema = pa.Table.from_pydict({"value": [0]}).schema
-            elif block_format == "tensor":
-                _check_pyarrow_version()
-                import pyarrow as pa
-
-                tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
-                    np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
-                )
-                schema = BlockAccessor.batch_to_block(tensor).schema
-            elif block_format == "list":
-                schema = int
-            else:
-                raise ValueError("Unsupported block type", block_format)
-            if block_format == "tensor":
-                element_size = np.product(tensor_shape)
-            else:
-                element_size = 1
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=8 * count * element_size,
-                schema=schema,
+                schema=copy(schema),
                 input_files=None,
                 exec_stats=None,
             )
