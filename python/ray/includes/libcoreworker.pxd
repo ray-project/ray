@@ -302,7 +302,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             shared_ptr[LocalMemoryBuffer]
             &creation_task_exception_pb_bytes,
             c_bool *is_retryable_error,
-            c_bool *is_application_error,
+            c_string *application_error,
             const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
             const c_string name_of_concurrency_group_to_execute,
             c_bool is_reattempt) nogil
@@ -335,6 +335,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int startup_token
         c_string session_name
         c_string entrypoint
+        int64_t worker_launch_time_ms
+        int64_t worker_launched_time_ms
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod

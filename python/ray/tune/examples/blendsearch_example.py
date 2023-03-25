@@ -25,7 +25,7 @@ def easy_objective(config):
     for step in range(config["steps"]):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
-        # Feed the score back back to Tune.
+        # Feed the score back to Tune.
         session.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
