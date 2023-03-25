@@ -185,7 +185,8 @@ class DatasetIterator(abc.ABC):
                 clear_block_after_read=True,
             )
 
-        stats.iter_total_s.add(time.perf_counter() - time_start)
+        if stats:
+            stats.iter_total_s.add(time.perf_counter() - time_start)
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the dataset.

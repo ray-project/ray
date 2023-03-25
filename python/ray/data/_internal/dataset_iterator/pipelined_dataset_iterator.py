@@ -34,8 +34,13 @@ class PipelinedDatasetIterator(DatasetIterator):
     ) -> Tuple[
         Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
     ]:
-        ds = self._get_next_dataset()
-        return ds.iterator()._to_block_iterator()
+        epoch_pipeline = self._get_next_dataset()
+
+        def block_iter():
+            for ds in epoch_pipeline.iter_datasets():
+                yield from ds._plan.execute().iter_blocks_with_metadata()
+
+        return block_iter(), None
 
     def stats(self) -> str:
         return self._base_dataset_pipeline.stats()
