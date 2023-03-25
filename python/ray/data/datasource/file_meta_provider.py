@@ -447,11 +447,13 @@ def _get_file_infos_common_path_prefix(
     ):
         if path in path_to_size:
             path_to_size[path] = file_size
-    # Dictionaries are insertion-ordered, so this path + size pairs should be
-    # yielded in the order of the original paths arg.
-    for path, size in path_to_size.items():
-        assert size is not None
-        yield path, size
+    # Iterate over `paths` to yield each path in original order.
+    # NOTE: do not iterate over `path_to_size` because the dictionary skips duplicated
+    # path, while `paths` might contain duplicated path if one wants to read same file
+    # multiple times.
+    for path in paths:
+        assert path in path_to_size
+        yield path, path_to_size[path]
 
 
 def _get_file_infos_parallel(
