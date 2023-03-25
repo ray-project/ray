@@ -29,20 +29,10 @@ from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
-
-try:
-    from ray.tune.experimental.output import (
-        get_air_verbosity,
-        _detect_reporter as _detect_air_reporter,
-    )
-except Exception:
-
-    def get_air_verbosity(*args, **kwargs):
-        return None
-
-    def _detect_air_reporter(*args, **kwargs):
-        return None
-
+from ray.tune.experimental.output import (
+    get_air_verbosity,
+    _detect_reporter as _detect_air_reporter,
+)
 
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.progress_reporter import (
