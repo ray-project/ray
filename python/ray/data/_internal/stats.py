@@ -235,6 +235,7 @@ class DatasetStats:
 
         self._legacy_iter_batches = False
         # Iteration stats, filled out if the user iterates over the dataset.
+        self.iter_wait_s: Timer = Timer()
         self.iter_get_s: Timer = Timer()
         self.iter_next_batch_s: Timer = Timer()
         self.iter_format_batch_s: Timer = Timer()
@@ -305,6 +306,7 @@ class DatasetStats:
 
         iter_stats = IterStatsSummary(
             self._legacy_iter_batches,
+            self._iter_wait_s,
             self.iter_get_s,
             self.iter_next_batch_s,
             self.iter_format_batch_s,
@@ -642,6 +644,8 @@ class StageStatsSummary:
 class IterStatsSummary:
     # Whether the legacy `iter_batches` is being used.
     legacy_iter_batches: bool
+    # Time spent in actor based prefetching, in seconds.
+    wait_time: Timer
     # Time spent in `ray.get()`, in seconds
     get_time: Timer
     # Time spent in batch building, in seconds
@@ -729,6 +733,7 @@ class IterStatsSummary:
             or self.get_time.get()
         ):
             out += "\nDataset iterator time breakdown:\n"
+            out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
             out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
             out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
             out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)

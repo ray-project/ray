@@ -171,6 +171,7 @@ def _prefetch_blocks(
     block_ref_iter: Iterator[ObjectRef[Block]],
     prefetcher: BlockPrefetcher,
     num_blocks_to_prefetch: int,
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterable of Block Object References, returns an iterator
     over these object reference while prefetching `num_block_to_prefetch`
@@ -191,13 +192,15 @@ def _prefetch_blocks(
     sliding_window = collections.deque(
         itertools.islice(block_ref_iter, window_size), maxlen=window_size
     )
-    prefetcher.prefetch_blocks(list(sliding_window))
+    with stats.iter_wait_s.timer() if stats else nullcontext():
+        prefetcher.prefetch_blocks(list(sliding_window))
 
     while sliding_window:
         block_ref = sliding_window.popleft()
         try:
             sliding_window.append(next(block_ref_iter))
-            prefetcher.prefetch_blocks(list(sliding_window))
+            with stats.iter_wait_s.timer() if stats else nullcontext():
+                prefetcher.prefetch_blocks(list(sliding_window))
         except StopIteration:
             pass
         yield block_ref
