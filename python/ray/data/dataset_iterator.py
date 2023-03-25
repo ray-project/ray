@@ -182,7 +182,6 @@ class DatasetIterator(abc.ABC):
                 shuffle_buffer_min_size=local_shuffle_buffer_size,
                 shuffle_seed=local_shuffle_seed,
                 prefetch_batches=prefetch_batches,
-                clear_block_after_read=True,
             )
 
         if stats:
