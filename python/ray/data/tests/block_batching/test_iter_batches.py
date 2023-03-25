@@ -105,7 +105,10 @@ def test_restore_from_original_order():
 # 3. Block size is not divisble by batch size
 @pytest.mark.parametrize("batch_size", [1, 4, 3])
 @pytest.mark.parametrize("drop_last", [True, False])
-def test_iter_batches_e2e(ray_start_regular_shared, batch_size, drop_last):
+@pytest.mark.parametrize("prefetch_batches", [0, 1])
+def test_iter_batches_e2e(
+    ray_start_regular_shared, batch_size, drop_last, prefetch_batches
+):
     def collate_fn(batch: pd.DataFrame):
         return batch + 1
 
@@ -117,6 +120,7 @@ def test_iter_batches_e2e(ray_start_regular_shared, batch_size, drop_last):
     output_batches = iter_batches(
         block_refs_iter,
         batch_size=batch_size,
+        prefetch_batches=prefetch_batches,
         batch_format="pandas",
         collate_fn=collate_fn,
         drop_last=drop_last,
