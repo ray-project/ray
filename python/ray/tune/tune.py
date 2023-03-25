@@ -28,10 +28,21 @@ from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
-from ray.tune.experimental.output import (
-    get_air_verbosity,
-    _detect_reporter as _detect_air_reporter,
-)
+
+try:
+    from ray.tune.experimental.output import (
+        get_air_verbosity,
+        _detect_reporter as _detect_air_reporter,
+    )
+except Exception:
+
+    def get_air_verbosity(*args, **kwargs):
+        return None
+
+    def _detect_air_reporter(*args, **kwargs):
+        return None
+
+
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.progress_reporter import (
     ProgressReporter,
@@ -159,7 +170,7 @@ def _report_progress(
     trials = runner.get_trials()
     if reporter.should_report(trials, done=done):
         sched_debug_str = runner.scheduler_alg.debug_string()
-        used_resources_str = runner.trial_executor._used_resources_string()
+        used_resources_str = runner._used_resources_string()
         reporter.report(trials, done, sched_debug_str, used_resources_str)
 
 
