@@ -87,6 +87,7 @@ class _MockTrialExecutor(RayTrialExecutor):
 
 class TrialRunnerCallbacks(unittest.TestCase):
     def setUp(self):
+
         ray.init()
         self.tmpdir = tempfile.mkdtemp()
         self.callback = TestCallback()
@@ -277,19 +278,17 @@ class TrialRunnerCallbacks(unittest.TestCase):
             return first_logger_pos, last_logger_pos, syncer_pos
 
         # Auto creation of loggers, no callbacks, no syncer
-        callbacks = _create_default_callbacks(None, sync_config=SyncConfig())
+        callbacks = _create_default_callbacks(None, SyncConfig(), None)
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
 
         # Auto creation of loggers with callbacks
-        callbacks = _create_default_callbacks([Callback()], sync_config=SyncConfig())
+        callbacks = _create_default_callbacks([Callback()], SyncConfig(), None)
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
 
         # Auto creation of loggers with existing logger (but no CSV/JSON)
-        callbacks = _create_default_callbacks(
-            [LoggerCallback()], sync_config=SyncConfig()
-        )
+        callbacks = _create_default_callbacks([LoggerCallback()], SyncConfig(), None)
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
 
@@ -297,9 +296,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         [mc1, mc2, mc3] = [Callback(), Callback(), Callback()]
         # Has to be legacy logger to avoid logger callback creation
         lc = LegacyLoggerCallback(logger_classes=DEFAULT_LOGGERS)
-        callbacks = _create_default_callbacks(
-            [mc1, mc2, lc, mc3], sync_config=SyncConfig()
-        )
+        callbacks = _create_default_callbacks([mc1, mc2, lc, mc3], SyncConfig(), None)
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
         self.assertLess(callbacks.index(mc1), callbacks.index(mc2))

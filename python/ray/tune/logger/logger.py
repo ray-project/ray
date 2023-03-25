@@ -2,7 +2,7 @@ import abc
 import json
 import logging
 
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Type
+from typing import TYPE_CHECKING, Dict, List, Optional, Type, Iterable
 
 import yaml
 from ray.air._internal.json import SafeFallbackEncoder
@@ -213,13 +213,13 @@ class _RayDumper(yaml.SafeDumper):
 
 
 @DeveloperAPI
-def pretty_print(result, exclude: Optional[Set[str]] = None):
+def pretty_print(result):
     result = result.copy()
     result.update(config=None)  # drop config from pretty print
     result.update(hist_stats=None)  # drop hist_stats from pretty print
     out = {}
     for k, v in result.items():
-        if v is not None and (exclude is None or k not in exclude):
+        if v is not None:
             out[k] = v
 
     cleaned = json.dumps(out, cls=SafeFallbackEncoder)
