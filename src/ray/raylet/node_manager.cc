@@ -2917,12 +2917,22 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
                         worker_exit_message,
                         true /* force */);
 
-          if (worker_to_kill->GetActorId().IsNil()) {
+          if (worker_to_kill->GetWorkerType() == rpc::WorkerType::DRIVER) {
+            // TODO(sang): Add the job entrypoint to the name.
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
-                1, "MemoryManager.TaskEviction.Total");
+                1, {{"Type", "MemoryManager.DriverEviction.Total"}, {"Name", ""}});
+          } else if (worker_to_kill->GetActorId().IsNil()) {
+            const auto &ray_task = worker_to_kill->GetAssignedTask();
+            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+                1,
+                {{"Type", "MemoryManager.TaskEviction.Total"},
+                 {"Name", ray_task.GetTaskSpecification().GetName()}});
           } else {
+            const auto &ray_task = worker_to_kill->GetAssignedTask();
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
-                1, "MemoryManager.ActorEviction.Total");
+                1,
+                {{"Type", "MemoryManager.ActorEviction.Total"},
+                 {"Name", ray_task.GetTaskSpecification().GetName()}});
           }
         }
       }
