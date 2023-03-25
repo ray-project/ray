@@ -55,7 +55,7 @@ class DummyTrainer(DataParallelTrainer):
             scaling_config = ScalingConfig(num_workers=1)
         super().__init__(
             train_loop_per_worker=DummyTrainer.make_train_loop(
-                num_epochs, prefetch_batches, batch_size
+                num_epochs, prefetch_batches, prefetch_blocks, batch_size
             ),
             *args,
             scaling_config=scaling_config,
