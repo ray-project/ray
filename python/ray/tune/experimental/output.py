@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, OrderedDict, Tuple, Any, TYPE_CHECKING
+from typing import List, Dict, Optional, Tuple, Any, TYPE_CHECKING
 
 import contextlib
 import collections
@@ -139,7 +139,7 @@ def _get_trials_by_state(trials: List[Trial]) -> Dict[str, List[Trial]]:
 def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
     """Try to infer the metrics to print out."""
     # Using OrderedDict for OrderedSet.
-    result = OrderedDict()
+    result = collections.OrderedDict()
     for t in trials:
         if not t.last_result:
             continue
