@@ -5,7 +5,7 @@ from typing import Any, Callable, Iterator, Iterable, List, Optional
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 Connection = Any  # A Python DB API2-compliant `Connection` object.
 Cursor = Any  # A Python DB API2-compliant `Cursor` object.
@@ -17,7 +17,7 @@ class SQLDatasource(Datasource[ArrowRow]):
         self.connection_factory = connection_factory
 
     def create_reader(self, sql: str) -> "Reader":
-        return _SQLReader(sql, self.connection_factory)
+        return SQLReader(sql, self.connection_factory)
 
 
 def _check_connection_is_dbapi2_compliant(connection) -> None:
@@ -71,7 +71,8 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
         connection.close()
 
 
-class _SQLReader(Reader):
+@DeveloperAPI
+class SQLReader(Reader):
 
     NUM_SAMPLE_ROWS = 100
     MIN_ROWS_PER_READ_TASK = 50
@@ -154,8 +155,9 @@ class _SQLReader(Reader):
         import pyarrow as pa
 
         rows = cursor.fetchall()
-        # Each `column_description` is a 7-element sequence. The first element is the column
-        # name. To learn more, read https://peps.python.org/pep-0249/#description.
+        # Each `column_description` is a 7-element sequence. The first element is the 
+        # column name. To learn more, read 
+        # https://peps.python.org/pep-0249/#description.
         columns = [column_description[0] for column_description in cursor.description]
         pydict = {column: [row[i] for row in rows] for i, column in enumerate(columns)}
         return pa.Table.from_pydict(pydict)
