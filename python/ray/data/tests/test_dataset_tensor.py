@@ -18,6 +18,13 @@ from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
+# https://github.com/ray-project/ray/issues/33695
+def test_large_tensor_creation(ray_start_regular_shared):
+    """Tests that large tensor read task creation can complete successfully without
+    hanging."""
+    ray.data.range_tensor(1000, parallelism=1000, shape=(80, 80, 100, 100))
+
+
 def test_tensors_basic(ray_start_regular_shared):
     # Create directly.
     tensor_shape = (3, 5)
