@@ -3981,7 +3981,7 @@
   team: data
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: multi_node_benchmark_compute_yaml
+    cluster_compute: multi_node_benchmark_compute.yaml
 
   run:
     # Expect the benchmark to finish around 30 minutes.
