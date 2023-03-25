@@ -306,7 +306,7 @@ class DatasetStats:
 
         iter_stats = IterStatsSummary(
             self._legacy_iter_batches,
-            self._iter_wait_s,
+            self.iter_wait_s,
             self.iter_get_s,
             self.iter_next_batch_s,
             self.iter_format_batch_s,
