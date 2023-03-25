@@ -223,7 +223,8 @@ class ActorPoolStrategy(ComputeStrategy):
         if size:
             if max_size is not None or min_size != 1:
                 raise ValueError(
-                    "min_size and max_size cannot be set at the same time as `size`")
+                    "min_size and max_size cannot be set at the same time as `size`"
+                )
             min_size = size
             max_size = size
         if min_size < 1:
