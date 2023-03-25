@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 import warnings
@@ -18,6 +19,18 @@ from ray.tune.progress_reporter import (
     _stream_client_output,
 )
 from ray.util import PublicAPI
+
+try:
+    from ray.tune.experimental.output import (
+        get_air_verbosity,
+    )
+except Exception:
+
+    def get_air_verbosity(*args, **kwargs):
+        return None
+
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ray.train.base_trainer import BaseTrainer
@@ -144,6 +157,11 @@ class Tuner:
         """Configure and construct a tune run."""
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
+        if self._is_ray_client and get_air_verbosity():
+            logger.warning(
+                "Ignoring AIR_VERBOSITY setting, "
+                "as it doesn't support ray client mode yet."
+            )
 
         if _tuner_internal:
             if not self._is_ray_client:
