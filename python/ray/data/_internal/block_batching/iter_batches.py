@@ -57,7 +57,7 @@ def prefetch_batches_locally(
     sliding_window = collections.deque()
     current_window_size = 0
 
-    if batch_size is None:
+    if batch_size is not None:
         num_rows_to_prefetch = num_batches_to_prefetch * batch_size
     else:
         num_rows_to_prefetch = None
