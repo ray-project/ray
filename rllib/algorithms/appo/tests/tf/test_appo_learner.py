@@ -1,19 +1,17 @@
 import unittest
-
 import numpy as np
 
 import ray
-from ray.rllib.algorithms.impala import ImpalaConfig
+import ray.rllib.algorithms.appo as appo
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics import ALL_MODULES
-from ray.rllib.utils.test_utils import check
-from ray.rllib.utils.test_utils import framework_iterator
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.test_utils import check, framework_iterator
 
-torch, nn = try_import_torch()
+
 tf1, tf, _ = try_import_tf()
+
 tf1.enable_eager_execution()
 
 frag_length = 50
@@ -35,13 +33,10 @@ FAKE_BATCH = {
     SampleBatch.ACTION_LOGP: np.log(
         np.random.uniform(low=0, high=1, size=(frag_length,))
     ).astype(np.float32),
-    SampleBatch.ACTION_DIST_INPUTS: np.random.normal(
-        0, 1, size=(frag_length, 2)
-    ).astype(np.float32),
 }
 
 
-class TestImpalaLearner(unittest.TestCase):
+class TestImpalaTfLearner(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -50,13 +45,10 @@ class TestImpalaLearner(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_impala_loss(self):
-        """Test that impala_policy_rlm loss matches the impala learner loss.
-
-        Correctness of V-Trance is tested in test_vtrace_v2.py.
-        """
+    def test_appo_loss(self):
+        """Test that appo_policy_rlm loss matches the appo learner loss."""
         config = (
-            ImpalaConfig()
+            appo.APPOConfig()
             .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
@@ -70,14 +62,13 @@ class TestImpalaLearner(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
-                _enable_learner_api=True,
             )
             .rl_module(
                 _enable_rl_module_api=True,
             )
         )
 
-        for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
+        for fw in framework_iterator(config, ("tf2")):
             trainer = config.build()
             policy = trainer.get_policy()
 
@@ -85,13 +76,11 @@ class TestImpalaLearner(unittest.TestCase):
                 train_batch = tf.nest.map_structure(
                     lambda x: tf.convert_to_tensor(x), FAKE_BATCH
                 )
-            elif fw == "torch":
-                train_batch = convert_to_torch_tensor(SampleBatch(FAKE_BATCH))
-
+            train_batch = SampleBatch(FAKE_BATCH)
             policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
 
-            train_batch = SampleBatch(FAKE_BATCH)
             algo_config = config.copy(copy_frozen=False)
+            algo_config.training(_enable_learner_api=True)
             algo_config.validate()
             algo_config.freeze()
 
@@ -108,7 +97,6 @@ class TestImpalaLearner(unittest.TestCase):
             learner_group = learner_group_config.build()
             learner_group.set_weights(trainer.get_weights())
             results = learner_group.update(train_batch.as_multi_agent())
-
             learner_group_loss = results[ALL_MODULES]["total_loss"]
 
             check(learner_group_loss, policy_loss)
