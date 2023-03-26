@@ -237,7 +237,7 @@ class Learner:
         self._local_gpu_idx = learner_scaling_config.local_gpu_idx
 
         # whether self.build has already been called
-        self.built = False
+        self._is_built = False
 
         # These are the attributes that are set during build
         self._module: MultiAgentRLModule = None
@@ -582,10 +582,10 @@ class Learner:
         This method should be called before the learner is used. It is responsible for
         setting up the module and optimizers.
         """
-        if self.built:
-            logger.warning("Learner already built. Skipping build.")
+        if self._is_built:
+            logger.debug("Learner already built. Skipping build.")
             return
-        self.built = True
+        self._is_built = True
         self._module = self._make_module()
         for param_seq, optimizer in self.configure_optimizers():
             self._optim_to_param[optimizer] = []
@@ -914,7 +914,7 @@ class Learner:
         self._param_to_optim = {}
         self._params = {}
         self._optim_to_param = {}
-        self.built = False
+        self._is_built = False
         self.build()
         self._load_optimizers(dir / "optimizer_state")
 
