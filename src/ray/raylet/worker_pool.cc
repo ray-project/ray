@@ -823,6 +823,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   } else {
     // Invoke the `send_reply_callback` later to only finish driver
     // registration after all prestarted workers are registered to Raylet.
+    // NOTE(clarng): prestart is only for python workers.
     ExecuteOnPrestartWorkersStarted([send_reply_callback = std::move(send_reply_callback),
                                     port]() { send_reply_callback(Status::OK(), port); });
 
