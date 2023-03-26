@@ -58,16 +58,16 @@ def read_and_validate_release_test_collection(
 def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
     tests = []
     for test_definition in test_definitions:
-        if not test_definition.has_key('flavors'):
+        if 'flavors' not in test_definition:
             tests.append(test_definition)
             continue
         flavors = test_definition.pop('flavors')
         for flavor in flavors:
             test = copy.deepcopy(test_definition)
             test['name'] = test['name'] + '-' + flavor['name']
-            if flavor.has_key('env'):
+            if 'env' in flavor:
                 test['env'] = flavor['env']
-            if flavor.has_key('cluster_compute'):
+            if 'cluster_compute' in flavor:
                 test['cluster']['cluster_compute'] = flavor['cluster_compute']
             tests.append(test)
     return tests
