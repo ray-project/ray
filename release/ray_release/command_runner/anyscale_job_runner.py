@@ -63,8 +63,9 @@ class AnyscaleJobRunner(JobRunner):
         )
         # The root s3 bucket path. result, metric, artifact files
         # will be uploaded to under it on s3.
+        cloud_storage_provider = os.environ.get("ANYSCALE_CLOUD_STORAGE_PROVIDER", "s3")
         self.upload_path = join_s3_paths(
-            f"s3://{self.file_manager.bucket}", self.path_in_bucket
+            f"{cloud_storage_provider}://{self.file_manager.bucket}", self.path_in_bucket
         )
         self.output_json = "/tmp/output.json"
         self.prepare_commands = []
@@ -273,7 +274,7 @@ class AnyscaleJobRunner(JobRunner):
         try:
             tmpfile = tempfile.mkstemp(suffix=".json")[1]
             logger.info(tmpfile)
-            self.file_manager.download_from_s3(
+            self.file_manager.download_from_cloud(
                 path, tmpfile, delete_after_download=True
             )
 
@@ -328,7 +329,7 @@ class AnyscaleJobRunner(JobRunner):
         # we use the same artifact file name and extension specified by user
         # and put it under `self._DEFAULT_ARTIFACTS_DIR`.
         artifact_file_name = os.path.basename(self._artifact_path)
-        self.file_manager.download_from_s3(
+        self.file_manager.download_from_cloud(
             join_s3_paths(self.path_in_bucket, self._USER_GENERATED_ARTIFACT),
             os.path.join(self._DEFAULT_ARTIFACTS_DIR, artifact_file_name),
         )
