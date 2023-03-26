@@ -156,7 +156,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def put_all_deployments(self, req: Request) -> Response:
-        from ray.serve._private.api import serve_start
+        from ray.serve._private.api import async_serve_start
         from ray.serve.schema import ServeApplicationSchema
         from pydantic import ValidationError
         from ray.serve._private.constants import MULTI_APP_MIGRATION_MESSAGE
@@ -181,14 +181,15 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 text=error_msg,
             )
 
-        client = serve_start(
-            detached=True,
-            http_options={
-                "host": config.host,
-                "port": config.port,
-                "location": "EveryNode",
-            },
-        )
+        async with self._controller_lock:
+            client = await async_serve_start(
+                detached=True,
+                http_options={
+                    "host": config.host,
+                    "port": config.port,
+                    "location": "EveryNode",
+                },
+            )
 
         if client.http_config.host != config.host:
             return Response(
@@ -238,7 +239,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @routes.put("/api/serve/applications/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def put_all_applications(self, req: Request) -> Response:
-        from ray.serve._private.api import serve_start
+        from ray.serve._private.api import async_serve_start
         from ray.serve.schema import ServeDeploySchema
         from pydantic import ValidationError
         from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -251,15 +252,16 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 text=repr(e),
             )
 
-        client = serve_start(
-            detached=True,
-            http_options={
-                "host": config.http_options.host,
-                "port": config.http_options.port,
-                "root_path": config.http_options.root_path,
-                "location": config.proxy_location,
-            },
-        )
+        async with self._controller_lock:
+            client = await async_serve_start(
+                detached=True,
+                http_options={
+                    "host": config.http_options.host,
+                    "port": config.http_options.port,
+                    "root_path": config.http_options.root_path,
+                    "location": config.proxy_location,
+                },
+            )
 
         # Check HTTP Host
         host_conflict = self.check_http_options(
