@@ -58,10 +58,8 @@ def read_and_validate_release_test_collection(
 def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
     tests = []
     for test_definition in test_definitions:
-        print(test_definition)
         if "flavors" not in test_definition:
             tests.append(test_definition)
-            print(test_definition)
             continue
         flavors = test_definition.pop("flavors")
         for flavor in flavors:
@@ -72,7 +70,6 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
             if "cluster_compute" in flavor:
                 test["cluster"]["cluster_compute"] = flavor["cluster_compute"]
             tests.append(test)
-            print(test)
     return tests
 
 def load_schema_file(path: Optional[str] = None) -> Dict:

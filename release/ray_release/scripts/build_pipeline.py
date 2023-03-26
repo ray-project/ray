@@ -218,6 +218,7 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
             json.dump(settings, fp)
 
     steps_str = json.dumps(steps)
+    logger.info(steps_str)
     print(steps_str)
 
 
