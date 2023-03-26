@@ -23,14 +23,14 @@ class JobFileManager(FileManager):
 
         self.sdk = self.cluster_manager.sdk
         self.s3_client = boto3.client("s3")
-        self.gs_client = storage.Client()
         self.cloud_storage_provider = os.environ.get("ANYSCALE_CLOUD_STORAGE_PROVIDER", "s3")
         if self.cloud_storage_provider == "s3":
             self.bucket = str(RELEASE_AWS_BUCKET)
         elif self.cloud_storage_provider == "gs":
             self.bucket = "anyscale-oss-dev-bucket"
+            self.gs_client = storage.Client()
         else:
-            raise Exception(f"Non supported anyscale service provider: {self.cloud_storage_provider}")
+            raise RuntimeError(f"Non supported anyscale service provider: {self.cloud_storage_provider}")
         self.job_manager = JobManager(cluster_manager)
         # Backward compatible
         if "ANYSCALE_RAY_DIR" in anyscale.__dict__:
@@ -127,7 +127,7 @@ class JobFileManager(FileManager):
                 ),
                 initial_retry_delay_s=2,
             )
-        except Exception as e:
+        except RuntimeError as e:
             logger.warning(f"Could not remove temporary S3 object: {e}")
 
     def upload(self, source: Optional[str] = None, target: Optional[str] = None):
