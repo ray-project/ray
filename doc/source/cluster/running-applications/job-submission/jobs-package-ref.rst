@@ -25,6 +25,7 @@ JobSubmissionClient
 
    JobSubmissionClient.submit_job
    JobSubmissionClient.stop_job
+   JobSubmissionClient.stop_all_jobs
    JobSubmissionClient.get_job_status
    JobSubmissionClient.get_job_info
    JobSubmissionClient.list_jobs
