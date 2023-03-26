@@ -120,7 +120,8 @@ class WorkerInterface {
 
   FRIEND_TEST(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy);
   FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestWorkerCapping);
-  FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestWorkerCappingLaterNWorkersNotOwningObjects);
+  FRIEND_TEST(WorkerPoolDriverRegisteredTest,
+              TestWorkerCappingLaterNWorkersNotOwningObjects);
   FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker);
   FRIEND_TEST(WorkerPoolDriverRegisteredTest,
               WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettingKilled);

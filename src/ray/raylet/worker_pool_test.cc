@@ -1501,7 +1501,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker) {
   mock_rpc_client->ExitReplySucceed();
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettingKilled) {
+TEST_F(WorkerPoolDriverRegisteredTest,
+       WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettingKilled) {
   rpc::JobConfig job_config;
 
   /// Add worker to the pool whose job will stay alive.
@@ -2066,9 +2067,10 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseFailureForDifferentJobId) {
   ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 }
- 
+
 TEST_F(WorkerPoolTest, RegisterFirstPythonDriverWaitForWorkerStart) {
-  auto driver = worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
+  auto driver =
+      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
   driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
   bool callback_called = false;
   auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {
@@ -2079,22 +2081,26 @@ TEST_F(WorkerPoolTest, RegisterFirstPythonDriverWaitForWorkerStart) {
 }
 
 TEST_F(WorkerPoolTest, RegisterSecondPythonDriverCallbackImmediately) {
-  auto driver = worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
+  auto driver =
+      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
   driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
-  RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, rpc::JobConfig(), [](Status, int){}));
+  RAY_CHECK_OK(
+      worker_pool_->RegisterDriver(driver, rpc::JobConfig(), [](Status, int) {}));
 
   bool callback_called = false;
   auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {
     *callback_called_ptr = true;
   };
-  auto second_driver = worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
+  auto second_driver =
+      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
   second_driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
   RAY_CHECK_OK(worker_pool_->RegisterDriver(second_driver, rpc::JobConfig(), callback));
   ASSERT_TRUE(callback_called);
 }
 
 TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
-  auto driver = worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::JAVA, JOB_ID);
+  auto driver =
+      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::JAVA, JOB_ID);
 
   driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
   bool callback_called = false;
@@ -2108,7 +2114,8 @@ TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
 TEST_F(WorkerPoolTest, RegisterDriverPrestartDisabledCallbackImmediately) {
   RayConfig::instance().initialize(R"({"enable_worker_prestart": false})");
 
-  auto driver = worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
+  auto driver =
+      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
   driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
   bool callback_called = false;
   auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {
