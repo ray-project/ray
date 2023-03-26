@@ -31,7 +31,6 @@ class PPOBaseLearner(Learner):
     def additional_update_per_module(
         self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
     ) -> Mapping[str, Any]:
-
         assert sampled_kl_values, "Sampled KL values are empty."
 
         sampled_kl = sampled_kl_values[module_id]
