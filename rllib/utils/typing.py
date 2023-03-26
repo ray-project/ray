@@ -38,7 +38,7 @@ TensorStructType = Union[TensorType, dict, tuple]
 # A shape of a tensor.
 TensorShape = Union[Tuple[int], List[int]]
 
-# A network
+# A neural network
 NetworkType = Union["torch.nn.Module", "tf.keras.Module"]
 
 # Represents a fully filled out config of a Algorithm class.
