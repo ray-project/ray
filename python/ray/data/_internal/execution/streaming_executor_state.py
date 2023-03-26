@@ -468,6 +468,15 @@ def _execution_allowed(
         object_store_memory=global_usage.overall.object_store_memory,
     )
     inc = op.incremental_resource_usage()
+    if inc.cpu and inc.gpu:
+        raise NotImplementedError(
+            "Operator incremental resource usage cannot specify both CPU "
+            "and GPU at the same time, since it may cause deadlock."
+        )
+    elif inc.object_store_memory:
+        raise NotImplementedError(
+            "Operator incremental resource usage must not include memory."
+        )
     inc_indicator = ExecutionResources(
         cpu=1 if inc.cpu else 0,
         gpu=1 if inc.gpu else 0,

@@ -338,8 +338,8 @@ class AutoscalingConfig:
     idle_to_total_workers_ratio: float = 0.5
 
     def __post_init__(self):
-        if self.min_workers < 1:
-            raise ValueError("min_workers must be >= 1, got: ", self.min_workers)
+        if self.min_workers < 0:
+            raise ValueError("min_workers must be >= 0, got: ", self.min_workers)
         if self.max_workers is not None and self.min_workers > self.max_workers:
             raise ValueError(
                 "min_workers must be <= max_workers, got: ",
