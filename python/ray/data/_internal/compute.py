@@ -229,8 +229,8 @@ class ActorPoolStrategy(ComputeStrategy):
                 )
             min_size = size
             max_size = size
-        if min_size < 0:
-            raise ValueError("min_size must be >= 0", min_size)
+        if min_size < 1:
+            raise ValueError("min_size must be >= 1", min_size)
         if max_size is not None and min_size > max_size:
             raise ValueError("min_size must be <= max_size", min_size, max_size)
         if (
