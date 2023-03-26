@@ -818,11 +818,15 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   const auto job_id = driver->GetAssignedJobId();
   HandleJobStarted(job_id, job_config);
 
-  // Invoke the `send_reply_callback` later to only finish driver
-  // registration after all prestarted workers are registered to Raylet.
-  ExecuteOnPrestartWorkersStarted([send_reply_callback = std::move(send_reply_callback),
-                                   port]() { send_reply_callback(Status::OK(), port); });
+  if(driver->GetLanguage() == Language::JAVA) {
+    send_reply_callback(Status::OK(), port);
+  } else {
+    // Invoke the `send_reply_callback` later to only finish driver
+    // registration after all prestarted workers are registered to Raylet.
+    ExecuteOnPrestartWorkersStarted([send_reply_callback = std::move(send_reply_callback),
+                                    port]() { send_reply_callback(Status::OK(), port); });
 
+  }
   return Status::OK();
 }
 

@@ -286,8 +286,10 @@ def test_prestart_disabed_driver_skip_wait(shutdown_only):
             "enable_worker_prestart": False,
         },
     ):
-        workers = list_workers(filters=[("worker_type", "=", "WORKER")])
-        assert len(workers) == 0
+        for _ in range(5):
+            workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+            assert len(workers) == 0
+            time.sleep(1)
 
 
 if __name__ == "__main__":

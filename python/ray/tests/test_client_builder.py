@@ -14,6 +14,7 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
+from ray.experimental.state.api import list_workers
 
 
 @pytest.mark.parametrize(
@@ -420,6 +421,32 @@ def test_client_deprecation_warn():
     # cleanup
     server.stop(0)
     subprocess.check_output("ray stop --force", shell=True)
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        "ray start --head --num-cpus=2 --min-worker-port=0 --max-worker-port=0 "
+        "--port 0 --ray-client-server-port=50056"
+    ],
+    indirect=True,
+)
+def test_execute_task_worker_created(call_ray_start):
+    """
+    Test that no workers are spawned until a remote function is called.
+    """
+    ray.init("ray://localhost:50056")
+
+    @ray.remote(num_cpus=2)
+    def f():
+        return 42
+
+    assert ray.get(f.remote()) == 42
+
+    # 2 worker processes should have spawned to accommodate the remote func
+    wait_for_condition(
+        lambda: len(list_workers(filters=[("worker_type", "!=", "DRIVER")])) == 2
+    )
 
 
 if __name__ == "__main__":
