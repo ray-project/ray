@@ -188,6 +188,36 @@ class TestJobStop:
         assert "Waiting for job" not in stdout
         assert f"Job '{job_id}' was stopped" not in stdout
 
+class TestJobStopAll:
+    def test_stopall(self, ray_start_stop):
+        """Should not wait until all the job are stopped."""
+        cmd = "echo hello && sleep 1000"
+
+        for i in range(3):
+            job_id = f"test_stopall_{i}"
+            _run_cmd(f"ray job submit --no-wait --job-id={job_id} -- bash -c '{cmd}'")
+
+        stdout, _ = _run_cmd(f"ray job stopall")
+        assert "Waiting for job" in stdout
+
+        for i in range(3):
+            job_id = f"test_stopall_{i}"
+            assert f"Job '{job_id}' was stopped" in stdout
+
+    def test_stopall_no_wait(self, ray_start_stop):
+        """Should not wait until all the job are stopped."""
+        cmd = "echo hello && sleep 1000"
+
+        for i in range(3):
+            job_id = f"test_stopall_no_wait_{i}"
+            _run_cmd(f"ray job submit --no-wait --job-id={job_id} -- bash -c '{cmd}'")
+
+        stdout, _ = _run_cmd(f"ray job stopall --no-wait")
+        assert "Waiting for job" not in stdout
+
+        for i in range(3):
+            job_id = f"test_stopall_no_wait_{i}"
+            assert f"Job '{job_id}' was stopped" not in stdout
 
 class TestJobList:
     def test_empty(self, ray_start_stop):

@@ -260,6 +260,46 @@ class JobSubmissionClient(SubmissionClient):
             self._raise_error(r)
 
     @PublicAPI(stability="alpha")
+    def stop_all_jobs(self) -> bool:
+        """Request all the non-terminal status job to exit asynchronously.
+
+        Attempts to terminate process first, then kills process after timeout.
+
+        Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
+            >>> sub_id1 = client.submit_job(entrypoint="sleep 10") # doctest: +SKIP
+            >>> sub_id2 = client.submit_job(entrypoint="sleep 10") # doctest: +SKIP
+            >>> client.stop_all_jobs() # doctest: +SKIP
+            True
+
+        Returns:
+            True if the non-terminal status jobs were stopped, otherwise False.
+
+        Raises:
+            RuntimeError: If the request to the job server fails.
+        """
+        r = self._do_request("GET", "/api/jobs/")
+        stopped = True
+
+        if r.status_code == 200:
+            jobs_info_json = r.json()
+            jobs_info = [
+                JobDetails(**job_info_json) for job_info_json in jobs_info_json
+            ]
+            for job_info in jobs_info:
+                if not job_info.status.is_terminal:
+                    logger.debug(f"Stopping job with job_id={job_info.submission_id}.")
+                    r = self._do_request("POST", f"/api/jobs/{job_info.submission_id}/stop")
+                    stopped = stopped and JobStopResponse(**r.json()).stopped
+                    if r.status_code != 200:
+                        self._raise_error(r)
+            return stopped
+        else:
+            self._raise_error(r)
+
+
+    @PublicAPI(stability="alpha")
     def delete_job(
         self,
         job_id: str,

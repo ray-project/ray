@@ -1,5 +1,6 @@
 import os
 import pprint
+import threading
 import time
 from subprocess import list2cmdline
 from typing import Optional, Tuple, Union
@@ -319,6 +320,64 @@ def stop(address: Optional[str], no_wait: bool, job_id: str):
         else:
             cli_logger.print(f"Job has not exited yet. Status: {status}")
             time.sleep(1)
+
+
+@job_cli_group.command()
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Address of the Ray cluster to connect to. Can also be specified "
+        "using the `RAY_ADDRESS` environment variable."
+    ),
+)
+@click.option(
+    "--no-wait",
+    is_flag=True,
+    type=bool,
+    default=False,
+    help="If set, will not wait for the job to exit.",
+)
+@add_click_logging_options
+@PublicAPI(stability="alpha")
+def stopall(address: Optional[str], no_wait: bool):
+    """Attempts to stop all the pending/running jobs.
+
+    Example:
+        `ray job stopall`
+    """
+    def _wait_for_job_exit(client, job_id):
+        while True:
+            status = client.get_job_status(job_id)
+            if status.is_terminal():
+                _log_job_status(client, job_id)
+                break
+            else:
+                cli_logger.print(f"Job '{job_id}' has not exited yet. Status: {status}")
+                time.sleep(1)
+
+    client = _get_sdk_client(address)
+    cli_logger.print(f"Attempting to stop all the non-terminal status jobs")
+    non_terminal_job_ids = [job.submission_id for job in client.list_jobs() if not job.status.is_terminal()]
+    threads = []
+    client.stop_all_jobs()
+
+    if no_wait:
+        return
+    else:
+        for non_terminal_job_id in non_terminal_job_ids:
+            cli_logger.print(
+                f"Waiting for job '{non_terminal_job_id}' to exit " f"(disable with --no-wait):"
+            )
+            thread = threading.Thread(target=_wait_for_job_exit, args=(client, non_terminal_job_id))
+            threads.append(thread)
+            thread.start()
+            
+        if not no_wait:
+            for thread in threads:
+                thread.join()
 
 
 @job_cli_group.command()
