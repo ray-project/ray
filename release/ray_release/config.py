@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import re
@@ -12,6 +13,8 @@ from ray_release.util import DeferredEnvVar, deep_update
 
 
 class Test(dict):
+    pass
+class TestDefinition(dict):
     pass
 
 
@@ -47,11 +50,27 @@ def read_and_validate_release_test_collection(
 ) -> List[Test]:
     """Read and validate test collection from config file"""
     with open(config_file, "rt") as fp:
-        test_config = yaml.safe_load(fp)
+        tests = parse_test_definition(yaml.safe_load(fp))
 
-    validate_release_test_collection(test_config, schema_file=schema_file)
-    return test_config
+    validate_release_test_collection(tests, schema_file=schema_file)
+    return tests
 
+def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
+    tests = []
+    for test_definition in test_definitions:
+        if not test_definition.has_key('flavors'):
+            tests.append(test_definition)
+            continue
+        flavors = test_definition.pop('flavors')
+        for flavor in flavors:
+            test = copy.deepcopy(test_definition)
+            test['name'] = test['name'] + '-' + flavor['name']
+            if flavor.has_key('env'):
+                test['env'] = flavor['env']
+            if flavor.has_key('cluster_compute'):
+                test['cluster']['cluster_compute'] = flavor['cluster_compute']
+            tests.append(test)
+    return tests
 
 def load_schema_file(path: Optional[str] = None) -> Dict:
     path = path or RELEASE_TEST_SCHEMA_FILE
