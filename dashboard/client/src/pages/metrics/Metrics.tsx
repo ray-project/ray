@@ -6,7 +6,7 @@ import {
   Paper,
   TextField,
 } from "@material-ui/core";
-import { Alert } from "@material-ui/lab";
+import { Alert, AlertProps } from "@material-ui/lab";
 import React, { useContext, useEffect, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
 
@@ -64,7 +64,7 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
-enum TimeRangeOptions {
+export enum TimeRangeOptions {
   FIVE_MINS = "Last 5 minutes",
   THIRTY_MINS = "Last 30 minutes",
   ONE_HOUR = "Last 1 hour",
@@ -76,7 +76,7 @@ enum TimeRangeOptions {
   SEVEN_DAYS = "Last 7 days",
 }
 
-const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
+export const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
   [TimeRangeOptions.FIVE_MINS]: "now-5m",
   [TimeRangeOptions.THIRTY_MINS]: "now-30m",
   [TimeRangeOptions.ONE_HOUR]: "now-1h",
@@ -88,17 +88,17 @@ const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
   [TimeRangeOptions.SEVEN_DAYS]: "now-7d",
 };
 
-type MetricConfig = {
+export type MetricConfig = {
   title: string;
   pathParams: string;
 };
 
-type MetricsSectionConfig = {
+export type MetricsSectionConfig = {
   title: string;
   contents: MetricConfig[];
 };
 
-// NOTE: please keep the titles here in sync with grafana_dashboard_factory.py
+// NOTE: please keep the titles here in sync with dashboard/modules/metrics/dashboards/default_dashboard_panels.py
 const METRICS_CONFIG: MetricsSectionConfig[] = [
   {
     title: "Tasks and Actors",
@@ -191,12 +191,11 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
 
 export const Metrics = () => {
   const classes = useStyles();
-  const {
-    grafanaHost,
-    sessionName,
-    prometheusHealth,
-    grafanaDefaultDashboardUid = "rayDefaultDashboard",
-  } = useContext(GlobalContext);
+  const { grafanaHost, sessionName, prometheusHealth, dashboardUids } =
+    useContext(GlobalContext);
+
+  const grafanaDefaultDashboardUid =
+    dashboardUids?.default ?? "rayDefaultDashboard";
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
     TimeRangeOptions.FIVE_MINS,
@@ -299,24 +298,42 @@ export const Metrics = () => {
   );
 };
 
-export const GrafanaNotRunningAlert = ({ className }: ClassNameProps) => {
+const useGrafanaNotRunningAlertStyles = makeStyles((theme) =>
+  createStyles({
+    heading: {
+      fontWeight: 500,
+    },
+  }),
+);
+
+export type GrafanaNotRunningAlertProps = {
+  severity?: AlertProps["severity"];
+} & ClassNameProps;
+
+export const GrafanaNotRunningAlert = ({
+  className,
+  severity = "warning",
+}: GrafanaNotRunningAlertProps) => {
+  const classes = useGrafanaNotRunningAlertStyles();
+
   const { grafanaHost, prometheusHealth } = useContext(GlobalContext);
   return grafanaHost === undefined || !prometheusHealth ? (
-    <Alert className={className} severity="warning">
-      Grafana or prometheus server not detected. Please make sure both services
-      are running and refresh this page. See:{" "}
+    <Alert className={className} severity={severity}>
+      <span className={classes.heading}>
+        Set up Prometheus and Grafana for better Ray Dashboard experience
+      </span>
+      <br />
+      <br />
+      Time-series charts are hidden because either Prometheus or Grafana server
+      is not detected. Follow{" "}
       <a
         href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
         target="_blank"
         rel="noreferrer"
       >
-        https://docs.ray.io/en/latest/ray-observability/ray-metrics.html
-      </a>
-      .
-      <br />
-      If you are hosting grafana on a separate machine or using a non-default
-      port, please set the RAY_GRAFANA_HOST env var to point to your grafana
-      server when launching ray.
+        these instructions
+      </a>{" "}
+      to set them up and refresh this page. .
     </Alert>
   ) : null;
 };

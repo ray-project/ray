@@ -6,4 +6,4 @@ cartpole-simpleq:
         timesteps_total: 50000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
