@@ -27,21 +27,12 @@ from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
+from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
-
-try:
-    from ray.tune.experimental.output import (
-        get_air_verbosity,
-        _detect_reporter as _detect_air_reporter,
-    )
-except Exception:
-
-    def get_air_verbosity(*args, **kwargs):
-        return None
-
-    def _detect_air_reporter(*args, **kwargs):
-        return None
-
+from ray.tune.experimental.output import (
+    get_air_verbosity,
+    _detect_reporter as _detect_air_reporter,
+)
 
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.progress_reporter import (
@@ -808,7 +799,7 @@ def run(
         result_buffer_length=result_buffer_length,
         chdir_to_trial_dir=chdir_to_trial_dir,
     )
-    runner = TrialRunner(
+    runner_kwargs = dict(
         search_alg=search_alg,
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
@@ -824,6 +815,16 @@ def run(
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
     )
+
+    if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "0"))):
+        trial_runner_cls = TuneController
+        runner_kwargs.pop("trial_executor")
+        runner_kwargs["reuse_actors"] = reuse_actors
+        runner_kwargs["chdir_to_trial_dir"] = chdir_to_trial_dir
+    else:
+        trial_runner_cls = TrialRunner
+
+    runner = trial_runner_cls(**runner_kwargs)
 
     if not runner.resumed:
         for exp in experiments:
@@ -866,13 +867,20 @@ def run(
             air_progress_reporter, TuneRichReporter
         ):
             stack.enter_context(air_progress_reporter.with_live())
-        while not runner.is_finished() and not experiment_interrupted_event.is_set():
-            runner.step()
-            if has_verbosity(Verbosity.V1_EXPERIMENT):
-                _report_progress(runner, progress_reporter)
 
-            if air_verbosity:
-                _report_air_progress(runner, air_progress_reporter)
+        try:
+            while (
+                not runner.is_finished() and not experiment_interrupted_event.is_set()
+            ):
+                runner.step()
+                if has_verbosity(Verbosity.V1_EXPERIMENT):
+                    _report_progress(runner, progress_reporter)
+
+                if air_verbosity:
+                    _report_air_progress(runner, air_progress_reporter)
+        except Exception:
+            runner.cleanup()
+            raise
 
         tune_taken = time.time() - tune_start
 
