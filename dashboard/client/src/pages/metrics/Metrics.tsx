@@ -64,7 +64,7 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
-enum TimeRangeOptions {
+export enum TimeRangeOptions {
   FIVE_MINS = "Last 5 minutes",
   THIRTY_MINS = "Last 30 minutes",
   ONE_HOUR = "Last 1 hour",
@@ -76,7 +76,7 @@ enum TimeRangeOptions {
   SEVEN_DAYS = "Last 7 days",
 }
 
-const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
+export const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
   [TimeRangeOptions.FIVE_MINS]: "now-5m",
   [TimeRangeOptions.THIRTY_MINS]: "now-30m",
   [TimeRangeOptions.ONE_HOUR]: "now-1h",
@@ -88,17 +88,17 @@ const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
   [TimeRangeOptions.SEVEN_DAYS]: "now-7d",
 };
 
-type MetricConfig = {
+export type MetricConfig = {
   title: string;
   pathParams: string;
 };
 
-type MetricsSectionConfig = {
+export type MetricsSectionConfig = {
   title: string;
   contents: MetricConfig[];
 };
 
-// NOTE: please keep the titles here in sync with grafana_dashboard_factory.py
+// NOTE: please keep the titles here in sync with dashboard/modules/metrics/dashboards/default_dashboard_panels.py
 const METRICS_CONFIG: MetricsSectionConfig[] = [
   {
     title: "Tasks and Actors",
@@ -191,12 +191,11 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
 
 export const Metrics = () => {
   const classes = useStyles();
-  const {
-    grafanaHost,
-    sessionName,
-    prometheusHealth,
-    grafanaDefaultDashboardUid = "rayDefaultDashboard",
-  } = useContext(GlobalContext);
+  const { grafanaHost, sessionName, prometheusHealth, dashboardUids } =
+    useContext(GlobalContext);
+
+  const grafanaDefaultDashboardUid =
+    dashboardUids?.default ?? "rayDefaultDashboard";
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
     TimeRangeOptions.FIVE_MINS,
