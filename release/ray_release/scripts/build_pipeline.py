@@ -52,7 +52,8 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
     tmpdir = None
 
     env = {}
-    if repo and not no_clone_repo:
+    if False:
+#    if repo and not no_clone_repo:
         # If the Ray test repo is set, we clone that repo to fetch
         # the test configuration file. Otherwise, we might be missing newly
         # added test.
