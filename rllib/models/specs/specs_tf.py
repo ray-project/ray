@@ -14,15 +14,17 @@ class TFTensorSpecs(TensorSpec):
         return tf.Tensor
 
     @override(TensorSpec)
-    def get_shape(self, tensor: tf.Tensor) -> Tuple[int]:
+    def get_shape(self, tensor: "tf.Tensor") -> Tuple[int]:
         return tuple(tensor.shape)
 
     @override(TensorSpec)
-    def get_dtype(self, tensor: tf.Tensor) -> Any:
+    def get_dtype(self, tensor: "tf.Tensor") -> Any:
         return tensor.dtype
 
     @override(TensorSpec)
-    def _full(self, shape: Tuple[int], fill_value: Union[float, int] = 0) -> tf.Tensor:
+    def _full(
+        self, shape: Tuple[int], fill_value: Union[float, int] = 0
+    ) -> "tf.Tensor":
         if self.dtype:
             return tf.ones(shape, dtype=self.dtype) * fill_value
         return tf.fill(shape, fill_value)
