@@ -206,7 +206,7 @@ def _start_controller(
     return controller, controller_name
 
 
-async def async_serve_start(
+async def serve_start_async(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
