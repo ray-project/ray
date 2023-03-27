@@ -1507,9 +1507,6 @@ cdef class GcsClient:
         self.inner = client
         return self
 
-    def connect(self):
-        check_status(self.inner.get().Connect())
-
     def internal_kv_get(self, key, namespace, timeout):
         cdef:
             c_string value

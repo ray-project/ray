@@ -128,10 +128,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   return Status::OK();
 }
 
-Status GcsClient::Connect() {
-  return Connect(io_service_);
-}
-
 void GcsClient::Disconnect() {
   if (gcs_rpc_client_) {
     gcs_rpc_client_->Shutdown();
