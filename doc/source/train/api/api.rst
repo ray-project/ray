@@ -221,7 +221,7 @@ Restoration API for Built-in Trainers
 
 .. autosummary::
 
-    train.huggingface.TransformersTrainer.restore
+    train.huggingface.transformers.TransformersTrainer.restore
 
 .. note::
 
