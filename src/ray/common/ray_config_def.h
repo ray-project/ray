@@ -102,6 +102,7 @@ RAY_CONFIG(uint64_t, task_oom_retries, -1)
 /// The worker killing policy to use, available options are
 /// group_by_owner
 /// retriable_lifo
+/// retriable_fifo
 RAY_CONFIG(std::string, worker_killing_policy, "group_by_owner")
 
 /// If the raylet fails to get agent info, we will retry after this interval.
@@ -440,7 +441,7 @@ RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024
 RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
 
 /// Feature flag to use the ray syncer for resource synchronization
-RAY_CONFIG(bool, use_ray_syncer, false)
+RAY_CONFIG(bool, use_ray_syncer, true)
 /// Due to the protocol drawback, raylet needs to refresh the message if
 /// no message is received for a while.
 /// Refer to https://tinyurl.com/n6kvsp87 for more details
@@ -469,7 +470,7 @@ RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 
 /// Max number of task events stored in the buffer on workers. Any additional events
 /// will be dropped. This is set to a large value to avoid worker side data loss.
-RAY_CONFIG(uint64_t, task_events_max_buffer_size, 10 * 1000)
+RAY_CONFIG(uint64_t, task_events_max_buffer_size, 100 * 1000)
 
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.
@@ -480,7 +481,7 @@ RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
 /// report gRPC call. A task could have more profile events in GCS from multiple
 /// report gRPC call.
 /// Setting the value to -1 allows unlimited profile events to be sent.
-RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 100)
+RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 1000)
 
 /// The delay in ms that GCS should mark any running tasks from a job as failed.
 /// Setting this value too smaller might result in some finished tasks marked as failed by
@@ -709,7 +710,11 @@ RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
 RAY_CONFIG(int64_t, grpc_stream_buffer_size, 512 * 1024);
 
 /// Whether to use log reporter in event framework
-RAY_CONFIG(bool, event_log_reporter_enabled, false)
+RAY_CONFIG(bool, event_log_reporter_enabled, true)
+
+/// Whether or not we should also write an event log to a log file.
+/// This has no effect if `event_log_reporter_enabled` is false.
+RAY_CONFIG(bool, emit_event_to_log_file, false)
 
 /// Whether to enable register actor async.
 /// If it is false, the actor registration to GCS becomes synchronous, i.e.,
@@ -775,3 +780,6 @@ RAY_CONFIG(int64_t,
 /// the mapped plasma pages.
 RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true)
 RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
+
+/// Whether to kill idle workers of a terminated job.
+RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)

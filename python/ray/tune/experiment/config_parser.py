@@ -1,6 +1,5 @@
 import argparse
 import json
-import os
 
 # For compatibility under py2 to consider unicode as str
 from ray.air import CheckpointConfig
@@ -10,7 +9,6 @@ from ray.tune import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.resources import json_to_resources
 from ray.tune.syncer import SyncConfig, Syncer
-from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.util import SafeFallbackEncoder
 
 
@@ -198,17 +196,9 @@ def _create_trial_from_spec(
         raise TuneError("Error parsing args, see above message", spec)
 
     if resources:
-        if isinstance(resources, PlacementGroupFactory):
-            trial_kwargs["placement_group_factory"] = resources
-        else:
-            # This will be converted to a placement group factory in the
-            # Trial object constructor
-            try:
-                trial_kwargs["resources"] = json_to_resources(resources)
-            except (TuneError, ValueError) as exc:
-                raise TuneError("Error parsing resources_per_trial", resources) from exc
+        trial_kwargs["placement_group_factory"] = resources
 
-    experiment_dir_name = spec.get("experiment_dir_name")
+    experiment_dir_name = spec.get("experiment_dir_name") or output_path
 
     sync_config = spec.get("sync_config", SyncConfig())
     if (
@@ -232,9 +222,9 @@ def _create_trial_from_spec(
         trainable_name=spec["run"],
         # json.load leads to str -> unicode in py2.7
         config=spec.get("config", {}),
-        local_dir=os.path.join(spec["local_dir"], output_path),
         # json.load leads to str -> unicode in py2.7
         stopping_criterion=spec.get("stop", {}),
+        experiment_path=spec["experiment_path"],
         experiment_dir_name=experiment_dir_name,
         sync_config=sync_config,
         checkpoint_config=checkpoint_config,

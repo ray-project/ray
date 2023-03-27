@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 import warnings
@@ -8,7 +9,10 @@ from ray.air.config import RunConfig
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air.util.node import _force_on_current_node
 from ray.tune import TuneError
-from ray.tune.execution.trial_runner import _ResumeConfig
+from ray.tune.execution.experiment_state import _ResumeConfig
+from ray.tune.experimental.output import (
+    get_air_verbosity,
+)
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal, _TUNER_PKL
@@ -18,6 +22,8 @@ from ray.tune.progress_reporter import (
     _stream_client_output,
 )
 from ray.util import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ray.train.base_trainer import BaseTrainer
@@ -106,17 +112,19 @@ class Tuner:
         }
         tuner = Tuner(trainable=trainer, param_space=param_space,
             run_config=RunConfig(name="my_tune_run"))
-        analysis = tuner.fit()
+        results = tuner.fit()
 
     To retry a failed tune run, you can then do
 
     .. code-block:: python
 
-        tuner = Tuner.restore(experiment_checkpoint_dir)
+        tuner = Tuner.restore(results.experiment_path)
         tuner.fit()
 
-    ``experiment_checkpoint_dir`` can be easily located near the end of the
-    console output of your first failed run.
+    ``results.experiment_path`` can be retrieved from the
+    :ref:`ResultGrid object <tune-analysis-docs>`. It can
+    also be easily seen in the log output from your first run.
+
     """
 
     # One of the following is assigned.
@@ -142,6 +150,11 @@ class Tuner:
         """Configure and construct a tune run."""
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
+        if self._is_ray_client and get_air_verbosity():
+            logger.warning(
+                "Ignoring AIR_VERBOSITY setting, "
+                "as it doesn't support ray client mode yet."
+            )
 
         if _tuner_internal:
             if not self._is_ray_client:
@@ -172,6 +185,7 @@ class Tuner:
         overwrite_trainable: Optional[
             Union[str, Callable, Type[Trainable], "BaseTrainer"]
         ] = None,
+        param_space: Optional[Dict[str, Any]] = None,
     ) -> "Tuner":
         """Restores Tuner after a previously failed run.
 
@@ -202,6 +216,15 @@ class Tuner:
                 This should be the same trainable that was used to initialize
                 the original Tuner.
                 NOTE: Starting in 2.5, this will be a required parameter.
+            param_space: The same `param_space` that was passed to
+                the original Tuner. This can be optionally re-specified due
+                to the `param_space` potentially containing Ray object
+                references (tuning over Ray Datasets or tuning over
+                several `ray.put` object references). **Tune expects the
+                `param_space` to be unmodified**, and the only part that
+                will be used during restore are the updated object references.
+                Changing the hyperparameter search space then resuming is NOT
+                supported by this API.
             resume_unfinished: If True, will continue to run unfinished trials.
             resume_errored: If True, will re-schedule errored trials and try to
                 restore from their latest checkpoints.
@@ -242,6 +265,7 @@ class Tuner:
                 restore_path=path,
                 resume_config=resume_config,
                 trainable=trainable,
+                param_space=param_space,
             )
             return Tuner(_tuner_internal=tuner_internal)
         else:
@@ -251,6 +275,7 @@ class Tuner:
                 restore_path=path,
                 resume_config=resume_config,
                 trainable=trainable,
+                param_space=param_space,
             )
             return Tuner(_tuner_internal=tuner_internal)
 

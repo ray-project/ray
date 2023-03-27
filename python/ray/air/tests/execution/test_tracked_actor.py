@@ -1,4 +1,6 @@
+import time
 from collections import Counter
+import gc
 from typing import Any, Optional, Type
 
 import pytest
@@ -37,6 +39,14 @@ def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4)
     yield address_info
     ray.shutdown()
+
+
+@pytest.fixture
+def cleanup():
+    # Garbage collect at the start
+    # This ensures that all resources are freed up for the upcoming test.
+    gc.collect()
+    yield
 
 
 class Actor:
@@ -176,7 +186,7 @@ def test_start_many_actors(ray_start_4_cpus, resource_manager_cls):
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 @pytest.mark.parametrize("where", ["init", "fn"])
-def test_actor_fail(ray_start_4_cpus, resource_manager_cls, where):
+def test_actor_fail(ray_start_4_cpus, cleanup, resource_manager_cls, where):
     """Test that actor failures are handled properly.
 
     - Start actor that either fails on init or in a task (RayActorError)
@@ -232,6 +242,47 @@ def test_actor_fail(ray_start_4_cpus, resource_manager_cls, where):
 
     assert stats["failed_actor"] == 1
     assert stats["failed_task"] == bool(where != "init")
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_stop_actor_before_start(
+    ray_start_4_cpus, tmp_path, cleanup, resource_manager_cls
+):
+    """Test that actor failures are handled properly.
+
+    - Start actor that either fails on init or in a task (RayActorError)
+    - Schedule task on actor
+    - Assert that the correct callbacks are called
+    """
+    actor_manager = RayActorManager(resource_manager=resource_manager_cls())
+
+    hang_marker = tmp_path / "hang.txt"
+
+    @ray.remote
+    class HangingActor:
+        def __init__(self):
+            while not hang_marker.exists():
+                time.sleep(0.05)
+
+    tracked_actor = actor_manager.add_actor(
+        HangingActor,
+        kwargs={},
+        resource_request=ResourceRequest([{"CPU": 1}]),
+        on_start=_raise(RuntimeError, "Should not have started"),
+        on_stop=_raise(RuntimeError, "Should not have stopped"),
+    )
+    while not actor_manager.is_actor_started(tracked_actor):
+        actor_manager.next(0.05)
+
+    # Actor started but hasn't triggered on_start, yet
+    actor_manager.remove_actor(tracked_actor)
+    hang_marker.write_text("")
+    while actor_manager.is_actor_started(tracked_actor):
+        actor_manager.next(0.05)
+
+    assert actor_manager.num_live_actors == 0
 
 
 if __name__ == "__main__":

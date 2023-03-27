@@ -11,14 +11,13 @@ from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointS
 from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
 from ray.rllib import _register_all
 
-from ray.tune import TuneError
+from ray.tune import TuneError, PlacementGroupFactory
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.result import DONE
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
-from ray.tune.resources import Resources
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.tests.tune_test_util import TrialResultObserver
 from ray.tune.trainable.util import TrainableUtil
@@ -61,7 +60,7 @@ class TrialRunnerTest2(unittest.TestCase):
         )
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
         }
         _global_registry.register(TRAINABLE_CLASS, "asdf", None)
         trials = [Trial("asdf", **kwargs), Trial("__fake", **kwargs)]
@@ -94,7 +93,7 @@ class TrialRunnerTest2(unittest.TestCase):
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
         kwargs = {
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
             "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
             "max_failures": 0,
             "config": {
@@ -124,7 +123,7 @@ class TrialRunnerTest2(unittest.TestCase):
 
         kwargs = {
             "stopping_criterion": {"training_iteration": 2},
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
             "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
             "max_failures": 1,
             "config": {
@@ -150,7 +149,7 @@ class TrialRunnerTest2(unittest.TestCase):
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager())
         )
         kwargs = {
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
             "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
             "max_failures": 2,
             "config": {
@@ -173,7 +172,7 @@ class TrialRunnerTest2(unittest.TestCase):
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
         kwargs = {
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
             "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
             "max_failures": 0,
             "config": {
@@ -200,7 +199,7 @@ class TrialRunnerTest2(unittest.TestCase):
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
         kwargs = {
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
             "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
             "max_failures": 0,
             "config": {
@@ -228,7 +227,7 @@ class TrialRunnerTest2(unittest.TestCase):
         )
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
             "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
@@ -264,7 +263,7 @@ class TrialRunnerTest2(unittest.TestCase):
         )
         kwargs = {
             "stopping_criterion": {"training_iteration": 2},
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
             "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
@@ -304,7 +303,7 @@ class TrialRunnerTest2(unittest.TestCase):
         kwargs = {
             "stopping_criterion": {"training_iteration": 2},
             "checkpoint_config": CheckpointConfig(checkpoint_at_end=True),
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
@@ -322,7 +321,7 @@ class TrialRunnerTest2(unittest.TestCase):
         )
         kwargs = {
             "stopping_criterion": {"training_iteration": 2},
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
@@ -338,7 +337,7 @@ class TrialRunnerTest2(unittest.TestCase):
         )
         kwargs = {
             "stopping_criterion": {"training_iteration": 2},
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
@@ -366,7 +365,7 @@ class TrialRunnerTest2(unittest.TestCase):
         # Example:
         # local_checkpoint_dir/
         #     experiment_state.json
-        #     trial.logdir/
+        #     trial.local_path/
         #         checkpoint_00000/
         trial = Trial(
             "__fake",
@@ -378,7 +377,7 @@ class TrialRunnerTest2(unittest.TestCase):
 
         def write_checkpoint(trial: Trial, index: int):
             checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-                trial.logdir, index=index
+                trial.local_path, index=index
             )
             result = {"training_iteration": index}
             with open(os.path.join(checkpoint_dir, "cp.json"), "w") as f:
@@ -394,7 +393,9 @@ class TrialRunnerTest2(unittest.TestCase):
             return checkpoint_dir
 
         def get_checkpoint_dirs(trial: Trial):
-            return [d for d in os.listdir(trial.logdir) if d.startswith("checkpoint_")]
+            return [
+                d for d in os.listdir(trial.local_path) if d.startswith("checkpoint_")
+            ]
 
         runner = TrialRunner(
             local_checkpoint_dir=tempdir,

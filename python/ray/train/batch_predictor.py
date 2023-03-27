@@ -7,7 +7,7 @@ import numpy as np
 import ray
 from ray.air import Checkpoint
 from ray.air.data_batch_type import DataBatchType
-from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset, DatasetPipeline, Preprocessor
 from ray.data.context import DatasetContext
 from ray.train.predictor import Predictor
@@ -36,6 +36,7 @@ class BatchPredictor:
         self._predictor_cls = predictor_cls
         self._predictor_kwargs = predictor_kwargs
         self._override_preprocessor: Optional[Preprocessor] = None
+        self._override_preprocessor_set = False
 
     def __repr__(self):
         return (
@@ -47,6 +48,29 @@ class BatchPredictor:
     def from_checkpoint(
         cls, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **kwargs
     ) -> "BatchPredictor":
+        """Create a :class:`BatchPredictor` from a
+        :class:`~ray.air.checkpoint.Checkpoint`.
+
+        Example:
+
+            .. testcode::
+
+                from torchvision import models
+
+                from ray.train.batch_predictor import BatchPredictor
+                from ray.train.torch import TorchCheckpoint, TorchPredictor
+
+                model = models.resnet50(pretrained=True)
+                checkpoint = TorchCheckpoint.from_model(model)
+                predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
+
+        Args:
+            checkpoint: A :class:`~ray.air.checkpoint.Checkpoint` containing model state
+                and optionally a preprocessor.
+            predictor_cls: The type of predictor to use.
+            **kwargs: Optional arguments to pass the ``predictor_cls`` constructor.
+        """
+
         return cls(checkpoint=checkpoint, predictor_cls=predictor_cls, **kwargs)
 
     @classmethod
@@ -75,7 +99,7 @@ class BatchPredictor:
 
     def get_preprocessor(self) -> Preprocessor:
         """Get the preprocessor to use prior to executing predictions."""
-        if self._override_preprocessor:
+        if self._override_preprocessor_set:
             return self._override_preprocessor
 
         return self._checkpoint.get_preprocessor()
@@ -83,6 +107,7 @@ class BatchPredictor:
     def set_preprocessor(self, preprocessor: Preprocessor) -> None:
         """Set the preprocessor to use prior to executing predictions."""
         self._override_preprocessor = preprocessor
+        self._override_preprocessor_set = True
 
     def predict(
         self,
@@ -101,6 +126,9 @@ class BatchPredictor:
     ) -> Union[ray.data.Dataset, ray.data.DatasetPipeline]:
         """Run batch scoring on a Dataset.
 
+        .. note::
+            In Ray 2.4, `BatchPredictor` is lazy by default. Use one of the Datasets consumption APIs, such as iterating through the output, to trigger the execution of prediction.
+
         Args:
             data: Ray dataset or pipeline to run batch prediction on.
             feature_columns: List of columns in the preprocessed dataset to use for
@@ -116,7 +144,10 @@ class BatchPredictor:
             min_scoring_workers: Minimum number of scoring actors.
             max_scoring_workers: If set, specify the maximum number of scoring actors.
             num_cpus_per_worker: Number of CPUs to allocate per scoring worker.
+                Set to 1 by default.
             num_gpus_per_worker: Number of GPUs to allocate per scoring worker.
+                Set to 0 by default. If you want to use GPUs for inference, please
+                specify this parameter.
             separate_gpu_stage: If using GPUs, specifies whether to execute GPU
                 processing in a separate stage (enabled by default). This avoids
                 running expensive preprocessing steps on GPU workers.
@@ -158,9 +189,10 @@ class BatchPredictor:
 
             .. testoutput::
 
-                Dataset(num_blocks=1, num_rows=3, schema={preds: int64, label: int64})
+                MapBatches(ScoringWrapper)
+                +- Dataset(num_blocks=1, num_rows=3, schema={feature_1: int64, label: int64})
                 Final accuracy: 1.0
-        """
+        """  # noqa: E501
         if num_gpus_per_worker is None:
             num_gpus_per_worker = 0
         if num_cpus_per_worker is None:
@@ -327,10 +359,6 @@ class BatchPredictor:
             **ray_remote_args,
         )
 
-        if isinstance(prediction_results, ray.data.Dataset):
-            # Force execution because Dataset uses lazy execution by default.
-            prediction_results.fully_executed()
-
         return prediction_results
 
     def predict_pipelined(
@@ -457,16 +485,10 @@ class BatchPredictor:
             BatchFormat: Batch format to use for the preprocessor.
         """
         preprocessor = self.get_preprocessor()
-        dataset_block_format = ds.dataset_format()
-        if dataset_block_format == BlockFormat.SIMPLE:
-            # Naive case that we cast to pandas for compatibility.
-            # TODO: Revisit
-            return BatchFormat.PANDAS
-
         if preprocessor is None:
             # No preprocessor, just use the predictor format.
             return self._predictor_cls._batch_format_to_use()
-        # Code dealing with Chain preprocessor is in Chain._determine_transform_to_use
 
+        # Code dealing with Chain preprocessor is in Chain._determine_transform_to_use
         # Use same batch format as first preprocessor to minimize data copies.
-        return preprocessor._determine_transform_to_use(dataset_block_format)
+        return preprocessor._determine_transform_to_use()

@@ -121,6 +121,8 @@ class TorchPredictor(DLPredictor):
 
             .. testcode::
 
+                import numpy as np
+                import torch
                 from ray.train.torch import TorchPredictor
 
                 # List outputs are not supported by default TorchPredictor.
@@ -147,6 +149,7 @@ class TorchPredictor(DLPredictor):
             .. testoutput::
 
                 Predictions: [1 2], [1 2]
+
         """
         with torch.no_grad():
             output = self.model(inputs)

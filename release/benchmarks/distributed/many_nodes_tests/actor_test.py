@@ -93,39 +93,44 @@ def main():
     args, unknown = parse_script_args()
     args.total_actors.sort()
 
-    ray.init(address="auto")
+    from distributed.dashboard_test import DashboardTestAtScale
 
-    dashboard_test = None
-    # Enable it once v2 support prometheus
-    # dashboard_test = DashboardTestAtScale(addr)
+    addr = ray.init(address="auto")
+    dashboard_test = DashboardTestAtScale(addr)
+
     result = {}
     for i in args.total_actors:
         result[f"many_nodes_actor_tests_{i}"] = run_one(
             i, args.cpus_per_actor, args.no_wait
         )
 
+    # Print the results early so if failed in the future, we still
+    # can see it in the log.
+    print(f"Result: {json.dumps(result, indent=2)}")
+
     if "TEST_OUTPUT_JSON" in os.environ and not args.no_report:
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-        if dashboard_test is not None:
-            perf = [
-                {
-                    "perf_metric_name": name,
-                    "perf_metric_value": r["throughput"],
-                    "perf_metric_type": "THROUGHPUT",
-                }
-                for (name, r) in result.items()
-            ]
-            result["perf_metrics"] = perf
-            dashboard_test.update_release_test_result(result)
+        perf = [
+            {
+                "perf_metric_name": name,
+                "perf_metric_value": r["throughput"],
+                "perf_metric_type": "THROUGHPUT",
+            }
+            for (name, r) in result.items()
+        ]
+        result["perf_metrics"] = perf
+        dashboard_test.update_release_test_result(result)
 
         print(f"Writing data into file: {os.environ['TEST_OUTPUT_JSON']}")
         json.dump(result, out_file)
-    print(f"Result: {json.dumps(result, indent=2)}")
+
     print("Test finished successfully!")
     ray.shutdown()
 
     # We need to make sure GCS cool down otherwise, testing infra
-    # might get timeout when fetching the result.
+    # might get timeout when fetching the result because when the driver
+    # got shutdown, many actors needs to be terminated which will
+    # overload GCS.
     print("Sleep for 60s, waiting for the cluster to cool down.")
     sleep(60)
 

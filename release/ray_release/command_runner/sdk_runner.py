@@ -35,6 +35,7 @@ class SDKRunner(CommandRunner):
         file_manager: FileManager,
         working_dir: str,
         sdk: Optional["AnyscaleSDK"] = None,
+        artifact_path: Optional[str] = None,
     ):
         super(SDKRunner, self).__init__(
             cluster_manager=cluster_manager,
@@ -90,7 +91,11 @@ class SDKRunner(CommandRunner):
         )
 
     def run_command(
-        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+        self,
+        command: str,
+        env: Optional[Dict] = None,
+        timeout: float = 3600.0,
+        raise_on_timeout: bool = True,
     ) -> float:
         full_env = self.get_full_command_env(env)
 
@@ -192,7 +197,10 @@ class SDKRunner(CommandRunner):
             raise FetchResultError(f"Could not fetch results from session: {e}") from e
 
     def fetch_results(self) -> Dict[str, Any]:
-        return self._fetch_json(self.result_output_json)
+        return self._fetch_json(self._RESULT_OUTPUT_JSON)
 
     def fetch_metrics(self) -> Dict[str, Any]:
-        return self._fetch_json(self.metrics_output_json)
+        return self._fetch_json(self._METRICS_OUTPUT_JSON)
+
+    def fetch_artifact(self):
+        raise NotImplementedError

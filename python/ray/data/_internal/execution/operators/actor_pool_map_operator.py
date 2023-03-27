@@ -12,6 +12,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
     TaskContext,
+    NodeIdStr,
 )
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -21,8 +22,9 @@ from ray.data._internal.execution.operators.map_operator import (
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
 
-# Type alias for a node id.
-NodeIdStr = str
+# Higher values here are better for prefetching and locality. It's ok for this to be
+# fairly high since streaming backpressure prevents us from overloading actors.
+DEFAULT_MAX_TASKS_IN_FLIGHT = 4
 
 
 class ActorPoolMapOperator(MapOperator):
@@ -64,7 +66,10 @@ class ActorPoolMapOperator(MapOperator):
             ObjectRef[ObjectRefGenerator], Tuple[_TaskState, ray.actor.ActorHandle]
         ] = {}
         # A pool of running actors on which we can execute mapper tasks.
-        self._actor_pool = _ActorPool(autoscaling_policy._config.max_tasks_in_flight)
+        self._actor_pool = _ActorPool(
+            max_tasks_in_flight=self._autoscaling_policy._config.max_tasks_in_flight,
+            max_tasks_rampup_threshold=self._autoscaling_policy.min_workers,
+        )
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = collections.deque()
         # Cached actor class.
@@ -88,7 +93,8 @@ class ActorPoolMapOperator(MapOperator):
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
-        actor = self._cls.remote()
+        ctx = DatasetContext.get_current()
+        actor = self._cls.remote(ctx, src_fn_name=self.name)
         self._actor_pool.add_pending_actor(actor, actor.get_location.remote())
 
     def _add_bundled_input(self, bundle: RefBundle):
@@ -117,7 +123,7 @@ class ActorPoolMapOperator(MapOperator):
             bundle = self._bundle_queue.popleft()
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(task_idx=self._next_task_idx)
-            ref = actor.submit.options(num_returns="dynamic").remote(
+            ref = actor.submit.options(num_returns="dynamic", name=self.name).remote(
                 self._transform_fn_ref, ctx, *input_blocks
             )
             self._next_task_idx += 1
@@ -279,6 +285,10 @@ class ActorPoolMapOperator(MapOperator):
 class _MapWorker:
     """An actor worker for MapOperator."""
 
+    def __init__(self, ctx: DatasetContext, src_fn_name: str):
+        DatasetContext._set_current(ctx)
+        self.src_fn_name: str = src_fn_name
+
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
 
@@ -289,6 +299,9 @@ class _MapWorker:
         *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
         yield from _map_task(fn, ctx, *blocks)
+
+    def __repr__(self):
+        return f"MapWorker({self.src_fn_name})"
 
 
 # TODO(Clark): Promote this to a public config once we deprecate the legacy compute
@@ -304,7 +317,7 @@ class AutoscalingConfig:
     # Maximum number of tasks that can be in flight for a single worker.
     # TODO(Clark): Have this informed by the prefetch_batches configuration, once async
     # prefetching has been ported to this new actor pool.
-    max_tasks_in_flight: int = 2
+    max_tasks_in_flight: int = DEFAULT_MAX_TASKS_IN_FLIGHT
     # Minimum ratio of ready workers to the total number of workers. If the pool is
     # above this ratio, it will be allowed to be scaled up.
     ready_to_total_workers_ratio: float = 0.8
@@ -335,7 +348,8 @@ class AutoscalingConfig:
         return cls(
             min_workers=compute_strategy.min_size,
             max_workers=compute_strategy.max_size,
-            max_tasks_in_flight=compute_strategy.max_tasks_in_flight_per_actor,
+            max_tasks_in_flight=compute_strategy.max_tasks_in_flight_per_actor
+            or DEFAULT_MAX_TASKS_IN_FLIGHT,
             ready_to_total_workers_ratio=compute_strategy.ready_to_total_workers_ratio,
         )
 
@@ -419,10 +433,30 @@ class _ActorPool:
     This class is in charge of tracking the number of in-flight tasks per actor,
     providing the least heavily loaded actor to the operator, and killing idle
     actors when the operator is done submitting work to the pool.
+
+    Args:
+        max_tasks_in_flight: The maximum number of tasks to queue on a single actor at
+            a time. The actual max_tasks_in_flight starts at 1, and then ramps up
+            to this value after `ramp_up_threshold` actors have been created, to allow
+            for even scheduling for datasets with a small number of partitions.
+        max_tasks_rampup_threshold: The number of actors to wait for before ramping up
+            `max_tasks_in_flight`.
     """
 
-    def __init__(self, max_tasks_in_flight: int = float("inf")):
-        self._max_tasks_in_flight = max_tasks_in_flight
+    def __init__(
+        self,
+        max_tasks_in_flight: int = float("inf"),
+        max_tasks_rampup_threshold: int = 1,
+    ):
+        # We start with 1 task in flight, then ramp up to `max_tasks_in_flight`
+        # after the `max_tasks_rampup_threshold` actors have been created.
+        # This is to ensure we don't overschedule tasks to certain actors
+        # when the dataset has a small number of partitions. We first prioritize
+        # even sharding across min_workers actors.
+        self._max_tasks_in_flight_final = max_tasks_in_flight
+        self._max_tasks_in_flight = 1
+        self._max_tasks_rampup_threshold = max_tasks_rampup_threshold
+
         # Number of tasks in flight per actor.
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
         # Node id of each ready actor.
@@ -470,6 +504,11 @@ class _ActorPool:
         actor = self._pending_actors.pop(ready_ref)
         self._num_tasks_in_flight[actor] = 0
         self._actor_locations[actor] = ray.get(ready_ref)
+
+        # Ramp up to the final `max_tasks_in_flight` value after the threshold is
+        # reached.
+        if len(self._num_tasks_in_flight) >= self._max_tasks_rampup_threshold:
+            self._max_tasks_in_flight = self._max_tasks_in_flight_final
         return True
 
     def pick_actor(
@@ -643,14 +682,4 @@ class _ActorPool:
         Returns:
             A node id associated with the bundle, or None if unknown.
         """
-        # Only consider the first block in the bundle for now. TODO(ekl) consider
-        # taking into account other blocks.
-        ref = bundle.blocks[0][0]
-        # This call is pretty fast for owned objects (~5k/s), so we don't need to
-        # batch it for now.
-        locs = ray.experimental.get_object_locations([ref])
-        nodes = locs[ref]["node_ids"]
-        if nodes:
-            return nodes[0]
-        else:
-            return None
+        return bundle.get_cached_location()

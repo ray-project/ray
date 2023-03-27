@@ -6,10 +6,46 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     ApplicationStatusInfo,
     ApplicationStatus,
+    DeploymentStatus,
     StatusOverview,
+    DeploymentInfo,
+    ReplicaState,
+    ServeDeployMode,
 )
+from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+
+def _route_prefix_format(cls, v):
+    """
+    The route_prefix
+    1. must start with a / character
+    2. must not end with a / character (unless the entire prefix is just /)
+    3. cannot contain wildcards (must not have "{" or "}")
+    """
+
+    if v is None:
+        return v
+
+    if not v.startswith("/"):
+        raise ValueError(
+            f'Got "{v}" for route_prefix. Route prefix must start with "/".'
+        )
+    if len(v) > 1 and v.endswith("/"):
+        raise ValueError(
+            f'Got "{v}" for route_prefix. Route prefix '
+            'cannot end with "/" unless the '
+            'entire prefix is just "/".'
+        )
+    if "{" in v or "}" in v:
+        raise ValueError(
+            f'Got "{v}" for route_prefix. Route prefix '
+            "cannot contain wildcards, so it cannot "
+            'contain "{" or "}".'
+        )
+
+    return v
 
 
 @PublicAPI(stability="beta")
@@ -98,6 +134,7 @@ class DeploymentSchema(
         ),
         gt=0,
     )
+    # route_prefix of None means the deployment is not exposed over HTTP.
     route_prefix: Union[str, None] = Field(
         default=DEFAULT.VALUE,
         description=(
@@ -196,38 +233,9 @@ class DeploymentSchema(
 
         return values
 
-    @validator("route_prefix")
-    def route_prefix_format(cls, v):
-        """
-        The route_prefix
-        1. must start with a / character
-        2. must not end with a / character (unless the entire prefix is just /)
-        3. cannot contain wildcards (must not have "{" or "}")
-        """
-
-        # route_prefix of None means the deployment is not exposed
-        # over HTTP.
-        if v is None or v == DEFAULT.VALUE:
-            return v
-
-        if len(v) < 1 or v[0] != "/":
-            raise ValueError(
-                f'Got "{v}" for route_prefix. Route prefix ' 'must start with "/".'
-            )
-        if v[-1] == "/" and len(v) > 1:
-            raise ValueError(
-                f'Got "{v}" for route_prefix. Route prefix '
-                'cannot end with "/" unless the '
-                'entire prefix is just "/".'
-            )
-        if "{" in v or "}" in v:
-            raise ValueError(
-                f'Got "{v}" for route_prefix. Route prefix '
-                "cannot contain wildcards, so it cannot "
-                'contain "{" or "}".'
-            )
-
-        return v
+    deployment_schema_route_prefix_format = validator("route_prefix", allow_reuse=True)(
+        _route_prefix_format
+    )
 
     def get_user_configured_option_names(self) -> Set[str]:
         """Get set of names for all user-configured options.
@@ -240,15 +248,42 @@ class DeploymentSchema(
         }
 
 
+def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSchema:
+    """Converts a DeploymentInfo object to DeploymentSchema.
+
+    Route_prefix will not be set in the returned DeploymentSchema, since starting in 2.x
+    route_prefix is an application-level concept. (This should only be used on the 2.x
+    codepath)
+    """
+
+    return DeploymentSchema(
+        name=name,
+        num_replicas=info.deployment_config.num_replicas,
+        max_concurrent_queries=info.deployment_config.max_concurrent_queries,
+        user_config=info.deployment_config.user_config,
+        autoscaling_config=info.deployment_config.autoscaling_config,
+        graceful_shutdown_wait_loop_s=(
+            info.deployment_config.graceful_shutdown_wait_loop_s
+        ),
+        graceful_shutdown_timeout_s=info.deployment_config.graceful_shutdown_timeout_s,
+        health_check_period_s=info.deployment_config.health_check_period_s,
+        health_check_timeout_s=info.deployment_config.health_check_timeout_s,
+        ray_actor_options=info.replica_config.ray_actor_options,
+        is_driver_deployment=info.is_driver_deployment,
+    )
+
+
 @PublicAPI(stability="beta")
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     name: str = Field(
+        # TODO(cindy): eventually we should set the default app name to a non-empty
+        # string and forbid empty app names.
         default="",
         description=(
             "Application name, the name should be unique within the serve instance"
         ),
     )
-    route_prefix: str = Field(
+    route_prefix: Optional[str] = Field(
         default="/",
         description=(
             "Route prefix for HTTP requests. If not provided, it will use"
@@ -257,7 +292,6 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         ),
     )
     import_path: str = Field(
-        default=None,
         description=(
             "An import path to a bound deployment node. Should be of the "
             'form "module.submodule_1...submodule_n.'
@@ -353,7 +387,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     def get_empty_schema_dict() -> Dict:
         """Returns an empty app schema dictionary.
 
-        Schema can be used as a representation of an empty Serve config.
+        Schema can be used as a representation of an empty Serve application config.
         """
 
         return {
@@ -408,6 +442,295 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         config = dict_keys_snake_to_camel_case(config)
 
         return config
+
+
+@PublicAPI(stability="alpha")
+class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
+    host: str = Field(
+        default="0.0.0.0",
+        description=(
+            "Host for HTTP servers to listen on. Defaults to "
+            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
+            "Serve has started running. Serve must be shut down and restarted "
+            "with the new host instead."
+        ),
+    )
+    port: int = Field(
+        default=8000,
+        description=(
+            "Port for HTTP server. Defaults to 8000. Cannot be updated once "
+            "Serve has started running. Serve must be shut down and restarted "
+            "with the new port instead."
+        ),
+    )
+    root_path: str = Field(
+        default="",
+        description=(
+            'Root path to mount the serve application (for example, "/serve"). All '
+            'deployment routes will be prefixed with this path. Defaults to "".'
+        ),
+    )
+
+
+@PublicAPI(stability="alpha")
+class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+    proxy_location: DeploymentMode = Field(
+        default=DeploymentMode.EveryNode,
+        description=(
+            "The location of HTTP servers.\n"
+            '- "EveryNode" (default): start one HTTP server per node.\n'
+            '- "HeadOnly": start one HTTP server on the head node.\n'
+            '- "NoServer": disable HTTP server.'
+        ),
+    )
+    http_options: HTTPOptionsSchema = Field(
+        default=HTTPOptionsSchema(), description="Options to start the HTTP Proxy with."
+    )
+    applications: List[ServeApplicationSchema] = Field(
+        default=[],
+        description=("The set of Serve applications to run on the Ray cluster."),
+    )
+
+    @validator("applications")
+    def application_names_unique(cls, v):
+        # Ensure there are no duplicate applications listed
+        names = [app.name for app in v]
+        duplicates = {f'"{name}"' for name in names if names.count(name) > 1}
+        if len(duplicates):
+            apps_str = ("application " if len(duplicates) == 1 else "applications ") + (
+                ", ".join(duplicates)
+            )
+            raise ValueError(
+                f"Found multiple configs for {apps_str}. Please remove all duplicates."
+            )
+        return v
+
+    @validator("applications")
+    def application_routes_unique(cls, v):
+        # Ensure each application with a non-null route prefix has unique route prefixes
+        routes = [app.route_prefix for app in v if app.route_prefix is not None]
+        duplicates = {f'"{route}"' for route in routes if routes.count(route) > 1}
+        if len(duplicates):
+            routes_str = (
+                "route prefix " if len(duplicates) == 1 else "route prefixes "
+            ) + (", ".join(duplicates))
+            raise ValueError(
+                f"Found duplicate applications for {routes_str}. Please ensure each "
+                "application's route_prefix is unique."
+            )
+        return v
+
+    @validator("applications")
+    def application_names_nonempty(cls, v):
+        for app in v:
+            if len(app.name) == 0:
+                raise ValueError("Application names must be nonempty.")
+        return v
+
+    @root_validator
+    def nested_host_and_port(cls, values):
+        # TODO (zcin): ServeApplicationSchema still needs to have host and port
+        # fields to support single-app mode, but in multi-app mode the host and port
+        # fields at the top-level deploy config is used instead. Eventually, after
+        # migration, we should remove these fields from ServeApplicationSchema.
+        for app_config in values.get("applications"):
+            if "host" in app_config.dict(exclude_unset=True):
+                raise ValueError(
+                    f'Host "{app_config.host}" is set in the config for application '
+                    f"`{app_config.name}`. Please remove it and set host in the top "
+                    "level deploy config only."
+                )
+            if "port" in app_config.dict(exclude_unset=True):
+                raise ValueError(
+                    f"Port {app_config.port} is set in the config for application "
+                    f"`{app_config.name}`. Please remove it and set port in the top "
+                    "level deploy config only."
+                )
+        return values
+
+    @staticmethod
+    def get_empty_schema_dict() -> Dict:
+        """Returns an empty deploy schema dictionary.
+
+        Schema can be used as a representation of an empty Serve deploy config.
+        """
+
+        return {"applications": []}
+
+
+@PublicAPI(stability="alpha")
+class ReplicaDetails(BaseModel, extra=Extra.forbid, frozen=True):
+    replica_id: str = Field(
+        description=(
+            "Unique ID for the replica. By default, this will be "
+            '"<deployment name>#<replica suffix>", where the replica suffix is a '
+            "randomly generated unique string."
+        )
+    )
+    state: ReplicaState = Field(description="Current state of the replica.")
+    pid: Optional[int] = Field(description="PID of the replica actor process.")
+    actor_name: str = Field(description="Name of the replica actor.")
+    actor_id: Optional[str] = Field(description="ID of the replica actor.")
+    node_id: Optional[str] = Field(
+        description="ID of the node that the replica actor is running on."
+    )
+    node_ip: Optional[str] = Field(
+        description="IP address of the node that the replica actor is running on."
+    )
+    start_time_s: float = Field(
+        description=(
+            "The time at which the replica actor was started. If the controller dies, "
+            "this is the time at which the controller recovers and retrieves replica "
+            "state from the running replica actor."
+        )
+    )
+
+
+@PublicAPI(stability="alpha")
+class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
+    name: str = Field(description="Deployment name.")
+    status: DeploymentStatus = Field(
+        description="The current status of the deployment."
+    )
+    message: str = Field(
+        description=(
+            "If there are issues with the deployment, this will describe the issue in "
+            "more detail."
+        )
+    )
+    deployment_config: DeploymentSchema = Field(
+        description=(
+            "The set of deployment config options that are currently applied to this "
+            "deployment. These options may come from the user's code, config file "
+            "options, or Serve default values."
+        )
+    )
+    replicas: List[ReplicaDetails] = Field(
+        description="Details about the live replicas of this deployment."
+    )
+
+    @validator("deployment_config")
+    def deployment_route_prefix_not_set(cls, v: DeploymentSchema):
+        # Route prefix should not be set at the deployment level. Deployment-level route
+        # prefix is outdated, there should be one route prefix per application
+        if "route_prefix" in v.dict(exclude_unset=True):
+            raise ValueError(
+                "Unexpectedly found a deployment-level route_prefix in the "
+                f'deployment_config for deployment "{cls.name}". The route_prefix in '
+                "deployment_config within DeploymentDetails should not be set; please "
+                "set it at the application level."
+            )
+        return v
+
+
+@PublicAPI(stability="alpha")
+class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
+    name: str = Field(description="Application name.")
+    route_prefix: Optional[str] = Field(
+        ...,
+        description=(
+            "This is the `route_prefix` of the ingress deployment in the application. "
+            "Requests to paths under this HTTP path prefix will be routed to this "
+            "application. This value may be null if the application is deploying "
+            "and app information has not yet fully propagated in the backend; or "
+            "if the user explicitly set the prefix to `None`, so the application isn't "
+            "exposed over HTTP. Routing is done based on longest-prefix match, so if "
+            'you have deployment A with a prefix of "/a" and deployment B with a '
+            'prefix of "/a/b", requests to "/a", "/a/", and "/a/c" go to A and '
+            'requests to "/a/b", "/a/b/", and "/a/b/c" go to B. Routes must not end '
+            'with a "/" unless they\'re the root (just "/"), which acts as a catch-all.'
+        ),
+    )
+    docs_path: Optional[str] = Field(
+        ...,
+        description=(
+            "The path at which the docs for this application is served, for instance "
+            "the `docs_url` for FastAPI-integrated applications."
+        ),
+    )
+    status: ApplicationStatus = Field(
+        description="The current status of the application."
+    )
+    message: str = Field(
+        description="A message that gives more insight into the application status."
+    )
+    last_deployed_time_s: float = Field(
+        description="The time at which the application was deployed."
+    )
+    deployed_app_config: Optional[ServeApplicationSchema] = Field(
+        description=(
+            "The exact copy of the application config that was submitted to the "
+            "cluster. This will include all of, and only, the options that were "
+            "explicitly specified in the submitted config. Default values for "
+            "unspecified options will not be displayed, and deployments that are part "
+            "of the application but unlisted in the config will also not be displayed. "
+            "Note that default values for unspecified options are applied to the "
+            "cluster under the hood, and deployments that were unlisted will still be "
+            "deployed. This config simply avoids cluttering with unspecified fields "
+            "for readability."
+        )
+    )
+    deployments: Dict[str, DeploymentDetails] = Field(
+        description="Details about the deployments in this application."
+    )
+
+    application_details_route_prefix_format = validator(
+        "route_prefix", allow_reuse=True
+    )(_route_prefix_format)
+
+    def get_status_dict(self) -> Dict:
+        # NOTE(zcin): We use json.loads(model.json()) since model.dict() doesn't expand
+        # dataclasses (ApplicationStatusInfo and DeploymentStatusInfo are dataclasses)
+        # See https://github.com/pydantic/pydantic/issues/3764.
+        return json.loads(
+            ServeStatusSchema(
+                name=self.name,
+                app_status=ApplicationStatusInfo(
+                    status=self.status,
+                    message=self.message,
+                    deployment_timestamp=self.last_deployed_time_s,
+                ),
+                deployment_statuses=[
+                    DeploymentStatusInfo(
+                        name=name,
+                        status=d.status,
+                        message=d.message,
+                    )
+                    for name, d in self.deployments.items()
+                ],
+            ).json()
+        )
+
+
+@PublicAPI(stability="alpha")
+class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
+    proxy_location: Optional[DeploymentMode] = Field(
+        description=(
+            "The location of HTTP servers.\n"
+            '- "EveryNode": start one HTTP server per node.\n'
+            '- "HeadOnly": start one HTTP server on the head node.\n'
+            '- "NoServer": disable HTTP server.'
+        ),
+    )
+    http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
+    deploy_mode: ServeDeployMode = Field(
+        description=(
+            "Whether a single-app config of format ServeApplicationSchema or multi-app "
+            "config of format ServeDeploySchema was deployed to the cluster."
+        )
+    )
+    applications: Dict[str, ApplicationDetails] = Field(
+        description="Details about all live applications running on the cluster."
+    )
+
+    @staticmethod
+    def get_empty_schema_dict() -> Dict:
+        """Empty Serve instance details dictionary.
+
+        Represents no Serve instance running on the cluster.
+        """
+
+        return {"deploy_mode": "UNSET", "applications": {}}
 
 
 @PublicAPI(stability="beta")

@@ -87,7 +87,6 @@ class _MockTrialExecutor(RayTrialExecutor):
 
 class TrialRunnerCallbacks(unittest.TestCase):
     def setUp(self):
-
         ray.init()
         self.tmpdir = tempfile.mkdtemp()
         self.callback = TestCallback()
@@ -172,7 +171,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.executor.next_future_result = _ExecutorEvent(
             event_type=_ExecutorEventType.TRAINING_RESULT,
             trial=trials[1],
-            result={"future_result": result},
+            result={_ExecutorEvent.KEY_FUTURE_RESULT: result},
         )
         self.assertTrue(not trials[1].has_reported_at_least_once)
         self.trial_runner.step()
@@ -184,7 +183,9 @@ class TrialRunnerCallbacks(unittest.TestCase):
         # Let the second trial restore from a checkpoint
         trials[1].restoring_from = cp
         self.executor.next_future_result = _ExecutorEvent(
-            event_type=_ExecutorEventType.RESTORING_RESULT, trial=trials[1]
+            event_type=_ExecutorEventType.RESTORING_RESULT,
+            trial=trials[1],
+            result={_ExecutorEvent.KEY_FUTURE_RESULT: None},
         )
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_restore"]["iteration"], 4)
@@ -209,7 +210,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Let the first trial error
         self.executor.next_future_result = _ExecutorEvent(
-            event_type=_ExecutorEventType.ERROR,
+            event_type=_ExecutorEventType.TRAINING_RESULT,
             trial=trials[0],
             result={_ExecutorEvent.KEY_EXCEPTION: Exception()},
         )
@@ -276,17 +277,19 @@ class TrialRunnerCallbacks(unittest.TestCase):
             return first_logger_pos, last_logger_pos, syncer_pos
 
         # Auto creation of loggers, no callbacks, no syncer
-        callbacks = _create_default_callbacks(None, SyncConfig(), None)
+        callbacks = _create_default_callbacks(None, sync_config=SyncConfig())
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
 
         # Auto creation of loggers with callbacks
-        callbacks = _create_default_callbacks([Callback()], SyncConfig(), None)
+        callbacks = _create_default_callbacks([Callback()], sync_config=SyncConfig())
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
 
         # Auto creation of loggers with existing logger (but no CSV/JSON)
-        callbacks = _create_default_callbacks([LoggerCallback()], SyncConfig(), None)
+        callbacks = _create_default_callbacks(
+            [LoggerCallback()], sync_config=SyncConfig()
+        )
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
 
@@ -294,7 +297,9 @@ class TrialRunnerCallbacks(unittest.TestCase):
         [mc1, mc2, mc3] = [Callback(), Callback(), Callback()]
         # Has to be legacy logger to avoid logger callback creation
         lc = LegacyLoggerCallback(logger_classes=DEFAULT_LOGGERS)
-        callbacks = _create_default_callbacks([mc1, mc2, lc, mc3], SyncConfig(), None)
+        callbacks = _create_default_callbacks(
+            [mc1, mc2, lc, mc3], sync_config=SyncConfig()
+        )
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
         self.assertLess(callbacks.index(mc1), callbacks.index(mc2))

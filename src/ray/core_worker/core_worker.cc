@@ -216,10 +216,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << rpc_address_.port() << ", worker ID " << worker_context_.GetWorkerID()
                 << ", raylet " << local_raylet_id;
 
-  gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options);
+  gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options, GetWorkerID());
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
-  RegisterToGcs();
+  RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
   // Initialize the task state event buffer.
   auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
@@ -811,7 +811,8 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id,
   }
 }
 
-void CoreWorker::RegisterToGcs() {
+void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
+                               int64_t worker_launched_time_ms) {
   absl::flat_hash_map<std::string, std::string> worker_info;
   const auto &worker_id = GetWorkerID();
   worker_info.emplace("node_ip_address", options_.node_ip_address);
@@ -847,6 +848,8 @@ void CoreWorker::RegisterToGcs() {
   worker_data->set_is_alive(true);
   worker_data->set_pid(getpid());
   worker_data->set_start_time_ms(current_sys_time_ms());
+  worker_data->set_worker_launch_time_ms(worker_launch_time_ms);
+  worker_data->set_worker_launched_time_ms(worker_launched_time_ms);
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
@@ -1250,8 +1253,12 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
-  ScopedTaskMetricSetter state(
-      worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
+  std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
+  if (options_.worker_type == WorkerType::WORKER) {
+    // We track the state change only from workers.
+    state = std::make_unique<ScopedTaskMetricSetter>(
+        worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
+  }
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
@@ -1412,8 +1419,12 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
                         int64_t timeout_ms,
                         std::vector<bool> *results,
                         bool fetch_local) {
-  ScopedTaskMetricSetter state(
-      worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_WAIT);
+  std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
+  if (options_.worker_type == WorkerType::WORKER) {
+    // We track the state change only from workers.
+    state = std::make_unique<ScopedTaskMetricSetter>(
+        worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_WAIT);
+  }
 
   results->resize(ids.size(), false);
 
@@ -2464,7 +2475,7 @@ Status CoreWorker::ExecuteTask(
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
-    bool *is_application_error) {
+    std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
@@ -2551,7 +2562,6 @@ Status CoreWorker::ExecuteTask(
   } else if (task_spec.IsActorTask()) {
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
-
   status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
@@ -2566,7 +2576,7 @@ Status CoreWorker::ExecuteTask(
       dynamic_return_objects,
       creation_task_exception_pb_bytes,
       is_retryable_error,
-      is_application_error,
+      application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
       /*is_reattempt=*/task_spec.AttemptNumber() > 0);
@@ -2751,7 +2761,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   auto old_id = GetActorId();
   SetActorId(actor_id);
   bool is_retryable_error;
-  bool is_application_error;
+  std::string application_error = "";
   // TODO(swang): Support ObjectRefGenerators in local mode?
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
   RAY_UNUSED(ExecuteTask(task_spec,
@@ -2760,7 +2770,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
                          &dynamic_return_objects,
                          &borrowed_refs,
                          &is_retryable_error,
-                         &is_application_error));
+                         &application_error));
   SetActorId(old_id);
   return returned_refs;
 }
@@ -3580,12 +3590,21 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
   // We consider the worker to be idle if it doesn't own any objects and it doesn't have
   // any object pinning RPCs in flight.
   bool is_idle = !own_objects && pins_in_flight == 0;
-  reply->set_success(is_idle);
+  bool force_exit = request.force_exit();
+  RAY_LOG(DEBUG) << "Exiting: is_idle: " << is_idle << " force_exit: " << force_exit;
+  if (!is_idle && force_exit) {
+    RAY_LOG(INFO) << "Force exiting worker that owns object. This may cause other "
+                     "workers that depends on the object to lose it. "
+                  << "Own objects: " << own_objects
+                  << " # Pins in flight: " << pins_in_flight;
+  }
+  bool will_exit = is_idle || force_exit;
+  reply->set_success(will_exit);
   send_reply_callback(
       Status::OK(),
-      [this, is_idle]() {
+      [this, will_exit]() {
         // If the worker is idle, we exit.
-        if (is_idle) {
+        if (will_exit) {
           Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
                "Worker exits because it was idle (it doesn't have objects it owns while "
                "no task or actor has been scheduled) for a long time.");
@@ -3728,6 +3747,11 @@ void CoreWorker::SetActorTitle(const std::string &title) {
   actor_title_ = title;
 }
 
+void CoreWorker::SetActorReprName(const std::string &repr_name) {
+  RAY_CHECK(direct_task_receiver_ != nullptr);
+  direct_task_receiver_->SetActorReprName(repr_name);
+}
+
 rpc::JobConfig CoreWorker::GetJobConfig() const {
   return worker_context_.GetCurrentJobConfig();
 }
@@ -3804,6 +3828,50 @@ std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
     return_ids[i] = ObjectID::FromIndex(task_id, i + 1);
   }
   return return_ids;
+}
+
+void CoreWorker::RecordTaskLogStart(const std::string &stdout_path,
+                                    const std::string &stderr_path,
+                                    int64_t stdout_start_offset,
+                                    int64_t stderr_start_offset) const {
+  if (options_.is_local_mode) {
+    return;
+  }
+  rpc::TaskLogInfo task_log_info;
+  task_log_info.set_stdout_file(stdout_path);
+  task_log_info.set_stderr_file(stderr_path);
+  task_log_info.set_stdout_start(stdout_start_offset);
+  task_log_info.set_stderr_start(stderr_start_offset);
+
+  auto current_task = worker_context_.GetCurrentTask();
+  RAY_CHECK(current_task)
+      << "We should have set the current task spec while executing the task.";
+  task_manager_->RecordTaskStatusEvent(
+      current_task->AttemptNumber(),
+      *current_task,
+      rpc::TaskStatus::NIL,
+      /* include_task_info */ false,
+      worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
+}
+
+void CoreWorker::RecordTaskLogEnd(int64_t stdout_end_offset,
+                                  int64_t stderr_end_offset) const {
+  if (options_.is_local_mode) {
+    return;
+  }
+  rpc::TaskLogInfo task_log_info;
+  task_log_info.set_stdout_end(stdout_end_offset);
+  task_log_info.set_stderr_end(stderr_end_offset);
+
+  auto current_task = worker_context_.GetCurrentTask();
+  RAY_CHECK(current_task)
+      << "We should have set the current task spec before executing the task.";
+  task_manager_->RecordTaskStatusEvent(
+      current_task->AttemptNumber(),
+      *current_task,
+      rpc::TaskStatus::NIL,
+      /* include_task_info */ false,
+      worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
 }
 
 ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(

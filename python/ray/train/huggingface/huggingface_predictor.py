@@ -74,7 +74,8 @@ class HuggingFacePredictor(Predictor):
                 "prediction will only use CPU. Please consider explicitly "
                 "setting `HuggingFacePredictor(use_gpu=True)` or "
                 "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
-                "enable GPU prediction."
+                "enable GPU prediction. Ignore if you have set `device` or "
+                "`device_map` arguments in the `pipeline` manually."
             )
 
         super().__init__(preprocessor)
@@ -91,11 +92,17 @@ class HuggingFacePredictor(Predictor):
         checkpoint: Checkpoint,
         *,
         pipeline_cls: Optional[Type[Pipeline]] = None,
+        use_gpu: bool = False,
         **pipeline_kwargs,
     ) -> "HuggingFacePredictor":
         """Instantiate the predictor from a Checkpoint.
 
         The checkpoint is expected to be a result of ``HuggingFaceTrainer``.
+
+        Note that the Transformers ``pipeline`` used internally expects to
+        recieve raw text. If you have any Preprocessors in Checkpoint
+        that tokenize the data, remove them by calling
+        ``Checkpoint.set_preprocessor(None)`` beforehand.
 
         Args:
             checkpoint: The checkpoint to load the model, tokenizer and
@@ -104,16 +111,22 @@ class HuggingFacePredictor(Predictor):
             pipeline_cls: A ``transformers.pipelines.Pipeline`` class to use.
                 If not specified, will use the ``pipeline`` abstraction
                 wrapper.
+            use_gpu: If set, the model will be moved to GPU on instantiation and
+                prediction happens on GPU.
             **pipeline_kwargs: Any kwargs to pass to the pipeline
                 initialization. If ``pipeline`` is None, this must contain
                 the 'task' argument. Cannot contain 'model'. Can be used
                 to override the tokenizer with 'tokenizer'. If ``use_gpu`` is
-                True, 'device' will be set to 0 by default.
+                True, 'device' will be set to 0 by default, unless 'device_map' is
+                passed.
         """
         if not pipeline_cls and "task" not in pipeline_kwargs:
             raise ValueError(
                 "If `pipeline_cls` is not specified, 'task' must be passed as a kwarg."
             )
+        if use_gpu and "device_map" not in pipeline_kwargs:
+            # default to using the GPU with the first index
+            pipeline_kwargs.setdefault("device", 0)
         pipeline_cls = pipeline_cls or pipeline_factory
         preprocessor = checkpoint.get_preprocessor()
         with checkpoint.as_directory() as checkpoint_path:
@@ -123,14 +136,12 @@ class HuggingFacePredictor(Predictor):
         return cls(
             pipeline=pipeline,
             preprocessor=preprocessor,
+            use_gpu=use_gpu,
         )
 
     def _predict(
         self, data: Union[list, pd.DataFrame], **pipeline_call_kwargs
     ) -> pd.DataFrame:
-        if self.use_gpu:
-            # default to using the GPU with the first index
-            pipeline_call_kwargs.setdefault("device", 0)
         ret = self.pipeline(data, **pipeline_call_kwargs)
         # Remove unnecessary lists
         try:
@@ -180,8 +191,7 @@ class HuggingFacePredictor(Predictor):
                 data to use as features to predict on. If None, use all
                 columns.
             **pipeline_call_kwargs: additional kwargs to pass to the
-                ``pipeline`` object. If ``use_gpu`` is True, 'device'
-                will be set to 0 by default.
+                ``pipeline`` object.
 
         Examples:
             >>> import pandas as pd
