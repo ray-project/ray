@@ -6,7 +6,7 @@ memory-leak-test-a3c:
     run: A3C
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         # Switch off np.random, which is known to have memory leaks.
         env_config:
             config:
