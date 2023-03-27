@@ -118,6 +118,8 @@ class SimpleBlockAccessor(BlockAccessor):
         return self._items
 
     def size_bytes(self) -> int:
+        # NOTE: This is high-ish overhead, but accurate estimation is important for
+        # streaming execution (see https://github.com/ray-project/ray/issues/33627).
         return len(cloudpickle.dumps(self._items))
 
     def schema(self) -> Any:
