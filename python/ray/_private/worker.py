@@ -2410,6 +2410,7 @@ def get(
     - :doc:`/ray-core/patterns/unnecessary-ray-get`
     - :doc:`/ray-core/patterns/ray-get-submission-order`
     - :doc:`/ray-core/patterns/ray-get-too-many-objects`
+    - :doc:`/ray-core/patterns/ray-get-async`
 
 
     Args:
