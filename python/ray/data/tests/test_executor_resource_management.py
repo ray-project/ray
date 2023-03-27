@@ -138,7 +138,7 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared):
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
-        compute_strategy=ActorPoolStrategy(2, 10),
+        compute_strategy=ActorPoolStrategy(min_size=2, max_size=10),
     )
     op.start(ExecutionOptions())
     assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
@@ -222,7 +222,7 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
-        compute_strategy=ActorPoolStrategy(2, 10),
+        compute_strategy=ActorPoolStrategy(min_size=2, max_size=10),
         min_rows_per_bundle=2,
     )
     op.start(ExecutionOptions())

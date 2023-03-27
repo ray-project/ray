@@ -39,7 +39,7 @@ def test_basic_actors(shutdown_only, pipelined):
     ds = ray.data.range(n)
     ds = maybe_pipeline(ds, pipelined)
     assert sorted(
-        ds.map(lambda x: x + 1, compute=ray.data.ActorPoolStrategy(4, 4)).take()
+        ds.map(lambda x: x + 1, compute=ray.data.ActorPoolStrategy(size=4)).take()
     ) == list(range(1, n + 1))
 
     # Test setting custom max inflight tasks.
@@ -61,7 +61,15 @@ def test_basic_actors(shutdown_only, pipelined):
 
     # Test min no more than max check.
     with pytest.raises(ValueError):
-        ray.data.range(10).map(lambda x: x, compute=ray.data.ActorPoolStrategy(8, 4))
+        ray.data.range(10).map(
+            lambda x: x, compute=ray.data.ActorPoolStrategy(min_size=8, max_size=4)
+        )
+
+    # Test conflicting args.
+    with pytest.raises(ValueError):
+        ray.data.range(10).map(
+            lambda x: x, compute=ray.data.ActorPoolStrategy(min_size=8, size=4)
+        )
 
 
 def test_callable_classes(shutdown_only):

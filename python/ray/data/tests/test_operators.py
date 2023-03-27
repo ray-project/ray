@@ -115,9 +115,7 @@ def test_num_outputs_total():
 def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
-    compute_strategy = (
-        ActorPoolStrategy(max_size=1) if use_actors else TaskPoolStrategy()
-    )
+    compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
@@ -445,9 +443,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     ray.init(num_cpus=0, num_gpus=1)
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
-    compute_strategy = (
-        ActorPoolStrategy(max_size=1) if use_actors else TaskPoolStrategy()
-    )
+    compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,

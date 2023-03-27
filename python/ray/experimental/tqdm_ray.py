@@ -334,7 +334,7 @@ if __name__ == "__main__":
             return x
 
         ray.data.range(1000, parallelism=100).map(
-            sleep, compute=ray.data.ActorPoolStrategy(1, 1)
+            sleep, compute=ray.data.ActorPoolStrategy(size=1)
         ).count()
 
     ray.get(

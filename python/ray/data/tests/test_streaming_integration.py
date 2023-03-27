@@ -217,7 +217,7 @@ def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_dataset_contex
 
     def run():
         ray.data.range(5, parallelism=5).map(
-            lambda x: x, compute=ray.data.ActorPoolStrategy(2, 2)
+            lambda x: x, compute=ray.data.ActorPoolStrategy(size=2)
         ).take_all()
 
     DatasetContext.get_current().execution_options.resource_limits = (
@@ -384,7 +384,9 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_dataset_context):
     # 6 tasks + 1 tasks in flight per actor => need at least 6 actors to run.
     ray.data.range(6, parallelism=6).map_batches(
         barrier1,
-        compute=ray.data.ActorPoolStrategy(1, 6, max_tasks_in_flight_per_actor=1),
+        compute=ray.data.ActorPoolStrategy(
+            min_size=1, max_size=6, max_tasks_in_flight_per_actor=1
+        ),
         batch_size=None,
     ).take_all()
     assert ray.get(b1.get_max_waiters.remote()) == 6
@@ -399,7 +401,9 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_dataset_context):
     # 6 tasks + 2 tasks in flight per actor => only scale up to 3 actors
     ray.data.range(6, parallelism=6).map_batches(
         barrier2,
-        compute=ray.data.ActorPoolStrategy(1, 3, max_tasks_in_flight_per_actor=2),
+        compute=ray.data.ActorPoolStrategy(
+            min_size=1, max_size=3, max_tasks_in_flight_per_actor=2
+        ),
         batch_size=None,
     ).take_all()
     assert ray.get(b2.get_max_waiters.remote()) == 3
@@ -414,7 +418,7 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_dataset_context):
     # This will hang, since the actor pool is too small.
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.data.range(6, parallelism=6).map(
-            barrier3, compute=ray.data.ActorPoolStrategy(1, 2)
+            barrier3, compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2)
         ).take_all()
 
 
@@ -431,7 +435,7 @@ def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_dataset_context)
     DatasetContext.get_current().execution_options.resource_limits.cpu = 2
     ray.data.range(5, parallelism=5).map_batches(
         f,
-        compute=ray.data.ActorPoolStrategy(1, 2),
+        compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
         batch_size=None,
     ).map_batches(lambda x: x, batch_size=None, num_cpus=2).take_all()
 

@@ -227,12 +227,12 @@ def test_validate_topology():
     o2 = MapOperator.create(
         make_transform(lambda block: [b * -1 for b in block]),
         o1,
-        compute_strategy=ray.data.ActorPoolStrategy(8, 8),
+        compute_strategy=ray.data.ActorPoolStrategy(size=8),
     )
     o3 = MapOperator.create(
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
-        compute_strategy=ray.data.ActorPoolStrategy(4, 4),
+        compute_strategy=ray.data.ActorPoolStrategy(size=4),
     )
     topo, _ = build_streaming_topology(o3, opt)
     _validate_topology(topo, ExecutionResources())
@@ -329,7 +329,7 @@ def test_resource_constrained_triggers_autoscaling():
         o4 = MapOperator.create(
             make_transform(lambda block: [b * 3 for b in block]),
             o3,
-            compute_strategy=ray.data.ActorPoolStrategy(1, 2),
+            compute_strategy=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
             ray_remote_args={"num_gpus": incremental_cpu},
         )
         o4.num_active_work_refs = MagicMock(return_value=1)
@@ -486,7 +486,7 @@ def test_configure_output_locality():
     o3 = MapOperator.create(
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
-        compute_strategy=ray.data.ActorPoolStrategy(1, 1),
+        compute_strategy=ray.data.ActorPoolStrategy(size=1),
     )
     # No locality.
     build_streaming_topology(o3, ExecutionOptions(locality_with_output=False))

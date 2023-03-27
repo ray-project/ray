@@ -299,11 +299,11 @@ class Dataset(Generic[T]):
             ...    def __call__(self, batch):
             ...        return self.model(batch)
             >>> # Apply the transform in parallel on GPUs. Since
-            >>> # compute=ActorPoolStrategy(2, 8) the transform will be applied on an
-            >>> # autoscaling pool of 2-8 Ray actors, each allocated 1 GPU by Ray.
+            >>> # compute=ActorPoolStrategy(size=8) the transform will be applied on a
+            >>> # pool of 8 Ray actors, each allocated 1 GPU by Ray.
             >>> from ray.data._internal.compute import ActorPoolStrategy
             >>> ds.map(CachedModel, # doctest: +SKIP
-            ...        compute=ActorPoolStrategy(2, 8),
+            ...        compute=ActorPoolStrategy(size=8),
             ...        num_gpus=1)
 
         Time complexity: O(dataset size / parallelism)
@@ -313,12 +313,9 @@ class Dataset(Generic[T]):
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling actor pool. If wanting to
-                configure the min or max size of the autoscaling actor pool, you can
-                provide an
-                :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
-                instance. If using callable classes for fn, the actor compute strategy
-                must be used.
+                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
+                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
+                autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
@@ -343,9 +340,8 @@ class Dataset(Generic[T]):
         ):
             raise ValueError(
                 "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}"
-                'For example, use ``compute="actors"`` or '
-                "``compute=ActorPoolStrategy(min, max)``."
+                f"specify the actor compute strategy, but got: {compute}. "
+                "For example, use ``compute=ActorPoolStrategy(size=n)``."
             )
 
         self._warn_slow()
@@ -503,11 +499,14 @@ class Dataset(Generic[T]):
             >>> ds.map_batches( # doctest: +SKIP
             ...     CachedModel, # doctest: +SKIP
             ...     batch_size=256, # doctest: +SKIP
-            ...     compute=ActorPoolStrategy(2, 8), # doctest: +SKIP
+            ...     compute=ActorPoolStrategy(size=8), # doctest: +SKIP
             ...     num_gpus=1,
             ... ) # doctest: +SKIP
 
-            ``fn`` can also be a generator, yielding multiple batches in a single invocation. This is useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks.
+            ``fn`` can also be a generator, yielding multiple batches in a single
+            invocation. This is useful when returning large objects. Instead of
+            returning a very large output batch, ``fn`` can instead yield the
+            output batch in chunks.
 
             >>> from typing import Iterator
             >>> def map_fn_with_large_output(batch: List[int]) -> Iterator[List[int]]:
@@ -530,12 +529,10 @@ class Dataset(Generic[T]):
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
                 to a given map task. Default batch_size is 4096 with "default".
-            compute: The compute strategy, either ``"tasks"`` (default) to use Ray
-                tasks, or ``"actors"`` to use an autoscaling actor pool. If you want to
-                configure the size of the autoscaling actor pool, provide an
-                :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>` instance.
-                If you're passing callable type to ``fn``, you must pass an
-                :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>` or ``"actors"``.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
+                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
+                autoscaling actor pool.
             batch_format: Specify ``"default"`` to use the default block format
                 (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
@@ -626,9 +623,8 @@ class Dataset(Generic[T]):
         ):
             raise ValueError(
                 "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}"
-                'For example, use ``compute="actors"`` or '
-                "``compute=ActorPoolStrategy(min, max)``."
+                f"specify the actor compute strategy, but got: {compute}. "
+                "For example, use ``compute=ActorPoolStrategy(size=n)``."
             )
 
         if fn_constructor_args is not None or fn_constructor_kwargs is not None:
@@ -728,7 +724,9 @@ class Dataset(Generic[T]):
             fn: Map function generating the column values given a batch of
                 records in pandas format.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
+                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
+                autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -773,7 +771,9 @@ class Dataset(Generic[T]):
             cols: Names of the columns to drop. If any name does not exist,
                 an exception will be raised.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
+                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
+                autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -819,7 +819,9 @@ class Dataset(Generic[T]):
             cols: Names of the columns to select. If any name is not included in the
                 dataset schema, an exception will be raised.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
+                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
+                autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
@@ -856,12 +858,9 @@ class Dataset(Generic[T]):
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling actor pool. If wanting to
-                configure the min or max size of the autoscaling actor pool, you can
-                provide an
-                :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
-                instance. If using callable classes for fn, the actor compute strategy
-                must be used.
+                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
+                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
+                autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
@@ -884,9 +883,8 @@ class Dataset(Generic[T]):
         ):
             raise ValueError(
                 "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}"
-                'For example, use ``compute="actors"`` or '
-                "``compute=ActorPoolStrategy(min, max)``."
+                f"specify the actor compute strategy, but got: {compute}. "
+                "For example, use ``compute=ActorPoolStrategy(size=n)``."
             )
 
         self._warn_slow()
@@ -934,12 +932,9 @@ class Dataset(Generic[T]):
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling actor pool. If wanting to
-                configure the min or max size of the autoscaling actor pool, you can
-                provide an
-                :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
-                instance. If using callable classes for fn, the actor compute strategy
-                must be used.
+                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
+                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
+                autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -950,9 +945,8 @@ class Dataset(Generic[T]):
         ):
             raise ValueError(
                 "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}"
-                'For example, use ``compute="actors"`` or '
-                "``compute=ActorPoolStrategy(min, max)``."
+                f"specify the actor compute strategy, but got: {compute}. "
+                "For example, use ``compute=ActorPoolStrategy(size=n)``."
             )
 
         self._warn_slow()

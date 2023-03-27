@@ -321,7 +321,9 @@ class GroupedDataset(Generic[T]):
                 input a batch of all records from a single group, and returns a
                 batch of zero or more records, similar to map_batches().
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
+                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
+                autoscaling actor pool.
             batch_format: Specify ``"default"`` to use the default block format
                 (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or

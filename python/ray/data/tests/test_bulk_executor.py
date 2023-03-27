@@ -113,7 +113,7 @@ def test_actor_strategy(ray_start_10_cpus_shared):
     o3 = MapOperator.create(
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
-        compute_strategy=ActorPoolStrategy(1, 2),
+        compute_strategy=ActorPoolStrategy(min_size=1, max_size=2),
         ray_remote_args={"num_cpus": 1},
         name="ActorMap",
     )
