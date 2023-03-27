@@ -377,7 +377,7 @@ def is_directory(uri: str) -> bool:
     return not file_info.is_file
 
 
-def _ensure_directory(uri: str, fs: Optional[pyarrow.fs.FileSystem] = None):
+def _ensure_directory(uri: str, fs: Optional["pyarrow.fs.FileSystem"] = None):
     """Create directory at remote URI.
 
     Some external filesystems require directories to already exist, or at least
