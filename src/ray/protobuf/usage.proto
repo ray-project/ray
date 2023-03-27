@@ -118,10 +118,4 @@ enum TagKey {
   // Name of AIR trainer, or "Custom" if user-defined.
   // Example: "TorchTrainer"
   AIR_TRAINER = 500;
-  // Name of Tune search algorithm or "Custom" if user-defined.
-  // Example: "TuneBOHB", "BasicVariantGenerator"
-  TUNE_SEARCHER = 501;
-  // Name of Tune scheduler algorithm or "Custom" if user-defined.
-  // Example: "FIFOScheduler"
-  TUNE_SCHEDULER = 502;
 }

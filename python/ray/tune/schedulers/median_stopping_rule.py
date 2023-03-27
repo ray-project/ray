@@ -54,7 +54,7 @@ class MedianStoppingRule(FIFOScheduler):
         min_time_slice: int = 0,
         hard_stop: bool = True,
     ):
-        super().__init__()
+        FIFOScheduler.__init__(self)
         self._stopped_trials = set()
         self._grace_period = grace_period
         self._min_samples_required = min_samples_required

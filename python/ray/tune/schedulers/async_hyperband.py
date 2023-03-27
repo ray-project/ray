@@ -65,7 +65,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
-        super().__init__()
+        FIFOScheduler.__init__(self)
         self._reduction_factor = reduction_factor
         self._max_t = max_t
 
