@@ -6,7 +6,6 @@ import tree  # pip install dm-tree
 from typing import (
     Any,
     Mapping,
-    Type,
     Union,
     Optional,
     Callable,
@@ -19,7 +18,6 @@ from ray.rllib.core.learner.learner import (
     Learner,
     ParamOptimizerPair,
     NamedParamOptimizerPairs,
-    Optimizer,
     ParamType,
     ParamDictType,
 )
@@ -170,13 +168,6 @@ class TfLearner(Learner):
     @override(Learner)
     def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
         return list(module.trainable_variables)
-
-    @override(Learner)
-    def get_optimizer_obj(
-        self, module: RLModule, optimizer_cls: Type[Optimizer]
-    ) -> Optimizer:
-        lr = self._optimizer_config["lr"]
-        return optimizer_cls(learning_rate=lr)
 
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
         return isinstance(module, TfRLModule)

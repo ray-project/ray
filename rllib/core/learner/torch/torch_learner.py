@@ -4,7 +4,6 @@ from typing import (
     Any,
     Mapping,
     Union,
-    Type,
     Sequence,
     Hashable,
     Optional,
@@ -22,7 +21,6 @@ from ray.rllib.core.learner.learner import (
     Learner,
     ParamOptimizerPair,
     NamedParamOptimizerPairs,
-    Optimizer,
     ParamType,
     ParamDictType,
 )
@@ -123,15 +121,6 @@ class TorchLearner(Learner):
     @override(Learner)
     def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
         return list(module.parameters())
-
-    @override(Learner)
-    def get_optimizer_obj(
-        self, module: RLModule, optimizer_cls: Type[Optimizer]
-    ) -> Optimizer:
-        # TODO (Kourosh): the abstraction should take in optimizer_config as a
-        # parameter as well.
-        lr = self._optimizer_config["lr"]
-        return optimizer_cls(module.parameters(), lr=lr)
 
     @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch):

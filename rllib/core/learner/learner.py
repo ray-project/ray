@@ -444,23 +444,6 @@ class Learner:
         """
 
     @abc.abstractmethod
-    def get_optimizer_obj(
-        self, module: RLModule, optimizer_cls: Type[Optimizer]
-    ) -> Optimizer:
-        """Returns the optimizer instance of type optimizer_cls given the module.
-
-        In torch this is the optimizer object initialize with module parameters. In tf
-        this is initialized without module parameters.
-
-        Args:
-            module: The module of type RLModule to get the optimizer from.
-            optimizer_cls: The optimizer class to use.
-
-        Returns:
-            The optimizer object.
-        """
-
-    @abc.abstractmethod
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
         """Converts a MultiAgentBatch to a NestedDict of Tensors.
 
@@ -995,9 +978,24 @@ class Learner:
         tensorbatch = self._convert_batch_type(batch)
         fwd_out = self._module.forward_train(tensorbatch)
         loss = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
+
+        mean_ws = {}
+        for module_id in self._module.keys():
+            m = self._module[module_id]
+            parameters = convert_to_numpy(self.get_parameters(m))
+            mean_ws[module_id] = np.mean([w.mean() for w in parameters])
+        print(f"mean weights before update: {mean_ws}")
+        print(f"loss: {loss}")
         gradients = self.compute_gradients(loss)
+        print(f"gradients: {gradients}")
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
+        mean_ws = {}
+        for module_id in self._module.keys():
+            m = self._module[module_id]
+            parameters = convert_to_numpy(self.get_parameters(m))
+            mean_ws[module_id] = np.mean([w.mean() for w in parameters])
+        print(f"mean weights after update: {mean_ws}")
         result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
         self._check_result(result)
         return convert_to_numpy(result)
