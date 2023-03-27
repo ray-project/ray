@@ -65,7 +65,8 @@ class AnyscaleJobRunner(JobRunner):
         # will be uploaded to under it on s3.
         cloud_storage_provider = os.environ.get("ANYSCALE_CLOUD_STORAGE_PROVIDER", "s3")
         self.upload_path = join_s3_paths(
-            f"{cloud_storage_provider}://{self.file_manager.bucket}", self.path_in_bucket
+            f"{cloud_storage_provider}://{self.file_manager.bucket}",
+            self.path_in_bucket,
         )
         self.output_json = "/tmp/output.json"
         self.prepare_commands = []
@@ -305,7 +306,8 @@ class AnyscaleJobRunner(JobRunner):
         )
 
     def fetch_artifact(self):
-        """Fetch artifact (file) from `self._artifact_path` on Anyscale cluster head node.
+        """Fetch artifact (file) from `self._artifact_path` on Anyscale cluster
+        head node.
 
         Note, an implementation detail here is that by the time this function is called,
         the artifact file is already present in s3 bucket by the name of
