@@ -1501,6 +1501,12 @@ cdef class GcsClient:
     cdef:
         shared_ptr[CGcsClient] inner
 
+    def __cinit__(self, GcsClientOptions gcs_options):
+        self.inner.reset(new CGcsClient(dereference(gcs_options.native())))
+
+    def connect(self):
+        check_status(self.inner.get().Connect())
+
     @staticmethod
     cdef wrap(const shared_ptr[CGcsClient]& client):
         cdef GcsClient self = GcsClient.__new__(GcsClient)

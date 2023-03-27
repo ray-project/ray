@@ -318,6 +318,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef cppclass CGcsClient "ray::gcs::GcsClient":
         CGcsClient(const CGcsClientOptions &options)
 
+        CRayStatus Connect()
+
         CInternalKVAccessor &InternalKV()
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
