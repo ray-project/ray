@@ -459,7 +459,7 @@ class JobSubmissionClient(SubmissionClient):
                 job server fails.
         """
         if self._verify is not None:
-            if os.path.dir(self._verify):
+            if os.path.isdir(self._verify):
                 cafile, capath = None, self._verify
             else:
                 cafile, capath = self._verify, None
@@ -467,10 +467,10 @@ class JobSubmissionClient(SubmissionClient):
         else:
             ssl_context = None
         async with aiohttp.ClientSession(
-            cookies=self._cookies, headers=self._headers, ssl=ssl_context
+            cookies=self._cookies, headers=self._headers
         ) as session:
             ws = await session.ws_connect(
-                f"{self._address}/api/jobs/{job_id}/logs/tail"
+                f"{self._address}/api/jobs/{job_id}/logs/tail", ssl=ssl_context
             )
 
             while True:
