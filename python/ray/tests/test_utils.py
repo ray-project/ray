@@ -50,7 +50,8 @@ def test_try_import_each_module():
             del mock_sys_modules[lib]
 
     with patch("ray._private.utils.logger.exception") as mocked_log_exception:
-        with patch.dict(sys.modules, mock_sys_modules) as patched_sys_modules:
+        with patch.dict(sys.modules, mock_sys_modules):
+            patched_sys_modules = sys.modules
 
             try_import_each_module(
                 modules_to_import[:1] + [fake_module] + modules_to_import[1:]
