@@ -246,7 +246,9 @@ def test_ood_events(shutdown_only):
             assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
 
     events = ray.experimental.state.api.list_cluster_events()
-    assert len(events) == 1
+    print(events)
+    # There could be more than 1 event depending on the test timing.
+    assert len(events) >= 1
     assert (
         "Object creation will fail if spilling is required" in events[0]["message"]
     )  # noqa
