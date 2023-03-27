@@ -1,5 +1,4 @@
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union, Iterator
-import warnings
 
 from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
@@ -60,8 +59,9 @@ class PipelinedDatasetIterator(DatasetIterator):
             raise AttributeError
 
         if hasattr(self._base_dataset_pipeline, name) and not name.startswith("_"):
-            # Warning for backwards compatibility. TODO: remove this method in 2.5.
-            warnings.warn(
+            # Raise error for backwards compatibility.
+            # TODO: remove this method in 2.6.
+            raise DeprecationWarning(
                 "session.get_dataset_shard returns a ray.data.DatasetIterator "
                 "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
                 "Use iter_torch_batches(), to_tf(), or iter_batches() to "
@@ -69,7 +69,5 @@ class PipelinedDatasetIterator(DatasetIterator):
                 "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
                 "for full DatasetIterator docs."
             )
-
-            return getattr(self._base_dataset_pipeline, name)
         else:
-            return super().__getattr__(name)
+            raise AttributeError()

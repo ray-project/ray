@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING, Optional, Union, Iterator, Callable, Any
 import time
-import warnings
 
 from ray.data.block import DataBatch
 from ray.data.context import DatasetContext
@@ -67,17 +66,15 @@ class DatasetIteratorImpl(DatasetIterator):
             raise AttributeError()
 
         if hasattr(self._base_dataset, name) and not name.startswith("_"):
-            # Warning for backwards compatibility. TODO: remove this method in 2.5.
-            warnings.warn(
+            # Raise error for backwards compatibility.
+            # TODO: remove this method in 2.6.
+            raise DeprecationWarning(
                 "session.get_dataset_shard returns a ray.data.DatasetIterator "
                 "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
                 "Use iter_torch_batches(), to_tf(), or iter_batches() to "
                 "iterate over one epoch. See "
                 "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
                 "for full DatasetIterator docs.",
-                stacklevel=4,
             )
-
-            return getattr(self._base_dataset, name)
 
         raise AttributeError()
