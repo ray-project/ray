@@ -580,7 +580,6 @@ class EagerTFPolicyV2(Policy):
                 if in_training:
                     output = self.model.forward_train(input_batch)
                 else:
-                    self.model.eval()
                     output = self.model.forward_exploration(input_batch)
 
                 action_dist = output.get(SampleBatch.ACTION_DIST)
