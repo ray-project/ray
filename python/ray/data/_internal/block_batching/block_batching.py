@@ -11,10 +11,10 @@ from ray.data._internal.block_batching.util import (
     format_batches,
     collate,
     extract_data_from_batch,
-    make_async_gen,
     WaitBlockPrefetcher,
     ActorBlockPrefetcher,
 )
+from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import Block, DataBatch
 from ray.data.context import DatasetContext
@@ -45,7 +45,6 @@ def batch_block_refs(
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
-    prefetch_batches: int = 0,
 ) -> Iterator[DataBatch]:
     """Create formatted batches of data from 1 or more block object references.
 
@@ -79,17 +78,12 @@ def batch_block_refs(
         shuffle_seed: The seed to use for the local random shuffle.
         ensure_copy: Whether batches are always copied from the underlying base
             blocks (not zero-copy views).
-        prefetch_batches: The number of batches to fetch ahead of the current batch to
-            process. If set to greater than 0, a separate thread will be used to fetch
-            the specified amount of formatted batches from blocks. This improves
-            performance for non-CPU bound UDFs, allowing batch fetching compute and
-            formatting to be overlapped with the UDF. Defaults to 0 (no prefetching
-            enabled).
 
     Returns:
         An iterator over record batches.
     """
-
+    if stats:
+        stats._legacy_iter_batches = True
     context = DatasetContext.get_current()
 
     if (
@@ -107,11 +101,10 @@ def batch_block_refs(
         _prefetch_blocks(
             block_ref_iter=block_refs,
             prefetcher=prefetcher,
-            stats=stats,
             num_blocks_to_prefetch=prefetch_blocks,
+            eager_free=eager_free,
         ),
         stats=stats,
-        eager_free=eager_free,
     )
 
     yield from batch_blocks(
@@ -124,7 +117,6 @@ def batch_block_refs(
         shuffle_buffer_min_size=shuffle_buffer_min_size,
         shuffle_seed=shuffle_seed,
         ensure_copy=ensure_copy,
-        prefetch_batches=prefetch_batches,
     )
 
 
@@ -139,7 +131,6 @@ def batch_blocks(
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
-    prefetch_batches: int = 0,
 ) -> Iterator[DataBatch]:
     """Create formatted batches of data from 1 or more blocks.
 
@@ -164,17 +155,12 @@ def batch_blocks(
         )
 
         if collate_fn is not None:
-            batch_iter = collate(batch_iter, collate_fn=collate_fn)
+            batch_iter = collate(batch_iter, collate_fn=collate_fn, stats=stats)
 
         batch_iter = extract_data_from_batch(batch_iter)
         yield from batch_iter
 
-    if prefetch_batches > 0:
-        batch_iter = make_async_gen(
-            blocks, fn=_iterator_fn, num_workers=prefetch_batches
-        )
-    else:
-        batch_iter = _iterator_fn(blocks)
+    batch_iter = _iterator_fn(blocks)
 
     for formatted_batch in batch_iter:
         user_timer = stats.iter_user_s.timer() if stats else nullcontext()
@@ -186,6 +172,7 @@ def _prefetch_blocks(
     block_ref_iter: Iterator[ObjectRef[Block]],
     prefetcher: BlockPrefetcher,
     num_blocks_to_prefetch: int,
+    eager_free: bool = False,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterable of Block Object References, returns an iterator
@@ -201,6 +188,9 @@ def _prefetch_blocks(
     if num_blocks_to_prefetch == 0:
         for block_ref in block_ref_iter:
             yield block_ref
+            trace_deallocation(
+                block_ref, "block_batching._prefetch_blocks", free=eager_free
+            )
 
     window_size = num_blocks_to_prefetch
     # Create the initial set of blocks to prefetch.
@@ -219,3 +209,6 @@ def _prefetch_blocks(
         except StopIteration:
             pass
         yield block_ref
+        trace_deallocation(
+            block_ref, "block_batching._prefetch_blocks", free=eager_free
+        )

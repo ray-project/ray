@@ -27,7 +27,7 @@ trainer = DummyTrainer(
     datasets={"train": dataset},
     preprocessor=preprocessor,
     num_epochs=1,  # Stop after this number of epochs is read.
-    prefetch_blocks=1,  # Number of blocks to prefetch when reading data.
+    prefetch_batches=1,  # Number of batches to prefetch when reading data.
     batch_size=None,  # Use whole blocks as batches.
 )
 trainer.fit()

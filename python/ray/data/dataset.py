@@ -51,8 +51,12 @@ from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.dataset_iterator_impl import DatasetIteratorImpl
-from ray.data._internal.stream_split_dataset_iterator import StreamSplitDatasetIterator
+from ray.data._internal.dataset_iterator.dataset_iterator_impl import (
+    DatasetIteratorImpl,
+)
+from ray.data._internal.dataset_iterator.stream_split_dataset_iterator import (
+    StreamSplitDatasetIterator,
+)
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -380,7 +384,6 @@ class Dataset(Generic[T]):
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Optional[str] = "default",
-        prefetch_batches: int = 0,
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -543,14 +546,6 @@ class Dataset(Generic[T]):
                 ``Dict[str, numpy.ndarray]`` for tabular datasets, or None to return
                 the underlying block exactly as is with no additional formatting.
                 The default is "default".
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to process. If set to greater than 0, a separate thread will be used
-                to fetch the specified amount of formatted batches from blocks. This
-                improves performance for non-CPU bound UDFs, allowing batch fetching
-                compute and formatting to be overlapped with the UDF. Defaults to 0 (no
-                prefetching enabled.) Increasing the number of batches to prefetch can
-                result in higher throughput, at the expense of requiring more heap
-                memory to buffer the batches.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch will be a zero-copy, read-only
@@ -650,7 +645,6 @@ class Dataset(Generic[T]):
         transform_fn = generate_map_batches_fn(
             batch_size=batch_size,
             batch_format=batch_format,
-            prefetch_batches=prefetch_batches,
             zero_copy_batch=zero_copy_batch,
         )
 
@@ -3007,13 +3001,15 @@ class Dataset(Generic[T]):
     def iter_batches(
         self,
         *,
-        prefetch_blocks: int = 0,
+        prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        # Deprecated.
+        prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the dataset.
 
@@ -3025,8 +3021,12 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Args:
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -3056,6 +3056,7 @@ class Dataset(Generic[T]):
             )
 
         return self.iterator().iter_batches(
+            prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
@@ -3069,7 +3070,7 @@ class Dataset(Generic[T]):
     def iter_torch_batches(
         self,
         *,
-        prefetch_blocks: int = 0,
+        prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
@@ -3079,6 +3080,8 @@ class Dataset(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        # Deprecated
+        prefetch_blocks: int = 0,
     ) -> Iterator["TorchTensorBatchType"]:
         """Return a local batched iterator of Torch Tensors over the dataset.
 
@@ -3101,8 +3104,12 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Args:
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -3133,6 +3140,7 @@ class Dataset(Generic[T]):
             An iterator over Torch Tensor batches.
         """
         return self.iterator().iter_torch_batches(
+            prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             dtypes=dtypes,
@@ -3147,12 +3155,14 @@ class Dataset(Generic[T]):
     def iter_tf_batches(
         self,
         *,
-        prefetch_blocks: int = 0,
+        prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["tf.dtypes.DType", Dict[str, "tf.dtypes.DType"]]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        # Deprecated
+        prefetch_blocks: int = 0,
     ) -> Iterator[TensorFlowTensorBatchType]:
         """Return a local batched iterator of TensorFlow Tensors over the dataset.
 
@@ -3178,8 +3188,12 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Args:
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -3201,6 +3215,7 @@ class Dataset(Generic[T]):
             An iterator over TensorFlow Tensor batches.
         """
         return self.iterator().iter_tf_batches(
+            prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             dtypes=dtypes,
@@ -3222,12 +3237,14 @@ class Dataset(Generic[T]):
             Union["torch.dtype", List["torch.dtype"], Dict[str, "torch.dtype"]]
         ] = None,
         batch_size: int = 1,
-        prefetch_blocks: int = 0,
+        prefetch_batches: int = 1,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         unsqueeze_label_tensor: bool = True,
         unsqueeze_feature_tensors: bool = True,
+        # Deprecated
+        prefetch_blocks: int = 0,
     ) -> "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
@@ -3288,8 +3305,12 @@ class Dataset(Generic[T]):
                 all tensors. If None, then automatically infer the dtype.
             batch_size: How many samples per batch to yield at a time.
                 Defaults to 1.
-            prefetch_blocks: The number of blocks to prefetch ahead of
-                the current block during the scan.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
@@ -3324,6 +3345,7 @@ class Dataset(Generic[T]):
             feature_column_dtypes=feature_column_dtypes,
             batch_size=batch_size,
             prefetch_blocks=prefetch_blocks,
+            prefetch_batches=prefetch_batches,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
@@ -3337,11 +3359,13 @@ class Dataset(Generic[T]):
         feature_columns: Union[str, List[str]],
         label_columns: Union[str, List[str]],
         *,
-        prefetch_blocks: int = 0,
+        prefetch_batches: int = 1,
         batch_size: int = 1,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        # Deprecated
+        prefetch_blocks: int = 0,
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
@@ -3406,8 +3430,12 @@ class Dataset(Generic[T]):
             label_column: Columns that correspond to model targets. If this is a
                 string, the target data is a tensor. If this is a list, the target data
                 is a ``dict`` that maps column names to their tensor representation.
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
@@ -3436,6 +3464,7 @@ class Dataset(Generic[T]):
         return self.iterator().to_tf(
             feature_columns=feature_columns,
             label_columns=label_columns,
+            prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             drop_last=drop_last,
             batch_size=batch_size,

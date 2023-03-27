@@ -98,6 +98,7 @@ def test_basic_stats(ray_start_10_cpus_shared):
 # TODO(ekl) remove this test once we have the new backend on by default.
 def test_e2e_bulk_sanity(ray_start_10_cpus_shared):
     DatasetContext.get_current().new_execution_backend = True
+    DatasetContext.get_current().use_streaming_executor = False
     result = ray.data.range(5).map(lambda x: x + 1)
     assert result.take_all() == [1, 2, 3, 4, 5], result
 

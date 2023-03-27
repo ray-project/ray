@@ -41,14 +41,14 @@ def execute_to_legacy_block_iterator(
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
-) -> Iterator[ObjectRef[Block]]:
-    """Same as execute_to_legacy_bundle_iterator but returning blocks."""
+) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+    """Same as execute_to_legacy_bundle_iterator but returning blocks and metadata."""
     bundle_iter = execute_to_legacy_bundle_iterator(
         executor, plan, allow_clear_input_blocks, dataset_uuid
     )
     for bundle in bundle_iter:
-        for block, _ in bundle.blocks:
-            yield block
+        for block, metadata in bundle.blocks:
+            yield block, metadata
 
 
 def execute_to_legacy_bundle_iterator(

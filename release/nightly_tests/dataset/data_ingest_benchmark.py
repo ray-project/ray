@@ -27,7 +27,7 @@ class ConsumingActor:
 
 
 def DoConsume(split, rank):
-    prefetch_blocks = 1
+    prefetch_batches = 1
     batch_size = 4096
     num_epochs = 1
 
@@ -51,7 +51,7 @@ def DoConsume(split, rank):
         epochs_read += 1
         batch_start = time.perf_counter()
         for batch in epoch_data.iter_batches(
-            prefetch_blocks=prefetch_blocks, batch_size=batch_size
+            prefetch_batches=prefetch_batches, batch_size=batch_size
         ):
             batch_delay = time.perf_counter() - batch_start
             batch_delays.append(batch_delay)

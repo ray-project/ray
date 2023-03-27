@@ -899,15 +899,16 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_dataset_context)
 {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, 'obj_store_mem_peak': N}
 
 Dataset iterator time breakdown:
-* In ray.wait(): T
-* In ray.get(): T
+* Total time user code is blocked: T
+* Total time in user code: T
+* Total time overall: T
 * Num blocks local: Z
 * Num blocks remote: Z
 * Num blocks unknown location: N
-* In next_batch(): T
-* In format_batch(): T
-* In user code: T
-* Total time: T
+* Batch iteration time breakdown (summed across prefetch threads):
+    * In ray.get(): T min, T max, T avg, T total
+    * In batch creation: T min, T max, T avg, T total
+    * In batch formatting: T min, T max, T avg, T total
 """
     )
 
