@@ -172,13 +172,13 @@ TLS Authentication
 ------------------
 
 Ray can be configured to use TLS on it's gRPC channels.
-This means that connecting to the Ray head will require
+This means that connecting to the Ray head requires
 an appropriate set of credentials and also that data exchanged between
-various processes (client, head, workers) will be encrypted.
+various processes (client, head, workers) is encrypted.
 
-In TLS, the private key and public key are used for encryption and decryption, in
-which the former is kept secret by the owner and the latter is shared with the other
-party. This pattern is to make sure that only the intended recipient can read the message.
+In TLS, the private key and public key are used for encryption and decryption. The
+former is kept secret by the owner and the latter is shared with the other party.
+This pattern ensures that only the intended recipient can read the message.
 
 A Certificate Authority (CA) is a trusted third party that certifies the identity of the
 public key owner. The digital certificate issued by the CA contains the public key itself, 
@@ -186,13 +186,13 @@ the identity of the public key owner, and the expiration date of the certificate
 if the owner of the public key does not want to obtain a digital certificate from a CA, 
 they can generate a self-signed certificate with some tools like OpenSSL. 
 
-In order to obtain a digital certificate, the owner of the public key must generate a
-Certificate Signing Request (CSR). The CSR contains information about the owner of the public 
-key and the public key itself. For Ray, some details need to be paid attention to for achieving 
+To obtain a digital certificate, the owner of the public key must generate a Certificate Signing
+Request (CSR). The CSR contains information about the owner of the public 
+key and the public key itself. For Ray, some additional steps are required for achieving 
 a successful TLS encryption.
 
-Here is a step-by-step guide to add TLS Authentication to a static Kubernetes Ray cluster using a
-self-signed certificates:
+Here is a step-by-step guide for adding TLS Authentication to a static Kubernetes Ray cluster using
+a self-signed certificates:
 
 Step 1: Generate a private key and self-signed certificate for CA
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -214,15 +214,14 @@ then paste encoded strings to the secret.yaml.
   cat ca.key | base64
   cat ca.crt | base64
 
-Step 2: Generate individual private keys and self-signed certificates for Ray head and workers
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 2: Generate individual private keys and self-signed certificates for the Ray head and workers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Within the `YAML file
-<https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.tls.yaml>`__, there is a ConfigMap named `tls` that
-includes two shell scripts: `gencert_head.sh` and `gencert_worker.sh`. These scripts are used to
-produce the private key and self-signed certificate files (`tls.key` and `tls.crt`) for both head and
-worker Pods in the initContainer of each deployment. By using the initContainer, we can dynamically
-retrieve the `POD_IP` to the `[alt_names]` section. 
+The `YAML file
+<https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.tls.yaml>`__, has a ConfigMap named `tls` that
+include two shell scripts: `gencert_head.sh` and `gencert_worker.sh`. These scripts produce the private key
+and self-signed certificate files (`tls.key` and `tls.crt`) for both head and worker Pods in the initContainer
+of each deployment. By using the initContainer, we can dynamically retrieve the `POD_IP` to the `[alt_names]` section. 
 
 The scripts perform the following steps: first, a 2048-bit RSA private key is generated and saved as 
 `/etc/ray/tls/tls.key`. Then, a Certificate Signing Request (CSR) is generated using the `tls.key` file
