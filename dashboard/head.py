@@ -18,7 +18,11 @@ from ray._raylet import GcsClient
 from ray._private.gcs_utils import GcsAioClient, check_health
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
-from ray.dashboard.consts import DASHBOARD_METRIC_PORT, DASHBOARD_RPC_PORT
+from ray.dashboard.consts import (
+    DASHBOARD_METRIC_PORT,
+    DASHBOARD_RPC_PORT,
+    DASHBOARD_PUBLIC_ADDRESS_ENV_NAME,
+)
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 from typing import Optional, Set
@@ -124,9 +128,12 @@ class DashboardHead:
         self.gcs_aio_client = None
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
-        self.ip = ray.util.get_node_ip_address()
+        # The dashboard's public IP address can be overridden from the environment
+        # e.g. for network-isolated Docker containers.
+        self.ip = os.environ.get(
+            DASHBOARD_PUBLIC_ADDRESS_ENV_NAME, ray.util.get_node_ip_address()
+        )
         DataOrganizer.head_node_ip = self.ip
-        ip, port = gcs_address.split(":")
 
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"

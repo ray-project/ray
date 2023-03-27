@@ -26,6 +26,8 @@ PURGE_DATA_INTERVAL_SECONDS = 60 * 10
 ORGANIZE_DATA_INTERVAL_SECONDS = 2
 DASHBOARD_RPC_ADDRESS = "dashboard_rpc"
 DASHBOARD_RPC_PORT = env_integer("DASHBOARD_RPC_PORT", 0)
+# Override the public IP of the dashboard e.g. for isolated Docker containers
+DASHBOARD_PUBLIC_ADDRESS_ENV_NAME = "RAY_DASHBOARD_IP_ADDRESS"
 GCS_SERVER_ADDRESS = "GcsServerAddress"
 # GCS check alive
 GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR = env_integer(
