@@ -162,7 +162,7 @@ class ApplicationState:
                     return
                 try:
                     ray.get(finished[0])
-                    logger.info("Deploy task for app {self.name} ran successfully.")
+                    logger.info(f"Deploy task for app '{self.name}' ran successfully.")
                 except RayTaskError as e:
                     self.status = ApplicationStatus.DEPLOY_FAILED
                     # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
@@ -220,11 +220,20 @@ class ApplicationState:
         )
 
     def list_deployment_details(self) -> Dict[str, DeploymentDetails]:
-        """Gets detailed info on all deployments in this application."""
-        return {
+        """Gets detailed info on all live deployments in this application.
+        (Does not include deleted deployments.)
+
+        Returns: a dictionary of deployment info. The set of deployment info returned
+            may not be the full list of deployments that are part of the application.
+            This can happen when the application is still deploying and bringing up
+            deployments, or when the application is deleting and some deployments have
+            been deleted.
+        """
+        details = {
             name: self.deployment_state_manager.get_deployment_details(name)
             for name in self.get_all_deployments()
         }
+        return {k: v for k, v in details.items() if v is not None}
 
 
 class ApplicationStateManager:
@@ -321,7 +330,10 @@ class ApplicationStateManager:
         return self._application_states[name].list_deployment_details()
 
     def create_application_state(
-        self, name: str, deploy_obj_ref: ObjectRef, deployment_time: float = 0
+        self,
+        name: str,
+        deploy_obj_ref: ObjectRef,
+        deployment_time: float = 0,
     ):
         """Create application state
         This is used for holding the deploy_obj_ref which is created by run_graph method
