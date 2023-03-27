@@ -41,17 +41,22 @@ class RemoteTrainingHelper:
     def local_training_helper(self, fw, scaling_mode) -> None:
         env = gym.make("CartPole-v1")
         scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
-        learner_group = get_learner_group(fw, env, scaling_config, eager_tracing=True)
-        local_learner = get_learner(fw, env)
+        lr = 1e-3
+        learner_group = get_learner_group(
+            fw, env, scaling_config, learning_rate=lr, eager_tracing=True
+        )
+        local_learner = get_learner(fw, env, learning_rate=lr)
         local_learner.build()
 
         # make the state of the learner and the local learner_group identical
         local_learner.set_state(learner_group.get_state())
-
+        check(local_learner.get_state(), learner_group.get_state())
         reader = get_cartpole_dataset_reader(batch_size=500)
         batch = reader.next()
         batch = batch.as_multi_agent()
-        check(local_learner.update(batch), learner_group.update(batch))
+        learner_update = local_learner.update(batch)
+        learner_group_update = learner_group.update(batch)
+        check(learner_update, learner_group_update)
 
         new_module_id = "test_module"
 

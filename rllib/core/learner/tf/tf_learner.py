@@ -158,7 +158,6 @@ class TfLearner(Learner):
             self._optim_to_param[new_optim] = []
             for param_ref in param_seq:
                 self._optim_to_param[new_optim].append(param_ref)
-                self._param_to_optim[param_ref] = new_optim
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:

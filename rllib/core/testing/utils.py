@@ -95,6 +95,18 @@ def get_learner(
     learning_rate: float = 1e-3,
     is_multi_agent: bool = False,
 ) -> "Learner":
+    """Construct a learner for testing.
+
+    Args:
+        framework: The framework used for training.
+        env: The environment to train on.
+        learning_rate: The learning rate to use for each learner.
+        is_multi_agent: Whether to construct a multi agent rl module.
+
+    Returns:
+        A learner.
+
+    """
 
     _cls = get_learner_class(framework)
     spec = get_module_spec(framework=framework, env=env, is_multi_agent=is_multi_agent)
@@ -109,6 +121,7 @@ def get_learner_group(
     framework: str,
     env: "gym.Env",
     scaling_config: LearnerGroupScalingConfig,
+    learning_rate: float = 1e-3,
     is_multi_agent: bool = False,
     eager_tracing: bool = False,
 ) -> LearnerGroup:
@@ -119,6 +132,7 @@ def get_learner_group(
         env: The environment to train on.
         scaling_config: A config for the amount and types of resources to use for
             training.
+        learning_rate: The learning rate to use for each learner.
         is_multi_agent: Whether to construct a multi agent rl module.
         eager_tracing: TF Specific. Whether to use tf.function for tracing
             optimizations.
@@ -136,7 +150,7 @@ def get_learner_group(
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
-        optimizer_config={"lr": 0.1},
+        optimizer_config={"lr": learning_rate},
         learner_scaling_config=scaling_config,
         learner_hyperparameters=learner_hps,
     )
@@ -155,5 +169,4 @@ def add_module_to_learner_or_learner_group(
     learner_group_or_learner.add_module(
         module_id=module_id,
         module_spec=get_module_spec(framework, env, is_multi_agent=False),
-        optimizer_cls=get_optimizer_default_class(framework),
     )

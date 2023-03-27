@@ -248,9 +248,9 @@ class Learner:
         self._module: MultiAgentRLModule = None
         # These are set for properly applying optimizers and adding or removing modules.
         self._optim_to_param: Dict[Optimizer, List[ParamRef]] = {}
-        self._param_to_optim: Dict[ParamRef, Optimizer] = {}
-        self._params: ParamDictType = {}
         self._name_to_optim: Dict[str, Optimizer] = {}
+        self._params: ParamDictType = {}
+        self._module_to_optim_name: Dict[ModuleID, str] = defaultdict(list)
 
     @property
     def distributed(self) -> bool:
@@ -294,6 +294,7 @@ class Learner:
                 ) = self._configure_optimizers_per_module_helper(module_id)
                 pairs.extend(module_pairs)
                 name_to_optim.update(module_name_to_optim)
+                self._module_to_optim_name[module_id].extend(list(name_to_optim.keys()))
         self._name_to_optim = name_to_optim
         return pairs
 
@@ -549,8 +550,8 @@ class Learner:
                 param_ref = self.get_param_ref(param)
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
-                self._param_to_optim[param_ref] = optimizer
         self._name_to_optim.update(name_to_optimizer)
+        self._module_to_optim_name[module_id].extend(list(name_to_optimizer.keys()))
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def remove_module(self, module_id: ModuleID) -> None:
@@ -568,15 +569,12 @@ class Learner:
                 param_ref = self.get_param_ref(param)
                 if param_ref in self._params:
                     del self._params[param_ref]
-                if param_ref in self._param_to_optim:
-                    optimizer = self._param_to_optim[param_ref]
-                    if optimizer in self._optim_to_param:
-                        del self._optim_to_param[optimizer]
-                    del self._param_to_optim[param_ref]
-            optim_names = list(self._name_to_optim.keys())
-            for name in optim_names:
-                if name.startswith(module_id):
-                    del self._name_to_optim[name]
+            optim_names = self._module_to_optim_name[module_id]
+            for optim_name in optim_names:
+                optim = self._name_to_optim[optim_name]
+                del self._optim_to_param[optim]
+                del self._name_to_optim[optim_name]
+            del self._module_to_optim_name[module_id]
 
         self._module.remove_module(module_id)
 
@@ -598,7 +596,6 @@ class Learner:
                 param_ref = self.get_param_ref(param)
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
-                self._param_to_optim[param_ref] = optimizer
 
     @OverrideToImplementCustomLogic
     def compute_loss(
@@ -625,7 +622,7 @@ class Learner:
             batch: The data that was used to compute fwd_out.
 
         Returns:
-            A dictionary of losses. NOTE that the dictionary
+            A dictionary of losses. The dictionary
             must contain one protected key "total_loss" which will be used for
             computing gradients through.
         """
@@ -666,7 +663,7 @@ class Learner:
             fwd_out: The output of the forward pass for this particular module.
 
         Returns:
-            A dictionary of losses. NOTE that the dictionary
+            A dictionary of losses. The dictionary
             must contain one protected key "total_loss" which will be used for
             computing gradients through.
         """
@@ -885,9 +882,10 @@ class Learner:
     def save_state(self, dir: Union[str, pathlib.Path]) -> None:
         """Save the state of the learner to dir
 
+        NOTE: By default only the module state will be saved.
+
         Args:
             dir: The dir to save the state to.
-            NOTE: By default only the module state will be saved.
 
         """
         self._check_if_build_called()
@@ -916,10 +914,7 @@ class Learner:
         # TODO(avnishn) from checkpoint doesn't currently support modules_to_load,
         # but it should, so we will add it later.
         self._module_obj = MultiAgentRLModule.from_checkpoint(dir / "module_state")
-        self._param_to_optim = {}
-        self._params = {}
-        self._optim_to_param = {}
-        self._is_built = False
+        self._reset()
         self.build()
         self._load_optimizers(dir / "optimizer_state")
 
@@ -1013,6 +1008,12 @@ class Learner:
                 "Learner.build() must be called after constructing a "
                 "Learner and before calling any methods on it."
             )
+
+    def _reset(self):
+        self._params = {}
+        self._optim_to_param = {}
+        self._name_to_optim = {}
+        self._is_built = False
 
     def apply(self, func, *_args, **_kwargs):
         return func(self, *_args, **_kwargs)

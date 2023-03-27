@@ -186,14 +186,6 @@ class TestLearner(unittest.TestCase):
             ]
             check(learner_1_optims_serialized, learner_2_optims_serialized)
 
-            learner_1_optims_serialized = [
-                optim.state_dict() for optim in learner1._param_to_optim.values()
-            ]
-            learner_2_optims_serialized = [
-                optim.state_dict() for optim in learner2._param_to_optim.values()
-            ]
-            check(learner_1_optims_serialized, learner_2_optims_serialized)
-
 
 if __name__ == "__main__":
     import pytest
