@@ -788,11 +788,14 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 }
 
 void WorkerPool::ExecuteOnPrestartWorkersStarted(std::function<void()> callback) {
+  bool prestart_on_first_driver =
+      RayConfig::instance().enable_worker_prestart_first_driver();
+  bool prestart_on_node_start = RayConfig::instance().enable_worker_prestart();
   if (first_job_registered_ ||
       first_job_registered_python_worker_count_ >=  // Don't wait if prestart is completed
           first_job_driver_wait_num_python_workers_ ||
-      !RayConfig::instance()
-           .enable_worker_prestart()) {  // Don't wait if worker prestart is disabled
+      !prestart_on_first_driver ||
+      !prestart_on_node_start) {  // Don't wait if worker prestart is disabled
     callback();
     return;
   }
@@ -820,6 +823,13 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   if (driver->GetLanguage() == Language::JAVA) {
     send_reply_callback(Status::OK(), port);
   } else {
+    bool prestart_on_first_driver =
+        !first_job_registered_ &&
+        RayConfig::instance().enable_worker_prestart_first_driver();
+    if (prestart_on_first_driver) {
+      PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+    }
+
     // Invoke the `send_reply_callback` later to only finish driver
     // registration after all prestarted workers are registered to Raylet.
     // NOTE(clarng): prestart is only for python workers.
