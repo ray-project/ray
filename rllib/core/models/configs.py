@@ -130,14 +130,18 @@ class MLPHeadConfig(ModelConfig):
 @ExperimentalAPI
 @dataclass
 class FreeStdMLPHeadConfig(ModelConfig):
-    """Configuration for an MLPHead with a floating second half of outputs.
+    """Configuration of an MLP head for homogeneous normal distributions.
 
-    This is a convenience wrapper around MLPHeadConfig.
-    It does not dictate the output dimensions, but instead uses the output dimensions
-    of the configured MLPHHeadConfig.
-    The output dimensions of the configured MLPHeadConfig must be even and are
-    divided by two to gain the output dimensions of the underlying MLP, while the
-    standard deviations are floating free biases.
+    The homogeneous normal distribution is a normal distribution parameterized by a 
+    mean and scalar standard deviation. In this distrubtion all action dimensions are 
+    assumed to have the same variance parameter.
+
+    The number of parameters for this head is action_dim + 1. The first action_dim
+    parameters are the mean of the normal distribution. The last parameter is the
+    log of the standard deviation. action_dim is obtained from the configured 
+    MLPHeadConfig. Therefore, the output dimensions of the configured MLPHeadConfig 
+    must be even and are divided by two to obtain the output dimensions of the 
+    underlying MLP, while the standard deviation is free floating scalar parameter.
 
     Attributes:
         mlp_head_config: MLPHeadConfig for the MLPHead that produces the first half
