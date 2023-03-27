@@ -4,6 +4,7 @@ click
 anyscale
 slackclient
 boto3
+google-cloud-storage
 jinja2
 PyGithub
 pydantic < 1.10.0
