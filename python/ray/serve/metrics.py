@@ -8,6 +8,8 @@ REPLICA_TAG = "replica"
 
 def _add_serve_metric_tags(tag_keys: Optional[Tuple[str]] = None):
     """Add serve context tags to the tag_keys"""
+    if context.get_internal_replica_context() is None:
+        return tag_keys
     if DEPLOYMENT_TAG in tag_keys:
         raise ValueError(f"'{DEPLOYMENT_TAG}' tag is reserved for Ray Serve metrics")
     if REPLICA_TAG in tag_keys:
@@ -22,6 +24,8 @@ def _add_serve_metric_tags(tag_keys: Optional[Tuple[str]] = None):
 
 def _add_serve_metric_default_tags(default_tags: Dict[str, str]):
     """Add serve context tags and values to the default_tags"""
+    if context.get_internal_replica_context() is None:
+        return default_tags
     if DEPLOYMENT_TAG in default_tags:
         raise ValueError(f"'{DEPLOYMENT_TAG}' tag is reserved for Ray Serve metrics")
     if REPLICA_TAG in default_tags:
