@@ -252,21 +252,21 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
 
     def testSynchPass(self):
         analysis = self.synchSetup(True)
-
-        all_results = set(
-            analysis.dataframe(metric="mean_accuracy", mode="max")["mean_accuracy"]
+        self.assertTrue(
+            all(
+                analysis.dataframe(metric="mean_accuracy", mode="max")["mean_accuracy"]
+                == 43
+            )
         )
-
-        self.assertEqual(all_results, {43})
 
     def testSynchPassLast(self):
         analysis = self.synchSetup(True, param=[30, 20, 10])
-
-        all_results = set(
-            analysis.dataframe(metric="mean_accuracy", mode="max")["mean_accuracy"]
+        self.assertTrue(
+            all(
+                analysis.dataframe(metric="mean_accuracy", mode="max")["mean_accuracy"]
+                == 33
+            )
         )
-
-        self.assertEqual(all_results, {33})
 
     def testExploitWhileSavingTrial(self):
         """Tests a synch PBT failure mode where a trial misses its `SAVING_RESULT` event

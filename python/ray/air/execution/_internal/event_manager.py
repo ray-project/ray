@@ -109,13 +109,9 @@ class RayEventManager:
         try:
             result = ray.get(future)
         except Exception as e:
-            if on_error:
-                on_error(e)
-            else:
-                raise e
+            on_error(e)
         else:
-            if on_result:
-                on_result(result)
+            on_result(result)
 
     def wait(
         self,

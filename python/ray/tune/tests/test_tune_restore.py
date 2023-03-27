@@ -403,8 +403,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 **config,
             )
 
-        print("---- RESTARTING RUN ----")
-
         analysis = tune.run(
             "trainable",
             resume=True,
@@ -446,8 +444,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 search_alg=search_alg,
                 **config,
             )
-
-        print("---- RESTARTING RUN ----")
 
         analysis = tune.run(
             "trainable",
