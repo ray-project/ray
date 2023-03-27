@@ -208,12 +208,6 @@ class DatasetIterator(abc.ABC):
             get_device,
         )
 
-        # Automatically move torch tensors to the appropriate device.
-        if device is None:
-            default_device = get_device()
-            if default_device.type != "cpu":
-                device = default_device
-
         if collate_fn is not None and (dtypes is not None or device is not None):
             raise ValueError(
                 "collate_fn cannot be used with dtypes and device. It is expected that"
@@ -222,6 +216,12 @@ class DatasetIterator(abc.ABC):
             )
 
         if collate_fn is None:
+
+            # Automatically move torch tensors to the appropriate device.
+            if device is None:
+                default_device = get_device()
+                if default_device.type != "cpu":
+                    device = default_device
 
             def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
                 return convert_ndarray_batch_to_torch_tensor_batch(
