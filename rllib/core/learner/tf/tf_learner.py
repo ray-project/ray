@@ -124,30 +124,33 @@ class TfLearner(Learner):
     @override(Learner)
     def load_state(
         self,
-        dir: Union[str, pathlib.Path],
+        path: Union[str, pathlib.Path],
     ) -> None:
-        # this is a potentially very expensive operation since we are creating an
-        # MARL Module at build time then destroying it and creating a new one
-        # from checkpoint, but it is necessary because of complications with
-        # the way that ray tune restores failed trials.
+        # This operation is potentially very costly because a MARL Module is created at
+        # build time, destroyed, and then a new one is created from a checkpoint. 
+        # However, it is necessary due to complications with the way that Ray Tune 
+        # restores failed trials. When Tune restores a failed trial, it reconstructs the
+        # entire experiment from the initial config. Therefore, to reflect any changes 
+        # made to the learner's modules, the module created by Tune is destroyed and 
+        # then rebuilt from the checkpoint.
         with self._strategy.scope():
-            super().load_state(dir)
+            super().load_state(path)
 
     @override(Learner)
-    def _save_optimizers(self, dir: Union[str, pathlib.Path]) -> None:
-        dir = pathlib.Path(dir)
-        dir.mkdir(parents=True, exist_ok=True)
+    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
         for name, optim in self._name_to_optim.items():
             state = tf.keras.optimizers.serialize(optim)
             state = tf.nest.map_structure(convert_numpy_to_python_types, state)
-            with open(dir / f"{name}.json", "w") as f:
+            with open(path / f"{name}.json", "w") as f:
                 json.dump(state, f)
 
     @override(Learner)
-    def _load_optimizers(self, dir: Union[str, pathlib.Path]) -> None:
-        dir = pathlib.Path(dir)
+    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        path = pathlib.Path(path)
         for name in self._name_to_optim.keys():
-            with open(dir / f"{name}.json", "r") as f:
+            with open(path / f"{name}.json", "r") as f:
                 state = json.load(f)
             new_optim = tf.keras.optimizers.deserialize(state)
             old_optim = self._name_to_optim[name]

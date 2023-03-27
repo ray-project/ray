@@ -57,7 +57,8 @@ Optimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
 ParamType = Union["torch.Tensor", "tf.Variable"]
 ParamOptimizerPair = Tuple[Sequence[ParamType], Optimizer]
 ParamOptimizerPairs = List[ParamOptimizerPair]
-NamedParamOptimizerPairs = List[Tuple[str, Tuple[Sequence[ParamType], Optimizer]]]
+NamedParamOptimizerPair = Dict[str, ParamOptimizerPair]
+NamedParamOptimizerPairs = List[NamedParamOptimizerPair]
 ParamRef = Hashable
 ParamDictType = Dict[ParamRef, ParamType]
 
@@ -325,12 +326,14 @@ class Learner:
         if isinstance(pair_or_pairs, tuple):
             # pairs is a singleParamOptimizerPair
             pair = pair_or_pairs
-            name_to_optim[f"{module_id}"] = pair[1]
+            _, optim = pair
+            name_to_optim[f"{module_id}"] = optim
             pairs.append(pair)
         else:
             # pairs is a NamedParamOptimizerPairs
-            for name, pair in pairs:
-                name_to_optim[f"{module_id}_{name}"] = pair[1]
+            for name, pair in pairs.items():
+                _, optim = pair
+                name_to_optim[f"{module_id}_{name}"] = optim
                 pairs.append(pair)
         return pairs, name_to_optim
 
@@ -340,30 +343,19 @@ class Learner:
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         """Configures an optimizer for the given module_id.
 
-        This method is by default called for each RLModule that is apart of the greater
-        Mulit-Agent RLModule, that is being trained by the Learner, and any new module
-        that is being added to the Multi-Agent RLModule during training via a call to
-        `add_module`. The method should construct a ParamOptimizerPair or
+        This method is called for each RLModule in the Multi-Agent RLModule being 
+        trained by the Learner, as well as any new module added during training via 
+        add_module. It should construct a ParamOptimizerPair or 
         NamedParamOptimizerPairs.
 
-        So for example, if one were to implement this function for a PPORLModule (which
-        has a value function network and policy network) with different optimizers for
-        the policy, then `configure_optimizer_per_module` should return a
-        NamedOptimizerPairs: a list of tuples, where the format of each tuple is
-        (optimizer_name, (parameters, optimizer)). optimizer_name is a string to
-        identify the optimizer e.g. "policy_optim", "value_optim", etc. parameters is
-        the parameters of the network that the optimizer is optimizing, and optimizer
-        is the optimizer instance itself.
+        For instance, for a PPORLModule with different optimizers for policy and value
+        networks, it should return a list of NamedParamOptimizerPairs, where each 
+        NamedParamOptimizerPair is a dictionary mapping from optimizer name to a 
+        ParamOptimizerPair. 
 
-        If one wanted to instead use one optimizer for both whole RLModule, then
-        `configure_optimizer_per_module` should return a  ParamOptimizerPair:
-        a tuple, where the format of the tuple is (parameters, optimizer). parameters is
-        the parameters of the RLModule that the optimizer is optimizing, and optimizer
-        is the optimizer instance itself.
-
-        One can use the parameter `module_id` to determine which module to configure
-        the optimizer for, in the case where different optimizers are required for
-        different modules.
+        Alternatively, for one optimizer for the entire RLModule, it should return a 
+        ParamOptimizerPair. The parameter module_id can be used to determine which 
+        module to configure the optimizer for.
 
         Args:
             module_id: The module_id of the RLModule that is being configured.
@@ -844,20 +836,20 @@ class Learner:
         }
         return metadata
 
-    def _save_optimizers(self, dir: Union[str, pathlib.Path]) -> None:
+    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
         """Save the state of the optimizer to dir
 
         Args:
-            dir: The dir to save the state to.
+            path: The path to the directory to save the state to.
 
         """
         pass
 
-    def _load_optimizers(self, dir: Union[str, pathlib.Path]) -> None:
+    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
         """Load the state of the optimizer from dir
 
         Args:
-            dir: The dir to load the state from.
+            path: The path to the directory to load the state from.
 
         """
         pass
