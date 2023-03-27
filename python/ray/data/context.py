@@ -107,6 +107,9 @@ DEFAULT_OPTIMIZER_ENABLED = bool(
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
+# Set this to True to use the legacy iter_batches codepath prior to 2.4.
+DEFAULT_USE_LEGACY_ITER_BATCHES = False
+
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
 
@@ -152,6 +155,7 @@ class DatasetContext:
         optimizer_enabled: bool,
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
+        use_legacy_iter_batches: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_splitting_enabled = block_splitting_enabled
@@ -182,6 +186,7 @@ class DatasetContext:
         # TODO: expose execution options in Dataset public APIs.
         self.execution_options = execution_options
         self.use_ray_tqdm = use_ray_tqdm
+        self.use_legacy_iter_batches = use_legacy_iter_batches
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -228,6 +233,7 @@ class DatasetContext:
                     optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
                     execution_options=ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
+                    use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
                 )
 
             return _default_context

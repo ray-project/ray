@@ -5,8 +5,8 @@ import sys
 from typing import Any, Callable, Iterator, List, Optional, Tuple, TypeVar, Union
 
 import ray
-from ray.actor import ActorHandle
 from ray.types import ObjectRef
+from ray.actor import ActorHandle
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.block_batching.interfaces import (
@@ -14,7 +14,6 @@ from ray.data._internal.block_batching.interfaces import (
     CollatedBatch,
     BlockPrefetcher,
 )
-from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -49,14 +48,12 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
-    eager_free: bool = False,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[Block]:
     """Resolves the block references for each logical batch.
 
     Args:
         block_ref_iter: An iterator over block object references.
-        eager_free: Whether to eagerly free the object reference from the object store.
         stats: An optional stats object to recording block hits and misses.
     """
     hits = 0
@@ -73,7 +70,6 @@ def resolve_block_refs(
         # `ray.get()` call.
         with stats.iter_get_s.timer() if stats else nullcontext():
             block = ray.get(block_ref)
-        trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
         yield block
 
     if stats:
@@ -179,6 +175,7 @@ def format_batches(
 def collate(
     batch_iter: Iterator[Batch],
     collate_fn: Optional[Callable[[DataBatch], Any]],
+    stats: Optional[DatasetStats] = None,
 ) -> Iterator[CollatedBatch]:
     """Returns an iterator with the provided collate_fn applied to items of the batch
     iterator.
@@ -187,7 +184,8 @@ def collate(
         batch_iter: An iterator over formatted batches.
     """
     for batch in batch_iter:
-        collated_batch = collate_fn(batch.data)
+        with stats.iter_collate_batch_s.timer() if stats else nullcontext():
+            collated_batch = collate_fn(batch.data)
         yield CollatedBatch(batch.batch_idx, collated_batch)
 
 
@@ -210,11 +208,14 @@ def make_async_gen(
     Args:
         base_iterator: The iterator to asynchronously fetch from.
         fn: The function to run on the input iterator.
-        num_workers: The number of threads to use in the threadpool.
+        num_workers: The number of threads to use in the threadpool. Defaults to 1.
 
     Returns:
         An iterator with the same elements as outputted from `fn`.
     """
+
+    if num_workers < 1:
+        raise ValueError("Size of threadpool must be at least 1.")
 
     # Use a lock to fetch from the base_iterator in a thread-safe fashion.
     def convert_to_threadsafe_iterator(base_iterator: Iterator[T]) -> Iterator[T]:

@@ -87,7 +87,6 @@ class MapBatches(AbstractUDFMap):
         fn: BatchUDF,
         batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
         batch_format: Optional[str] = "default",
-        prefetch_batches: int = 0,
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -111,7 +110,6 @@ class MapBatches(AbstractUDFMap):
         )
         self._batch_size = batch_size
         self._batch_format = batch_format
-        self._prefetch_batches = prefetch_batches
         self._zero_copy_batch = zero_copy_batch
 
 
