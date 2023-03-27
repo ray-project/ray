@@ -17,6 +17,9 @@ class RuntimeContext(object):
         assert worker is not None
         self.worker = worker
 
+    @Deprecated(
+        message="Use get_xxx_id() methods to get relevant ids instead", warning=True
+    )
     def get(self) -> Dict[str, Any]:
         """Get a dictionary of the current context.
 
