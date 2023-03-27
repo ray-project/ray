@@ -1460,6 +1460,12 @@
 
   alert: tune_tests
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: tpl_gce_1x16.yaml
+
 - name: tune_scalability_durable_trainable
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
@@ -1476,7 +1482,6 @@
     script: python workloads/test_durable_trainable.py --bucket tune-cloud-tests
     wait_for_nodes:
       num_nodes: 16
-
 
   alert: tune_tests
 
@@ -1503,6 +1508,13 @@
       timeout: 3600
 
   alert: tune_tests
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: tpl_gce_1x32_hd.yaml
+
 
 - name: tune_scalability_network_overhead
   group: Tune scalability tests
@@ -1536,6 +1548,12 @@
 
   alert: tune_tests
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: tpl_gce_20x2.yaml
+
 - name: tune_scalability_result_throughput_cluster
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
@@ -1555,6 +1573,12 @@
       num_nodes: 16
 
   alert: tune_tests
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: tpl_gce_16x64.yaml
 
 - name: tune_scalability_result_throughput_single_node
   group: Tune scalability tests
@@ -1577,6 +1601,12 @@
 
   alert: tune_tests
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: tpl_gce_1x96.yaml
+
 - name: tune_scalability_xgboost_sweep
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
@@ -1597,6 +1627,12 @@
 
 
   alert: tune_tests
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: tpl_gce_16x64.yaml
 
 
 ############################
