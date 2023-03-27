@@ -446,7 +446,7 @@ used (with ``compute="tasks"``). For transformations that require expensive setu
 it's preferrable to use Ray actors, which are stateful and allow setup to be reused
 for efficiency. You can specify ``compute=ray.data.ActorPoolStrategy(min, max)`` and
 Ray will use an autoscaling actor pool of ``min`` to ``max`` actors to execute your
-transforms. For a fixed-size actor pool, specify ``ActorPoolStrategy(n, n)``.
+transforms. For a fixed-size actor pool, specify ``ActorPoolStrategy(size=n)``.
 
 The following is an example of using the Ray tasks and actors compute strategy
 for batch inference:

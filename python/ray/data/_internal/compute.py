@@ -192,7 +192,7 @@ class ActorPoolStrategy(ComputeStrategy):
 
     To autoscale from ``m`` to ``n`` actors, specify
     ``compute=ActorPoolStrategy(m, n)``.
-    For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(n, n)``.
+    For a fixed-sized pool of size ``n``, specify ``ActorPoolStrategy(size=n)``.
 
     To increase opportunities for pipelining task dependency prefetching with
     computation and avoiding actor startup delays, set max_tasks_in_flight_per_actor
@@ -205,6 +205,7 @@ class ActorPoolStrategy(ComputeStrategy):
         min_size: int = 1,
         max_size: Optional[int] = None,
         max_tasks_in_flight_per_actor: Optional[int] = None,
+        size: Optional[int] = None,
     ):
         """Construct ActorPoolStrategy for a Dataset transform.
 
@@ -216,9 +217,20 @@ class ActorPoolStrategy(ComputeStrategy):
                 opportunities for pipelining task dependency prefetching with
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
+            size: Specify a fixed size actor pool of this size. It is an error to
+                specify both `size` and `min_size` or `max_size`.
         """
+        if size:
+            if size < 1:
+                raise ValueError("size must be >= 1", size)
+            if max_size is not None or min_size != 1:
+                raise ValueError(
+                    "min_size and max_size cannot be set at the same time as `size`"
+                )
+            min_size = size
+            max_size = size
         if min_size < 1:
-            raise ValueError("min_size must be > 1", min_size)
+            raise ValueError("min_size must be >= 1", min_size)
         if max_size is not None and min_size > max_size:
             raise ValueError("min_size must be <= max_size", min_size, max_size)
         if (
