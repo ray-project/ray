@@ -50,7 +50,7 @@ class TfRLModule(RLModule, tf.keras.Model):
         return pathlib.Path("module_state")
 
     @override(RLModule)
-    def save_state(self, path: Union[str, pathlib.Path]) -> str:
+    def save_state(self, path: Union[str, pathlib.Path]) -> None:
         """Saves the weights of this RLmodule to path.
 
         Args:
@@ -63,8 +63,6 @@ class TfRLModule(RLModule, tf.keras.Model):
             passing a file path relative to a directory, e.g.
             "my_checkpoint/module_state".
 
-        Returns:
-            The path to the saved checkpoint.
         """
         self.save_weights(path, save_format="tf")
 

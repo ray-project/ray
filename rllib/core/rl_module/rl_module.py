@@ -429,19 +429,17 @@ class RLModule(abc.ABC):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
 
-    def save_state(self, path: Union[str, pathlib.Path]) -> str:
-        """Saves the weights of this RLmodule to path.
+    def save_state(self, path: Union[str, pathlib.Path]) -> None:
+        """Saves the weights of this RLModule to path.
 
         Args:
             path: The file path to save the checkpoint to.
 
-        Returns:
-            The path to the saved checkpoint.
         """
         raise NotImplementedError
 
     def load_state(self, path: Union[str, pathlib.Path]) -> None:
-        """Loads the weights of an RLmodule from path.
+        """Loads the weights of an RLModule from path.
 
         Args:
             path: The directory to load the checkpoint from.

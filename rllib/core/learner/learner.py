@@ -862,44 +862,44 @@ class Learner:
         """
         pass
 
-    def save_state(self, dir: Union[str, pathlib.Path]) -> None:
+    def save_state(self, path: Union[str, pathlib.Path]) -> None:
         """Save the state of the learner to dir
 
         NOTE: By default only the module state will be saved.
 
         Args:
-            dir: The dir to save the state to.
+            path: The path to the directory to save the state to.
 
         """
         self._check_if_build_called()
-        dir = pathlib.Path(dir)
-        dir.mkdir(parents=True, exist_ok=True)
-        self._module.save_to_checkpoint(dir / "module_state")
-        self._save_optimizers(dir / "optimizer_state")
-        with open(dir / "learner_state.json", "w") as f:
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        self._module.save_to_checkpoint(path / "module_state")
+        self._save_optimizers(path / "optimizer_state")
+        with open(path / "learner_state.json", "w") as f:
             metadata = self._get_metadata()
             json.dump(metadata, f)
 
     def load_state(
         self,
-        dir: Union[str, pathlib.Path],
+        path: Union[str, pathlib.Path],
     ) -> None:
         """Load the state of the learner from dir
 
         Note: The learner must be constructed ahead of time before its state is loaded.
 
         Args:
-            dir: The dir to load the state from.
+            path: The path to the directory to load the state from.
         """
         self._check_if_build_called()
-        dir = pathlib.Path(dir)
+        path = pathlib.Path(path)
         del self._module
         # TODO(avnishn) from checkpoint doesn't currently support modules_to_load,
         # but it should, so we will add it later.
-        self._module_obj = MultiAgentRLModule.from_checkpoint(dir / "module_state")
+        self._module_obj = MultiAgentRLModule.from_checkpoint(path / "module_state")
         self._reset()
         self.build()
-        self._load_optimizers(dir / "optimizer_state")
+        self._load_optimizers(path / "optimizer_state")
 
     @abc.abstractmethod
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:

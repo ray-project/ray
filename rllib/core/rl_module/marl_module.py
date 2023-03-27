@@ -282,44 +282,43 @@ class MultiAgentRLModule(RLModule):
             self._rl_modules[module_id].set_state(state)
 
     @override(RLModule)
-    def save_state(self, dir: Union[str, pathlib.Path]) -> str:
+    def save_state(self, path: Union[str, pathlib.Path]) -> None:
         """Saves the weights of this MultiAgentRLModule to dir.
 
         Args:
-            dir: The directory to save the checkpoint to.
+            path: The path to the directory to save the checkpoint to.
 
-        Returns:
-            The path to the saved checkpoint.
         """
-        dir = pathlib.Path(dir)
-        dir.mkdir(parents=True, exist_ok=True)
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
         for module_id, module in self._rl_modules.items():
-            module.save_to_checkpoint(str(dir / module_id))
+            module.save_to_checkpoint(str(path / module_id))
 
     @override(RLModule)
     def load_state(
         self,
-        dir: Union[str, pathlib.Path],
+        path: Union[str, pathlib.Path],
         modules_to_load: Optional[Set[ModuleID]] = None,
     ) -> None:
         """Loads the weights of an MultiAgentRLModule from dir.
-
-        Args:
-            dir: The directory to load the state from.
-            modules_to_load: The modules whose state is to be loaded from the dir. If
-                this is None, all modules that are checkpointed will be loaded into this
-                marl module.
 
         NOTE:
             If you want to load a module that is not already
             in this MultiAgentRLModule, you should add it to this MultiAgentRLModule
             before loading the checkpoint.
 
+        Args:
+            path: The path to the directory to load the state from.
+            modules_to_load: The modules whose state is to be loaded from the path. If
+                this is None, all modules that are checkpointed will be loaded into this
+                marl module.
+
+
         """
-        dir = pathlib.Path(dir)
+        path = pathlib.Path(path)
         if not modules_to_load:
             modules_to_load = set(self._rl_modules.keys())
-        dir.mkdir(parents=True, exist_ok=True)
+        path.mkdir(parents=True, exist_ok=True)
         for submodule_id in modules_to_load:
             if submodule_id not in self._rl_modules:
                 raise ValueError(
@@ -327,11 +326,11 @@ class MultiAgentRLModule(RLModule):
                     f"{modules_to_load} not found in this MultiAgentRLModule."
                 )
             submodule = self._rl_modules[submodule_id]
-            submodule_weights_dir = dir / submodule_id / RLMODULE_STATE_DIR_NAME
+            submodule_weights_dir = path / submodule_id / RLMODULE_STATE_DIR_NAME
             if not submodule_weights_dir.exists():
                 raise ValueError(
                     f"Submodule {submodule_id}'s module state directory: "
-                    f"{submodule_weights_dir} not found in checkpoint dir {dir}."
+                    f"{submodule_weights_dir} not found in checkpoint dir {path}."
                 )
             submodule_weights_path = (
                 submodule_weights_dir / submodule._module_state_file_name()
