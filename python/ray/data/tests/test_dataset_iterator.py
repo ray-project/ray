@@ -189,6 +189,7 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
     ):
         assert ray.air._internal.torch_utils.get_device().type == "cuda"
         for batch in it.iter_torch_batches(collate_fn=collate_fn):
+            assert batch.device.type == "cpu"
             assert isinstance(batch, torch.Tensor)
             assert batch.tolist() == list(range(5, 10))
 
