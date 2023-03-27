@@ -61,6 +61,11 @@ NamedParamOptimizerPairs = List[Tuple[str, Tuple[Sequence[ParamType], Optimizer]
 ParamRef = Hashable
 ParamDictType = Dict[ParamRef, ParamType]
 
+# COMMON LEARNER LOSS_KEYS
+POLICY_LOSS_KEY = "policy_loss"
+VF_LOSS_KEY = "vf_loss"
+ENTROPY_KEY = "entropy"
+
 
 @dataclass
 class FrameworkHPs:
