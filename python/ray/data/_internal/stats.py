@@ -40,11 +40,11 @@ class Timer:
 
     @contextmanager
     def timer(self) -> None:
-        time_start = time.thread_time()
+        time_start = time.perf_counter()
         try:
             yield
         finally:
-            self.add(time.thread_time() - time_start)
+            self.add(time.perf_counter() - time_start)
 
     def add(self, value: float) -> None:
         self._value += value

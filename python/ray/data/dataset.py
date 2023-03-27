@@ -3024,8 +3024,8 @@ class Dataset(Generic[T]):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. This is still an alpha API. You can
-                revert back to the old prefetching behavior by setting
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
                 `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
@@ -3107,8 +3107,8 @@ class Dataset(Generic[T]):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. This is still an alpha API. You can
-                revert back to the old prefetching behavior by setting
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
                 `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
@@ -3191,8 +3191,8 @@ class Dataset(Generic[T]):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. This is still an alpha API. You can
-                revert back to the old prefetching behavior by setting
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
                 `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
@@ -3308,8 +3308,8 @@ class Dataset(Generic[T]):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. This is still an alpha API. You can
-                revert back to the old prefetching behavior by setting
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
                 `use_legacy_iter_batches` to True in the DatasetContext.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
@@ -3433,8 +3433,8 @@ class Dataset(Generic[T]):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. This is still an alpha API. You can
-                revert back to the old prefetching behavior by setting
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
                 `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,

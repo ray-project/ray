@@ -45,7 +45,7 @@ def iter_batches(
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
-    prefetch_batches: int = 0,
+    prefetch_batches: int = 1,
 ) -> Iterator[DataBatch]:
     """Create formatted batches of data from an iterator of block object references and
     corresponding metadata.
