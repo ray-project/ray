@@ -131,6 +131,7 @@ py_test_run_all_subdirectory(
     exclude = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
+         "source/serve/doc_code/object_dection.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
@@ -141,6 +142,7 @@ py_test_run_all_subdirectory(
     include = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
+        "source/serve/doc_code/object_dection.py",
     ],
     exclude = [],
     extra_srcs = [],
