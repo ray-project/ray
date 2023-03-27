@@ -90,7 +90,7 @@ class GrpcServer {
   void Run();
 
   // Shutdown this server
-  void Shutdown();
+  void Shutdown(bool drain_traffic = false);
 
   /// Get the port of this gRPC server.
   int GetPort() const { return port_; }
