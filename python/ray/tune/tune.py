@@ -969,6 +969,7 @@ def run(
         default_metric=metric,
         default_mode=mode,
         sync_config=sync_config,
+        remote_storage_path=remote_path,
     )
 
     return ea
