@@ -172,8 +172,8 @@ TLS Authentication
 ------------------
 
 Ray can be configured to use TLS on it's gRPC channels.
-This means that connecting to the Ray client on the head node will
-require an appropriate set of credentials and also that data exchanged between
+This means that connecting to the Ray head will require
+an appropriate set of credentials and also that data exchanged between
 various processes (client, head, workers) will be encrypted.
 
 In TLS, the private key and public key are used for encryption and decryption, in
