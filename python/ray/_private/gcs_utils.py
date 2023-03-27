@@ -520,6 +520,20 @@ class GcsAioClient:
         namespace: Optional[bytes],
         timeout: Optional[float] = None,
     ) -> int:
+        """Put a key-value pair into the GCS.
+
+        Args:
+            key: The key to put.
+            value: The value to put.
+            overwrite: Whether to overwrite the value if the key already exists.
+            namespace: The namespace to put the key-value pair into.
+            timeout: The timeout in seconds.
+
+        Returns:
+            The number of keys added. If overwrite is True, this will be 1 if the
+                key was added and 0 if the key was updated. If overwrite is False,
+                this will be 1 if the key was added and 0 if the key already exists.
+        """
         logger.debug(f"internal_kv_put {key!r} {value!r} {overwrite} {namespace!r}")
         req = gcs_service_pb2.InternalKVPutRequest(
             namespace=namespace,
