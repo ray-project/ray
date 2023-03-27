@@ -191,7 +191,10 @@ if __name__ == "__main__":
         os.environ.get("BYTED_RAY_POD_IP") is not None
         and os.environ.get("BYTED_RAY_UNDERLAY_NETWORK") is None
     ):
-        default_dashboard_agent_listen_port = os.environ.get("PORT3")
+        if os.environ.get("RAY_IP") == "127.0.0.1":
+            default_dashboard_agent_listen_port = os.environ.get("PORT3")
+        else:
+            default_dashboard_agent_listen_port = os.environ.get("PORT0")
 
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:

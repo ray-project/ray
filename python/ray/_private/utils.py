@@ -79,8 +79,6 @@ def get_user_temp_dir():
     elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
         return os.environ["TMPDIR"]
     elif sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
-        if os.environ["BYTED_RAY_POD_IP"] is not None:
-            return None
         # Ideally we wouldn't need this fallback, but keep it for now for
         # for compatibility
         tempdir = os.path.join(os.sep, "tmp")
@@ -90,10 +88,7 @@ def get_user_temp_dir():
 
 
 def get_ray_temp_dir():
-    path = get_user_temp_dir()
-    if path is None:
-        return None
-    return os.path.join(path, "ray")
+    return os.path.join(get_user_temp_dir(), "ray")
 
 
 def get_ray_address_file(temp_dir: Optional[str]):

@@ -416,14 +416,11 @@ def run(
     _blocking: bool = True,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
-    name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: str = DEFAULT.VALUE,
-) -> Optional[RayServeSyncHandle]:
-    """Run an application and return a handle to its ingress deployment.
-
-    The application is returned by `Deployment.bind()`. Example:
-
-    .. code-block:: python
+    name: str = "",
+    route_prefix: str = "/",
+    http_locations: str = "EveryNode",
+) -> Optional[RayServeHandle]:
+    """Run a Serve application and return a ServeHandle to the ingress.
 
         handle = serve.run(MyDeployment.bind())
         ray.get(handle.remote())
@@ -446,7 +443,7 @@ def run(
     """
     client = _private_api.serve_start(
         detached=True,
-        http_options={"host": host, "port": port, "location": "EveryNode"},
+        http_options={"host": host, "port": port, "location": http_locations},
     )
 
     # Record after Ray has been started.
