@@ -234,9 +234,9 @@ Step 3: Set the environment variables for both Ray head and worker to enable TLS
 TLS is enabled by setting environment variables.
 
 - ``RAY_USE_TLS``: Either 1 or 0 to use/not-use TLS. If this is set to 1 then all of the environment variables below must be set. Default: 0.
-- ``RAY_TLS_SERVER_CERT``: Location of a `certificate file (tls.crt)` which is presented to other endpoints so as to achieve mutual authentication.
-- ``RAY_TLS_SERVER_KEY``: Location of a `private key file (tls.key)` which is the cryptographic means to prove to other endpoints that you are the authorized user of a given certificate.
-- ``RAY_TLS_CA_CERT``: Location of a `CA certificate file (ca.crt)` which allows TLS to decide whether an endpoint's certificate has been signed by the correct authority.
+- ``RAY_TLS_SERVER_CERT``: Location of a `certificate file (tls.crt)`, which is presented to other endpoints to achieve mutual authentication.
+- ``RAY_TLS_SERVER_KEY``: Location of a `private key file (tls.key)`, which is the cryptographic means to prove to other endpoints that you are the authorized user of a given certificate.
+- ``RAY_TLS_CA_CERT``: Location of a `CA certificate file (ca.crt)`, which allows TLS to decide whether an endpoint's certificate has been signed by the correct authority.
 
 Step 4: Verify TLS authentication
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -246,22 +246,22 @@ Step 4: Verify TLS authentication
   # Log in to the worker Pod
   kubectl exec -it ${WORKER_POD} -- bash
   
-  # Since the head Pod has the certificate of full qualified DNS resolution for the Ray head service, the connection to the worker Pods 
-  # will be established successfully
+  # Since the head Pod has the certificate of the full qualified DNS resolution for the Ray head service, the connection to the worker Pods 
+  # is established successfully
   ray health-check --address service-ray-head.default.svc.cluster.local:6379
 
-  # Since service-ray-head hasn't added to the alt_names section in the certificate, the connection will fail and an error
-  # message similar to the following will be displayed: "Peer name service-ray-head is not in peer certificate".
+  # Since service-ray-head hasn't added to the alt_names section in the certificate, the connection fails and an error
+  # message similar to the following is displayed: "Peer name service-ray-head is not in peer certificate".
   ray health-check --address service-ray-head:6379
 
-  # After add `DNS.3 = service-ray-head` to the alt_names sections and deploy the YAML again, the connection is able to work.
+  # After you add `DNS.3 = service-ray-head` to the alt_names sections and deploy the YAML again, the connection is able to work.
 
 
-Enabling TLS will cause a performance hit due to the extra overhead of mutual
+Enabling TLS causes a performance hit due to the extra overhead of mutual
 authentication and encryption.
 Testing has shown that this overhead is large for small workloads and becomes
 relatively smaller for large workloads.
-The exact overhead will depend on the nature of your workload.
+The exact overhead depends on the nature of your workload.
 
 Java Applications
 -----------------
