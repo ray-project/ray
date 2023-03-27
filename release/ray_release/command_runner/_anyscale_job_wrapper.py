@@ -20,7 +20,7 @@ from typing import Optional, List, Tuple
 
 OUTPUT_JSON_FILENAME = "output.json"
 AWS_CLI_INSTALLED = False
-GSUTIL_CLI_INSTALLED=False
+GSUTIL_CLI_INSTALLED = False
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = 124  # same as bash timeout
 
@@ -53,17 +53,20 @@ def exponential_backoff_retry(
             time.sleep(retry_delay_s)
             retry_delay_s *= 2
 
+
 def install_aws_cli():
     global AWS_CLI_INSTALLED
     if not AWS_CLI_INSTALLED:
         subprocess.run(["pip", "install", "-q", "awscli"], check=True)
         AWS_CLI_INSTALLED = True
 
+
 def install_gsutil_cli():
     global GSUTIL_CLI_INSTALLED
     if not GSUTIL_CLI_INSTALLED:
         subprocess.run(["pip", "install", "-q", "gsutil"], check=True)
-        AWS_CLI_INSTALLED = True
+        GSUTIL_CLI_INSTALLED = True
+
 
 def run_storage_cp(source: str, target: str):
     if not source or not target:
@@ -95,7 +98,7 @@ def run_storage_cp(source: str, target: str):
             target,
         ]
     else:
-        raise Exception(f'Not supporting storage service: {storage_service}')
+        raise Exception(f"Not supporting storage service: {storage_service}")
 
     try:
         exponential_backoff_retry(
