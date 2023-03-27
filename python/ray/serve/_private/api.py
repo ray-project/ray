@@ -236,8 +236,10 @@ async def serve_start_async(
     except RayServeException:
         pass
 
-    controller, controller_name = await ray.remote(_start_controller).remote(
-        detached, http_options, dedicated_cpu, **kwargs
+    controller, controller_name = (
+        await ray.remote(_start_controller)
+        .options(num_cpus=0)
+        .remote(detached, http_options, dedicated_cpu, **kwargs)
     )
 
     client = ServeControllerClient(
