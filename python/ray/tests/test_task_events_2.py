@@ -362,7 +362,9 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
             "2 creation task + 1 parent actor task + 1 child actor task "
             " + 2 normal tasks run by child actor"
         )
+        print("List events")
         for task in tasks:
+            print("New task entry")
             print(task["name"])
             print(task["state"])
             print(task["error_message"])
@@ -370,7 +372,7 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
                 assert task["state"] == "FINISHED", task
             else:
                 assert task["state"] == "FAILED", task
-
+        print("\n\n")
         return True
 
     wait_for_condition(
