@@ -514,6 +514,7 @@ class ReplicaConfig:
         return self.to_proto().SerializeToString()
 
 
+# Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
 @DeveloperAPI
 class DeploymentMode(str, Enum):
     NoServer = "NoServer"

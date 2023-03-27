@@ -1,4 +1,5 @@
 import copy
+import dataclasses
 import logging
 import math
 import os
@@ -7,6 +8,7 @@ from typing import (
     Callable,
     Container,
     Dict,
+    Mapping,
     Optional,
     Tuple,
     Type,
@@ -50,6 +52,11 @@ from ray.rllib.utils.gym import (
     try_import_gymnasium_and_gym,
 )
 from ray.rllib.utils.policy import validate_policy_id
+from ray.rllib.utils.serialization import (
+    deserialize_type,
+    NOT_SERIALIZABLE,
+    serialize_type,
+)
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
@@ -98,24 +105,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# TODO (Kourosh): Move this to rllib.utils.importlib
-def _resolve_class_path(module) -> Type:
-    """Resolves a class path to a class.
-
-    If the given module is already a class, it is returned as is.
-    If the given module is a string, it is imported and the class is returned
-    """
-    if isinstance(module, Type):
-        return module
-
-    if isinstance(module, str):
-        import importlib
-
-        module_path, class_name = module.rsplit(".", 1)
-        module = importlib.import_module(module_path)
-        return getattr(module, class_name)
-
-
 def _check_rl_module_spec(module_spec: ModuleSpec) -> None:
     if not isinstance(module_spec, (SingleAgentRLModuleSpec, MultiAgentRLModuleSpec)):
         raise ValueError(
@@ -153,6 +142,12 @@ class AlgorithmConfig(_Config):
         ...     "[registered trainer class]", param_space=config.to_dict()
         ...     ).fit()
     """
+
+    @staticmethod
+    def DEFAULT_POLICY_MAPPING_FN(aid, episode, worker, **kwargs):
+        # The default policy mapping function to use if None provided.
+        # Map any agent ID to "default_policy".
+        return DEFAULT_POLICY_ID
 
     @classmethod
     def from_dict(cls, config_dict: dict) -> "AlgorithmConfig":
@@ -261,7 +256,7 @@ class AlgorithmConfig(_Config):
         self.placement_strategy = "PACK"
 
         # `self.framework()`
-        self.framework_str = "tf"
+        self.framework_str = "torch"
         self.eager_tracing = False
         self.eager_max_retraces = 20
         self.tf_session_args = {
@@ -350,9 +345,7 @@ class AlgorithmConfig(_Config):
         # `self.multi_agent()`
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
-        self.policy_mapping_fn = (
-            lambda aid, episode, worker, **kwargs: DEFAULT_POLICY_ID
-        )
+        self.policy_mapping_fn = self.DEFAULT_POLICY_MAPPING_FN
         self.policies_to_train = None
         self.policy_states_are_swappable = False
         self.observation_fn = None
@@ -504,10 +497,11 @@ class AlgorithmConfig(_Config):
         # Setup legacy multi-agent sub-dict:
         config["multiagent"] = {}
         for k in self.multiagent.keys():
-            # convert policies dict to something human-readable
+            # Convert policies dict such that each policy ID maps to a old-style
+            # 4-tuple: class, obs-, and action space, config.
             if k == "policies" and isinstance(self.multiagent[k], dict):
                 policies_dict = {}
-                for policy_id, policy_spec in self.multiagent[k].items():
+                for policy_id, policy_spec in config.pop(k).items():
                     if isinstance(policy_spec, PolicySpec):
                         policies_dict[policy_id] = (
                             policy_spec.policy_class,
@@ -529,6 +523,8 @@ class AlgorithmConfig(_Config):
         config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
         config["num_workers"] = config.pop("num_rollout_workers", 0)
 
+        # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
+        # These would be useless in the returned dict anyways.
         for dep_k in [
             "monitor",
             "evaluation_num_episodes",
@@ -604,15 +600,32 @@ class AlgorithmConfig(_Config):
             # correct methods to properly `.update()` those from given config dict
             # (to not lose any sub-keys).
             elif key == "callbacks_class":
+                # Resolve possible classpath.
+                value = deserialize_type(value, error=True)
                 self.callbacks(callbacks_class=value)
             elif key == "env_config":
                 self.environment(env_config=value)
             elif key.startswith("evaluation_"):
                 eval_call[key] = value
             elif key == "exploration_config":
+                if isinstance(value, dict) and "type" in value:
+                    value["type"] = deserialize_type(value["type"])
                 self.exploration(exploration_config=value)
-            elif key in ["model", "optimizer", "replay_buffer_config"]:
+            elif key == "model":
+                # Resolve possible classpath.
+                if isinstance(value, dict) and value.get("custom_model"):
+                    value["custom_model"] = deserialize_type(value["custom_model"])
                 self.training(**{key: value})
+            elif key == "optimizer":
+                self.training(**{key: value})
+            elif key == "replay_buffer_config":
+                if isinstance(value, dict) and "type" in value:
+                    value["type"] = deserialize_type(value["type"])
+                self.training(**{key: value})
+            elif key == "sample_collector":
+                # Resolve possible classpath.
+                value = deserialize_type(value)
+                self.rollouts(sample_collector=value)
             # If config key matches a property, just set it, otherwise, warn and set.
             else:
                 if not hasattr(self, key) and log_once(
@@ -627,6 +640,28 @@ class AlgorithmConfig(_Config):
         self.evaluation(**eval_call)
 
         return self
+
+    # TODO(sven): We might want to have a `deserialize` method as well. Right now,
+    #  simply using the from_dict() API works in this same (deserializing) manner,
+    #  whether the dict used is actually code-free (already serialized) or not
+    #  (i.e. a classic RLlib config dict with e.g. "callbacks" key still pointing to
+    #  a class).
+    def serialize(self) -> Mapping[str, Any]:
+        """Returns a mapping from str to JSON'able values representing this config.
+
+        The resulting values will not have any code in them.
+        Classes (such as `callbacks_class`) will be converted to their full
+        classpath, e.g. `ray.rllib.algorithms.callbacks.DefaultCallbacks`.
+        Actual code such as lambda functions will be written as their source
+        code (str) plus any closure information for properly restoring the
+        code inside the AlgorithmConfig object made from the returned dict data.
+        Dataclass objects get converted to dicts.
+
+        Returns:
+            A mapping from str to JSON'able values.
+        """
+        config = self.to_dict()
+        return self._serialize_dict(config)
 
     def copy(self, copy_frozen: Optional[bool] = None) -> "AlgorithmConfig":
         """Creates a deep copy of this config and (un)freezes if necessary.
@@ -792,6 +827,16 @@ class AlgorithmConfig(_Config):
         # not).
         if self._disable_action_flattening is True:
             self.model["_disable_action_flattening"] = True
+        if self.model.get("custom_preprocessor"):
+            deprecation_warning(
+                old="model_config['custom_preprocessor']",
+                help="Custom preprocessors are deprecated, "
+                "since they sometimes conflict with the built-in "
+                "preprocessors for handling complex observation spaces. "
+                "Please use wrapper classes around your environment "
+                "instead.",
+                error=True,
+            )
 
         # RLModule API only works with connectors.
         if not self.enable_connectors and self._enable_rl_module_api:
@@ -964,7 +1009,7 @@ class AlgorithmConfig(_Config):
         # resolve learner class
         if self._enable_learner_api and self.learner_class is None:
             learner_class_path = self.get_default_learner_class()
-            self.learner_class = _resolve_class_path(learner_class_path)
+            self.learner_class = deserialize_type(learner_class_path)
 
     def build(
         self,
@@ -2035,8 +2080,9 @@ class AlgorithmConfig(_Config):
             self.policy_map_capacity = policy_map_capacity
 
         if policy_mapping_fn is not NotProvided:
-            # Attempt to create a `policy_mapping_fn` from config dict. Helpful
-            # is users would like to specify custom callable classes in yaml files.
+            # Create `policy_mapping_fn` from a config dict.
+            # Helpful is users would like to specify custom callable classes in
+            # yaml files.
             if isinstance(policy_mapping_fn, dict):
                 policy_mapping_fn = from_config(policy_mapping_fn)
             self.policy_mapping_fn = policy_mapping_fn
@@ -2074,7 +2120,8 @@ class AlgorithmConfig(_Config):
             ), (
                 "ERROR: `policies_to_train` must be a [list|set|tuple] or a "
                 "callable taking PolicyID and SampleBatch and returning "
-                "True|False (trainable or not?)."
+                "True|False (trainable or not?) or None (for always training all "
+                "policies)."
             )
             # Check `policies_to_train` for invalid entries.
             if isinstance(policies_to_train, (list, set, tuple)):
@@ -2086,7 +2133,7 @@ class AlgorithmConfig(_Config):
                     )
             self.policies_to_train = policies_to_train
 
-        if policy_states_are_swappable is not None:
+        if policy_states_are_swappable is not NotProvided:
             self.policy_states_are_swappable = policy_states_are_swappable
 
         return self
@@ -3091,6 +3138,44 @@ class AlgorithmConfig(_Config):
     def items(self):
         """Shim method to help pretend we are a dict."""
         return self.to_dict().items()
+
+    @staticmethod
+    def _serialize_dict(config):
+        # Serialize classes to classpaths:
+        config["callbacks"] = serialize_type(config["callbacks"])
+        config["sample_collector"] = serialize_type(config["sample_collector"])
+        if isinstance(config["env"], type):
+            config["env"] = serialize_type(config["env"])
+        if "replay_buffer_config" in config and (
+            isinstance(config["replay_buffer_config"].get("type"), type)
+        ):
+            config["replay_buffer_config"]["type"] = serialize_type(
+                config["replay_buffer_config"]["type"]
+            )
+        if isinstance(config["exploration_config"].get("type"), type):
+            config["exploration_config"]["type"] = serialize_type(
+                config["exploration_config"]["type"]
+            )
+        if isinstance(config["model"].get("custom_model"), type):
+            config["model"]["custom_model"] = serialize_type(
+                config["model"]["custom_model"]
+            )
+
+        # Serialize dataclasses.
+        if isinstance(config.get("_learner_hps"), LearnerHPs):
+            config["_learner_hps"] = dataclasses.asdict(config["_learner_hps"])
+
+        # List'ify `policies`, iff a set or tuple (these types are not JSON'able).
+        ma_config = config.get("multiagent")
+        if ma_config is not None:
+            if isinstance(ma_config.get("policies"), (set, tuple)):
+                ma_config["policies"] = list(ma_config["policies"])
+            # Do NOT serialize functions/lambdas.
+            if ma_config.get("policy_mapping_fn"):
+                ma_config["policy_mapping_fn"] = NOT_SERIALIZABLE
+            if ma_config.get("policies_to_train"):
+                ma_config["policies_to_train"] = NOT_SERIALIZABLE
+        return config
 
     @staticmethod
     def _translate_special_keys(key: str, warn_deprecated: bool = True) -> str:

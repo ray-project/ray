@@ -470,7 +470,7 @@ RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 
 /// Max number of task events stored in the buffer on workers. Any additional events
 /// will be dropped. This is set to a large value to avoid worker side data loss.
-RAY_CONFIG(uint64_t, task_events_max_buffer_size, 10 * 1000)
+RAY_CONFIG(uint64_t, task_events_max_buffer_size, 100 * 1000)
 
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.
@@ -710,7 +710,11 @@ RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
 RAY_CONFIG(int64_t, grpc_stream_buffer_size, 512 * 1024);
 
 /// Whether to use log reporter in event framework
-RAY_CONFIG(bool, event_log_reporter_enabled, false)
+RAY_CONFIG(bool, event_log_reporter_enabled, true)
+
+/// Whether or not we should also write an event log to a log file.
+/// This has no effect if `event_log_reporter_enabled` is false.
+RAY_CONFIG(bool, emit_event_to_log_file, false)
 
 /// Whether to enable register actor async.
 /// If it is false, the actor registration to GCS becomes synchronous, i.e.,

@@ -330,11 +330,12 @@ DEFINE_stats(gcs_task_manager_task_events_stored_bytes,
              ray::stats::GAUGE);
 
 /// Memory Manager
-DEFINE_stats(memory_manager_worker_eviction_total,
-             "Total worker eviction events broken per work type {Actor, Task}",
-             ("Type"),
-             (),
-             ray::stats::COUNT);
+DEFINE_stats(
+    memory_manager_worker_eviction_total,
+    "Total worker eviction events broken per work type {Actor, Task, Driver} and name.",
+    ("Type", "Name"),
+    (),
+    ray::stats::COUNT);
 }  // namespace stats
 
 }  // namespace ray
