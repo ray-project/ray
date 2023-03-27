@@ -11,12 +11,11 @@ from typing import Callable, Dict, List, Set, Tuple, Any
 
 import ray
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
+from ray._private.constants import RAY_DEDUP_LOGS, RAY_DEDUP_LOGS_AGG_WINDOW_S
 from ray._private.utils import binary_to_hex
 from ray.util.debug import log_once
 
 _default_handler = None
-
-RAY_DEDUP_LOGS = bool(int(os.environ.get("RAY_DEDUP_LOGS", "1")))
 
 
 def setup_logger(
@@ -266,9 +265,6 @@ global_worker_stdstream_dispatcher = WorkerStandardStreamDispatcher()
 # Regex for canonicalizing log lines.
 NUMBERS = re.compile(r"(\d+|0x[0-9a-fA-F]+)")
 
-# How many seconds of messages to buffer for log deduplicatoin.
-AGGREGATION_WINDOW_S = 5.0
-
 # Batch of log lines including ip, pid, lines, etc.
 LogBatch = Dict[str, Any]
 
@@ -305,7 +301,7 @@ class DedupState:
 
 class LogDeduplicator:
     def __init__(self):
-        # Buffer of up to AGGREGATION_WINDOW_S recent log patterns.
+        # Buffer of up to RAY_DEDUP_LOGS_AGG_WINDOW_S recent log patterns.
         # This buffer is cleared if the pattern isn't seen within the window.
         self.recent: Dict[str, DedupState] = {}
 
@@ -355,7 +351,10 @@ class LogDeduplicator:
 
         # Flush patterns from the buffer that are older than the aggregation window.
         while self.recent:
-            if now - next(iter(self.recent.values())).timestamp < AGGREGATION_WINDOW_S:
+            if (
+                now - next(iter(self.recent.values())).timestamp
+                < RAY_DEDUP_LOGS_AGG_WINDOW_S
+            ):
                 break
             dedup_key = next(iter(self.recent))
             state = self.recent.pop(dedup_key)
