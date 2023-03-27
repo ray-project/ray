@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from typing import Optional, Union
 
 import pandas as pd
@@ -72,6 +71,28 @@ class ResultGrid:
         self._results = [
             self._trial_to_result(trial) for trial in self._experiment_analysis.trials
         ]
+
+    @property
+    def _local_path(self) -> str:
+        """Return path pointing to the experiment directory on the local disk."""
+        return self._experiment_analysis._local_path
+
+    @property
+    def _remote_path(self) -> Optional[str]:
+        """Return path pointing to the experiment directory on remote storage."""
+        return self._experiment_analysis._remote_path
+
+    @property
+    def experiment_path(self) -> str:
+        """Path pointing to the experiment directory on persistent storage.
+
+        This can point to a remote storage location (e.g. S3) or to a local
+        location (path on the head node).
+
+        For instance, if your remote storage path is ``s3://bucket/location``,
+        this will point to ``s3://bucket/location/experiment_name``.
+        """
+        return self._remote_path or self._local_path
 
     def get_best_result(
         self,
@@ -232,7 +253,8 @@ class ResultGrid:
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
-            log_dir=Path(trial.local_path) if trial.local_path else None,
+            _local_path=trial.local_path,
+            _remote_path=trial.remote_path,
             metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
                 trial.local_path
             )

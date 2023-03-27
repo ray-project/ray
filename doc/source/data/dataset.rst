@@ -55,7 +55,7 @@ Datasets for Parallel Compute
 -----------------------------
 
 Datasets also simplify general purpose parallel GPU and CPU compute in Ray; for
-instance, for :ref:`GPU batch inference <transforming_datasets>`.
+instance, for :ref:`GPU batch inference <ref-use-cases-batch-infer>`.
 They provide a higher-level API for Ray tasks and actors for such embarrassingly parallel compute,
 internally handling operations like batching, pipelining, and memory management.
 
