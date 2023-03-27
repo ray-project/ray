@@ -6,6 +6,11 @@ message RunningInstance {
 }
 
 message LaunchRequest {
+  enum RequestState {
+    QUEUED = 1;
+    RESOURCES_ALLOCATED = 2;
+    FAILED = 3;
+  }
   string node_type = 1;
   int count = 2;
 }
