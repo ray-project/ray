@@ -196,9 +196,7 @@ def test_keras_callback_e2e():
     assert isinstance(checkpoint, TensorflowCheckpoint)
     assert checkpoint._flavor == TensorflowCheckpoint.Flavor.MODEL_WEIGHTS
 
-    predictor = TensorflowPredictor.from_checkpoint(
-        checkpoint, model=build_model
-    )
+    predictor = TensorflowPredictor.from_checkpoint(checkpoint, model=build_model)
 
     items = np.random.uniform(0, 1, size=(10, 1))
     predictor.predict(data=items)
