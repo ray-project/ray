@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 import ray
+
 import ray.cluster_utils
 from ray._private.test_utils import (
     run_string_as_driver,
@@ -278,6 +279,77 @@ def test_site_flag_inherited(
         )
         assert worker_process_no_site == root_process_no_site
         assert worker_process_no_user_site == root_process_no_user_site
+
+
+@pytest.mark.parametrize("preload", [True, False])
+def test_preload_workers(ray_start_cluster, preload):
+    """
+    Verify preload_python_modules actually preloads modules in the Ray workers.
+    Also verify that it does not crash if a non-existent module is provided.
+    """
+    cluster = ray_start_cluster
+
+    if preload:
+        cluster.add_node(
+            _system_config={
+                "preload_python_modules": [
+                    "tensorflow",
+                    "torch",
+                    "fake_module_expect_ModuleNotFoundError",
+                ]
+            }
+        )
+    else:
+        cluster.add_node()
+
+    @ray.remote(num_cpus=0)
+    class Latch:
+        """
+        Used to ensure two separate worker processes.
+        """
+
+        def __init__(self, count):
+            self.count = count
+
+        def decr(self):
+            self.count -= 1
+
+        def is_ready(self):
+            return self.count <= 0
+
+    def wait_latch(latch):
+        latch.decr.remote()
+        while not ray.get(latch.is_ready.remote()):
+            time.sleep(0.01)
+
+    def assert_correct_imports():
+        import sys
+
+        imported_modules = sys.modules.copy()
+
+        if preload:
+            assert "tensorflow" in imported_modules
+            assert "torch" in imported_modules
+            assert "fake_module_do_not_exist" not in imported_modules
+        else:
+            assert "tensorflow" not in imported_modules
+            assert "torch" not in imported_modules
+
+    @ray.remote(num_cpus=0)
+    class Actor:
+        def verify_imports(self, latch):
+            wait_latch(latch)
+            assert_correct_imports()
+
+    @ray.remote(num_cpus=0)
+    def verify_imports(latch):
+        wait_latch(latch)
+        assert_correct_imports()
+
+    latch = Latch.remote(2)
+    actor = Actor.remote()
+    futures = [verify_imports.remote(latch), actor.verify_imports.remote(latch)]
+    ray.get(futures)
 
 
 if __name__ == "__main__":

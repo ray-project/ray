@@ -1930,5 +1930,5 @@ def try_import_each_module(module_names_to_import: List[str]) -> None:
     for module_to_preload in module_names_to_import:
         try:
             importlib.import_module(module_to_preload)
-        except ImportError as e:
-            print(f'Failed to preload the module "{module_to_preload}"', e)
+        except ImportError:
+            logger.exception(f'Failed to preload the module "{module_to_preload}"')
