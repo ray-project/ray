@@ -2,7 +2,7 @@
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
 load("//bazel:ray.bzl", "COPTS")
-load("@rules_rust//rust:defs.bzl", "rust_binary")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library")
 load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
 
 cc_binary(
@@ -27,24 +27,8 @@ cc_binary(
     ],
 )
 
-cc_library(
-    name = "ray_wasm_lib",
-    srcs = glob(["src/cpp/ray/*.cc"]),
-    hdrs = glob(["include/ray/*.h"]),
-    copts = COPTS,
-    linkopts = ["-ldl"],
-    linkstatic = True,
-    strip_include_prefix = "include",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//:core_worker_lib",
-        "//:global_state_accessor_lib",
-    ],
-    alwayslink = False,
-)
-
 cargo_build_script(
-    name = "wasm_worker_buildrs",
+    name = "ray_wasm_buildrs",
     srcs = ["build.rs"],
     build_script_env = {
         "PROTOC": "$(execpath @com_google_protobuf//:protoc)",
@@ -68,23 +52,76 @@ cargo_build_script(
     ],
 )
 
-rust_binary(
-    name = "wasm_worker",
-    srcs = glob([
-        "src/rust/**/*.rs",
-    ]),
-    crate_root = "src/rust/main.rs",
+rust_library(
+    name = "ray_wasm_lib",
+    srcs = glob(
+        [
+            "src/**/*.rs",
+        ],
+        exclude = [
+            "src/cmd/*.rs",
+        ],
+    ),
+    crate_name = "wasm_on_ray",
+    crate_root = "src/lib.rs",
     visibility = ["//visibility:public"],
     deps = [
-        "ray_wasm_lib",
-        "wasm_worker_buildrs",
+        "ray_wasm_buildrs",
+        "//:core_worker_lib",
+        "//:global_state_accessor_lib",
         "@wasm_crate_index//:anyhow",
-        "@wasm_crate_index//:tokio",
         "@wasm_crate_index//:clap",
         "@wasm_crate_index//:lazy_static",
         "@wasm_crate_index//:prost",
         "@wasm_crate_index//:serde",
         "@wasm_crate_index//:serde_json",
+        "@wasm_crate_index//:tokio",
+        "@wasm_crate_index//:tracing",
+        "@wasm_crate_index//:tracing-subscriber",
+        "@wasm_crate_index//:uuid",
+    ],
+)
+
+rust_binary(
+    name = "wasm_worker",
+    srcs = glob([
+        "src/cmd/wasm_worker.rs",
+    ]),
+    crate_name = "wasm_worker",
+    crate_root = "src/cmd/wasm_worker.rs",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":ray_wasm_lib",
+        "@wasm_crate_index//:anyhow",
+        "@wasm_crate_index//:clap",
+        "@wasm_crate_index//:lazy_static",
+        "@wasm_crate_index//:prost",
+        "@wasm_crate_index//:serde",
+        "@wasm_crate_index//:serde_json",
+        "@wasm_crate_index//:tokio",
+        "@wasm_crate_index//:tracing",
+        "@wasm_crate_index//:tracing-subscriber",
+        "@wasm_crate_index//:uuid",
+    ],
+)
+
+rust_binary(
+    name = "raywa",
+    srcs = glob([
+        "src/cmd/raywa.rs",
+    ]),
+    crate_name = "raywa",
+    crate_root = "src/cmd/raywa.rs",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":ray_wasm_lib",
+        "@wasm_crate_index//:anyhow",
+        "@wasm_crate_index//:clap",
+        "@wasm_crate_index//:lazy_static",
+        "@wasm_crate_index//:prost",
+        "@wasm_crate_index//:serde",
+        "@wasm_crate_index//:serde_json",
+        "@wasm_crate_index//:tokio",
         "@wasm_crate_index//:tracing",
         "@wasm_crate_index//:tracing-subscriber",
         "@wasm_crate_index//:uuid",
@@ -95,6 +132,7 @@ genrule(
     name = "ray_wasm_pkg",
     srcs = [
         "wasm_worker",
+        "raywa",
         "libray_wasm.so",
     ],
     outs = ["ray_wasm_pkg.out"],
@@ -104,7 +142,8 @@ genrule(
         rm -rf $$PY_WASM_DIR && 
         mkdir -p "$$PY_WASM_DIR/lib/" &&
         cp -f $(location wasm_worker) "$$PY_WASM_DIR/" &&
-        cp -f $(locations libray_wasm.so) "$$PY_WASM_DIR/lib/" &&
+        cp -f $(location libray_wasm.so) "$$PY_WASM_DIR/lib/" &&
+        cp -f $(location raywa) "$$PY_WASM_DIR/" &&
         echo "$$WORK_DIR" > $@
     """,
     local = True,

@@ -11,16 +11,15 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-mod cmd;
-mod config;
-mod ray;
-mod util;
+use wasm_on_ray::config;
+use wasm_on_ray::ray;
+use wasm_on_ray::util;
 
 use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber;
 
-async fn init(cfg: &ray::RayConfig, args: &cmd::Arguments) -> Result<()> {
+async fn init(cfg: &ray::RayConfig, args: &util::Arguments) -> Result<()> {
     config::ConfigInternal::instance()
         .write()
         .unwrap()
@@ -38,9 +37,11 @@ async fn init(cfg: &ray::RayConfig, args: &cmd::Arguments) -> Result<()> {
 
 async fn run_task_loop() -> Result<()> {
     ray::RayRuntime::instance()
-            .write()
-            .unwrap()
-            .launch_task_loop().await.unwrap();
+        .write()
+        .unwrap()
+        .launch_task_loop()
+        .await
+        .unwrap();
     Ok(())
 }
 
@@ -48,7 +49,7 @@ async fn run_task_loop() -> Result<()> {
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
 
-    let args = cmd::Arguments::parse();
+    let args = util::Arguments::parse();
     let cfg = ray::RayConfig::new();
 
     init(&cfg, &args).await.unwrap();

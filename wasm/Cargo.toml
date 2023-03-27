@@ -1,5 +1,5 @@
 [package]
-name = "wasm-on-ray"
+name = "wasm_on_ray"
 version = "0.1.0"
 edition = "2021"
 
@@ -19,4 +19,4 @@ tracing-subscriber = "0.3.16"
 
 [[bin]]
 name = "wasm_worker"
-path = "src/rust/main.rs"
+path = "src/cmd/wasm_worker.rs"

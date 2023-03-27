@@ -11,22 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-#include "ray/core.h"
-
-#include "ray/core_worker/core_worker.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void CoreWorkerProcess_Initialize(CoreWorkerOptions *options) {
-  ray::core::CoreWorkerOptions o;
-  o.worker_type = static_cast<ray::core::WorkerType>(options->worker_type);
-  // TODO:
-  ray::core::CoreWorkerProcess::Initialize(o);
-}
-
-#ifdef __cplusplus
-}
-#endif
+pub mod config;
+pub mod ray;
+pub mod util;

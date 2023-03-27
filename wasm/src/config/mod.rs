@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-use crate::cmd;
+use crate::util;
 use crate::ray;
 use lazy_static::lazy_static;
 use serde_json::Value;
@@ -122,7 +122,7 @@ impl ConfigInternal {
     }
 
     /// process command line arguments and set the variables
-    fn process_arguments(&mut self, args: &cmd::Arguments) {
+    fn process_arguments(&mut self, args: &util::Arguments) {
         // compare command line arguments and set the variables
         match args.ray_code_search_path {
             Some(ref path) => {
@@ -202,7 +202,7 @@ impl ConfigInternal {
         }
     }
 
-    pub fn init(&mut self, config: &ray::RayConfig, args: &cmd::Arguments) {
+    pub fn init(&mut self, config: &ray::RayConfig, args: &util::Arguments) {
         // check input config and set the variables
         self.process_config(config);
 
