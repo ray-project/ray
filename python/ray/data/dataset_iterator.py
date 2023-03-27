@@ -144,7 +144,7 @@ class DatasetIterator(abc.ABC):
         if prefetch_blocks > 0 and not use_legacy:
             raise DeprecationWarning(
                 "`prefetch_blocks` arg is deprecated in Ray 2.4. Use "
-                "the`prefetch_batches` arg instead to specify the amount of "
+                "the `prefetch_batches` arg instead to specify the amount of "
                 "prefetching in terms of batches instead of blocks. If you "
                 "would like to use the legacy `iter_batches` codepath, "
                 "you can enable it by setting `use_legacy_iter_batches` "
@@ -209,13 +209,16 @@ class DatasetIterator(abc.ABC):
         Returns:
             An iterator over rows of the dataset.
         """
-        for batch in self.iter_batches(
-            batch_size=None,
+        iter_batch_args = {"batch_size": None, "batch_format": None}
+
+        context = DatasetContext.get_current()
+        if context.use_legacy_iter_batches:
+            iter_batch_args["prefetch_blocks"] = prefetch_blocks
+        else:
             # If batch_size is None, 1 block is exactly 1 batch.
-            prefetch_batches=prefetch_blocks,
-            prefetch_blocks=prefetch_blocks,
-            batch_format=None,
-        ):
+            iter_batch_args["prefetch_batches"] = prefetch_blocks
+
+        for batch in self.iter_batches(**iter_batch_args):
             batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
             for row in batch.iter_rows():
                 yield row
