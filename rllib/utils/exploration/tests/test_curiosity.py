@@ -140,7 +140,6 @@ class TestCuriosity(unittest.TestCase):
         ray.shutdown()
 
     def test_curiosity_on_frozen_lake(self):
-
         config = (
             ppo.PPOConfig()
             # A very large frozen-lake that's hard for a random policy to solve
@@ -240,6 +239,9 @@ class TestCuriosity(unittest.TestCase):
                     "fcnet_activation": "relu",
                 },
                 num_sgd_iter=8,
+                # TODO (Kourosh): We need to provide examples on how we do curiosity
+                # with RLModule API
+                _enable_learner_api=False,
             )
             .exploration(
                 exploration_config={
@@ -260,6 +262,7 @@ class TestCuriosity(unittest.TestCase):
                     },
                 }
             )
+            .rl_module(_enable_rl_module_api=False)
         )
 
         min_reward = 0.001

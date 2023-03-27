@@ -286,7 +286,6 @@ class QMixTorchPolicy(TorchPolicy):
         timestep: Optional[int] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
         obs_batch = input_dict[SampleBatch.OBS]
         state_batches = []
         i = 0
@@ -339,6 +338,7 @@ class QMixTorchPolicy(TorchPolicy):
         state_batches=None,
         prev_action_batch=None,
         prev_reward_batch=None,
+        **kwargs,
     ):
         obs_batch, action_mask, _ = self._unpack_observation(obs_batch)
         return np.zeros(obs_batch.size()[0])

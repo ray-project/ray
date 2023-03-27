@@ -53,7 +53,6 @@ def check_num_computed(ds, expected, streaming_expected) -> None:
 def test_parquet_deserialize_pieces_with_retry(
     ray_start_regular_shared, fs, data_path, monkeypatch
 ):
-
     setup_data_path = _unwrap_protocol(data_path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
@@ -156,7 +155,7 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take_all()]
-    check_num_computed(ds, 2, 1)
+    check_num_computed(ds, 2, 2)
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -466,7 +465,7 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    check_num_computed(ds, 2, 1)
+    check_num_computed(ds, 2, 2)
     assert sorted(values) == [
         [1, "a"],
         [1, "b"],
@@ -550,7 +549,7 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    check_num_computed(ds, 2, 1)
+    check_num_computed(ds, 2, 2)
     assert sorted(values) == [
         [1, "a"],
         [1, "b"],
@@ -640,7 +639,7 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
 
     # Forces a data read.
     values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
-    check_num_computed(ds, parallelism, 1)
+    check_num_computed(ds, parallelism, parallelism)
     assert sorted(values) == list(range(3 * num_dfs))
 
 

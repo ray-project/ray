@@ -580,7 +580,6 @@ class EagerTFPolicyV2(Policy):
                 if in_training:
                     output = self.model.forward_train(input_batch)
                 else:
-                    self.model.eval()
                     output = self.model.forward_exploration(input_batch)
 
                 action_dist = output.get(SampleBatch.ACTION_DIST)
@@ -648,7 +647,6 @@ class EagerTFPolicyV2(Policy):
     def compute_gradients(
         self, postprocessed_batch: SampleBatch
     ) -> Tuple[ModelGradients, Dict[str, TensorType]]:
-
         pad_batch_to_sequences_of_same_size(
             postprocessed_batch,
             shuffle=False,
@@ -828,7 +826,6 @@ class EagerTFPolicyV2(Policy):
         # Use Exploration object.
         with tf.variable_creator_scope(_disallow_var_creation):
             if self.config.get("_enable_rl_module_api", False):
-
                 if explore:
                     fwd_out = self.model.forward_exploration(input_dict)
                 else:
@@ -861,7 +858,6 @@ class EagerTFPolicyV2(Policy):
                 )
             else:
                 if is_overridden(self.action_distribution_fn):
-
                     # Try new action_distribution_fn signature, supporting
                     # state_batches and seq_lens.
                     (
