@@ -206,7 +206,7 @@ Step 1: Generate a private key and self-signed certificate for CA
               -subj "/CN=*.ray.io/C=US/L=San Francisco" \
               -keyout ca.key -out ca.crt
 
-Use the following command to encode the private key filr and the self-signed certificate file,
+Use the following command to encode the private key file and the self-signed certificate file,
 then paste encoded strings to the secret.yaml.
 
 .. code-block:: bash
