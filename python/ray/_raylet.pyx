@@ -1501,8 +1501,11 @@ cdef class GcsClient:
     cdef:
         shared_ptr[CGcsClient] inner
     
-    def __cinit__(self, GcsClientOptions gcs_options):
-        self.inner.reset(new CGcsClient(dereference(gcs_options.native())))
+    @staticmethod
+    cdef wrap(const shared_ptr[CGcsClient]& client):
+        cdef GcsClient self = GcsClient.__new__(GcsClient)
+        self.inner = client
+        return self
 
     def connect(self):
         check_status(self.inner.get().Connect())
@@ -1589,6 +1592,8 @@ cdef class CoreWorker:
         options.session_name = session_name
         options.entrypoint = entrypoint
         CCoreWorkerProcess.Initialize(options)
+
+        self.gcs_client = GcsClient.wrap(CCoreWorkerProcess.GetCoreWorker().GetGcsClient())
 
         self.cgname_to_eventloop_dict = None
         self.fd_to_cgname_dict = None

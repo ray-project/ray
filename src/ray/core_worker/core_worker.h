@@ -346,6 +346,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   WorkerContext &GetWorkerContext() { return worker_context_; }
 
+  std::shared_ptr<gcs::GcsClient> GetGcsClient() { return gcs_client_; }
+
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
   JobID GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
