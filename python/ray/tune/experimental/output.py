@@ -485,14 +485,14 @@ class TuneTerminalReporter(TuneReporterBase):
             all_infos.extend(table.trial_infos)
             if table.more_info:
                 all_infos.append(table.more_info)
-            print(
-                tabulate(
-                    all_infos,
-                    headers=header,
-                    tablefmt="simple",
-                    showindex=False,
-                )
+        print(
+            tabulate(
+                all_infos,
+                headers=header,
+                tablefmt="simple",
+                showindex=False,
             )
+        )
         print()
 
 
