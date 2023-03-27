@@ -11,13 +11,30 @@ Connection = Any  # A Python DB API2-compliant `Connection` object.
 Cursor = Any  # A Python DB API2-compliant `Cursor` object.
 
 
+def _cursor_to_block(cursor) -> Block:
+    import pyarrow as pa
+
+    rows = cursor.fetchall()
+    # Each `column_description` is a 7-element sequence. The first element is the
+    # column name. To learn more, read
+    # https://peps.python.org/pep-0249/#description.
+    columns = [column_description[0] for column_description in cursor.description]
+    pydict = {column: [row[i] for row in rows] for i, column in enumerate(columns)}
+    return pa.Table.from_pydict(pydict)
+
+
 @PublicAPI(stability="alpha")
 class SQLDatasource(Datasource[ArrowRow]):
-    def __init__(self, connection_factory: Callable[[], Connection]):
+    def __init__(
+        self,
+        connection_factory: Callable[[], Connection],
+        cursor_to_block: Callable[[Cursor], Block] = _cursor_to_block,
+    ):
         self.connection_factory = connection_factory
+        self.cursor_to_block = cursor_to_block
 
     def create_reader(self, sql: str) -> "Reader":
-        return SQLReader(sql, self.connection_factory)
+        return SQLReader(sql, self.connection_factory, self.cursor_to_block)
 
 
 def _check_connection_is_dbapi2_compliant(connection) -> None:
@@ -71,7 +88,6 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
         connection.close()
 
 
-@DeveloperAPI
 class SQLReader(Reader):
 
     NUM_SAMPLE_ROWS = 100
@@ -81,9 +97,11 @@ class SQLReader(Reader):
         self,
         sql: str,
         connection_factory: Callable[[], Connection],
+        cursor_to_block: Callable[[Cursor], Block],
     ):
         self.sql = sql
         self.connection_factory = connection_factory
+        self.cursor_to_block = cursor_to_block
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         None
@@ -150,17 +168,6 @@ class SQLReader(Reader):
             offset += num_rows
 
         return tasks
-
-    def cursor_to_block(self, cursor) -> Block:
-        import pyarrow as pa
-
-        rows = cursor.fetchall()
-        # Each `column_description` is a 7-element sequence. The first element is the 
-        # column name. To learn more, read 
-        # https://peps.python.org/pep-0249/#description.
-        columns = [column_description[0] for column_description in cursor.description]
-        pydict = {column: [row[i] for row in rows] for i, column in enumerate(columns)}
-        return pa.Table.from_pydict(pydict)
 
     def _get_num_rows(self) -> int:
         with _connect(self.connection_factory) as cursor:
