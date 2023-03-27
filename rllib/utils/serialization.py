@@ -24,7 +24,7 @@ if old_gym:
 
 
 @DeveloperAPI
-def convert_numpy_to_python_types(obj: Any):
+def convert_numpy_to_python_primitives(obj: Any):
     """Convert an object that is a numpy type to a python type.
 
     If the object is not a numpy type, it is returned unchanged.

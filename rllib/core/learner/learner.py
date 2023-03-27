@@ -343,18 +343,18 @@ class Learner:
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         """Configures an optimizer for the given module_id.
 
-        This method is called for each RLModule in the Multi-Agent RLModule being 
-        trained by the Learner, as well as any new module added during training via 
-        add_module. It should construct a ParamOptimizerPair or 
+        This method is called for each RLModule in the Multi-Agent RLModule being
+        trained by the Learner, as well as any new module added during training via
+        add_module. It should construct a ParamOptimizerPair or
         NamedParamOptimizerPairs.
 
         For instance, for a PPORLModule with different optimizers for policy and value
-        networks, it should return a list of NamedParamOptimizerPairs, where each 
-        NamedParamOptimizerPair is a dictionary mapping from optimizer name to a 
-        ParamOptimizerPair. 
+        networks, it should return a list of NamedParamOptimizerPairs, where each
+        NamedParamOptimizerPair is a dictionary mapping from optimizer name to a
+        ParamOptimizerPair.
 
-        Alternatively, for one optimizer for the entire RLModule, it should return a 
-        ParamOptimizerPair. The parameter module_id can be used to determine which 
+        Alternatively, for one optimizer for the entire RLModule, it should return a
+        ParamOptimizerPair. The parameter module_id can be used to determine which
         module to configure the optimizer for.
 
         Args:

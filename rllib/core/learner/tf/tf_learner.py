@@ -36,7 +36,7 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchCyclicIterator,
 )
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.serialization import convert_numpy_to_python_types
+from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
 
 
 tf1, tf, tfv = try_import_tf()
@@ -127,11 +127,11 @@ class TfLearner(Learner):
         path: Union[str, pathlib.Path],
     ) -> None:
         # This operation is potentially very costly because a MARL Module is created at
-        # build time, destroyed, and then a new one is created from a checkpoint. 
-        # However, it is necessary due to complications with the way that Ray Tune 
+        # build time, destroyed, and then a new one is created from a checkpoint.
+        # However, it is necessary due to complications with the way that Ray Tune
         # restores failed trials. When Tune restores a failed trial, it reconstructs the
-        # entire experiment from the initial config. Therefore, to reflect any changes 
-        # made to the learner's modules, the module created by Tune is destroyed and 
+        # entire experiment from the initial config. Therefore, to reflect any changes
+        # made to the learner's modules, the module created by Tune is destroyed and
         # then rebuilt from the checkpoint.
         with self._strategy.scope():
             super().load_state(path)
@@ -142,7 +142,7 @@ class TfLearner(Learner):
         path.mkdir(parents=True, exist_ok=True)
         for name, optim in self._name_to_optim.items():
             state = tf.keras.optimizers.serialize(optim)
-            state = tf.nest.map_structure(convert_numpy_to_python_types, state)
+            state = tf.nest.map_structure(convert_numpy_to_python_primitives, state)
             with open(path / f"{name}.json", "w") as f:
                 json.dump(state, f)
 
