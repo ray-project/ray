@@ -1214,6 +1214,8 @@ provider:
             "num_drivers": "0",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
+            "tune_scheduler": "FIFOScheduler",
+            "tune_searcher": "BasicVariantGenerator",
         }
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
