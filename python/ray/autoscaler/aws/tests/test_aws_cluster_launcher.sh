@@ -57,7 +57,7 @@ done
 
 if ! $success; then
     echo "======================================"
-    echo "Error: Verification failed after $retries attempts. Please check your cluster configuration and try again."
+    echo "Error: Verification failed after $retries attempts."
     exit 1
 fi
 
