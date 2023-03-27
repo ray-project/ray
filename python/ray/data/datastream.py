@@ -208,22 +208,22 @@ class Datastream(Generic[T]):
         >>> # Transform in parallel with map_batches().
         >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
         MapBatches(<lambda>)
-        +- Dataset(num_blocks=17, num_rows=1000, schema=<class 'int'>)
+        +- Datastream(num_blocks=17, num_rows=1000, schema=<class 'int'>)
         >>> # Compute maximum
         >>> ds.max()
         999
         >>> # Group the data.
         >>> ds.groupby(lambda x: x % 3).count()
         Aggregate
-        +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
         >>> # Shuffle this dataset randomly.
         >>> ds.random_shuffle()
         RandomShuffle
-        +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
         >>> # Sort it back in order.
         >>> ds.sort()
         Sort
-        +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors without incurring a copy. Datasets support
@@ -285,13 +285,13 @@ class Datastream(Generic[T]):
             >>> ds = ray.data.range(1000)
             >>> ds.map(lambda x: x * 2)
             Map
-            +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
             >>> # Transform Arrow records.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
             >>> ds.map(lambda record: {"v2": record["value"] * 2})
             Map
-            +- Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
+            +- Datastream(num_blocks=200, num_rows=1000, schema={value: int64})
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
             >>> init_model = ... # doctest: +SKIP
@@ -448,7 +448,7 @@ class Datastream(Generic[T]):
             ... })
             >>> ds = ray.data.from_pandas(df)
             >>> ds
-            Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64})
+            Datastream(num_blocks=1, num_rows=3, schema={name: object, age: int64})
 
             Call :meth:`.default_batch_format` to determine the default batch
             type.
@@ -470,7 +470,7 @@ class Datastream(Generic[T]):
             >>> ds = ds.map_batches(map_fn)
             >>> ds
             MapBatches(map_fn)
-            +- Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64})
+            +- Datastream(num_blocks=1, num_rows=3, schema={name: object, age: int64})
 
             Your ``fn`` can return a different type than the input type. To learn more
             about supported output types, read
@@ -483,7 +483,7 @@ class Datastream(Generic[T]):
             >>> ds
             MapBatches(map_fn)
             +- MapBatches(map_fn)
-               +- Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64})
+               +- Datastream(num_blocks=1, num_rows=3, schema={name: object, age: int64})
 
             :ref:`Actors <actor-guide>` can improve the performance of some workloads.
             For example, you can use :ref:`actors <actor-guide>` to load a model once
@@ -519,7 +519,7 @@ class Datastream(Generic[T]):
             >>> ds = ds.map_batches(map_fn_with_large_output)
             >>> ds
             MapBatches(map_fn_with_large_output)
-            +- Dataset(num_blocks=1, num_rows=1, schema=<class 'int'>)
+            +- Datastream(num_blocks=1, num_rows=1, schema=<class 'int'>)
 
 
         Args:
@@ -808,7 +808,7 @@ class Datastream(Generic[T]):
             >>> ds = ds.select_columns(cols=["col1", "col2"])
             >>> ds
             MapBatches(<lambda>)
-            +- Dataset(
+            +- Datastream(
                   num_blocks=10,
                   num_rows=10,
                   schema={col1: int64, col2: int64, col3: int64}
@@ -849,7 +849,7 @@ class Datastream(Generic[T]):
             >>> ds = ray.data.range(1000)
             >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3])
             FlatMap
-            +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -927,7 +927,7 @@ class Datastream(Generic[T]):
             >>> ds = ray.data.range(100)
             >>> ds.filter(lambda x: x % 2 == 0)
             Filter
-            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1031,11 +1031,11 @@ class Datastream(Generic[T]):
             >>> # Shuffle this dataset randomly.
             >>> ds.random_shuffle()
             RandomShuffle
-            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
             >>> # Shuffle this dataset with a fixed random seed.
             >>> ds.random_shuffle(seed=12345)
             RandomShuffle
-            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1290,7 +1290,7 @@ class Datastream(Generic[T]):
             blocks = np.array_split(block_refs, n)
             meta = np.array_split(metadata, n)
             return [
-                Dataset(
+                CachedData(
                     ExecutionPlan(
                         BlockList(
                             b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
@@ -1702,7 +1702,7 @@ class Datastream(Generic[T]):
             self._lazy,
         )
 
-    def groupby(self, key: Optional[KeyFn]) -> "GroupedDatastream[T]":
+    def groupby(self, key: Optional[KeyFn]) -> "GroupedDataset[T]":
         """Group the dataset by the key function or column name.
 
         Examples:
@@ -1710,13 +1710,13 @@ class Datastream(Generic[T]):
             >>> # Group by a key function and aggregate.
             >>> ray.data.range(100).groupby(lambda x: x % 3).count()
             Aggregate
-            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
             >>> # Group by an Arrow table column and aggregate.
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
             ...     "A").count()
             Aggregate
-            +- Dataset(num_blocks=100, num_rows=100, schema={A: int64, B: int64})
+            +- Datastream(num_blocks=100, num_rows=100, schema={A: int64, B: int64})
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -2104,13 +2104,13 @@ class Datastream(Generic[T]):
             >>> ds = ray.data.range(100)
             >>> ds.sort()
             Sort
-            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
             >>> # Sort by a single column in descending order.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
             >>> ds.sort("value", descending=True)
             Sort
-            +- Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
+            +- Datastream(num_blocks=200, num_rows=1000, schema={value: int64})
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["value"]) # doctest: +SKIP
 
@@ -2140,7 +2140,7 @@ class Datastream(Generic[T]):
             logical_plan = LogicalPlan(op)
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
-    def zip(self, other: "Datastream[U]") -> "Dataset[(T, U)]":
+    def zip(self, other: "Datastream[U]") -> "CachedData[(T, U)]":
         """Zip this dataset with the elements of another.
 
         The datasets must have the same number of rows. For tabular datasets, the
@@ -2916,7 +2916,7 @@ class Datastream(Generic[T]):
                 logical_plan = LogicalPlan(write_op)
 
             try:
-                self._write_ds = Dataset(
+                self._write_ds = Datastream(
                     plan, self._epoch, self._lazy, logical_plan
                 ).cache()
                 datasource.on_write_complete(
@@ -3356,7 +3356,7 @@ class Datastream(Generic[T]):
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
-            Dataset(
+            Datastream(
                num_blocks=1,
                num_rows=150,
                schema={
@@ -3387,7 +3387,7 @@ class Datastream(Generic[T]):
             >>> ds = preprocessor.transform(ds)
             >>> ds
             Concatenator
-            +- Dataset(
+            +- Datastream(
                   num_blocks=1,
                   num_rows=150,
                   schema={
@@ -3815,7 +3815,7 @@ class Datastream(Generic[T]):
                 self._i += 1
 
                 def gen():
-                    ds = Dataset(
+                    ds = Datastream(
                         ExecutionPlan(
                             blocks, outer_stats, dataset_uuid=uuid, run_by_consumer=True
                         ),
@@ -3837,7 +3837,7 @@ class Datastream(Generic[T]):
         pipe = DatasetPipeline(Iterable(blocks), False, length=times or float("inf"))
         if read_stage:
             pipe = pipe.foreach_window(
-                lambda ds, read_stage=read_stage: Dataset(
+                lambda ds, read_stage=read_stage: Datastream(
                     ds._plan.with_stage(read_stage), ds._epoch, True
                 )
             )
@@ -3931,7 +3931,7 @@ class Datastream(Generic[T]):
                 blocks = self._splits.pop(0)
 
                 def gen():
-                    ds = Dataset(
+                    ds = Datastream(
                         ExecutionPlan(blocks, outer_stats, run_by_consumer=True),
                         self._epoch,
                         lazy=True,
@@ -4032,7 +4032,7 @@ class Datastream(Generic[T]):
         pipe = DatasetPipeline(it, False, length=len(it._splits))
         if read_stage:
             pipe = pipe.foreach_window(
-                lambda ds, read_stage=read_stage: Dataset(
+                lambda ds, read_stage=read_stage: Datastream(
                     ds._plan.with_stage(read_stage), ds._epoch, True
                 )
             )
@@ -4116,7 +4116,7 @@ class Datastream(Generic[T]):
         ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.) or execution is
         manually triggered via ``.cache()``.
         """
-        ds = Dataset(
+        ds = Datastream(
             self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
         )
         ds._set_uuid(self._get_uuid())
@@ -4172,7 +4172,7 @@ class Datastream(Generic[T]):
         # Copy Dataset and clear the blocks from the execution plan so only the
         # Dataset's lineage is serialized.
         plan_copy = self._plan.deep_copy(preserve_uuid=True)
-        ds = Dataset(plan_copy, self._get_epoch(), self._lazy)
+        ds = Datastream(plan_copy, self._get_epoch(), self._lazy)
         ds._plan.clear_block_refs()
         ds._set_uuid(self._get_uuid())
 
@@ -4199,7 +4199,7 @@ class Datastream(Generic[T]):
 
     @staticmethod
     @DeveloperAPI
-    def deserialize_lineage(serialized_ds: bytes) -> "Dataset":
+    def deserialize_lineage(serialized_ds: bytes) -> "Datastream":
         """
         Deserialize the provided lineage-serialized Dataset.
 
@@ -4217,14 +4217,14 @@ class Datastream(Generic[T]):
     def _divide(self, block_idx: int) -> ("Datastream[T]", "Datastream[T]"):
         block_list = self._plan.execute()
         left, right = block_list.divide(block_idx)
-        l_ds = Dataset(
+        l_ds = Datastream(
             ExecutionPlan(
                 left, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
             ),
             self._epoch,
             self._lazy,
         )
-        r_ds = Dataset(
+        r_ds = Datastream(
             ExecutionPlan(
                 right, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
             ),
@@ -4249,7 +4249,7 @@ class Datastream(Generic[T]):
             >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds  # doctest: +SKIP
-            Dataset(num_blocks=20, num_rows=100, schema=<class 'int'>)
+            Datastream(num_blocks=20, num_rows=100, schema=<class 'int'>)
             >>> ds.default_batch_format()
             <class 'list'>
             >>> next(ds.iter_batches(batch_size=4))
@@ -4262,7 +4262,7 @@ class Datastream(Generic[T]):
 
             >>> ds = ray.data.range_tensor(100)
             >>> ds  # doctest: +SKIP
-            Dataset(num_blocks=20, num_rows=100, schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})
+            Datastream(num_blocks=20, num_rows=100, schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})
             >>> ds.default_batch_format()
             <class 'numpy.ndarray'>
             >>> next(ds.iter_batches(batch_size=4))
@@ -4280,7 +4280,7 @@ class Datastream(Generic[T]):
             >>> df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
             >>> ds = ray.data.from_pandas(df)
             >>> ds  # doctest: +SKIP
-            Dataset(num_blocks=1, num_rows=2, schema={foo: object, bar: int64})
+            Datastream(num_blocks=1, num_rows=2, schema={foo: object, bar: int64})
             >>> ds.default_batch_format()
             <class 'pandas.core.frame.DataFrame'>
             >>> next(ds.iter_batches(batch_size=4))
@@ -4570,6 +4570,7 @@ class CachedData(Datastream):
     which means that this class can be shared or iterated over by multiple Ray tasks
     without re-executing the underlying computations for producing the stream.
     """
+
     pass
 
 
