@@ -188,6 +188,9 @@ def _prefetch_blocks(
     if num_blocks_to_prefetch == 0:
         for block_ref in block_ref_iter:
             yield block_ref
+            trace_deallocation(
+                block_ref, "block_batching._prefetch_blocks", free=eager_free
+            )
 
     window_size = num_blocks_to_prefetch
     # Create the initial set of blocks to prefetch.
