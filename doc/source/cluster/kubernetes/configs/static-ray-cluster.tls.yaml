@@ -222,7 +222,7 @@ spec:
       containers:
         - name: ray-head
           image: rayproject/ray:2.3.0
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           command: [ "/bin/sh", "-c", "--" ]
           args:
             - "ray start --head --port=6379 --num-cpus=$MY_CPU_REQUEST --dashboard-host=127.0.0.1 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=52365 --block"
@@ -329,7 +329,7 @@ spec:
       containers:
       - name: ray-worker
         image: rayproject/ray:2.3.0
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         command: ["/bin/bash", "-c", "--"]
         args:
           - "ray start --num-cpus=$MY_CPU_REQUEST --address=service-ray-head.default.svc.cluster.local:6379 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=52365 --block"
