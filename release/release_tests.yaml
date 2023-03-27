@@ -3206,11 +3206,17 @@
   team: core
   cluster:
     cluster_env: stress_tests/stress_tests_app_config.yaml
-    cluster_compute: stress_tests/placement_group_tests_compute.yaml
+    cluster_compute: stress_tests/placement_group_tests_compute_gce.yaml
 
   run:
     timeout: 7200
     script: python stress_tests/test_placement_group.py
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: stress_tests/placement_group_tests_compute.yaml
 
 - name: decision_tree_autoscaling_20_runs
   group: core-multi-test
@@ -3225,6 +3231,12 @@
   run:
     timeout: 9600
     script: python decision_tree/cart_with_tree.py --concurrency=20
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: decision_tree/autoscaling_compute_gce.yaml
 
 - name: autoscaling_shuffle_1tb_1000_partitions
   group: core-multi-test
@@ -3257,6 +3269,12 @@
   run:
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: tpl_gce_64.yaml
 
 
 - name: microbenchmark_staging
@@ -3936,6 +3954,12 @@
     wait_for_nodes:
       num_nodes: 20
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: data_ingest_benchmark_compute_gce.yaml
+
 
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
@@ -3952,6 +3976,12 @@
     script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --new_streaming
     wait_for_nodes:
       num_nodes: 20
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: data_ingest_benchmark_compute_gce.yaml
 
 
 - name: aggregate_benchmark
@@ -4152,6 +4182,12 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: dataset_shuffle_push_based_sort_1tb
   group: data-tests
@@ -4357,6 +4393,12 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 #####################
 # Observability tests
