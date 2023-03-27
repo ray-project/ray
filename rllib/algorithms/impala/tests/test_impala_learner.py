@@ -16,8 +16,7 @@ torch, nn = try_import_torch()
 tf1, tf, _ = try_import_tf()
 tf1.enable_eager_execution()
 
-
-frag_length = 32
+frag_length = 50
 
 FAKE_BATCH = {
     SampleBatch.OBS: np.random.uniform(low=0, high=1, size=(frag_length, 4)).astype(

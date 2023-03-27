@@ -97,7 +97,7 @@ class HyperBandScheduler(FIFOScheduler):
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
-        super().__init__()
+        FIFOScheduler.__init__(self)
         self._eta = reduction_factor
         self._s_max_1 = int(np.round(np.log(max_t) / np.log(reduction_factor))) + 1
         self._max_t_attr = max_t
@@ -268,12 +268,12 @@ class HyperBandScheduler(FIFOScheduler):
             for t in good:
                 if t.status not in [Trial.PAUSED, Trial.RUNNING]:
                     raise TuneError(
-                        f"Trial with unexpected good status " f"encountered: {t.status}"
+                        f"Trial with unexpected good status encountered: {t.status}"
                     )
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
                         self._unpause_trial(trial_runner, t)
-                        t.status = Trial.PENDING
+                        trial_runner._set_trial_status(t, Trial.PENDING)
                     elif t.status == Trial.RUNNING:
                         action = TrialScheduler.CONTINUE
         return action
