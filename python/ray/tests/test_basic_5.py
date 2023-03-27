@@ -289,7 +289,7 @@ def test_preload_workers(ray_start_cluster, preload):
     cluster = ray_start_cluster
 
     # Specifying imports not currently imported by default_worker.py
-    expect_succeed_imports = ["html", "webbrowser"]
+    expect_succeed_imports = ["html.parser", "webbrowser"]
     expect_fail_imports = ["fake_module_expect_ModuleNotFoundError"]
 
     if preload:
@@ -327,16 +327,22 @@ def test_preload_workers(ray_start_cluster, preload):
     def assert_correct_imports():
         import sys
 
-        imported_modules = sys.modules.copy()
+        imported_modules = set(sys.modules.keys())
 
         if preload:
             for expected_import in expect_succeed_imports:
-                assert expected_import in imported_modules
+                assert (
+                    expected_import in imported_modules
+                ), f"Expected {expected_import} to be in {imported_modules}"
             for unexpected_import in expect_fail_imports:
-                assert unexpected_import not in imported_modules
+                assert (
+                    unexpected_import not in imported_modules
+                ), f"Expected {unexpected_import} to not be in {imported_modules}"
         else:
             for unexpected_import in expect_succeed_imports:
-                assert unexpected_import not in imported_modules
+                assert (
+                    unexpected_import not in imported_modules
+                ), f"Expected {unexpected_import} to not be in {imported_modules}"
 
     @ray.remote(num_cpus=0)
     class Actor:
