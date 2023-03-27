@@ -33,7 +33,7 @@ from ray.data._internal.util import (
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
-from ray.data.dataset import Dataset
+from ray.data.datastream import Datastream, CachedData
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     BinaryDatasource,
@@ -88,7 +88,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
+def from_items(items: List[Any], *, parallelism: int = -1) -> CachedData[Any]:
     """Create a dataset from a list of local Python objects.
 
     Examples:
@@ -144,7 +144,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
             )
         )
 
-    return Dataset(
+    return CachedData(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromItems": metadata}, parent=None),
@@ -156,7 +156,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
 
 
 @PublicAPI
-def range(n: int, *, parallelism: int = -1) -> Dataset[int]:
+def range(n: int, *, parallelism: int = -1) -> Datastream[int]:
     """Create a dataset from a range of integers [0..n).
 
     Examples:
@@ -181,7 +181,7 @@ def range(n: int, *, parallelism: int = -1) -> Dataset[int]:
 
 
 @PublicAPI
-def range_table(n: int, *, parallelism: int = -1) -> Dataset[ArrowRow]:
+def range_table(n: int, *, parallelism: int = -1) -> Datastream[ArrowRow]:
     """Create a tabular dataset from a range of integers [0..n).
 
     Examples:
@@ -216,7 +216,7 @@ def range_arrow(*args, **kwargs):
 @PublicAPI
 def range_tensor(
     n: int, *, shape: Tuple = (1,), parallelism: int = -1
-) -> Dataset[ArrowRow]:
+) -> Datastream[ArrowRow]:
     """Create a Tensor dataset from a range of integers [0..n).
 
     Examples:
@@ -263,7 +263,7 @@ def read_datasource(
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     **read_args,
-) -> Dataset[T]:
+) -> Datastream[T]:
     """Read a dataset from a custom data source.
 
     Args:
@@ -393,7 +393,7 @@ def read_datasource(
     read_op = Read(datasource, requested_parallelism, ray_remote_args, read_args)
     logical_plan = LogicalPlan(read_op)
 
-    return Dataset(
+    return Datastream(
         plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
         epoch=0,
         lazy=True,
@@ -412,7 +412,7 @@ def read_mongo(
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     **mongo_args,
-) -> Dataset[ArrowRow]:
+) -> Datastream[ArrowRow]:
     """Create an Arrow dataset from MongoDB.
 
     The data to read from is specified via the ``uri``, ``database`` and ``collection``
@@ -492,7 +492,7 @@ def read_parquet(
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
     **arrow_parquet_args,
-) -> Dataset[ArrowRow]:
+) -> Datastream[ArrowRow]:
     """Create an Arrow dataset from parquet files.
 
     Examples:
@@ -682,7 +682,7 @@ def read_parquet_bulk(
         ParquetBaseDatasource.file_extension_filter()
     ),
     **arrow_parquet_args,
-) -> Dataset[ArrowRow]:
+) -> Datastream[ArrowRow]:
     """Create an Arrow dataset from a large number (such as >1K) of parquet files
     quickly.
 
@@ -779,7 +779,7 @@ def read_json(
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
     **arrow_json_args,
-) -> Dataset[ArrowRow]:
+) -> Datastream[ArrowRow]:
     """Create an Arrow dataset from json files.
 
     Examples:
@@ -856,7 +856,7 @@ def read_csv(
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
     **arrow_csv_args,
-) -> Dataset[ArrowRow]:
+) -> Datastream[ArrowRow]:
     r"""Create an Arrow dataset from csv files.
 
     Examples:
@@ -963,7 +963,7 @@ def read_text(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
-) -> Dataset[str]:
+) -> Datastream[str]:
     """Create a dataset from lines stored in text files.
 
     Examples:
@@ -1031,7 +1031,7 @@ def read_numpy(
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
     **numpy_load_args,
-) -> Dataset[ArrowRow]:
+) -> Datastream[ArrowRow]:
     """Create an Arrow dataset from numpy files.
 
     Examples:
@@ -1094,7 +1094,7 @@ def read_tfrecords(
     partition_filter: Optional[PathPartitionFilter] = None,
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
-) -> Dataset[PandasRow]:
+) -> Datastream[PandasRow]:
     """Create a dataset from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
     messages.
@@ -1199,7 +1199,7 @@ def read_webdataset(
     filerename: Optional[Union[list, callable]] = None,
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
-) -> Dataset[PandasRow]:
+) -> Datastream[PandasRow]:
     """Create a dataset from WebDataset files.
 
     Args:
@@ -1257,7 +1257,7 @@ def read_binary_files(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
-) -> Dataset[Union[Tuple[str, bytes], bytes]]:
+) -> Datastream[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
     Examples:
@@ -1315,7 +1315,7 @@ def read_sql(
     *,
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-):
+) -> Datastream[Any]:
     """Read from a database that provides a
     `Python DB API2-compliant <https://peps.python.org/pep-0249/>`_ connector.
 
@@ -1391,7 +1391,7 @@ def read_sql(
 
 
 @PublicAPI
-def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
+def from_dask(df: "dask.DataFrame") -> CachedData[ArrowRow]:
     """Create a dataset from a Dask DataFrame.
 
     Args:
@@ -1425,7 +1425,7 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
 
 
 @PublicAPI
-def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
+def from_mars(df: "mars.DataFrame") -> CachedData[ArrowRow]:
     """Create a dataset from a MARS dataframe.
 
     Args:
@@ -1440,7 +1440,7 @@ def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
 
 
 @PublicAPI
-def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
+def from_modin(df: "modin.DataFrame") -> CachedData[ArrowRow]:
     """Create a dataset from a Modin dataframe.
 
     Args:
@@ -1458,7 +1458,7 @@ def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
 @PublicAPI
 def from_pandas(
     dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
-) -> Dataset[ArrowRow]:
+) -> CachedData[ArrowRow]:
     """Create a dataset from a list of Pandas dataframes.
 
     Args:
@@ -1485,7 +1485,7 @@ def from_pandas(
 @DeveloperAPI
 def from_pandas_refs(
     dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]]
-) -> Dataset[ArrowRow]:
+) -> CachedData[ArrowRow]:
     """Create a dataset from a list of Ray object references to Pandas
     dataframes.
 
@@ -1514,7 +1514,7 @@ def from_pandas_refs(
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(_get_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
-        return Dataset(
+        return CachedData(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
                 DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
@@ -1529,7 +1529,7 @@ def from_pandas_refs(
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
-    return Dataset(
+    return CachedData(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
@@ -1541,7 +1541,7 @@ def from_pandas_refs(
 
 
 @PublicAPI
-def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> Dataset[ArrowRow]:
+def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> CachedData[ArrowRow]:
     """Create a dataset from a list of NumPy ndarrays.
 
     Args:
@@ -1559,7 +1559,7 @@ def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> Dataset[ArrowRo
 @DeveloperAPI
 def from_numpy_refs(
     ndarrays: Union[ObjectRef[np.ndarray], List[ObjectRef[np.ndarray]]],
-) -> Dataset[ArrowRow]:
+) -> CachedData[ArrowRow]:
     """Create a dataset from a list of NumPy ndarray futures.
 
     Args:
@@ -1588,7 +1588,7 @@ def from_numpy_refs(
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
-    return Dataset(
+    return CachedData(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromNumpyRefs": metadata}, parent=None),
@@ -1602,7 +1602,7 @@ def from_numpy_refs(
 @PublicAPI
 def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]]
-) -> Dataset[ArrowRow]:
+) -> CachedData[ArrowRow]:
     """Create a dataset from a list of Arrow tables.
 
     Args:
@@ -1625,7 +1625,7 @@ def from_arrow_refs(
         ObjectRef[Union["pyarrow.Table", bytes]],
         List[ObjectRef[Union["pyarrow.Table", bytes]]],
     ]
-) -> Dataset[ArrowRow]:
+) -> CachedData[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
 
     Args:
@@ -1640,7 +1640,7 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
-    return Dataset(
+    return CachedData(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromArrowRefs": metadata}, parent=None),
@@ -1654,7 +1654,7 @@ def from_arrow_refs(
 @PublicAPI
 def from_spark(
     df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None
-) -> Dataset[ArrowRow]:
+) -> CachedData[ArrowRow]:
     """Create a dataset from a Spark dataframe.
 
     Args:
@@ -1675,7 +1675,7 @@ def from_spark(
 @PublicAPI
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
-) -> Union[Dataset[ArrowRow], Dict[str, Dataset[ArrowRow]]]:
+) -> Union[CachedData[ArrowRow], Dict[str, CachedData[ArrowRow]]]:
     """Create a dataset from a Hugging Face Datasets Dataset.
 
     This function is not parallelized, and is intended to be used
@@ -1692,7 +1692,7 @@ def from_huggingface(
     """
     import datasets
 
-    def convert(ds: "datasets.Dataset") -> Dataset[ArrowRow]:
+    def convert(ds: "datasets.Dataset") -> Datastream[ArrowRow]:
         return from_arrow(ds.data.table)
 
     if isinstance(dataset, datasets.DatasetDict):
@@ -1709,7 +1709,7 @@ def from_huggingface(
 @PublicAPI
 def from_tf(
     dataset: "tf.data.Dataset",
-) -> Dataset:
+) -> CachedData:
     """Create a dataset from a TensorFlow dataset.
 
     This function is inefficient. Use it to read small datasets or prototype.
@@ -1762,7 +1762,7 @@ def from_tf(
 @PublicAPI
 def from_torch(
     dataset: "torch.utils.data.Dataset",
-) -> Dataset:
+) -> CachedData:
     """Create a dataset from a Torch dataset.
 
     This function is inefficient. Use it to read small datasets or prototype.

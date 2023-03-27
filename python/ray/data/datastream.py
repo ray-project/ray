@@ -4563,7 +4563,7 @@ class Datastream(Generic[T]):
         self._current_executor = None
 
 
-class CachedData(Datastream):
+class CachedData(Datastream, Generic[T]):
     """A Datastream that has been materialized into Ray memory, e.g., via `.cache()`.
 
     The blocks of a CachedData object are materialized into Ray object store memory,
