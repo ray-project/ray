@@ -2,6 +2,23 @@ import pytest
 from ray._private.ray_logging import LogDeduplicator
 
 
+def test_nodedup_logs_single_process():
+    dedup = LogDeduplicator()
+    batch1 = {
+        "ip": "node1",
+        "pid": 100,
+        "lines": ["hello world", "good bye id=123, 0x13"],
+    }
+
+    # Immediately prints always.
+    out1 = dedup.deduplicate(batch1)
+    assert out1 == [batch1]
+    out1 = dedup.deduplicate(batch1)
+    assert out1 == [batch1]
+    out1 = dedup.deduplicate(batch1)
+    assert out1 == [batch1]
+
+
 def test_dedup_logs_multiple_processes():
     now = 142300000.0
 
@@ -91,10 +108,6 @@ def test_dedup_logs_multiple_processes():
             "lines": ["hello world\x1b[32m [repeated 2x across cluster]\x1b[0m"],
         }
     ]
-
-
-def test_nodedup_logs_single_process():
-    pass
 
 
 if __name__ == "__main__":
