@@ -281,9 +281,13 @@
     timeout: 3600
     script: python workloads/gpu_batch_prediction.py --data-size-gb 20
 
-
   alert: default
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: compute_gce_gpu_1_g4_8xl.yaml
 
 - name: air_benchmark_torch_batch_prediction_gpu_4x4_100gb
   group: AIR tests
@@ -489,8 +493,13 @@
     timeout: 3600
     script: python workloads/pytorch_training_e2e.py --data-size-gb 20
 
-
   alert: default
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: compute_gce_gpu_1.yaml
 
 
 - name: air_benchmark_pytorch_training_e2e_gpu_4x4_100gb
