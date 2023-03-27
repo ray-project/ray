@@ -214,7 +214,7 @@ async def serve_start_async(
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
 
-    This function is not thread-safe, caller should maintain the async lock in order
+    This function is not thread-safe. The caller should maintain the async lock in order
     to start serve instance asynchronously.
 
     This function has same functionality with ray.serve._private.api.serve_start().
