@@ -64,7 +64,7 @@ class Timer:
         return self._max
 
     def avg(self) -> float:
-        return self._value / self._total_count
+        return self._value / self._total_count if self._total_count else float("inf")
 
 
 class _DatasetStatsBuilder:
