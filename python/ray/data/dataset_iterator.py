@@ -215,7 +215,7 @@ class DatasetIterator(abc.ABC):
         if context.use_legacy_iter_batches:
             iter_batch_args["prefetch_blocks"] = prefetch_blocks
         else:
-            # If batch_size is None, 1 block is exactly 1 batch.
+            # Since batch_size is None, 1 block is exactly 1 batch.
             iter_batch_args["prefetch_batches"] = prefetch_blocks
 
         for batch in self.iter_batches(**iter_batch_args):
