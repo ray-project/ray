@@ -67,7 +67,13 @@ def ray_instance(request):
 
     os.environ.update(requested_env_vars)
 
-    yield ray.init()
+    yield ray.init(
+        _metrics_export_port=9999,
+        _system_config={
+            "metrics_report_interval_ms": 1000,
+            "task_retry_delay_ms": 50,
+        },
+    )
 
     ray.shutdown()
 
@@ -1263,6 +1269,68 @@ class TestDeployApp:
         # The original applications should still be up and running
         self.check_multi_app()
 
+    def test_deploy_multi_app_deleting(self, client: ServeControllerClient):
+        """Test deleting an application by removing from config."""
+
+        config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
+        client.deploy_apps(config)
+        self.check_multi_app()
+
+        # Delete app2
+        del config.applications[1]
+        client.deploy_apps(config)
+
+        # Fetch details immediately afterwards, should parse correctly
+        details = ray.get(client._controller.get_serve_instance_details.remote())
+        ServeInstanceDetails(**details)
+        # We don't enforce that the state is deleting here because that could cause
+        # flaky test performance. The app could have been deleted by the time of query
+        assert (
+            "app2" not in details["applications"]
+            or details["applications"]["app2"]["status"] == ApplicationStatus.DELETING
+        )
+
+        info_valid = True
+
+        def check_app_status():
+            global info_valid
+            try:
+                # Fetch details, should always parse correctly
+                details = ray.get(
+                    client._controller.get_serve_instance_details.remote()
+                )
+                ServeInstanceDetails(**details)
+                return (
+                    details["applications"]["app1"]["status"]
+                    == ApplicationStatus.RUNNING
+                )
+            except Exception:
+                info_valid = False
+
+        wait_for_condition(check_app_status)
+        # Check that all all details fetched from controller parsed correctly
+        assert info_valid
+
+    def test_deploy_nonexistent_deployment(self, client: ServeControllerClient):
+        """Remove an application from a config, it should reach a deleting state."""
+
+        config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
+        # Change names to invalid names that don't contain "deployment" or "application"
+        config.applications[1].name = "random1"
+        config.applications[1].deployments[0].name = "random2"
+        client.deploy_apps(config)
+
+        def check_app_message():
+            details = ray.get(client._controller.get_serve_instance_details.remote())
+            # The error message should be descriptive
+            # e.g. no deployment "x" in application "y"
+            return (
+                "application" in details["applications"]["random1"]["message"]
+                and "deployment" in details["applications"]["random1"]["message"]
+            )
+
+        wait_for_condition(check_app_message)
+
 
 class TestServeRequestProcessingTimeoutS:
     @pytest.mark.parametrize(
@@ -1408,7 +1476,52 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     # Unblock the first request.
     signal_actor.send.remote()
     assert ray.get(first_ref) == "hello"
+    serve.shutdown()
 
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {
+            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
+            "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES": "5",
+        },
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("crash", [True, False])
+def test_http_request_number_of_retries(ray_instance, crash):
+    """Test HTTP proxy retry requests."""
+
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    class Model:
+        async def __call__(self):
+            if crash:
+                # Trigger Actor Error
+                os._exit(0)
+            await signal_actor.wait.remote()
+            return "hello"
+
+    serve.run(Model.bind())
+    assert requests.get("http://127.0.0.1:8000/").status_code == 500
+
+    def verify_metrics():
+        resp = requests.get("http://127.0.0.1:9999").text
+        resp = resp.split("\n")
+        # Make sure http proxy retry 5 times
+        verfied = False
+        for metrics in resp:
+            if "# HELP" in metrics or "# TYPE" in metrics:
+                continue
+            if "serve_num_router_requests" in metrics:
+                assert "6.0" in metrics
+                verfied = True
+        return verfied
+
+    wait_for_condition(verify_metrics, timeout=60, retry_interval_ms=500)
+    signal_actor.send.remote()
     serve.shutdown()
 
 

@@ -292,8 +292,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
-      std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
-          run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
@@ -431,12 +429,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
 
-  /// Delete non-detached actor information from durable storage once the associated job
-  /// finishes.
-  ///
-  /// \param job_id The id of finished job.
-  void OnJobFinished(const JobID &job_id);
-
   /// Get the created actors.
   ///
   /// \return The created actors.
@@ -558,6 +550,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta->set_pid(actor.pid());
     actor_delta->set_start_time(actor.start_time());
     actor_delta->set_end_time(actor.end_time());
+    actor_delta->set_repr_name(actor.repr_name());
     // Acotr's namespace and name are used for removing cached name when it's dead.
     if (!actor.ray_namespace().empty()) {
       actor_delta->set_ray_namespace(actor.ray_namespace());
