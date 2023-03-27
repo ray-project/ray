@@ -522,12 +522,12 @@ class WorkerSet:
 
         if workers is not DEPRECATED_VALUE:
             deprecation_warning(
-                old="workers",
+                old="WorkerSet.add_policy(.., workers=..)",
                 help=(
-                    "The `workers` argument to `WorkerSet.add_policy()` is deprecated "
-                    "and a no-op now. Please do not use it anymore."
+                    "The `workers` argument to `WorkerSet.add_policy()` is deprecated! "
+                    "Please do not use it anymore."
                 ),
-                error=False,
+                error=True,
             )
 
         if (policy_cls is None) == (policy is None):
@@ -576,6 +576,7 @@ class WorkerSet:
             worker.add_policy(**new_policy_instance_kwargs)
 
         if self.local_worker() is not None:
+            # Add policy directly by (already instantiated) object.
             if policy is not None:
                 self.local_worker().add_policy(
                     policy_id=policy_id,
@@ -584,6 +585,7 @@ class WorkerSet:
                     policies_to_train=policies_to_train,
                     module_spec=module_spec,
                 )
+            # Add policy by constructor kwargs.
             else:
                 self.local_worker().add_policy(**new_policy_instance_kwargs)
 
