@@ -57,7 +57,13 @@ done
 
 if ! $success; then
     echo "======================================"
-    echo "Error: Verification failed after $retries attempts."
+    echo "Error: Verification failed after $retries attempts. Cleaning up cluster before exiting..."
+    
+    # Clean up the cluster before exiting
+    ray down -v -y "$1"
+
+    echo "======================================"
+    echo "Exiting script."
     exit 1
 fi
 
