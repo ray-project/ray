@@ -16,8 +16,7 @@ def _cursor_to_block(cursor) -> Block:
 
     rows = cursor.fetchall()
     # Each `column_description` is a 7-element sequence. The first element is the
-    # column name. To learn more, read
-    # https://peps.python.org/pep-0249/#description.
+    # column name. To learn more, read https://peps.python.org/pep-0249/#description.
     columns = [column_description[0] for column_description in cursor.description]
     pydict = {column: [row[i] for row in rows] for i, column in enumerate(columns)}
     return pa.Table.from_pydict(pydict)
@@ -34,7 +33,7 @@ class SQLDatasource(Datasource[ArrowRow]):
         self.cursor_to_block = cursor_to_block
 
     def create_reader(self, sql: str) -> "Reader":
-        return SQLReader(sql, self.connection_factory, self.cursor_to_block)
+        return _SQLReader(sql, self.connection_factory, self.cursor_to_block)
 
 
 def _check_connection_is_dbapi2_compliant(connection) -> None:
@@ -88,7 +87,7 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
         connection.close()
 
 
-class SQLReader(Reader):
+class _SQLReader(Reader):
 
     NUM_SAMPLE_ROWS = 100
     MIN_ROWS_PER_READ_TASK = 50
