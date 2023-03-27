@@ -3,7 +3,7 @@ import logging
 from typing import Any, Callable, Optional, Union, Dict
 import ray
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.utils import install_serve_encoders_to_fastapi
+from ray.serve._private.utils import install_serve_encoders_to_fastapi, record_serve_tag
 from ray.util.annotations import PublicAPI
 
 import starlette
@@ -43,8 +43,14 @@ class DAGDriver:
             http_adapter: a callable function or import string to convert
                 HTTP requests to Ray Serve input.
         """
+
+        record_serve_tag("SERVE_DAG_DRIVER_USED", "1")
+        if http_adapter is not None:
+            record_serve_tag("SERVE_HTTP_ADAPTER_USED", "1")
+
         install_serve_encoders_to_fastapi()
         http_adapter = load_http_adapter(http_adapter)
+
         self.app = FastAPI()
 
         if isinstance(dags, dict):
@@ -136,6 +142,7 @@ class gRPCIngress:
 
         self.setup_complete = asyncio.Event()
         self.running_task = get_or_create_event_loop().create_task(self.run())
+        record_serve_tag("SERVE_GRPC_INGRESS_USED", "1")
 
     async def run(self):
         """Start gRPC Server"""

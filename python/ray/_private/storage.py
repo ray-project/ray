@@ -357,7 +357,8 @@ def _init_filesystem(create_valid_file: bool = False, check_valid_file: bool = T
     if not _storage_uri:
         raise RuntimeError(
             "No storage URI has been configured for the cluster. "
-            "Specify a storage URI via `ray.init(storage=<uri>)`"
+            "Specify a storage URI via `ray.init(storage=<uri>)` or "
+            "`ray start --head --storage=<uri>`"
         )
 
     import pyarrow.fs

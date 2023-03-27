@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 
 import ray
-import ray.rllib.algorithms.impala as impala
+import ray.rllib.algorithms.appo as appo
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.metrics import ALL_MODULES
@@ -14,7 +14,7 @@ tf1, tf, _ = try_import_tf()
 
 tf1.enable_eager_execution()
 
-frag_length = 32
+frag_length = 50
 
 FAKE_BATCH = {
     SampleBatch.OBS: np.random.uniform(low=0, high=1, size=(frag_length, 4)).astype(
@@ -45,10 +45,10 @@ class TestImpalaTfLearner(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_impala_loss(self):
-        """Test that impala_policy_rlm loss matches the impala learner loss."""
+    def test_appo_loss(self):
+        """Test that appo_policy_rlm loss matches the appo learner loss."""
         config = (
-            impala.ImpalaConfig()
+            appo.APPOConfig()
             .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
@@ -97,7 +97,6 @@ class TestImpalaTfLearner(unittest.TestCase):
             learner_group = learner_group_config.build()
             learner_group.set_weights(trainer.get_weights())
             results = learner_group.update(train_batch.as_multi_agent())
-
             learner_group_loss = results[ALL_MODULES]["total_loss"]
 
             check(learner_group_loss, policy_loss)
