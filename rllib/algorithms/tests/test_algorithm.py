@@ -109,9 +109,7 @@ class TestAlgorithm(unittest.TestCase):
                 # Make sure new policy is part of remote workers in the
                 # worker set and the eval worker set.
                 self.assertTrue(
-                    all(
-                        algo.workers.foreach_worker(func=lambda w: pid in w.policy_map)
-                    )
+                    all(algo.workers.foreach_worker(func=lambda w: pid in w.policy_map))
                 )
                 self.assertTrue(
                     all(
