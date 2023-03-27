@@ -15,8 +15,16 @@ if [[ ! -r "$1" ]]; then
     exit 1
 fi
 
+# Check if the number of retries was provided
+if [[ -z "$2" ]]; then
+    retries=3
+else
+    retries=$2
+fi
+
 # Log the name of the file that will be used
 echo "Using cluster configuration file: $1"
+echo "Number of retries for 'verify ray is running' step: $retries"
 
 # Download the ssh key
 echo "======================================"
@@ -33,7 +41,28 @@ ray up -v -y "$1"
 
 echo "======================================"
 echo "Verifying Ray is running..."
-ray exec -v "$1" "python -c 'import ray; ray.init(\"localhost:6379\")'"
+
+success=false
+count=0
+while [[ "$count" -lt "$retries" ]]; do
+    if ray exec -v "$1" "python -c 'import ray; ray.init(\"localhost:6379\")'"; then
+        success=true
+        break
+    else
+        count=$((count+1))
+        echo "Verification failed. Retry attempt $count of $retries..."
+        sleep 5
+    fi
+done
+
+if ! $success; then
+    echo "======================================"
+    echo "Error: Verification failed after $retries attempts. Please check your cluster configuration and try again."
+    exit 1
+fi
+
+echo "======================================"
+echo "Ray verification successful."
 
 echo "======================================"
 echo "Cleaning up cluster..."
