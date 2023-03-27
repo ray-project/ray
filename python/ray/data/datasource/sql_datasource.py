@@ -15,8 +15,8 @@ def _cursor_to_block(cursor) -> Block:
     import pyarrow as pa
 
     rows = cursor.fetchall()
-    # Each `column_description` is a 7-element sequence. The first element is the
-    # column name. To learn more, read https://peps.python.org/pep-0249/#description.
+    # Each `column_description` is a 7-element sequence. The first element is the column 
+    # name. To learn more, read https://peps.python.org/pep-0249/#description.
     columns = [column_description[0] for column_description in cursor.description]
     pydict = {column: [row[i] for row in rows] for i, column in enumerate(columns)}
     return pa.Table.from_pydict(pydict)
