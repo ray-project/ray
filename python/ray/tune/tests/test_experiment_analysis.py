@@ -411,7 +411,8 @@ class ExperimentAnalysisStubSuite(unittest.TestCase):
         Background: If restore from a checkpoint fails, we overwrite the checkpoint
         data with ``None`` (because we assume the current contents are invalid, e.g.
         an invalid object ref, or a corrupted directory). But ExperimentAnalysis
-        currently fails loading if it is None.
+        currently previously failed loading if it is None. This tests makes
+        sure we can still load the checkpoint.
 
         """
         with create_test_experiment_checkpoint(self.test_path) as creator:

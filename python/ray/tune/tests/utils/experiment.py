@@ -104,20 +104,3 @@ def create_test_experiment_checkpoint(
     yield creator
 
     creator.save_checkpoint()
-
-
-#         with create_test_experiment_checkpoint(self.test_path) as creator:
-#             for i in range(10):
-#                 creator.create_trial(
-#                     f"trial_{i}",
-#                     results_checkpoints=[
-#                         (
-#                             {
-#                                 "training_iteration": 1,
-#                                 "episode_reward_mean": 10 + int(90 * random.random()),
-#                             },
-#                             None,
-#                             None,
-#                         )
-#                     ],
-#                 )
