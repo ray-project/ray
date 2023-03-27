@@ -194,11 +194,12 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 logger.debug(
                     f"Processing takes {elapsed}. Total process: " f"{len(published)}"
                 )
-                logger.debug(
-                    "Processing throughput: "
-                    f"{self.total_published_events / self.accumulative_event_processing_s}"  # noqa
-                    " / s"
-                )
+                if self.accumulative_event_processing_s > 0:
+                    logger.debug(
+                        "Processing throughput: "
+                        f"{self.total_published_events / self.accumulative_event_processing_s}"  # noqa
+                        " / s"
+                    )
                 logger.debug(f"queue size: {self.subscriber_queue_size}")
             except Exception:
                 logger.exception("Error processing actor info from GCS.")
