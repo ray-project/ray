@@ -121,24 +121,9 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
     stats = canonicalize(ds.cache().stats())
 
     if context.new_execution_backend:
-        if context.use_streaming_executor:
-            assert (
-                stats
-                == """Stage N ReadRange->MapBatches(dummy_map_batches)->Map: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
-"""
-            )
-        else:
-            assert (
-                stats
-                == """Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
+        assert (
+            stats
+            == """Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
@@ -169,7 +154,7 @@ Dataset iterator time breakdown:
 * In user code: T
 * Total time: T
 """
-            )
+        )
     else:
         assert (
             stats
