@@ -290,6 +290,10 @@ class RLModule(abc.ABC):
         This is a good place to do any initialization that requires access to the
         subclass's attributes.
         """
+
+        # Create the input and outputs specs from customizable methods.
+        # This makes it so that we don't have to instantiate them every time we check
+        # them.
         self._input_specs_train = convert_to_canonical_format(self.input_specs_train())
         self._output_specs_train = convert_to_canonical_format(
             self.output_specs_train()
@@ -306,6 +310,20 @@ class RLModule(abc.ABC):
         self._output_specs_inference = convert_to_canonical_format(
             self.output_specs_inference()
         )
+
+    def initialize_subcomponents(self):
+        """Initializes components such as models and action distribution classes.
+
+        Override this method to customize the initialization of such subcomponents.
+        By default, an RLModule constructs its subcomponents from a Catalog object.
+        For example, if an RLModules requires an encoder, a head and an
+        action distribution class, these would generally be constructed from the
+        catalog here.
+
+        You can use this method to customize the construction of these subcomponents
+        without having to change to constructor of the RLModule you are modifying.
+        """
+        raise NotImplementedError
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
