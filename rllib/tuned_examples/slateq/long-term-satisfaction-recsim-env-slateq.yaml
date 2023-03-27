@@ -9,7 +9,7 @@ long-term-satisfaction-recsim-env-slateq:
         timesteps_total: 200000
     config:
         # Works for both tf and torch.
-        framework: tf
+        framework: torch
 
         metrics_num_episodes_for_smoothing: 200
 

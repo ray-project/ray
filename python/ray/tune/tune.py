@@ -1,4 +1,5 @@
 import abc
+import contextlib
 import copy
 import datetime
 import logging
@@ -8,7 +9,17 @@ import sys
 import threading
 import time
 import warnings
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Mapping,
+    Optional,
+    Sequence,
+    Type,
+    Union,
+    TYPE_CHECKING,
+)
 
 import ray
 from ray.air import CheckpointConfig
@@ -16,7 +27,13 @@ from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
+from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
+from ray.tune.experimental.output import (
+    get_air_verbosity,
+    _detect_reporter as _detect_air_reporter,
+)
+
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.progress_reporter import (
     ProgressReporter,
@@ -57,11 +74,17 @@ from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
-from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
+from ray.tune.utils.log import (
+    Verbosity,
+    has_verbosity,
+    set_verbosity,
+)
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
 
+if TYPE_CHECKING:
+    from ray.tune.experimental.output import ProgressReporter as AirProgressReporter
 
 logger = logging.getLogger(__name__)
 
@@ -138,8 +161,18 @@ def _report_progress(
     trials = runner.get_trials()
     if reporter.should_report(trials, done=done):
         sched_debug_str = runner.scheduler_alg.debug_string()
-        executor_debug_str = runner.trial_executor.debug_string()
-        reporter.report(trials, done, sched_debug_str, executor_debug_str)
+        used_resources_str = runner._used_resources_string()
+        reporter.report(trials, done, sched_debug_str, used_resources_str)
+
+
+def _report_air_progress(
+    runner: TrialRunner, reporter: "AirProgressReporter", force: bool = False
+):
+    trials = runner.get_trials()
+    reporter_args = []
+    executor_debug_str = runner.trial_executor.debug_string()
+    reporter_args.append(executor_debug_str)
+    reporter.print_heartbeat(trials, *reporter_args, force=force)
 
 
 def _setup_signal_catching() -> threading.Event:
@@ -449,6 +482,12 @@ def run(
         _ray_auto_init()
 
     if _remote:
+        if get_air_verbosity():
+            logger.warning(
+                "Ignoring AIR_VERBOSITY setting, "
+                "as it doesn't support ray client mode yet."
+            )
+
         remote_run = ray.remote(num_cpus=0)(run)
 
         # Make sure tune.run is called on the sever node.
@@ -482,7 +521,15 @@ def run(
             "['min', 'max']"
         )
 
-    set_verbosity(verbose)
+    air_verbosity = get_air_verbosity()
+    if air_verbosity:
+        logger.warning(
+            f"Testing new AIR console output flow with verbosity={air_verbosity}. "
+            f"This will also disable the old flow - setting it to 0 now."
+        )
+        set_verbosity(0)
+    else:
+        set_verbosity(verbose)
 
     config = config or {}
     if isinstance(config, _Config):
@@ -708,7 +755,11 @@ def run(
 
     # Create syncer callbacks
     callbacks = _create_default_callbacks(
-        callbacks, sync_config, metric=metric, progress_metrics=progress_metrics
+        callbacks,
+        sync_config=sync_config,
+        air_verbosity=air_verbosity,
+        metric=metric,
+        progress_metrics=progress_metrics,
     )
 
     # User Warning for GPUs
@@ -734,14 +785,21 @@ def run(
 
     experiment_interrupted_event = _setup_signal_catching()
 
-    progress_reporter = progress_reporter or _detect_reporter()
+    if progress_reporter and air_verbosity:
+        logger.warning(
+            "AIR_VERBOSITY is set, ignoring passed-in ProgressReporter for now."
+        )
+        progress_reporter = None
+
+    if not air_verbosity:
+        progress_reporter = progress_reporter or _detect_reporter()
 
     trial_executor = trial_executor or RayTrialExecutor(
         reuse_actors=reuse_actors,
         result_buffer_length=result_buffer_length,
         chdir_to_trial_dir=chdir_to_trial_dir,
     )
-    runner = TrialRunner(
+    runner_kwargs = dict(
         search_alg=search_alg,
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
@@ -757,6 +815,16 @@ def run(
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
     )
+
+    if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "0"))):
+        trial_runner_cls = TuneController
+        runner_kwargs.pop("trial_executor")
+        runner_kwargs["reuse_actors"] = reuse_actors
+        runner_kwargs["chdir_to_trial_dir"] = chdir_to_trial_dir
+    else:
+        trial_runner_cls = TrialRunner
+
+    runner = trial_runner_cls(**runner_kwargs)
 
     if not runner.resumed:
         for exp in experiments:
@@ -776,25 +844,56 @@ def run(
 
     tune_start = time.time()
 
-    progress_reporter.setup(
-        start_time=tune_start,
-        total_samples=search_alg.total_samples,
-        metric=metric,
-        mode=mode,
-    )
-    while not runner.is_finished() and not experiment_interrupted_event.is_set():
-        runner.step()
+    air_progress_reporter = None
+    if not air_verbosity:
+        progress_reporter.setup(
+            start_time=tune_start,
+            total_samples=search_alg.total_samples,
+            metric=metric,
+            mode=mode,
+        )
+    else:
+        air_progress_reporter = _detect_air_reporter(
+            air_verbosity, search_alg.total_samples, metric=metric, mode=mode
+        )
+
+    # rich live context manager has to be called encapsulting
+    # the while loop. For other kind of reporters, no op.
+    # `ExitStack` allows us to *conditionally* apply context manager.
+    with contextlib.ExitStack() as stack:
+        from ray.tune.experimental.output import TuneRichReporter
+
+        if air_progress_reporter and isinstance(
+            air_progress_reporter, TuneRichReporter
+        ):
+            stack.enter_context(air_progress_reporter.with_live())
+
+        try:
+            while (
+                not runner.is_finished() and not experiment_interrupted_event.is_set()
+            ):
+                runner.step()
+                if has_verbosity(Verbosity.V1_EXPERIMENT):
+                    _report_progress(runner, progress_reporter)
+
+                if air_verbosity:
+                    _report_air_progress(runner, air_progress_reporter)
+        except Exception:
+            runner.cleanup()
+            raise
+
+        tune_taken = time.time() - tune_start
+
+        try:
+            runner.checkpoint(force=True, wait=True)
+        except Exception as e:
+            logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
+
         if has_verbosity(Verbosity.V1_EXPERIMENT):
-            _report_progress(runner, progress_reporter)
-    tune_taken = time.time() - tune_start
+            _report_progress(runner, progress_reporter, done=True)
 
-    try:
-        runner.checkpoint(force=True, wait=True)
-    except Exception as e:
-        logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
-
-    if has_verbosity(Verbosity.V1_EXPERIMENT):
-        _report_progress(runner, progress_reporter, done=True)
+        if air_verbosity:
+            _report_air_progress(runner, air_progress_reporter, force=True)
 
     all_trials = runner.get_trials()
     experiment_checkpoint = runner.experiment_state_path
@@ -825,14 +924,15 @@ def run(
             "saved. You can continue running this experiment by passing "
             "`resume=True` to `tune.run()`"
         )
-
-    return ExperimentAnalysis(
+    ea = ExperimentAnalysis(
         experiment_checkpoint,
         trials=all_trials,
         default_metric=metric,
         default_mode=mode,
         sync_config=sync_config,
     )
+
+    return ea
 
 
 @PublicAPI
@@ -875,6 +975,11 @@ def run_experiments(
         _ray_auto_init()
 
     if _remote:
+        if get_air_verbosity():
+            logger.warning(
+                "Ignoring AIR_VERBOSITY setting, "
+                "as it doesn't support ray client mode yet."
+            )
         remote_run = ray.remote(num_cpus=0)(run_experiments)
 
         # Make sure tune.run_experiments is run on the server node.
