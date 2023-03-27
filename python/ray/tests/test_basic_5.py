@@ -10,7 +10,6 @@ from unittest.mock import Mock, patch
 import pytest
 
 import ray
-
 import ray.cluster_utils
 from ray._private.test_utils import (
     run_string_as_driver,
