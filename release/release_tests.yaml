@@ -3372,7 +3372,7 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_gce_64.yaml
+      cluster_compute: tpl_64_gce.yaml
 
 
 - name: microbenchmark_staging
