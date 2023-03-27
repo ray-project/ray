@@ -247,7 +247,8 @@ def test_ood_events(shutdown_only):
 
     events = ray.experimental.state.api.list_cluster_events()
     print(events)
-    assert len(events) == 1
+    # There could be more than 1 event depending on the test timing.
+    assert len(events) >= 1
     assert (
         "Object creation will fail if spilling is required" in events[0]["message"]
     )  # noqa
