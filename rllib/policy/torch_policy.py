@@ -375,6 +375,7 @@ class TorchPolicy(Policy):
             Union[List[TensorStructType], TensorStructType]
         ] = None,
         actions_normalized: bool = True,
+        **kwargs,
     ) -> TensorType:
 
         if self.action_sampler_fn and self.action_distribution_fn is None:
