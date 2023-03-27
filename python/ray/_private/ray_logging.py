@@ -7,11 +7,16 @@ import sys
 import threading
 from logging.handlers import RotatingFileHandler
 import time
-from typing import Callable, Dict, List, Set, Tuple, Any
+from typing import Callable, Dict, List, Set, Tuple, Any, Optional
 
 import ray
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
-from ray._private.ray_constants import RAY_DEDUP_LOGS, RAY_DEDUP_LOGS_AGG_WINDOW_S
+from ray._private.ray_constants import (
+    RAY_DEDUP_LOGS,
+    RAY_DEDUP_LOGS_AGG_WINDOW_S,
+    RAY_DEDUP_LOGS_ALLOW_REGEX,
+    RAY_DEDUP_LOGS_SKIP_REGEX,
+)
 from ray._private.utils import binary_to_hex
 from ray.util.debug import log_once
 
@@ -300,7 +305,23 @@ class DedupState:
 
 
 class LogDeduplicator:
-    def __init__(self, *, _timesource=None):
+    def __init__(
+        self,
+        agg_window_s: int,
+        allow_re: Optional[str],
+        skip_re: Optional[str],
+        *,
+        _timesource=None,
+    ):
+        self.agg_window_s = agg_window_s
+        if allow_re:
+            self.allow_re = re.compile(allow_re)
+        else:
+            self.allow_re = None
+        if skip_re:
+            self.skip_re = re.compile(skip_re)
+        else:
+            self.skip_re = None
         # Buffer of up to RAY_DEDUP_LOGS_AGG_WINDOW_S recent log patterns.
         # This buffer is cleared if the pattern isn't seen within the window.
         self.recent: Dict[str, DedupState] = {}
@@ -327,8 +348,10 @@ class LogDeduplicator:
         # Decide which lines to emit from the input batch. Put the outputs in the
         # first output log batch (output[0]).
         for line in batch["lines"]:
-            if RAY_TQDM_MAGIC in line:
+            if RAY_TQDM_MAGIC in line or (self.allow_re and self.allow_re.search(line)):
                 output[0]["lines"].append(line)
+                continue
+            elif self.skip_re and self.skip_re.search(line):
                 continue
             dedup_key = _canonicalise_log_line(line)
             if dedup_key in self.recent:
@@ -352,10 +375,7 @@ class LogDeduplicator:
 
         # Flush patterns from the buffer that are older than the aggregation window.
         while self.recent:
-            if (
-                now - next(iter(self.recent.values())).timestamp
-                < RAY_DEDUP_LOGS_AGG_WINDOW_S
-            ):
+            if now - next(iter(self.recent.values())).timestamp < self.agg_window_s:
                 break
             dedup_key = next(iter(self.recent))
             state = self.recent.pop(dedup_key)
@@ -409,5 +429,9 @@ def _color(msg: str) -> str:
     return "{}{}{}".format(colorama.Fore.GREEN, msg, colorama.Style.RESET_ALL)
 
 
-stdout_deduplicator = LogDeduplicator()
-stderr_deduplicator = LogDeduplicator()
+stdout_deduplicator = LogDeduplicator(
+    RAY_DEDUP_LOGS_AGG_WINDOW_S, RAY_DEDUP_LOGS_ALLOW_REGEX, RAY_DEDUP_LOGS_SKIP_REGEX
+)
+stderr_deduplicator = LogDeduplicator(
+    RAY_DEDUP_LOGS_AGG_WINDOW_S, RAY_DEDUP_LOGS_ALLOW_REGEX, RAY_DEDUP_LOGS_SKIP_REGEX
+)

@@ -227,8 +227,16 @@ LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 
 # Enable log deduplication.
 RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
+
 # How many seconds of messages to buffer for log deduplication.
 RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
+
+# Regex for log messages to never deduplicate, or None. This takes precedence over
+# the skip regex below.
+RAY_DEDUP_LOGS_ALLOW_REGEX = os.environ.get("RAY_DEDUP_LOGS_ALLOW_REGEX")
+
+# Regex for log messages to always skip / suppress, or None.
+RAY_DEDUP_LOGS_SKIP_REGEX = os.environ.get("RAY_DEDUP_LOGS_SKIP_REGEX")
 
 WORKER_PROCESS_TYPE_IDLE_WORKER = "ray::IDLE"
 WORKER_PROCESS_TYPE_SPILL_WORKER_NAME = "SpillWorker"

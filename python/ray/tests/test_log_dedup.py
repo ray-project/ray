@@ -3,7 +3,7 @@ from ray._private.ray_logging import LogDeduplicator
 
 
 def test_nodedup_logs_single_process():
-    dedup = LogDeduplicator()
+    dedup = LogDeduplicator(5, None, None)
     batch1 = {
         "ip": "node1",
         "pid": 100,
@@ -25,7 +25,7 @@ def test_dedup_logs_multiple_processes():
     def gettime():
         return now
 
-    dedup = LogDeduplicator(_timesource=gettime)
+    dedup = LogDeduplicator(5, None, None, _timesource=gettime)
     batch1 = {
         "ip": "node1",
         "pid": 100,
@@ -108,6 +108,24 @@ def test_dedup_logs_multiple_processes():
             "lines": ["hello world\x1b[32m [repeated 2x across cluster]\x1b[0m"],
         }
     ]
+
+
+def test_dedup_logs_allow_and_skip_regexes():
+    dedup = LogDeduplicator(5, "ALLOW_ME", "SKIP_ME")
+    batch1 = {
+        "ip": "node1",
+        "pid": 100,
+        "lines": ["hello world", "good bye ALLOW_ME"],
+    }
+    batch2 = {
+        "ip": "node1",
+        "pid": 200,
+        "lines": ["hello world", "good bye ALLOW_ME", "extra message SKIP_ME"],
+    }
+    out1 = dedup.deduplicate(batch1)
+    assert out1 == [batch1]
+    out2 = dedup.deduplicate(batch2)
+    assert out2 == [{"ip": "node1", "pid": 200, "lines": ["good bye ALLOW_ME"]}]
 
 
 if __name__ == "__main__":
