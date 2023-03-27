@@ -212,7 +212,7 @@ async def serve_start_async(
     dedicated_cpu: bool = False,
     **kwargs,
 ) -> ServeControllerClient:
-    """Initialize a serve instance in async
+    """Initialize a serve instance asynchronously.
 
     This function is not thread-safe, caller should maintain the async lock in order
     to start serve instance asynchronously.
