@@ -49,7 +49,7 @@ def test_try_import_each_module():
         if lib in mock_sys_modules:
             del mock_sys_modules[lib]
 
-    with patch("builtins.print") as mocked_print:
+    with patch("ray._private.utils.logger.exception") as mocked_log_exception:
         with patch.dict(sys.modules, mock_sys_modules) as patched_sys_modules:
 
             try_import_each_module(
@@ -64,14 +64,14 @@ def test_try_import_each_module():
 
             # Verify import error is printed.
             found = False
-            for args, _ in mocked_print.call_args_list:
+            for args, _ in mocked_log_exception.call_args_list:
                 found = any(fake_module in arg for arg in args)
                 if found:
                     break
 
             assert found, (
                 "Did not find print call with import "
-                f"error {mocked_print.call_args_list}"
+                f"error {mocked_log_exception.call_args_list}"
             )
 
 

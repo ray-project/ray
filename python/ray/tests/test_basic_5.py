@@ -288,13 +288,15 @@ def test_preload_workers(ray_start_cluster, preload):
     """
     cluster = ray_start_cluster
 
+    expect_succeed_imports = ["tensorflow", "torch"]
+    expect_fail_imports = ["fake_module_expect_ModuleNotFoundError"]
+
     if preload:
         cluster.add_node(
             _system_config={
                 "preload_python_modules": [
-                    "tensorflow",
-                    "torch",
-                    "fake_module_expect_ModuleNotFoundError",
+                    *expect_succeed_imports,
+                    *expect_fail_imports,
                 ]
             }
         )
@@ -327,12 +329,13 @@ def test_preload_workers(ray_start_cluster, preload):
         imported_modules = sys.modules.copy()
 
         if preload:
-            assert "tensorflow" in imported_modules
-            assert "torch" in imported_modules
-            assert "fake_module_do_not_exist" not in imported_modules
+            for expected_import in expect_succeed_imports:
+                assert expected_import in imported_modules
+            for unexpected_import in expect_fail_imports:
+                assert unexpected_import not in imported_modules
         else:
-            assert "tensorflow" not in imported_modules
-            assert "torch" not in imported_modules
+            for unexpected_import in expect_succeed_imports:
+                assert unexpected_import not in imported_modules
 
     @ray.remote(num_cpus=0)
     class Actor:
