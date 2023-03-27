@@ -3113,6 +3113,12 @@
 
   alert: default
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: 8gpus_96cpus_gce.yaml
+
 - name: rllib_multi_gpu_with_lstm_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
@@ -3128,8 +3134,13 @@
     timeout: 7200
     script: python multi_gpu_with_lstm_learning_tests/run.py
 
-
   alert: default
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_multi_gpu_with_attention_learning_tests
   group: RLlib tests
@@ -3146,8 +3157,13 @@
     timeout: 7200
     script: python multi_gpu_with_attention_learning_tests/run.py
 
-
   alert: default
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_stress_tests
   group: RLlib tests
@@ -3167,8 +3183,6 @@
     wait_for_nodes:
       num_nodes: 6
 
-
-
   smoke_test:
     frequency: nightly
 
@@ -3176,6 +3190,12 @@
       timeout: 2000
 
   alert: default
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: 4gpus_544_cpus_gce.yaml
 
 ########################
 # Core Nightly Tests
