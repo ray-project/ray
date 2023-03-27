@@ -2,10 +2,11 @@ message GetInstanceManagerStateBatchRequest {}
 
 message RunningInstance {
   bytes instance_id = 1;
+  string node_type = 2;
 }
 
 message LaunchRequest {
-  string name = 1;
+  string node_type = 1;
   int count = 2;
 }
 
