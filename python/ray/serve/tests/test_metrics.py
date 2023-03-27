@@ -442,54 +442,97 @@ class TestRequestContextMetrics:
         histogram_metrics[0]["replica"] == replica_tag
         histogram_metrics[0]["deployment"] == deployment_name
 
-    def test_serve_metrics_in_ray_actor(self, serve_start_shutdown):
+    @pytest.mark.parametrize("use_actor", [False, True])
+    def test_serve_metrics_outside_serve(self, use_actor, serve_start_shutdown):
         """Make sure ray.serve.metrics work in ray actor"""
+        if use_actor:
 
-        @ray.remote
-        class MyActor:
-            def __init__(self):
-                self.counter = Counter(
-                    "my_counter",
-                    description="my counter metrics",
-                    tag_keys=(
-                        "my_static_tag",
-                        "my_runtime_tag",
-                    ),
-                )
-                self.counter.set_default_tags({"my_static_tag": "static_value"})
-                self.histogram = Histogram(
-                    "my_histogram",
-                    description=("my histogram "),
-                    boundaries=DEFAULT_LATENCY_BUCKET_MS,
-                    tag_keys=(
-                        "my_static_tag",
-                        "my_runtime_tag",
-                    ),
-                )
-                self.histogram.set_default_tags({"my_static_tag": "static_value"})
-                self.gauge = Gauge(
-                    "my_gauge",
-                    description=("my_gauge"),
-                    tag_keys=(
-                        "my_static_tag",
-                        "my_runtime_tag",
-                    ),
-                )
-                self.gauge.set_default_tags({"my_static_tag": "static_value"})
+            @ray.remote
+            class MyActor:
+                def __init__(self):
+                    self.counter = Counter(
+                        "my_counter",
+                        description="my counter metrics",
+                        tag_keys=(
+                            "my_static_tag",
+                            "my_runtime_tag",
+                        ),
+                    )
+                    self.counter.set_default_tags({"my_static_tag": "static_value"})
+                    self.histogram = Histogram(
+                        "my_histogram",
+                        description=("my histogram "),
+                        boundaries=DEFAULT_LATENCY_BUCKET_MS,
+                        tag_keys=(
+                            "my_static_tag",
+                            "my_runtime_tag",
+                        ),
+                    )
+                    self.histogram.set_default_tags({"my_static_tag": "static_value"})
+                    self.gauge = Gauge(
+                        "my_gauge",
+                        description=("my_gauge"),
+                        tag_keys=(
+                            "my_static_tag",
+                            "my_runtime_tag",
+                        ),
+                    )
+                    self.gauge.set_default_tags({"my_static_tag": "static_value"})
 
-            def test(self):
-                self.counter.inc(tags={"my_runtime_tag": "100"})
-                self.histogram.observe(200, tags={"my_runtime_tag": "200"})
-                self.gauge.set(300, tags={"my_runtime_tag": "300"})
+                def test(self):
+                    self.counter.inc(tags={"my_runtime_tag": "100"})
+                    self.histogram.observe(200, tags={"my_runtime_tag": "200"})
+                    self.gauge.set(300, tags={"my_runtime_tag": "300"})
+                    return "hello"
+
+        else:
+            counter = Counter(
+                "my_counter",
+                description="my counter metrics",
+                tag_keys=(
+                    "my_static_tag",
+                    "my_runtime_tag",
+                ),
+            )
+            histogram = Histogram(
+                "my_histogram",
+                description=("my histogram "),
+                boundaries=DEFAULT_LATENCY_BUCKET_MS,
+                tag_keys=(
+                    "my_static_tag",
+                    "my_runtime_tag",
+                ),
+            )
+            gauge = Gauge(
+                "my_gauge",
+                description=("my_gauge"),
+                tag_keys=(
+                    "my_static_tag",
+                    "my_runtime_tag",
+                ),
+            )
+
+            @ray.remote
+            def fn():
+                counter.set_default_tags({"my_static_tag": "static_value"})
+                histogram.set_default_tags({"my_static_tag": "static_value"})
+                gauge.set_default_tags({"my_static_tag": "static_value"})
+                counter.inc(tags={"my_runtime_tag": "100"})
+                histogram.observe(200, tags={"my_runtime_tag": "200"})
+                gauge.set(300, tags={"my_runtime_tag": "300"})
                 return "hello"
 
         @serve.deployment
         class Model:
             def __init__(self):
-                self.my_actor = MyActor.remote()
+                if use_actor:
+                    self.my_actor = MyActor.remote()
 
             async def __call__(self):
-                return await self.my_actor.test.remote()
+                if use_actor:
+                    return await self.my_actor.test.remote()
+                else:
+                    return await fn.remote()
 
         serve.run(Model.bind(), name="app", route_prefix="/app")
         resp = requests.get("http://127.0.0.1:8000/app")
