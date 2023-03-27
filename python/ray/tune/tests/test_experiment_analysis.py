@@ -366,7 +366,6 @@ class ExperimentAnalysisStubSuite(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        ray.shutdown()
 
     def run_test_exp(self):
         with create_test_experiment_checkpoint(self.test_path) as creator:
@@ -390,9 +389,6 @@ class ExperimentAnalysisStubSuite(unittest.TestCase):
 
         self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
 
-        ray.shutdown()
-        ray.tune.registry._global_registry = ray.tune.registry._Registry()
-
         with open(pickle_path, "rb") as f:
             analysis = pickle.load(f)
 
@@ -404,13 +400,36 @@ class ExperimentAnalysisStubSuite(unittest.TestCase):
 
         self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
 
-        ray.shutdown()
-        ray.tune.registry._global_registry = ray.tune.registry._Registry()
-
         analysis = ExperimentAnalysis(self.test_path)
 
         # This will be None if validate_trainable during loading fails
         self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
+
+    def testEmptyCheckpoint(self):
+        """Test that empty checkpoints can still be loaded in experiment analysis.
+
+        Background: If restore from a checkpoint fails, we overwrite the checkpoint
+        data with ``None`` (because we assume the current contents are invalid, e.g.
+        an invalid object ref, or a corrupted directory). But ExperimentAnalysis
+        currently fails loading if it is None.
+
+        """
+        with create_test_experiment_checkpoint(self.test_path) as creator:
+            for i in range(10):
+                trial = creator.create_trial(f"trial_{i}", config={})
+                creator.trial_result(
+                    trial,
+                    {
+                        "training_iteration": 1,
+                        "episode_reward_mean": 10 + int(90 * random.random()),
+                    },
+                )
+                creator.trial_checkpoint(trial, "first")
+                creator.trial_checkpoint(trial, None)
+                creator.trial_checkpoint(trial, "third")
+
+        ea = ExperimentAnalysis(self.test_dir)
+        assert len(ea.trials) == 10
 
 
 if __name__ == "__main__":
