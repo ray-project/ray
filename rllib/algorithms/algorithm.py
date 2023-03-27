@@ -1863,12 +1863,12 @@ class Algorithm(Trainable):
 
         if workers is not DEPRECATED_VALUE:
             deprecation_warning(
-                old="workers",
+                old="Algorithm.add_policy(.., workers=..)",
                 help=(
-                    "The `workers` argument to `Algorithm.add_policy()` is deprecated "
-                    "and no-op now. Please do not use it anymore."
+                    "The `workers` argument to `Algorithm.add_policy()` is deprecated! "
+                    "Please do not use it anymore."
                 ),
-                error=False,
+                error=True,
             )
 
         self.workers.add_policy(
@@ -2582,7 +2582,6 @@ class Algorithm(Trainable):
                 # there in case they are used for evaluation purpose.
                 self.evaluation_workers.foreach_worker(
                     lambda w: w.set_state(ray.get(remote_state)),
-                    local_worker=False,
                     healthy_only=False,
                 )
         # If necessary, restore replay data as well.
