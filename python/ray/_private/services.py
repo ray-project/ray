@@ -57,6 +57,9 @@ DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp", "default_worker" + EXE
 # Location of the native libraries.
 DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp", "lib")
 
+# Location of the wasm worker executables.
+WASM_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "wasm", "wasm_worker" + EXE_SUFFIX)
+
 DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
     "Not all Ray Dashboard dependencies were "
     "found. To use the dashboard please "
@@ -302,7 +305,7 @@ def _find_address_from_flag(flag: str):
     #     --object-store-name=... --raylet-name=...
     #     --temp-dir=/tmp/ray
     #     --metrics-agent-port=41856 --redis-password=[MASKED]
-    #     --java_worker_command= --cpp_worker_command=
+    #     --java_worker_command= --cpp_worker_command= --wasm_worker_command=
     #     --redis_password=[MASKED] --temp_dir=/tmp/ray --session_dir=...
     #     --metrics-agent-port=41856 --metrics_export_port=64229
     #     --agent_command=/usr/bin/python
@@ -1507,6 +1510,20 @@ def start_raylet(
     else:
         cpp_worker_command = []
 
+    if os.path.exists(WASM_WORKER_EXECUTABLE):
+        wasm_worker_command = build_wasm_worker_command(
+            gcs_address,
+            plasma_store_name,
+            raylet_name,
+            redis_password,
+            session_dir,
+            log_dir,
+            node_ip_address,
+            setup_worker_path,
+        )
+    else:
+        wasm_worker_command = []
+
     # Create the command that the Raylet will use to start workers.
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
@@ -1605,6 +1622,7 @@ def start_raylet(
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
+        f"--wasm_worker_command={subprocess.list2cmdline(wasm_worker_command)}",  # noqa
         f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
@@ -1761,6 +1779,50 @@ def build_cpp_worker_command(
         f"--ray_session_dir={session_dir}",
         f"--ray_logs_dir={log_dir}",
         f"--ray_node_ip_address={node_ip_address}",
+        "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
+    ]
+
+    return command
+
+
+def build_wasm_worker_command(
+    bootstrap_address: str,
+    plasma_store_name: str,
+    raylet_name: str,
+    redis_password: str,
+    session_dir: str,
+    log_dir: str,
+    node_ip_address: str,
+    setup_worker_path: str,
+):
+    """This method assembles the command used to start a WASM worker.
+    Args:
+        bootstrap_address: The bootstrap address of the cluster.
+        plasma_store_name: The name of the plasma store socket to connect
+           to.
+        raylet_name: The name of the raylet socket to create.
+        redis_password: The password of connect to redis.
+        session_dir: The path of this session.
+        log_dir: The path of logs.
+        node_ip_address: The ip address for this node.
+        setup_worker_path: The path of the Python file that will set up
+            the environment for the worker process.
+    Returns:
+        The command string for starting WASM worker.
+    """
+
+    command = [
+        sys.executable,
+        setup_worker_path,
+        WASM_WORKER_EXECUTABLE,
+        f"--ray-plasma-store-socket-name={plasma_store_name}",
+        f"--ray-raylet-socket-name={raylet_name}",
+        "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--ray-address={bootstrap_address}",
+        f"--ray-redis-password={redis_password}",
+        f"--ray-session-dir={session_dir}",
+        f"--ray-logs-dir={log_dir}",
+        f"--ray-node-ip-address={node_ip_address}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 

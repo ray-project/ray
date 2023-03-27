@@ -21,8 +21,23 @@ python_grpc_compile(
 )
 
 filegroup(
+    name = "wasm_proto_files",
+    srcs = [
+        ":common_proto_file",
+        ":gcs_proto_file",
+    ],
+)
+
+# proto filegroup needed by rust build.rs
+filegroup(
     name = "common_proto_file",
     srcs = ["common.proto"],
+)
+
+# proto filegroup needed by rust build.rs
+filegroup(
+    name = "gcs_proto_file",
+    srcs = ["gcs.proto"],
 )
 
 filegroup(

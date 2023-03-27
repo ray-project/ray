@@ -16,22 +16,42 @@ mod config;
 mod ray;
 mod util;
 
+use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber;
 
-fn init(cfg: &ray::RayConfig, args: &cmd::Arguments) {
+async fn init(cfg: &ray::RayConfig, args: &cmd::Arguments) -> Result<()> {
     config::ConfigInternal::instance()
-        .lock()
+        .write()
         .unwrap()
         .init(&cfg, &args);
-    let rt = ray::RayRuntime::instance().lock().unwrap().do_init();
+    {
+        ray::RayRuntime::instance()
+            .write()
+            .unwrap()
+            .do_init()
+            .await
+            .unwrap();
+    }
+    Ok(())
 }
 
-fn main() {
+async fn run_task_loop() -> Result<()> {
+    ray::RayRuntime::instance()
+            .write()
+            .unwrap()
+            .launch_task_loop().await.unwrap();
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
 
     let args = cmd::Arguments::parse();
     let cfg = ray::RayConfig::new();
 
-    init(&cfg, &args);
+    init(&cfg, &args).await.unwrap();
+    run_task_loop().await.unwrap();
+    Ok(())
 }

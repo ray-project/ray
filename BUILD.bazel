@@ -818,6 +818,7 @@ cc_library(
             "src/ray/core_worker/store_provider/*.cc",
             "src/ray/core_worker/store_provider/memory_store/*.cc",
             "src/ray/core_worker/transport/*.cc",
+            "src/ray/capi/core_worker.cc",
         ],
         exclude = [
             "src/ray/core_worker/**/*_test.cc",
@@ -2261,6 +2262,7 @@ cc_library(
     srcs = glob(
         [
             "src/ray/gcs/gcs_client/global_state_accessor.cc",
+            "src/ray/capi/global_state_accessor.cc",
         ],
     ),
     hdrs = glob(

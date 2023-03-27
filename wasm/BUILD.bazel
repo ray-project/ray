@@ -38,8 +38,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//:core_worker_lib",
+        "//:global_state_accessor_lib",
     ],
-    alwayslink = True,
+    alwayslink = False,
 )
 
 cargo_build_script(
@@ -47,12 +48,13 @@ cargo_build_script(
     srcs = ["build.rs"],
     build_script_env = {
         "PROTOC": "$(execpath @com_google_protobuf//:protoc)",
-        "PROTO_SRCS": "$(locations //src/ray/protobuf:common_proto_file)",
+        "PROTO_SRCS": "$(locations //src/ray/protobuf:gcs_proto_file)",
     },
     data = [
         "//:ray_common_headers",
         "//src/ray/protobuf",
         "//src/ray/protobuf:common_proto_file",
+        "//src/ray/protobuf:gcs_proto_file",
         "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto",
     ],
     rustc_env = {
@@ -76,6 +78,8 @@ rust_binary(
     deps = [
         "ray_wasm_lib",
         "wasm_worker_buildrs",
+        "@wasm_crate_index//:anyhow",
+        "@wasm_crate_index//:tokio",
         "@wasm_crate_index//:clap",
         "@wasm_crate_index//:lazy_static",
         "@wasm_crate_index//:prost",

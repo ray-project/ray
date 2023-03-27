@@ -18,6 +18,13 @@ crates_repository(
     cargo_lockfile = "//wasm:Cargo.lock",
     lockfile = "//wasm:Cargo.Bazel.lock",
     packages = {
+        "anyhow": crate.spec(
+            version = "1.0.70",
+        ),
+        "tokio": crate.spec(
+            version = "1.26.0",
+            features = ["full"],
+        ),
         "clap": crate.spec(
             version = "4.1.11",
             features = ["derive"],

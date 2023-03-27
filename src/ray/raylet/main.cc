@@ -49,6 +49,7 @@ DEFINE_bool(head, false, "Whether this node is a head node.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency.");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
+DEFINE_string(wasm_worker_command, "", "Wasm worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(agent_command, "", "Dashboard agent command.");
 DEFINE_string(cpp_worker_command, "", "CPP worker command.");
@@ -106,6 +107,7 @@ int main(int argc, char *argv[]) {
   const std::string java_worker_command = FLAGS_java_worker_command;
   const std::string agent_command = FLAGS_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
+  const std::string wasm_worker_command = FLAGS_wasm_worker_command;
   const std::string native_library_path = FLAGS_native_library_path;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
@@ -197,9 +199,13 @@ int main(int argc, char *argv[]) {
           node_manager_config.worker_commands.emplace(
               make_pair(ray::Language::CPP, ParseCommandLine(cpp_worker_command)));
         }
+        if (!wasm_worker_command.empty()) {
+          node_manager_config.worker_commands.emplace(
+              make_pair(ray::Language::WASM, ParseCommandLine(wasm_worker_command)));
+        }
         node_manager_config.native_library_path = native_library_path;
         if (python_worker_command.empty() && java_worker_command.empty() &&
-            cpp_worker_command.empty()) {
+            cpp_worker_command.empty() && wasm_worker_command.empty()) {
           RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
                          << "should be provided";
         }

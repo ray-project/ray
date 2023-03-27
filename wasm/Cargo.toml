@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.70"
+tokio = "1.26.0"
 clap = "4.1.11"
 lazy_static = "1.4.0"
 prost = "0.11"

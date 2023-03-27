@@ -15,8 +15,9 @@ use crate::cmd;
 use crate::ray;
 use lazy_static::lazy_static;
 use serde_json::Value;
+use tracing::info;
 use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use tracing::debug;
 use uuid::Uuid;
 
@@ -57,7 +58,7 @@ pub struct ConfigInternal {
 }
 
 lazy_static! {
-    static ref CONFIG: Arc<Mutex<ConfigInternal>> = Arc::new(Mutex::new(ConfigInternal {
+    static ref CONFIG: Arc<RwLock<ConfigInternal>> = Arc::new(RwLock::new(ConfigInternal {
         worker_type: WorkerType::Driver,
         run_mode: RunMode::SingleProcess,
         bootstrap_ip: String::new(),
@@ -82,7 +83,7 @@ lazy_static! {
 }
 
 impl ConfigInternal {
-    pub fn instance() -> Arc<Mutex<ConfigInternal>> {
+    pub fn instance() -> Arc<RwLock<ConfigInternal>> {
         CONFIG.clone()
     }
 
@@ -288,12 +289,14 @@ impl ConfigInternal {
         self.bootstrap_ip = String::from(address);
     }
 
-    fn update_session_dir(&mut self, dir: &str) {
+    pub fn update_session_dir(&mut self, dir: &str) {
         if self.session_dir.is_empty() {
             self.session_dir = String::from(dir);
         }
         if self.logs_dir.is_empty() {
             self.logs_dir = format!("{}/logs", self.session_dir);
         }
+        info!("Ray session directory is set to {}", self.session_dir);
+        info!("Ray logs directory is set to {}", self.logs_dir);
     }
 }

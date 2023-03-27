@@ -241,7 +241,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
 
   // Append Ray-defined per-job options here
   std::string code_search_path;
-  if (language == Language::JAVA || language == Language::CPP) {
+  if (language == Language::JAVA || language == Language::CPP ||
+      language == Language::WASM) {
     if (job_config) {
       std::string code_search_path_str;
       for (int i = 0; i < job_config->code_search_path_size(); i++) {
@@ -257,6 +258,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
           code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
         } else if (language == Language::CPP) {
           code_search_path_str = "--ray_code_search_path=" + code_search_path_str;
+        } else if (language == Language::WASM) {
+          code_search_path_str = "--ray-code-search-path=" + code_search_path_str;
         } else {
           RAY_LOG(FATAL) << "Unknown language " << Language_Name(language);
         }
@@ -334,12 +337,18 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   } else if (language == Language::CPP) {
     worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
+  } else if (language == Language::WASM) {
+    worker_command_args.push_back("--startup-token=" +
+                                  std::to_string(worker_startup_token_counter_));
   }
 
   if (serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty()) {
     worker_command_args.push_back("--language=" + Language_Name(language));
     if (language == Language::CPP) {
       worker_command_args.push_back("--ray_runtime_env_hash=" +
+                                    std::to_string(runtime_env_hash));
+    } else if (language == Language::WASM) {
+      worker_command_args.push_back("--ray-runtime-env-hash=" +
                                     std::to_string(runtime_env_hash));
     } else {
       worker_command_args.push_back("--runtime-env-hash=" +
@@ -371,7 +380,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
 
   // TODO(SongGuyang): Maybe Python and Java also need native library path in future.
-  if (language == Language::CPP) {
+  if (language == Language::CPP || language == Language::WASM) {
     // Set native library path for shared library search.
     if (!native_library_path_.empty() || !code_search_path.empty()) {
 #if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
