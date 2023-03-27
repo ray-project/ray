@@ -1,3 +1,4 @@
+import json
 import logging
 import sys
 from abc import ABC
@@ -5,8 +6,10 @@ from dataclasses import dataclass, field, fields
 from enum import Enum, unique
 from typing import Dict, List, Optional, Set, Tuple, Union
 
+import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
-from ray.core.generated.common_pb2 import TaskType
+from ray.core.generated.common_pb2 import TaskStatus, TaskType
+from ray.core.generated.gcs_pb2 import TaskEvents, TaskLogInfo
 from ray.dashboard.modules.job.common import JobInfo
 from ray.experimental.state.custom_types import (
     TypeActorStatus,
@@ -380,6 +383,8 @@ class ActorState(StateSchema):
     is_detached: bool = state_column(filterable=False, detail=True)
     #: The placement group id that's associated with this actor.
     placement_group_id: str = state_column(detail=True, filterable=True)
+    #: Actor's repr name if a customized __repr__ method exists, else empty string.
+    repr_name: str = state_column(detail=True, filterable=True)
 
 
 @dataclass(init=True)
@@ -485,10 +490,23 @@ class WorkerState(StateSchema):
     pid: int = state_column(filterable=True)
     #: The exit detail of the worker if the worker is dead.
     exit_detail: Optional[str] = state_column(detail=True, filterable=False)
+    #: The time worker is first launched.
+    #: -1 if the value doesn't exist.
+    #: The lifecycle of worker is as follow.
+    #: worker_launch_time_ms (process startup requested).
+    #: -> worker_launched_time_ms (process started).
+    #: -> start_time_ms (worker is ready to be used).
+    #: -> end_time_ms (worker is destroyed).
+    worker_launch_time_ms: int = state_column(filterable=False, detail=True)
+    #: The time worker is succesfully launched
+    #: -1 if the value doesn't exist.
+    worker_launched_time_ms: int = state_column(filterable=False, detail=True)
     #: The time when the worker is started and initialized.
+    #: 0 if the value doesn't exist.
     start_time_ms: int = state_column(filterable=False, detail=True)
     #: The time when the worker exits. The timestamp could be delayed
     #: if the worker is dead unexpectedly.
+    #: 0 if the value doesn't exist.
     end_time_ms: int = state_column(filterable=False, detail=True)
 
 
@@ -564,8 +582,13 @@ class TaskState(StateSchema):
     start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
     #: The time when the task is finished or failed. A Unix timestamp in ms.
     end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    #: The task logs info, e.g. offset into the worker log file when the task
+    #: starts/finishes.
+    task_log_info: Optional[TaskLogInfo] = state_column(detail=True, filterable=False)
     #: Task error type.
-    error_type: Optional[str] = state_column(detail=False, filterable=False)
+    error_type: Optional[str] = state_column(detail=False, filterable=True)
+    #: Task error detail info.
+    error_message: Optional[str] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=True)
@@ -835,7 +858,9 @@ class TaskSummaries:
         )
 
     @classmethod
-    def to_summary_by_lineage(cls, *, tasks: List[Dict]) -> "TaskSummaries":
+    def to_summary_by_lineage(
+        cls, *, tasks: List[Dict], actors: List[Dict]
+    ) -> "TaskSummaries":
         """
         This summarizes tasks by lineage.
         i.e. A task will be grouped with another task if they have the
@@ -874,6 +899,8 @@ class TaskSummaries:
             type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
             if type_enum == TaskType.ACTOR_CREATION_TASK:
                 actor_creation_task_id_for_actor_id[task["actor_id"]] = task["task_id"]
+
+        actor_dict = {actor["actor_id"]: actor for actor in actors}
 
         def get_or_create_task_group(task_id: str) -> Optional[NestedTaskSummary]:
             """
@@ -946,6 +973,7 @@ class TaskSummaries:
             Returns None if there is missing data about the actor or one of its parents.
             """
             key = f"actor:{actor_id}"
+            actor = actor_dict.get(actor_id)
             if key not in task_group_by_id:
                 creation_task_id = actor_creation_task_id_for_actor_id.get(actor_id)
                 creation_task = tasks_by_id.get(creation_task_id)
@@ -956,8 +984,21 @@ class TaskSummaries:
                     # tree at that node.
                     return None
 
-                # TODO(aguo): Get actor name from actors state-api.
-                [actor_name, *rest] = creation_task["func_or_class_name"].split(".")
+                # TODO(rickyx)
+                # We are using repr name for grouping actors if exists,
+                # else use class name. We should be using some group_name in the future.
+                if actor is None:
+                    logger.debug(
+                        f"We are missing actor info for actor {actor_id}, "
+                        f"even though creation task exists: {creation_task}"
+                    )
+                    [actor_name, *rest] = creation_task["func_or_class_name"].split(".")
+                else:
+                    actor_name = (
+                        actor["repr_name"]
+                        if actor["repr_name"]
+                        else actor["class_name"]
+                    )
 
                 task_group_by_id[key] = NestedTaskSummary(
                     name=actor_name,
@@ -1281,3 +1322,124 @@ def resource_to_schema(resource: StateResource) -> StateSchema:
         return ClusterEventState
     else:
         assert False, "Unreachable"
+
+
+def protobuf_message_to_dict(
+    message,
+    fields_to_decode: List[str],
+    preserving_proto_field_name: bool = True,
+) -> dict:
+    """Convert a protobuf message to dict
+
+    Args:
+        fields_to_decode: field names which will be decoded from binary to hex.
+        preserving_proto_field_name: a pass-through option for protobuf message
+            method. See google.protobuf MessageToDict
+
+    Return:
+        Dictionary of the converted rpc protobuf.
+    """
+    return dashboard_utils.message_to_dict(
+        message,
+        fields_to_decode,
+        including_default_value_fields=True,
+        preserving_proto_field_name=preserving_proto_field_name,
+    )
+
+
+def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
+    """
+    Convert a TaskEvents to a dic repr of `TaskState`
+    """
+    task_attempt = protobuf_message_to_dict(
+        message=message,
+        fields_to_decode=[
+            "task_id",
+            "job_id",
+            "node_id",
+            "actor_id",
+            "parent_task_id",
+            "worker_id",
+            "placement_group_id",
+            "component_id",
+        ],
+    )
+
+    task_state = {}
+    task_info = task_attempt.get("task_info", {})
+    state_updates = task_attempt.get("state_updates", {})
+    profiling_data = task_attempt.get("profile_events", {})
+    if profiling_data:
+        for event in profiling_data["events"]:
+            # End/start times are recorded in ns. We convert them to ms.
+            event["end_time"] = int(event["end_time"]) / 1e6
+            event["start_time"] = int(event["start_time"]) / 1e6
+            event["extra_data"] = json.loads(event["extra_data"])
+    task_state["profiling_data"] = profiling_data
+
+    # Convert those settable fields
+    mappings = [
+        (
+            task_info,
+            [
+                "task_id",
+                "name",
+                "actor_id",
+                "type",
+                "func_or_class_name",
+                "language",
+                "required_resources",
+                "runtime_env_info",
+                "parent_task_id",
+                "placement_group_id",
+            ],
+        ),
+        (task_attempt, ["task_id", "attempt_number", "job_id"]),
+        (
+            state_updates,
+            ["node_id", "worker_id", "task_log_info"],
+        ),
+    ]
+    for src, keys in mappings:
+        for key in keys:
+            task_state[key] = src.get(key)
+
+    task_state["creation_time_ms"] = None
+    task_state["start_time_ms"] = None
+    task_state["end_time_ms"] = None
+    events = []
+
+    for state in TaskStatus.keys():
+        key = f"{state.lower()}_ts"
+        if key in state_updates:
+            # timestamp is recorded as nanosecond from the backend.
+            # We need to convert it to the second.
+            ts_ms = int(state_updates[key]) // 1e6
+            events.append(
+                {
+                    "state": state,
+                    "created_ms": ts_ms,
+                }
+            )
+            if state == "PENDING_ARGS_AVAIL":
+                task_state["creation_time_ms"] = ts_ms
+            if state == "RUNNING":
+                task_state["start_time_ms"] = ts_ms
+            if state == "FINISHED" or state == "FAILED":
+                task_state["end_time_ms"] = ts_ms
+
+    task_state["events"] = events
+    if len(events) > 0:
+        latest_state = events[-1]["state"]
+    else:
+        latest_state = "NIL"
+    task_state["state"] = latest_state
+
+    # Parse error info
+    if latest_state == "FAILED":
+        error_info = state_updates.get("error_info", None)
+        if error_info:
+            task_state["error_message"] = error_info.get("error_message", "")
+            task_state["error_type"] = error_info.get("error_type", "")
+
+    return task_state

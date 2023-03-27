@@ -582,6 +582,7 @@ cdef store_task_errors(
         CTaskType task_type,
         proctitle,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
+        c_string* application_error,
         ):
     cdef:
         CoreWorker core_worker = worker.core_worker
@@ -606,6 +607,14 @@ cdef store_task_errors(
         failure_object = RayTaskError(function_name, backtrace,
                                       exc, proctitle=proctitle,
                                       actor_repr=actor_repr)
+
+    # Pass the failure object back to the CoreWorker.
+    # We also cap the size of the error message to the last
+    # MAX_APPLICATION_ERROR_LEN characters of the error message.
+    if application_error != NULL:
+        application_error[0] = str(failure_object)[
+            -ray_constants.MAX_APPLICATION_ERROR_LEN:]
+
     errors = []
     for _ in range(returns[0].size()):
         errors.append(failure_object)
@@ -629,7 +638,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
         const c_string &serialized_retry_exception_allowlist,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_bool *is_retryable_error,
-        c_bool *is_application_error,
+        c_string *application_error,
         c_bool is_reattempt,
         function_name,
         function_descriptor,
@@ -644,7 +653,6 @@ cdef execute_dynamic_generator_and_store_task_outputs(
             dynamic_returns,
             generator_id)
     except Exception as error:
-        is_application_error[0] = True
         is_retryable_error[0] = determine_if_retryable(
             error,
             serialized_retry_exception_allowlist,
@@ -683,7 +691,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         False,  # task_exception
                         None,  # actor
                         function_name, task_type, title,
-                        dynamic_returns)
+                        dynamic_returns, application_error)
             if num_errors_stored == 0:
                 assert is_reattempt
                 # TODO(swang): The generator task failed and we
@@ -712,7 +720,7 @@ cdef void execute_task(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_bool *is_retryable_error,
-        c_bool *is_application_error,
+        c_string *application_error,
         # This parameter is only used for actor creation task to define
         # the concurrency groups of this actor.
         const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
@@ -854,6 +862,8 @@ cdef void execute_task(
                 class_name = actor.__class__.__name__
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
+
+            worker.record_task_log_start()
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
@@ -888,7 +898,6 @@ cdef void execute_task(
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
                 except Exception as e:
-                    is_application_error[0] = True
                     is_retryable_error[0] = determine_if_retryable(
                         e,
                         serialized_retry_exception_allowlist,
@@ -898,16 +907,21 @@ cdef void execute_task(
                         is_retryable_error[0]
                         and core_worker.get_current_task_retry_exceptions()
                     ):
-                        logger.info("Task failed with retryable exception:"
-                                    " {}.".format(
+                        logger.debug("Task failed with retryable exception:"
+                                     " {}.".format(
                                         core_worker.get_current_task_id()),
-                                    exc_info=True)
+                                     exc_info=True)
                     else:
                         logger.debug("Task failed with unretryable exception:"
                                      " {}.".format(
                                         core_worker.get_current_task_id()),
                                      exc_info=True)
                     raise e
+                finally:
+                    # Record the task logs end offsets regardless of
+                    # task execution results.
+                    worker.record_task_log_end()
+
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
                     # all return values as a single object.
@@ -922,11 +936,16 @@ cdef void execute_task(
                 if (hasattr(actor_class, "__ray_actor_class__") and
                         (actor_class.__ray_actor_class__.__repr__
                          != object.__repr__)):
+                    actor_repr = repr(actor)
                     actor_magic_token = "{}{}\n".format(
-                        ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
+                        ray_constants.LOG_PREFIX_ACTOR_NAME, actor_repr)
                     # Flush on both stdout and stderr.
                     print(actor_magic_token, end="")
                     print(actor_magic_token, file=sys.stderr, end="")
+
+                    # Sets the actor repr name for the actor so other components
+                    # like GCS has such info.
+                    core_worker.set_actor_repr_name(actor_repr)
 
             if (returns[0].size() > 0 and
                     not inspect.isgenerator(outputs) and
@@ -953,7 +972,7 @@ cdef void execute_task(
                             serialized_retry_exception_allowlist,
                             dynamic_returns,
                             is_retryable_error,
-                            is_application_error,
+                            application_error,
                             is_reattempt,
                             function_name,
                             function_descriptor,
@@ -979,7 +998,7 @@ cdef void execute_task(
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, function_name,
-                    task_type, title, returns)
+                    task_type, title, returns, application_error)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
                         "Unhandled error: Task threw exception, but all "
@@ -1001,14 +1020,13 @@ cdef execute_task_with_cancellation_handler(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_bool *is_retryable_error,
-        c_bool *is_application_error,
+        c_string *application_error,
         # This parameter is only used for actor creation task to define
         # the concurrency groups of this actor.
         const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
         const c_string c_name_of_concurrency_group_to_execute,
         c_bool is_reattempt):
 
-    is_application_error[0] = False
     is_retryable_error[0] = False
 
     worker = ray._private.worker.global_worker
@@ -1089,7 +1107,7 @@ cdef execute_task_with_cancellation_handler(
                      returns,
                      dynamic_returns,
                      is_retryable_error,
-                     is_application_error,
+                     application_error,
                      c_defined_concurrency_groups,
                      c_name_of_concurrency_group_to_execute,
                      is_reattempt, execution_info, title, task_name)
@@ -1114,7 +1132,10 @@ cdef execute_task_with_cancellation_handler(
                 # to differentiate between mid-task or not.
                 False,  # task_exception
                 actor, execution_info.function_name,
-                task_type, title, returns)
+                task_type, title, returns,
+                # application_error: we are passing NULL since we don't want the
+                # cancel tasks to fail.
+                NULL)
     finally:
         with current_task_id_lock:
             current_task_id = None
@@ -1156,7 +1177,7 @@ cdef CRayStatus task_execution_handler(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
         c_bool *is_retryable_error,
-        c_bool *is_application_error,
+        c_string *application_error,
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute,
         c_bool is_reattempt) nogil:
@@ -1181,7 +1202,7 @@ cdef CRayStatus task_execution_handler(
                         returns,
                         dynamic_returns,
                         is_retryable_error,
-                        is_application_error,
+                        application_error,
                         defined_concurrency_groups,
                         name_of_concurrency_group_to_execute,
                         is_reattempt)
@@ -1502,7 +1523,8 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token, session_name, entrypoint):
+                  startup_token, session_name, entrypoint,
+                  worker_launch_time_ms, worker_launched_time_ms):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -1554,6 +1576,8 @@ cdef class CoreWorker:
         options.startup_token = startup_token
         options.session_name = session_name
         options.entrypoint = entrypoint
+        options.worker_launch_time_ms = worker_launch_time_ms
+        options.worker_launched_time_ms = worker_launched_time_ms
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
@@ -1619,6 +1643,9 @@ cdef class CoreWorker:
 
     def set_actor_title(self, title):
         CCoreWorkerProcess.GetCoreWorker().SetActorTitle(title)
+
+    def set_actor_repr_name(self, repr_name):
+        CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
 
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
@@ -2774,6 +2801,16 @@ cdef class CoreWorker:
                     CCoreWorkerProcess.GetCoreWorker().GetNumLeasesRequested())
 
         return (num_tasks_submitted, num_leases_requested)
+
+    def record_task_log_start(self, stdout_path, stderr_path,
+                              int64_t out_start_offset, int64_t err_start_offset):
+        CCoreWorkerProcess.GetCoreWorker() \
+            .RecordTaskLogStart(stdout_path, stderr_path,
+                                out_start_offset, err_start_offset)
+
+    def record_task_log_end(self, int64_t out_end_offset, int64_t err_end_offset):
+        CCoreWorkerProcess.GetCoreWorker() \
+            .RecordTaskLogEnd(out_end_offset, err_end_offset)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

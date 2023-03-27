@@ -302,6 +302,9 @@ NODE_DEFAULT_IP = "127.0.0.1"
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
 
+# The max number of bytes for task execution error message.
+MAX_APPLICATION_ERROR_LEN = 500
+
 # Max 64 bit integer value, which is needed to ensure against overflow
 # in C++ when passing integer values cross-language.
 MAX_INT64_VALUE = 9223372036854775807
@@ -381,7 +384,7 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
-RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
 
 # Whether to enable Ray clusters (in addition to local Ray).
 # Ray clusters are not explicitly supported for Windows and OSX.

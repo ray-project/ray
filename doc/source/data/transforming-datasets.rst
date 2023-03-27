@@ -245,18 +245,22 @@ is given in the below table:
      - ``"pandas"``
      - ``"numpy"``
      - ``"pyarrow"``
+     - ``None``
    * - ``"pandas"``
      - Zero-copy
      - Zero-copy
      - Copy*
      - Copy*
+     - Zero-copy
    * - ``"arrow"``
      - Copy*
      - Copy*
      - Zero-copy*
      - Zero-copy
-   * - ``"simple"``
      - Zero-copy
+   * - ``"simple"``
+     - Copy
+     - Copy
      - Copy
      - Copy
      - Copy
@@ -469,7 +473,7 @@ aggregation has been computed.
         for x in range(10)])
 
     # Group by the A column and calculate the per-group mean for B and C columns.
-    agg_ds: ray.data.Dataset = ds.groupby("A").mean(["B", "C"]).fully_executed()
+    agg_ds: ray.data.Dataset = ds.groupby("A").mean(["B", "C"]).cache()
     # -> Sort Sample: 100%|███████████████████████████████████████| 10/10 [00:01<00:00,  9.04it/s]
     # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 23.66it/s]
     # -> GroupBy Reduce: 100%|████████████████████████████████████| 10/10 [00:00<00:00, 937.21it/s]
@@ -538,7 +542,7 @@ with calculated column means.
         return df
 
     ds = ds.map_batches(batch_standard_scaler, batch_format="pandas")
-    ds.fully_executed()
+    ds.cache()
     # -> Map Progress: 100%|██████████████████████████████████████| 10/10 [00:00<00:00, 144.79it/s]
     # -> Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: double, C: double})
 

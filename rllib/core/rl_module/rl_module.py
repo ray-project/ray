@@ -54,7 +54,10 @@ class SingleAgentRLModuleSpec:
 
     Args:
         module_class: The RLModule class to use.
-        observation_space: The observation space of the RLModule.
+        observation_space: The observation space of the RLModule. This may differ
+            from the observation space of the environment. For example, a discrete
+            observation space of an environment, would usually correspond to a
+            one-hot encoded observation space of the RLModule because of preprocessing.
         action_space: The action space of the RLModule.
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
@@ -76,6 +79,7 @@ class SingleAgentRLModuleSpec:
         )
 
     def build(self) -> "RLModule":
+        """Builds the RLModule from this spec."""
         if self.module_class is None:
             raise ValueError("RLModule class is not set.")
         if self.observation_space is None:
@@ -202,57 +206,57 @@ class RLModule(abc.ABC):
 
     Here is the pseudocode for how the forward methods are called:
 
-    # During Training (acting in env from each rollout worker)
-    ----------------------------------------------------------
+    During Training (acting in env from each rollout worker):
+
     .. code-block:: python
 
-        module: RLModule = ...
+        module = RLModule(...)
         obs, info = env.reset()
-        while not terminated and not truncated:
-            fwd_outputs = module.forward_exploration({"obs": obs})
-            # this can be deterministic or stochastic exploration
-            action = fwd_outputs["action_dist"].sample()
-            next_obs, reward, terminated, truncated, info = env.step(action)
-            buffer.add(obs, action, next_obs, reward, terminated, truncated, info)
-            next_obs = obs
 
-    # During Training (learning the policy)
-    ----------------------------------------------------------
+        while not env.terminated:
+            fwd_outputs = module.forward_exploration({"obs": obs})
+            # this can be either deterministic or stochastic distribution
+            action = fwd_outputs["action_dist"].sample()
+            obs, reward, terminated, truncated, info = env.step(action)
+
+
+
+    During Training (learning the policy)
+
     .. code-block:: python
-        module: RLModule = ...
-        fwd_ins = buffer.sample()
+
+        module = RLModule(...)
+        fwd_ins = {"obs": obs, "action": action, "reward": reward, "next_obs": next_obs}
         fwd_outputs = module.forward_train(fwd_ins)
         loss = compute_loss(fwd_outputs, fwd_ins)
         update_params(module, loss)
 
-    # During Inference (acting in env during evaluation)
-    ----------------------------------------------------------
+    During Inference (acting in env during evaluation)
+
     .. code-block:: python
-        module: RLModule = ...
+
+        module = RLModule(...)
         obs, info = env.reset()
-        while not terminated and not truncated:
+
+        while not env.terminated:
             fwd_outputs = module.forward_inference({"obs": obs})
-            # this can be deterministic or stochastic evaluation
             action = fwd_outputs["action_dist"].sample()
-            next_obs, reward, terminated, truncated, info = env.step(action)
-            next_obs = obs
+            obs, reward, terminated, truncated, info = env.step(action)
 
     Args:
         *args: Arguments for constructing the RLModule.
         **kwargs: Keyword args for constructing the RLModule.
 
     Abstract Methods:
-        forward_train: Forward pass during training.
-        forward_exploration: Forward pass during training for exploration.
-        forward_inference: Forward pass during inference.
+        :py:meth:`~forward_train`: Forward pass during training.
 
-    Error:
-        The args and kwargs that are passed to the constructor are saved for
-        serialization and deserialization purposes. The RLModule checks if they
-        are serializable/deserializable using ray and if they are not, a
-        ValueError is thrown.
+        :py:meth:`~forward_exploration`: Forward pass during training for exploration.
 
-    Note: There is a reason that the specs are not written as abstract properties.
+        :py:meth:`~forward_inference`: Forward pass during inference.
+
+
+    Note:
+        There is a reason that the specs are not written as abstract properties.
         The reason is that torch overrides `__getattr__` and `__setattr__`. This means
         that if we define the specs as properties, then any error in the property will
         be interpreted as a failure to retrieve the attribute and will invoke
