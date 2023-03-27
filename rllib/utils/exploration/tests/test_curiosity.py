@@ -240,7 +240,7 @@ class TestCuriosity(unittest.TestCase):
                     "fcnet_activation": "relu",
                 },
                 num_sgd_iter=8,
-                # TODO (Kourosh): We need to provide examples on how we do curiosity 
+                # TODO (Kourosh): We need to provide examples on how we do curiosity
                 # with RLModule API
                 _enable_learner_api=False,
             )
