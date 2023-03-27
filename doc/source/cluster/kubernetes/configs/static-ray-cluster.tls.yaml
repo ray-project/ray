@@ -194,6 +194,7 @@ spec:
           secretName: ca-tls
       - name: ray-tls
         emptyDir: {}
+      # The gencert_head.sh can be prebaked into the docker container so the configMap is optional
       - name: gen-tls-script
         configMap:
           name: tls
@@ -301,6 +302,7 @@ spec:
           secretName: ca-tls
       - name: ray-tls
         emptyDir: {}
+      # The gencert_worker.sh can be prebaked into the docker container so the configMap is optional
       - name: gen-tls-script
         configMap:
           name: tls
