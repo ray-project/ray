@@ -1246,11 +1246,12 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_aws_4x2.yaml  
+    cluster_compute: tpl_aws_4x2.yaml
 
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py no_sync_down
+
     wait_for_nodes:
       num_nodes: 4
 
