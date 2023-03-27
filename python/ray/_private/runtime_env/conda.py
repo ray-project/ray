@@ -64,7 +64,6 @@ def _resolve_install_from_source_ray_dependencies():
     # Remove duplicates
     return list(set(deps))
 
-
 def _inject_ray_to_conda_site(
     conda_path, logger: Optional[logging.Logger] = default_logger
 ):
@@ -257,7 +256,6 @@ def _get_conda_dict_with_ray_inserted(
 class CondaPlugin(RuntimeEnvPlugin):
 
     name = "conda"
-
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "conda")
         try_to_create_directory(self._resources_dir)
@@ -338,7 +336,6 @@ class CondaPlugin(RuntimeEnvPlugin):
             conda_env_name = self._get_path_from_hash(hash)
 
             conda_dict = _get_conda_dict_with_ray_inserted(runtime_env, logger=logger)
-
             logger.info(f"Setting up conda environment with {runtime_env}")
             with FileLock(self._installs_and_deletions_file_lock):
                 try:
@@ -348,7 +345,7 @@ class CondaPlugin(RuntimeEnvPlugin):
                     with open(conda_yaml_file, "w") as file:
                         yaml.dump(conda_dict, file)
                     create_conda_env_if_needed(
-                        conda_yaml_file, prefix=conda_env_name, logger=logger
+                        conda_yaml_file, conda_exe=runtime_env.conda_create_env_executable(), prefix=conda_env_name, logger=logger
                     )
                 finally:
                     os.remove(conda_yaml_file)

@@ -325,6 +325,43 @@ def test_conda_create_task(shutdown_only):
     assert ray.get(f.options(runtime_env=runtime_env).remote())
 
 
+def mamba_exists():
+    try:
+        subprocess.call(["mamba", '--version'], stdout=subprocess.DEVNULL)
+        return True
+    except OSError:
+        return False
+
+@pytest.mark.skipif(
+    os.environ.get("CONDA_EXE") is None,
+    reason="Requires properly set-up conda shell",
+)
+@pytest.mark.skipif(
+    not mamba_exists(),
+    reason="Requires properly set-up conda shell with mamba also accessible",
+)
+def test_conda_using_mamba_create_task(shutdown_only):
+    """Tests dynamic creation of a conda env in a task's runtime env but using
+    mamba. Assumes `conda init` has been successfully called."""
+    ray.init()
+    runtime_env = {
+        "conda": {"create_env_exe": "mamba", "dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
+    }
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(f.remote())
+    assert "ModuleNotFoundError" in str(excinfo.value)
+    assert ray.get(f.options(runtime_env=runtime_env).remote())
+
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
