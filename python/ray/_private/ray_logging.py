@@ -11,7 +11,7 @@ from typing import Callable, Dict, List, Set, Tuple, Any
 
 import ray
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
-from ray._private.constants import RAY_DEDUP_LOGS, RAY_DEDUP_LOGS_AGG_WINDOW_S
+from ray._private.ray_constants import RAY_DEDUP_LOGS, RAY_DEDUP_LOGS_AGG_WINDOW_S
 from ray._private.utils import binary_to_hex
 from ray.util.debug import log_once
 
@@ -300,10 +300,11 @@ class DedupState:
 
 
 class LogDeduplicator:
-    def __init__(self):
+    def __init__(self, *, _timesource=None):
         # Buffer of up to RAY_DEDUP_LOGS_AGG_WINDOW_S recent log patterns.
         # This buffer is cleared if the pattern isn't seen within the window.
         self.recent: Dict[str, DedupState] = {}
+        self.timesource = _timesource or (lambda: time.time())
 
     def deduplicate(self, batch: LogBatch) -> List[LogBatch]:
         """Rewrite a batch of lines to reduce duplicate log messages.
@@ -317,7 +318,7 @@ class LogDeduplicator:
         if not RAY_DEDUP_LOGS:
             return [batch]
 
-        now = time.time()
+        now = self.timesource()
         metadata = batch.copy()
         del metadata["lines"]
         source = (metadata.get("ip"), metadata.get("pid"))
