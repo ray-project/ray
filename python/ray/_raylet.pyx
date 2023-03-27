@@ -1500,26 +1500,26 @@ cdef class GcsClient:
     """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
     cdef:
         shared_ptr[CGcsClient] inner
-    
+
     @staticmethod
     cdef wrap(const shared_ptr[CGcsClient]& client):
         cdef GcsClient self = GcsClient.__new__(GcsClient)
         self.inner = client
         return self
 
-    def internal_kv_get(self, key, namespace, timeout):
+    def internal_kv_get(self, bytes key, bytes namespace, timeout):
         cdef:
             c_string value
-        check_status(self.inner.get().InternalKV().Get(namespace.encode("ascii"), key.encode("ascii"), value))
+        check_status(self.inner.get().InternalKV().Get(namespace, key, value))
 
         return value
 
-    def internal_kv_keys(self, prefix, namespace, timeout):
+    def internal_kv_keys(self, bytes prefix, bytes namespace, timeout):
         cdef:
             c_vector[c_string] keys
             c_string key
 
-        check_status(self.inner.get().InternalKV().Keys(namespace.encode("ascii"), prefix.encode("ascii"), keys))
+        check_status(self.inner.get().InternalKV().Keys(namespace, prefix, keys))
 
         result = []
 
@@ -1649,6 +1649,10 @@ cdef class CoreWorker:
     def should_capture_child_tasks_in_placement_group(self):
         return CCoreWorkerProcess.GetCoreWorker(
             ).ShouldCaptureChildTasksInPlacementGroup()
+
+    @property
+    def gcs_client(self):
+        return self.gcs_client
 
     def set_webui_display(self, key, message):
         CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)

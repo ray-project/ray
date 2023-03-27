@@ -115,6 +115,7 @@ cdef class CoreWorker:
         object async_thread
         object async_event_loop
         object plasma_event_handler
+        object gcs_client
         object job_config
         object current_runtime_env
         c_bool is_local_mode
