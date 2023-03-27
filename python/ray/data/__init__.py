@@ -10,6 +10,7 @@ from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
 from ray.data.dataset import Dataset
+from ray.data.datastream import Datastream
 from ray.data.context import DatasetContext
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data.dataset_pipeline import DatasetPipeline
@@ -58,8 +59,9 @@ _cached_cls = None
 __all__ = [
     "ActorPoolStrategy",
     "Dataset",
-    "DatasetContext",
-    "DatasetIterator",
+    "Datastream",
+    "DatasetContext",  # TODO: rename to ray.data.DataContext
+    "DatasetIterator",  # TODO: rename to ray.data.DataIterator
     "DatasetPipeline",
     "Datasource",
     "ExecutionOptions",

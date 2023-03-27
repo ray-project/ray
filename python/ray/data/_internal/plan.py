@@ -141,7 +141,7 @@ class ExecutionPlan:
             f"snapshot_blocks={self._snapshot_blocks})"
         )
 
-    def get_plan_as_string(self) -> str:
+    def get_plan_as_string(self, classname: str) -> str:
         """Create a cosmetic string representation of this execution plan.
 
         Returns:
@@ -211,8 +211,8 @@ class ExecutionPlan:
             num_blocks = "?"
         else:
             num_blocks = dataset_blocks.initial_num_blocks()
-        dataset_str = "Dataset(num_blocks={}, num_rows={}, schema={})".format(
-            num_blocks, count, schema_str
+        dataset_str = "{}(num_blocks={}, num_rows={}, schema={})".format(
+            classname, num_blocks, count, schema_str
         )
 
         # If the resulting string representation fits in one line, use it directly.
@@ -253,7 +253,7 @@ class ExecutionPlan:
                     "{\n" + schema_str + f"\n{trailing_space}{INDENT_STR}" + "}"
                 )
             dataset_str = (
-                f"Dataset("
+                f"{classname}("
                 f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
                 f"\n{trailing_space}{INDENT_STR}num_rows={count},"
                 f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
