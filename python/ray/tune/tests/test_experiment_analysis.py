@@ -11,6 +11,7 @@ import ray
 from ray import tune
 from ray.tune import ExperimentAnalysis
 import ray.tune.registry
+from ray.tune.tests.utils.experiment import create_test_experiment_checkpoint
 from ray.tune.utils.mock_trainable import MyTrainableClass
 from ray.tune.utils.util import is_nan
 
@@ -22,7 +23,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        ray.shutdown()
+        if ray.is_initialized:
+            ray.shutdown()
 
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
@@ -226,7 +228,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
     def testAllDataframes(self):
         dataframes = self.ea.trial_dataframes
-        self.assertTrue(len(dataframes) == self.num_samples)
+        self.assertEqual(len(dataframes), self.num_samples)
 
         self.assertTrue(isinstance(dataframes, dict))
         for df in dataframes.values():
@@ -367,19 +369,18 @@ class ExperimentAnalysisStubSuite(unittest.TestCase):
         ray.shutdown()
 
     def run_test_exp(self):
-        def training_function(config, checkpoint_dir=None):
-            tune.report(episode_reward_mean=config["alpha"])
+        with create_test_experiment_checkpoint(self.test_path) as creator:
+            for i in range(10):
+                trial = creator.create_trial(f"trial_{i}", config={})
+                creator.trial_result(
+                    trial,
+                    {
+                        "training_iteration": 1,
+                        "episode_reward_mean": 10 + int(90 * random.random()),
+                    },
+                )
 
-        return tune.run(
-            training_function,
-            name=self.test_name,
-            local_dir=self.test_dir,
-            stop={"training_iteration": 1},
-            num_samples=self.num_samples,
-            config={
-                "alpha": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
-            },
-        )
+        return ExperimentAnalysis(self.test_dir, trials=creator.get_trials())
 
     def testPickling(self):
         analysis = self.run_test_exp()
