@@ -16,7 +16,6 @@ from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
-from ray.util.iter import ParallelIteratorWorker
 
 # Constant that represents all policies in lockstep replay mode.
 _ALL_POLICIES = "__all__"
@@ -63,9 +62,8 @@ def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
             logger.info(msg)
 
 
-# TODO (artur): Remove ParallelIteratorWorker once we no longer support executionplans
 @DeveloperAPI
-class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
+class ReplayBuffer(FaultAwareApply):
     """The lowest-level replay buffer interface used by RLlib.
 
     This class implements a basic ring-type of buffer with random sampling.
@@ -393,34 +391,12 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
         """
         return platform.node()
 
-    @Deprecated(new="ReplayBuffer.add()", error=True)
-    def add_batch(self, *args, **kwargs):
-        pass
-
-    @Deprecated(
-        old="ReplayBuffer.replay(num_items)",
-        new="ReplayBuffer.sample(num_items)",
-        error=True,
-    )
-    def replay(self, num_items):
-        pass
-
     @Deprecated(
         help="ReplayBuffers could be iterated over by default before. "
-        "Making a buffer an iterator will soon "
-        "be deprecated altogether. Consider switching to the training "
-        "iteration API to resolve this.",
-        error=False,
+        "Making a buffer an iterator has been deprecated. Switch your Algorithm to "
+        "override the `training_step()` method (instead of `execution_plan()`) to "
+        "resolve this.",
+        error=True,
     )
     def make_iterator(self, num_items_to_replay: int):
-        """Make this buffer a ParallelIteratorWorker to retain compatibility.
-
-        Execution plans have made heavy use of buffers as ParallelIteratorWorkers.
-        This method provides an easy way to support this for now.
-        """
-
-        def gen_replay():
-            while True:
-                yield self.sample(num_items_to_replay)
-
-        ParallelIteratorWorker.__init__(self, gen_replay, False)
+        pass
