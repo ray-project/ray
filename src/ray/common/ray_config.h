@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <boost/algorithm/string.hpp>
 #include <cstdint>
 #include <sstream>
 #include <string>
@@ -49,7 +50,11 @@ inline bool ConvertValue<bool>(const std::string &type_string, const std::string
 template <>
 inline std::vector<std::string> ConvertValue<std::vector<std::string>>(
     const std::string &type_string, const std::string &value) {
-  return absl::StrSplit(value, ",");
+  std::vector<std::string> split = absl::StrSplit(value, ",");
+  for (auto &value : split) {
+    boost::algorithm::trim(value);
+  }
+  return split;
 }
 
 class RayConfig {
