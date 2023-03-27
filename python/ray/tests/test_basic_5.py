@@ -288,7 +288,8 @@ def test_preload_workers(ray_start_cluster, preload):
     """
     cluster = ray_start_cluster
 
-    expect_succeed_imports = ["tensorflow", "torch"]
+    # Specifying imports not currently imported by default_worker.py
+    expect_succeed_imports = ["html", "webbrowser"]
     expect_fail_imports = ["fake_module_expect_ModuleNotFoundError"]
 
     if preload:
