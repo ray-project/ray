@@ -497,7 +497,7 @@ class ExecutionPlan:
         """
 
         ctx = DatasetContext.get_current()
-        if not ctx.use_streaming_executor:
+        if not ctx.use_streaming_executor or self.has_computed_output():
             return (
                 self.execute(allow_clear_input_blocks, force_read).iter_blocks(),
                 self._snapshot_stats,
