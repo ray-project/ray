@@ -538,8 +538,7 @@ def check_file(type, task_name, expected_log, expect_no_end=False):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Failing on Windows. we should fix it asap"
+    sys.platform == "win32", reason="Failing on Windows. we should fix it asap"
 )
 def test_task_logs_info_basic(shutdown_only):
     """Test tasks (normal tasks/actor tasks) execution logging
