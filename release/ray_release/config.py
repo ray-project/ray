@@ -64,11 +64,8 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
         flavors = test_definition.pop("flavors")
         for flavor in flavors:
             test = copy.deepcopy(test_definition)
-            test["name"] = test["name"] + "-" + flavor["name"]
-            if "env" in flavor:
-                test['env'] = flavor['env']
-            if "cluster_compute" in flavor:
-                test["cluster"]["cluster_compute"] = flavor["cluster_compute"]
+            flavor["name"] = test["name"] + "-" + flavor["name"]
+            test.update(flavor)
             tests.append(test)
     return tests
 
