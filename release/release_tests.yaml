@@ -1258,7 +1258,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_gce_4x8.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_4x8.yaml
 
   alert: tune_tests
 
@@ -1282,7 +1284,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_gce_4x8.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_4x8.yaml
 
   alert: tune_tests
 
@@ -1305,7 +1309,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_gce_4x8.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_4x8.yaml
 
   alert: tune_tests
 
