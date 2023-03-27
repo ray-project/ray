@@ -1439,6 +1439,9 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     if latest_state == "FAILED":
         error_info = state_updates.get("error_info", None)
         if error_info:
+            # We captured colored error message printed to console, e.g.
+            # "\x1b[31mTraceback (most recent call last):\x1b[0m",
+            # this is to remove the ANSI escape codes.
             task_state["error_message"] = remove_ansi_escape_codes(
                 error_info.get("error_message", "")
             )
