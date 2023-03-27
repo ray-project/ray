@@ -56,7 +56,7 @@ PENDULUM_FAKE_BATCH = SampleBatch(
             [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]],
             dtype=np.float32,
         ),
-        SampleBatch.ACTIONS: np.array([0.1, 0.2]),
+        SampleBatch.ACTIONS: np.array([0.1, 0.2, 0.3]),
         SampleBatch.PREV_ACTIONS: np.array([0.3, 0.4]),
         SampleBatch.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
         SampleBatch.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
@@ -389,7 +389,7 @@ class TestPPO(unittest.TestCase):
         )
 
         # TODO(Artur): Enable this test for tf2 once we support CNNs
-        for fw in framework_iterator(config, frameworks=["torch"]):
+        for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
             trainer = config.build()
             policy = trainer.get_policy()
 

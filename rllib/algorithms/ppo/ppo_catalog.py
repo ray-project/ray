@@ -26,7 +26,7 @@ def _check_if_diag_gaussian(action_distribution_cls, framework):
             "Found action distribution: {}.".format(action_distribution_cls)
         )
     else:
-        raise ValueError(f"Framework {framework} not supported for " f"free_log_std.")
+        raise ValueError(f"Framework {framework} not supported for free_log_std.")
 
 
 class PPOCatalog(Catalog):

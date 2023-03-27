@@ -130,18 +130,18 @@ class MLPHeadConfig(ModelConfig):
 @ExperimentalAPI
 @dataclass
 class FreeStdMLPHeadConfig(ModelConfig):
-    """Configuration for an MLPHead with a floating second half outputs.
+    """Configuration for an MLPHead with a floating second half of outputs.
 
     This is a convenience wrapper around MLPHeadConfig.
     It does not dictate the output dimensions, but instead uses the output dimensions
     of the configured MLPHHeadConfig.
     The output dimensions of the configured MLPHeadConfig must be even and are
     divided by two to gain the output dimensions of the underlying MLP, while the
-    standard deviation is floating free.
+    standard deviations are floating free biases.
 
     Attributes:
         mlp_head_config: MLPHeadConfig for the MLPHead that produces the first half
-            of the output logits.
+            of the output logits that are the means.
     """
 
     mlp_head_config: MLPHeadConfig = None

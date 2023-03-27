@@ -57,7 +57,6 @@ class TfFreeStdMLPHead(TfModel):
             output_activation=mlp_head_config.output_activation,
         )
 
-        # Add a trainable variable for the std.
         self.log_std = tf.Variable(
             tf.zeros(self._half_output_dim),
             name="log_std",

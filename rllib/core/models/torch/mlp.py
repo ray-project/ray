@@ -63,7 +63,6 @@ class TorchFreeStdMLPHead(TorchModel, nn.Module):
         self.log_std = torch.nn.Parameter(
             torch.as_tensor([0.0] * self._half_output_dim)
         )
-        self.register_parameter("log_std", self.log_std)
 
     @override(Model)
     def get_input_spec(self) -> Union[Spec, None]:
