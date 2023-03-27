@@ -55,11 +55,7 @@ class MultiAgentRLModule(RLModule):
 
         super().__init__(config)
 
-        # self.build() will abstract the construction of rl_modules
-        self._rl_modules = {}
-        self.build()
-
-    def build(self):
+    def setup(self):
         """Builds the underlying RLModules."""
         self.__check_module_configs(self.config.modules)
         for module_id, module_spec in self.config.modules.items():

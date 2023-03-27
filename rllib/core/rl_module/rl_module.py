@@ -1,10 +1,11 @@
 import abc
-from dataclasses import dataclass
 import datetime
-import gymnasium as gym
 import json
 import pathlib
+from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional, Type, TYPE_CHECKING, Union
+
+import gymnasium as gym
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import (
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
     from ray.rllib.core.models.catalog import Catalog
 
 import ray
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -266,6 +268,7 @@ class RLModule(abc.ABC):
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
+        self.initialize_subcomponents()
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
@@ -311,19 +314,9 @@ class RLModule(abc.ABC):
             self.output_specs_inference()
         )
 
-    def initialize_subcomponents(self):
-        """Initializes components such as models and action distribution classes.
-
-        Override this method to customize the initialization of such subcomponents.
-        By default, an RLModule constructs its subcomponents from a Catalog object.
-        For example, if an RLModules requires an encoder, a head and an
-        action distribution class, these would generally be constructed from the
-        catalog here.
-
-        You can use this method to customize the construction of these subcomponents
-        without having to change to constructor of the RLModule you are modifying.
-        """
-        raise NotImplementedError
+    @OverrideToImplementCustomLogic
+    def setup(self):
+        raise NotImplementedError("WIP")
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
