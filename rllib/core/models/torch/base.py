@@ -77,8 +77,8 @@ class TorchModel(nn.Module, Model, abc.ABC):
         if not is_output_decorated(self.forward):
             _raise_not_decorated_exception("output")
 
-    @check_input_specs("input_spec", cache=True)
-    @check_output_specs("output_spec", cache=True)
+    @check_input_specs("input_spec")
+    @check_output_specs("output_spec")
     def forward(
         self, inputs: Union[NestedDict, TensorType], **kwargs
     ) -> Union[NestedDict, TensorType]:
