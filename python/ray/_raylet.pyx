@@ -1501,7 +1501,8 @@ cdef class GcsClient:
     cdef:
         shared_ptr[CGcsClient] inner
 
-    def __cinit__(self, GcsClientOptions gcs_options):
+    def __cinit__(self, address):
+        cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CGcsClient(dereference(gcs_options.native())))
 
     def connect(self):
@@ -1519,6 +1520,12 @@ cdef class GcsClient:
         check_status(self.inner.get().InternalKV().Get(namespace, key, value))
 
         return value
+
+    def internal_kv_put(self, bytes key, bytes value, overwrite: bool = False, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace if namespace else b""
+            c_bool added
+        check_status(self.inner.get().InternalKV().Put(ns, key, value, overwrite, added))
 
     def internal_kv_keys(self, bytes prefix, bytes namespace, timeout):
         cdef:

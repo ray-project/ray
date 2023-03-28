@@ -309,6 +309,8 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
 
         CRayStatus Get(const c_string &ns, const c_string &key, c_string &value)
 
+        CRayStatus Put(const c_string &ns, const c_string &key, const c_string &value, c_bool overwrite, c_bool &added)
+
         CRayStatus Keys(const c_string &ns, const c_string &prefix, c_vector[c_string] &value)
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
