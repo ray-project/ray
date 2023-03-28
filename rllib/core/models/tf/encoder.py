@@ -66,7 +66,7 @@ class TfMLPEncoder(Encoder, TfModel):
 class TfActorCriticEncoder(TfModel, ActorCriticEncoder):
     """An encoder that can hold two encoders."""
 
-    framework = "tf"
+    framework = "tf2"
 
     def __init__(self, config: ModelConfig) -> None:
         # We have to call TfModel.__init__ first, because it calls the constructor of

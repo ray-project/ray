@@ -3,15 +3,16 @@ import pytest
 
 import ray
 from ray.air import RunConfig, CheckpointConfig
-from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
+from ray.air.util.data_batch_conversion import _convert_batch_type_to_pandas
 from ray.train.constants import MODEL_KEY
+from ray.train.trainer import TrainingFailedError
 from ray.train.lightning import LightningConfigBuilder, LightningTrainer
 from ray.train.tests.lightning_test_utils import (
     DoubleLinearModule,
     DummyDataModule,
     LinearModule,
 )
-from ray.tune import Callback, TuneError
+from ray.tune import Callback
 
 
 @pytest.fixture
@@ -52,7 +53,7 @@ def test_native_trainer_restore(ray_start_4_cpus_2_gpus):
     # Create simple categorical ray dataset
     input_1 = np.random.rand(dataset_size, 32).astype(np.float32)
     input_2 = np.random.rand(dataset_size, 32).astype(np.float32)
-    pd = convert_batch_type_to_pandas({"input_1": input_1, "input_2": input_2})
+    pd = _convert_batch_type_to_pandas({"input_1": input_1, "input_2": input_2})
     train_dataset = ray.data.from_pandas(pd)
     val_dataset = ray.data.from_pandas(pd)
 
@@ -136,7 +137,7 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir):
         ),
     )
 
-    with pytest.raises(TuneError):
+    with pytest.raises(TrainingFailedError):
         result = trainer.fit()
 
     trainer = LightningTrainer.restore(str(tmpdir / exp_name))

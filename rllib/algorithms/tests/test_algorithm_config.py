@@ -3,6 +3,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.callbacks import MultiCallbacks
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -10,6 +11,7 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
     MultiAgentRLModule,
 )
+from ray.rllib.utils.serialization import NOT_SERIALIZABLE
 
 
 class TestAlgorithmConfig(unittest.TestCase):
@@ -33,6 +35,22 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertTrue(algo.config.train_batch_size == 3000)
         algo.train()
         algo.stop()
+
+    def test_update_from_dict_works_for_multi_callbacks(self):
+        """Test to make sure callbacks config dict works."""
+        config_dict = {"callbacks": MultiCallbacks([])}
+        config = (
+            AlgorithmConfig(algo_class=PPO)
+            .environment("CartPole-v0")
+            .training(lr=0.12345, train_batch_size=3000)
+        )
+        # This should work.
+        config.update_from_dict(config_dict)
+
+        serialized = config.serialize()
+
+        # For now, we don't support serializing MultiCallbacks.
+        self.assertEqual(serialized["callbacks"], NOT_SERIALIZABLE)
 
     def test_freezing_of_algo_config(self):
         """Tests, whether freezing an AlgorithmConfig actually works as expected."""
