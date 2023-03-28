@@ -103,7 +103,7 @@ class TorchLearner(Learner):
     def _save_optimizers(self, dir: Union[str, pathlib.Path]) -> None:
         dir = pathlib.Path(dir)
         dir.mkdir(parents=True, exist_ok=True)
-        for name, optim in self._name_to_optim.items():
+        for name, optim in self._optim_name_to_optim.items():
             torch.save(optim.state_dict(), dir / f"{name}.pt")
 
     @override(Learner)
@@ -111,7 +111,7 @@ class TorchLearner(Learner):
         dir = pathlib.Path(dir)
         if not dir.exists():
             raise ValueError(f"Directory {dir} does not exist.")
-        for name, optim in self._name_to_optim.items():
+        for name, optim in self._optim_name_to_optim.items():
             optim.load_state_dict(torch.load(dir / f"{name}.pt"))
 
     @override(Learner)

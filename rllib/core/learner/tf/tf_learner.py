@@ -140,7 +140,7 @@ class TfLearner(Learner):
     def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        for name, optim in self._name_to_optim.items():
+        for name, optim in self._optim_name_to_optim.items():
             state = tf.keras.optimizers.serialize(optim)
             state = tf.nest.map_structure(convert_numpy_to_python_primitives, state)
             with open(path / f"{name}.json", "w") as f:
@@ -149,12 +149,12 @@ class TfLearner(Learner):
     @override(Learner)
     def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(path)
-        for name in self._name_to_optim.keys():
+        for name in self._optim_name_to_optim.keys():
             with open(path / f"{name}.json", "r") as f:
                 state = json.load(f)
             new_optim = tf.keras.optimizers.deserialize(state)
-            old_optim = self._name_to_optim[name]
-            self._name_to_optim[name] = new_optim
+            old_optim = self._optim_name_to_optim[name]
+            self._optim_name_to_optim[name] = new_optim
             param_seq = self._optim_to_param.pop(old_optim)
             self._optim_to_param[new_optim] = []
             for param_ref in param_seq:

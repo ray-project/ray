@@ -206,10 +206,10 @@ class TestLearner(unittest.TestCase):
 
         # check all internal optimizer state dictionaries have been updated
         learner_1_optims_serialized = {
-            name: optim.get_config() for name, optim in learner1._name_to_optim.items()
+            name: optim.get_config() for name, optim in learner1._optim_name_to_optim.items()
         }
         learner_2_optims_serialized = {
-            name: optim.get_config() for name, optim in learner2._name_to_optim.items()
+            name: optim.get_config() for name, optim in learner2._optim_name_to_optim.items()
         }
         check(learner_1_optims_serialized, learner_2_optims_serialized)
 
@@ -221,7 +221,7 @@ class TestLearner(unittest.TestCase):
         ]
         check(learner_1_optims_serialized, learner_2_optims_serialized)
 
-        check(learner1._module_to_optim_name, learner2._module_to_optim_name)
+        check(learner1._module_id_to_optim_name, learner2._module_id_to_optim_name)
 
 
 if __name__ == "__main__":

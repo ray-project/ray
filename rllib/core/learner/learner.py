@@ -249,9 +249,9 @@ class Learner:
         self._module: MultiAgentRLModule = None
         # These are set for properly applying optimizers and adding or removing modules.
         self._optim_to_param: Dict[Optimizer, List[ParamRef]] = {}
-        self._name_to_optim: Dict[str, Optimizer] = {}
+        self._optim_name_to_optim: Dict[str, Optimizer] = {}
         self._params: ParamDictType = {}
-        self._module_to_optim_name: Dict[ModuleID, str] = defaultdict(list)
+        self._module_id_to_optim_name: Dict[ModuleID, str] = defaultdict(list)
 
     @property
     def distributed(self) -> bool:
@@ -295,10 +295,10 @@ class Learner:
                 ) = self._configure_optimizers_per_module_helper(module_id)
                 pairs.extend(module_pairs)
                 name_to_optim.update(module_name_to_optim)
-                self._module_to_optim_name[module_id].extend(
+                self._module_id_to_optim_name[module_id].extend(
                     list(module_name_to_optim.keys())
                 )
-        self._name_to_optim = name_to_optim
+        self._optim_name_to_optim = name_to_optim
         return pairs
 
     def _configure_optimizers_per_module_helper(
@@ -527,8 +527,8 @@ class Learner:
                 param_ref = self.get_param_ref(param)
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
-        self._name_to_optim.update(name_to_optimizer)
-        self._module_to_optim_name[module_id].extend(list(name_to_optimizer.keys()))
+        self._optim_name_to_optim.update(name_to_optimizer)
+        self._module_id_to_optim_name[module_id].extend(list(name_to_optimizer.keys()))
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def remove_module(self, module_id: ModuleID) -> None:
@@ -546,12 +546,12 @@ class Learner:
                 param_ref = self.get_param_ref(param)
                 if param_ref in self._params:
                     del self._params[param_ref]
-            optim_names = self._module_to_optim_name[module_id]
+            optim_names = self._module_id_to_optim_name[module_id]
             for optim_name in optim_names:
-                optim = self._name_to_optim[optim_name]
+                optim = self._optim_name_to_optim[optim_name]
                 del self._optim_to_param[optim]
-                del self._name_to_optim[optim_name]
-            del self._module_to_optim_name[module_id]
+                del self._optim_name_to_optim[optim_name]
+            del self._module_id_to_optim_name[module_id]
 
         self._module.remove_module(module_id)
 
@@ -1004,8 +1004,8 @@ class Learner:
     def _reset(self):
         self._params = {}
         self._optim_to_param = {}
-        self._name_to_optim = {}
-        self._module_to_optim_name = defaultdict(list)
+        self._optim_name_to_optim = {}
+        self._module_id_to_optim_name = defaultdict(list)
         self._is_built = False
 
     def apply(self, func, *_args, **_kwargs):
