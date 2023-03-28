@@ -90,7 +90,7 @@ def run_storage_cp(source: str, target: str):
             target,
         ]
     else:
-        raise Exception(f"Not supporting storage service: {storage_service}")
+        raise Exception(f'Not supporting storage service: {storage_service}')
 
     try:
         exponential_backoff_retry(
