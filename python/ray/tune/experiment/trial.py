@@ -639,7 +639,8 @@ class Trial:
                 if not isinstance(checkpoint_dir, str):
                     logger.warning(
                         f"No data found in checkpoint for trial {self} and metrics "
-                        f"{checkpoint.metrics}. Skipping."
+                        f"{checkpoint.metrics} (type: {type(checkpoint_dir)}). "
+                        f"Skipping."
                     )
                     continue
 
