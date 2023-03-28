@@ -17,7 +17,7 @@ import docker
 
 print = functools.partial(print, file=sys.stderr, flush=True)
 DOCKER_USERNAME = "raytravisbot"
-DOCKER_CLIENT = None
+DOCKER_CLIENT = docker.from_env()
 PYTHON_WHL_VERSION = "cp3"
 ADDITIONAL_PLATFORMS = ["aarch64"]
 
@@ -813,7 +813,6 @@ def main(
         or _check_if_docker_files_modified()
         or only_build_worker_container
     ):
-        DOCKER_CLIENT = docker.from_env()
         is_merge = build_type == MERGE
         # Buildkite is authenticated in the background.
         if is_merge and not is_buildkite and not is_local:
