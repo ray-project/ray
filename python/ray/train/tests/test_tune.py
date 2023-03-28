@@ -243,7 +243,10 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
     def train_func(config):
         dataset = session.get_dataset_shard("train")
         assert session.get_world_size() == 2
-        assert dataset.count() == 10
+        rows = 0
+        for _ in dataset.iter_rows():
+            rows += 1
+        assert rows == 10
 
     trainer = DataParallelTrainer(
         # Training function can be modified
