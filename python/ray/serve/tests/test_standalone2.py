@@ -414,6 +414,7 @@ def test_controller_recover_and_delete(shutdown_ray):
 
 
 '''
+
 class TestDeployApp:
     @pytest.fixture(scope="function")
     def client(self):
