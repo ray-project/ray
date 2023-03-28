@@ -208,10 +208,13 @@ class MLflowTest(unittest.TestCase):
             def train_fn(config):
                 return 1
 
-        train_fn.__mixins__ = (MLflowTrainableMixin,)
+        def train_fn_2(config):
+            return 1
+
+        train_fn_2.__mixins__ = (MLflowTrainableMixin,)
 
         with self.assertRaises(DeprecationWarning):
-            wrap_function(train_fn)(trial_config)
+            wrap_function(train_fn_2)(trial_config)
 
     def testMlFlowSetupConfig(self):
         clear_env_vars()
