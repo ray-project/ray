@@ -3357,7 +3357,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: stress_tests/placement_group_tests_compute.yaml
+      cluster:
+        cluster_env: stress_tests/stress_tests_app_config.yaml
+        cluster_compute: stress_tests/placement_group_tests_compute.yaml
 
 - name: decision_tree_autoscaling_20_runs
   group: core-multi-test
@@ -3377,7 +3379,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: decision_tree/autoscaling_compute_gce.yaml
+      cluster:
+        cluster_env: decision_tree/decision_tree_app_config.yaml
+        cluster_compute: decision_tree/autoscaling_compute_gce.yaml
 
 - name: autoscaling_shuffle_1tb_1000_partitions
   group: core-multi-test
@@ -3415,7 +3419,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_64_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_64_gce.yaml
 
 
 - name: microbenchmark_staging
@@ -4099,7 +4105,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: data_ingest_benchmark_compute_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: data_ingest_benchmark_compute_gce.yaml
 
 
 - name: streaming_data_ingest_benchmark_1tb
@@ -4122,7 +4130,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: data_ingest_benchmark_compute_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: data_ingest_benchmark_compute_gce.yaml
 
 
 - name: aggregate_benchmark
@@ -4328,7 +4338,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
+      cluster:
+        cluster_env: shuffle/shuffle_app_config.yaml
+        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: dataset_shuffle_push_based_sort_1tb
   group: data-tests
@@ -4539,7 +4551,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
+      cluster:
+        cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
+        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 #####################
 # Observability tests
