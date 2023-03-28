@@ -125,136 +125,137 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
             assert (
                 stats
                 == """Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
-    * Output num rows: N min, N max, N mean, N total
-    * Output size bytes: N min, N max, N mean, N total
-    * Tasks per node: N min, N max, N mean; N nodes used
-    * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-    'obj_store_mem_peak': N}
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
+'obj_store_mem_peak': N}
 
-    Stage N Map: N/N blocks executed in T
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
-    * Output num rows: N min, N max, N mean, N total
-    * Output size bytes: N min, N max, N mean, N total
-    * Tasks per node: N min, N max, N mean; N nodes used
-    * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-    'obj_store_mem_peak': N}
+Stage N Map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
+'obj_store_mem_peak': N}
 
-    Dataset iterator time breakdown:
-    * Total time user code is blocked: T
-    * Total time in user code: T
-    * Total time overall: T
-    * Num blocks local: Z
-    * Num blocks remote: Z
-    * Num blocks unknown location: N
-    * Batch iteration time breakdown (summed across prefetch threads):
-        * In ray.get(): T min, T max, T avg, T total
-        * In batch creation: T min, T max, T avg, T total
-        * In batch formatting: T min, T max, T avg, T total
-    """
+Dataset iterator time breakdown:
+* Total time user code is blocked: T
+* Total time in user code: T
+* Total time overall: T
+* Num blocks local: Z
+* Num blocks remote: Z
+* Num blocks unknown location: N
+* Batch iteration time breakdown (summed across prefetch threads):
+    * In ray.get(): T min, T max, T avg, T total
+    * In batch creation: T min, T max, T avg, T total
+    * In batch formatting: T min, T max, T avg, T total
+"""
             )
         else:
             assert (
                 stats
                 == """Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
-    * Output num rows: N min, N max, N mean, N total
-    * Output size bytes: N min, N max, N mean, N total
-    * Tasks per node: N min, N max, N mean; N nodes used
-    * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-    'obj_store_mem_peak': N}
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
+'obj_store_mem_peak': N}
 
-    Stage N Map: N/N blocks executed in T
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
-    * Output num rows: N min, N max, N mean, N total
-    * Output size bytes: N min, N max, N mean, N total
-    * Tasks per node: N min, N max, N mean; N nodes used
-    * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-    'obj_store_mem_peak': N}
+Stage N Map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
+'obj_store_mem_peak': N}
 
-    Dataset iterator time breakdown:
-    * In ray.wait(): T
-    * In ray.get(): T
-    * Num blocks local: Z
-    * Num blocks remote: Z
-    * Num blocks unknown location: N
-    * In next_batch(): T
-    * In format_batch(): T
-    * In user code: T
-    * Total time: T
-    """
+Dataset iterator time breakdown:
+* In ray.wait(): T
+* In ray.get(): T
+* Num blocks local: Z
+* Num blocks remote: Z
+* Num blocks unknown location: N
+* In next_batch(): T
+* In format_batch(): T
+* In user code: T
+* Total time: T
+"""
             )
     else:
         if context.use_streaming_executor:
             assert (
                 stats
-                == """Stage N Read->MapBatches(dummy_map_batches): N/N blocks executed in T
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
-    * Output num rows: N min, N max, N mean, N total
-    * Output size bytes: N min, N max, N mean, N total
-    * Tasks per node: N min, N max, N mean; N nodes used
+                == """Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
+'obj_store_mem_peak': N}
 
-    Stage N Map: N/N blocks executed in T
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
-    * Output num rows: N min, N max, N mean, N total
-    * Output size bytes: N min, N max, N mean, N total
-    * Tasks per node: N min, N max, N mean; N nodes used
+Stage N Map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
+'obj_store_mem_peak': N}
 
-    Dataset iterator time breakdown:
-    * Total time user code is blocked: T
-    * Total time in user code: T
-    * Total time overall: T
-    * Num blocks local: Z
-    * Num blocks remote: Z
-    * Num blocks unknown location: N
-    * Batch iteration time breakdown (summed across prefetch threads):
-        * In ray.get(): T min, T max, T avg, T total
-        * In batch creation: T min, T max, T avg, T total
-        * In batch formatting: T min, T max, T avg, T total
-    """
+Dataset iterator time breakdown:
+* Total time user code is blocked: T
+* Total time in user code: T
+* Total time overall: T
+* Num blocks local: Z
+* Num blocks remote: Z
+* Num blocks unknown location: N
+* Batch iteration time breakdown (summed across prefetch threads):
+    * In ray.get(): T min, T max, T avg, T total
+    * In batch creation: T min, T max, T avg, T total
+    * In batch formatting: T min, T max, T avg, T total
+"""
             )
         else:
             assert (
                 stats
                 == """Stage N Read->MapBatches(dummy_map_batches): N/N blocks executed in T
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
-    * Output num rows: N min, N max, N mean, N total
-    * Output size bytes: N min, N max, N mean, N total
-    * Tasks per node: N min, N max, N mean; N nodes used
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
 
-    Stage N Map: N/N blocks executed in T
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
-    * Output num rows: N min, N max, N mean, N total
-    * Output size bytes: N min, N max, N mean, N total
-    * Tasks per node: N min, N max, N mean; N nodes used
+Stage N Map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
 
-    Dataset iterator time breakdown:
-    * In ray.wait(): T
-    * In ray.get(): T
-    * Num blocks local: Z
-    * Num blocks remote: Z
-    * Num blocks unknown location: N
-    * In next_batch(): T
-    * In format_batch(): T
-    * In user code: T
-    * Total time: T
-    """
+Dataset iterator time breakdown:
+* In ray.wait(): T
+* In ray.get(): T
+* In next_batch(): T
+* In format_batch(): T
+* In user code: T
+* Total time: T
+"""
             )
 
 
