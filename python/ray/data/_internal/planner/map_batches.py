@@ -11,7 +11,6 @@ from ray.data.context import DEFAULT_BATCH_SIZE, DatasetContext
 def generate_map_batches_fn(
     batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
     batch_format: Optional[str] = "default",
-    prefetch_batches: int = 0,
     zero_copy_batch: bool = False,
 ) -> Callable[[Iterator[Block], TaskContext, BatchUDF], Iterator[Block]]:
     """Generate function to apply the batch UDF to blocks."""
@@ -93,7 +92,6 @@ def generate_map_batches_fn(
             batch_size=batch_size,
             batch_format=batch_format,
             ensure_copy=not zero_copy_batch and batch_size is not None,
-            prefetch_batches=prefetch_batches,
         )
 
         for batch in formatted_batch_iter:
