@@ -232,8 +232,11 @@ RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
 RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
 
 # Regex for log messages to never deduplicate, or None. This takes precedence over
-# the skip regex below.
-RAY_DEDUP_LOGS_ALLOW_REGEX = os.environ.get("RAY_DEDUP_LOGS_ALLOW_REGEX")
+# the skip regex below. A default pattern is set for testing.
+TESTING_NEVER_DEDUP_TOKEN = "__ray_testing_never_deduplicate__"
+RAY_DEDUP_LOGS_ALLOW_REGEX = os.environ.get(
+    "RAY_DEDUP_LOGS_ALLOW_REGEX", TESTING_NEVER_DEDUP_TOKEN
+)
 
 # Regex for log messages to always skip / suppress, or None.
 RAY_DEDUP_LOGS_SKIP_REGEX = os.environ.get("RAY_DEDUP_LOGS_SKIP_REGEX")
