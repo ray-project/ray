@@ -3144,7 +3144,11 @@ class AlgorithmConfig(_Config):
     @staticmethod
     def _serialize_dict(config):
         # Serialize classes to classpaths:
-        config["callbacks"] = serialize_type(config["callbacks"])
+        if isinstance(config.get("callbacks"), type):
+            config["callbacks"] = serialize_type(config["callbacks"])
+        else:
+            # TODO(sven): Figure out how to serialize MultiCallbacks
+            config["callbacks"] = NOT_SERIALIZABLE
         config["sample_collector"] = serialize_type(config["sample_collector"])
         if isinstance(config["env"], type):
             config["env"] = serialize_type(config["env"])

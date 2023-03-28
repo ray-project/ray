@@ -48,6 +48,11 @@ class TestAlgorithmConfig(unittest.TestCase):
         # This should work.
         config.update_from_dict(config_dict)
 
+        serialized = config.serialize()
+
+        # For now, we don't support serializing MultiCallbacks.
+        self.assertEqual(serialized["callbacks"], "__not_serializable__")
+
     def test_freezing_of_algo_config(self):
         """Tests, whether freezing an AlgorithmConfig actually works as expected."""
         config = (
