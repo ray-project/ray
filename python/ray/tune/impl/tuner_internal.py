@@ -232,6 +232,7 @@ class TunerInternal:
         (ensuring same type and name as the original trainable).
         """
 
+        # TODO(ml-team): Remove (https://github.com/ray-project/ray/issues/33546)
         # Check if the trainable was wrapped with `tune.with_parameters`,
         # Set the Tuner to fail on fit if the trainable is not re-specified.
         trainable_wrapped_params = getattr(
@@ -249,8 +250,8 @@ class TunerInternal:
                 "trainable_with_params = tune.with_parameters(trainable, ...)\n"
                 "tuner = tune.Tuner.restore(\n"
                 "    ..., trainable=trainable_with_params\n"
-                ")\n\nSee https://docs.ray.io/en/master/tune/api_docs/trainable.html"
-                "#tune-with-parameters for more details."
+                ")\n\nSee https://docs.ray.io/en/latest/tune/api/doc/"
+                "ray.tune.with_parameters.html for more details."
             )
         if not overwrite_trainable:
             return
@@ -285,14 +286,6 @@ class TunerInternal:
                     f"{error_message}\nGot new trainable with identifier "
                     f"{overwrite_name} but expected {original_name}."
                 )
-
-        logger.warning(
-            "The trainable will be overwritten - this should be done with caution: "
-            "it's possible to supply an incompatible trainable, and there are "
-            "no guarantees that the resumed experiment will continue successfully. "
-            "If you encounter errors during training, ensure that you are passing "
-            "in the same trainable that was passed into the initial `Tuner` object."
-        )
 
     def _restore_from_path_or_uri(
         self,
