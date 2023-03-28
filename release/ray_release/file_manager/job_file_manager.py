@@ -5,6 +5,7 @@ import tempfile
 from typing import Optional
 
 import boto3
+from google.cloud import storage
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import FileDownloadError, FileUploadError
@@ -22,7 +23,19 @@ class JobFileManager(FileManager):
 
         self.sdk = self.cluster_manager.sdk
         self.s3_client = boto3.client("s3")
-        self.bucket = str(RELEASE_AWS_BUCKET)
+        self.cloud_storage_provider = os.environ.get(
+            "ANYSCALE_CLOUD_STORAGE_PROVIDER", "s3"
+        )
+        if self.cloud_storage_provider == "s3":
+            self.bucket = str(RELEASE_AWS_BUCKET)
+        elif self.cloud_storage_provider == "gs":
+            self.bucket = "anyscale-oss-dev-bucket"
+            self.gs_client = storage.Client()
+        else:
+            raise RuntimeError(
+                f"Non supported anyscale service provider: "
+                f"{self.cloud_storage_provider}"
+            )
         self.job_manager = JobManager(cluster_manager)
         # Backward compatible
         if "ANYSCALE_RAY_DIR" in anyscale.__dict__:
@@ -41,20 +54,24 @@ class JobFileManager(FileManager):
         location = f"tmp/{generate_tmp_s3_path()}"
         return location
 
-    def download_from_s3(
+    def download_from_cloud(
         self, key: str, target: str, delete_after_download: bool = False
     ):
-        # s3 -> local target
-        self._run_with_retry(
-            lambda: self.s3_client.download_file(
-                Bucket=self.bucket,
-                Key=key,
-                Filename=target,
+        if self.cloud_storage_provider == "s3":
+            self._run_with_retry(
+                lambda: self.s3_client.download_file(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Filename=target,
+                )
             )
-        )
+        if self.cloud_storage_provider == "gs":
+            bucket = self.gs_client.bucket(self.bucket)
+            blob = bucket.blob(key)
+            self._run_with_retry(lambda: blob.download_to_filename(target))
 
         if delete_after_download:
-            self.delete(target)
+            self.delete(key)
 
     def download(self, source: str, target: str):
         # Attention: Only works for single files at the moment
@@ -75,7 +92,7 @@ class JobFileManager(FileManager):
         if retcode != 0:
             raise FileDownloadError(f"Error downloading file {source} to {target}")
 
-        self.download_from_s3(remote_upload_to, target, delete_after_download=True)
+        self.download_from_cloud(remote_upload_to, target, delete_after_download=True)
 
     def _push_local_dir(self):
         remote_upload_to = self._generate_tmp_s3_path()
@@ -113,7 +130,7 @@ class JobFileManager(FileManager):
                 ),
                 initial_retry_delay_s=2,
             )
-        except Exception as e:
+        except RuntimeError as e:
             logger.warning(f"Could not remove temporary S3 object: {e}")
 
     def upload(self, source: Optional[str] = None, target: Optional[str] = None):
@@ -147,17 +164,34 @@ class JobFileManager(FileManager):
 
         self.delete(remote_upload_to)
 
-    def delete(self, target: str, recursive: bool = False):
-        def delete_fn():
-            if recursive:
-                response = self.s3_client.list_objects_v2(
-                    Bucket=self.bucket, Prefix=target
-                )
+    def _delete_gs_fn(self, key: str, recursive: bool = False):
+        if recursive:
+            blobs = self.gs_client.list_blobs(
+                self.bucket,
+                prefix=key,
+            )
+            for blob in blobs:
+                blob.delete()
+        else:
+            blob = self.gs_client.bucket(self.bucket).blob(key)
+            blob.delete()
 
-                for object in response["Contents"]:
-                    self.s3_client.delete_object(Bucket=self.bucket, Key=object["Key"])
-            else:
-                self.s3_client.delete_object(Bucket=self.bucket, Key=target)
+    def _delete_s3_fn(self, key: str, recursive: bool = False):
+        if recursive:
+            response = self.s3_client.list_objects_v2(Bucket=self.bucket, Prefix=key)
+            for object in response["Contents"]:
+                self.s3_client.delete_object(Bucket=self.bucket, Key=object["Key"])
+        else:
+            self.s3_client.delete_object(Bucket=self.bucket, Key=key)
+
+    def delete(self, cloud_key: str, recursive: bool = False):
+        def delete_fn():
+            if self.cloud_storage_provider == "s3":
+                self.delete_s3_fn(cloud_key, recursive)
+                return
+            if self.cloud_storage_provider == "gs":
+                self.delete_gs_fn(cloud_key, recursive)
+                return
 
         try:
             self._run_with_retry(
@@ -165,4 +199,4 @@ class JobFileManager(FileManager):
                 initial_retry_delay_s=2,
             )
         except Exception as e:
-            logger.warning(f"Could not remove temporary S3 object: {e}")
+            logger.warning(f"Could not remove temporary cloud object: {e}")
