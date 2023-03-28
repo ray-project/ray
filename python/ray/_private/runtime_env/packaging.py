@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from zipfile import ZipFile
 
 from filelock import FileLock
-from python.ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI
 
 from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
@@ -594,7 +594,7 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
 async def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
-    gcs_aio_client: Optional[GcsAioClient],
+    gcs_aio_client: Optional[GcsAioClient] = None,
     logger: Optional[logging.Logger] = default_logger,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
@@ -792,7 +792,6 @@ def remove_dir_from_filepaths(base_dir: str, rdir: str):
     # Move rdir to a temporary directory, so its contents can be moved to
     # base_dir without any name conflicts
     with TemporaryDirectory() as tmp_dir:
-
         # shutil.move() is used instead of os.rename() in case rdir and tmp_dir
         # are located on separate file systems
         shutil.move(os.path.join(base_dir, rdir), os.path.join(tmp_dir, rdir))
