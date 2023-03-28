@@ -88,7 +88,7 @@ def test_init():
     predictor = TensorflowPredictor(model=build_model(), preprocessor=preprocessor)
 
     checkpoint_predictor = TensorflowPredictor.from_checkpoint(
-        checkpoint, model=build_raw_model
+        checkpoint, model_definition=build_raw_model
     )
 
     assert checkpoint_predictor._model.get_weights() == predictor._model.get_weights()
@@ -241,7 +241,7 @@ def test_tensorflow_predictor_no_training(use_gpu):
     model = build_model()
     checkpoint = TensorflowCheckpoint.from_model(model)
     batch_predictor = BatchPredictor.from_checkpoint(
-        checkpoint, TensorflowPredictor, model=build_model, use_gpu=use_gpu
+        checkpoint, TensorflowPredictor, model_definition=build_model, use_gpu=use_gpu
     )
     predict_dataset = ray.data.range(3)
     predictions = batch_predictor.predict(predict_dataset)

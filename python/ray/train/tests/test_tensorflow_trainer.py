@@ -84,7 +84,7 @@ def test_tensorflow_e2e(ray_start_4_cpus):
     assert isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
     batch_predictor = BatchPredictor.from_checkpoint(
-        result.checkpoint, TensorflowPredictor, model=build_model
+        result.checkpoint, TensorflowPredictor, model_definition=build_model
     )
 
     predict_dataset = ray.data.range(3)
