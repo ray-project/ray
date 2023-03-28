@@ -226,6 +226,7 @@ Built-in Datasources
    datasource.RangeDatasource
    datasource.TFRecordDatasource
    datasource.MongoDatasource
+   datasource.WebDatasetDatasource
 
 Partitioning API
 ----------------
