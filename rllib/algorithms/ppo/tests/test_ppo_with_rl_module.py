@@ -103,6 +103,9 @@ class TestPPO(unittest.TestCase):
                 entropy_coeff=100.0,
                 entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
                 train_batch_size=128,
+                # TODO (Kourosh): Enable when the scheduler is supported in the new
+                # Learner API stack.
+                _enable_learner_api=False,
             )
             .rollouts(
                 num_rollout_workers=1,
