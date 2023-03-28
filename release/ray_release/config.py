@@ -14,6 +14,8 @@ from ray_release.util import DeferredEnvVar, deep_update
 
 class Test(dict):
     pass
+
+
 class TestDefinition(dict):
     pass
 
@@ -55,6 +57,7 @@ def read_and_validate_release_test_collection(
     validate_release_test_collection(tests, schema_file=schema_file)
     return tests
 
+
 def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
     tests = []
     for test_definition in test_definitions:
@@ -68,6 +71,7 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
             test.update(flavor)
             tests.append(test)
     return tests
+
 
 def load_schema_file(path: Optional[str] = None) -> Dict:
     path = path or RELEASE_TEST_SCHEMA_FILE

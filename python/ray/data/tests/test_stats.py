@@ -191,7 +191,7 @@ Dataset iterator time breakdown:
 * In user code: T
 * Total time: T
 """
-        )
+            )
     else:
         if context.use_streaming_executor:
             assert (
