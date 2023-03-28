@@ -1838,8 +1838,8 @@
   flavors:
     - name: aws
     - name: gce
+      env: gce
       cluster:
-        env: gce
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
@@ -3266,7 +3266,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: 8gpus_96cpus_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_multi_gpu_with_lstm_learning_tests
   group: RLlib tests
@@ -3289,7 +3291,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: 8gpus_96cpus_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_multi_gpu_with_attention_learning_tests
   group: RLlib tests
@@ -3312,7 +3316,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: 8gpus_96cpus_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_stress_tests
   group: RLlib tests
@@ -3344,7 +3350,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: 4gpus_544_cpus_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 4gpus_544_cpus_gce.yaml
 
 ########################
 # Core Nightly Tests
