@@ -21,3 +21,5 @@ pendulum-ppo:
         model:
             fcnet_activation: relu
         enable_connectors: true
+        _enable_learner_api: true
+        _enable_rl_module_api: true
