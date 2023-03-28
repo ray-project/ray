@@ -85,6 +85,33 @@ def train_function(train_dataset, eval_dataset=None, **config):
     return trainer
 
 
+def test_deprecations(ray_start_4_cpus):
+    """Tests that soft deprecations warn but still can be used"""
+    from ray.train.huggingface import (
+        HuggingFaceCheckpoint,
+        HuggingFacePredictor,
+        HuggingFaceTrainer,
+    )
+
+    ray_train = ray.data.from_pandas(train_df)
+    ray_validation = ray.data.from_pandas(validation_df)
+
+    with pytest.warns(DeprecationWarning):
+        obj = HuggingFaceCheckpoint.from_dict({"foo": "bar"})
+    assert isinstance(obj, TransformersCheckpoint)
+
+    with pytest.warns(DeprecationWarning):
+        obj = HuggingFacePredictor()
+    assert isinstance(obj, TransformersPredictor)
+
+    with pytest.warns(DeprecationWarning):
+        obj = HuggingFaceTrainer(
+            train_function,
+            datasets={"train": ray_train, "evaluation": ray_validation},
+        )
+    assert isinstance(obj, TransformersTrainer)
+
+
 @pytest.mark.parametrize("save_strategy", ["no", "epoch"])
 def test_e2e(ray_start_4_cpus, save_strategy):
     ray_train = ray.data.from_pandas(train_df)
