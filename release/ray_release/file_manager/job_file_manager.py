@@ -178,9 +178,7 @@ class JobFileManager(FileManager):
 
     def _delete_s3_fn(self, key: str, recursive: bool = False):
         if recursive:
-            response = self.s3_client.list_objects_v2(
-                Bucket=self.bucket, Prefix=key
-            )
+            response = self.s3_client.list_objects_v2(Bucket=self.bucket, Prefix=key)
             for object in response["Contents"]:
                 self.s3_client.delete_object(Bucket=self.bucket, Key=object["Key"])
         else:
@@ -194,6 +192,7 @@ class JobFileManager(FileManager):
             if self.cloud_storage_provider == "gs":
                 self.delete_gs_fn(cloud_key, recursive)
                 return
+
         try:
             self._run_with_retry(
                 delete_fn,
