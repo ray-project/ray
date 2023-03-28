@@ -1,23 +1,20 @@
 import inspect
-import io
 import logging
 import os
 import uuid
 from functools import wraps
 
 import ray._private.signature
-from ray import Language
-from ray import cloudpickle as pickle
-from ray import cross_language
+from ray import Language, cross_language
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import (
     client_mode_convert_function,
     client_mode_should_convert,
 )
 from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
+from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import PythonFunctionDescriptor
-from ray.util import inspect_serializability
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -269,19 +266,10 @@ class RemoteFunction:
             # independent of whether or not the function was invoked by the
             # first driver. This is an argument for repickling the function,
             # which we do here.
-            try:
-                self._pickled_function = pickle.dumps(self._function)
-            except TypeError as e:
-                sio = io.StringIO()
-                inspect_serializability(self._function, print_file=sio)
-                msg = (
-                    "Could not serialize the function "
-                    f"{self._function_descriptor.repr}:\n"
-                    f"{sio.getvalue()}"
-                    "Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting "  # noqa
-                    "for more information."
-                )
-                raise TypeError(msg) from e
+            self._pickled_function = pickle_dumps(
+                self._function,
+                f"Could not serialize the function {self._function_descriptor.repr}",
+            )
 
             self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)

@@ -672,8 +672,6 @@ class Worker:
                 "Could not serialize the put value "
                 f"{repr(value)}:\n"
                 f"{sio.getvalue()}"
-                "Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting "  # noqa
-                "for more information."
             )
             raise TypeError(msg) from e
         # This *must* be the first place that we construct this python

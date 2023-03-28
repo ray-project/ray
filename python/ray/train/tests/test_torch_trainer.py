@@ -401,6 +401,20 @@ def test_torch_env_vars(ray_start_4_cpus):
     trainer.fit()
 
 
+def test_nonserializable_train_function(ray_start_4_cpus):
+    import threading
+
+    lock = threading.Lock()
+
+    def train_func():
+        print(lock)
+
+    trainer = TorchTrainer(train_func)
+    # Check that the `inspect_serializability` trace was printed
+    with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
+        trainer.fit()
+
+
 if __name__ == "__main__":
     import sys
 

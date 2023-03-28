@@ -252,6 +252,10 @@ def _inspect_serializability(
                 "instantiation/imports of these variables or moving the "
                 "instantiation into the scope of the function/class. "
             )
+        printer.print("=" * min(len(declaration), 80))
+        printer.print(
+            "Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting for more information."  # noqa
+        )
         printer.print(
             "If you have any suggestions on how to improve "
             "this error message, please reach out to the "

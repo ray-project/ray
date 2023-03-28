@@ -470,9 +470,7 @@ cdef prepare_args_internal(
                     "Could not serialize the argument "
                     f"{repr(arg)} for a task or actor "
                     f"{function_descriptor.repr}:\n"
-                    f"{sio.getvalue()}"
-                    "Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
-                    "for more information.")
+                    f"{sio.getvalue()}")
                 raise TypeError(msg) from e
             metadata = serialized_arg.metadata
             if language != Language.PYTHON:
