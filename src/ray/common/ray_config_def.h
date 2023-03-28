@@ -783,3 +783,9 @@ RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
 
 /// Whether to kill idle workers of a terminated job.
 RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
+
+// Instruct the Python default worker to preload the specified imports.
+// This is specified as a comma-separated list.
+// If left empty, no such attempt will be made.
+// Example: RAY_preload_python_modules=tensorflow,pytorch
+RAY_CONFIG(std::vector<std::string>, preload_python_modules, {})
