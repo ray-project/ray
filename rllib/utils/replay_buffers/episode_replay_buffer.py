@@ -4,13 +4,13 @@ import uuid
 
 import numpy as np
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer, StorageUnit
+from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBufferInterface
 from ray.rllib.utils.typing import SampleBatchType
 
 
-class EpisodeReplayBuffer(ReplayBuffer):
+class EpisodeReplayBuffer(ReplayBufferInterface):
     """Buffer that stores (completed or truncated) episodes by their ID.
 
     Each "row" (a slot in a deque) in the buffer is occupied by one episode. If an
@@ -41,8 +41,25 @@ class EpisodeReplayBuffer(ReplayBuffer):
     observation of the episode, the final reward received, a dummy 0-action, as well
     as either terminated=True or truncated=True.
     """
-    def __init__(self, capacity: int = 10000):
-        super().__init__(capacity=capacity, storage_unit=StorageUnit.TIMESTEPS)
+    def __init__(
+        self,
+        capacity: int = 10000,
+        *,
+        batch_size_B: int = 16,
+        batch_length_T: int = 64,
+    ):
+        """Initializes an EpisodeReplayBuffer instance.
+
+        Args:
+            capacity: The total number of timesteps to be storable in this buffer.
+                Will start ejecting old episodes once this limit is reached.
+            batch_size_B: The number of rows in a SampleBatch returned from `sample()`.
+            batch_length_T: The length of each row in a SampleBatch returned from
+                `sample()`.
+        """
+        self.capacity = capacity
+        self.batch_size_B = batch_size_B
+        self.batch_length_T = batch_length_T
 
         # The actual episode buffer.
         self.episodes = deque()
@@ -69,8 +86,22 @@ class EpisodeReplayBuffer(ReplayBuffer):
         # How many timesteps have been sampled from the buffer in total?
         self.sampled_timesteps = 0
 
-    @override(ReplayBuffer)
+    @override(ReplayBufferInterface)
+    def __len__(self) -> int:
+        return self.get_num_timesteps()
+
+    @override(ReplayBufferInterface)
     def add(self, batch: SampleBatchType, **kwargs) -> None:
+        """Converts the incoming SampleBatch into a number of _Episode objects.
+
+        Then adds these episodes to the internal deque.
+        """
+        if isinstance(batch, MultiAgentBatch):
+            raise ValueError(
+                "`EpisodeReplayBuffer` cannot operate on MultiAgentBatches yet! "
+                "For single-agent use only."
+            )
+
         episode_slices = batch.split_by_episode()
         episodes = [
             _Episode.from_sample_batch(eps_slice)
@@ -86,7 +117,7 @@ class EpisodeReplayBuffer(ReplayBuffer):
                 old_len = len(existing_eps)
                 self._indices.extend([(buf_idx, old_len + i) for i in range(len(eps))])
                 existing_eps.concat_episode(eps)
-            # New episode. Add to end of our buffer.
+            # New episode. Add to end of our episodes deque.
             else:
                 self.episodes.append(eps)
                 buf_idx = len(self.episodes) - 1 + self._num_episodes_ejected
@@ -104,8 +135,9 @@ class EpisodeReplayBuffer(ReplayBuffer):
                 # Main episode index.
                 ejected_idx = self.episode_id_to_index[ejected_eps.id_]
                 del self.episode_id_to_index[ejected_eps.id_]
+
                 # All timestep indices that this episode owned.
-                new_indices = []
+                new_indices = []  # New indices that will replace self._indices.
                 idx_cursor = 0
                 for i, idx_tuple in enumerate(self._indices):
                     if idx_cursor is not None and idx_tuple[0] == ejected_idx:
@@ -123,11 +155,48 @@ class EpisodeReplayBuffer(ReplayBuffer):
                 if idx_cursor is not None:
                     new_indices.extend(self._indices[idx_cursor:])
                 self._indices = new_indices
+
                 # Increase episode ejected counter.
                 self._num_episodes_ejected += 1
 
-    def sample(self, batch_size_B: int = 16, batch_length_T: int = 64):
-        # Uniformly sample n samples from self._indices.
+    @override(ReplayBufferInterface)
+    def sample(
+        self,
+        num_items: Optional[int] = None,
+        *,
+        batch_size_B: Optional[int] = None,
+        batch_length_T: Optional[int] = None,
+    ) -> SampleBatchType:
+        """Returns a batch of size B (number of "rows"), where each row has length T.
+
+        Each row contains consecutive timesteps from an episode, but might not start
+        at the beginning of that episode. Should an episode end within such a
+        trajectory, a random next episode (starting from its t0) will be concatenated
+        to that "row". For more details, see the docstring of the EpisodeReplayBuffer
+        class.
+
+        Args:
+            num_items: See `batch_size_B`. For compatibility with the
+                `ReplayBufferInterface` abstract base class.
+            batch_size_B: The number of rows (trajectories) to return in the batch.
+            batch_length_T: The length of each row (in timesteps) to return in the
+                batch.
+
+        Returns:
+            The sampled batch (observations, actions, rewards, terminateds, truncateds)
+                of dimensions [B, T, ...].
+        """
+        if num_items is not None:
+            assert batch_size_B is None, (
+                "Cannot call `sample()` with both `num_items` and `batch_size_B` "
+                "provided! Use either one."
+            )
+            batch_size_B = num_items
+        # Use our default values if no sizes/lengths provided.
+        batch_size_B = batch_size_B or self.batch_size_B
+        batch_size_T = batch_size_T or self.batch_size_T
+
+        # Uniformly sample n samples from self._indices (all stores timesteps).
         index_tuples_idx = []
         observations = [[] for _ in range(batch_size_B)]
         actions = [[] for _ in range(batch_size_B)]
@@ -207,6 +276,10 @@ class EpisodeReplayBuffer(ReplayBuffer):
             # Use next sampled episode/ts pair to fill the row.
             idx_cursor += 1
 
+        # Update our sampled counter.
+        self.sampled_timesteps += batch_size_B * batch_length_T
+
+        # TODO: Return SampleBatch instead of this simpler dict.
         ret = {
             "obs": np.array(observations),
             "actions": np.array(actions),
@@ -216,9 +289,6 @@ class EpisodeReplayBuffer(ReplayBuffer):
             "is_terminated": np.array(is_terminated),
             "is_truncated": np.array(is_truncated),
         }
-
-        # Update our sampled counter.
-        self.sampled_timesteps += batch_size_B * batch_length_T
 
         return ret
 
@@ -236,17 +306,19 @@ class EpisodeReplayBuffer(ReplayBuffer):
         """
         return self.sampled_timesteps
 
+    @override(ReplayBufferInterface)
     def get_state(self) -> Dict[str, Any]:
-        return np.array(list({
+        return {
             "episodes": [eps.get_state() for eps in self.episodes],
             "episode_id_to_index": list(self.episode_id_to_index.items()),
             "_num_episodes_ejected": self._num_episodes_ejected,
             "_indices": self._indices,
             "size": self.size,
             "sampled_timesteps": self.sampled_timesteps,
-        }.items()))
+        }
 
-    def set_state(self, state):
+    @override(ReplayBufferInterface)
+    def set_state(self, state) -> None:
         assert state[0][0] == "episodes"
         self.episodes = deque([
             _Episode.from_state(eps_data) for eps_data in state[0][1]
@@ -263,7 +335,9 @@ class EpisodeReplayBuffer(ReplayBuffer):
         self.sampled_timesteps = state[5][1]
 
 
-# TODO (sven): Make this EpisodeV3 (replacing EpisodeV2).
+# TODO (sven): Make this EpisodeV3 - replacing EpisodeV2 - to reduce all the
+#  information leakage we currently have in EpisodeV2 (policy_map, worker, etc.. are
+#  all currently held by EpisodeV2 for no good reason).
 class _Episode:
     def __init__(
         self,
