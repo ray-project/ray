@@ -8,12 +8,13 @@ import tempfile
 import uuid
 from filecmp import dircmp
 from pathlib import Path
-from unittest.mock import Mock, mock_open, patch
+from unittest.mock import mock_open, patch
 from shutil import copytree, make_archive, rmtree
 import zipfile
+import ray
 
 import pytest
-
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.gcs_utils import GcsClient
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
@@ -38,6 +39,7 @@ from ray._private.runtime_env.packaging import (
     unzip_package,
     upload_package_if_needed,
     _get_gitignore,
+    upload_package_to_gcs,
 )
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -49,6 +51,13 @@ from ray.experimental.internal_kv import (
 
 TOP_LEVEL_DIR_NAME = "top_level"
 ARCHIVE_NAME = "archive.zip"
+
+# This package contains a subdirectory called `test_module`.
+# Calling `test_module.one()` should return `2`.
+# If you find that confusing, take it up with @jiaodong...
+HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
+GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 
 
 def random_string(size: int = 10):
@@ -520,72 +529,77 @@ class TestParseUri:
 
 @pytest.mark.asyncio
 class TestDownloadAndUnpackPackage:
-    async def test_download_and_unpack_package_with_gcs_uri_without_gcs_client(self):
+    async def test_download_and_unpack_package_with_gcs_uri_without_gcs_client(
+        self, ray_start_regular
+    ):
         # Test the guard clause for giving GCS URIs without a GCS client.
-        with tempfile.TemporaryDirectory() as temp_dest_dir:
+        with (
+            tempfile.TemporaryDirectory() as temp_dest_dir,
+            tempfile.NamedTemporaryFile(suffix=".zip") as zip_file,
+        ):
+            # Create a temporary file with a zip extension in the temporary directory
+            with zipfile.ZipFile(zip_file.name, "w") as zip:
+                # Add a file to the zip file
+                zip.writestr("file.txt", "Hello, world!")
+
+            # upload the zip file to GCS pkg_uri
             pkg_uri = "gcs://my-zipfile.zip"
+            upload_package_to_gcs(pkg_uri, zip_file.read())
 
             with pytest.raises(ValueError):
+                # Download the zip file from GCS pkg_uri
                 await download_and_unpack_package(
-                    pkg_uri=pkg_uri, base_directory=temp_dest_dir
+                    pkg_uri=pkg_uri,
+                    base_directory=temp_dest_dir,
+                    gcs_aio_client=None,
                 )
 
-    @patch("ray._private.runtime_env.packaging.unzip_package", side_effect=None)
-    async def test_download_and_unpack_package_with_gcs_uri(self, mock_unzip_package):
+    async def test_download_and_unpack_package_with_gcs_uri(self, ray_start_regular):
         # Test downloading and unpacking a GCS package with a GCS client.
-        async def mock_internal_kv_get(args, **kwargs):
-            return b"random code contents"
 
-        gcs_client_mock = Mock()
-        gcs_client_mock.internal_kv_get = mock_internal_kv_get
+        gcs_aio_client = GcsAioClient(
+            address=ray._private.worker.global_worker.gcs_client.address
+        )
 
-        pkg_uri = "gcs://my-zipfile.zip"
+        with (
+            tempfile.TemporaryDirectory() as temp_dest_dir,
+            tempfile.NamedTemporaryFile(suffix=".zip") as zip_file,
+        ):
+            # Create a temporary file with a zip extension in the temporary directory
+            with zipfile.ZipFile(zip_file.name, "w") as zip:
+                # Add a file to the zip file
+                zip.writestr("file.txt", "Hello, world!")
 
-        with tempfile.TemporaryDirectory() as temp_dest_dir:
-            await download_and_unpack_package(
+            # upload the zip file to GCS pkg_uri
+            pkg_uri = "gcs://my-zipfile.zip"
+            upload_package_to_gcs(pkg_uri, zip_file.read())
+
+            # Download the zip file from GCS pkg_uri
+            local_dir = await download_and_unpack_package(
                 pkg_uri=pkg_uri,
                 base_directory=temp_dest_dir,
-                gcs_aio_client=gcs_client_mock,
+                gcs_aio_client=gcs_aio_client,
             )
-            mock_unzip_package.assert_called_once()
 
-    @pytest.mark.parametrize(
-        "pkg_uri",
-        [
-            "https://my-bucket/my-zipfile.zip",
-            "https://my-bucket/path/to/my-zipfile.zip",
-            "https://my-zipfile.zip",
-        ],
-    )
-    @patch("ray._private.runtime_env.packaging.unzip_package", side_effect=None)
-    async def test_download_and_unpack_package_with_https_uri(
-        self, mock_unzip_package, pkg_uri
-    ):
-        with tempfile.TemporaryDirectory() as temp_dest_dir:
-            with patch("smart_open.open", mock_open(read_data="some contents")):
-                await download_and_unpack_package(
-                    pkg_uri=pkg_uri, base_directory=temp_dest_dir
-                )
-                mock_unzip_package.assert_called_once()
+            # Check that the file was extracted to the destination directory
+            assert (Path(local_dir) / "file.txt").exists()
 
-    @pytest.mark.parametrize(
-        "pkg_uri",
-        [
-            "s3://my-bucket/my-zipfile.zip",
-            "s3://my-bucket/path/to/my-zipfile.zip",
-            "s3://my-zipfile.zip",
-        ],
-    )
-    @patch("ray._private.runtime_env.packaging.unzip_package", side_effect=None)
-    async def test_download_and_unpack_package_with_s3_uri(
-        self, mock_unzip_package, pkg_uri
-    ):
+    async def test_download_and_unpack_package_with_https_uri(self):
         with tempfile.TemporaryDirectory() as temp_dest_dir:
-            with patch("smart_open.open", mock_open(read_data="some contents")):
-                await download_and_unpack_package(
-                    pkg_uri=pkg_uri, base_directory=temp_dest_dir
-                )
-                mock_unzip_package.assert_called_once()
+            local_dir = await download_and_unpack_package(
+                pkg_uri=HTTPS_PACKAGE_URI, base_directory=temp_dest_dir
+            )
+            assert (Path(local_dir) / "test_module").exists()
+
+    async def test_download_and_unpack_package_with_s3_uri(self):
+        # Note: running this test requires AWS credentials to be set up
+        # any crediential will do, as long as it's valid
+
+        with tempfile.TemporaryDirectory() as temp_dest_dir:
+            local_dir = await download_and_unpack_package(
+                pkg_uri=S3_PACKAGE_URI, base_directory=temp_dest_dir
+            )
+            assert (Path(local_dir) / "test_module").exists()
 
     @pytest.mark.parametrize(
         "pkg_uri",
@@ -599,6 +613,7 @@ class TestDownloadAndUnpackPackage:
     async def test_download_and_unpack_package_with_gs_uri(
         self, mock_unzip_package, pkg_uri
     ):
+        # TODO: remove the mocks and actually test the gs functionality
         with tempfile.TemporaryDirectory() as temp_dest_dir:
             with patch("smart_open.open", mock_open(read_data="some contents")):
                 await download_and_unpack_package(
@@ -608,23 +623,23 @@ class TestDownloadAndUnpackPackage:
 
     async def test_download_and_unpack_package_with_file_uri(self):
         with (
-            tempfile.TemporaryDirectory() as src_dir,
             tempfile.TemporaryDirectory() as temp_dest_dir,
+            tempfile.NamedTemporaryFile(suffix=".zip") as zip_file,
         ):
             # Create a temporary file with a zip extension in the temporary directory
-            with tempfile.NamedTemporaryFile(suffix=".zip", dir=src_dir) as zip_file:
-                with zipfile.ZipFile(zip_file.name, "w") as zip:
-                    # Add a file to the zip file
-                    zip.writestr("file.txt", "Hello, world!")
 
-                pkg_uri = f"file://{zip_file.name}"
+            with zipfile.ZipFile(zip_file.name, "w") as zip:
+                # Add a file to the zip file
+                zip.writestr("file.txt", "Hello, world!")
 
-                local_dir = await download_and_unpack_package(
-                    pkg_uri=pkg_uri, base_directory=temp_dest_dir
-                )
+            pkg_uri = f"file://{zip_file.name}"
 
-                # Check that the file was extracted to the destination directory
-                assert (Path(local_dir) / "file.txt").exists()
+            local_dir = await download_and_unpack_package(
+                pkg_uri=pkg_uri, base_directory=temp_dest_dir
+            )
+
+            # Check that the file was extracted to the destination directory
+            assert (Path(local_dir) / "file.txt").exists()
 
     @pytest.mark.parametrize(
         "protocol",
