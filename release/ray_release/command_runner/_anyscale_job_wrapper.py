@@ -20,10 +20,11 @@ from typing import Optional, List, Tuple
 
 OUTPUT_JSON_FILENAME = "output.json"
 AWS_CLI_INSTALLED = False
-GSUTIL_CLI_INSTALLED = False
+GSUTIL_CLI_INSTALLED=False
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = 124  # same as bash timeout
 
+installed_pips = []
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(stream=sys.stderr)
@@ -53,20 +54,11 @@ def exponential_backoff_retry(
             time.sleep(retry_delay_s)
             retry_delay_s *= 2
 
-
-def install_aws_cli():
-    global AWS_CLI_INSTALLED
-    if not AWS_CLI_INSTALLED:
-        subprocess.run(["pip", "install", "-q", "awscli"], check=True)
-        AWS_CLI_INSTALLED = True
-
-
-def install_gsutil_cli():
-    global GSUTIL_CLI_INSTALLED
-    if not GSUTIL_CLI_INSTALLED:
-        subprocess.run(["pip", "install", "-q", "gsutil"], check=True)
-        GSUTIL_CLI_INSTALLED = True
-
+def install_pip(pip: str):
+    if pip in installed_pips:
+        return
+    subprocess.run(["pip", "install", "-q", pip], check=True)
+    installed_pips.append(pip)
 
 def run_storage_cp(source: str, target: str):
     if not source or not target:
@@ -79,7 +71,7 @@ def run_storage_cp(source: str, target: str):
     storage_service = urlparse(target).scheme
     cp_cmd_args = []
     if storage_service == "s3":
-        install_aws_cli()
+        install_pip("awscli")
         cp_cmd_args = [
             "aws",
             "s3",
@@ -90,7 +82,7 @@ def run_storage_cp(source: str, target: str):
             "bucket-owner-full-control",
         ]
     elif storage_service == "gs":
-        install_gsutil_cli()
+        install_pip("gsutil")
         cp_cmd_args = [
             "gsutil",
             "cp",
@@ -98,7 +90,7 @@ def run_storage_cp(source: str, target: str):
             target,
         ]
     else:
-        raise Exception(f"Not supporting storage service: {storage_service}")
+        raise Exception(f'Not supporting storage service: {storage_service}')
 
     try:
         exponential_backoff_retry(
