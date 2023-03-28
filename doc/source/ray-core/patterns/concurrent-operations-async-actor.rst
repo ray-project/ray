@@ -22,7 +22,7 @@ With the default actor, the code will look like this:
     :start-after: __sync_actor_start__
     :end-before: __sync_actor_end__
 
-This is problematic because ``TaskExecutor.run`` method runs forever and never yeild the control to run other methods.
+This is problematic because ``TaskExecutor.run`` method runs forever and never yield the control to run other methods.
 We can solve this problem by using :ref:`async actors <async-actors>` and use ``await`` to yield control:
 
 .. literalinclude:: ../doc_code/pattern_async_actor.py
