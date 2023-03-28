@@ -38,8 +38,8 @@ class TorchMLPHead(TorchModel, nn.Module):
         return self.net(inputs)
 
 
-class TorchFreeStdMLPHead(TorchModel, nn.Module):
-    """An MLPHead that implements floating std for Gaussian distributions."""
+class TorchFreeLogStdMLPHead(TorchModel, nn.Module):
+    """An MLPHead that implements floating log stds for Gaussian distributions."""
 
     def __init__(self, config: ModelConfig) -> None:
         mlp_head_config = config.mlp_head_config

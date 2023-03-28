@@ -1,7 +1,7 @@
 import itertools
 import unittest
 
-from ray.rllib.core.models.configs import MLPHeadConfig, FreeStdMLPHeadConfig
+from ray.rllib.core.models.configs import MLPHeadConfig, FreeLogStdMLPHeadConfig
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -16,7 +16,7 @@ class TestTorchMLPHead(unittest.TestCase):
 
         hidden_layer_activations = [None, "linear", "relu", "tanh", "elu", "swish"]
 
-        # Can only test even output_dims for FreeStdMLPHeadConfig.
+        # Can only test even output_dims for FreeLogStdMLPHeadConfig.
         output_dims_configs = [[2], [1000]]
 
         output_activations = hidden_layer_activations
@@ -59,7 +59,7 @@ class TestTorchMLPHead(unittest.TestCase):
             )
 
             if free_std:
-                config = FreeStdMLPHeadConfig(mlp_head_config=config)
+                config = FreeLogStdMLPHeadConfig(mlp_head_config=config)
 
             model = config.build(framework="torch")
 

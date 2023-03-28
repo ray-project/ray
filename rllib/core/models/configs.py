@@ -129,19 +129,22 @@ class MLPHeadConfig(ModelConfig):
 
 @ExperimentalAPI
 @dataclass
-class FreeStdMLPHeadConfig(ModelConfig):
-    """Configuration of an MLP head for homogeneous normal distributions.
+class FreeLogStdMLPHeadConfig(ModelConfig):
+    """Configuration for an MLPHead with a floating second half of outputs.
 
-    The homogeneous normal distribution is a normal distribution parameterized by a 
-    mean and scalar standard deviation. In this distrubtion all action dimensions are 
-    assumed to have the same variance parameter.
+    This model can be useful together with Gaussian Distributions.
+    This gaussian distribution would be conditioned as follows:
+        - The first half of outputs from this model can be used as
+        state-dependent means when conditioning a gaussian distribution
+        - The second half are floating free biases that can be used as
+        state-independent standard deviations to condition a gaussian distribution.
+    The state-dependent means are produced by an MLPHead, while the standard
+    deviations are added as floating free biases.
 
-    The number of parameters for this head is action_dim + 1. The first action_dim
-    parameters are the mean of the normal distribution. The last parameter is the
-    log of the standard deviation. action_dim is obtained from the configured 
-    MLPHeadConfig. Therefore, the output dimensions of the configured MLPHeadConfig 
-    must be even and are divided by two to obtain the output dimensions of the 
-    underlying MLP, while the standard deviation is free floating scalar parameter.
+    This config does not dictate the output dimensions but instead uses the output
+    dimensions of the configured MLPHHeadConfig. The output dimensions of the
+    configured MLPHeadConfig must be even and are divided by two to gain the output
+    dimensions of the underlying MLPHead.
 
     Attributes:
         mlp_head_config: MLPHeadConfig for the MLPHead that produces the first half
@@ -157,23 +160,23 @@ class FreeStdMLPHeadConfig(ModelConfig):
         # Sanity check
         assert self.input_dims is None, (
             "input_dims must be None for "
-            "FreeStdMLPHeadConfig. This is only a "
+            "FreeLogStdMLPHeadConfig. This is only a "
             "convenience wrapper around MLPHeadConfig."
         )
         assert self.output_dims is None, (
             "output_dims must be None for "
-            "FreeStdMLPHeadConfig. This is only a "
+            "FreeLogStdMLPHeadConfig. This is only a "
             "convenience wrapper around MLPHeadConfig."
         )
 
         if framework == "torch":
-            from ray.rllib.core.models.torch.mlp import TorchFreeStdMLPHead
+            from ray.rllib.core.models.torch.mlp import TorchFreeLogStdMLPHead
 
-            return TorchFreeStdMLPHead(self)
+            return TorchFreeLogStdMLPHead(self)
         else:
-            from ray.rllib.core.models.tf.mlp import TfFreeStdMLPHead
+            from ray.rllib.core.models.tf.mlp import TfFreeLogStdMLPHead
 
-            return TfFreeStdMLPHead(self)
+            return TfFreeLogStdMLPHead(self)
 
 
 @ExperimentalAPI

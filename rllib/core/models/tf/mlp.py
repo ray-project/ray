@@ -36,8 +36,8 @@ class TfMLPHead(TfModel):
         return self.net(inputs)
 
 
-class TfFreeStdMLPHead(TfModel):
-    """An MLPHead that encapsulates a floating std for Gaussian distributions."""
+class TfFreeLogStdMLPHead(TfModel):
+    """An MLPHead that implements floating log stds for Gaussian distributions."""
 
     def __init__(self, config: ModelConfig) -> None:
         mlp_head_config = config.mlp_head_config

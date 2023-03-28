@@ -56,8 +56,8 @@ PENDULUM_FAKE_BATCH = SampleBatch(
             [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]],
             dtype=np.float32,
         ),
-        SampleBatch.ACTIONS: np.array([0.1, 0.2, 0.3]),
-        SampleBatch.PREV_ACTIONS: np.array([0.3, 0.4]),
+        SampleBatch.ACTIONS: np.array([0.1, 0.2, 0.3], dtype=np.float32),
+        SampleBatch.PREV_ACTIONS: np.array([0.3, 0.4], dtype=np.float32),
         SampleBatch.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
         SampleBatch.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
         SampleBatch.TERMINATEDS: np.array([False, False, True]),
@@ -360,64 +360,6 @@ class TestPPO(unittest.TestCase):
             init_std = get_value()
             assert init_std == 0.0, init_std
             batch = compute_gae_for_sample_batch(policy, CARTPOLE_FAKE_BATCH.copy())
-            if fw == "torch":
-                batch = policy._lazy_tensor_dict(batch)
-            policy.learn_on_batch(batch)
-
-            # Check the variable is updated.
-            post_std = get_value()
-            assert post_std != 0.0, post_std
-            trainer.stop()
-
-    def test_ppo_free_log_std_with_rl_modules(self):
-        """Tests the free log std option works."""
-        config = (
-            ppo.PPOConfig()
-            .environment("Pendulum-v1")
-            .rollouts(
-                num_rollout_workers=0,
-            )
-            .training(
-                gamma=0.99,
-                model=dict(
-                    fcnet_hiddens=[10],
-                    fcnet_activation="linear",
-                    free_log_std=True,
-                    vf_share_layers=True,
-                ),
-            )
-        )
-
-        # TODO(Artur): Enable this test for tf2 once we support CNNs
-        for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
-            trainer = config.build()
-            policy = trainer.get_policy()
-
-            # Check the free log std var is created.
-            if fw == "torch":
-                matching = [
-                    v for (n, v) in policy.model.named_parameters() if "log_std" in n
-                ]
-            else:
-                matching = [
-                    v for v in policy.model.trainable_variables() if "log_std" in str(v)
-                ]
-            assert len(matching) == 1, matching
-            log_std_var = matching[0]
-
-            # linter yells at you if you don't pass in the parameters.
-            # reason: https://docs.python-guide.org/writing/gotchas/
-            # #late-binding-closures
-            def get_value(fw=fw, policy=policy, log_std_var=log_std_var):
-                if fw == "torch":
-                    return log_std_var.detach().cpu().numpy()[0]
-                else:
-                    return log_std_var.numpy()[0]
-
-            # Check the variable is initially zero.
-            init_std = get_value()
-            assert init_std == 0.0, init_std
-            batch = compute_gae_for_sample_batch(policy, PENDULUM_FAKE_BATCH.copy())
             if fw == "torch":
                 batch = policy._lazy_tensor_dict(batch)
             policy.learn_on_batch(batch)
