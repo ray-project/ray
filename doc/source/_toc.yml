@@ -264,10 +264,11 @@ parts:
               - file: serve/production-guide/index
                 sections:
                   - file: serve/production-guide/config
-                  - file: serve/production-guide/rest-api
+                  - file: serve/production-guide/deploy-vm
                   - file: serve/production-guide/kubernetes
                   - file: serve/production-guide/monitoring
                   - file: serve/production-guide/fault-tolerance
+                  - file: serve/production-guide/multi-app
               - file: serve/performance
               - file: serve/handling-dependencies
               - file: serve/managing-java-deployments

@@ -50,6 +50,8 @@ def _route_prefix_format(cls, v):
 
 @PublicAPI(stability="beta")
 class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
+    """Options with which to start a replica actor."""
+
     runtime_env: dict = Field(
         default={},
         description=(
@@ -123,6 +125,12 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
 class DeploymentSchema(
     BaseModel, extra=Extra.forbid, allow_population_by_field_name=True
 ):
+    """
+    Specifies options for one deployment within a Serve application. For each deployment
+    this can optionally be included in `ServeApplicationSchema` to override deployment
+    options specified in code.
+    """
+
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
     )
@@ -275,6 +283,14 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
 
 @PublicAPI(stability="beta")
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
+    """
+    Describes one Serve application, and currently can also be used as a standalone
+    config to deploy a single application to a Ray cluster.
+
+
+    This is the request JSON schema for the v1 REST API `PUT "/api/serve/deployments/"`.
+    """
+
     name: str = Field(
         # TODO(cindy): eventually we should set the default app name to a non-empty
         # string and forbid empty app names.
@@ -474,6 +490,14 @@ class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
 
 @PublicAPI(stability="alpha")
 class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+    """
+    Multi-application config for deploying a list of Serve applications to the Ray
+    cluster.
+
+    This is the request JSON schema for the v2 REST API
+    `PUT "/api/serve/applications/"`.
+    """
+
     proxy_location: DeploymentMode = Field(
         default=DeploymentMode.EveryNode,
         description=(
@@ -560,6 +584,8 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
 
 @PublicAPI(stability="alpha")
 class ReplicaDetails(BaseModel, extra=Extra.forbid, frozen=True):
+    """Detailed info about a single deployment replica."""
+
     replica_id: str = Field(
         description=(
             "Unique ID for the replica. By default, this will be "
@@ -588,6 +614,10 @@ class ReplicaDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 @PublicAPI(stability="alpha")
 class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
+    """
+    Detailed info about a deployment within a Serve application.
+    """
+
     name: str = Field(description="Deployment name.")
     status: DeploymentStatus = Field(
         description="The current status of the deployment."
@@ -625,6 +655,8 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 @PublicAPI(stability="alpha")
 class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
+    """Detailed info about a Serve application."""
+
     name: str = Field(description="Application name.")
     route_prefix: Optional[str] = Field(
         ...,
@@ -704,6 +736,13 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 @PublicAPI(stability="alpha")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
+    """
+    Serve metadata with system-level info and details on all applications deployed to
+    the Ray cluster.
+
+    This is the response JSON schema for v2 REST API `GET /api/serve/applications`.
+    """
+
     proxy_location: Optional[DeploymentMode] = Field(
         description=(
             "The location of HTTP servers.\n"
@@ -735,6 +774,13 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
 
 @PublicAPI(stability="beta")
 class ServeStatusSchema(BaseModel, extra=Extra.forbid):
+    """
+    Describes the status of an application and all its deployments.
+
+    This is the response JSON schema for the v1 REST API
+    `GET /api/serve/deployments/status`.
+    """
+
     name: str = Field(description="Application name", default="")
     app_status: ApplicationStatusInfo = Field(
         ...,

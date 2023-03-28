@@ -7,7 +7,6 @@
 python_api
 rest_api
 serve_cli
-config_schema
 ```
 
 
