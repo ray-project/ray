@@ -407,7 +407,7 @@ class WorkerPoolTest : public ::testing::Test {
         std::to_string(WORKER_REGISTER_TIMEOUT_SECONDS) +
         R"(, "object_spilling_config": "dummy", "max_io_workers": )" +
         std::to_string(MAX_IO_WORKER_SIZE) + R"(, "kill_idle_workers_interval_ms": 0)" +
-        "}");
+        R"(, "enable_worker_prestart": true)" + "}");
     SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                        {Language::JAVA,
                         {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
@@ -1006,7 +1006,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaxIOWorkerSimpleTest) {
       started_processes.push_back(last_process);
     }
   }
-  // Make sure process size is not exceeding max io worker size.
+  // Make sure process size is not exceeding max io worker size + worker prestarted.
   ASSERT_EQ(worker_pool_->GetProcessSize(), MAX_IO_WORKER_SIZE);
   ASSERT_EQ(started_processes.size(), MAX_IO_WORKER_SIZE);
   ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), MAX_IO_WORKER_SIZE);
@@ -2102,20 +2102,6 @@ TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
   auto driver =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::JAVA, JOB_ID);
 
-  driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
-  bool callback_called = false;
-  auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {
-    *callback_called_ptr = true;
-  };
-  RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, rpc::JobConfig(), callback));
-  ASSERT_TRUE(callback_called);
-}
-
-TEST_F(WorkerPoolTest, RegisterDriverPrestartDisabledCallbackImmediately) {
-  RayConfig::instance().initialize(R"({"enable_worker_prestart": false})");
-
-  auto driver =
-      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
   driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
   bool callback_called = false;
   auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {
