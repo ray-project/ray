@@ -195,6 +195,15 @@ TensorFlow
 
    from_tf
 
+
+WebDataset
+----------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_webdataset
+
 .. _data_source_api:
 
 Datasource API
