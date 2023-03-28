@@ -235,9 +235,12 @@ class Policy(metaclass=ABCMeta):
         if isinstance(callbacks, DefaultCallbacks):
             self.callbacks = callbacks()
         elif isinstance(callbacks, (str, type)):
-            self.callbacks: "DefaultCallbacks" = deserialize_type(
-                self.config.get("callbacks")
-            )()
+            try:
+                self.callbacks: "DefaultCallbacks" = deserialize_type(
+                    self.config.get("callbacks")
+                )()
+            except Exception:
+                pass  # TEST
         else:
             self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
 
