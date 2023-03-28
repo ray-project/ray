@@ -2090,6 +2090,12 @@
 
   alert: default
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster_compute: compute_tpl_gce_4_xlarge.yaml
+
 - name: jobs_basic_remote_working_dir
   group: Jobs tests
   working_dir: jobs_tests
@@ -2110,6 +2116,14 @@
 
   alert: default
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_4_xlarge.yaml
+
 - name: jobs_remote_multi_node
   group: Jobs tests
   team: serve
@@ -2123,6 +2137,14 @@
     script: python workloads/jobs_remote_multi_node.py
     wait_for_nodes:
       num_nodes: 4
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_check_cuda_available
   group: Jobs tests
@@ -2138,6 +2160,14 @@
     wait_for_nodes:
       num_nodes: 2
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_gpu_node.yaml
+
 - name: jobs_specify_num_gpus
   group: Jobs tests
   team: serve
@@ -2152,6 +2182,13 @@
     wait_for_nodes:
       num_nodes: 2
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_gpu_worker.yaml
 
 ########################
 # Runtime env tests
@@ -2176,6 +2213,14 @@
 
   alert: default
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: rte_gce_small.yaml
+
 - name: runtime_env_wheel_urls
   group: Runtime env tests
   working_dir: runtime_env_tests
@@ -2195,6 +2240,14 @@
 
 
   alert: default
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: rte_gce_minimal.yaml
 
 # It seems like the consensus is that this should be tested in CI, and not in a nightly test.
 
