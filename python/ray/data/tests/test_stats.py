@@ -133,6 +133,7 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
 'obj_store_mem_peak': N}
+
 Stage N Map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -142,6 +143,7 @@ Stage N Map: N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
 'obj_store_mem_peak': N}
+
 Dataset iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
@@ -231,7 +233,6 @@ Dataset iterator time breakdown:
             assert (
                 stats
                 == """Stage N Read->MapBatches(dummy_map_batches): N/N blocks executed in T
-        )
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
