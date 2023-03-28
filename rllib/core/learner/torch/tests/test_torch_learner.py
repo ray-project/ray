@@ -194,10 +194,12 @@ class TestLearner(unittest.TestCase):
 
         # check all internal optimizer state dictionaries have been updated
         learner_1_optims_serialized = {
-            name: optim.state_dict() for name, optim in learner1._optim_name_to_optim.items()
+            name: optim.state_dict()
+            for name, optim in learner1._optim_name_to_optim.items()
         }
         learner_2_optims_serialized = {
-            name: optim.state_dict() for name, optim in learner2._optim_name_to_optim.items()
+            name: optim.state_dict()
+            for name, optim in learner2._optim_name_to_optim.items()
         }
         check(learner_1_optims_serialized, learner_2_optims_serialized)
 
