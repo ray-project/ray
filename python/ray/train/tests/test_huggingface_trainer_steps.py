@@ -13,6 +13,7 @@ from transformers import (
 import ray.data
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
+from ray.train.trainer import TrainingFailedError
 from ray.air.config import ScalingConfig
 from ray.train.tests._huggingface_data import train_data, validation_data
 
@@ -87,8 +88,9 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     )
     if save_steps and (save_steps < logging_steps or save_steps % logging_steps != 0):
         # Test validation
-        with pytest.raises(ValueError):
+        with pytest.raises(TrainingFailedError) as exc_info:
             result = trainer.fit()
+        assert isinstance(exc_info.value.__cause__, ValueError)
         return
     result = trainer.fit()
 
