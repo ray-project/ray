@@ -1297,12 +1297,13 @@ def read_binary_files(
     Returns:
         Dataset holding records read from the specified paths.
     """
-    warnings.warn(
-        "read_binary_files() returns Dataset in Python list format as of Ray v2.4. "
-        "Use read_binary_files(output_arrow_format=True) to return Dataset in Arrow "
-        "format.",
-        DeprecationWarning,
-    )
+    if not output_arrow_format:
+        warnings.warn(
+            "read_binary_files() returns Dataset in Python list format as of Ray "
+            "v2.4. Use read_binary_files(output_arrow_format=True) to return Dataset "
+            "in Arrow format.",
+            DeprecationWarning,
+        )
 
     return read_datasource(
         BinaryDatasource(),
