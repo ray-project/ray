@@ -1,5 +1,5 @@
 {
-  "checksum": "bef6c85f4c2e9bd93780b81aa5501f6f72ae8b6407c217711bfdcb3c7b14fded",
+  "checksum": "87f13cca148a1586be1f9cf21b80f3534a6e35eba75393732bb4ce9c0045117c",
   "crates": {
     "anyhow 1.0.70": {
       "name": "anyhow",
@@ -366,7 +366,7 @@
               "target": "quote"
             },
             {
-              "id": "syn 2.0.10",
+              "id": "syn 2.0.11",
               "target": "syn"
             }
           ],
@@ -2867,7 +2867,7 @@
               "target": "build_script_build"
             },
             {
-              "id": "syn 2.0.10",
+              "id": "syn 2.0.11",
               "target": "syn"
             }
           ],
@@ -3218,13 +3218,13 @@
       },
       "license": "MIT OR Apache-2.0"
     },
-    "syn 2.0.10": {
+    "syn 2.0.11": {
       "name": "syn",
-      "version": "2.0.10",
+      "version": "2.0.11",
       "repository": {
         "Http": {
-          "url": "https://crates.io/api/v1/crates/syn/2.0.10/download",
-          "sha256": "5aad1363ed6d37b84299588d62d3a7d95b5a5c2d9aad5c85609fda12afaa1f40"
+          "url": "https://crates.io/api/v1/crates/syn/2.0.11/download",
+          "sha256": "21e3787bb71465627110e7d87ed4faaa36c1f61042ee67badb9e2ef173accc40"
         }
       },
       "targets": [
@@ -3271,7 +3271,7 @@
           "selects": {}
         },
         "edition": "2021",
-        "version": "2.0.10"
+        "version": "2.0.11"
       },
       "license": "MIT OR Apache-2.0"
     },

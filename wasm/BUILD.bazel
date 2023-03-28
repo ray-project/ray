@@ -2,30 +2,8 @@
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
 load("//bazel:ray.bzl", "COPTS")
-load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_dylib_library", "rust_library")
 load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
-
-cc_binary(
-    name = "libray_wasm.so",
-    copts = COPTS,
-    linkopts = select({
-        "@bazel_tools//src/conditions:darwin": [
-            #TODO: Hide symbols on Mac.
-        ],
-        "@bazel_tools//src/conditions:windows": [
-            #TODO: Hide symbols on Windows.
-        ],
-        "//conditions:default": [
-            #TODO: Hide symbols on Linux.
-        ],
-    }),
-    linkshared = 1,
-    linkstatic = 1,
-    visibility = ["//visibility:public"],
-    deps = [
-        "ray_wasm_lib",
-    ],
-)
 
 cargo_build_script(
     name = "ray_wasm_buildrs",
@@ -82,6 +60,64 @@ rust_library(
     ],
 )
 
+# this rule is trying to use shared library.
+# but it doesn't work on Mac right now due to
+# issues with the rust libstd.
+rust_dylib_library(
+    name = "ray_wasm_lib.dylib",
+    srcs = glob(
+        [
+            "src/**/*.rs",
+        ],
+        exclude = [
+            "src/cmd/*.rs",
+        ],
+    ),
+    crate_name = "wasm_on_ray",
+    crate_root = "src/lib.rs",
+    rustc_flags = [
+        "-C", "prefer-dynamic",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "ray_wasm_buildrs",
+        "//:core_worker_lib",
+        "//:global_state_accessor_lib",
+        "@wasm_crate_index//:anyhow",
+        "@wasm_crate_index//:clap",
+        "@wasm_crate_index//:lazy_static",
+        "@wasm_crate_index//:prost",
+        "@wasm_crate_index//:serde",
+        "@wasm_crate_index//:serde_json",
+        "@wasm_crate_index//:tokio",
+        "@wasm_crate_index//:tracing",
+        "@wasm_crate_index//:tracing-subscriber",
+        "@wasm_crate_index//:uuid",
+    ],
+)
+
+cc_binary(
+    name = "libray_wasm.so",
+    copts = COPTS,
+    linkopts = select({
+        "@bazel_tools//src/conditions:darwin": [
+            #TODO: Hide symbols on Mac.
+        ],
+        "@bazel_tools//src/conditions:windows": [
+            #TODO: Hide symbols on Windows.
+        ],
+        "//conditions:default": [
+            #TODO: Hide symbols on Linux.
+        ],
+    }),
+    linkshared = 1,
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        "ray_wasm_lib",
+    ],
+)
+
 rust_binary(
     name = "wasm_worker",
     srcs = glob([
@@ -114,17 +150,15 @@ rust_binary(
     crate_root = "src/cmd/raywa.rs",
     visibility = ["//visibility:public"],
     deps = [
+        #":ray_wasm_lib.dylib",
         ":ray_wasm_lib",
+        "@com_google_absl//absl/time",
         "@wasm_crate_index//:anyhow",
         "@wasm_crate_index//:clap",
         "@wasm_crate_index//:lazy_static",
-        "@wasm_crate_index//:prost",
-        "@wasm_crate_index//:serde",
-        "@wasm_crate_index//:serde_json",
         "@wasm_crate_index//:tokio",
         "@wasm_crate_index//:tracing",
         "@wasm_crate_index//:tracing-subscriber",
-        "@wasm_crate_index//:uuid",
     ],
 )
 
@@ -134,6 +168,7 @@ genrule(
         "wasm_worker",
         "raywa",
         "libray_wasm.so",
+        "ray_wasm_lib.dylib",
     ],
     outs = ["ray_wasm_pkg.out"],
     cmd = """
@@ -143,6 +178,7 @@ genrule(
         mkdir -p "$$PY_WASM_DIR/lib/" &&
         cp -f $(location wasm_worker) "$$PY_WASM_DIR/" &&
         cp -f $(location libray_wasm.so) "$$PY_WASM_DIR/lib/" &&
+        cp -f $(location ray_wasm_lib.dylib) "$$PY_WASM_DIR/lib/" &&
         cp -f $(location raywa) "$$PY_WASM_DIR/" &&
         echo "$$WORK_DIR" > $@
     """,

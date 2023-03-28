@@ -1,0 +1,92 @@
+diff --git docs/BUILD.bazel docs/BUILD.bazel
+index 47ed38c5..ca0f34da 100644
+--- docs/BUILD.bazel
++++ docs/BUILD.bazel
+@@ -50,6 +50,7 @@ PAGES = dict([
+             "rust_binary",
+             "rust_library",
+             "rust_static_library",
++            "rust_dylib_library",
+             "rust_shared_library",
+             "rust_proc_macro",
+             "rust_test",
+diff --git rust/defs.bzl rust/defs.bzl
+index 92c8a774..b0be0515 100644
+--- rust/defs.bzl
++++ rust/defs.bzl
+@@ -32,6 +32,7 @@ load(
+     _rust_library = "rust_library",
+     _rust_proc_macro = "rust_proc_macro",
+     _rust_shared_library = "rust_shared_library",
++    _rust_dylib_library = "rust_dylib_library",
+     _rust_static_library = "rust_static_library",
+     _rust_test = "rust_test",
+     _rust_test_suite = "rust_test_suite",
+@@ -67,6 +68,8 @@ load(
+ rust_library = _rust_library
+ # See @rules_rust//rust/private:rust.bzl for a complete description.
+ 
++rust_dylib_library = _rust_dylib_library
++
+ rust_static_library = _rust_static_library
+ # See @rules_rust//rust/private:rust.bzl for a complete description.
+ 
+diff --git rust/private/rust.bzl rust/private/rust.bzl
+index 5186b6a9..cff5ff58 100644
+--- rust/private/rust.bzl
++++ rust/private/rust.bzl
+@@ -196,6 +196,24 @@ def _rust_library_impl(ctx):
+     """
+     return _rust_library_common(ctx, "rlib")
+ 
++def _rust_dylib_library_impl(ctx):
++    """The implementation of the `rust_dylib_library` rule.
++
++    This rule provides CcInfo, so it can be used everywhere Bazel
++    expects rules_cc.
++
++    On Windows, a PDB file containing debugging information is available under
++    the key `pdb_file` in `OutputGroupInfo`. Similarly on macOS, a dSYM folder
++    is available under the key `dsym_folder` in `OutputGroupInfo`.
++
++    Args:
++        ctx (ctx): The rule's context object
++
++    Returns:
++        list: A list of providers.
++    """
++    return _rust_library_common(ctx, "dylib")
++
+ def _rust_static_library_impl(ctx):
+     """The implementation of the `rust_static_library` rule.
+ 
+@@ -836,6 +854,29 @@ rust_library = rule(
+         """),
+ )
+ 
++rust_dylib_library = rule(
++    implementation = _rust_dylib_library_impl,
++    attrs = dict(_common_attrs.items()),
++    fragments = ["cpp"],
++    host_fragments = ["cpp"],
++    toolchains = [
++        str(Label("//rust:toolchain_type")),
++        "@bazel_tools//tools/cpp:toolchain_type",
++    ],
++    incompatible_use_toolchain_transition = True,
++    doc = dedent("""\
++        Builds a Rust dynamic library.
++
++        This dynamic library will contain all transitively reachable crates and native objects.
++        It is meant to be used when producing an artifact that is then consumed by some other build system
++        (for example to produce a shared library that Python program links against).
++
++        This rule provides CcInfo, so it can be used everywhere Bazel expects `rules_cc`.
++
++        When building the whole binary in Bazel, use `rust_library` instead.
++        """),
++)
++
+ rust_static_library = rule(
+     implementation = _rust_static_library_impl,
+     attrs = dict(_common_attrs.items()),

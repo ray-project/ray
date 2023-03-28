@@ -15,11 +15,13 @@ use serde;
 use serde_json;
 use std::collections::HashMap;
 
-mod helper;
-mod runtime;
 mod core;
+mod helper;
+mod hostcalls;
+mod runtime;
 
 pub use crate::ray::helper::*;
+pub use crate::ray::hostcalls::*;
 pub use crate::ray::runtime::*;
 
 #[derive(PartialEq)]

@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use std::net::UdpSocket;
 
 pub fn get_node_ip_address(address: &str) -> String {
@@ -31,7 +31,7 @@ pub fn get_node_ip_address(address: &str) -> String {
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-pub struct Arguments {
+pub struct WorkerParameters {
     /// The address of the Ray cluster to connect to.
     #[arg(long, verbatim_doc_comment)]
     pub ray_address: Option<String>,
@@ -101,4 +101,52 @@ pub struct Arguments {
     /// a unique value will be randomly generated.
     #[arg(long, verbatim_doc_comment)]
     pub ray_job_namespace: Option<String>,
+}
+
+impl WorkerParameters {
+    pub fn new_empty() -> Self {
+        Self {
+            ray_address: None,
+            ray_redis_password: None,
+            ray_code_search_path: None,
+            ray_job_id: None,
+            ray_node_manager_port: None,
+            ray_raylet_socket_name: None,
+            ray_plasma_store_socket_name: None,
+            ray_session_dir: None,
+            ray_logs_dir: None,
+            ray_node_ip_address: None,
+            ray_head_args: None,
+            startup_token: None,
+            ray_default_actor_lifetime: None,
+            ray_runtime_env: None,
+            ray_runtime_env_hash: None,
+            ray_job_namespace: None,
+        }
+    }
+}
+
+#[derive(ValueEnum, Debug, Clone)]
+pub enum WasmEngineType {
+    Wasmedge,
+    Wasmtime,
+    WAVM,
+    WAMR,
+}
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+pub struct LauncherParameters {
+    /// the path to the wasm file
+    #[arg(short = 'f', long, verbatim_doc_comment)]
+    pub wasm_file: String,
+
+    /// type of the wasm engine to use
+    #[arg(short = 'e', long, value_enum, verbatim_doc_comment, default_value_t = WasmEngineType::Wasmedge)]
+    pub engine_type: WasmEngineType,
+
+    /// the entry point function name
+    /// if not set, the default value is `_start`
+    #[arg(short = 's', long, verbatim_doc_comment, default_value = "_start")]
+    pub entry_point: String,
 }

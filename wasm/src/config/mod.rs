@@ -122,7 +122,7 @@ impl ConfigInternal {
     }
 
     /// process command line arguments and set the variables
-    fn process_arguments(&mut self, args: &util::Arguments) {
+    fn process_arguments(&mut self, args: &util::WorkerParameters) {
         // compare command line arguments and set the variables
         match args.ray_code_search_path {
             Some(ref path) => {
@@ -202,7 +202,7 @@ impl ConfigInternal {
         }
     }
 
-    pub fn init(&mut self, config: &ray::RayConfig, args: &util::Arguments) {
+    pub fn init(&mut self, config: &ray::RayConfig, args: &util::WorkerParameters) {
         // check input config and set the variables
         self.process_config(config);
 

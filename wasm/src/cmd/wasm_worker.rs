@@ -19,7 +19,7 @@ use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber;
 
-async fn init(cfg: &ray::RayConfig, args: &util::Arguments) -> Result<()> {
+async fn init(cfg: &ray::RayConfig, args: &util::WorkerParameters) -> Result<()> {
     config::ConfigInternal::instance()
         .write()
         .unwrap()
@@ -49,7 +49,7 @@ async fn run_task_loop() -> Result<()> {
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
 
-    let args = util::Arguments::parse();
+    let args = util::WorkerParameters::parse();
     let cfg = ray::RayConfig::new();
 
     init(&cfg, &args).await.unwrap();

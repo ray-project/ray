@@ -11,7 +11,22 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-pub mod config;
-pub mod engine;
-pub mod ray;
-pub mod util;
+use anyhow::Result;
+use crate::engine::{WasmEngine, WasmValue};
+
+pub struct Hostcalls {
+    pub hostcalls: Vec<Hostcall>,
+}
+
+pub struct Hostcall {
+    pub name: String,
+    pub func: Box<dyn Fn(&[Box<dyn WasmValue>]) -> Result<Vec<Box<dyn WasmValue>>>>,
+}
+
+impl Hostcalls {
+    pub fn new() -> Self {
+        Self {
+            hostcalls: Vec::new(),
+        }
+    }
+}
