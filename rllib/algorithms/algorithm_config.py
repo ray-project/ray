@@ -600,8 +600,10 @@ class AlgorithmConfig(_Config):
             # correct methods to properly `.update()` those from given config dict
             # (to not lose any sub-keys).
             elif key == "callbacks_class":
-                # Resolve possible classpath.
-                value = deserialize_type(value, error=True)
+                # For backward compatibility reasons, only resolve possible
+                # classpath if value is a str type.
+                if isinstance(value, str):
+                    value = deserialize_type(value, error=True)
                 self.callbacks(callbacks_class=value)
             elif key == "env_config":
                 self.environment(env_config=value)
