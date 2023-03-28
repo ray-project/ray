@@ -21,11 +21,15 @@ DOCKER_CLIENT = None
 PYTHON_WHL_VERSION = "cp3"
 ADDITIONAL_PLATFORMS = ["aarch64"]
 
+DOCKER_HUB_REPO = "rayproject"
+
 DOCKER_HUB_DESCRIPTION = {
     "base-deps": (
-        "Internal Image, refer to " "https://hub.docker.com/r/rayproject/ray"
+        f"Internal Image, refer to https://hub.docker.com/r/{DOCKER_HUB_REPO}/ray"
     ),
-    "ray-deps": ("Internal Image, refer to " "https://hub.docker.com/r/rayproject/ray"),
+    "ray-deps": (
+        f"Internal Image, refer to https://hub.docker.com/r/{DOCKER_HUB_REPO}/ray"
+    ),
     "ray": "Official Docker Images for Ray, the distributed computing API.",
     "ray-ml": "Developer ready Docker Image for Ray.",
     "ray-worker-container": "Internal Image for CI test",
@@ -234,7 +238,7 @@ def _build_docker_image(
         # can be found.
         build_args["FIND_LINKS_PATH"] = ".whl"
 
-    tagged_name = f"rayproject/{image_name}:nightly-{py_version}-{device_tag}"
+    tagged_name = f"{DOCKER_HUB_REPO}/{image_name}:nightly-{py_version}-{device_tag}"
 
     tagged_name = _with_suffix(tagged_name, suffix=suffix)
 
@@ -356,7 +360,7 @@ def build_or_pull_base_images(
     suffix: Optional[str] = None,
 ) -> bool:
     """Returns images to tag and build."""
-    repositories = ["rayproject/base-deps", "rayproject/ray-deps"]
+    repositories = [f"{DOCKER_HUB_REPO}/base-deps", f"{DOCKER_HUB_REPO}/ray-deps"]
     tags = [
         f"nightly-{py_version}-{image_type}"
         for py_version, image_type in itertools.product(py_versions, image_types)
@@ -560,7 +564,7 @@ def push_and_tag_images(
         sha_tag = release_name
 
     for image_name in image_list:
-        full_image_name = f"rayproject/{image_name}"
+        full_image_name = f"{DOCKER_HUB_REPO}/{image_name}"
 
         tag_mapping = create_image_tags(
             image_name=image_name,
@@ -674,7 +678,7 @@ def push_readmes(merge_build: bool):
             "PUSHRM_DEBUG": 1,
             "PUSHRM_SHORT": tag_line,
         }
-        cmd_string = f"rayproject/{image}"
+        cmd_string = f"{DOCKER_HUB_REPO}/{image}"
 
         print(
             DOCKER_CLIENT.containers.run(
@@ -876,16 +880,16 @@ def main(
         # push_readmes(build_type is MERGE)
 
 
-def fix_docker_images():
-    repo = "rayproject"
-    image = "ray-ml"
-
+def fix_docker_images(
+    image: str = "ray-ml",
+    repo: str = DOCKER_HUB_REPO,
+):
     tags = create_image_tags(
         image_name=image,
         py_versions=list(PY_MATRIX.keys()),
         image_types=list(BASE_IMAGES.keys()),
-        specific_tag=None,
-        version="2.3.0",
+        specific_tag=None,  # Set to `latest` for latest image fixes
+        version="2.3.1",
         suffix=None,
     )
     print(dict(tags))
@@ -895,9 +899,20 @@ def fix_docker_images():
 
         print(f"docker pull {base_image}")
 
+    pinned_base_image = {}
     for base_tag in tags:
         base_image = f"{repo}/{image}:{base_tag}"
-        print(f"docker build --build-args BASE_IMAGE={base_image} -t {base_image} .")
+        pinned_image = f"pinned/{image}:{base_tag}"
+
+        pinned_base_image[base_image] = pinned_image
+
+        print(f"docker tag {base_image} {pinned_image}")
+
+    for base_tag in tags:
+        base_image = f"{repo}/{image}:{base_tag}"
+        pinned_image = pinned_base_image[base_image]
+
+        print(f"docker build --build-arg BASE_IMAGE={pinned_image} -t {base_image} .")
         for subtag in tags[base_tag]:
             if subtag == base_tag:
                 continue
@@ -905,6 +920,11 @@ def fix_docker_images():
             target_image = f"{repo}/{image}:{subtag}"
             print(f"docker tag {base_image} {target_image}")
 
+    print(f"docker push --all-tags {repo}/{image}")
+
 
 if __name__ == "__main__":
-    fix_docker_images()
+    main()
+
+    # To manually re-tag images,
+    # fix_docker_images()
