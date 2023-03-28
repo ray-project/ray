@@ -3,34 +3,30 @@
 // Following fields represents the Ray state autoscaler interested
 // in.
 
-// Represents anti affinity constraints for a resource requirement.
-message AntiAffinity {
-  string label = 1;
+message AntiAffinityConstraint {
+  string label_name = 1;
+  string label_value = 2;
+  bool dynamic_label = 3;
 }
 
 message ResourceBundle {
   map<string, double> resources = 1;
-  repeated AntiAffinity anti_affinities = 2;
-  repeated string dynamic_labels = 3;
-  // Note: for optimization, soft contraints 
-  // can be added here.
-  // label affinity constraints could be
-  // added here too.
+  repeated AntiAffinityConstraint affinity_constraints = 2;
+  map<string, string> new_dynamic_labels_on_schedule = 3;
 }
 
-// All unbundles in a resource request requires gang
+// All bundles in the same resource request require gang
 // allocation semantics: they should be
 // fullfilled all or nothing.
 message ResourceRequest {
-  repeated ResourceBundle bundles = 1;
+  map<ResourceBundle, int32_t> bundles = 1;
 }
 
 // Cluster constraint represents minimial cluster size requirement,
-// issued through ray.autoscaler.sdk.
-message ClusterSizeConstraint {
-  // The number of request_ids and bundles should match.
-  repeated bytes request_ids = 1;
-  repeated ResourceBundle bundles = 2;
+// issued through ray.autoscaler.sdk.request_resources.
+message OnDemandResourceRequest {
+  bytes request_id = 1;
+  ResourceRequest bundles = 2;
 }
 
 message NodeStatus {
@@ -45,8 +41,11 @@ message NodeStatus {
   // The corresponding total resources on the node.
   map<string, double> total_resources = 4;
 
-  // Labels on the node.
-  set<string> labels = 5;
+  // Dynamic labels associated with the node.
+  map<string, string> dynamic_labels = 5;
+
+  // Static labels associated with the node.
+  // map<string, string> static_labels = 6;
 }
 
 // =========== Primitives autoscaler insights ====================
@@ -125,7 +124,7 @@ message GetBatchSchedulingStatusReply {
   bytes scheduling_state_id = 1;
   repeated NodeStatus node_states = 2;
   repeated ResourceRequest resource_requests = 3;
-  repeated ClusterSizeConstraint cluster_size_constraints = 4;
+  repeated OnDemandResourceRequest on_demand_resource_requests = 4;
 }
 
 message GetBatchSchedulingStatusRequest {
@@ -157,7 +156,7 @@ message GetStreamSchedulingStatusPacket{
   oneof update_type {
      NodeStatus node_states = 2;
      ResourceRequest resource_requests = 3;
-     ClusterSizeConstraint cluster_size_constraints = 4;
+     OnDemandResourceRequest on_demand_resource_requests = 4;
   }
 }
 
