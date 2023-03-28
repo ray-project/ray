@@ -818,7 +818,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   if (driver->GetLanguage() == Language::JAVA) {
     send_reply_callback(Status::OK(), port);
   } else {
-    if (!RayConfig::instance().enable_worker_prestart()) {
+    if (!first_job_registered_ && !RayConfig::instance().enable_worker_prestart()) {
       PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
     }
 
