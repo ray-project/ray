@@ -7,8 +7,7 @@ from typing import (
     Dict,
     Optional,
     Iterator,
-    Callable,
-    Any,
+    Tuple,
     Union,
     TYPE_CHECKING,
 )
@@ -16,15 +15,15 @@ from typing import (
 import ray
 
 from ray.data.dataset_iterator import DatasetIterator
-from ray.data.block import Block, DataBatch
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.legacy_compat import (
     execute_to_legacy_bundle_iterator,
 )
-from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
+from ray.data._internal.stats import DatasetStats
 from ray.types import ObjectRef
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -77,20 +76,12 @@ class StreamSplitDatasetIterator(DatasetIterator):
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
 
-    def iter_batches(
+    def _to_block_iterator(
         self,
-        *,
-        prefetch_blocks: int = 0,
-        batch_size: int = 256,
-        batch_format: Optional[str] = "default",
-        drop_last: bool = False,
-        local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-    ) -> Iterator[DataBatch]:
-        """Implements DatasetIterator."""
-
-        def gen_blocks() -> Iterator[ObjectRef[Block]]:
+    ) -> Tuple[
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+    ]:
+        def gen_blocks() -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
             cur_epoch = ray.get(
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
             )
@@ -98,7 +89,9 @@ class StreamSplitDatasetIterator(DatasetIterator):
                 Optional[ObjectRef[Block]]
             ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
             while True:
-                block_ref: Optional[ObjectRef[Block]] = ray.get(future)
+                block_ref: Optional[Tuple[ObjectRef[Block], BlockMetadata]] = ray.get(
+                    future
+                )
                 if not block_ref:
                     break
                 else:
@@ -107,17 +100,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
                     )
                     yield block_ref
 
-        yield from batch_block_refs(
-            gen_blocks(),
-            stats=None,
-            prefetch_blocks=prefetch_blocks,
-            batch_size=batch_size,
-            batch_format=batch_format,
-            drop_last=drop_last,
-            collate_fn=_collate_fn,
-            shuffle_buffer_min_size=local_shuffle_buffer_size,
-            shuffle_seed=local_shuffle_seed,
-        )
+        return gen_blocks(), None
 
     def stats(self) -> str:
         """Implements DatasetIterator."""
@@ -191,7 +174,9 @@ class SplitCoordinator:
         epoch_id = self._barrier(split_idx)
         return epoch_id
 
-    def get(self, epoch_id: int, output_split_idx: int) -> Optional[ObjectRef[Block]]:
+    def get(
+        self, epoch_id: int, output_split_idx: int
+    ) -> Optional[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.
@@ -215,7 +200,7 @@ class SplitCoordinator:
                 # This is a BLOCKING call, so do it outside the lock.
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
-            block = next_bundle.blocks.pop()[0]
+            bundle = next_bundle.blocks.pop()
 
             # Accumulate any remaining blocks in next_bundle map as needed.
             with self._lock:
@@ -223,7 +208,7 @@ class SplitCoordinator:
                 if not next_bundle.blocks:
                     del self._next_bundle[output_split_idx]
 
-            return block
+            return bundle
         except StopIteration:
             return None
 
