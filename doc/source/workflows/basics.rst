@@ -78,7 +78,7 @@ either as a decorator or as kwargs to ``<task>.options``:
     from ray import workflow
 
     @workflow.options(checkpoint=True)
-    @ray.remote(num_cpus=2, num_gpus=3)
+    @ray.remote(num_cpus=2, num_gpus=3, max_retries=5)
     def read_data(num: int):
         return [i for i in range(num)]
 
