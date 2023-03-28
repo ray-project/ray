@@ -454,7 +454,11 @@ class TfMultiDistribution(Distribution):
 
         def map_(val, dist):
             # Remove extra dimension if present.
-            if len(val.shape) > 1 and val.shape[-1] == 1:
+            if (
+                isinstance(dist, TfCategorical)
+                and len(val.shape) > 1
+                and val.shape[-1] == 1
+            ):
                 val = tf.squeeze(val, axis=-1)
 
             return dist.logp(val)
