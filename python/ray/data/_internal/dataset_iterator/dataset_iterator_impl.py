@@ -1,10 +1,10 @@
-from typing import TYPE_CHECKING, Optional, Union, Iterator, Callable, Any
-import time
+from typing import TYPE_CHECKING, Optional, Union, Iterator, Tuple
 
-from ray.data.block import DataBatch
+from ray.types import ObjectRef
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data.dataset_iterator import DatasetIterator
-from ray.data._internal.block_batching import batch_block_refs
+from ray.data._internal.stats import DatasetStats
 
 if TYPE_CHECKING:
     import pyarrow
@@ -22,38 +22,15 @@ class DatasetIteratorImpl(DatasetIterator):
     def __repr__(self) -> str:
         return f"DatasetIterator({self._base_dataset})"
 
-    def iter_batches(
+    def _to_block_iterator(
         self,
-        *,
-        prefetch_blocks: int = 0,
-        batch_size: Optional[int] = 256,
-        batch_format: Optional[str] = "default",
-        drop_last: bool = False,
-        local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-    ) -> Iterator[DataBatch]:
-
-        DatasetContext._set_current(self._base_context)
-
+    ) -> Tuple[
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+    ]:
         ds = self._base_dataset
         block_iterator, stats, executor = ds._plan.execute_to_iterator()
         ds._current_executor = executor
-        time_start = time.perf_counter()
-
-        yield from batch_block_refs(
-            block_iterator,
-            stats=stats,
-            prefetch_blocks=prefetch_blocks,
-            batch_size=batch_size,
-            batch_format=batch_format,
-            drop_last=drop_last,
-            collate_fn=_collate_fn,
-            shuffle_buffer_min_size=local_shuffle_buffer_size,
-            shuffle_seed=local_shuffle_seed,
-        )
-
-        stats.iter_total_s.add(time.perf_counter() - time_start)
+        return block_iterator, stats
 
     def stats(self) -> str:
         return self._base_dataset.stats()

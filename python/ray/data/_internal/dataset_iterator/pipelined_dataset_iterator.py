@@ -1,7 +1,9 @@
-from typing import TYPE_CHECKING, Any, Callable, Optional, Union, Iterator
+from typing import Any, TYPE_CHECKING, Callable, Optional, Union, Iterator, Tuple
 
-from ray.data.block import DataBatch
+from ray.types import ObjectRef
+from ray.data.block import Block, BlockMetadata, DataBatch
 from ray.data.dataset_iterator import DatasetIterator
+from ray.data._internal.stats import DatasetStats
 
 if TYPE_CHECKING:
     import pyarrow
@@ -26,26 +28,42 @@ class PipelinedDatasetIterator(DatasetIterator):
         ds = next(self._epoch_iterator)
         return ds
 
+    def _to_block_iterator(
+        self,
+    ) -> Tuple[
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+    ]:
+        epoch_pipeline = self._get_next_dataset()
+
+        def block_iter():
+            for ds in epoch_pipeline.iter_datasets():
+                yield from ds._plan.execute().iter_blocks_with_metadata()
+
+        return block_iter(), None
+
     def iter_batches(
         self,
         *,
-        prefetch_blocks: int = 0,
-        batch_size: Optional[int] = 256,
+        prefetch_batches: int = 0,
+        batch_size: int = 256,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        # Deprecated.
+        prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
-        ds = self._get_next_dataset()
-        return ds.iter_batches(
-            prefetch_blocks=prefetch_blocks,
+        # Set prefetch_batches to default of 0 for DatasetPipeline.
+        return super().iter_batches(
+            prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=_collate_fn,
+            prefetch_blocks=prefetch_blocks,
         )
 
     def stats(self) -> str:
