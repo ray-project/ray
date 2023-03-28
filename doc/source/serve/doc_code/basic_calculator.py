@@ -10,10 +10,12 @@ class Adder:
     def __call__(self, input: int) -> int:
         return input + 2
 
+
 @serve.deployment
 class Multiplier:
     def __call__(self, input: int) -> int:
         return input * 2
+
 
 @serve.deployment
 class Router:
