@@ -81,8 +81,7 @@ int main(int argc, char *argv[]) {
     ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_GCS,
                       absl::flat_hash_map<std::string, std::string>(),
                       log_dir,
-                      RayConfig::instance().event_level(),
-                      RayConfig::instance().emit_event_to_log_file());
+                      RayConfig::instance().event_level());
   }
 
   ray::gcs::GcsServerConfig gcs_server_config;

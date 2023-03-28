@@ -710,11 +710,7 @@ RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
 RAY_CONFIG(int64_t, grpc_stream_buffer_size, 512 * 1024);
 
 /// Whether to use log reporter in event framework
-RAY_CONFIG(bool, event_log_reporter_enabled, true)
-
-/// Whether or not we should also write an event log to a log file.
-/// This has no effect if `event_log_reporter_enabled` is false.
-RAY_CONFIG(bool, emit_event_to_log_file, false)
+RAY_CONFIG(bool, event_log_reporter_enabled, false)
 
 /// Whether to enable register actor async.
 /// If it is false, the actor registration to GCS becomes synchronous, i.e.,

@@ -277,8 +277,7 @@ int main(int argc, char *argv[]) {
           ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_RAYLET,
                             {{"node_id", raylet->GetNodeId().Hex()}},
                             log_dir,
-                            RayConfig::instance().event_level(),
-                            RayConfig::instance().emit_event_to_log_file());
+                            RayConfig::instance().event_level());
         };
 
         raylet->Start();
