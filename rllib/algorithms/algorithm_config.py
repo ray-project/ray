@@ -599,7 +599,7 @@ class AlgorithmConfig(_Config):
             # Some keys specify config sub-dicts and therefore should go through the
             # correct methods to properly `.update()` those from given config dict
             # (to not lose any sub-keys).
-            elif key == "callbacks_class":
+            elif key == "callbacks_class" and value != NOT_SERIALIZABLE:
                 # For backward compatibility reasons, only resolve possible
                 # classpath if value is a str type.
                 if isinstance(value, str):
@@ -3144,10 +3144,10 @@ class AlgorithmConfig(_Config):
     @staticmethod
     def _serialize_dict(config):
         # Serialize classes to classpaths:
-        if isinstance(config.get("callbacks"), type):
+        if isinstance(config.get("callbacks"), (type, str)):
             config["callbacks"] = serialize_type(config["callbacks"])
         else:
-            # TODO(sven): Figure out how to serialize MultiCallbacks
+            # TODO(sven): Figure out how to serialize MultiCallbacks.
             config["callbacks"] = NOT_SERIALIZABLE
         config["sample_collector"] = serialize_type(config["sample_collector"])
         if isinstance(config["env"], type):
