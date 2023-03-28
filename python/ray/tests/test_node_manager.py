@@ -12,7 +12,6 @@ import os
 from ray.experimental.state.api import list_objects
 import subprocess
 from ray._private.utils import get_num_cpus
-import time
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
@@ -268,29 +267,25 @@ def num_idle_workers(count):
 
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["""ray start --head"""],
+    ["""ray start --head --system-config={"enable_worker_prestart":true}"""],
     indirect=True,
 )
 def test_worker_prestart_on_node_manager_start(call_ray_start, shutdown_only):
     wait_for_condition(num_idle_workers, count=get_num_cpus())
 
 
-def test_driver_waits_for_worker_prestart(shutdown_only):
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head"""],
+    indirect=True,
+)
+def test_jobs_prestart_worker_once(call_ray_start, shutdown_only):
     with ray.init():
         workers = list_workers(filters=[("worker_type", "=", "WORKER")])
         assert len(workers) == get_num_cpus()
-
-
-def test_prestart_disabed_driver_skip_wait(shutdown_only):
-    with ray.init(
-        _system_config={
-            "enable_worker_prestart": False,
-        },
-    ):
-        for _ in range(5):
-            workers = list_workers(filters=[("worker_type", "=", "WORKER")])
-            assert len(workers) == 0
-            time.sleep(1)
+    with ray.init():
+        workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+        assert len(workers) == get_num_cpus()
 
 
 if __name__ == "__main__":
