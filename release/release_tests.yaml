@@ -1261,7 +1261,7 @@
 
   alert: tune_tests
 
-- name: tune_cloud_no_sync_down-gce
+- name: tune_cloud_no_sync_down-gce02
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
