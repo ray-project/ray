@@ -655,7 +655,14 @@ class Trial:
             # relative to the old `local_dir`/`logdir`
             for checkpoint in self.get_trial_checkpoints():
                 checkpoint_dir = checkpoint.dir_or_data
-                assert isinstance(checkpoint_dir, str)
+                if not isinstance(checkpoint_dir, str):
+                    logger.warning(
+                        f"No data found in checkpoint for trial {self} and metrics "
+                        f"{checkpoint.metrics} (type: {type(checkpoint_dir)}). "
+                        f"Skipping."
+                    )
+                    continue
+
                 relative_checkpoint_dirs.append(
                     os.path.relpath(checkpoint_dir, self.local_path)
                 )
