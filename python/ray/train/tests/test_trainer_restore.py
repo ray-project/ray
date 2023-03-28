@@ -63,7 +63,7 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
     """Restoring a DataParallelTrainer with object refs captured in the train fn
     or config works by re-specifying them.
     Success criteria:
-    - Restored to the correct iteration. (1 iteration before crash, 1 after restore)
+    - Restored to the correct iteration. (1 iteration before crash, 1 after restore).
     - Results are being logged to the same directory as before.
     """
     dataset_size = 10
