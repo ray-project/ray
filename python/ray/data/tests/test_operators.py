@@ -114,7 +114,9 @@ def test_num_outputs_total():
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     # Create with inputs.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        make_ref_bundles([[np.ones(1024) * i] for i in range(100)])
+    )
     compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         _mul2_transform,
@@ -157,7 +159,9 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
 
     # Check we return transformed bundles in order.
     assert not op.completed()
-    assert _take_outputs(op) == [[i * 2] for i in range(100)]
+    assert np.array_equal(
+        _take_outputs(op), [[np.ones(1024) * i * 2] for i in range(100)]
+    )
     assert op.completed()
 
     # Check dataset stats.
@@ -167,15 +171,17 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
 
     # Check memory stats.
     metrics = op.get_metrics()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
-    assert metrics["obj_store_mem_peak"] == pytest.approx(8800, 0.5), metrics
-    assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
+    assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
+    assert metrics["obj_store_mem_peak"] == pytest.approx(832200, 0.5), metrics
+    assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     # Create with inputs.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        make_ref_bundles([[np.ones(1024) * i] for i in range(100)])
+    )
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         _mul2_transform,
@@ -199,11 +205,11 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
             _get_blocks(ref, output)
 
     # Check equivalent to bulk execution in order.
-    assert output == [[i * 2] for i in range(100)]
+    assert np.array_equal(output, [[np.ones(1024) * i * 2] for i in range(100)])
     metrics = op.get_metrics()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
-    assert metrics["obj_store_mem_peak"] == pytest.approx(88, 0.5), metrics
-    assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
+    assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
+    assert metrics["obj_store_mem_peak"] == pytest.approx(8320, 0.5), metrics
+    assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
     if use_actors:
         assert "locality_hits" in metrics, metrics
         assert "locality_misses" in metrics, metrics
@@ -309,12 +315,14 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
             total += 1
 
     assert total == 10, total
-    assert "10 locality hits, 0 misses" in op.progress_str()
+    assert "all objects local" in op.progress_str()
 
 
 def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     # Create with inputs.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        make_ref_bundles([[np.ones(100) * i] for i in range(100)])
+    )
     compute_strategy = ActorPoolStrategy()
     op = MapOperator.create(
         _mul2_transform,
@@ -341,11 +349,11 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
             _get_blocks(ref, output)
 
     # Check equivalent to bulk execution in order.
-    assert output == [[i * 2] for i in range(100)]
+    assert np.array_equal(output, [[np.ones(100) * i * 2] for i in range(100)])
     metrics = op.get_metrics()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
-    assert metrics["obj_store_mem_peak"] == pytest.approx(88, 0.5), metrics
-    assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
+    assert metrics["obj_store_mem_alloc"] == pytest.approx(92900, 0.5), metrics
+    assert metrics["obj_store_mem_peak"] == pytest.approx(929, 0.5), metrics
+    assert metrics["obj_store_mem_freed"] == pytest.approx(92900, 0.5), metrics
     # Check e2e locality manager working.
     assert metrics["locality_hits"] == 100, metrics
     assert metrics["locality_misses"] == 0, metrics
