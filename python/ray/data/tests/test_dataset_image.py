@@ -9,8 +9,10 @@ from fsspec.implementations.local import LocalFileSystem
 
 import ray
 from ray.data.datasource import Partitioning
+from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
 from ray.data.datasource.image_datasource import (
     _ImageDatasourceReader,
+    _ImageFileMetadataProvider,
     ImageDatasource,
 )
 from ray.data.extensions import ArrowTensorType
@@ -36,6 +38,17 @@ class TestReadImages:
             ]
         )
         assert ds.count() == 2
+
+    def test_file_metadata_provider(self, ray_start_regular_shared):
+        ds = ray.data.read_images(
+            paths=[
+                "example://image-datasets/simple/image1.jpg",
+                "example://image-datasets/simple/image2.jpg",
+                "example://image-datasets/simple/image2.jpg",
+            ],
+            meta_provider=FastFileMetadataProvider(),
+        )
+        assert ds.count() == 3
 
     @pytest.mark.parametrize("ignore_missing_paths", [True, False])
     def test_ignore_missing_paths(self, ray_start_regular_shared, ignore_missing_paths):
@@ -188,6 +201,7 @@ class TestReadImages:
             filesystem=LocalFileSystem(),
             partition_filter=ImageDatasource.file_extension_filter(),
             partitioning=None,
+            meta_provider=_ImageFileMetadataProvider(),
             size=(image_size, image_size),
             mode=image_mode,
         )
