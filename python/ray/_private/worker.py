@@ -2431,7 +2431,7 @@ def get(
     - :doc:`/ray-core/patterns/unnecessary-ray-get`
     - :doc:`/ray-core/patterns/ray-get-submission-order`
     - :doc:`/ray-core/patterns/ray-get-too-many-objects`
-    - :doc:`/ray-core/patterns/ray-get-async`
+    - :doc:`/ray-core/patterns/ray-get-ray-wait-async`
 
 
     Args:
@@ -2626,6 +2626,7 @@ def wait(
 
     - :doc:`/ray-core/patterns/limit-pending-tasks`
     - :doc:`/ray-core/patterns/ray-get-submission-order`
+    - :doc:`/ray-core/patterns/ray-get-ray-wait-async`
 
     Args:
         object_refs: List of object refs for objects that may
