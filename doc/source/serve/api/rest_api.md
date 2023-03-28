@@ -259,7 +259,7 @@ Content-Type: application/json
 ### `DELETE "/api/serve/applications/"`
 
 Shuts down Serve and all applications running on the Ray cluster. Has no effect if Serve is not running on the Ray cluster.
-    
+
 **Example Request**:
 
 ```http
@@ -288,6 +288,7 @@ Content-Type: application/json
    :toctree: doc/
 
    schema.ServeDeploySchema
+   schema.HTTPOptionsSchema
    schema.ServeApplicationSchema
    schema.DeploymentSchema
    schema.RayActorOptionsSchema
