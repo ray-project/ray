@@ -85,8 +85,6 @@ parts:
       - file: data/dataset
         title: Ray Data
         sections:
-          - file: data/dataset
-            title: "What is Ray Data?"
           - file: data/getting-started
           - file: data/key-concepts
           - file: data/user-guide
