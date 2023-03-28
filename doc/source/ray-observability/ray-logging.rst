@@ -95,7 +95,8 @@ Limitations:
 - Only a subset of tqdm functionality is supported. Refer to the ray_tqdm `implementation <https://github.com/ray-project/ray/blob/master/python/ray/experimental/tqdm_ray.py>`__ for more details.
 - Performance may be poor if there are more than a couple thousand updates per second (updates are not batched).
 
-Tip: To avoid `print` statements from the driver conflicting with tqdm output, use `ray.experimental.tqdm_ray.safe_print` instead.
+By default, the builtin print will also be patched to use `ray.experimental.tqdm_ray.safe_print` when `tqdm_ray` is used.
+This avoids progress bar corruption on driver print statements. To disable this, set `RAY_TQDM_PATCH_PRINT=0`.
 
 How to set up loggers
 ~~~~~~~~~~~~~~~~~~~~~
