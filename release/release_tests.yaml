@@ -284,6 +284,14 @@
 
   alert: default
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gce_gpu_1_g4_8xl.yaml
+
 
 - name: air_benchmark_torch_batch_prediction_gpu_4x4_100gb
   group: AIR tests
@@ -491,6 +499,14 @@
 
 
   alert: default
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gce_gpu_1.yaml
 
 
 - name: air_benchmark_pytorch_training_e2e_gpu_4x4_100gb
@@ -1474,6 +1490,14 @@
 
   alert: tune_tests
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_1x16.yaml
+
 - name: tune_scalability_durable_trainable
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
@@ -1518,6 +1542,14 @@
 
   alert: tune_tests
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_1x32_hd.yaml
+
 - name: tune_scalability_network_overhead
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
@@ -1536,19 +1568,26 @@
     wait_for_nodes:
       num_nodes: 100
 
-  smoke_test:
-    frequency: nightly
-
-    cluster:
-      cluster_compute: tpl_20x2.yaml
-
-    run:
-      timeout: 500
-      prepare_timeout: 600
-      wait_for_nodes:
-        num_nodes: 20
-
   alert: tune_tests
+
+  flavors:
+    - name: aws
+    - name: smoke-test
+      frequency: nightly
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_20x2.yaml
+      run:
+        timeout: 500
+        prepare_timeout: 600
+        script: python workloads/test_network_overhead.py
+        wait_for_nodes:
+          num_nodes: 20
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_20x2.yaml
 
 - name: tune_scalability_result_throughput_cluster
   group: Tune scalability tests
@@ -1569,6 +1608,14 @@
       num_nodes: 16
 
   alert: tune_tests
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_16x64.yaml
 
 - name: tune_scalability_result_throughput_single_node
   group: Tune scalability tests
@@ -1591,6 +1638,18 @@
 
   alert: tune_tests
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_1x96.yaml
+      run:
+        timeout: 600
+        script: python workloads/test_result_throughput_single_node.py
+        type: anyscale_job
+
 - name: tune_scalability_xgboost_sweep
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
@@ -1611,6 +1670,14 @@
 
 
   alert: tune_tests
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config_data.yaml
+        cluster_compute: tpl_gce_16x64.yaml
 
 
 ############################
