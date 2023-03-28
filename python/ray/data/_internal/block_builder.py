@@ -1,6 +1,7 @@
 from typing import Generic
 
 from ray.data.block import Block, BlockAccessor, T
+from ray.data._internal.metrics import DataMungingMetrics
 
 
 class BlockBuilder(Generic[T]):
@@ -32,4 +33,8 @@ class BlockBuilder(Generic[T]):
 
     def get_estimated_memory_usage(self) -> int:
         """Return the estimated memory usage so far in bytes."""
+        raise NotImplementedError
+
+    def get_metrics(self) -> DataMungingMetrics:
+        """Return the data munging metrics for this builder."""
         raise NotImplementedError

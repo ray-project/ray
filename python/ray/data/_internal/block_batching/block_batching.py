@@ -15,6 +15,7 @@ from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
 )
 from ray.data._internal.memory_tracing import trace_deallocation
+from ray.data._internal.metrics import MetricsCollector
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import Block, DataBatch
 from ray.data.context import DatasetContext
@@ -131,6 +132,7 @@ def batch_blocks(
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
+    metrics_collector: Optional[MetricsCollector] = None,
 ) -> Iterator[DataBatch]:
     """Create formatted batches of data from 1 or more blocks.
 
@@ -149,6 +151,7 @@ def batch_blocks(
                 shuffle_buffer_min_size=shuffle_buffer_min_size,
                 shuffle_seed=shuffle_seed,
                 ensure_copy=ensure_copy,
+                metrics_collector=metrics_collector,
             ),
             batch_format=batch_format,
             stats=stats,
@@ -184,6 +187,7 @@ def _prefetch_blocks(
         num_blocks_to_prefetch: The number of blocks to prefetch ahead of the
             current block during the scan.
         stats: Dataset stats object used to store block wait time.
+        metrics_collector: Collector for batching metrics.
     """
     if num_blocks_to_prefetch == 0:
         for block_ref in block_ref_iter:

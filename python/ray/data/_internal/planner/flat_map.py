@@ -1,6 +1,7 @@
 from typing import Callable, Iterator
 
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.metrics import MetricsCollector
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data.block import Block, BlockAccessor, RowUDF
 from ray.data.context import DatasetContext
@@ -16,7 +17,10 @@ def generate_flat_map_fn() -> Callable[
     context = DatasetContext.get_current()
 
     def fn(
-        blocks: Iterator[Block], ctx: TaskContext, row_fn: RowUDF
+        blocks: Iterator[Block],
+        ctx: TaskContext,
+        metrics_collector: MetricsCollector,
+        row_fn: RowUDF,
     ) -> Iterator[Block]:
         DatasetContext._set_current(context)
         output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
@@ -30,5 +34,7 @@ def generate_flat_map_fn() -> Callable[
         output_buffer.finalize()
         if output_buffer.has_next():
             yield output_buffer.next()
+        if metrics_collector is not None:
+            metrics_collector.record_metrics(output_buffer.get_metrics())
 
     return fn

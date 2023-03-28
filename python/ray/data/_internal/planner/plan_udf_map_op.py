@@ -15,6 +15,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapBatches,
     MapRows,
 )
+from ray.data._internal.metrics import MetricsCollector
 from ray.data._internal.planner.filter import generate_filter_fn
 from ray.data._internal.planner.flat_map import generate_flat_map_fn
 from ray.data._internal.planner.map_batches import generate_map_batches_fn
@@ -81,8 +82,12 @@ def _plan_udf_map_op(
         fn_args += op._fn_args
     fn_kwargs = op._fn_kwargs or {}
 
-    def do_map(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
-        yield from transform_fn(blocks, ctx, *fn_args, **fn_kwargs)
+    def do_map(
+        blocks: Iterator[Block],
+        ctx: TaskContext,
+        metrics_collector: MetricsCollector,
+    ) -> Iterator[Block]:
+        yield from transform_fn(blocks, ctx, metrics_collector, *fn_args, **fn_kwargs)
 
     return MapOperator.create(
         do_map,

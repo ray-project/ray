@@ -14,6 +14,7 @@ from ray.data._internal.block_batching.interfaces import (
     CollatedBatch,
     BlockPrefetcher,
 )
+from ray.data._internal.metrics import DataMungingMetrics, MetricsCollector
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -86,6 +87,7 @@ def blocks_to_batches(
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
+    metrics_collector: Optional[MetricsCollector] = None,
 ) -> Iterator[Batch]:
     """Given an iterator over blocks, returns an iterator over blocks
     of the appropriate bacth size.
@@ -105,6 +107,7 @@ def blocks_to_batches(
         shuffle_seed: The seed to use for the local random shuffle.
         ensure_copy: Whether batches are always copied from the underlying base
             blocks (not zero-copy views).
+        metrics_collector: Collector for batching metrics.
 
     Returns:
         An iterator over blocks of the given size that are potentially shuffled.
@@ -148,11 +151,16 @@ def blocks_to_batches(
         yield Batch(global_counter, batch)
         global_counter += 1
 
+    # Record batching metrics.
+    if metrics_collector is not None:
+        metrics_collector.record_metrics(batcher.get_metrics())
+
 
 def format_batches(
     block_iter: Iterator[Batch],
     batch_format: Optional[str],
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
+    metrics_collector: Optional[MetricsCollector] = None,
 ) -> Iterator[Batch]:
     """Given an iterator of blocks, returns an iterator of formatted batches.
 
@@ -160,16 +168,35 @@ def format_batches(
         block_iter: An iterator over blocks.
         batch_format: The batch format to use.
         stats: An optional stats object to record formatting times.
+        metrics_collector: Collector for batching metrics.
 
     Returns:
         An iterator over batch index and the formatted batch.
     """
+    from ray.data._internal.arrow_block import ArrowBlockAccessor
+    from ray.data._internal.pandas_block import PandasBlockAccessor
+    from ray.data._internal.simple_block import SimpleBlockAccessor
+
+    block_type_to_zero_copy_batch_formats = {
+        ArrowBlockAccessor: {"pyarrow"},
+        PandasBlockAccessor: {"pandas", "default"},
+        SimpleBlockAccessor: {"default"},
+    }
+
+    metrics = DataMungingMetrics()
     for batch in block_iter:
+        acc = BlockAccessor.for_block(batch.data)
         with stats.iter_format_batch_s.timer() if stats else nullcontext():
-            formatted_batch = BlockAccessor.for_block(batch.data).to_batch_format(
-                batch_format
-            )
+            formatted_batch = acc.to_batch_format(batch_format)
+        # Update formatting metrics.
+        metrics.num_format_conversions += 1
+        if batch_format not in block_type_to_zero_copy_batch_formats[type(acc)]:
+            metrics.num_rows_copied += acc.num_rows()
         yield Batch(batch.batch_idx, formatted_batch)
+
+    # Record formatting metrics.
+    if metrics_collector is not None:
+        metrics_collector.record_metrics(metrics)
 
 
 def collate(

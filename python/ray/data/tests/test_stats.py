@@ -69,8 +69,10 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': N, \
+'num_rows_concatenated': N}}
 """
                 )
             else:
@@ -100,8 +102,10 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': Z, \
+'num_rows_concatenated': Z}}
 """
                 )
             else:
@@ -131,8 +135,10 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': N, \
+'num_rows_concatenated': N}}
 
 Stage N Map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
@@ -141,8 +147,10 @@ Stage N Map: N/N blocks executed in T
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': Z, \
+'num_rows_concatenated': Z}}
 
 Dataset iterator time breakdown:
 * Total time user code is blocked: T
@@ -167,8 +175,10 @@ Dataset iterator time breakdown:
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': N, \
+'num_rows_concatenated': N}}
 
 Stage N Map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
@@ -177,8 +187,10 @@ Stage N Map: N/N blocks executed in T
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': Z, \
+'num_rows_concatenated': Z}}
 
 Dataset iterator time breakdown:
 * In ray.wait(): T
@@ -358,8 +370,10 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': Z, \
+'num_rows_concatenated': Z}}
 """
         )
     else:
@@ -394,8 +408,10 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': Z, \
+'num_rows_concatenated': Z}}
 
 Stage N Split: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
@@ -412,8 +428,10 @@ Stage N Map: N/N blocks executed in T
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': Z, \
+'num_rows_concatenated': Z}}
 """
             )
         else:
@@ -485,8 +503,10 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': N, \
+'num_rows_concatenated': N}}
 """
                 )
             else:
@@ -517,8 +537,10 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': N, \
+'num_rows_concatenated': N}}
 """
                 )
             else:
@@ -552,8 +574,10 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': Z, \
+'num_rows_concatenated': Z}}
 """
                 )
             else:
@@ -581,8 +605,10 @@ Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': N, \
+'num_rows_concatenated': N}}
 
 Stage N Map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
@@ -591,13 +617,17 @@ Stage N Map: N/N blocks executed in T
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': Z, \
+'num_rows_concatenated': Z}}
 
 == Pipeline Window N ==
 Stage N ReadRange->MapBatches(dummy_map_batches): [execution cached]
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': N, \
+'num_rows_concatenated': N}}
 
 Stage N Map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
@@ -606,13 +636,17 @@ Stage N Map: N/N blocks executed in T
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': Z, \
+'num_rows_concatenated': Z}}
 
 == Pipeline Window N ==
 Stage N ReadRange->MapBatches(dummy_map_batches): [execution cached]
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': N, \
+'num_rows_concatenated': N}}
 
 Stage N Map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
@@ -621,8 +655,10 @@ Stage N Map: N/N blocks executed in T
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': Z, \
+'num_rows_concatenated': Z}}
 
 ##### Overall Pipeline Time Breakdown #####
 * Time stalled waiting for next dataset: T min, T max, T mean, T total
@@ -741,8 +777,10 @@ Stage N ReadRange: N/N blocks executed in T
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': Z, 'num_format_conversions': Z, 'num_rows_sliced': Z, \
+'num_rows_concatenated': Z}}
 
 == Pipeline Window N ==
 Stage N ReadRange: N/N blocks executed in T
@@ -752,8 +790,10 @@ Stage N ReadRange: N/N blocks executed in T
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
-'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': Z, 'num_format_conversions': Z, 'num_rows_sliced': Z, \
+'num_rows_concatenated': Z}}
 
 ##### Overall Pipeline Time Breakdown #####
 * Time stalled waiting for next dataset: T min, T max, T mean, T total
@@ -969,8 +1009,10 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_dataset_context)
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: \
-{'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, 'obj_store_mem_peak': N}
+* Extra metrics: {'object_store_metrics': {'obj_store_mem_alloc': N, \
+'obj_store_mem_freed': N, 'obj_store_mem_peak': N}, 'data_munging_metrics': \
+{'num_rows_copied': N, 'num_format_conversions': Z, 'num_rows_sliced': Z, \
+'num_rows_concatenated': Z}}
 
 Dataset iterator time breakdown:
 * Total time user code is blocked: T

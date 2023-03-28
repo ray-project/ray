@@ -6,6 +6,7 @@ from ray.data.block import Block
 from ray.data._internal.compute import is_task_compute, CallableClass, get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
 from ray.data._internal.logical.interfaces import Rule, PhysicalPlan
+from ray.data._internal.metrics import MetricsCollector
 
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
@@ -147,10 +148,14 @@ class OperatorFusionRule(Rule):
         down_transform_fn = down_op.get_transformation_fn()
         up_transform_fn = up_op.get_transformation_fn()
 
-        def transform_fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
-            blocks = up_transform_fn(blocks, ctx)
+        def transform_fn(
+            blocks: Iterator[Block],
+            ctx: TaskContext,
+            metrics_collector: MetricsCollector,
+        ) -> Iterator[Block]:
+            blocks = up_transform_fn(blocks, ctx, metrics_collector)
             # TODO(Clark): Add zero-copy batching between transform functions.
-            return down_transform_fn(blocks, ctx)
+            return down_transform_fn(blocks, ctx, metrics_collector)
 
         # We take the downstream op's compute in case we're fusing upstream tasks with a
         # downstream actor pool (e.g. read->map).

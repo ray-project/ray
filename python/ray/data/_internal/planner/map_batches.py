@@ -3,6 +3,7 @@ from typing import Callable, Iterator, Optional
 
 from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.metrics import MetricsCollector
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data.block import BatchUDF, Block, DataBatch
 from ray.data.context import DEFAULT_BATCH_SIZE, DatasetContext
@@ -23,6 +24,7 @@ def generate_map_batches_fn(
     def fn(
         blocks: Iterator[Block],
         ctx: TaskContext,
+        metrics_collector: MetricsCollector,
         batch_fn: BatchUDF,
         *fn_args,
         **fn_kwargs,
@@ -92,6 +94,7 @@ def generate_map_batches_fn(
             batch_size=batch_size,
             batch_format=batch_format,
             ensure_copy=not zero_copy_batch and batch_size is not None,
+            metrics_collector=metrics_collector,
         )
 
         for batch in formatted_batch_iter:
@@ -101,5 +104,8 @@ def generate_map_batches_fn(
         output_buffer.finalize()
         if output_buffer.has_next():
             yield output_buffer.next()
+
+        if metrics_collector is not None:
+            metrics_collector.record_metrics(output_buffer.get_metrics())
 
     return fn
