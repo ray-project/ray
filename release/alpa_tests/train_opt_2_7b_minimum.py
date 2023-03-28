@@ -205,6 +205,57 @@ def group_texts(block_size, examples):
     return result
 
 
+def preprocess(tokenizer, dataset, data_args):
+    """Tokenize a single dataset.
+    """
+    text_column_name = (
+        "text" if "text" in dataset.column_names else dataset.column_names[0]
+    )
+
+    print("Tokenize dataset ...")
+    tokenized_dataset = dataset.map(
+        lambda row: tokenizer(row[text_column_name]),
+        # Note that with `batched=True`, this map processes BLOCK_SIZE
+        # of texts together, and throws away a remainder for each of
+        # those grouped texts.
+        batched=True,
+        num_proc=data_args.preprocessing_num_workers,
+        remove_columns=dataset.column_names,
+        load_from_cache_file=False,
+    )
+
+    print ("Build dataset ...")
+    block_size = min(data_args.block_size, tokenizer.model_max_length)
+    lm_dataset = tokenized_dataset.map(
+        functools.partial(group_texts, block_size),
+        batched=True,
+        num_proc=data_args.preprocessing_num_workers,
+        load_from_cache_file=False,
+    )
+
+    if data_args.max_train_samples > 0:
+        max_samples = min(len(dataset), data_args.max_train_samples)
+        lm_dataset = lm_dataset.select(range(max_samples))
+
+    return lm_dataset
+
+
+def build_datasets(tokenizer, data_args):
+    # TODO(jungong) : replace huggingface dataset with Ray dataset.
+    # Manually create train split.
+    dataset = load_dataset(
+        "text",
+        data_files={
+            "train": data_args.train_file,
+        },
+        keep_linebreaks=False,
+    )
+
+    train_dataset = preprocess(tokenizer, dataset["train"], data_args)
+
+    return train_dataset
+
+
 # Define gradient update step fn
 def train_step(state, batch):
     """Main training step function."""
@@ -258,52 +309,41 @@ def save_checkpoint(state, model, tokenizer, training_args):
     tokenizer.save_pretrained(training_args.output_dir)
 
 
-def build_dataset(data_args, tokenizer):
-    # TODO(jungong) : replace huggingface dataset with Ray dataset.
-    dataset = load_dataset(
-        "text",
-        data_files={
-            "train": data_args.train_file,
-        },
-        keep_linebreaks=False,
+def log_metrics(
+        config,
+        epochs,
+        metrics_to_report,
+        batch,
+        latency,
+        epoch,
+        step,
+        train_metric
+    ):
+    """Log metrics to stdout."""
+    throughput_tokens = np.prod(batch["input_ids"].shape) / latency
+    throughput_tflops = alpa.util.compute_gpt_tflops(
+        batch_size=batch["input_ids"].shape[0],
+        seq_len=batch["input_ids"].shape[1],
+        num_layers=config.num_hidden_layers,
+        hidden_size=config.hidden_size,
+        vocab_size=config.vocab_size,
+        num_gpus=alpa.get_global_num_devices(),
+        latency=latency,
     )
 
-    # Preprocessing the datasets.
-    # First we tokenize all the texts.
-    column_names = dataset["train"].column_names
-    text_column_name = "text" if "text" in column_names else column_names[0]
+    train_metric = jax.tree_map(np.mean, train_metric)
 
-    def tokenize_function(examples):
-        return tokenizer(examples[text_column_name])
+    # Metrics we report from the release test.
+    metrics_to_report["tokens"].append(throughput_tokens)
+    metrics_to_report["tflops"].append(throughput_tflops)
 
-    logger.info("***** Tokenize dataset *****")
-    tokenized_datasets = dataset.map(
-        tokenize_function,
-        batched=True,
-        num_proc=data_args.preprocessing_num_workers,
-        remove_columns=column_names,
-        load_from_cache_file=False,
+    epochs.write(
+        f"Epoch: {epoch} | "
+        f"Step: {step} | "
+        f"Loss: {train_metric['loss'].mean():.4f}, "
+        f"Throughput: {throughput_tokens:.2f} token/s, "
+        f"{throughput_tflops:.2f} TFLOP/s"
     )
-
-    block_size = min(data_args.block_size, tokenizer.model_max_length)
-
-    # Note that with `batched=True`, this map processes 1,000 texts together,
-    # so group_texts throws away a remainder for each of those groups of 1,000 texts.
-    # You can adjust that batch_size here but a higher value if preprocess is slow.
-
-    logger.info("***** Build dataset *****")
-    lm_datasets = tokenized_datasets.map(
-        functools.partial(group_texts, block_size),
-        batched=True,
-        num_proc=data_args.preprocessing_num_workers,
-        load_from_cache_file=False,
-    )
-    train_dataset = lm_datasets["train"]
-    if data_args.max_train_samples is not None:
-        max_train_samples = min(len(train_dataset), data_args.max_train_samples)
-        train_dataset = train_dataset.select(range(max_train_samples))
-
-    return train_dataset
 
 
 def save_json_metrics(metrics):
@@ -372,7 +412,7 @@ def main():
     )
 
     # Training dataset.
-    train_dataset = build_dataset(data_args, tokenizer)
+    train_dataset = build_datasets(tokenizer, data_args)
 
     # Adjust batch size and num_micro_batches for small datasets
     num_devices = alpa.get_global_num_devices()
@@ -390,10 +430,6 @@ def main():
         optax.clip_by_global_norm(1.0),
         optax.adamw(learning_rate=training_args.learning_rate),
     )
-
-    # Fix a bug in huggingface's transformers implementation
-    # (https://github.com/huggingface/transformers/pull/18462)
-    alpa.global_config.flax_always_use_fp16_embedding = True
 
     # Setup train state
     state = TrainState.create(
@@ -427,13 +463,10 @@ def main():
     logger.info(f"  Total optimization steps = {total_train_steps}")
     logger.info(f"  NCCL mode = {global_config.nccl_mode}")
 
-    train_time = 0
-    train_metrics = []
-    epochs = tqdm(range(num_epochs), desc="Epoch ... ", position=0)
-
     step_ct = 0
-    last_time = time.time()
+    last_time = 0
 
+    epochs = tqdm(range(num_epochs), desc="Epoch ... ", position=0)
     epochs.write("Initial compilation. This might take some minutes...")
 
     # Track and report throughput per iteration. These are the metrics we
@@ -443,12 +476,10 @@ def main():
         "tflops": [],
     }
     for epoch in epochs:
-        train_start = time.time()
-
         # Generate an epoch by shuffling sampling indices from the train dataset
         train_loader = data_loader(train_dataset, train_batch_size, shuffle=True)
-        steps_per_epoch = len(train_dataset) // train_batch_size
 
+        last_time = time.time()
         for step in tqdm(
             range(steps_per_epoch), desc="Training...", position=1, leave=False
         ):
@@ -457,41 +488,19 @@ def main():
                 batch["attention_mask"].cumsum(axis=1) * batch["attention_mask"]
             ) - 1
             state, train_metric = p_train_step(state, batch)
-            train_metrics.append(train_metric)
 
-            cur_step = epoch * (len(train_dataset) // train_batch_size) + step
+            cur_step = epoch * steps_per_epoch + step
 
             step_ct += 1
             if cur_step % training_args.logging_steps == 0 and cur_step > 0:
                 latency = (time.time() - last_time) / step_ct
-                throughput_tokens = np.prod(batch["input_ids"].shape) / latency
-                throughput_tflops = alpa.util.compute_gpt_tflops(
-                    batch_size=batch["input_ids"].shape[0],
-                    seq_len=batch["input_ids"].shape[1],
-                    num_layers=config.num_hidden_layers,
-                    hidden_size=config.hidden_size,
-                    vocab_size=config.vocab_size,
-                    num_gpus=alpa.get_global_num_devices(),
-                    latency=latency,
+
+                log_metrics(
+                    config, epochs, metrics_to_report, batch,
+                    latency, epoch, cur_step, train_metric
                 )
+
                 step_ct = 0
-
-                # Save metrics
-                train_time += time.time() - train_start
-                train_metric = jax.tree_map(np.mean, train_metric)
-
-                # Metrics we report from the release test.
-                metrics_to_report["tokens"].append(throughput_tokens)
-                metrics_to_report["tflops"].append(throughput_tflops)
-
-                epochs.write(
-                    f"Step... {cur_step} | "
-                    f"Loss: {train_metric['loss'].mean():.4f}, "
-                    f"Throughput: {throughput_tokens:.2f} token/s, "
-                    f"{throughput_tflops:.2f} TFLOP/s"
-                )
-
-                train_metrics = []
                 last_time = time.time()
 
             if cur_step % training_args.save_steps == 0 and cur_step > 0:
