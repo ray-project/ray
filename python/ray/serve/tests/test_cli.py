@@ -287,7 +287,7 @@ def test_deploy_duplicate_apps(ray_start_stop):
         subprocess.check_output(
             ["serve", "deploy", config_file], stderr=subprocess.STDOUT
         )
-        assert "ValidationError" in e.output
+    assert "ValidationError" in e.value.output.decode("utf-8")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -304,7 +304,41 @@ def test_deploy_duplicate_routes(ray_start_stop):
         subprocess.check_output(
             ["serve", "deploy", config_file], stderr=subprocess.STDOUT
         )
-        assert "ValidationError" in e.output
+    assert "ValidationError" in e.value.output.decode("utf-8")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_bad_config1(ray_start_stop):
+    """Deploy a bad config with field applications, should try to parse as v2 config."""
+
+    config_file = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "bad_multi_config.yaml"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(
+            ["serve", "deploy", config_file], stderr=subprocess.STDOUT
+        )
+    assert "ValidationError" in e.value.output.decode("utf-8")
+    assert "ServeDeploySchema" in e.value.output.decode("utf-8")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_bad_config2(ray_start_stop):
+    """
+    Deploy a bad config without field applications, should try to parse as v1 config.
+    """
+
+    config_file = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "bad_single_config.yaml"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(
+            ["serve", "deploy", config_file], stderr=subprocess.STDOUT
+        )
+    assert "ValidationError" in e.value.output.decode("utf-8")
+    assert "ServeApplicationSchema" in e.value.output.decode("utf-8")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
