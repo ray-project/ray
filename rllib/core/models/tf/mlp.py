@@ -1,7 +1,7 @@
 from typing import Union
 
 from ray.rllib.core.models.base import Model
-from ray.rllib.core.models.base import ModelConfig
+from ray.rllib.core.models.configs import FreeLogStdMLPHeadConfig, MLPHeadConfig
 from ray.rllib.core.models.tf.primitives import TfMLP, TfModel
 from ray.rllib.models.specs.specs_base import Spec
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
@@ -12,14 +12,15 @@ tf1, tf, tfv = try_import_tf()
 
 
 class TfMLPHead(TfModel):
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(self, config: MLPHeadConfig) -> None:
         TfModel.__init__(self, config)
 
         self.net = TfMLP(
             input_dim=config.input_dims[0],
             hidden_layer_dims=config.hidden_layer_dims,
-            output_dim=config.output_dims[0],
             hidden_layer_activation=config.hidden_layer_activation,
+            hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
+            output_dim=config.output_dims[0],
             output_activation=config.output_activation,
         )
 
@@ -39,7 +40,7 @@ class TfMLPHead(TfModel):
 class TfFreeLogStdMLPHead(TfModel):
     """An MLPHead that implements floating log stds for Gaussian distributions."""
 
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(self, config: FreeLogStdMLPHeadConfig) -> None:
         mlp_head_config = config.mlp_head_config
 
         TfModel.__init__(self, mlp_head_config)
@@ -52,8 +53,9 @@ class TfFreeLogStdMLPHead(TfModel):
         self.net = TfMLP(
             input_dim=mlp_head_config.input_dims[0],
             hidden_layer_dims=mlp_head_config.hidden_layer_dims,
-            output_dim=self._half_output_dim,
             hidden_layer_activation=mlp_head_config.hidden_layer_activation,
+            hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
+            output_dim=self._half_output_dim,
             output_activation=mlp_head_config.output_activation,
         )
 

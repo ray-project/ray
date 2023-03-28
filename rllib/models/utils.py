@@ -104,6 +104,11 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
 
             return Swish
         _, nn = try_import_torch()
+
+        fn = getattr(nn, name, None)
+        if fn is not None:
+            return fn
+
         if name == "relu":
             return nn.ReLU
         elif name == "tanh":

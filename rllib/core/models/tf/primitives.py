@@ -1,5 +1,5 @@
 import abc
-from typing import List
+from typing import Callable, List
 
 from ray.rllib.core.models.base import Model, ModelConfig
 from ray.rllib.models.specs.checker import (
@@ -65,20 +65,27 @@ class TfMLP(tf.keras.Model):
     Attributes:
         input_dim: The input dimension of the network. It cannot be None.
         hidden_layer_dims: The sizes of the hidden layers.
-        output_dim: The output dimension of the network.
         hidden_layer_activation: The activation function to use after each layer.
-            Currently "Linear" (no activation) and "ReLU" are supported.
+            Either a tf.nn.[activation fn] callable or a string that's supported by
+            tf.keras.layers.Activation(activation=...), e.g. "relu", "ReLU", "silu",
+            or "linear".
+        hidden_layer_use_layernorm: Whether to insert a LayerNorm functionality
+            in between each hidden layers' outputs and their activations.
+        output_dim: The output dimension of the network.
         output_activation: The activation function to use for the output layer.
     """
 
     def __init__(
         self,
+        *,
         input_dim: int,
         hidden_layer_dims: List[int],
+        hidden_layer_activation: Union[str, Callable] = "linear",
+        hidden_layer_use_layernorm: bool = False,
         output_dim: int,
-        hidden_layer_activation: str = "linear",
-        output_activation: str = "linear",
+        output_activation: Union[str, Callable] = "linear",
     ):
+        """Initialize a TfMLP object."""
         super().__init__()
 
         assert input_dim is not None, "Input dimension must not be None"
@@ -88,11 +95,21 @@ class TfMLP(tf.keras.Model):
         # input = tf.keras.layers.Dense(input_dim, activation=activation)
         layers.append(tf.keras.Input(shape=(input_dim,)))
         for i in range(len(hidden_layer_dims)):
+            # Dense layer with activation (or w/o in case we use LayerNorm, in which
+            # case the activation is applied after the layer normalization step).
             layers.append(
                 tf.keras.layers.Dense(
-                    hidden_layer_dims[i], activation=hidden_layer_activation
+                    hidden_layer_dims[i], activation=(
+                        hidden_layer_activation if not hidden_layer_use_layernorm
+                        else None
+                    )
                 )
             )
+            # Add LayerNorm and activation.
+            if hidden_layer_use_layernorm:
+                layers.append(tf.keras.layers.LayerNorm())
+                layers.append(tf.keras.layers.Activation(hidden_layer_activation))
+
         if output_activation != "linear":
             output_activation = get_activation_fn(output_activation, framework="tf2")
             final_layer = tf.keras.layers.Dense(

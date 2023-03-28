@@ -71,7 +71,7 @@ class MLPHeadConfig(ModelConfig):
     The configured MLP encodes 1D-observations into a latent space.
     The stack of layers is composed of a sequence of linear layers. The first layer
     has `input_dims` inputs and the last layer has `output_dims` outputs. The number of
-    units inbetween is determined by `hidden_layer_dims`. If `hidden_layer_dims` is
+    units in between is determined by `hidden_layer_dims`. If `hidden_layer_dims` is
     None, there is only one linear layer with `input_dims` inputs and `output_dims`
     outputs. Each layer is followed by an activation function as per this config.
     See ModelConfig for usage details.
@@ -92,15 +92,33 @@ class MLPHeadConfig(ModelConfig):
         ReLU()
         Linear(8, 2)
 
+    Example:
+
+        Configuration:
+        input_dims = [2]
+        hidden_layer_dims = [10]
+        hidden_layer_activation = "silu"
+        hidden_layer_use_layernorm = True
+        output_dims = [2]
+
+        Resulting stack in pseudocode:
+        Linear(2, 10)
+        LayerNorm()
+        SiLU()
+        Linear(10, 2)
+
     Attributes:
         hidden_layer_dims: The sizes of the hidden layers.
         hidden_layer_activation: The activation function to use after each layer (
             except for the output).
+        hidden_layer_use_layernorm: Whether to insert a LayerNorm functionality
+            in between each hidden layers' outputs and their activations.
         output_activation: The activation function to use for the output layer.
     """
 
     hidden_layer_dims: List[int] = field(default_factory=lambda: [256, 256])
     hidden_layer_activation: str = "relu"
+    hidden_layer_use_layernorm: bool = False
     output_activation: str = "linear"
 
     def _validate(self, framework: str = "torch"):
