@@ -7,7 +7,7 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 from ray.air.constants import MAX_REPR_LENGTH
-from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
+from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
@@ -43,7 +43,9 @@ def test_repr(tmpdir):
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
 def test_predict(tmpdir, ray_start_runtime_env, batch_type):
-    dtype_prompts = convert_pandas_to_batch_type(prompts, type=TYPE_TO_ENUM[batch_type])
+    dtype_prompts = _convert_pandas_to_batch_type(
+        prompts, type=TYPE_TO_ENUM[batch_type]
+    )
 
     @ray.remote
     def test(use_preprocessor):
