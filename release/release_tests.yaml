@@ -1587,7 +1587,7 @@
       env: gce
       cluster:
         cluster_env: app_config.yaml
-        cluster_compute: tpl_gce_20x2.yaml
+        cluster_compute: tpl_gce_100x2.yaml
 
 - name: tune_scalability_result_throughput_cluster
   group: Tune scalability tests
@@ -2114,6 +2114,11 @@
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_c5_gce.yaml
+      run:
+        timeout: 86400
+        script: python workloads/serve_failure.py
+        long_running: true
+        type: anyscale_job
 
 - name: long_running_many_jobs
   group: Long running tests
