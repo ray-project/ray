@@ -616,10 +616,17 @@ async def download_and_unpack_package(
         IOError: If the download fails.
         ImportError: If smart_open is not installed and a remote URI is used.
         NotImplementedError: If the protocol of the URI is not supported.
-        ValueError: If the GCS client is not provided when downloading from GCS.
+        ValueError: If the GCS client is not provided when downloading from GCS,
+                    or if package URI is invalid.
 
     """
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
+    if pkg_file.suffix == "":
+        raise ValueError(
+            f"Invalid package URI: {pkg_uri}."
+            "URI must have a file extension and the URI must be valid."
+        )
+
     async with _AsyncFileLock(str(pkg_file) + ".lock"):
         if logger is None:
             logger = default_logger

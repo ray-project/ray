@@ -658,6 +658,23 @@ class TestDownloadAndUnpackPackage:
 
         assert f"{protocol.name} is not supported" in str(excinfo.value)
 
+    @pytest.mark.parametrize(
+        "invalid_pkg_uri",
+        [
+            "gcs://gcs-cannot-have-a-folder/my-zipfile.zip",
+            "s3://file-wihout-file-extension",
+        ],
+    )
+    async def test_download_and_unpack_package_with_invalid_uri(
+        self, invalid_pkg_uri: str
+    ):
+        with pytest.raises(ValueError) as excinfo:
+            await download_and_unpack_package(
+                pkg_uri=invalid_pkg_uri, base_directory="/tmp"
+            )
+
+        assert "Invalid package URI" in str(excinfo.value)
+
 
 def test_get_gitignore(tmp_path):
     gitignore_path = tmp_path / ".gitignore"
