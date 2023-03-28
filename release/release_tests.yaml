@@ -2206,7 +2206,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: compute_tpl_gce_4_xlarge.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_basic_remote_working_dir
   group: Jobs tests
