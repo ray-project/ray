@@ -189,6 +189,7 @@ The multi-application config format `ServeDeploySchema` is easy to migrate to fr
 * Copy the entire old config to an entry under the `applications` field.
 * Remove `host` and `port` from the entry and move it under the `http_options` field.
 * Name the application.
+* If you haven't already, set the application-level `route_prefix` to the route prefix of the ingress deployment in the application.
 * When needed, add more applications!
 
 For more details on the multi-application config format, see the documentation for [`ServeDeploySchema`](serve-rest-api-config-schema).
