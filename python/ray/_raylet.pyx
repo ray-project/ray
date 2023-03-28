@@ -1499,40 +1499,37 @@ cdef class EmptyProfileEvent:
 cdef class GcsClient:
     """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
     cdef:
-        shared_ptr[CGcsClient] inner
+        shared_ptr[CGcsSyncClient] inner
 
     def __cinit__(self, address):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
-        self.inner.reset(new CGcsClient(dereference(gcs_options.native())))
+        self.inner.reset(new CGcsSyncClient(dereference(gcs_options.native())))
+        self.connect()
 
     def connect(self):
         check_status(self.inner.get().Connect())
 
-    @staticmethod
-    cdef wrap(const shared_ptr[CGcsClient]& client):
-        cdef GcsClient self = GcsClient.__new__(GcsClient)
-        self.inner = client
-        return self
-
-    def internal_kv_get(self, bytes key, bytes namespace, timeout):
+    def internal_kv_get(self, bytes key, bytes namespace, timeout=None):
         cdef:
             c_string value
-        check_status(self.inner.get().InternalKV().Get(namespace, key, value))
+        check_status(self.inner.get().InternalKVGet(namespace, key, value))
 
         return value
 
     def internal_kv_put(self, bytes key, bytes value, overwrite: bool = False, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace if namespace else b""
-            c_bool added
-        check_status(self.inner.get().InternalKV().Put(ns, key, value, overwrite, added))
+            int num_added
+        check_status(self.inner.get().InternalKVPut(ns, key, value, overwrite, num_added))
+
+        return num_added
 
     def internal_kv_keys(self, bytes prefix, bytes namespace, timeout):
         cdef:
             c_vector[c_string] keys
             c_string key
 
-        check_status(self.inner.get().InternalKV().Keys(namespace, prefix, keys))
+        check_status(self.inner.get().InternalKVKeys(namespace, prefix, keys))
 
         result = []
 
@@ -1602,8 +1599,6 @@ cdef class CoreWorker:
         options.session_name = session_name
         options.entrypoint = entrypoint
         CCoreWorkerProcess.Initialize(options)
-
-        self.gcs_client = GcsClient.wrap(CCoreWorkerProcess.GetCoreWorker().GetGcsClient())
 
         self.cgname_to_eventloop_dict = None
         self.fd_to_cgname_dict = None

@@ -186,6 +186,21 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   instrumented_io_context io_service_;
 };
 
+class RAY_EXPORT GcsSyncClient {
+public:
+  explicit GcsSyncClient(const GcsClientOptions &options);
+  Status Connect();
+
+  Status InternalKVGet(const std::string &ns, const std::string &key, std::string &value);
+  Status InternalKVPut(const std::string &ns, const std::string &key, const std::string &value, bool overwrite, int &added_num);
+  Status InternalKVKeys(const std::string &ns, const std::string &prefix, std::vector<std::string> &value);
+
+private:
+  GcsClientOptions options_;
+  std::unique_ptr<rpc::InternalKVGcsService::Stub> kv_stub_;
+  std::shared_ptr<grpc::Channel> channel_;
+};
+
 }  // namespace gcs
 
 }  // namespace ray

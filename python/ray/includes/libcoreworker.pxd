@@ -37,7 +37,6 @@ from ray.includes.common cimport (
     CTaskType,
     CWorkerType,
     CLanguage,
-    CGcsClient,
     CGcsClientOptions,
     LocalMemoryBuffer,
     CJobConfig,
@@ -237,7 +236,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string MemoryUsageString()
 
         CWorkerContext &GetWorkerContext()
-        shared_ptr[CGcsClient] GetGcsClient()
         void YieldCurrentFiber(CFiberEvent &coroutine_done)
 
         unordered_map[CObjectID, pair[size_t, size_t]] GetAllReferenceCounts()

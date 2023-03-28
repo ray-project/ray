@@ -142,5 +142,81 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
   return gcs_rpc_client_->GetAddress();
 }
 
+GcsSyncClient::GcsSyncClient(const GcsClientOptions &options) : options_(options) {}
+
+Status GcsSyncClient::Connect() {
+  grpc::ChannelArguments arguments = CreateDefaultChannelArguments();
+  arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
+                   ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
+  arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
+                   ::RayConfig::instance().gcs_grpc_min_reconnect_backoff_ms());
+  arguments.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS,
+                   ::RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
+  channel_ = rpc::BuildChannel(options_.gcs_address_, options_.gcs_port_, arguments);
+  auto deadline =
+        std::chrono::system_clock::now() +
+        std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s());
+  if (!channel_->WaitForConnected(deadline)) {
+    RAY_LOG(ERROR) << "Failed to connect to GCS at address " << options_.gcs_address_ << ":" << options_.gcs_port_
+                   << " within "
+                   << ::RayConfig::instance().gcs_rpc_server_connect_timeout_s()
+                   << " seconds.";
+  }
+  kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
+  return Status::OK();
+}
+
+Status GcsSyncClient::InternalKVGet(const std::string &ns, const std::string &key, std::string &value) {
+  grpc::ClientContext context;
+
+  rpc::InternalKVGetRequest request;
+  request.set_namespace_(ns);
+  request.set_key(key);
+
+  rpc::InternalKVGetReply reply;
+
+  grpc::Status status = kv_stub_->InternalKVGet(&context, request, &reply);
+  if (status.ok()) {
+    if (reply.status().code() == (int)StatusCode::NotFound) {
+      value = "";
+    } else {
+      value = reply.value();
+    }
+    return Status::OK();
+  }
+  // TODO: Convert to appropriate error
+  return Status::UnknownError(status.error_message());
+}
+
+Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &key, const std::string &value, bool overwrite, int &added_num) {
+  grpc::ClientContext context;
+
+  rpc::InternalKVPutRequest request;
+  request.set_namespace_(ns);
+  request.set_key(key);
+  request.set_value(value);
+  request.set_overwrite(overwrite);
+
+  rpc::InternalKVPutReply reply;
+
+  grpc::Status status = kv_stub_->InternalKVPut(&context, request, &reply);
+  if (status.ok()) {
+    if (reply.status().code() == (int)StatusCode::OK) {
+      added_num = reply.added_num();
+      return Status::OK();
+    }
+    return Status::UnknownError("error");
+  }
+  // TODO: Convert to appropriate error
+  return Status::UnknownError(status.error_message());
+}
+
+Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &prefix, std::vector<std::string> &value) {
+  grpc::ClientContext context;
+
+
+  return Status::OK();
+}
+
 }  // namespace gcs
 }  // namespace ray

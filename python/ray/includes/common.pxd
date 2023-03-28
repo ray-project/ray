@@ -303,26 +303,18 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const c_string &GetSpilledURL() const
         const CNodeID &GetSpilledNodeID() const
 
-cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
-
-    cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
-
-        CRayStatus Get(const c_string &ns, const c_string &key, c_string &value)
-
-        CRayStatus Put(const c_string &ns, const c_string &key, const c_string &value, c_bool overwrite, c_bool &added)
-
-        CRayStatus Keys(const c_string &ns, const c_string &prefix, c_vector[c_string] &value)
-
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &gcs_address)
 
-    cdef cppclass CGcsClient "ray::gcs::GcsClient":
-        CGcsClient(const CGcsClientOptions &options)
+    cdef cppclass CGcsSyncClient "ray::gcs::GcsSyncClient":
+        CGcsSyncClient(const CGcsClientOptions &options)
 
         CRayStatus Connect()
 
-        CInternalKVAccessor &InternalKV()
+        CRayStatus InternalKVGet(const c_string &ns, const c_string &key, c_string &value)
+        CRayStatus InternalKVPut(const c_string &ns, const c_string &key, const c_string &value, c_bool overwrite, c_bool &added);
+        CRayStatus InternalKVKeys(const c_string &ns, const c_string &prefix, c_vector[c_string] &value);
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":

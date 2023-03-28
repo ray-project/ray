@@ -1972,11 +1972,11 @@ def connect(
     ray._private.state.state._initialize_global_state(
         ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
     )
-    worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
-    worker.gcs_error_subscriber = GcsErrorSubscriber(address=worker.gcs_client.address)
-    worker.gcs_log_subscriber = GcsLogSubscriber(address=worker.gcs_client.address)
+    worker.gcs_publisher = GcsPublisher(address=node.address)
+    worker.gcs_error_subscriber = GcsErrorSubscriber(address=node.address)
+    worker.gcs_log_subscriber = GcsLogSubscriber(address=node.address)
     worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
-        address=worker.gcs_client.address
+        address=node.address
     )
 
     # Initialize some fields.
