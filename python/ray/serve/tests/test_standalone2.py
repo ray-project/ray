@@ -413,8 +413,6 @@ def test_controller_recover_and_delete(shutdown_ray):
     ray.shutdown()
 
 
-'''
-
 class TestDeployApp:
     @pytest.fixture(scope="function")
     def client(self):
@@ -1416,6 +1414,7 @@ class TestServeRequestProcessingTimeoutS:
         serve.shutdown()
 
 
+'''
 @pytest.mark.parametrize(
     "ray_instance",
     [
