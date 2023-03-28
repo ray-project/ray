@@ -150,7 +150,7 @@ Declaratively deploys a list of Serve applications. Starts Serve on the Ray clus
 **Example Request**:
 
 ```http
-PUT /api/serve/deployments/ HTTP/1.1
+PUT /api/serve/applications/ HTTP/1.1
 Host: http://localhost:52365/
 Accept: application/json
 Content-Type: application/json
@@ -204,7 +204,7 @@ Content-Type: application/json
 Gets cluster-level info and comprehensive details on all Serve applications deployed on the Ray cluster. See the [metadata schema](serve-rest-api-response-schema) for the response's JSON schema.
 
 ```http
-GET /api/serve/deployments/ HTTP/1.1
+GET /api/serve/applications/ HTTP/1.1
 Host: http://localhost:52365/
 Accept: application/json
 ```
@@ -294,7 +294,7 @@ Content-Type: application/json
 ```
 
 (serve-rest-api-response-schema)=
-## Serve GET response schema
+## Serve response schemas
 
 ### V1 REST API
 ```{eval-rst}
