@@ -463,6 +463,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 @PublicAPI(stability="alpha")
 class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
     """Options to start the HTTP Proxy with."""
+
     host: str = Field(
         default="0.0.0.0",
         description=(
