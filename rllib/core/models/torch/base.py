@@ -1,7 +1,11 @@
 import abc
 from typing import Union
 
-from ray.rllib.core.models.base import Model, ModelConfig
+from ray.rllib.core.models.base import (
+    Model,
+    ModelConfig,
+    _raise_not_decorated_exception,
+)
 from ray.rllib.core.models.torch.primitives import nn
 from ray.rllib.models.specs.checker import (
     is_input_decorated,
@@ -11,13 +15,6 @@ from ray.rllib.models.specs.checker import (
 )
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
-
-
-def _raise_not_decorated_exception(input_or_output):
-    raise ValueError(
-        f"`TorchModel.forward()` not decorated with {input_or_output} specification. "
-        f"Decorate it with @check_{input_or_output}_specs() to define a specification."
-    )
 
 
 class TorchModel(nn.Module, Model, abc.ABC):
@@ -73,9 +70,9 @@ class TorchModel(nn.Module, Model, abc.ABC):
 
         # Raise errors if forward method is not decorated to check specs.
         if not is_input_decorated(self.forward):
-            _raise_not_decorated_exception("input")
+            _raise_not_decorated_exception(type(self).__name__, "input")
         if not is_output_decorated(self.forward):
-            _raise_not_decorated_exception("output")
+            _raise_not_decorated_exception(type(self).__name__, "output")
 
     @check_input_specs("input_spec")
     @check_output_specs("output_spec")

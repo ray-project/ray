@@ -60,10 +60,10 @@ class TestTorchCNNEncoder(unittest.TestCase):
 
             config = CNNEncoderConfig(
                 input_dims=inputs_dims,
-                filter_specifiers=filter_specifiers,
-                filter_layer_activation=filter_layer_activation,
-                output_activation=output_activation,
+                cnn_filter_specifiers=filter_specifiers,
+                cnn_activation=filter_layer_activation,
                 output_dims=output_dims,
+                output_activation=output_activation,
             )
 
             model = config.build(framework="torch")

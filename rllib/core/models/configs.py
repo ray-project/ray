@@ -244,26 +244,32 @@ class CNNEncoderConfig(ModelConfig):
     """
 
     input_dims: Union[List[int], Tuple[int]] = None
-    filter_specifiers: List[List[Union[int, List[int]]]] = field(
+    cnn_filter_specifiers: List[List[Union[int, List[int]]]] = field(
         default_factory=lambda: [[16, [4, 4], 2], [32, [4, 4], 2], [64, [8, 8], 2]]
     )
-    filter_layer_activation: str = "relu"
+    cnn_activation: str = "relu"
+    cnn_use_layernorm: bool = False
     output_activation: str = "linear"
 
-    @_framework_implemented(tf2=False)
+    @_framework_implemented
     def build(self, framework: str = "torch") -> Model:
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(
             self.output_activation, framework
         )
         self.filter_layer_activation = _convert_to_lower_case_if_tf(
-            self.filter_layer_activation, framework
+            self.cnn_activation, framework
         )
 
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchCNNEncoder
 
             return TorchCNNEncoder(self)
+
+        elif framework == "tf2":
+            from ray.rllib.core.models.tf.encoder import TfCNNEncoder
+
+            return TfCNNEncoder(self)
 
 
 @ExperimentalAPI

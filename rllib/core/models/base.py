@@ -20,6 +20,13 @@ ACTOR: str = "actor"
 CRITIC: str = "critic"
 
 
+def _raise_not_decorated_exception(class_, input_or_output):
+    raise ValueError(
+        f"`{class_}.forward()` not decorated with {input_or_output} specification. "
+        f"Decorate it with @check_{input_or_output}_specs() to define a specification."
+    )
+
+
 @ExperimentalAPI
 @dataclass
 class ModelConfig(abc.ABC):

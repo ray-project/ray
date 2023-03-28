@@ -2,7 +2,8 @@ from typing import Union
 
 from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import FreeLogStdMLPHeadConfig, MLPHeadConfig
-from ray.rllib.core.models.tf.primitives import TfMLP, TfModel
+from ray.rllib.core.models.tf.base import TfModel
+from ray.rllib.core.models.tf.primitives import TfMLP
 from ray.rllib.models.specs.specs_base import Spec
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.utils import try_import_tf

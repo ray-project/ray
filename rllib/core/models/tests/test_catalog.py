@@ -9,18 +9,22 @@ import tree
 from gymnasium.spaces import Box, Discrete, Dict, Tuple, MultiDiscrete
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.core.models.base import ModelConfig, Encoder
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.models.base import STATE_IN, ENCODER_OUT, STATE_OUT
-from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core.models.base import (
+    ModelConfig,
+    Encoder,
+    STATE_IN,
+    ENCODER_OUT,
+    STATE_OUT,
+)
 from ray.rllib.core.models.catalog import (
     Catalog,
     _multi_action_dist_partial_helper,
     _multi_categorical_dist_partial_helper,
 )
+from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
+from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.tf.tf_distributions import (
@@ -36,8 +40,8 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchMultiDistribution,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor

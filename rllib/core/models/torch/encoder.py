@@ -81,7 +81,7 @@ class TorchCNNEncoder(TorchModel, Encoder):
             input_dims=config.input_dims,
             filter_specifiers=config.filter_specifiers,
             filter_layer_activation=config.filter_layer_activation,
-            output_activation=config.filter_layer_activation,
+            output_activation=output_activation,
         )
         layers.append(cnn)
 
