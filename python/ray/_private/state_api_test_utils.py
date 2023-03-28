@@ -8,7 +8,7 @@ import numpy as np
 import pprint
 import time
 import traceback
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 from ray.experimental.state.api import list_tasks
 import ray
 from ray.actor import ActorHandle
@@ -361,4 +361,55 @@ def verify_failed_task(
         error_message = [error_message]
     for msg in error_message:
         assert msg in t.get("error_message", None), t
+    return True
+
+
+@ray.remote
+class PidActor:
+    def __init__(self):
+        self.name_to_pid = {}
+
+    def get_pids(self):
+        return self.name_to_pid
+
+    def report_pid(self, name, pid, state=None):
+        self.name_to_pid[name] = (pid, state)
+
+
+def verify_tasks_running_or_terminated(task_pids: Dict[str, Tuple[int, Optional[str]]]):
+    """
+    Check if the tasks in task_pids are in RUNNING state if pid exists
+    and running the task.
+    If the pid is missing or the task is not running the task, check if the task
+    is marked FAILED or FINISHED.
+
+    Args:
+        task_pids: A dict of task name to (pid, expected terminal state).
+
+    """
+    import psutil
+
+    print(task_pids)
+    for task_name, pid_and_state in task_pids.items():
+        tasks = list_tasks(detail=True, filters=[("name", "=", task_name)])
+        assert len(tasks) > 0, (
+            f"{task_name} not found. Make sure use `options(name=<task_name>)` "
+            "when creating the task."
+        )
+        task = tasks[0]
+        pid, expected_state = pid_and_state
+        if psutil.pid_exists(pid) and task_name in psutil.Process(pid).name():
+            assert (
+                "ray::IDLE" not in task["name"]
+            ), "One should not name it 'IDLE' since it's reserved in Ray"
+            assert task["state"] == "RUNNING", task
+            if expected_state is not None:
+                assert task["state"] == expected_state, task
+        else:
+            # Tasks no longer running.
+            if expected_state is None:
+                assert task["state"] in ["FAILED", "FINISHED"]
+            else:
+                assert task["state"] == expected_state, task
+
     return True

@@ -91,6 +91,9 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
 
 absl::optional<TaskAttempt> GcsTaskManager::GcsTaskManagerStorage::GetLatestTaskAttempt(
     const TaskID &task_id) const {
+  if (task_id.IsNil()) {
+    return absl::nullopt;
+  }
   auto task_attempts_itr = task_to_task_attempt_index_.find(task_id);
   if (task_attempts_itr == task_to_task_attempt_index_.end()) {
     // No task attempt for the task yet. This could happen if a task has not been stored
@@ -108,6 +111,15 @@ absl::optional<TaskAttempt> GcsTaskManager::GcsTaskManagerStorage::GetLatestTask
     return absl::nullopt;
   }
   return latest_task_attempt;
+}
+
+absl::optional<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetLatestTaskEvent(
+    const TaskID &task_id) const {
+  auto latest_task_attempt = GetLatestTaskAttempt(task_id);
+  if (!latest_task_attempt.has_value()) {
+    return absl::nullopt;
+  }
+  return GetTaskEvent(latest_task_attempt.value());
 }
 
 rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
@@ -131,12 +143,16 @@ const rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailed(
-    const TaskAttempt &task_attempt, int64_t failed_ts) {
+    const TaskAttempt &task_attempt,
+    int64_t failed_ts,
+    const rpc::RayErrorInfo &error_info) {
   auto &task_event = GetTaskEvent(task_attempt);
   if (!task_event.has_state_updates()) {
     return;
   }
-  task_event.mutable_state_updates()->set_failed_ts(failed_ts);
+  auto state_updates = task_event.mutable_state_updates();
+  state_updates->set_failed_ts(failed_ts);
+  state_updates->mutable_error_info()->CopyFrom(error_info);
 }
 
 bool GcsTaskManager::GcsTaskManagerStorage::IsTaskTerminated(
@@ -159,61 +175,120 @@ absl::optional<int64_t> GcsTaskManager::GcsTaskManagerStorage::GetTaskStatusUpda
              : absl::nullopt;
 }
 
-void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailed(const JobID &job_id,
-                                                            int64_t job_finish_time_ns) {
+void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
+    const JobID &job_id, int64_t job_finish_time_ns) {
   auto task_attempts_itr = job_to_task_attempt_index_.find(job_id);
   if (task_attempts_itr == job_to_task_attempt_index_.end()) {
     // No tasks in the job.
     return;
   }
 
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
+  std::stringstream error_message;
+  error_message << "Job finishes (" << job_id.Hex()
+                << ") as driver exits. Marking all non-terminal tasks as failed.";
+  error_info.set_error_message(error_message.str());
+
   // Iterate all task attempts from the job.
   for (const auto &task_attempt : task_attempts_itr->second) {
     if (!IsTaskTerminated(task_attempt.first)) {
-      MarkTaskAttemptFailed(task_attempt, job_finish_time_ns);
+      MarkTaskAttemptFailed(task_attempt, job_finish_time_ns, error_info);
     }
   }
 }
 
-void GcsTaskManager::GcsTaskManagerStorage::MarkTaskFailed(const TaskID &task_id,
-                                                           int64_t failed_ts) {
+void GcsTaskManager::GcsTaskManagerStorage::MarkTaskFailedOnAncestorFailed(
+    const TaskID &task_id, int64_t failed_ts, const TaskID &ancestor_task_id) {
+  RAY_LOG(DEBUG) << "Marking task " << task_id << " as failed due to ancestor task "
+                 << ancestor_task_id << " failure.";
   auto latest_task_attempt = GetLatestTaskAttempt(task_id);
   if (!latest_task_attempt.has_value()) {
     return;
   }
-  MarkTaskAttemptFailed(*latest_task_attempt, failed_ts);
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
+  std::stringstream error_message;
+  error_message << "Ancestor task " << ancestor_task_id
+                << " failed due to unexpected worker death.";
+  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
+  error_info.set_error_message(error_message.str());
+
+  MarkTaskAttemptFailed(*latest_task_attempt, failed_ts, error_info);
+}
+
+bool GcsTaskManager::GcsTaskManagerStorage::ShouldMarkChildrenFailed(
+    const TaskID &child_task, const TaskID &parent_task, int64_t *failed_ts) const {
+  const auto &child_task_event = GetLatestTaskEvent(child_task);
+  if (!child_task_event.has_value()) {
+    return false;
+  }
+  // TODO(rickyx): Fix detached actor
+  // // A detached actor task should not be affected by its parent's tasks.
+  // if (child_task_event->has_task_info() &&
+  //     child_task_event->task_info().is_detached_actor()) {
+  //   return false;
+  // }
+
+  // If the child task has already finished/failed, we don't need to mark it
+  if (child_task_event->has_state_updates() &&
+      (child_task_event->state_updates().failed_ts() != 0 ||
+       child_task_event->state_updates().finished_ts() != 0)) {
+    return false;
+  }
+
+  if (parent_task.IsNil()) {
+    return false;
+  }
+
+  const auto &parent_task_event = GetLatestTaskEvent(parent_task);
+
+  // Check if parent has failed.
+  if (!parent_task_event->has_state_updates()) {
+    return false;
+  }
+
+  auto state_updates = parent_task_event->state_updates();
+  if (state_updates.failed_ts() == 0) {
+    return false;
+  }
+
+  // Only if parent failed with worker died or actor died, we should mark the
+  // children tasks failed since the children tasks' workers are killed.
+  if (state_updates.error_info().error_type() == rpc::ErrorType::WORKER_DIED ||
+      state_updates.error_info().error_type() == rpc::ErrorType::ACTOR_DIED) {
+    *failed_ts = state_updates.failed_ts();
+    return true;
+  }
+  return false;
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailedIfNeeded(
-    const TaskID &task_id, const TaskID &parent_task_id) {
+    const TaskID &task_id) {
+  const auto &task_event = GetLatestTaskEvent(task_id);
+  if (!task_event.has_value() || !task_event->has_task_info()) {
+    return;
+  }
+  auto parent_task_id = TaskID::FromBinary(task_event->task_info().parent_task_id());
+  // BFS traverse the task tree to mark all non terminal children as failure if needed.
+  std::vector<TaskID> parent_tasks_to_check;
+  parent_tasks_to_check.push_back(task_id);
   if (!parent_task_id.IsNil()) {
-    // If parent has failed, mark itself as failed
-    auto parent_failed_ts =
-        GetTaskStatusUpdateTime(parent_task_id, rpc::TaskStatus::FAILED);
-    if (parent_failed_ts.has_value()) {
-      // Mark current task as failed.
-      MarkTaskFailed(task_id, *parent_failed_ts);
-    }
+    parent_tasks_to_check.push_back(task_id);
   }
 
-  // BFS traverse the task tree to mark all non terminal children as failure
-  std::vector<TaskID> failed_tasks;
-  auto task_failed_ts = GetTaskStatusUpdateTime(task_id, rpc::TaskStatus::FAILED);
-  if (task_failed_ts.has_value()) {
-    failed_tasks.push_back(task_id);
-  }
-
-  for (size_t i = 0; i < failed_tasks.size(); ++i) {
-    auto failed_task_id = failed_tasks[i];
-    auto children_tasks_itr = parent_to_children_task_index_.find(failed_task_id);
+  for (size_t i = 0; i < parent_tasks_to_check.size(); ++i) {
+    auto parent_task_id = parent_tasks_to_check[i];
+    auto children_tasks_itr = parent_to_children_task_index_.find(parent_task_id);
     if (children_tasks_itr == parent_to_children_task_index_.end()) {
       continue;
     }
     for (const auto &child_task_id : children_tasks_itr->second) {
       // Mark any non-terminated child as failed with parent's failure timestamp.
-      if (!IsTaskTerminated(child_task_id)) {
-        MarkTaskFailed(child_task_id, task_failed_ts.value());
-        failed_tasks.push_back(child_task_id);
+      int64_t task_failed_ts = 0;
+      if (ShouldMarkChildrenFailed(child_task_id, parent_task_id, &task_failed_ts)) {
+        MarkTaskFailedOnAncestorFailed(child_task_id, task_failed_ts, task_id);
+        parent_tasks_to_check.push_back(child_task_id);
       }
     }
   }
@@ -226,7 +301,6 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   JobID job_id = JobID::FromBinary(events_by_task.job_id());
   int32_t attempt_number = events_by_task.attempt_number();
   TaskAttempt task_attempt = std::make_pair<>(task_id, attempt_number);
-
   // Update the parent <-> children index if parent info available, and the parent info is
   // only available when task_info presents for the first task status change event for a
   // task.
@@ -260,7 +334,7 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
     existing_events.MergeFrom(events_by_task);
     stats_counter_.Increment(kNumTaskEventsBytesStored, existing_events.ByteSizeLong());
 
-    MarkTaskTreeFailedIfNeeded(task_id, parent_task_id);
+    MarkTaskTreeFailedIfNeeded(task_id);
     return absl::nullopt;
   }
 
@@ -335,7 +409,7 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
     // Update iter.
     next_idx_to_overwrite_ = (next_idx_to_overwrite_ + 1) % max_num_task_events_;
 
-    MarkTaskTreeFailedIfNeeded(task_id, parent_task_id);
+    MarkTaskTreeFailedIfNeeded(task_id);
     return replaced;
   }
 
@@ -349,7 +423,7 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
 
   task_events_.push_back(std::move(events_by_task));
 
-  MarkTaskTreeFailedIfNeeded(task_id, parent_task_id);
+  MarkTaskTreeFailedIfNeeded(task_id);
   return absl::nullopt;
 }
 
@@ -513,9 +587,10 @@ void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_
           // timer canceled or aborted.
           return;
         }
-        // If there are any non-terminated tasks from the job, mark them failed since all
-        // workers associated with the job will be killed.
-        task_event_storage_->MarkTasksFailed(job_id, job_finish_time_ms * 1000 * 1000);
+        // If there are any non-terminated tasks from the job, mark them failed since
+        // all workers associated with the job will be killed.
+        task_event_storage_->MarkTasksFailedOnJobEnds(job_id,
+                                                      job_finish_time_ms * 1000 * 1000);
       });
 }
 
