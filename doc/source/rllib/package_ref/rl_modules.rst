@@ -100,8 +100,8 @@ Saving and Loading
 
     ~RLModule.get_state
     ~RLModule.set_state
-    ~RLModule.save_state_to_file
-    ~RLModule.load_state_from_file
+    ~RLModule.save_state
+    ~RLModule.load_state
     ~RLModule.save_to_checkpoint
     ~RLModule.from_checkpoint
 
@@ -137,5 +137,5 @@ Saving and Loading
 .. autosummary::
     :toctree: doc/
 
-    ~MultiAgentRLModule.load_state_from_dir
-    ~MultiAgentRLModule.save_state_to_dir
+    ~MultiAgentRLModule.save_state
+    ~MultiAgentRLModule.load_state
