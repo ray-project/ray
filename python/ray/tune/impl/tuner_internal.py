@@ -595,6 +595,7 @@ class TunerInternal:
             trial_name_creator=self._tune_config.trial_name_creator,
             trial_dirname_creator=self._tune_config.trial_dirname_creator,
             chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
+            _tuner_api=True,
         )
 
     def _fit_internal(

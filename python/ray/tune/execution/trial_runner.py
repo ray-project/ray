@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 import logging
 import os
+from pathlib import Path
 import time
 import traceback
 import warnings
@@ -378,13 +379,13 @@ class _TuneControllerBase:
             )
 
         # Set checkpoint file to load
-        logger.info(
-            f"Using following experiment state file to resume: " f"{newest_state_path}"
-        )
-
         logger.warning(
             f"Attempting to resume experiment from {self._local_experiment_path}. "
             "This will ignore any new changes to the specification."
+        )
+        logger.info(
+            "Using the newest experiment state file found within the "
+            f"experiment directory: {Path(newest_state_path).name}"
         )
 
         # Actually load data
