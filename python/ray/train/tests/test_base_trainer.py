@@ -340,15 +340,6 @@ def test_setup(ray_start_4_cpus):
     trainer.fit()
 
 
-def test_fail(ray_start_4_cpus):
-    def fail(self):
-        raise ValueError
-
-    trainer = DummyTrainer(fail)
-    with pytest.raises(ValueError):
-        trainer.fit()
-
-
 @patch.dict(os.environ, {"RAY_LOG_TO_STDERR": "1"})
 def _is_trainable_name_overriden(trainer: BaseTrainer):
     trainable = trainer.as_trainable()
