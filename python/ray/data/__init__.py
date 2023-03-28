@@ -9,8 +9,7 @@ if sys.version_info >= (3, 7):
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
-from ray.data.dataset import Dataset
-from ray.data.datastream import Datastream
+from ray.data.dataset import Dataset, Datastream
 from ray.data.context import DatasetContext
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data.dataset_pipeline import DatasetPipeline
