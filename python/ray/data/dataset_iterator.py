@@ -135,7 +135,11 @@ class DatasetIterator(abc.ABC):
         """
 
         context = DatasetContext.get_current()
-        use_legacy = context.use_legacy_iter_batches
+        if not context.use_streaming_executor:
+            # Always use legacy iter_batches for bulk executor.
+            use_legacy = True
+        else:
+            use_legacy = context.use_legacy_iter_batches
 
         if prefetch_blocks > 0 and not use_legacy:
             raise DeprecationWarning(
