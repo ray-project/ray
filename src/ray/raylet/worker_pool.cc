@@ -788,9 +788,12 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 }
 
 void WorkerPool::ExecuteOnPrestartWorkersStarted(std::function<void()> callback) {
+  bool prestart = RayConfig::instance().prestart_worker_first_driver() ||
+                  RayConfig::instance().enable_worker_prestart();
   if (first_job_registered_ ||
       first_job_registered_python_worker_count_ >=  // Don't wait if prestart is completed
-          first_job_driver_wait_num_python_workers_) {
+          first_job_driver_wait_num_python_workers_ ||
+      !prestart) {  // Don't wait if prestart is disabled
     callback();
     return;
   }
@@ -818,7 +821,8 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   if (driver->GetLanguage() == Language::JAVA) {
     send_reply_callback(Status::OK(), port);
   } else {
-    if (!first_job_registered_ && !RayConfig::instance().enable_worker_prestart()) {
+    if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver()) {
+      RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
       PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
     }
 

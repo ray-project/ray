@@ -520,6 +520,9 @@ RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 60)
 
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
 RAY_CONFIG(bool, enable_worker_prestart, false)
+/// Whether to enable worker prestarting on first driver
+/// TODO(clarng): reconcile with enable_worker_prestart
+RAY_CONFIG(bool, prestart_worker_first_driver, true)
 
 /// The interval of periodic idle worker killing. Value of 0 means worker capping is
 /// disabled.
