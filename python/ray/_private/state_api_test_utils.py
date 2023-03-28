@@ -8,9 +8,11 @@ import numpy as np
 import pprint
 import time
 import traceback
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Union
+from ray.experimental.state.api import list_tasks
 import ray
 from ray.actor import ActorHandle
+from ray.experimental.state.api import list_workers
 
 
 @dataclass
@@ -44,6 +46,8 @@ def invoke_state_api(
     state_api_fn: Callable,
     state_stats: StateAPIStats = GLOBAL_STATE_STATS,
     key_suffix: Optional[str] = None,
+    print_result: Optional[bool] = False,
+    err_msg: Optional[str] = None,
     **kwargs,
 ):
     """Invoke a State API
@@ -70,13 +74,18 @@ def invoke_state_api(
         res = state_api_fn(**kwargs)
         t_end = time.perf_counter()
 
+        if print_result:
+            pprint.pprint(res)
+
         metric = StateAPIMetric(t_end - t_start, len(res))
         if key_suffix:
             key = f"{state_api_fn.__name__}_{key_suffix}"
         else:
             key = state_api_fn.__name__
         state_stats.calls[key].append(metric)
-        assert verify_cb(res), f"Calling State API failed. len(res)=({len(res)}): {res}"
+        assert verify_cb(
+            res
+        ), f"Calling State API failed. len(res)=({len(res)}): {err_msg}"
     except Exception as e:
         traceback.print_exc()
         assert (
@@ -148,7 +157,7 @@ def aggregate_perf_results(state_stats: StateAPIStats = GLOBAL_STATE_STATS):
     return perf_result
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class StateAPIGeneratorActor:
     def __init__(
         self,
@@ -156,6 +165,7 @@ class StateAPIGeneratorActor:
         call_interval_s: float = 5.0,
         print_interval_s: float = 20.0,
         wait_after_stop: bool = True,
+        print_result: bool = False,
     ) -> None:
         """An actor that periodically issues state API
 
@@ -167,6 +177,7 @@ class StateAPIGeneratorActor:
             - wait_after_stop: When true, call to `ray.get(actor.stop.remote())`
                 will wait for all pending state APIs to return.
                 Setting it to `False` might miss some long-running state apis calls.
+            - print_result: True if result of each API call is printed. Default False.
         """
         # Configs
         self._apis = apis
@@ -174,6 +185,7 @@ class StateAPIGeneratorActor:
         self._print_interval_s = print_interval_s
         self._wait_after_cancel = wait_after_stop
         self._logger = logging.getLogger(self.__class__.__name__)
+        self._print_result = print_result
 
         # States
         self._tasks = None
@@ -204,7 +216,11 @@ class StateAPIGeneratorActor:
             try:
                 self._logger.debug(f"calling {fn.__name__}({kwargs})")
                 return invoke_state_api(
-                    verify_cb, fn, state_stats=self._stats, **kwargs
+                    verify_cb,
+                    fn,
+                    state_stats=self._stats,
+                    print_result=self._print_result,
+                    **kwargs,
                 )
             except Exception as e:
                 self._logger.warning(f"{fn.__name__}({kwargs}) failed with: {repr(e)}")
@@ -292,3 +308,57 @@ def periodic_invoke_state_apis_with_actor(*args, **kwargs) -> ActorHandle:
     print("State api actor is ready now.")
     actor.start.remote()
     return actor
+
+
+def summarize_worker_startup_time():
+    workers = list_workers(
+        detail=True,
+        filters=[("worker_type", "=", "WORKER")],
+        limit=10000,
+        raise_on_missing_output=False,
+    )
+    time_to_launch = []
+    time_to_initialize = []
+    for worker in workers:
+        launch_time = worker.get("worker_launch_time_ms")
+        launched_time = worker.get("worker_launched_time_ms")
+        start_time = worker.get("start_time_ms")
+
+        if launched_time > 0:
+            time_to_launch.append(launched_time - launch_time)
+        if start_time:
+            time_to_initialize.append(start_time - launched_time)
+    time_to_launch.sort()
+    time_to_initialize.sort()
+
+    def print_latencies(latencies):
+        print(f"Avg: {round(sum(latencies) / len(latencies), 2)} ms")
+        print(f"P25: {round(latencies[int(len(latencies) * 0.25)], 2)} ms")
+        print(f"P50: {round(latencies[int(len(latencies) * 0.5)], 2)} ms")
+        print(f"P95: {round(latencies[int(len(latencies) * 0.95)], 2)} ms")
+        print(f"P99: {round(latencies[int(len(latencies) * 0.99)], 2)} ms")
+
+    print("Time to launch workers")
+    print_latencies(time_to_launch)
+    print("=======================")
+    print("Time to initialize workers")
+    print_latencies(time_to_initialize)
+
+
+def verify_failed_task(
+    name: str, error_type: str, error_message: Union[str, List[str]]
+) -> bool:
+    """
+    Check if a task with 'name' has failed with the exact error type 'error_type'
+    and 'error_message' in the error message.
+    """
+    tasks = list_tasks(filters=[("name", "=", name)], detail=True)
+    assert len(tasks) == 1, tasks
+    t = tasks[0]
+    assert t["state"] == "FAILED", t
+    assert t["error_type"] == error_type, t
+    if isinstance(error_message, str):
+        error_message = [error_message]
+    for msg in error_message:
+        assert msg in t.get("error_message", None), t
+    return True

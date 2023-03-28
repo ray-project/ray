@@ -25,3 +25,8 @@ sleep 5 # Wait for Ray dashboard to become ready
 curl localhost:8653 || cat /tmp/ray/session_latest/logs/dashboard.log
 
 node_modules/.bin/cypress run --project . --headless
+
+# Run frontend UI tests
+pushd ../client
+CI=true npm test
+popd

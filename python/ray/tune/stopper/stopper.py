@@ -1,4 +1,5 @@
 import abc
+from typing import Any, Dict
 
 from ray.util.annotations import PublicAPI
 
@@ -11,37 +12,44 @@ class Stopper(abc.ABC):
     default, this class does not stop any trials. Subclasses need to
     implement ``__call__`` and ``stop_all``.
 
-    .. code-block:: python
+    Examples:
 
-        import time
-        from ray import air, tune
-        from ray.tune import Stopper
-
-        class TimeStopper(Stopper):
-            def __init__(self):
-                self._start = time.time()
-                self._deadline = 300
-
-            def __call__(self, trial_id, result):
-                return False
-
-            def stop_all(self):
-                return time.time() - self._start > self.deadline
-
-        tuner = Tuner(
-            Trainable,
-            tune_config=tune.TuneConfig(num_samples=200),
-            run_config=air.RunConfig(stop=TimeStopper())
-        )
-        tuner.fit()
+        >>> import time
+        >>> from ray import air, tune
+        >>> from ray.air import session
+        >>> from ray.tune import Stopper
+        >>>
+        >>> class TimeStopper(Stopper):
+        ...     def __init__(self):
+        ...         self._start = time.time()
+        ...         self._deadline = 2  # Stop all trials after 2 seconds
+        ...
+        ...     def __call__(self, trial_id, result):
+        ...         return False
+        ...
+        ...     def stop_all(self):
+        ...         return time.time() - self._start > self._deadline
+        ...
+        >>> def train_fn(config):
+        ...     for i in range(100):
+        ...         time.sleep(1)
+        ...         session.report({"iter": i})
+        ...
+        >>> tuner = tune.Tuner(
+        ...     train_fn,
+        ...     tune_config=tune.TuneConfig(num_samples=2),
+        ...     run_config=air.RunConfig(stop=TimeStopper()),
+        ... )
+        >>> print("[ignore]"); result_grid = tuner.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
     """
 
-    def __call__(self, trial_id, result):
+    def __call__(self, trial_id: str, result: Dict[str, Any]) -> bool:
         """Returns true if the trial should be terminated given the result."""
         raise NotImplementedError
 
-    def stop_all(self):
+    def stop_all(self) -> bool:
         """Returns true if the experiment should be terminated."""
         raise NotImplementedError
 
@@ -53,31 +61,41 @@ class CombinedStopper(Stopper):
     Args:
         *stoppers: Stoppers to be combined.
 
-    Example:
+    Examples:
 
-    .. code-block:: python
-
-        from ray.tune.stopper import CombinedStopper, \
-            MaximumIterationStopper, TrialPlateauStopper
-
-        stopper = CombinedStopper(
-            MaximumIterationStopper(max_iter=20),
-            TrialPlateauStopper(metric="my_metric")
-        )
-
-        tuner = Tuner(
-            Trainable,
-            run_config=air.RunConfig(stop=stopper)
-        )
-        tuner.fit()
+        >>> import numpy as np
+        >>> from ray import air, tune
+        >>> from ray.air import session
+        >>> from ray.tune.stopper import (
+        ...     CombinedStopper,
+        ...     MaximumIterationStopper,
+        ...     TrialPlateauStopper,
+        ... )
+        >>>
+        >>> stopper = CombinedStopper(
+        ...     MaximumIterationStopper(max_iter=10),
+        ...     TrialPlateauStopper(metric="my_metric"),
+        ... )
+        >>> def train_fn(config):
+        ...     for i in range(15):
+        ...         session.report({"my_metric": np.random.normal(0, 1 - i / 15)})
+        ...
+        >>> tuner = tune.Tuner(
+        ...     train_fn,
+        ...     run_config=air.RunConfig(stop=stopper),
+        ... )
+        >>> print("[ignore]"); result_grid = tuner.fit()  # doctest: +ELLIPSIS
+        [ignore]...
+        >>> all(result.metrics["training_iteration"] <= 20 for result in result_grid)
+        True
 
     """
 
     def __init__(self, *stoppers: Stopper):
         self._stoppers = stoppers
 
-    def __call__(self, trial_id, result):
+    def __call__(self, trial_id: str, result: Dict[str, Any]) -> bool:
         return any(s(trial_id, result) for s in self._stoppers)
 
-    def stop_all(self):
+    def stop_all(self) -> bool:
         return any(s.stop_all() for s in self._stoppers)

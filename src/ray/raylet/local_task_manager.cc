@@ -66,8 +66,10 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
   auto object_ids = task.GetTaskSpecification().GetDependencies();
   bool can_dispatch = true;
   if (object_ids.size() > 0) {
-    bool args_ready =
-        task_dependency_manager_.RequestTaskDependencies(task_id, task.GetDependencies());
+    bool args_ready = task_dependency_manager_.RequestTaskDependencies(
+        task_id,
+        task.GetDependencies(),
+        {task.GetTaskSpecification().GetName(), task.GetTaskSpecification().IsRetry()});
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
       tasks_to_dispatch_[scheduling_key].push_back(work);
@@ -153,6 +155,15 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           int64_t target_time = get_time_ms_() + wait_time;
           sched_cls_info.next_update_time =
               std::min(target_time, sched_cls_info.next_update_time);
+
+          // While we're over capacity and cannot run the task,
+          // try to spill to a node that can run it.
+          bool did_spill = TrySpillback(work, is_infeasible);
+          if (did_spill) {
+            work_it = dispatch_queue.erase(work_it);
+            continue;
+          }
+
           break;
         }
       }
@@ -227,11 +238,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           work->SetStateWaiting(
               internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
           break;
-        }
-        num_unschedulable_task_spilled_++;
-        if (!spec.GetDependencies().empty()) {
-          task_dependency_manager_.RemoveTaskDependencies(
-              task.GetTaskSpecification().TaskId());
         }
         work_it = dispatch_queue.erase(work_it);
       } else {
@@ -328,7 +334,7 @@ void LocalTaskManager::SpillWaitingTasks() {
     if (!task.GetTaskSpecification().IsSpreadSchedulingStrategy()) {
       scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
           task.GetTaskSpecification(),
-          /*prioritize_local_node*/ true,
+          /*preferred_node_id*/ self_node_id_.Binary(),
           /*exclude_local_node*/ task_dependencies_blocked,
           /*requires_object_store_memory*/ true,
           &is_infeasible);
@@ -370,7 +376,10 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
                                     bool &is_infeasible) {
   auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
       work->task.GetTaskSpecification(),
-      work->PrioritizeLocalNode(),
+      // We should prefer to stay local if possible
+      // to avoid unnecessary spillback
+      // since this node is already selected by the cluster scheduler.
+      /*preferred_node_id*/ self_node_id_.Binary(),
       /*exclude_local_node*/ false,
       /*requires_object_store_memory*/ false,
       &is_infeasible);
@@ -382,6 +391,11 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
 
   NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
   Spillback(node_id, work);
+  num_unschedulable_task_spilled_++;
+  if (!work->task.GetTaskSpecification().GetDependencies().empty()) {
+    task_dependency_manager_.RemoveTaskDependencies(
+        work->task.GetTaskSpecification().TaskId());
+  }
   return true;
 }
 
@@ -494,8 +508,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
             internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
         if (status == PopWorkerStatus::JobConfigMissing) {
           cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
-        } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
-          cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_RATE_LIMITED;
         } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
           cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
         } else {
@@ -834,6 +846,7 @@ void LocalTaskManager::Dispatch(
     std::function<void(void)> send_reply_callback) {
   const auto &task_spec = task.GetTaskSpecification();
 
+  worker->SetJobId(task_spec.JobId());
   worker->SetBundleId(task_spec.PlacementGroupBundleId());
   worker->SetOwnerAddress(task_spec.CallerAddress());
   if (task_spec.IsActorCreationTask()) {
@@ -1010,7 +1023,12 @@ ResourceRequest LocalTaskManager::CalcNormalTaskResources() const {
     }
 
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      total_normal_task_resources += allocated_instances->ToResourceRequest();
+      auto resource_request = allocated_instances->ToResourceRequest();
+      // Blocked normal task workers have temporarily released its allocated CPU.
+      if (worker->IsBlocked()) {
+        resource_request.Set(ResourceID::CPU(), 0);
+      }
+      total_normal_task_resources += resource_request;
     }
   }
   return total_normal_task_resources;

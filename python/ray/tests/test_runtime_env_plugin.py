@@ -42,10 +42,13 @@ class MyPlugin(RuntimeEnvPlugin):
     ) -> None:
         plugin_config_dict = runtime_env[MY_PLUGIN_NAME]
         ctx.env_vars[MyPlugin.env_key] = str(plugin_config_dict["env_value"])
-        ctx.command_prefix.append(
-            f"echo {plugin_config_dict['tmp_content']} > "
-            f"{plugin_config_dict['tmp_file']}"
-        )
+        ctx.command_prefix += [
+            "echo",
+            plugin_config_dict["tmp_content"],
+            ">",
+            plugin_config_dict["tmp_file"],
+            "&&",
+        ]
         ctx.py_executable = (
             plugin_config_dict["prefix_command"] + " " + ctx.py_executable
         )
@@ -392,10 +395,15 @@ def test_unexpected_field_warning(shutdown_only):
 
     # Check that the warning is logged.
     session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
-    dashboard_agent_log_path = Path(session_dir) / "logs" / "dashboard_agent.log"
-    wait_for_condition(lambda: dashboard_agent_log_path.exists())
-    with open(dashboard_agent_log_path, "r") as f:
-        wait_for_condition(lambda: "unexpected_field is not recognized" in f.read())
+    log_path = Path(session_dir) / "logs"
+
+    # Check that a warning appears in some "runtime_env_setup*.log"
+    wait_for_condition(
+        lambda: any(
+            "unexpected_field is not recognized" in open(f).read()
+            for f in log_path.glob("runtime_env_setup*.log")
+        )
+    )
 
 
 URI_CACHING_TEST_PLUGIN_CLASS_PATH = (

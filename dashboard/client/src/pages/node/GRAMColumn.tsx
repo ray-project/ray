@@ -14,7 +14,7 @@ export const NodeGRAM = ({ node }: { node: NodeDetail }) => {
       gpuName: gpu.name,
       utilization: gpu.memoryUsed,
       total: gpu.memoryTotal,
-      slot: i,
+      slot: gpu.index,
     };
     return <GRAMEntry {...props} />;
   });
@@ -40,7 +40,7 @@ export const WorkerGRAM = ({
 }) => {
   const workerGRAMEntries = (node.gpus ?? [])
     .map((gpu, i) => {
-      const process = gpu.processes.find(
+      const process = gpu.processes?.find(
         (process) => process.pid === worker.pid,
       );
       if (!process) {
@@ -51,7 +51,7 @@ export const WorkerGRAM = ({
         gpuName: gpu.name,
         total: gpu.memoryTotal,
         utilization: process.gpuMemoryUsage,
-        slot: i,
+        slot: gpu.index,
       };
       return <GRAMEntry {...props} />;
     })

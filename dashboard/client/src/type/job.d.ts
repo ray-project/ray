@@ -1,4 +1,5 @@
 import { Actor } from "./actor";
+import { TypeTaskType } from "./task";
 import { Worker } from "./worker";
 
 export type Job = {
@@ -55,14 +56,6 @@ export type JobDetail = {
   jobWorkers: Worker[];
 };
 
-export type JobDetailRsp = {
-  data: {
-    detail: JobDetail;
-  };
-  msg: string;
-  result: boolean;
-};
-
 export type JobListRsp = UnifiedJob[];
 
 export type UnifiedJob = {
@@ -78,6 +71,7 @@ export type UnifiedJob = {
   metadata: { [key: string]: string } | null;
   runtime_env: { [key: string]: string } | null;
   driver_info: DriverInfo | null;
+  driver_agent_http_address: string | null;
 };
 
 export type DriverInfo = {
@@ -85,4 +79,108 @@ export type DriverInfo = {
   node_ip_address: string;
   node_id: string;
   pid: string;
+};
+
+export type TaskProgress = {
+  numFinished?: number;
+  numPendingArgsAvail?: number;
+  numSubmittedToWorker?: number;
+  numRunning?: number;
+  numPendingNodeAssignment?: number;
+  numFailed?: number;
+  numUnknown?: number;
+};
+
+export type JobProgressRsp = {
+  data: {
+    detail: TaskProgress;
+  };
+  msg: string;
+  result: boolean;
+};
+
+export type JobProgressByTaskName = {
+  tasks: { name: string; progress: TaskProgress }[];
+};
+
+export type JobProgressByTaskNameRsp = {
+  data: {
+    detail: JobProgressByTaskName;
+  };
+  msg: string;
+  result: boolean;
+};
+
+export type StateApiJobProgressByTaskName = {
+  node_id_to_summary: {
+    cluster: {
+      summary: {
+        [taskName: string]: {
+          func_or_class_name: string;
+          state_counts: {
+            [stateName: string]: number;
+          };
+        };
+      };
+    };
+  };
+};
+
+export type StateApiJobProgressByTaskNameRsp = {
+  data: {
+    result: {
+      result: StateApiJobProgressByTaskName;
+      num_filtered: number;
+      total: number;
+    };
+  };
+  msg: string;
+  result: boolean;
+};
+
+export type NestedJobProgressLink = {
+  type: "actor" | "task";
+  id: string;
+};
+
+export type NestedJobProgress = {
+  name: string;
+  key: string;
+  state_counts: {
+    [stateName: string]: number;
+  };
+  children: NestedJobProgress[];
+  type: TypeTaskType | "GROUP" | "ACTOR";
+  link?: NestedJobProgressLink;
+};
+
+export type JobProgressGroup = {
+  name: string;
+  key: string;
+  progress: TaskProgress;
+  children: JobProgressGroup[];
+  type: TypeTaskType | "GROUP" | "ACTOR";
+  link?: NestedJobProgressLink;
+};
+
+export type StateApiNestedJobProgress = {
+  node_id_to_summary: {
+    cluster: {
+      summary: {
+        [taskName: string]: NestedJobProgress;
+      };
+    };
+  };
+};
+
+export type StateApiNestedJobProgressRsp = {
+  data: {
+    result: {
+      result: StateApiNestedJobProgress;
+      num_filtered: number;
+      total: number;
+    };
+  };
+  msg: string;
+  result: boolean;
 };

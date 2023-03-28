@@ -175,7 +175,7 @@ def test_disable_auto_lineage_reconstruction(ray_start_cluster, tmp_path):
         (tmp_path / "num_executed").write_text(str(v + 1))
         import numpy as np
 
-        return np.ones(10 ** 6)
+        return np.ones(10**6)
 
     @ray.remote
     def f2(x):
@@ -222,10 +222,10 @@ def test_disable_auto_lineage_reconstruction(ray_start_cluster, tmp_path):
             cluster.remove_node(worker_node_2, allow_graceful=False)
         return ray.get(ref).sum()
 
-    assert _trigger_lineage_reconstruction(with_workflow=False) == 10 ** 6
+    assert _trigger_lineage_reconstruction(with_workflow=False) == 10**6
     assert int((tmp_path / "num_executed").read_text()) == 2
 
-    assert _trigger_lineage_reconstruction(with_workflow=True) == 10 ** 6
+    assert _trigger_lineage_reconstruction(with_workflow=True) == 10**6
     assert int((tmp_path / "num_executed").read_text()) == 1
 
 

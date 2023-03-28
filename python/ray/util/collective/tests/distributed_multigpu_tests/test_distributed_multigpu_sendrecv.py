@@ -12,7 +12,7 @@ from ray.util.collective.tests.util import create_collective_multigpu_workers
 @pytest.mark.parametrize("dst_gpu_index", [0, 1])
 @pytest.mark.parametrize("src_gpu_index", [0, 1])
 @pytest.mark.parametrize(
-    "array_size", [2 ** 10, 2 ** 15, 2 ** 20, [2, 2], [5, 9, 10, 85]]
+    "array_size", [2**10, 2**15, 2**20, [2, 2], [5, 9, 10, 85]]
 )
 def test_sendrecv(
     ray_start_distributed_multigpu_2_nodes_4_gpus,

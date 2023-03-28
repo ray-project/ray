@@ -70,7 +70,7 @@ A few notes on the above config:
   in the log directory once per 5 seconds, rather than the default 60.
   The reason is that the directory `/tmp/ray/session_latest/logs/` does not exist
   initially (Ray must create it first). Setting the `Refresh_Interval` low allows us to see logs
-  in the Fluent Bit container's stoud sooner.
+  in the Fluent Bit container's stdout sooner.
 
 
 ## Add logging sidecars to your RayCluster CR.

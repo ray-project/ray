@@ -1,4 +1,4 @@
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 import numpy as np
 from typing import Optional, TYPE_CHECKING, Union
 
@@ -237,10 +237,10 @@ class ParameterNoise(Exploration):
         )
 
         # Categorical case (e.g. DQN).
-        if policy.dist_class in (Categorical, TorchCategorical):
+        if issubclass(policy.dist_class, (Categorical, TorchCategorical)):
             action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
         # Deterministic (Gaussian actions, e.g. DDPG).
-        elif policy.dist_class in [Deterministic, TorchDeterministic]:
+        elif issubclass(policy.dist_class, (Deterministic, TorchDeterministic)):
             action_dist = fetches[SampleBatch.ACTION_DIST_INPUTS]
         else:
             raise NotImplementedError  # TODO(sven): Other action-dist cases.
@@ -255,10 +255,10 @@ class ParameterNoise(Exploration):
         )
 
         # Categorical case (e.g. DQN).
-        if policy.dist_class in (Categorical, TorchCategorical):
+        if issubclass(policy.dist_class, (Categorical, TorchCategorical)):
             action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
             # Deterministic (Gaussian actions, e.g. DDPG).
-        elif policy.dist_class in [Deterministic, TorchDeterministic]:
+        elif issubclass(policy.dist_class, (Deterministic, TorchDeterministic)):
             action_dist = fetches[SampleBatch.ACTION_DIST_INPUTS]
 
         if noisy_action_dist is None:
@@ -268,7 +268,7 @@ class ParameterNoise(Exploration):
 
         delta = distance = None
         # Categorical case (e.g. DQN).
-        if policy.dist_class in (Categorical, TorchCategorical):
+        if issubclass(policy.dist_class, (Categorical, TorchCategorical)):
             # Calculate KL-divergence (DKL(clean||noisy)) according to [2].
             # TODO(sven): Allow KL-divergence to be calculated by our
             #  Distribution classes (don't support off-graph/numpy yet).
@@ -285,7 +285,7 @@ class ParameterNoise(Exploration):
                 "cur_epsilon"
             ]
             delta = -np.log(1 - current_epsilon + current_epsilon / self.action_space.n)
-        elif policy.dist_class in [Deterministic, TorchDeterministic]:
+        elif issubclass(policy.dist_class, (Deterministic, TorchDeterministic)):
             # Calculate MSE between noisy and non-noisy output (see [2]).
             distance = np.sqrt(
                 np.mean(np.square(noise_free_action_dist - noisy_action_dist))
@@ -308,7 +308,7 @@ class ParameterNoise(Exploration):
         """Samples new noise and stores it in `self.noise`."""
         if self.framework == "tf":
             tf_sess.run(self.tf_sample_new_noise_op)
-        elif self.framework in ["tfe", "tf2"]:
+        elif self.framework == "tf2":
             self._tf_sample_new_noise_op()
         else:
             for i in range(len(self.noise)):
@@ -359,7 +359,7 @@ class ParameterNoise(Exploration):
         # Add stored noise to the model's parameters.
         if self.framework == "tf":
             tf_sess.run(self.tf_add_stored_noise_op)
-        elif self.framework in ["tf2", "tfe"]:
+        elif self.framework == "tf2":
             self._tf_add_stored_noise_op()
         else:
             for var, noise in zip(self.model_variables, self.noise):
@@ -399,7 +399,7 @@ class ParameterNoise(Exploration):
         # Removes the stored noise from the model's parameters.
         if self.framework == "tf":
             tf_sess.run(self.tf_remove_noise_op)
-        elif self.framework in ["tf2", "tfe"]:
+        elif self.framework == "tf2":
             self._tf_remove_noise_op()
         else:
             for var, noise in zip(self.model_variables, self.noise):

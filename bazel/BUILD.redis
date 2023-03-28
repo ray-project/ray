@@ -1,3 +1,5 @@
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "make")
+
 exports_files(
     [
         "redis-server.exe",
@@ -6,14 +8,40 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 
-genrule(
-    name = "bin",
-    srcs = glob(["**"]),
-    outs = [
-        "redis-server",
-        "redis-cli",
+filegroup(
+    name = "all_srcs",
+    srcs = glob(
+        include = ["**"],
+        exclude = ["*.bazel"],
+    ),
+)
+    
+
+make(
+    name = "redis",
+    args = [
+        "BUILD_TLS=yes",
+        "-s",
     ],
-    cmd = """
+    copts = [
+        "-DLUA_USE_MKSTEMP",
+        "-Wno-pragmas",
+        "-Wno-empty-body",
+        "-fPIC",
+    ],
+    visibility = ["//visibility:public"],
+    lib_source = ":all_srcs",
+    deps = [
+        "@openssl//:openssl",
+    ],
+    out_binaries = [
+        "redis-server",
+        "redis-cli"
+    ]
+)
+
+genrule_cmd = select({
+    "@bazel_tools//src/conditions:darwin": """
         unset CC LDFLAGS CXX CXXFLAGS
         tmpdir="redis.tmp"
         p=$(location Makefile)
@@ -27,41 +55,26 @@ genrule(
         chmod +x $(location redis-cli)
         rm -r -f -- "$${tmpdir}"
     """,
+    "//conditions:default": """
+        cp $(RULEDIR)/redis/bin/redis-server $(location redis-server)
+        cp $(RULEDIR)/redis/bin/redis-cli $(location redis-cli)
+    """
+})
+
+genrule_srcs = select({
+    "@bazel_tools//src/conditions:darwin": glob(["**"]),
+    "//conditions:default": [":redis"],
+})
+
+
+genrule(
+    name = "bin",
+    srcs = genrule_srcs,
+    outs = [
+        "redis-server",
+        "redis-cli",
+    ],
+    cmd = genrule_cmd,
     visibility = ["//visibility:public"],
     tags = ["local"],
-)
-
-# This library is for internal hiredis use, because hiredis assumes a
-# different include prefix for itself than external libraries do.
-cc_library(
-    name = "_hiredis",
-    hdrs = [
-        "deps/hiredis/dict.c",
-        "deps/hiredis/dict.h",
-        "deps/hiredis/fmacros.h",
-    ],
-    strip_include_prefix = "deps/hiredis",
-)
-
-cc_library(
-    name = "hiredis",
-    srcs = glob(
-        [
-            "deps/hiredis/*.c",
-            "deps/hiredis/*.h",
-        ],
-        exclude =
-        [
-            "deps/hiredis/test.c",
-        ],
-    ),
-    hdrs = glob([
-        "deps/hiredis/*.h",
-        "deps/hiredis/adapters/*.h",
-    ]),
-    strip_include_prefix = "deps",
-    deps = [
-        ":_hiredis",
-    ],
-    visibility = ["//visibility:public"],
 )

@@ -99,10 +99,12 @@ class MinimalSessionManagerTest(unittest.TestCase):
             test_name=f"unit_test__{self.__class__.__name__}",
         )
         self.sdk.reset()
+        self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
 
     def testClusterName(self):
         sdk = MockSDK()
         sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
         cluster_manager = self.cls(
             test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False, sdk=sdk
         )
@@ -115,6 +117,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
     def testSetClusterEnv(self):
         sdk = MockSDK()
         sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
         cluster_manager = self.cls(
             test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False, sdk=sdk
         )
@@ -154,7 +157,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.cluster_manager.create_cluster_compute()
         self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 1)
-        self.assertEqual(len(self.sdk.call_counter), 1)
+        self.assertEqual(len(self.sdk.call_counter), 2)  # 1 extra for cloud provider
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateFailFail(self):
@@ -182,7 +185,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         # Both APIs were called twice (retry after fail)
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 2)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 2)
-        self.assertEqual(len(self.sdk.call_counter), 2)
+        self.assertEqual(len(self.sdk.call_counter), 3)  # 1 extra for cloud provider
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateFailSucceed(self):
@@ -214,7 +217,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 2)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 2)
-        self.assertEqual(len(self.sdk.call_counter), 2)
+        self.assertEqual(len(self.sdk.call_counter), 3)  # 1 extra for cloud provider
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateSucceed(self):
@@ -244,7 +247,72 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 1)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 1)
-        self.assertEqual(len(self.sdk.call_counter), 2)
+        self.assertEqual(len(self.sdk.call_counter), 3)  # 1 extra for cloud provider
+
+        # Test automatic fields
+        self.assertEqual(
+            self.cluster_manager.cluster_compute["idle_termination_minutes"],
+            self.cluster_manager.autosuspend_minutes,
+        )
+        self.assertEqual(
+            self.cluster_manager.cluster_compute["maximum_uptime_minutes"],
+            self.cluster_manager.maximum_uptime_minutes,
+        )
+
+    def testClusterComputeExtraTags(self):
+        self.cluster_manager.set_cluster_compute(self.cluster_compute)
+
+        # No extra tags specified
+        self.assertEqual(self.cluster_manager.cluster_compute, self.cluster_compute)
+
+        # Extra tags specified
+        self.cluster_manager.set_cluster_compute(
+            self.cluster_compute, extra_tags={"foo": "bar"}
+        )
+
+        # All ResourceTypes as in
+        # ray_release.aws.RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
+        target_cluster_compute = TEST_CLUSTER_COMPUTE.copy()
+        target_cluster_compute["aws"] = {
+            "TagSpecifications": [
+                {"ResourceType": "instance", "Tags": [{"Key": "foo", "Value": "bar"}]},
+                {"ResourceType": "volume", "Tags": [{"Key": "foo", "Value": "bar"}]},
+            ]
+        }
+        self.assertEqual(
+            self.cluster_manager.cluster_compute["aws"], target_cluster_compute["aws"]
+        )
+
+        # Test merging with already existing tags
+        cluster_compute_with_tags = TEST_CLUSTER_COMPUTE.copy()
+        cluster_compute_with_tags["aws"] = {
+            "TagSpecifications": [
+                {"ResourceType": "fake", "Tags": []},
+                {"ResourceType": "instance", "Tags": [{"Key": "key", "Value": "val"}]},
+            ]
+        }
+        self.cluster_manager.set_cluster_compute(
+            cluster_compute_with_tags, extra_tags={"foo": "bar"}
+        )
+
+        # All ResourceTypes as in RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
+        target_cluster_compute = TEST_CLUSTER_COMPUTE.copy()
+        target_cluster_compute["aws"] = {
+            "TagSpecifications": [
+                {"ResourceType": "fake", "Tags": []},
+                {
+                    "ResourceType": "instance",
+                    "Tags": [
+                        {"Key": "key", "Value": "val"},
+                        {"Key": "foo", "Value": "bar"},
+                    ],
+                },
+                {"ResourceType": "volume", "Tags": [{"Key": "foo", "Value": "bar"}]},
+            ]
+        }
+        self.assertEqual(
+            self.cluster_manager.cluster_compute["aws"], target_cluster_compute["aws"]
+        )
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterEnvExisting(self):

@@ -13,8 +13,8 @@ This user guide will help you navigate the Ray Datasets project and show you how
     creating-datasets
     transforming-datasets
     consuming-datasets
-    dataset-ml-preprocessing
     dataset-tensor-support
+    custom-datasource
     pipelining-compute
     dataset-internals
     performance-tips

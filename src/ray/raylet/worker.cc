@@ -160,6 +160,16 @@ void Worker::AssignActorId(const ActorID &actor_id) {
 
 const ActorID &Worker::GetActorId() const { return actor_id_; }
 
+const std::string Worker::GetTaskOrActorIdAsDebugString() const {
+  std::stringstream id_ss;
+  if (GetActorId().IsNil()) {
+    id_ss << "task ID: " << GetAssignedTaskId();
+  } else {
+    id_ss << "actor ID: " << GetActorId();
+  }
+  return id_ss.str();
+}
+
 void Worker::MarkDetachedActor() { is_detached_actor_ = true; }
 
 bool Worker::IsDetachedActor() const { return is_detached_actor_; }
@@ -185,6 +195,16 @@ void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
 const BundleID &Worker::GetBundleId() const { return bundle_id_; }
 
 void Worker::SetBundleId(const BundleID &bundle_id) { bundle_id_ = bundle_id; }
+
+void Worker::SetJobId(const JobID &job_id) {
+  if (assigned_job_id_.IsNil()) {
+    assigned_job_id_ = job_id;
+  }
+
+  RAY_CHECK(assigned_job_id_ == job_id)
+      << "Job_id mismatch, assigned: " << assigned_job_id_.Hex()
+      << ", actual: " << job_id.Hex();
+}
 
 }  // namespace raylet
 

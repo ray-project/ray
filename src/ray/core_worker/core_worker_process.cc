@@ -109,6 +109,24 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // NOTE(kfstorm): any initialization depending on RayConfig must happen after this line.
   InitializeSystemConfig();
 
+  // Assume stats module will be initialized exactly once in once process.
+  // So it must be called in CoreWorkerProcess constructor and will be reused
+  // by all of core worker.
+  // Initialize stats in core worker global tags.
+  const ray::stats::TagsType global_tags = {
+      {ray::stats::ComponentKey, "core_worker"},
+      {ray::stats::WorkerIdKey, worker_id_.Hex()},
+      {ray::stats::VersionKey, kRayVersion},
+      {ray::stats::NodeAddressKey, options_.node_ip_address},
+      {ray::stats::SessionNameKey, options_.session_name}};
+
+  // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
+  // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
+  // for java worker or in constructor of CoreWorker for python worker.
+
+  // We need init stats before using it/spawning threads.
+  stats::Init(global_tags, options_.metrics_agent_port, worker_id_);
+
   {
     // Initialize global worker instance.
     auto worker = std::make_shared<CoreWorker>(options_, worker_id_);
@@ -116,27 +134,13 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     core_worker_ = worker;
   }
 
-  // Assume stats module will be initialized exactly once in once process.
-  // So it must be called in CoreWorkerProcess constructor and will be reused
-  // by all of core worker.
-  RAY_LOG(DEBUG) << "Stats setup in core worker.";
-  // Initialize stats in core worker global tags.
-  const ray::stats::TagsType global_tags = {
-      {ray::stats::ComponentKey, "core_worker"},
-      {ray::stats::VersionKey, kRayVersion},
-      {ray::stats::NodeAddressKey, options_.node_ip_address}};
-
-  // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
-  // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
-  // for java worker or in constructor of CoreWorker for python worker.
-  stats::Init(global_tags, options_.metrics_agent_port);
-
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
     RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
                  absl::flat_hash_map<std::string, std::string>(),
                  options_.log_dir,
-                 RayConfig::instance().event_level());
+                 RayConfig::instance().event_level(),
+                 RayConfig::instance().emit_event_to_log_file());
   }
 }
 

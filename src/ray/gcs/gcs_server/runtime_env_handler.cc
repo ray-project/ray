@@ -18,7 +18,7 @@ namespace ray {
 namespace gcs {
 
 void RuntimeEnvHandler::HandlePinRuntimeEnvURI(
-    const rpc::PinRuntimeEnvURIRequest &request,
+    rpc::PinRuntimeEnvURIRequest request,
     rpc::PinRuntimeEnvURIReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Received PinRuntimeEnvURI request: " << request.DebugString();
@@ -27,7 +27,7 @@ void RuntimeEnvHandler::HandlePinRuntimeEnvURI(
   FillRandom(&hex_id);
 
   runtime_env_manager_.AddURIReference(hex_id, request.uri());
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+
   delay_executor_(
       [this, hex_id, request] {
         runtime_env_manager_.RemoveURIReference(hex_id);
@@ -35,6 +35,10 @@ void RuntimeEnvHandler::HandlePinRuntimeEnvURI(
                        << "with URI:" << request.uri();
       },
       /* expiration_ms= */ request.expiration_s() * 1000);
+
+  // The `request` object will be destroyed when the reply is sent, so this
+  // must be called after the delay executor is set up.
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 }  // namespace gcs
 }  // namespace ray

@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import random
 
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
@@ -33,24 +33,24 @@ class CurriculumCapableEnv(TaskSettableEnv):
         self.switch_env = False
         self._timesteps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         if self.switch_env:
             self.switch_env = False
             self._make_lake()
         self._timesteps = 0
-        return self.frozen_lake.reset()
+        return self.frozen_lake.reset(seed=seed, options=options)
 
     def step(self, action):
         self._timesteps += 1
-        s, r, d, i = self.frozen_lake.step(action)
+        obs, rew, done, truncated, info = self.frozen_lake.step(action)
         # Make rewards scale with the level exponentially:
         # Level 1: x1
         # Level 2: x10
         # Level 3: x100, etc..
-        r *= 10 ** (self.cur_level - 1)
+        rew *= 10 ** (self.cur_level - 1)
         if self._timesteps >= self.max_timesteps:
-            d = True
-        return s, r, d, i
+            done = True
+        return obs, rew, done, truncated, info
 
     @override(TaskSettableEnv)
     def sample_tasks(self, n_tasks):

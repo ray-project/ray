@@ -11,6 +11,7 @@ from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
 from ray.rllib.examples.models.rnn_model import RNNModel, TorchRNNModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -20,8 +21,8 @@ parser.add_argument("--env", type=str, default="RepeatAfterMeEnv")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
-    default="tf",
+    choices=["tf", "tf2", "torch"],
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -56,28 +57,31 @@ if __name__ == "__main__":
     register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     register_env("RepeatInitialObsEnv", lambda _: RepeatInitialObsEnv())
 
-    config = {
-        "env": args.env,
-        "env_config": {
-            "repeat_delay": 2,
-        },
-        "gamma": 0.9,
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,
-        "num_envs_per_worker": 20,
-        "entropy_coeff": 0.001,
-        "num_sgd_iter": 5,
-        "vf_loss_coeff": 1e-5,
-        "model": {
-            "custom_model": "rnn",
-            "max_seq_len": 20,
-            "custom_model_config": {
-                "cell_size": 32,
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment(args.env, env_config={"repeat_delay": 2})
+        .framework(args.framework)
+        .rollouts(num_rollout_workers=0, num_envs_per_worker=20)
+        .training(
+            model={
+                "custom_model": "rnn",
+                "max_seq_len": 20,
+                "custom_model_config": {
+                    "cell_size": 32,
+                },
             },
-        },
-        "framework": args.framework,
-    }
+            gamma=0.9,
+            # TODO (Kourosh): Enable when LSTMs are supported.
+            _enable_learner_api=False,
+        )
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(_enable_rl_module_api=False)
+    )
+
+    if args.run == "PPO":
+        config.training(entropy_coeff=0.001, num_sgd_iter=5, vf_loss_coeff=1e-5)
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -92,10 +96,10 @@ if __name__ == "__main__":
     # >> import numpy as np
     # >> from ray.rllib.algorithms.ppo import PPO
     # >>
-    # >> algo = PPO(config)
-    # >> lstm_cell_size = config["model"]["custom_model_config"]["cell_size"]
+    # >> algo = config.build()
+    # >> lstm_cell_size = config.model["custom_model_config"]["cell_size"]
     # >> env = RepeatAfterMeEnv({})
-    # >> obs = env.reset()
+    # >> obs, info = env.reset()
     # >>
     # >> # range(2) b/c h- and c-states of the LSTM.
     # >> init_state = state = [
@@ -104,15 +108,17 @@ if __name__ == "__main__":
     # >>
     # >> while True:
     # >>     a, state_out, _ = algo.compute_single_action(obs, state)
-    # >>     obs, reward, done, _ = env.step(a)
+    # >>     obs, reward, done, _, _ = env.step(a)
     # >>     if done:
-    # >>         obs = env.reset()
+    # >>         obs, info = env.reset()
     # >>         state = init_state
     # >>     else:
     # >>         state = state_out
 
     tuner = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        args.run,
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=1),
     )
     results = tuner.fit()
 

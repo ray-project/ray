@@ -48,7 +48,7 @@ def test_worker_exit_after_parent_raylet_dies(ray_start_cluster):
     [
         {
             "num_cpus": 5,
-            "object_store_memory": 10 ** 8,
+            "object_store_memory": 10**8,
         }
     ],
     indirect=True,
@@ -57,7 +57,7 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
     @ray.remote
     class LargeMemoryActor:
         def some_expensive_task(self):
-            return np.zeros(10 ** 8 // 2, dtype=np.uint8)
+            return np.zeros(10**8 // 2, dtype=np.uint8)
 
     actors = [LargeMemoryActor.remote() for _ in range(5)]
     for _ in range(5):

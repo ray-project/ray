@@ -22,6 +22,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/gcs_client/accessor.h"
@@ -149,7 +150,20 @@ class LocalResourceManager : public syncer::ReporterInterface {
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
+  /// Record the metrics.
+  void RecordMetrics() const;
+
  private:
+  struct ResourceUsage {
+    double avail;
+    double used;
+    // TODO(sang): Add PG avail & PG used.
+  };
+
+  /// Return the resource usage map for each resource.
+  absl::flat_hash_map<std::string, LocalResourceManager::ResourceUsage>
+  GetResourceUsageMap() const;
+
   /// Notify the subscriber that the local resouces has changed.
   void OnResourceChanged();
 
@@ -249,12 +263,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Subscribes to resource changes.
   std::function<void(const NodeResources &)> resource_change_subscriber_;
 
-  // Specify predefine resources that consists of unit-size instances.
-  std::unordered_set<int64_t> predefined_unit_instance_resources_{};
-
-  // Specify custom resources that consists of unit-size instances.
-  std::unordered_set<int64_t> custom_unit_instance_resources_{};
-
   // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;
 
@@ -266,6 +274,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
+
+  friend class LocalResourceManagerTest;
+  FRIEND_TEST(LocalResourceManagerTest, BasicGetResourceUsageMapTest);
 };
 
 }  // end namespace ray

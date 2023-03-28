@@ -11,8 +11,7 @@ from ray_release.exception import (
     CommandTimeout,
     LocalEnvSetupError,
     LogsError,
-    RemoteEnvSetupError,
-    ResultsError,
+    FetchResultError,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.job_manager import JobManager
@@ -31,6 +30,7 @@ class JobRunner(CommandRunner):
         file_manager: FileManager,
         working_dir: str,
         sdk: Optional["AnyscaleSDK"] = None,
+        artifact_path: Optional[str] = None,
     ):
         super(JobRunner, self).__init__(
             cluster_manager=cluster_manager,
@@ -43,6 +43,9 @@ class JobRunner(CommandRunner):
         self.last_command_scd_id = None
 
     def prepare_local_env(self, ray_wheels_url: Optional[str] = None):
+        if not os.environ.get("BUILDKITE"):
+            return
+
         # Install matching Ray for job submission
         try:
             install_matching_ray_locally(
@@ -59,13 +62,17 @@ class JobRunner(CommandRunner):
             os.unlink("wait_cluster.py")
         os.link(wait_script, "wait_cluster.py")
 
-        try:
-            self.file_manager.upload()
-        except Exception as e:
-            logger.exception(e)
-            raise RemoteEnvSetupError(
-                f"Error setting up remote environment: {e}"
-            ) from e
+        # Copy prometheus metrics script to working dir
+        metrics_script = os.path.join(
+            os.path.dirname(__file__), "_prometheus_metrics.py"
+        )
+        # Copy prometheus metrics script to working dir
+        if os.path.exists("prometheus_metrics.py"):
+            os.unlink("prometheus_metrics.py")
+        os.link(metrics_script, "prometheus_metrics.py")
+
+        # Do not upload the files here. Instead, we use the job runtime environment
+        # to automatically upload the local working dir.
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         # Wait script should be uploaded already. Kick off command
@@ -79,8 +86,17 @@ class JobRunner(CommandRunner):
                 f"Not all {num_nodes} nodes came up within {timeout} seconds."
             ) from e
 
+    def save_metrics(self, start_time: float, timeout: float = 900):
+        self.run_prepare_command(
+            f"python prometheus_metrics.py {start_time}", timeout=timeout
+        )
+
     def run_command(
-        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+        self,
+        command: str,
+        env: Optional[Dict] = None,
+        timeout: float = 3600.0,
+        raise_on_timeout: bool = True,
     ) -> float:
         full_env = self.get_full_command_env(env)
 
@@ -101,7 +117,7 @@ class JobRunner(CommandRunner):
         )
 
         status_code, time_taken = self.job_manager.run_and_wait(
-            full_command, full_env, timeout=timeout
+            full_command, full_env, working_dir=".", timeout=int(timeout)
         )
 
         if status_code != 0:
@@ -115,11 +131,11 @@ class JobRunner(CommandRunner):
         except Exception as e:
             raise LogsError(f"Could not get last logs: {e}") from e
 
-    def fetch_results(self) -> Dict[str, Any]:
+    def _fetch_json(self, path: str) -> Dict[str, Any]:
         try:
             tmpfile = tempfile.mkstemp(suffix=".json")[1]
             logger.info(tmpfile)
-            self.file_manager.download(self.result_output_json, tmpfile)
+            self.file_manager.download(path, tmpfile)
 
             with open(tmpfile, "rt") as f:
                 data = json.load(f)
@@ -127,4 +143,13 @@ class JobRunner(CommandRunner):
             os.unlink(tmpfile)
             return data
         except Exception as e:
-            raise ResultsError(f"Could not fetch results from session: {e}") from e
+            raise FetchResultError(f"Could not fetch results from session: {e}") from e
+
+    def fetch_results(self) -> Dict[str, Any]:
+        return self._fetch_json(self._RESULT_OUTPUT_JSON)
+
+    def fetch_metrics(self) -> Dict[str, Any]:
+        return self._fetch_json(self._METRICS_OUTPUT_JSON)
+
+    def fetch_artifact(self):
+        raise NotImplementedError

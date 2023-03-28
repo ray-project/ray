@@ -11,7 +11,7 @@ from ray.util.collective.tests.cpu_util import create_collective_workers
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
 @pytest.mark.parametrize("dst_rank", [0, 1])
 @pytest.mark.parametrize(
-    "array_size", [2, 2 ** 5, 2 ** 10, 2 ** 15, 2 ** 20, [2, 2], [5, 9, 10, 85]]
+    "array_size", [2, 2**5, 2**10, 2**15, 2**20, [2, 2], [5, 9, 10, 85]]
 )
 def test_reduce_different_name(
     ray_start_single_node, group_name, array_size, dst_rank, backend

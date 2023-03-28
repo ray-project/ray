@@ -1,13 +1,13 @@
 from collections import Counter
 import json
-import os
-import time
-
 import numpy as np
+import os
 import pickle
+import time
 
 from ray import tune
 from ray.tune.callback import Callback
+from ray._private.test_utils import safe_write_to_results_json
 
 
 class ProgressCallback(Callback):
@@ -23,11 +23,7 @@ class ProgressCallback(Callback):
                 "iteration": iteration,
                 "trial_states": dict(Counter([trial.status for trial in trials])),
             }
-            test_output_json = os.environ.get(
-                "TEST_OUTPUT_JSON", "/tmp/release_test.json"
-            )
-            with open(test_output_json, "wt") as f:
-                json.dump(result, f)
+            safe_write_to_results_json(result, "/tmp/release_test_out.json")
 
             self.last_update = now
 

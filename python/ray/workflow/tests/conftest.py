@@ -39,13 +39,13 @@ def _workflow_start(storage_url, shared, use_ray_client, **kwargs):
     assert use_ray_client in {"no_ray_client", "ray_client"}
     with _init_cluster(storage_url, **kwargs) as cluster:
         if use_ray_client == "ray_client":
-            address_info = ray.init(
-                address=f"ray://{cluster.address.split(':')[0]}:10001"
-            )
+            address = f"ray://{cluster.address.split(':')[0]}:10001"
         else:
-            address_info = ray.init(address=cluster.address)
+            address = cluster.address
 
-        yield address_info
+        ray.init(address=address)
+
+        yield address
 
 
 @pytest.fixture(scope="function")

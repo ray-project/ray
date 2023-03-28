@@ -1,6 +1,6 @@
 import copy
-import gym
-from gym.spaces import Box, Discrete
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete
 import numpy as np
 import random
 
@@ -19,9 +19,9 @@ class SimpleContextualBandit(gym.Env):
         self.observation_space = Box(low=-1.0, high=1.0, shape=(2,))
         self.cur_context = None
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.cur_context = random.choice([-1.0, 1.0])
-        return np.array([self.cur_context, -self.cur_context])
+        return np.array([self.cur_context, -self.cur_context]), {}
 
     def step(self, action):
         rewards_for_context = {
@@ -33,6 +33,7 @@ class SimpleContextualBandit(gym.Env):
             np.array([-self.cur_context, self.cur_context]),
             reward,
             True,
+            False,
             {"regret": 10 - reward},
         )
 
@@ -73,9 +74,9 @@ class LinearDiscreteEnv(gym.Env):
     def _sample_context(self):
         return np.random.normal(scale=1 / 3, size=(self.feature_dim,))
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self._current_context = self._sample_context()
-        return self._current_context
+        return self._current_context, {}
 
     def step(self, action):
         assert (
@@ -100,6 +101,7 @@ class LinearDiscreteEnv(gym.Env):
             self._current_context,
             reward,
             True,
+            False,
             {"regret": regret, "opt_action": opt_action},
         )
 
@@ -147,9 +149,9 @@ class WheelBanditEnv(gym.Env):
             if np.linalg.norm(state) <= 1:
                 return state
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self._current_context = self._sample_context()
-        return self._current_context
+        return self._current_context, {}
 
     def step(self, action):
         assert (
@@ -196,6 +198,7 @@ class WheelBanditEnv(gym.Env):
             self._current_context,
             reward,
             True,
+            False,
             {"regret": regret, "opt_action": opt_action},
         )
 

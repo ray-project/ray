@@ -3,6 +3,7 @@ import inspect
 import logging
 import os
 import shutil
+import types
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import pandas as pd
@@ -13,8 +14,9 @@ from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
+from ray.air._internal.uri_utils import URI
+from ray.air.config import ScalingConfig
 from ray.tune.registry import _ParameterRegistry
-from ray.tune.resources import Resources
 from ray.tune.utils import _detect_checkpoint_function
 from ray.util import placement_group
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -92,16 +94,17 @@ class TrainableUtil:
         `checkpoint_path`.
         For example, returns `checkpoint00000`.
         """
-        assert checkpoint_path.startswith(
-            logdir
-        ), "expecting `logdir` to be a prefix of `checkpoint_path`"
+        assert checkpoint_path.startswith(logdir), (
+            f"expecting `logdir` to be a prefix of `checkpoint_path`, got "
+            f"{checkpoint_path} (not in {logdir})"
+        )
         rel_path = os.path.relpath(checkpoint_path, logdir)
         tokens = rel_path.split(os.sep)
         return os.path.join(tokens[0])
 
     @staticmethod
     def make_checkpoint_dir(
-        checkpoint_dir: str, index: Union[int, str], override=False
+        checkpoint_dir: str, index: Union[int, str], override: bool = False
     ):
         """Creates a checkpoint directory within the provided path.
 
@@ -146,9 +149,10 @@ class TrainableUtil:
         iter_chkpt_pairs = []
         for marker_path in marker_paths:
             chkpt_dir = os.path.dirname(marker_path)
+            basename = os.path.basename(chkpt_dir)
 
             # Skip temporary checkpoints
-            if os.path.basename(chkpt_dir).startswith("checkpoint_tmp"):
+            if basename.startswith("checkpoint_tmp"):
                 continue
 
             metadata_file = glob.glob(
@@ -160,9 +164,21 @@ class TrainableUtil:
                 os.path.join(glob.escape(chkpt_dir), _TUNE_METADATA_FILENAME)
             )
             metadata_file = list(set(metadata_file))  # avoid duplication
-            if len(metadata_file) != 1:
+            if len(metadata_file) == 0:
+                logger.warning(
+                    f"The checkpoint {basename} does not have a metadata file. "
+                    f"This usually means that the training process was interrupted "
+                    f"while the checkpoint was being written. The checkpoint will be "
+                    f"excluded from analysis. Consider deleting the directory. "
+                    f"Full path: {chkpt_dir}"
+                )
+                continue
+            elif len(metadata_file) > 1:
                 raise ValueError(
-                    "{} has zero or more than one tune_metadata.".format(chkpt_dir)
+                    f"The checkpoint {basename} contains more than one metadata file. "
+                    f"If this happened without manual intervention, please file an "
+                    f"issue at https://github.com/ray-project/ray/issues. "
+                    f"Full path: {chkpt_dir}"
                 )
 
             metadata_file = metadata_file[0]
@@ -182,6 +198,18 @@ class TrainableUtil:
             iter_chkpt_pairs, columns=["training_iteration", "chkpt_path"]
         )
         return chkpt_df
+
+    @staticmethod
+    def get_remote_storage_path(
+        local_path: str, logdir: str, remote_checkpoint_dir: str
+    ) -> str:
+        """Converts a ``local_path`` to be based off of
+        ``remote_checkpoint_dir`` instead of ``logdir``.
+
+        ``logdir`` is assumed to be a prefix of ``local_path``."""
+        rel_local_path = os.path.relpath(local_path, logdir)
+        uri = URI(remote_checkpoint_dir)
+        return str(uri / rel_local_path)
 
 
 @DeveloperAPI
@@ -305,6 +333,34 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
             # ...
         )
 
+    .. note::
+        When restoring a Tune experiment, you need to re-specify the trainable
+        wrapped with ``tune.with_parameters``.
+        The reasoning behind this is as follows:
+
+        1. ``tune.with_parameters`` stores parameters in the object store and
+        attaches object references to the trainable, but the objects they point to
+        may not exist anymore upon restoring in a new Ray cluster.
+
+        2. The attached objects could be arbitrarily large, so Tune does not save the
+        object data along with the trainable.
+
+        To restore, Tune allows the trainable to be re-specified in
+        :meth:`Tuner.restore(path, trainable=...) <ray.tune.tuner.Tuner.restore>`.
+        Continuing from the previous examples, here's an example of restoration:
+
+        .. code-block:: python
+
+            from ray.tune import Tuner
+
+            data = HugeDataset(download=True)
+
+            tuner = Tuner.restore(
+                "/path/to/experiment/",
+                trainable=tune.with_parameters(MyTrainable, data=data),
+                # ...
+            )
+
     """
     from ray.tune.trainable import Trainable
 
@@ -326,10 +382,10 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
         parameter_registry.put(prefix + k, v)
 
     trainable_name = getattr(trainable, "__name__", "tune_with_parameters")
+    keys = set(kwargs.keys())
 
     if inspect.isclass(trainable):
         # Class trainable
-        keys = list(kwargs.keys())
 
         class _Inner(trainable):
             def setup(self, config):
@@ -338,12 +394,10 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
                     setup_kwargs[k] = parameter_registry.get(prefix + k)
                 super(_Inner, self).setup(config, **setup_kwargs)
 
-        _Inner.__name__ = trainable_name
-        return _Inner
+        trainable_with_params = _Inner
     else:
         # Function trainable
         use_checkpoint = _detect_checkpoint_function(trainable, partial=True)
-        keys = list(kwargs.keys())
 
         def inner(config, checkpoint_dir=None):
             fn_kwargs = {}
@@ -356,34 +410,41 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
             for k in keys:
                 fn_kwargs[k] = parameter_registry.get(prefix + k)
-            trainable(config, **fn_kwargs)
+            return trainable(config, **fn_kwargs)
 
-        inner.__name__ = trainable_name
+        trainable_with_params = inner
 
-        # Use correct function signature if no `checkpoint_dir` parameter
-        # is set
+        # Use correct function signature if no `checkpoint_dir` parameter is set
         if not use_checkpoint:
 
             def _inner(config):
-                inner(config, checkpoint_dir=None)
+                return inner(config, checkpoint_dir=None)
 
-            _inner.__name__ = trainable_name
-
-            if hasattr(trainable, "__mixins__"):
-                _inner.__mixins__ = trainable.__mixins__
-            return _inner
+            trainable_with_params = _inner
 
         if hasattr(trainable, "__mixins__"):
-            inner.__mixins__ = trainable.__mixins__
+            trainable_with_params.__mixins__ = trainable.__mixins__
 
-        return inner
+        # If the trainable has been wrapped with `tune.with_resources`, we should
+        # keep the `_resources` attribute around
+        if hasattr(trainable, "_resources"):
+            trainable_with_params._resources = trainable._resources
+
+    trainable_with_params.__name__ = trainable_name
+
+    # Mark this trainable as being wrapped by saving the attached parameter names
+    trainable_with_params._attached_param_names = keys
+    return trainable_with_params
 
 
 @PublicAPI(stability="beta")
 def with_resources(
     trainable: Union[Type["Trainable"], Callable],
     resources: Union[
-        Dict[str, float], PlacementGroupFactory, Callable[[dict], PlacementGroupFactory]
+        Dict[str, float],
+        PlacementGroupFactory,
+        ScalingConfig,
+        Callable[[dict], PlacementGroupFactory],
     ],
 ):
     """Wrapper for trainables to specify resource requests.
@@ -400,8 +461,9 @@ def with_resources(
 
     Args:
         trainable: Trainable to wrap.
-        resources: Resource dict, placement group factory, or callable that takes
-            in a config dict and returns a placement group factory.
+        resources: Resource dict, placement group factory, AIR ``ScalingConfig``
+            or callable that takes in a config dict and returns a placement
+            group factory.
 
     Example:
 
@@ -426,13 +488,15 @@ def with_resources(
         inspect.isclass(trainable) and not issubclass(trainable, Trainable)
     ):
         raise ValueError(
-            f"`tune.with_parameters() only works with function trainables "
+            f"`tune.with_resources() only works with function trainables "
             f"or classes that inherit from `tune.Trainable()`. Got type: "
             f"{type(trainable)}."
         )
 
     if isinstance(resources, PlacementGroupFactory):
         pgf = resources
+    elif isinstance(resources, ScalingConfig):
+        pgf = resources.as_placement_group_factory()
     elif isinstance(resources, dict):
         pgf = resource_dict_to_pg_factory(resources)
     elif callable(resources):
@@ -443,15 +507,38 @@ def with_resources(
         )
 
     if not inspect.isclass(trainable):
+        if isinstance(trainable, types.MethodType):
+            # Methods cannot set arbitrary attributes, so we have to wrap them
+            use_checkpoint = _detect_checkpoint_function(trainable, partial=True)
+            if use_checkpoint:
+
+                def _trainable(config, checkpoint_dir):
+                    return trainable(config, checkpoint_dir=checkpoint_dir)
+
+            else:
+
+                def _trainable(config):
+                    return trainable(config)
+
+            _trainable._resources = pgf
+            return _trainable
+
         # Just set an attribute. This will be resolved later in `wrap_function()`.
-        trainable._resources = pgf
+        try:
+            trainable._resources = pgf
+        except AttributeError as e:
+            raise RuntimeError(
+                "Could not use `tune.with_resources()` on the supplied trainable. "
+                "Wrap your trainable in a regular function before passing it "
+                "to Ray Tune."
+            ) from e
     else:
 
         class ResourceTrainable(trainable):
             @classmethod
             def default_resource_request(
                 cls, config: Dict[str, Any]
-            ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+            ) -> Optional[PlacementGroupFactory]:
                 if not isinstance(pgf, PlacementGroupFactory) and callable(pgf):
                     return pgf(config)
                 return pgf

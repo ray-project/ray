@@ -5,7 +5,7 @@ from ray.tests.conftest import *  # noqa
 
 
 def test_huggingface(ray_start_regular_shared):
-    data = datasets.load_dataset("emotion")
+    data = datasets.load_dataset("tweet_eval", "emotion")
 
     assert isinstance(data, datasets.DatasetDict)
 

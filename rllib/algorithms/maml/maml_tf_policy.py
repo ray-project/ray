@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, List, Type, Union
 
-import ray
 from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
@@ -371,7 +370,7 @@ def get_maml_tf_policy(name: str, base: type) -> type:
     class MAMLTFPolicy(KLCoeffMixin, ValueNetworkMixin, base):
         def __init__(
             self,
-            obs_space,
+            observation_space,
             action_space,
             config,
             existing_model=None,
@@ -380,13 +379,12 @@ def get_maml_tf_policy(name: str, base: type) -> type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG, **config)
             validate_config(config)
 
             # Initialize base class.
             base.__init__(
                 self,
-                obs_space,
+                observation_space,
                 action_space,
                 config,
                 existing_inputs=existing_inputs,

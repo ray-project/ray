@@ -355,26 +355,23 @@ class HEBOSearch(Searcher):
         else:
             numpy_random_state = None
             torch_random_state = None
+        save_object = self.__dict__.copy()
+        save_object["__numpy_random_state"] = numpy_random_state
+        save_object["__torch_random_state"] = torch_random_state
         with open(checkpoint_path, "wb") as f:
-            pickle.dump(
-                (
-                    self._opt,
-                    self._initial_points,
-                    numpy_random_state,
-                    torch_random_state,
-                    self._live_trial_mapping,
-                    self._max_concurrent,
-                    self._suggestions_cache,
-                    self._space,
-                    self._hebo_config,
-                    self._batch_filled,
-                ),
-                f,
-            )
+            pickle.dump(save_object, f)
 
     def restore(self, checkpoint_path: str):
         """Restoring current optimizer state."""
         with open(checkpoint_path, "rb") as f:
+            save_object = pickle.load(f)
+
+        if isinstance(save_object, dict):
+            numpy_random_state = save_object.pop("__numpy_random_state", None)
+            torch_random_state = save_object.pop("__torch_random_state", None)
+            self.__dict__.update(save_object)
+        else:
+            # Backwards compatibility
             (
                 self._opt,
                 self._initial_points,
@@ -386,7 +383,7 @@ class HEBOSearch(Searcher):
                 self._space,
                 self._hebo_config,
                 self._batch_filled,
-            ) = pickle.load(f)
+            ) = save_object
         if numpy_random_state is not None:
             np.random.set_state(numpy_random_state)
         if torch_random_state is not None:

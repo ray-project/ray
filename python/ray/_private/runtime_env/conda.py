@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import json
 import logging
@@ -26,6 +25,7 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import (
     get_directory_size_bytes,
     get_master_wheel_url,
+    get_or_create_event_loop,
     get_release_wheel_url,
     get_wheel_filename,
     try_to_create_directory,
@@ -58,7 +58,11 @@ def _get_ray_setup_spec():
 
 def _resolve_install_from_source_ray_dependencies():
     """Find the Ray dependencies when Ray is installed from source."""
-    return _get_ray_setup_spec().install_requires
+    deps = (
+        _get_ray_setup_spec().install_requires + _get_ray_setup_spec().extras["default"]
+    )
+    # Remove duplicates
+    return list(set(deps))
 
 
 def _inject_ray_to_conda_site(
@@ -354,7 +358,7 @@ class CondaPlugin(RuntimeEnvPlugin):
             logger.info(f"Finished creating conda environment at {conda_env_name}")
             return get_directory_size_bytes(conda_env_name)
 
-        loop = asyncio.get_event_loop()
+        loop = get_or_create_event_loop()
         return await loop.run_in_executor(None, _create)
 
     def modify_context(

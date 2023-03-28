@@ -7,7 +7,7 @@ halfcheetah-ddpg:
         time_total_s: 5400 # 90 minutes
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         # === Model ===
         actor_hiddens: [64, 64]
         critic_hiddens: [64, 64]

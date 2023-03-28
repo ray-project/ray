@@ -5,6 +5,7 @@ aws:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
+            DeleteOnTermination: true
             VolumeSize: 500
 
 head_node_type:
@@ -16,8 +17,8 @@ head_node_type:
 worker_node_types:
    - name: worker_node
      instance_type: m5.4xlarge
-     min_workers: 200
-     max_workers: 200
+     min_workers: 210
+     max_workers: 210
      use_spot: false
      resources:
       cpu: 32

@@ -66,7 +66,7 @@ struct ObjectStatsCollectorTest : public Test {
     allocator_ = std::make_unique<DummyAllocator>();
     manager_ =
         std::make_unique<ObjectLifecycleManager>(*allocator_, [](auto /* unused */) {});
-    collector_ = &manager_->stats_collector_;
+    collector_ = manager_->stats_collector_.get();
     object_store_ = dynamic_cast<ObjectStore *>(manager_->object_store_.get());
     used_ids_.clear();
     num_bytes_created_total_ = 0;
@@ -147,6 +147,18 @@ struct ObjectStatsCollectorTest : public Test {
     EXPECT_EQ(num_bytes_received, collector_->num_bytes_received_);
     EXPECT_EQ(num_objects_errored, collector_->num_objects_errored_);
     EXPECT_EQ(num_bytes_errored, collector_->num_bytes_errored_);
+
+    // Expect counter map containing the correct values
+    const auto &counters = collector_->bytes_by_loc_seal_;
+    EXPECT_EQ(collector_->GetNumBytesCreatedCurrent(),
+              counters.Get({/*fallback_allocated*/ true, /*sealed*/ true}) +
+                  counters.Get({/*fallback_allocated*/ true, /*sealed*/ false}) +
+                  counters.Get({/*fallback_allocated*/ false, /*sealed*/ true}) +
+                  counters.Get({/*fallback_allocated*/ false, /*sealed*/ false}));
+
+    EXPECT_EQ(num_bytes_unsealed,
+              counters.Get({/*fallback_allocated*/ true, /*sealed*/ false}) +
+                  counters.Get({/*fallback_allocated*/ false, /*sealed*/ false}));
   }
 
   ray::ObjectInfo CreateNewObjectInfo(int64_t data_size) {

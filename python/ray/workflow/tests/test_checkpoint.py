@@ -13,7 +13,7 @@ from ray.workflow.tests.utils import assert_task_checkpoints
 def checkpoint_dag(checkpoint):
     @ray.remote
     def large_input():
-        return np.arange(2 ** 24)
+        return np.arange(2**24)
 
     @ray.remote
     def identity(x):

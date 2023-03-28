@@ -34,28 +34,31 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     with `examples/serving/cartpole_client.py --inference-mode=local|remote`.
 
     Examples:
-        >>> import gym
-        >>> from ray.rllib.algorithms.pg import PG
+        >>> import gymnasium as gym
+        >>> from ray.rllib.algorithms.pg import PGConfig
         >>> from ray.rllib.env.policy_client import PolicyClient
         >>> from ray.rllib.env.policy_server_input import PolicyServerInput
         >>> addr, port = ... # doctest: +SKIP
-        >>> pg = PG( # doctest: +SKIP
-        ...     env="CartPole-v0", config={ # doctest: +SKIP
-        ...         "input": lambda io_ctx: # doctest: +SKIP
-        ...             PolicyServerInput(io_ctx, addr, port), # doctest: +SKIP
-        ...         # Run just 1 server, in the trainer.
-        ...         "num_workers": 0,   # doctest: +SKIP
-        ...     } # doctest: +SKIP
+        >>> config = ( # doctest: +SKIP
+        ...     PGConfig()
+        ...     .environment("CartPole-v1")
+        ...     .offline_data(
+        ...         input_=lambda ioctx: PolicyServerInput(ioctx, addr, port)
+        ...     )
+        ...     # Run just 1 server (in the Algorithm's WorkerSet).
+        ...     .rollouts(num_rollout_workers=0)
+        ... )
+        >>> pg = config.build() # doctest: +SKIP
         >>> while True: # doctest: +SKIP
         >>>     pg.train() # doctest: +SKIP
 
         >>> client = PolicyClient( # doctest: +SKIP
         ...     "localhost:9900", inference_mode="local")
         >>> eps_id = client.start_episode()  # doctest: +SKIP
-        >>> env = gym.make("CartPole-v0")
-        >>> obs = env.reset()
+        >>> env = gym.make("CartPole-v1")
+        >>> obs, info = env.reset()
         >>> action = client.get_action(eps_id, obs) # doctest: +SKIP
-        >>> reward = env.step(action)[0] # doctest: +SKIP
+        >>> _, reward, _, _, _ = env.step(action) # doctest: +SKIP
         >>> client.log_returns(eps_id, reward) # doctest: +SKIP
         >>> client.log_returns(eps_id, reward) # doctest: +SKIP
     """

@@ -7,11 +7,14 @@ Ray 1.3+ spills objects to external storage once the object store is full. By de
 Single node
 -----------
 
-Ray uses object spilling by default. Without any setting, objects are spilled to `[temp_folder]/spill`. `temp_folder` is `/tmp` for Linux and MacOS by default.
+Ray uses object spilling by default. Without any setting, objects are spilled to `[temp_folder]/spill`. On Linux and MacOS, the `temp_folder` is `/tmp` by default.
 
-To configure the directory where objects are placed, use:
+To configure the directory where objects are spilled to, use:
 
 .. code-block:: python
+
+    import json
+    import ray
 
     ray.init(
         _system_config={
@@ -25,6 +28,9 @@ You can also specify multiple directories for spilling to spread the IO load and
 usage across multiple physical devices if needed (e.g., SSD devices):
 
 .. code-block:: python
+
+    import json
+    import ray
 
     ray.init(
         _system_config={
@@ -46,19 +52,23 @@ usage across multiple physical devices if needed (e.g., SSD devices):
         },
     )
 
+
 .. note::
-  
-  To optimize the performance, it is recommended to use SSD instead of HDD when using object spilling for memory intensive workloads.
+
+    To optimize the performance, it is recommended to use an SSD instead of an HDD when using object spilling for memory-intensive workloads.
 
 If you are using an HDD, it is recommended that you specify a large buffer size (> 1MB) to reduce IO requests during spilling.
 
 .. code-block:: python
 
+    import json
+    import ray
+
     ray.init(
         _system_config={
             "object_spilling_config": json.dumps(
                 {
-                  "type": "filesystem", 
+                  "type": "filesystem",
                   "params": {
                     "directory_path": "/tmp/spill",
                     "buffer_size": 1_000_000,
@@ -73,6 +83,9 @@ If multiple physical devices are used, any physical device's over-usage will tri
 The default threshold is 0.95 (95%). You can adjust the threshold by setting ``local_fs_capacity_threshold``, or set it to 1 to disable the protection.
 
 .. code-block:: python
+
+    import json
+    import ray
 
     ray.init(
         _system_config={
@@ -94,13 +107,16 @@ To enable object spilling to remote storage (any URI supported by `smart_open <h
 
 .. code-block:: python
 
+    import json
+    import ray
+
     ray.init(
         _system_config={
             "max_io_workers": 4,  # More IO workers for remote storage.
             "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
             "object_spilling_config": json.dumps(
                 {
-                  "type": "smart_open", 
+                  "type": "smart_open",
                   "params": {
                     "uri": "s3://bucket/path"
                   },
@@ -116,15 +132,18 @@ Spilling to multiple remote storages is also supported.
 
 .. code-block:: python
 
+    import json
+    import ray
+
     ray.init(
         _system_config={
             "max_io_workers": 4,  # More IO workers for remote storage.
             "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
             "object_spilling_config": json.dumps(
                 {
-                  "type": "smart_open", 
+                  "type": "smart_open",
                   "params": {
-                    "uri": ["s3://bucket/path1", "s3://bucket/path2, "s3://bucket/path3"],
+                    "uri": ["s3://bucket/path1", "s3://bucket/path2", "s3://bucket/path3"],
                   },
                   "buffer_size": 100 * 1024 * 1024, # Use a 100MB buffer for writes
                 },
@@ -139,8 +158,9 @@ Cluster mode
 To enable object spilling in multi node clusters:
 
 .. code-block:: bash
-  
+
   # Note that `object_spilling_config`'s value should be json format.
+  # You only need to specify the config when starting the head node, all the worker nodes will get the same config from the head node.
   ray start --head --system-config='{"object_spilling_config":"{\"type\":\"filesystem\",\"params\":{\"directory_path\":\"/tmp/spill\"}}"}'
 
 Stats

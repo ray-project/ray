@@ -68,8 +68,12 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
     stats->stats.cum_count++;
     curr_count = ++stats->stats.curr_count;
   }
-  ray::stats::STATS_operation_count.Record(curr_count, name);
-  ray::stats::STATS_operation_active_count.Record(curr_count, name);
+
+  if (RayConfig::instance().event_stats_metrics()) {
+    ray::stats::STATS_operation_count.Record(curr_count, name);
+    ray::stats::STATS_operation_active_count.Record(curr_count, name);
+  }
+
   return std::make_shared<StatsHandle>(
       name,
       absl::GetCurrentTimeNanos() + expected_queueing_delay_ns,
@@ -91,9 +95,6 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
   int64_t end_execution = absl::GetCurrentTimeNanos();
   // Update execution time stats.
   const auto execution_time_ns = end_execution - start_execution;
-  // Update event-specific stats.
-  ray::stats::STATS_operation_run_time_ms.Record(execution_time_ns / 1000000,
-                                                 handle->event_name);
   int64_t curr_count;
   {
     auto &stats = handle->handler_stats;
@@ -105,11 +106,18 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
     // Event-specific running count.
     stats->stats.running_count--;
   }
-  ray::stats::STATS_operation_active_count.Record(curr_count, handle->event_name);
-  // Update global stats.
   const auto queue_time_ns = start_execution - handle->start_time;
-  ray::stats::STATS_operation_queue_time_ms.Record(queue_time_ns / 1000000,
+
+  if (RayConfig::instance().event_stats_metrics()) {
+    // Update event-specific stats.
+    ray::stats::STATS_operation_run_time_ms.Record(execution_time_ns / 1000000,
                                                    handle->event_name);
+    ray::stats::STATS_operation_active_count.Record(curr_count, handle->event_name);
+    // Update global stats.
+    ray::stats::STATS_operation_queue_time_ms.Record(queue_time_ns / 1000000,
+                                                     handle->event_name);
+  }
+
   {
     auto global_stats = handle->global_stats;
     absl::MutexLock lock(&(global_stats->mutex));

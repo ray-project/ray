@@ -1,6 +1,6 @@
 
-a2c-cartpole-v0:
-    env: CartPole-v0
+a2c-cartpole-v1:
+    env: CartPole-v1
     run: A2C
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
@@ -13,8 +13,8 @@ a2c-cartpole-v0:
         num_workers: 23
         lr: 0.001
 
-appo-cartpole-v0-no-vtrace:
-    env: CartPole-v0
+appo-cartpole-v1-no-vtrace:
+    env: CartPole-v1
     run: APPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
@@ -37,8 +37,8 @@ appo-cartpole-v0-no-vtrace:
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
-appo-cartpole-v0-vtrace:
-    env: CartPole-v0
+appo-cartpole-v1-vtrace:
+    env: CartPole-v1
     run: APPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
@@ -80,8 +80,8 @@ ddpg-repeat-after-me-env:
         # Double batch size (2 GPUs).
         train_batch_size: 512
 
-dqn-cartpole-v0:
-    env: CartPole-v0
+dqn-cartpole-v1:
+    env: CartPole-v1
     run: DQN
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
@@ -100,8 +100,8 @@ dqn-cartpole-v0:
             fcnet_hiddens: [64]
             fcnet_activation: linear
 
-impala-cartpole-v0:
-    env: CartPole-v0
+impala-cartpole-v1:
+    env: CartPole-v1
     run: IMPALA
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
@@ -115,8 +115,8 @@ impala-cartpole-v0:
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
-pg-cartpole-v0:
-    env: CartPole-v0
+pg-cartpole-v1:
+    env: CartPole-v1
     run: PG
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
@@ -133,8 +133,8 @@ pg-cartpole-v0:
             fcnet_hiddens: [64]
             fcnet_activation: linear
 
-ppo-cartpole-v0:
-    env: CartPole-v0
+ppo-cartpole-v1:
+    env: CartPole-v1
     run: PPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
@@ -176,6 +176,7 @@ sac-repeat-after-me-env:
         initial_alpha: 0.001
         # Double batch size (2 GPUs).
         train_batch_size: 512
+        num_steps_sampled_before_learning_starts: 0
 
 sac-repeat-after-me-env-continuous:
     env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
@@ -198,9 +199,12 @@ sac-repeat-after-me-env-continuous:
         initial_alpha: 0.001
         # Double batch size (2 GPUs).
         train_batch_size: 512
+        # start learning immediately 
+        num_steps_sampled_before_learning_starts: 0
 
-simpleq-cartpole-v0:
-    env: CartPole-v0
+
+simpleq-cartpole-v1:
+    env: CartPole-v1
     run: SimpleQ
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:

@@ -1,9 +1,11 @@
 pong-deterministic-rainbow:
-    env: PongDeterministic-v4
+    env: ALE/Pong-v5
     run: DQN
     stop:
         episode_reward_mean: 20
     config:
+        env_config:
+            nondeterministic: False  # deterministic
         num_atoms: 51
         noisy: True
         gamma: 0.99

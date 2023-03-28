@@ -3,7 +3,6 @@
 import logging
 from typing import Any, Dict, List, Tuple, Type, Union
 
-import ray
 from ray.rllib.algorithms.simple_q.utils import make_q_models
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
@@ -11,7 +10,7 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchDistributionWrapper,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_mixins import TargetNetworkMixin
+from ray.rllib.policy.torch_mixins import TargetNetworkMixin, LearningRateSchedule
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -28,15 +27,13 @@ logger = logging.getLogger(__name__)
 
 
 class SimpleQTorchPolicy(
+    LearningRateSchedule,
     TargetNetworkMixin,
     TorchPolicyV2,
 ):
     """PyTorch policy class used with SimpleQTrainer."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(
-            ray.rllib.algorithms.simple_q.simple_q.SimpleQConfig().to_dict(), **config
-        )
         TorchPolicyV2.__init__(
             self,
             observation_space,
@@ -44,6 +41,8 @@ class SimpleQTorchPolicy(
             config,
             max_seq_len=config["model"]["max_seq_len"],
         )
+
+        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
 
         # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()
@@ -132,7 +131,7 @@ class SimpleQTorchPolicy(
         q_t_selected = torch.sum(q_t * one_hot_selection, 1)
 
         # compute estimate of best possible value starting from state at t + 1
-        dones = train_batch[SampleBatch.DONES].float()
+        dones = train_batch[SampleBatch.TERMINATEDS].float()
         q_tp1_best_one_hot_selection = F.one_hot(
             torch.argmax(q_tp1, 1), self.action_space.n
         )
@@ -166,7 +165,10 @@ class SimpleQTorchPolicy(
     @override(TorchPolicyV2)
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         return convert_to_numpy(
-            {"loss": torch.mean(torch.stack(self.get_tower_stats("loss")))}
+            {
+                "loss": torch.mean(torch.stack(self.get_tower_stats("loss"))),
+                "cur_lr": self.cur_lr,
+            }
         )
 
     def _compute_q_values(

@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import logging
 from typing import Callable, Dict, List, Optional, Set, Tuple, TYPE_CHECKING
 
@@ -134,10 +134,17 @@ class RemoteBaseEnv(BaseEnv):
     @override(BaseEnv)
     def poll(
         self,
-    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
+    ) -> Tuple[
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+    ]:
 
         # each keyed by env_id in [0, num_remote_envs)
-        obs, rewards, dones, infos = {}, {}, {}, {}
+        obs, rewards, terminateds, truncateds, infos = {}, {}, {}, {}, {}
         ready = []
 
         # Wait for at least 1 env to be ready here.
@@ -169,11 +176,13 @@ class RemoteBaseEnv(BaseEnv):
                     self.try_restart(env_id)
                     # Always return multi-agent data.
                     # Set the observation to the exception, no rewards,
-                    # done[__all__]=True (episode will be discarded anyways), no infos.
+                    # terminated[__all__]=True (episode will be discarded anyways),
+                    # no infos.
                     ret = (
                         e,
                         {},
                         {"__all__": True},
+                        {"__all__": False},
                         {},
                     )
                 # Do not try to restart. Just raise the error.
@@ -182,44 +191,82 @@ class RemoteBaseEnv(BaseEnv):
 
             # Our sub-envs are simple Actor-turned gym.Envs or MultiAgentEnvs.
             if self.make_env_creates_actors:
-                rew, done, info = None, None, None
+                rew, terminated, truncated, info = None, None, None, None
                 if self.multiagent:
-                    # `step()` result: Obs, reward, done, info.
-                    if isinstance(ret, tuple) and len(ret) == 4:
-                        ob, rew, done, info = ret
-                    # `reset()` result: Only obs.
+                    if isinstance(ret, tuple):
+                        # Gym >= 0.26: `step()` result: Obs, reward, terminated,
+                        # truncated, info.
+                        if len(ret) == 5:
+                            ob, rew, terminated, truncated, info = ret
+                        # Gym >= 0.26: `reset()` result: Obs and infos.
+                        elif len(ret) == 2:
+                            ob = ret[0]
+                            info = ret[1]
+                        # Gym < 0.26? Something went wrong.
+                        else:
+                            raise AssertionError(
+                                "Your gymnasium.Env seems to NOT return the correct "
+                                "number of return values for `step()` (needs to return"
+                                " 5 values: obs, reward, terminated, truncated and "
+                                "info) or `reset()` (needs to return 2 values: obs and "
+                                "info)!"
+                            )
+                    # Gym < 0.26: `reset()` result: Only obs.
                     else:
-                        ob = ret
+                        raise AssertionError(
+                            "Your gymnasium.Env seems to only return a single value "
+                            "upon `reset()`! Must return 2 (obs AND infos)."
+                        )
                 else:
-                    # `step()` result: Obs, reward, done, info.
-                    if isinstance(ret, tuple) and len(ret) == 4:
-                        ob = {_DUMMY_AGENT_ID: ret[0]}
-                        rew = {_DUMMY_AGENT_ID: ret[1]}
-                        done = {_DUMMY_AGENT_ID: ret[2], "__all__": ret[2]}
-                        info = {_DUMMY_AGENT_ID: ret[3]}
-                    # `reset()` result: Only obs.
+                    if isinstance(ret, tuple):
+                        # `step()` result: Obs, reward, terminated, truncated, info.
+                        if len(ret) == 5:
+                            ob = {_DUMMY_AGENT_ID: ret[0]}
+                            rew = {_DUMMY_AGENT_ID: ret[1]}
+                            terminated = {_DUMMY_AGENT_ID: ret[2], "__all__": ret[2]}
+                            truncated = {_DUMMY_AGENT_ID: ret[3], "__all__": ret[3]}
+                            info = {_DUMMY_AGENT_ID: ret[4]}
+                        # `reset()` result: Obs and infos.
+                        elif len(ret) == 2:
+                            ob = {_DUMMY_AGENT_ID: ret[0]}
+                            info = {_DUMMY_AGENT_ID: ret[1]}
+                        # Gym < 0.26? Something went wrong.
+                        else:
+                            raise AssertionError(
+                                "Your gymnasium.Env seems to NOT return the correct "
+                                "number of return values for `step()` (needs to return"
+                                " 5 values: obs, reward, terminated, truncated and "
+                                "info) or `reset()` (needs to return 2 values: obs and "
+                                "info)!"
+                            )
+                    # Gym < 0.26?
                     else:
-                        ob = {_DUMMY_AGENT_ID: ret}
+                        raise AssertionError(
+                            "Your gymnasium.Env seems to only return a single value "
+                            "upon `reset()`! Must return 2 (obs and infos)."
+                        )
 
                 # If this is a `reset()` return value, we only have the initial
-                # observations: Set rewards, dones, and infos to dummy values.
+                # observations and infos: Set rewards, terminateds, and truncateds to
+                # dummy values.
                 if rew is None:
                     rew = {agent_id: 0 for agent_id in ob.keys()}
-                    done = {"__all__": False}
-                    info = {agent_id: {} for agent_id in ob.keys()}
+                    terminated = {"__all__": False}
+                    truncated = {"__all__": False}
 
             # Our sub-envs are auto-wrapped (by `_RemoteSingleAgentEnv` or
             # `_RemoteMultiAgentEnv`) and already behave like multi-agent
             # envs.
             else:
-                ob, rew, done, info = ret
+                ob, rew, terminated, truncated, info = ret
             obs[env_id] = ob
             rewards[env_id] = rew
-            dones[env_id] = done
+            terminateds[env_id] = terminated
+            truncateds[env_id] = truncated
             infos[env_id] = info
 
-        logger.debug("Got obs batch for actors {}".format(env_ids))
-        return obs, rewards, dones, infos, {}
+        logger.debug(f"Got obs batch for actors {env_ids}")
+        return obs, rewards, terminateds, truncateds, infos, {}
 
     @override(BaseEnv)
     @PublicAPI
@@ -239,11 +286,21 @@ class RemoteBaseEnv(BaseEnv):
 
     @override(BaseEnv)
     @PublicAPI
-    def try_reset(self, env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
+    def try_reset(
+        self,
+        env_id: Optional[EnvID] = None,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[dict] = None,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict]:
         actor = self.actors[env_id]
-        obj_ref = actor.reset.remote()
+        obj_ref = actor.reset.remote(seed=seed, options=options)
+
         self.pending[obj_ref] = actor
-        return ASYNC_RESET_RETURN
+        # Because this env type does not support synchronous reset requests (with
+        # immediate return value), we return ASYNC_RESET_RETURN here to indicate
+        # that the reset results will be available via the next `poll()` call.
+        return ASYNC_RESET_RETURN, ASYNC_RESET_RETURN
 
     @override(BaseEnv)
     def try_restart(self, env_id: Optional[EnvID] = None) -> None:
@@ -347,17 +404,17 @@ class _RemoteMultiAgentEnv:
         self.env = make_env(i)
         self.agent_ids = set()
 
-    def reset(self):
-        obs = self.env.reset()
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+        obs, info = self.env.reset(seed=seed, options=options)
+
         # each keyed by agent_id in the env
         rew = {}
-        info = {}
         for agent_id in obs.keys():
             self.agent_ids.add(agent_id)
             rew[agent_id] = 0.0
-            info[agent_id] = {}
-        done = {"__all__": False}
-        return obs, rew, done, info
+        terminated = {"__all__": False}
+        truncated = {"__all__": False}
+        return obs, rew, terminated, truncated, info
 
     def step(self, action_dict):
         return self.env.step(action_dict)
@@ -381,18 +438,26 @@ class _RemoteSingleAgentEnv:
     def __init__(self, make_env, i):
         self.env = make_env(i)
 
-    def reset(self):
-        obs = {_DUMMY_AGENT_ID: self.env.reset()}
-        rew = {agent_id: 0 for agent_id in obs.keys()}
-        done = {"__all__": False}
-        info = {agent_id: {} for agent_id in obs.keys()}
-        return obs, rew, done, info
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+        obs_and_info = self.env.reset(seed=seed, options=options)
+
+        obs = {_DUMMY_AGENT_ID: obs_and_info[0]}
+        info = {_DUMMY_AGENT_ID: obs_and_info[1]}
+
+        rew = {_DUMMY_AGENT_ID: 0.0}
+        terminated = {"__all__": False}
+        truncated = {"__all__": False}
+        return obs, rew, terminated, truncated, info
 
     def step(self, action):
-        obs, rew, done, info = self.env.step(action[_DUMMY_AGENT_ID])
-        obs, rew, done, info = [{_DUMMY_AGENT_ID: x} for x in [obs, rew, done, info]]
-        done["__all__"] = done[_DUMMY_AGENT_ID]
-        return obs, rew, done, info
+        results = self.env.step(action[_DUMMY_AGENT_ID])
+
+        obs, rew, terminated, truncated, info = [{_DUMMY_AGENT_ID: x} for x in results]
+
+        terminated["__all__"] = terminated[_DUMMY_AGENT_ID]
+        truncated["__all__"] = truncated[_DUMMY_AGENT_ID]
+
+        return obs, rew, terminated, truncated, info
 
     # Defining these 2 functions that way this information can be queried
     # with a call to ray.get().

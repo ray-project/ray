@@ -25,6 +25,18 @@ DEFAULT_HTTP_HOST = "127.0.0.1"
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
 
+#: gRPC Port
+DEFAULT_GRPC_PORT = 9000
+
+#: Default Serve application name
+SERVE_DEFAULT_APP_NAME = ""
+
+#: Separator between app name and deployment name when we prepend
+#: the app name to each deployment name. This prepending is currently
+#: used to manage deployments from different applications holding the
+#: same names.
+DEPLOYMENT_NAME_PREFIX_SEPARATOR = "_"
+
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
@@ -117,4 +129,14 @@ class ServeHandleType(str, Enum):
 # Deprecation message for V1 migrations.
 MIGRATION_MESSAGE = (
     "See https://docs.ray.io/en/latest/serve/index.html for more information."
+)
+
+
+# [EXPERIMENTAL] Disable the http actor
+SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY = "SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY"
+
+# Message
+MULTI_APP_MIGRATION_MESSAGE = (
+    "Please see the documentation for ServeDeploySchema for more details on multi-app "
+    "config files."
 )

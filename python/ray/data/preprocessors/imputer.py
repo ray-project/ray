@@ -3,12 +3,15 @@ from numbers import Number
 from collections import Counter
 
 import pandas as pd
+from pandas.api.types import is_categorical_dtype
 
 from ray.data import Dataset
 from ray.data.aggregate import Mean
 from ray.data.preprocessor import Preprocessor
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class SimpleImputer(Preprocessor):
     """Replace missing values with imputed values.
 
@@ -124,6 +127,9 @@ class SimpleImputer(Preprocessor):
             }
         elif self.strategy == "constant":
             new_values = {column: self.fill_value for column in self.columns}
+            for column, value in new_values.items():
+                if is_categorical_dtype(df.dtypes[column]):
+                    df[column] = df[column].cat.add_categories(value)
 
         df = df.fillna(new_values)
         return df

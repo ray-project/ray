@@ -1,6 +1,6 @@
 import numpy as np
-import gym
-from gym.spaces import Discrete, MultiDiscrete
+import gymnasium as gym
+from gymnasium.spaces import Discrete, MultiDiscrete
 import tree  # pip install dm_tree
 from typing import Dict, List, Union, Tuple
 

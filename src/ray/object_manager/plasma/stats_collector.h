@@ -17,7 +17,10 @@
 
 #pragma once
 
+#include <utility>  // std::pair
+
 #include "ray/object_manager/plasma/common.h"
+#include "ray/util/counter_map.h"  // CounterMap
 
 namespace plasma {
 
@@ -28,14 +31,19 @@ namespace plasma {
 // ObjectLifeCycleManager into this class.
 class ObjectStatsCollector {
  public:
+  virtual ~ObjectStatsCollector() = default;
+
   // Called after a new object is created.
-  void OnObjectCreated(const LocalObject &object);
+  // Marked virtual for test mocking
+  virtual void OnObjectCreated(const LocalObject &object);
 
   // Called after an object is sealed.
-  void OnObjectSealed(const LocalObject &object);
+  // Marked virtual for test mocking
+  virtual void OnObjectSealed(const LocalObject &object);
 
   // Called BEFORE an object is deleted.
-  void OnObjectDeleting(const LocalObject &object);
+  // Marked virtual for test mocking
+  virtual void OnObjectDeleting(const LocalObject &object);
 
   // Called after an object's ref count is bumped by 1.
   void OnObjectRefIncreased(const LocalObject &object);
@@ -60,6 +68,9 @@ class ObjectStatsCollector {
  private:
   friend struct ObjectStatsCollectorTest;
 
+  int64_t GetNumBytesCreatedCurrent() const;
+
+  CounterMap<std::pair</* fallback_allocated*/ bool, /*sealed*/ bool>> bytes_by_loc_seal_;
   int64_t num_objects_spillable_ = 0;
   int64_t num_bytes_spillable_ = 0;
   int64_t num_objects_unsealed_ = 0;

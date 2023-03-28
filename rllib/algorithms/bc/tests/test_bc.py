@@ -41,7 +41,7 @@ class TestBC(unittest.TestCase):
                 evaluation_num_workers=1,
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
-                evaluation_config={"input": "sampler"},
+                evaluation_config=bc.BCConfig.overrides(input_="sampler"),
             )
             .offline_data(input_=[data_file])
         )
@@ -50,10 +50,10 @@ class TestBC(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
             learnt = False
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
 
@@ -72,9 +72,9 @@ class TestBC(unittest.TestCase):
                     "data!".format(min_reward)
                 )
 
-            check_compute_single_action(trainer, include_prev_action_reward=True)
+            check_compute_single_action(algo, include_prev_action_reward=True)
 
-            trainer.stop()
+            algo.stop()
 
 
 if __name__ == "__main__":

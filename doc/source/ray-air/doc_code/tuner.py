@@ -79,7 +79,7 @@ result_grid = tuner.fit()
 # __torch_start__
 from ray import tune
 from ray.tune import Tuner
-from ray.air.examples.pytorch.torch_linear_example import (
+from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 from ray.train.torch import TorchTrainer
@@ -128,6 +128,7 @@ tuner = Tuner(
     },
 )
 # __tune_preprocess_end__
+
 
 # __tune_dataset_start__
 def get_dataset():
@@ -240,6 +241,8 @@ tune_config = TuneConfig(
 # __tune_config_end__
 
 # __tune_restore_start__
-tuner = Tuner.restore("~/ray_results/test_tuner", restart_errored=True)
+tuner = Tuner.restore(
+    path="~/ray_results/test_tuner", trainable=trainer, restart_errored=True
+)
 tuner.fit()
 # __tune_restore_end__

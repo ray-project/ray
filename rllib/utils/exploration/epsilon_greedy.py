@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 import random
@@ -92,7 +92,7 @@ class EpsilonGreedy(Exploration):
         explore: Optional[Union[bool, TensorType]] = True,
     ):
 
-        if self.framework in ["tf2", "tf", "tfe"]:
+        if self.framework in ["tf2", "tf"]:
             return self._get_tf_exploration_action_op(
                 action_distribution, explore, timestep
             )
@@ -152,7 +152,7 @@ class EpsilonGreedy(Exploration):
             false_fn=lambda: exploit_action,
         )
 
-        if self.framework in ["tf2", "tfe"] and not self.policy_config["eager_tracing"]:
+        if self.framework == "tf2" and not self.policy_config["eager_tracing"]:
             self.last_timestep = timestep
             return action, tf.zeros_like(action, dtype=tf.float32)
         else:

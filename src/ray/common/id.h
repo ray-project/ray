@@ -561,3 +561,7 @@ DEFINE_UNIQUE_ID(PlacementGroupID);
 
 #undef DEFINE_UNIQUE_ID
 }  // namespace std
+
+namespace ray {
+extern const NodeID kGCSNodeID;
+}

@@ -133,7 +133,7 @@ print(dataset.take())
 # [{'value': 0}, {'value': 1}, {'value': 2}, {'value': 3}]
 
 # Create a stateless preprocess that multiplies values by 2.
-preprocessor = BatchMapper(lambda df: df * 2)
+preprocessor = BatchMapper(lambda df: df * 2, batch_size=2, batch_format="pandas")
 dataset_transformed = preprocessor.transform(dataset)
 print(dataset_transformed.take())
 # [{'value': 0}, {'value': 2}, {'value': 4}, {'value': 6}]

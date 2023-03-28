@@ -171,6 +171,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void LocalGC(const LocalGCRequest &request,
                        const ClientCallback<LocalGCReply> &callback) {}
 
+  virtual void DeleteObjects(const DeleteObjectsRequest &request,
+                             const ClientCallback<DeleteObjectsReply> &callback) {}
+
   virtual void SpillObjects(const SpillObjectsRequest &request,
                             const ClientCallback<SpillObjectsReply> &callback) {}
 
@@ -288,6 +291,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          LocalGC,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         DeleteObjects,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)

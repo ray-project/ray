@@ -25,7 +25,7 @@ class LinearFeatureBaseline:
         ll = len(path["rewards"])
         al = np.arange(ll).reshape(-1, 1) / 100.0
         return np.concatenate(
-            [o, o ** 2, al, al ** 2, al ** 3, np.ones((ll, 1))], axis=1
+            [o, o**2, al, al**2, al**3, np.ones((ll, 1))], axis=1
         )
 
     def fit(self, paths):

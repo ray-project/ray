@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import unittest
 import ray
@@ -26,15 +26,12 @@ class TestAgentCollector(unittest.TestCase):
             episode_id=0,
             agent_index=1,
             env_id=0,
-            t=-1,
             init_obs=obses[-1],
         )
 
         for t in range(n_steps):
             obses.append(np.random.rand(4))
-            ac.add_action_reward_next_obs(
-                {SampleBatch.NEXT_OBS: obses[-1], SampleBatch.T: t}
-            )
+            ac.add_action_reward_next_obs({SampleBatch.NEXT_OBS: obses[-1]})
 
         return obses
 
@@ -68,15 +65,12 @@ class TestAgentCollector(unittest.TestCase):
                         episode_id=0,
                         agent_index=1,
                         env_id=0,
-                        t=-1,
                         init_obs=obs,
                     )
                     obses_ctx.extend([obs for _ in range(ctx_len)])
                 else:
                     # e.g. next_state = env.step()
-                    ac.add_action_reward_next_obs(
-                        {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t - 1}
-                    )
+                    ac.add_action_reward_next_obs({SampleBatch.NEXT_OBS: obs})
                     # pop from front and add to the end
                     obses_ctx.pop(0)
                     obses_ctx.append(obs)

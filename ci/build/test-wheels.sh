@@ -100,7 +100,8 @@ elif [[ "$platform" == "macosx" ]]; then
           "3.7"
           "3.8"
           "3.9"
-          "3.10")
+          "3.10"
+          )
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
@@ -121,8 +122,9 @@ elif [[ "$platform" == "macosx" ]]; then
     "$PIP_CMD" install -q aiohttp aiosignal frozenlist grpcio 'pytest==7.0.1' requests proxy.py
 
     # Run a simple test script to make sure that the wheel works.
+    # We set the python path to prefer the directory of the wheel content: https://github.com/ray-project/ray/pull/30090
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
-      PATH="$(dirname "$PYTHON_EXE"):$PATH" retry "$PYTHON_EXE" "$SCRIPT"
+      PY_IGNORE_IMPORTMISMATCH=1 PATH="$(dirname "$PYTHON_EXE"):$PATH" retry "$PYTHON_EXE" "$SCRIPT"
     done
   done
 elif [ "${platform}" = windows ]; then

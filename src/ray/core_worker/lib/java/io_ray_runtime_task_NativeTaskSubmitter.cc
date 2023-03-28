@@ -160,6 +160,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::string name = "";
   std::optional<bool> is_detached = std::nullopt;
   int64_t max_restarts = 0;
+  int64_t max_task_retries = 0;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
@@ -186,6 +187,8 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 
     max_restarts =
         env->GetIntField(actorCreationOptions, java_actor_creation_options_max_restarts);
+    max_task_retries =
+        env->GetIntField(actorCreationOptions, java_actor_creation_options_max_task_retries);
     jobject java_resources =
         env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
@@ -277,7 +280,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   }
   ActorCreationOptions actor_creation_options{
       max_restarts,
-      0,  // TODO: Allow setting max_task_retries from Java.
+      max_task_retries,
       static_cast<int>(max_concurrency),
       resources,
       resources,

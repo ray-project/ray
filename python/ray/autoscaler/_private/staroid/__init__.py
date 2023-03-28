@@ -1,1 +1,0 @@
-log_prefix = "StaroidNodeProvider: "

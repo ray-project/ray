@@ -7,6 +7,8 @@ import numpy as np
 import psutil
 import pytest
 from grpc._channel import _InactiveRpcError
+from ray.experimental.state.api import list_tasks
+from ray._private.state_api_test_utils import verify_failed_task
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -18,6 +20,7 @@ from ray._private.test_utils import (
     init_error_pubsub,
     run_string_as_driver,
     wait_for_condition,
+    kill_raylet,
 )
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.core.generated import (
@@ -155,8 +158,9 @@ def test_retry_application_level_error_exception_filter(ray_start_regular):
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_connect_with_disconnected_node(shutdown_only):
     config = {
-        "num_heartbeats_timeout": 50,
-        "raylet_heartbeat_period_milliseconds": 10,
+        "health_check_failure_threshold": 50,
+        "health_check_period_ms": 10,
+        "health_check_initial_delay_ms": 0,
     }
     cluster = Cluster()
     cluster.add_node(num_cpus=0, _system_config=config)
@@ -244,7 +248,9 @@ if __name__ == "__main__":
 def test_object_lost_error(ray_start_cluster, debug_enabled):
     cluster = ray_start_cluster
     system_config = {
-        "num_heartbeats_timeout": 3,
+        "health_check_failure_threshold": 3,
+        "health_check_period_ms": 1000,
+        "health_check_initial_delay_ms": 0,
     }
     if debug_enabled:
         system_config["record_ref_creation_sites"] = True
@@ -313,10 +319,11 @@ def test_object_lost_error(ray_start_cluster, debug_enabled):
         {
             "num_cpus": 0,
             "_system_config": {
-                "num_heartbeats_timeout": 10,
-                "raylet_heartbeat_period_milliseconds": 100,
+                "health_check_initial_delay_ms": 0,
+                "health_check_period_ms": 100,
+                "health_check_failure_threshold": 10,
             },
-        }
+        },
     ],
     indirect=True,
 )
@@ -359,7 +366,7 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
             assert not graceful
 
     """
-    Kill the first worker non-gracefully.
+    Kill the first worker ungracefully.
     """
     ip = worker.node_ip_address
     kill_raylet(ip, worker_node_port, graceful=False)
@@ -411,8 +418,9 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
         {
             "num_cpus": 0,
             "_system_config": {
-                "num_heartbeats_timeout": 10,
-                "raylet_heartbeat_period_milliseconds": 100,
+                "health_check_failure_threshold": 10,
+                "health_check_period_ms": 100,
+                "health_check_initial_delay_ms": 0,
             },
         }
     ],
@@ -549,20 +557,37 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
 
     # The lease request should wait inside raylet
     # since there is no available resources.
-    ret = func.remote()
+    ret = func.options(name="task-local-raylet-dead").remote()
+
     # Waiting for the lease request to reach raylet.
-    time.sleep(1)
+    def task_running():
+        tasks = list_tasks(filters=[("name", "=", "task-local-raylet-dead")])
+        assert len(tasks) == 1
+        assert tasks[0]["state"] == "PENDING_NODE_ASSIGNMENT"
+        return True
+
+    wait_for_condition(task_running)
+
     head.kill_raylet()
     with pytest.raises(LocalRayletDiedError):
         ray.get(ret)
+
+    # Check the task failure states for observability.
+    wait_for_condition(
+        verify_failed_task,
+        name="task-local-raylet-dead",
+        error_type="LOCAL_RAYLET_DIED",
+        error_message="The worker failed to receive a response from the local raylet",
+    )
 
 
 def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
     """Test that locality-ware scheduling can handle dead nodes."""
     # Create a cluster with 4 nodes.
     config = {
-        "num_heartbeats_timeout": 5,
-        "raylet_heartbeat_period_milliseconds": 50,
+        "health_check_failure_threshold": 5,
+        "health_check_period_ms": 50,
+        "health_check_initial_delay_ms": 0,
     }
     cluster = Cluster()
     cluster.add_node(num_cpus=4, resources={"node1": 1}, _system_config=config)
@@ -652,6 +677,26 @@ def test_actor_task_fast_fail(ray_start_cluster):
     time.sleep(1)
     # An actor task should succeed.
     ray.get(actor.ping.remote())
+
+
+def test_task_crash_after_raylet_dead_throws_node_died_error():
+    @ray.remote(max_retries=0)
+    def sleeper():
+        import os
+
+        time.sleep(3)
+        os.kill(os.getpid(), 9)
+
+    with ray.init():
+        ref = sleeper.remote()
+
+        raylet = ray.nodes()[0]
+        kill_raylet(raylet)
+
+        with pytest.raises(ray.exceptions.NodeDiedError) as error:
+            ray.get(ref)
+        message = str(error)
+        assert raylet["NodeManagerAddress"] in message
 
 
 if __name__ == "__main__":

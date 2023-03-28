@@ -5,7 +5,7 @@ ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || ech
 
 arg1="${1-}"
 
-achitecture="${HOSTTYPE}"
+
 platform="unknown"
 case "${OSTYPE}" in
   msys)
@@ -26,50 +26,89 @@ case "${OSTYPE}" in
     exit 1
 esac
 
-# Sanity check: Verify we have symlinks where we expect them, or Bazel can produce weird "missing input file" errors.
-# This is most likely to occur on Windows, where symlinks are sometimes disabled by default.
-{ git ls-files -s 2>/dev/null || true; } | (
-  set +x
-  missing_symlinks=()
-  while read -r mode _ _ path; do
-    if [ "${mode}" = 120000 ]; then
-      test -L "${path}" || missing_symlinks+=("${path}")
-    fi
-  done
-  if [ ! 0 -eq "${#missing_symlinks[@]}" ]; then
-    echo "error: expected symlink: ${missing_symlinks[*]}" 1>&2
-    echo "For a correct build, please run 'git config --local core.symlinks true' and re-run git checkout." 1>&2
-    false
-  fi
-)
+architecture="${HOSTTYPE}"
+echo "Architecture is $architecture"
 
-export PATH=/opt/python/cp36-cp36m/bin:$PATH
-python="$(command -v python3 || command -v python || echo python)"
-version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
-if [ "${OSTYPE}" = "msys" ]; then
-  target="${MINGW_DIR-/usr}/bin/bazel.exe"
-  mkdir -p "${target%/*}"
-  curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"
-else
-  target="./install.sh"
-  curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
-  chmod +x "${target}"
-  if [[ -n "${BUILDKITE-}" ]] && [ "${platform}" = "darwin" ]; then
-    "${target}" --user
-    # Add bazel to the path.
-    # shellcheck disable=SC2016
-    printf '\nexport PATH="$HOME/bin:$PATH"\n' >> ~/.zshrc
-    # shellcheck disable=SC1090
-    source ~/.zshrc
-  elif [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
-    "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
+if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
+  # Sanity check: Verify we have symlinks where we expect them, or Bazel can produce weird "missing input file" errors.
+  # This is most likely to occur on Windows, where symlinks are sometimes disabled by default.
+  { git ls-files -s 2>/dev/null || true; } | (
+    set +x
+    missing_symlinks=()
+    while read -r mode _ _ path; do
+      if [ "${mode}" = 120000 ]; then
+        test -L "${path}" || missing_symlinks+=("${path}")
+      fi
+    done
+    if [ ! 0 -eq "${#missing_symlinks[@]}" ]; then
+      echo "error: expected symlink: ${missing_symlinks[*]}" 1>&2
+      echo "For a correct build, please run 'git config --local core.symlinks true' and re-run git checkout." 1>&2
+      false
+    fi
+  )
+
+  export PATH=/opt/python/cp36-cp36m/bin:$PATH
+  python="$(command -v python3 || command -v python || echo python)"
+  version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
+  if [ "${OSTYPE}" = "msys" ]; then
+    target="${MINGW_DIR-/usr}/bin/bazel.exe"
+    mkdir -p "${target%/*}"
+    curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${architecture}.exe"
   else
-    "${target}" --user > /dev/null
-    export PATH=$PATH:"$HOME/bin"
+
+    # Buildkite mac instances
+    if [[ -n "${BUILDKITE-}" ]] && [ "${platform}" = "darwin" ]; then
+      mkdir -p "$HOME/bin"
+      # Add bazel to the path.
+      # shellcheck disable=SC2016
+      printf '\nexport PATH="$HOME/bin:$PATH"\n' >> ~/.zshenv
+      # shellcheck disable=SC1090
+      source ~/.zshenv
+      INSTALL_USER=1
+    # Buildkite linux instance
+    elif [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
+      INSTALL_USER=0
+    # User
+    else
+      mkdir -p "$HOME/bin"
+      INSTALL_USER=1
+      export PATH=$PATH:"$HOME/bin"
+    fi
+
+    if [ "${architecture}" = "aarch64" ]; then
+      # architecture is "aarch64", but the bazel tag is "arm64"
+      url="https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-arm64"
+
+      if [ "$INSTALL_USER" = "1" ]; then
+        target="$HOME/bin/bazel"
+        curl -f -s -L -R -o "${target}" "${url}"
+        chmod +x "${target}"
+      else
+        target="/bin/bazel"
+        sudo curl -f -s -L -R -o "${target}" "${url}"
+        sudo chmod +x "${target}"
+      fi
+
+      which bazel
+
+    else
+      target="./install.sh"
+      curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${architecture}.sh"
+      chmod +x "${target}"
+
+      if [ "$INSTALL_USER" = "1" ]; then
+        "${target}" --user
+      else
+        "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
+      fi
+      which bazel
+      rm -f "${target}"
+    fi
   fi
-  which bazel
-  rm -f "${target}"
 fi
+
+# clear bazelrc
+echo > ~/.bazelrc
 
 for bazel_cfg in ${BAZEL_CONFIG-}; do
   echo "build --config=${bazel_cfg}" >> ~/.bazelrc
@@ -91,6 +130,11 @@ if [ "${GITHUB_ACTIONS-}" = true ]; then
   echo "build --jobs="$(($(nproc)+2)) >> ~/.bazelrc
 fi
 if [ "${CI-}" = true ]; then
+
+  # Ask bazel to anounounce the config it finds in bazelrcs, which makes
+  # understanding how to reproduce bazel easier.
+  echo "build --announce_rc" >> ~/.bazelrc
+
   echo "build --config=ci" >> ~/.bazelrc
 
   # In Windows CI we want to use this to avoid long path issue

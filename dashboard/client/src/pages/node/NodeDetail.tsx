@@ -6,17 +6,17 @@ import {
   TableContainer,
   Tabs,
 } from "@material-ui/core";
-import dayjs from "dayjs";
 import React from "react";
-import { Link, RouteComponentProps } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { formatDateFromTimeMs } from "../../common/formatUtils";
 import ActorTable from "../../components/ActorTable";
 import Loading from "../../components/Loading";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import RayletWorkerTable from "../../components/WorkerTable";
-import { ViewMeasures } from "../../type/raylet";
 import { memoryConverter } from "../../util/converter";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeDetail } from "./hook/useNodeDetail";
 
 const useStyle = makeStyles((theme) => ({
@@ -36,35 +36,7 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-const showMeasureKeys = [
-  "local_total_resource",
-  "local_available_resource",
-  "actor_stats",
-  "task_dependency_manager_stats",
-  "reconstruction_policy_stats",
-  "scheduling_queue_stats",
-  "object_manager_stats",
-];
-
-const ViewDataDisplayer = ({ view }: { view?: ViewMeasures }) => {
-  if (!view) {
-    return null;
-  }
-  const { tags = "", ...otherProps } = view;
-
-  return (
-    <Grid item xs={6}>
-      <span>{tags.split(",").pop()?.split(":").slice(1).join(":")}</span>=
-      {Object.keys(otherProps).length > 0 ? (
-        JSON.stringify(Object.values(otherProps).pop())
-      ) : (
-        <span style={{ color: "gray" }}>null</span>
-      )}
-    </Grid>
-  );
-};
-
-const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
+const NodeDetailPage = () => {
   const classes = useStyle();
   const {
     params,
@@ -75,10 +47,17 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
     onRefreshChange,
     raylet,
     handleChange,
-  } = useNodeDetail(props);
+  } = useNodeDetail();
 
   return (
     <div className={classes.root}>
+      <MainNavPageInfo
+        pageInfo={{
+          title: `Node: ${params.id}`,
+          id: "node-detail",
+          path: `/cluster/nodes/${params.id}`,
+        }}
+      />
       <Loading loading={msg.startsWith("Loading")} />
       <TitleCard title={`NODE - ${params.id}`}>
         <StatusChip
@@ -153,9 +132,7 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
               </Grid>
               <Grid item xs>
                 <div className={classes.label}>Boot Time</div>{" "}
-                {dayjs(nodeDetail.bootTime * 1000).format(
-                  "YYYY/MM/DD HH:mm:ss",
-                )}
+                {formatDateFromTimeMs(nodeDetail.bootTime * 1000)}
               </Grid>
             </Grid>
             <Grid container spacing={2}>
@@ -205,7 +182,7 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
             <Grid container spacing={2}>
               <Grid item xs>
                 <div className={classes.label}>Logs</div>{" "}
-                <Link to={`/log/${encodeURIComponent(nodeDetail.logUrl)}`}>
+                <Link to={`/logs/${encodeURIComponent(nodeDetail.logUrl)}`}>
                   log
                 </Link>
               </Grid>
@@ -237,29 +214,6 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                   {raylet?.nodeManagerPort}
                 </Grid>
               </Grid>
-              {showMeasureKeys
-                .map((e) => raylet.viewData.find((view) => view.viewName === e))
-                .map((e) =>
-                  e ? (
-                    <React.Fragment key={e.viewName}>
-                      <p className={classes.label}>
-                        {e.viewName
-                          .split("_")
-                          .map((e) => e[0].toUpperCase() + e.slice(1))
-                          .join(" ")}
-                      </p>
-                      <Grid
-                        container
-                        spacing={2}
-                        style={{ maxHeight: 177, overflow: "auto" }}
-                      >
-                        {e.measures.map((e) => (
-                          <ViewDataDisplayer key={e.tags} view={e} />
-                        ))}
-                      </Grid>
-                    </React.Fragment>
-                  ) : null,
-                )}
             </div>
           </React.Fragment>
         )}
@@ -279,6 +233,7 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
               <ActorTable
                 actors={nodeDetail.actors}
                 workers={nodeDetail?.workers}
+                detailPathPrefix="/actors"
               />
             </TableContainer>
           </React.Fragment>

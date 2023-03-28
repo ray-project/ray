@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
+from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
 from ray.train.predictor import TYPE_TO_ENUM
 from sklearn.ensemble import RandomForestClassifier
 
@@ -19,19 +19,7 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.train.sklearn import SklearnCheckpoint, SklearnPredictor
 from typing import Tuple
 
-
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-class DummyPreprocessor(Preprocessor):
-    def transform_batch(self, df):
-        self._batch_transformed = True
-        return df * 2
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 
 dummy_data = np.array([[1, 2], [3, 4], [5, 6]])
@@ -53,7 +41,6 @@ def test_repr():
 
 def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
     preprocessor = DummyPreprocessor()
-    preprocessor.attr = 1
 
     with tempfile.TemporaryDirectory() as tmpdir:
         checkpoint = SklearnCheckpoint.from_estimator(
@@ -65,7 +52,7 @@ def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
     return checkpoint, preprocessor
 
 
-def test_init():
+def test_sklearn_checkpoint():
     checkpoint, preprocessor = create_checkpoint_preprocessor()
 
     predictor = SklearnPredictor(estimator=model, preprocessor=preprocessor)
@@ -75,32 +62,29 @@ def test_init():
         checkpoint_predictor.estimator.feature_importances_,
         predictor.estimator.feature_importances_,
     )
-    assert (
-        checkpoint_predictor.get_preprocessor().attr
-        == predictor.get_preprocessor().attr
-    )
+    assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
 def test_predict(batch_type):
     preprocessor = DummyPreprocessor()
     predictor = SklearnPredictor(estimator=model, preprocessor=preprocessor)
 
     raw_batch = pd.DataFrame([[1, 2], [3, 4], [5, 6]])
-    data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
+    data_batch = _convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
+    assert predictor.get_preprocessor().has_preprocessed
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame])
 def test_predict_batch(ray_start_4_cpus, batch_type):
     checkpoint, _ = create_checkpoint_preprocessor()
     predictor = BatchPredictor.from_checkpoint(checkpoint, SklearnPredictor)
 
     raw_batch = pd.DataFrame(dummy_data, columns=["A", "B"])
-    data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
+    data_batch = _convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
 
     if batch_type == np.ndarray:
         dataset = ray.data.from_numpy(dummy_data)
@@ -124,7 +108,7 @@ def test_predict_set_cpus(ray_start_4_cpus):
     predictions = predictor.predict(data_batch, num_estimator_cpus=2)
 
     assert len(predictions) == 3
-    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
+    assert predictor.get_preprocessor().has_preprocessed
     assert predictor.estimator.n_jobs == 2
 
 
@@ -136,7 +120,7 @@ def test_predict_feature_columns():
     predictions = predictor.predict(data_batch, feature_columns=[0, 1])
 
     assert len(predictions) == 3
-    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
+    assert predictor.get_preprocessor().has_preprocessed
 
 
 def test_predict_feature_columns_pandas():
@@ -153,7 +137,7 @@ def test_predict_feature_columns_pandas():
     predictions = predictor.predict(data_batch, feature_columns=["A", "B"])
 
     assert len(predictions) == 3
-    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
+    assert predictor.get_preprocessor().has_preprocessed
 
 
 def test_predict_no_preprocessor():

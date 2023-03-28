@@ -14,7 +14,7 @@ Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR 
 
 .. image:: images/ray-air.svg
 
-AIR builds on Ray's best-in-class libraries for :ref:`Preprocessing <datasets>`, :ref:`Training <train-docs>`, :ref:`Tuning <tune-main>`, :ref:`Scoring <air-predictors>`, :ref:`Serving <rayserve>`, and :ref:`Reinforcement Learning <rllib-index>` to bring together an ecosystem of integrations.
+AIR builds on Ray's best-in-class libraries for :ref:`Preprocessing <air-preprocessors>`, :ref:`Training <train-docs>`, :ref:`Tuning <tune-main>`, :ref:`Scoring <air-predictors>`, :ref:`Serving <rayserve>`, and :ref:`Reinforcement Learning <rllib-index>` to bring together an ecosystem of integrations.
 
 ML Compute, Simplified
 ----------------------
@@ -28,7 +28,7 @@ Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms
 
 **1. Seamless Dev to Prod**: AIR reduces friction going from development to production. With Ray and AIR, the same Python code scales seamlessly from a laptop to a large cluster.
 
-**2. Unified ML API**: AIR's unified ML API enables swapping between popular frameworks, such as XGBoost, PyTorch, and HuggingFace, with just a single class change in your code.
+**2. Unified ML API**: AIR's unified ML API enables swapping between popular frameworks, such as XGBoost, PyTorch, and Hugging Face, with just a single class change in your code.
 
 **3. Open and Extensible**: AIR and Ray are fully open-source and can run on any cluster, cloud, or Kubernetes. Build custom components and integrations on top of scalable developer APIs.
 
@@ -205,3 +205,4 @@ Next Steps
 - :ref:`air-examples-ref`
 - :ref:`API reference <air-api-ref>`
 - :ref:`Technical whitepaper <whitepaper>`
+- To check how your application is doing, you can use the :ref:`Ray dashboard<ray-dashboard>`. 

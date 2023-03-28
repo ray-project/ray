@@ -1,3 +1,5 @@
+.. _ray-debugger:
+
 Ray Debugger
 =============
 
@@ -9,9 +11,9 @@ drop into a PDB session that you can then use to:
 - Step within that task or actor
 - Move up or down the stack
 
-.. note::
+.. warning::
 
-    It is currently an experimental feature and under active development. Interfaces are subject to change.
+    The Ray Debugger is an experimental feature and is currently unstable. Interfaces are subject to change.
 
 Getting Started
 ---------------

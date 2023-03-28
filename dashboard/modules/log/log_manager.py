@@ -14,7 +14,7 @@ from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
 
-WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).out")
+WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).(out|err)")
 
 
 class LogsManager:
@@ -79,6 +79,7 @@ class LogsManager:
             pid=options.pid,
             get_actor_fn=DataSource.actors.get,
             timeout=options.timeout,
+            suffix=options.suffix,
         )
 
         keep_alive = options.media_type == "stream"
@@ -119,8 +120,25 @@ class LogsManager:
         pid: Optional[str],
         get_actor_fn: Callable[[str], Dict],
         timeout: int,
+        suffix: Optional[str] = None,
     ) -> Tuple[str, str]:
-        """Return the file name given all options."""
+        """Return the file name given all options.
+
+        Args:
+            node_id: The node's id from which logs are resolved.
+            log_filename: Filename of the log file.
+            actor_id: Id of the actor that generates the log file.
+            task_id: Id of the task that generates the log file.
+            pid: Id of the worker process that generates the log file.
+            get_actor_fn: Callback to get the actor's data by id.
+            timeout: Timeout for the gRPC to listing logs on the node
+                specified by `node_id`.
+            suffix: Log suffix if no `log_filename` is provided, when
+                resolving by other ids'.
+        """
+        if suffix is None:
+            suffix = ""
+
         if actor_id:
             actor_data = get_actor_fn(actor_id)
             if actor_data is None:
@@ -145,12 +163,12 @@ class LogsManager:
 
             # List all worker logs that match actor's worker id.
             log_files = await self.list_logs(
-                node_id, timeout, glob_filter=f"*{worker_id}*"
+                node_id, timeout, glob_filter=f"*{worker_id}*{suffix}"
             )
 
             # Find matching worker logs.
-            for filename in log_files["worker_out"]:
-                # Worker logs look like worker-[worker_id]-[job_id]-[pid].log
+            for filename in [*log_files["worker_out"], *log_files["worker_err"]]:
+                # Worker logs look like worker-[worker_id]-[job_id]-[pid].out
                 worker_id_from_filename = WORKER_LOG_PATTERN.match(filename).group(1)
                 if worker_id_from_filename == worker_id:
                     log_filename = filename
@@ -159,9 +177,11 @@ class LogsManager:
             raise NotImplementedError("task_id is not supported yet.")
         elif pid:
             self._verify_node_registered(node_id)
-            log_files = await self.list_logs(node_id, timeout, glob_filter=f"*{pid}*")
-            for filename in log_files["worker_out"]:
-                # worker-[worker_id]-[job_id]-[pid].log
+            log_files = await self.list_logs(
+                node_id, timeout, glob_filter=f"*{pid}*{suffix}"
+            )
+            for filename in [*log_files["worker_out"], *log_files["worker_err"]]:
+                # worker-[worker_id]-[job_id]-[pid].out
                 worker_pid_from_filename = int(
                     WORKER_LOG_PATTERN.match(filename).group(3)
                 )
@@ -178,6 +198,7 @@ class LogsManager:
                 f"\tactor_id: {actor_id}\n"
                 f"\task_id: {task_id}\n"
                 f"\tpid: {pid}\n"
+                f"\tsuffix: {suffix}\n"
             )
 
         return log_filename, node_id

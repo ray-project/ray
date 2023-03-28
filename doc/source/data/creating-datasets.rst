@@ -11,9 +11,9 @@ Ray :class:`Datasets <ray.data.Dataset>` can be created from:
 * local and external storage systems (local disk, cloud storage, HDFS, etc.).
 
 This guide surveys the many ways to create a ``Dataset``. If none of these meet your
-needs, please reach out on `Discourse <https://discuss.ray.io/>`__ or open a feature
+needs, please reach out to us on `Discourse <https://discuss.ray.io/>`__ or open a feature
 request on the `Ray GitHub repo <https://github.com/ray-project/ray>`__, and check out
-our :ref:`guide for implementing a custom Datasets datasource <datasets_custom_datasource>`
+our :ref:`guide for implementing a custom Datasets datasource <custom_datasources>`
 if you're interested in rolling your own integration!
 
 .. _dataset_generate_data:
@@ -77,9 +77,8 @@ Supported File Formats
   Read Parquet files into a tabular ``Dataset``. The Parquet data will be read into
   `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
   blocks. Although this simple example demonstrates reading a single file, note that
-  Datasets can also read directories of Parquet files, with one tabular block created
-  per file. For Parquet in particular, we also support reading partitioned Parquet
-  datasets with partition column values pulled from the file paths.
+  Datasets can also read directories of Parquet files. We also support reading partitioned
+  Parquet datasets with partition column values pulled from the file paths.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
@@ -162,11 +161,28 @@ Supported File Formats
 
   See the API docs for :func:`read_text() <ray.data.read_text>`.
 
+.. tabbed:: Images
+
+  Call :func:`~ray.data.read_images` to read images into a :class:`~ray.data.Dataset`. 
+
+  This function stores image data in single-column
+  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
+  blocks using the 
+  :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`.
+  For more information on working with tensors in Datasets, read the 
+  :ref:`tensor data guide <datasets_tensor_support>`.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __read_images_begin__
+    :end-before: __read_images_end__
+
 .. tabbed:: Binary
 
   Read binary files into a ``Dataset``. Each binary file will be treated as a single row
   of opaque bytes. These bytes can be decoded into tensor, tabular, text, or any other
-  kind of data using ``ds.map()`` to apply a per-row decoding UDF.
+  kind of data using :meth:`~ray.data.Dataset.map_batches` to apply a per-row decoding
+  :ref:`user-defined function <transform_datasets_writing_udfs>`.
 
   Although this simple example demonstrates reading a single file, note that Datasets
   can also read directories of binary files, with one bytes block created per file.
@@ -178,7 +194,22 @@ Supported File Formats
 
   See the API docs for :func:`read_binary_files() <ray.data.read_binary_files>`.
 
+.. tabbed:: TFRecords
+
+  Call :func:`~ray.data.read_tfrecords` to read TFRecord files into a tabular
+  :class:`~ray.data.Dataset`.
+
+  .. warning::
+      Only `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
+      records are supported.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __read_tfrecords_begin__
+    :end-before: __read_tfrecords_end__
+
 .. _dataset_reading_remote_storage:
+
 
 Reading from Remote Storage
 ===========================
@@ -217,7 +248,7 @@ are supported for each of these storage systems.
   `S3FileSystem <https://arrow.apache.org/docs/python/filesystems.html#s3>`__ instance
   to :func:`read_parquet() <ray.data.read_parquet>`.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __read_parquet_s3_with_fs_begin__
     :end-before: __read_parquet_s3_with_fs_end__
@@ -232,7 +263,7 @@ are supported for each of these storage systems.
     This example is not runnable as-is; you'll need to point it at your HDFS
     cluster/data.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __read_parquet_hdfs_begin__
     :end-before: __read_parquet_hdfs_end__
@@ -242,7 +273,7 @@ are supported for each of these storage systems.
   <https://arrow.apache.org/docs/python/filesystems.html#hadoop-distributed-file-system-hdfs>`__
   instance to :func:`read_parquet() <ray.data.read_parquet>`.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __read_parquet_hdfs_with_fs_begin__
     :end-before: __read_parquet_hdfs_with_fs_end__
@@ -257,10 +288,21 @@ are supported for each of these storage systems.
     This example is not runnable as-is; you'll need to point it at your GCS bucket and
     configure your GCP project and credentials.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __read_parquet_gcs_begin__
     :end-before: __read_parquet_gcs_end__
+
+  .. tip::
+    To verify that your GCP project and credentials are set up, validate
+    that the GCS `filesystem` has permissions to read the input `path`.
+
+    .. literalinclude:: ./doc_code/creating_datasets_untested.py
+      :language: python
+      :start-after: __validate_parquet_gcs_begin__
+      :end-before: __validate_parquet_gcs_end__
+
+    For more examples, see the `GCSFS Documentation <https://gcsfs.readthedocs.io/en/latest/#examples>`__.
 
 .. tabbed:: ADL/ABS (Azure)
 
@@ -268,10 +310,47 @@ are supported for each of these storage systems.
   `adlfs AzureBlobFileSystem <https://github.com/fsspec/adlfs>`__, where the appropriate
   account name and account key can be specified.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __read_parquet_az_begin__
     :end-before: __read_parquet_az_end__
+
+Reading from Local Storage
+==========================
+
+In Ray Datasets, users often read from remote storage systems as described above. In
+some use cases, users may want to read from local storage. There are three ways to read
+from a local filesystem:
+
+* **Providing a local filesystem path**: For example, in ``ray.data.read_csv("my_file.csv")``,
+  the given path will be resolved as a local filesystem path.
+
+.. note::
+
+  If the file exists only on the local node and you run this read operation in
+  distributed cluster, this will fail as it cannot access the file from remote node.
+
+* **Using ``local://`` custom URI scheme**: Similarly, this will be resolved to local
+  filesystem, e.g. ``ray.data.read_csv("local://my_file.csv")`` will read the
+  same file as the approach above. The difference is that this scheme will ensure
+  all read tasks happen on the local node, so it's safe to run in a distributed
+  cluster.
+* **Using ``example://`` custom URI scheme**: The paths with this scheme will be resolved
+  to ``ray/data/examples/data`` directory in the Ray package. This scheme is used
+  only for testing or demoing examples.
+
+Reading Compressed Files
+========================
+
+Ray Datasets supports reading compressed files using the ``arrow_open_stream_args`` arg.
+`Codecs supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`__
+(bz2, brotli, gzip, lz4 or zstd) are compatible with Ray Datasets.
+For example:
+
+.. literalinclude:: ./doc_code/creating_datasets.py
+  :language: python
+  :start-after: __read_compressed_begin__
+  :end-before: __read_compressed_end__
 
 .. _dataset_from_in_memory_data:
 
@@ -405,7 +484,7 @@ futures.
   will save the Spark DataFrame partitions to Ray's object store in the Arrow format,
   which Datasets will then interpret as its blocks.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __from_spark_begin__
     :end-before: __from_spark_end__
@@ -431,7 +510,7 @@ futures.
   This conversion has near-zero overhead, since Datasets simply reinterprets existing
   Mars partition objects as Dataset blocks.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __from_mars_begin__
     :end-before: __from_mars_end__
@@ -445,52 +524,42 @@ From Torch and TensorFlow
 .. tabbed:: PyTorch
 
     If you already have a Torch dataset available, you can create a Ray Dataset using
-    :py:class:`~ray.data.datasource.SimpleTorchDatasource`.
+    :class:`~ray.data.from_torch`.
 
     .. warning::
-        :py:class:`~ray.data.datasource.SimpleTorchDatasource` doesn't support parallel
+        :class:`~ray.data.from_torch` doesn't support parallel
         reads. You should only use this datasource for small datasets like MNIST or
         CIFAR.
 
     .. code-block:: python
 
-        import ray.data
-        from ray.data.datasource import SimpleTorchDatasource
+        import ray
         import torchvision
 
-        dataset_factory = lambda: torchvision.datasets.MNIST("data", download=True)
-        dataset = ray.data.read_datasource(
-            SimpleTorchDatasource(), parallelism=1, dataset_factory=dataset_factory
-        )
+        dataset = torchvision.datasets.MNIST("data", download=True)
+        dataset = ray.data.from_torch(dataset)
         dataset.take(1)
         # (<PIL.Image.Image image mode=L size=28x28 at 0x1142CCA60>, 5)
 
 .. tabbed:: TensorFlow
 
     If you already have a TensorFlow dataset available, you can create a Ray Dataset
-    using :py:class:`SimpleTensorFlowDatasource`.
+    using :class:`~ray.data.from_tf`.
 
     .. warning::
-        :py:class:`SimpleTensorFlowDatasource` doesn't support parallel reads. You
-        should only use this datasource for small datasets like MNIST or CIFAR.
+        :class:`~ray.data.from_tf` doesn't support parallel reads. You
+        should only use this function with small datasets like MNIST or CIFAR.
 
     .. code-block:: python
 
-        import ray.data
-        from ray.data.datasource import SimpleTensorFlowDatasource
+        import ray
         import tensorflow_datasets as tfds
 
-        def dataset_factory():
-            return tfds.load("cifar10", split=["train"], as_supervised=True)[0]
+        dataset, _ = tfds.load("cifar10", split=["train", "test"])
+        dataset = ray.data.from_tf(dataset)
 
-        dataset = ray.data.read_datasource(
-            SimpleTensorFlowDatasource(),
-            parallelism=1,
-            dataset_factory=dataset_factory
-        )
-        features, label = dataset.take(1)[0]
-        features.shape  # TensorShape([32, 32, 3])
-        label  # <tf.Tensor: shape=(), dtype=int64, numpy=7>
+        dataset
+        # -> Dataset(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
 
 .. _dataset_from_huggingface:
 
@@ -518,18 +587,244 @@ converts it into a Ray Dataset directly.
     ray_datasets["train"].take(2)
     # [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
 
-.. _datasets_from_images:
+.. _dataset_mongo_db:
 
--------------------------------
-From Image Files (experimental)
--------------------------------
+------------
+From MongoDB
+------------
 
-Load image data stored as individual files using :py:class:`~ray.data.datasource.ImageFolderDatasource`:
+A Dataset can also be created from `MongoDB <https://www.mongodb.com/>`__ with
+:py:class:`~ray.data.read_mongo`.
+This interacts with MongoDB similar to external filesystems, except here you will
+need to specify the MongoDB source by its `uri <https://www.mongodb.com/docs/manual/reference/connection-string/>`__,
+`database and collection <https://www.mongodb.com/docs/manual/core/databases-and-collections/>`__,
+and specify a `pipeline <https://www.mongodb.com/docs/manual/core/aggregation-pipeline/>`__ to run against
+the collection. The execution results are then used to create a Dataset.
 
-.. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __create_images_begin__
-    :end-before: __create_images_end__
+.. note::
+
+  This example is not runnable as-is; you'll need to point it at your MongoDB
+  instance.
+
+.. code-block:: python
+
+    import ray
+
+    # Read a local MongoDB.
+    ds = ray.data.read_mongo(
+        uri="mongodb://localhost:27017",
+        database="my_db",
+        collection="my_collection",
+        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
+    )
+
+    # Reading a remote MongoDB is the same.
+    ds = ray.data.read_mongo(
+        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+        database="my_db",
+        collection="my_collection",
+        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
+    )
+
+    # Write back to MongoDB.
+    ds.write_mongo(
+        MongoDatasource(),
+        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+        database="my_db",
+        collection="my_collection",
+    )
+
+.. _datasets_sql_databases:
+
+--------------------------
+Reading From SQL Databases
+--------------------------
+
+Call :func:`~ray.data.read_sql` to read data from a database that provides a 
+`Python DB API2-compliant <https://peps.python.org/pep-0249/>`_ connector.
+
+.. tabbed:: MySQL
+
+    To read from MySQL, install 
+    `MySQL Connector/Python <https://dev.mysql.com/doc/connector-python/en/>`_. It's the 
+    first-party MySQL database connector.
+
+    .. code-block:: console
+
+        pip install mysql-connector-python
+
+    Then, define your connection login and query the database.
+
+    .. code-block:: python
+
+        import mysql.connector
+
+        import ray
+
+        def create_connection():
+            return mysql.connector.connect(
+                user="admin",
+                password=...,
+                host="example-mysql-database.c2c2k1yfll7o.us-west-2.rds.amazonaws.com",
+                connection_timeout=30,
+                database="example",
+            )
+
+        # Get all movies
+        dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+        # Get movies after the year 1980
+        dataset = ray.data.read_sql(
+            "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+        )
+        # Get the number of movies per year
+        dataset = ray.data.read_sql(
+            "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+        )
+
+
+.. tabbed:: PostgreSQL
+
+    To read from PostgreSQL, install `Psycopg 2 <https://www.psycopg.org/docs>`_. It's 
+    the most popular PostgreSQL database connector.
+
+    .. code-block:: console
+
+        pip install psycopg2-binary
+
+    Then, define your connection login and query the database.
+
+    .. code-block:: python
+
+        import psycopg2
+
+        import ray
+
+        def create_connection():
+            return psycopg2.connect(
+                user="postgres",
+                password=...,
+                host="example-postgres-database.c2c2k1yfll7o.us-west-2.rds.amazonaws.com",
+                dbname="example",
+            )
+
+        # Get all movies
+        dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+        # Get movies after the year 1980
+        dataset = ray.data.read_sql(
+            "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+        )
+        # Get the number of movies per year
+        dataset = ray.data.read_sql(
+            "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+        )
+
+.. tabbed:: Snowflake
+
+    To read from Snowflake, install the 
+    `Snowflake Connector for Python <https://docs.snowflake.com/en/user-guide/python-connector>`_.
+
+    .. code-block:: console
+
+        pip install snowflake-connector-python
+
+    Then, define your connection login and query the database.
+
+    .. code-block:: python
+
+        import snowflake.connector
+
+        import ray
+
+        def create_connection():
+            return snowflake.connector.connect(
+                user=...,
+                password=...
+                account="ZZKXUVH-IPB52023",
+                database="example",
+            )
+
+        # Get all movies
+        dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+        # Get movies after the year 1980
+        dataset = ray.data.read_sql(
+            "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+        )
+        # Get the number of movies per year
+        dataset = ray.data.read_sql(
+            "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+        )
+
+
+.. tabbed:: Databricks
+
+    To read from Databricks, install the 
+    `Databricks SQL Connector for Python <https://docs.databricks.com/dev-tools/python-sql-connector.html>`_. 
+
+    .. code-block:: console
+
+        pip install databricks-sql-connector
+
+
+    Then, define your connection logic and read from the Databricks SQL warehouse.
+
+    .. code-block:: python
+
+        from databricks import sql
+
+        import ray
+
+        def create_connection():
+            return sql.connect(
+                server_hostname="dbc-1016e3a4-d292.cloud.databricks.com",
+                http_path="/sql/1.0/warehouses/a918da1fc0b7fed0",
+                access_token=...,
+
+
+        # Get all movies
+        dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+        # Get movies after the year 1980
+        dataset = ray.data.read_sql(
+            "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+        )
+        # Get the number of movies per year
+        dataset = ray.data.read_sql(
+            "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+        )
+
+.. tabbed:: BigQuery
+
+    To read from BigQuery, install the 
+    `Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>`_. 
+    This package includes a DB API2-compliant database connector.
+
+    .. code-block:: console
+
+        pip install google-cloud-bigquery
+
+    Then, define your connection login and query the dataset.
+
+    .. code-block:: python
+
+        from google.cloud import bigquery
+        from google.cloud.bigquery import dbapi
+
+        import ray
+
+        def create_connection():
+            client = bigquery.Client(...)
+            return dbapi.Connection(client)
+
+        # Get all movies
+        dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+        # Get movies after the year 1980
+        dataset = ray.data.read_sql(
+            "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+        )
+        # Get the number of movies per year
+        dataset = ray.data.read_sql(
+            "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+        )
+
 
 .. _datasets_custom_datasource:
 
@@ -547,6 +842,8 @@ Once you have implemented `YourCustomDataSource`, you can use it like any other 
 
     # Write to a custom datasource.
     ds.write_datasource(YourCustomDatasource(), **write_args)
+
+For more details, check out :ref:`guide for implementing a custom Datasets datasource <custom_datasources>`.
 
 --------------------------
 Performance Considerations
@@ -581,12 +878,10 @@ parallelism.
 Deferred Read Task Execution
 ============================
 
-Datasets created via the ``ray.data.read_*()`` APIs are semi-lazy: initially, only the
-first read task will be executed. This avoids blocking Dataset creation on the reading
-of all data files, enabling inspection functions like
-:meth:`ds.schema() <ray.data.Dataset.schema>` and
-:meth:`ds.show() <ray.data.Dataset.show>` to be used right away. Executing further
-transformations on the Dataset will trigger execution of all read tasks, and execution
+Datasets created via the ``ray.data.read_*()`` APIs are lazy: no read tasks are
+executed until a downstream consumption operation triggers execution. Metadata
+inspection functions like :meth:`ds.schema() <ray.data.Dataset.schema>` and
+:meth:`ds.show() <ray.data.Dataset.show>` will trigger execution of only one or some
+tasks, instead of all tasks. This allows metadata to be inspected right away. Execution
 of all read tasks can be triggered manually using the
-:meth:`ds.fully_executed() <ray.data.Dataset.fully_executed>` API.
-
+:meth:`ds.cache() <ray.data.Dataset.cache>` API.

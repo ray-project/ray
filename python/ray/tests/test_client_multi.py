@@ -4,6 +4,14 @@ import pytest
 import ray
 
 
+def test_multi_raise_exception_on_non_client(shutdown_only):
+    with pytest.raises(
+        RuntimeError,
+        match=("Do not pass the `allow_multiple` to `ray.init` to fix the issue."),
+    ):
+        ray.init(allow_multiple=True)
+
+
 @pytest.mark.skipif(
     sys.platform == "win32", reason="PSUtil does not work the same on windows."
 )

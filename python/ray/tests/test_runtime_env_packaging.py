@@ -12,9 +12,13 @@ from shutil import copytree, make_archive, rmtree
 import pytest
 
 from ray._private.gcs_utils import GcsClient
-from ray._private.ray_constants import KV_NAMESPACE_PACKAGE
+from ray._private.ray_constants import (
+    KV_NAMESPACE_PACKAGE,
+    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
+)
 from ray._private.runtime_env.packaging import (
     GCS_STORAGE_MAX_SIZE,
+    MAC_OS_ZIP_HIDDEN_DIR_NAME,
     Protocol,
     _dir_travel,
     _get_excludes,
@@ -29,6 +33,7 @@ from ray._private.runtime_env.packaging import (
     remove_dir_from_filepaths,
     unzip_package,
     upload_package_if_needed,
+    _get_gitignore,
 )
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -47,7 +52,7 @@ def random_string(size: int = 10):
 
 
 @pytest.fixture
-def random_dir(tmp_path):
+def random_dir(tmp_path) -> Path:
     subdir = tmp_path / "subdir"
     subdir.mkdir()
     for _ in range(10):
@@ -100,6 +105,14 @@ def random_zip_file_with_top_level_dir(tmp_path):
         dir2 = next_level_dir / random_string(15)
         dir2.mkdir(parents=True)
         next_level_dir = dir2
+
+    # Add __MACOSX directory. This is a hidden directory that is created by
+    # macOS when zipping a directory.
+    macos_dir = path / MAC_OS_ZIP_HIDDEN_DIR_NAME
+    macos_dir.mkdir(parents=True)
+    with (macos_dir / "file").open("w") as f:
+        f.write("macos file")
+
     make_archive(
         path / ARCHIVE_NAME[: ARCHIVE_NAME.rfind(".")],
         "zip",
@@ -285,7 +298,11 @@ class TestRemoveDirFromFilepaths:
         # Pytest fixture and the top level directory itself. This implies that
         # all files have been extracted from the top level directory and moved
         # into the tmp_path.
-        assert set(dcmp.left_only) == {ARCHIVE_NAME, TOP_LEVEL_DIR_NAME}
+        assert set(dcmp.left_only) == {
+            ARCHIVE_NAME,
+            TOP_LEVEL_DIR_NAME,
+            MAC_OS_ZIP_HIDDEN_DIR_NAME,
+        }
 
         # Make sure that all the subdirectories and files have been moved to
         # the target directory
@@ -372,6 +389,46 @@ class TestUnzipPackage:
             archive_path,
         )
 
+    def test_unzip_package_with_multiple_top_level_dirs(
+        self,
+        remove_top_level_directory,
+        unlink_zip,
+        random_zip_file_without_top_level_dir,
+    ):
+        """Test unzipping a package with multiple top level directories (not counting __MACOSX).
+
+        Tests that we don't remove the top level directory, regardless of the
+        value of remove_top_level_directory.
+        """
+        archive_path = random_zip_file_without_top_level_dir
+        tmp_path = archive_path[: archive_path.rfind(os.path.sep)]
+        target_dir = os.path.join(tmp_path, "target_dir")
+        print(os.listdir(tmp_path))
+
+        # tmp_path
+        # ├── target_dir
+        # └── archive.zip
+
+        unzip_package(
+            package_path=archive_path,
+            target_dir=target_dir,
+            remove_top_level_directory=remove_top_level_directory,
+            unlink_zip=unlink_zip,
+        )
+        print(os.listdir(target_dir))
+        dcmp = dircmp(tmp_path, target_dir)
+        print(dcmp.report())
+        # assert False
+        assert dcmp.left_only == ["target_dir"]
+        # A side effect of the test structure is that archive.zip is itself
+        # added to the zip file because it is in the same directory we're zipping.
+        assert dcmp.right_only == ([ARCHIVE_NAME] if unlink_zip else [])
+
+        if unlink_zip:
+            assert not Path(archive_path).is_file()
+        else:
+            assert Path(archive_path).is_file()
+
 
 class TestParseUri:
     @pytest.mark.parametrize(
@@ -383,7 +440,7 @@ class TestParseUri:
             ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
         ],
     )
-    def test_parsing_basic(self, parsing_tuple):
+    def test_parsing_remote_basic(self, parsing_tuple):
         uri, protocol, package_name = parsing_tuple
         parsed_protocol, parsed_package_name = parse_uri(uri)
 
@@ -415,14 +472,68 @@ class TestParseUri:
         assert parsed_protocol == Protocol.HTTPS
         assert parsed_package_name == parsed_uri
 
+    @pytest.mark.parametrize(
+        "parsing_tuple",
+        [
+            (
+                "https://username:PAT@github.com/repo/archive:2/commit_hash.zip",
+                Protocol.HTTPS,
+                "https_username_PAT_github_com_repo_archive_2_commit_hash.zip",
+            ),
+            (
+                "gs://fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.GS,
+                "gs_fake_2022-10-21T13_11_35_00_00_package.zip",
+            ),
+            (
+                "s3://fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.S3,
+                "s3_fake_2022-10-21T13_11_35_00_00_package.zip",
+            ),
+            (
+                "file:///fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.FILE,
+                "file__fake_2022-10-21T13_11_35_00_00_package.zip",
+            ),
+        ],
+    )
+    def test_parse_uris_with_disallowed_chars(self, parsing_tuple):
+        raw_uri, protocol, parsed_uri = parsing_tuple
+        parsed_protocol, parsed_package_name = parse_uri(raw_uri)
+        assert parsed_protocol == protocol
+        assert parsed_package_name == parsed_uri
 
+    @pytest.mark.parametrize(
+        "gcs_uri",
+        ["gcs://pip_install_test-0.5-py3-none-any.whl", "gcs://storing@here.zip"],
+    )
+    def test_parse_gcs_uri(self, gcs_uri):
+        """GCS URIs should not be modified in this function."""
+        protocol, package_name = parse_uri(gcs_uri)
+        assert protocol == Protocol.GCS
+        assert package_name == gcs_uri.split("/")[-1]
+
+
+def test_get_gitignore(tmp_path):
+    gitignore_path = tmp_path / ".gitignore"
+    gitignore_path.write_text("*.pyc")
+    assert _get_gitignore(tmp_path)(Path(tmp_path / "foo.pyc")) is True
+    assert _get_gitignore(tmp_path)(Path(tmp_path / "foo.py")) is False
+
+
+@pytest.mark.parametrize("ignore_gitignore", [True, False])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
-def test_travel(tmp_path):
+def test_travel(tmp_path, ignore_gitignore, monkeypatch):
     dir_paths = set()
     file_paths = set()
     item_num = 0
     excludes = []
     root = tmp_path / "test"
+
+    if ignore_gitignore:
+        monkeypatch.setenv(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "1")
+    else:
+        monkeypatch.delenv(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, raising=False)
 
     def construct(path, excluded=False, depth=0):
         nonlocal item_num
@@ -458,6 +569,18 @@ def test_travel(tmp_path):
                 else:
                     file_paths.add((str(path / uid), str(v)))
             item_num += 1
+
+        # Add gitignore file
+        gitignore = root / ".gitignore"
+        gitignore.write_text("*.pyc")
+        file_paths.add((str(gitignore), "*.pyc"))
+
+        # Add file that should be ignored by gitignore
+        with (root / "foo.pyc").open("w") as f:
+            f.write("foo")
+        if ignore_gitignore:
+            # If ignore_gitignore is True, then the file should be visited
+            file_paths.add((str(root / "foo.pyc"), "foo"))
 
     construct(root)
     exclude_spec = _get_excludes(root, excludes)

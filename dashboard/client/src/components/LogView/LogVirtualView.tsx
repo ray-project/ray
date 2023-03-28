@@ -5,7 +5,6 @@ import { FixedSizeList as List } from "react-window";
 import "./darcula.css";
 import "./github.css";
 import "./index.css";
-import { getDefaultTheme } from "../../App";
 
 const uniqueKeySelector = () => Math.random().toString(16).slice(-8);
 
@@ -15,7 +14,7 @@ const timeReg =
 const value2react = (
   { type, tagName, properties, children, value = "" }: any,
   key: string,
-  keywords: string = "",
+  keywords = "",
 ) => {
   switch (type) {
     case "element":
@@ -87,7 +86,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   width = "100%",
   height,
   fontSize = 12,
-  theme = getDefaultTheme(),
+  theme = "light",
   keywords = "",
   language = "dos",
   focusLine = 1,

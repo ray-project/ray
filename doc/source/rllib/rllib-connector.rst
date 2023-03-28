@@ -6,7 +6,7 @@ Connectors (Alpha)
 ==================
 
 Connector are components that handle transformations on inputs and outputs of a given RL policy, with the goal of improving
-the durability and maintainability of RLlib's policy checkpoints.
+the durability and maintainability of :ref:`RLlib's Policy checkpoints <rllib-saving-and-loading-algos-and-policies-docs>`.
 
 RLlib algorithms usually require one or more *user environments* and *policies* (usually a neural network).
 
@@ -119,18 +119,17 @@ The output from RLlib's default agent connector pipeline is in ``AgentConnectors
    :start-after: __sphinx_doc_begin_agent_connector_output__
    :end-before: __sphinx_doc_end_agent_connector_output__
 
-Note that if ``AgentConnector._is_training`` is False, the ``for_training`` field of ``AgentConnectorsOutput``
-will not be populated. This is for more efficient inference.
-
-.. note::
-    There is a plan to consolidate training episode building into agent connectors, in which case there will
-    not be a need to output the ``for_training`` data piece.
+Note that in addition to the processed sample batch, which can be used for running the policy
+forward pass, ``AgentConnectorsOutput`` also provides the original raw input dict, because it
+sometimes contains data required for downstream processing (e.g. action masks).
 
 ActionConnectorDataType
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 ``ActionConnectorDataType`` is the data type ``ActionConnector`` deals with.
-It is basically env and agent IDs plus ``PolicyOutputType``.
+It is basically env and agent IDs, input_dict, and ``PolicyOutputType``.
+The raw input dict is made available for action connectors in case some of the
+data fields are needed for adapting action outputs, for example action masks.
 
 .. literalinclude:: ../../../rllib/utils/typing.py
    :language: python
@@ -223,6 +222,8 @@ When enabled, the configurations of agent and action connectors will get seriali
 policy states.
 These connectors, together with the specific transformations they represent,
 can be easily recovered (by RLlib-provided utils) to simplify deployment and inference use cases.
+
+You can read more on :ref:`Policy checkpoints here <rllib-saving-and-loading-algos-and-policies-docs>`.
 
 Serving and Inference
 ---------------------

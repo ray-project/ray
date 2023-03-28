@@ -22,7 +22,7 @@ class TestSchedules(unittest.TestCase):
 
         config = {"value": value}
 
-        for fw in framework_iterator(frameworks=["tf2", "tf", "tfe", "torch", None]):
+        for fw in framework_iterator(frameworks=["tf2", "tf", "torch", None]):
             constant = from_config(ConstantSchedule, config, framework=fw)
             for t in ts:
                 out = constant(t)
@@ -39,7 +39,7 @@ class TestSchedules(unittest.TestCase):
         expected = [2.1 - (min(t, 100) / 100) * (2.1 - 0.6) for t in ts]
         config = {"schedule_timesteps": 100, "initial_p": 2.1, "final_p": 0.6}
 
-        for fw in framework_iterator(frameworks=["tf2", "tf", "tfe", "torch", None]):
+        for fw in framework_iterator(frameworks=["tf2", "tf", "torch", None]):
             linear = from_config(LinearSchedule, config, framework=fw)
             for t, e in zip(ts, expected):
                 out = linear(t)
@@ -62,7 +62,7 @@ class TestSchedules(unittest.TestCase):
             power=2.0,
         )
 
-        for fw in framework_iterator(frameworks=["tf2", "tf", "tfe", "torch", None]):
+        for fw in framework_iterator(frameworks=["tf2", "tf", "torch", None]):
             polynomial = from_config(config, framework=fw)
             for t, e in zip(ts, expected):
                 out = polynomial(t)
@@ -80,7 +80,7 @@ class TestSchedules(unittest.TestCase):
         expected = [2.0 * decay_rate ** (t / 100) for t in ts]
         config = dict(initial_p=2.0, decay_rate=decay_rate, schedule_timesteps=100)
 
-        for fw in framework_iterator(frameworks=["tf2", "tf", "tfe", "torch", None]):
+        for fw in framework_iterator(frameworks=["tf2", "tf", "torch", None]):
             exponential = from_config(ExponentialSchedule, config, framework=fw)
             for t, e in zip(ts, expected):
                 out = exponential(t)
@@ -99,7 +99,7 @@ class TestSchedules(unittest.TestCase):
             endpoints=[(0, 50.0), (25, 100.0), (30, 200.0)], outside_value=14.5
         )
 
-        for fw in framework_iterator(frameworks=["tf2", "tf", "tfe", "torch", None]):
+        for fw in framework_iterator(frameworks=["tf2", "tf", "torch", None]):
             piecewise = from_config(PiecewiseSchedule, config, framework=fw)
             for t, e in zip(ts, expected):
                 out = piecewise(t)

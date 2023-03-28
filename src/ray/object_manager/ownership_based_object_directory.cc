@@ -167,6 +167,7 @@ void OwnershipBasedObjectDirectory::ReportObjectSpilled(
     const NodeID &node_id,
     const rpc::Address &owner_address,
     const std::string &spilled_url,
+    const ObjectID &generator_id,
     const bool spilled_to_local_storage) {
   RAY_LOG(DEBUG) << "Sending spilled URL " << spilled_url << " for object " << object_id
                  << " to owner " << WorkerID::FromBinary(owner_address.worker_id());
@@ -186,6 +187,9 @@ void OwnershipBasedObjectDirectory::ReportObjectSpilled(
   update.mutable_spilled_location_update()->set_spilled_url(spilled_url);
   update.mutable_spilled_location_update()->set_spilled_to_local_storage(
       spilled_to_local_storage);
+  if (!generator_id.IsNil()) {
+    update.set_generator_id(generator_id.Binary());
+  }
   if (!existing_object) {
     location_buffers_[worker_id].first.emplace_back(object_id);
   }

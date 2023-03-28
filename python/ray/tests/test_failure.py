@@ -133,6 +133,20 @@ def test_failed_function_to_run(ray_start_2_cpus, error_pubsub):
             raise Exception("Function to run failed.")
 
     ray._private.worker.global_worker.run_function_on_all_workers(f)
+
+    @ray.remote
+    class Actor:
+        def foo(self):
+            pass
+
+    # Functions scheduled through run_function_on_all_workers only
+    # executes on workers binded with current driver's job_id.
+    # Since the 2 prestarted workers lazily bind to job_id until the first
+    # task/actor executed, we need to schedule two actors to trigger
+    # prestart functions.
+    actors = [Actor.remote() for _ in range(2)]
+    ray.get([actor.foo.remote() for actor in actors])
+
     # Check that the error message is in the task info.
     errors = get_error_message(p, 2, ray_constants.FUNCTION_TO_RUN_PUSH_ERROR)
     assert len(errors) == 2
@@ -367,11 +381,11 @@ def test_exception_chain(ray_start_regular):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.parametrize("ray_start_object_store_memory", [10 ** 6], indirect=True)
+@pytest.mark.parametrize("ray_start_object_store_memory", [10**6], indirect=True)
 def test_put_error1(ray_start_object_store_memory, error_pubsub):
     p = error_pubsub
     num_objects = 3
-    object_size = 4 * 10 ** 5
+    object_size = 4 * 10**5
 
     # Define a task with a single dependency, a numpy array, that returns
     # another array.
@@ -412,11 +426,11 @@ def test_put_error1(ray_start_object_store_memory, error_pubsub):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.parametrize("ray_start_object_store_memory", [10 ** 6], indirect=True)
+@pytest.mark.parametrize("ray_start_object_store_memory", [10**6], indirect=True)
 def test_put_error2(ray_start_object_store_memory):
     # This is the same as the previous test, but it calls ray.put directly.
     num_objects = 3
-    object_size = 4 * 10 ** 5
+    object_size = 4 * 10**5
 
     # Define a task with a single dependency, a numpy array, that returns
     # another array.
@@ -563,11 +577,12 @@ def test_no_warning_many_actor_tasks_queued_when_sequential(shutdown_only, sync:
             "num_cpus": 0,
             "_system_config": {
                 "raylet_death_check_interval_milliseconds": 10 * 1000,
-                "num_heartbeats_timeout": 10,
-                "raylet_heartbeat_period_milliseconds": 100,
+                "health_check_initial_delay_ms": 0,
+                "health_check_failure_threshold": 10,
+                "health_check_period_ms": 100,
                 "timeout_ms_task_wait_for_death_info": 100,
             },
-        }
+        },
     ],
     indirect=True,
 )

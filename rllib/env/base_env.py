@@ -1,10 +1,10 @@
 import logging
 from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING, Union, Set
 
-import gym
+import gymnasium as gym
 import ray
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, PublicAPI
-from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, MultiEnvDict
+from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiEnvDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -33,7 +33,9 @@ class BaseEnv:
     Examples:
         >>> MyBaseEnv = ... # doctest: +SKIP
         >>> env = MyBaseEnv() # doctest: +SKIP
-        >>> obs, rewards, dones, infos, off_policy_actions = env.poll() # doctest: +SKIP
+        >>> obs, rewards, terminateds, truncateds, infos, off_policy_actions = (
+        ...     env.poll()
+        ... ) # doctest: +SKIP
         >>> print(obs) # doctest: +SKIP
         {
             "env_0": {
@@ -55,7 +57,9 @@ class BaseEnv:
         ...     "car_1": 1, # doctest: +SKIP
         ...   }, ... # doctest: +SKIP
         ... }) # doctest: +SKIP
-        >>> obs, rewards, dones, infos, off_policy_actions = env.poll() # doctest: +SKIP
+        >>> obs, rewards, terminateds, truncateds, infos, off_policy_actions = (
+        ...     env.poll()
+        ... ) # doctest: +SKIP
         >>> print(obs) # doctest: +SKIP
         {
             "env_0": {
@@ -63,7 +67,7 @@ class BaseEnv:
                 "car_1": [3.2, -4.2],
             }, ...
         }
-        >>> print(dones) # doctest: +SKIP
+        >>> print(terminateds) # doctest: +SKIP
         {
             "env_0": {
                 "__all__": False,
@@ -121,7 +125,14 @@ class BaseEnv:
     @PublicAPI
     def poll(
         self,
-    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
+    ) -> Tuple[
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+    ]:
         """Returns observations from ready agents.
 
         All return values are two-level dicts mapping from EnvID to dicts
@@ -129,17 +140,18 @@ class BaseEnv:
         The number of agents and sub-environments may vary over time.
 
         Returns:
-            Tuple consisting of
-            1) New observations for each ready agent.
-            2) Reward values for each ready agent. If the episode is
-            just started, the value will be None.
-            3) Done values for each ready agent. The special key "__all__"
-            is used to indicate env termination.
-            4) Info values for each ready agent.
-            5) Agents may take off-policy actions. When that
-            happens, there will be an entry in this dict that contains the
-            taken action. There is no need to send_actions() for agents that
-            have already chosen off-policy actions.
+            Tuple consisting of:
+            New observations for each ready agent.
+            Reward values for each ready agent. If the episode is just started,
+            the value will be None.
+            Terminated values for each ready agent. The special key "__all__" is used to
+            indicate episode termination.
+            Truncated values for each ready agent. The special key "__all__"
+            is used to indicate episode truncation.
+            Info values for each ready agent.
+            Agents may take off-policy actions, in which case, there will be an entry
+            in this dict that contains the taken action. There is no need to
+            `send_actions()` for agents that have already chosen off-policy actions.
         """
         raise NotImplementedError
 
@@ -157,16 +169,16 @@ class BaseEnv:
 
     @PublicAPI
     def try_reset(
-        self, env_id: Optional[EnvID] = None
-    ) -> Optional[Union[MultiAgentDict, MultiEnvDict]]:
+        self,
+        env_id: Optional[EnvID] = None,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[dict] = None,
+    ) -> Tuple[Optional[MultiEnvDict], Optional[MultiEnvDict]]:
         """Attempt to reset the sub-env with the given id or all sub-envs.
 
-        If the environment does not support synchronous reset, None can be
-        returned here.
-
-        Args:
-            env_id: The sub-environment's ID if applicable. If None, reset
-                the entire Env (i.e. all sub-environments).
+        If the environment does not support synchronous reset, a tuple of
+        (ASYNC_RESET_REQUEST, ASYNC_RESET_REQUEST) can be returned here.
 
         Note: A MultiAgentDict is returned when using the deprecated wrapper
         classes such as `ray.rllib.env.base_env._MultiAgentEnvToBaseEnv`,
@@ -174,11 +186,21 @@ class BaseEnv:
         returned from the new wrapper classes, such as
         `ray.rllib.env.multi_agent_env.MultiAgentEnvWrapper`.
 
+        Args:
+            env_id: The sub-environment's ID if applicable. If None, reset
+                the entire Env (i.e. all sub-environments).
+            seed: The seed to be passed to the sub-environment(s) when
+                resetting it. If None, will not reset any existing PRNG. If you pass an
+                integer, the PRNG will be reset even if it already exists.
+            options: An options dict to be passed to the sub-environment(s) when
+                resetting it.
+
         Returns:
-            The reset (multi-agent) observation dict. None if reset is not
-            supported.
+            A tuple consisting of a) the reset (multi-env/multi-agent) observation
+            dict and b) the reset (multi-env/multi-agent) infos dict. Returns the
+            (ASYNC_RESET_REQUEST, ASYNC_RESET_REQUEST) tuple, if not supported.
         """
-        return None
+        return None, None
 
     @DeveloperAPI
     def try_restart(self, env_id: Optional[EnvID] = None) -> None:
@@ -236,7 +258,7 @@ class BaseEnv:
             if hasattr(env, "close"):
                 env.close()
 
-    @Deprecated(new="get_sub_environments", error=False)
+    @Deprecated(new="get_sub_environments", error=True)
     def get_unwrapped(self) -> List[EnvType]:
         return self.get_sub_environments()
 
@@ -302,11 +324,13 @@ class BaseEnv:
     def last(
         self,
     ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
-        """Returns the last observations, rewards, and done flags that were
-            returned by the environment.
+        """Returns the last observations, rewards, done- truncated flags and infos ...
+
+        that were returned by the environment.
 
         Returns:
-            The last observations, rewards, and done flags for each environment
+            The last observations, rewards, done- and truncated flags, and infos
+            for each sub-environment.
         """
         logger.warning("last has not been implemented for this environment.")
         return {}, {}, {}, {}, {}
@@ -494,43 +518,7 @@ def convert_to_base_env(
     return env
 
 
-@Deprecated(
-    old="ray.rllib.env.base_env._VectorEnvToBaseEnv",
-    new="ray.rllib.env.vector_env.VectorEnvWrapper",
-    error=True,
-)
-class _VectorEnvToBaseEnv(BaseEnv):
-    pass
-
-
-@Deprecated(
-    old="ray.rllib.env.base_env._ExternalEnvToBaseEnv",
-    new="ray.rllib.env.external.ExternalEnvWrapper",
-    error=True,
-)
-class _ExternalEnvToBaseEnv(BaseEnv):
-    pass
-
-
-@Deprecated(
-    old="ray.rllib.env.base_env._MultiAgentEnvToBaseEnv",
-    new="ray.rllib.env.multi_agent_env.MultiAgentEnvWrapper",
-    error=True,
-)
-class _MultiAgentEnvToBaseEnv(BaseEnv):
-    pass
-
-
-@Deprecated(
-    old="ray.rllib.env.base_env._MultiAgentEnvState",
-    new="ray.rllib.env.multi_agent_env._MultiAgentEnvState",
-    error=True,
-)
-class _MultiAgentEnvState:
-    pass
-
-
-@Deprecated(new="with_dummy_agent_id()", error=False)
+@Deprecated(new="with_dummy_agent_id()", error=True)
 def _with_dummy_agent_id(
     env_id_to_values: Dict[EnvID, Any], dummy_id: "AgentID" = _DUMMY_AGENT_ID
 ) -> MultiEnvDict:

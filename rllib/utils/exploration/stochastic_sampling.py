@@ -1,5 +1,5 @@
 import functools
-import gym
+import gymnasium as gym
 import numpy as np
 from typing import Optional, Union
 
@@ -114,7 +114,7 @@ class StochasticSampling(Exploration):
         )
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
-        if self.framework in ["tf2", "tfe"]:
+        if self.framework == "tf2":
             self.last_timestep.assign_add(1)
             return action, logp
         else:

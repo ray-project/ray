@@ -149,11 +149,22 @@ JobID TaskSpecification::JobId() const {
   return JobID::FromBinary(message_->job_id());
 }
 
+const rpc::JobConfig &TaskSpecification::JobConfig() const {
+  return message_->job_config();
+}
+
 TaskID TaskSpecification::ParentTaskId() const {
   if (message_->parent_task_id().empty() /* e.g., empty proto default */) {
     return TaskID::Nil();
   }
   return TaskID::FromBinary(message_->parent_task_id());
+}
+
+TaskID TaskSpecification::SubmitterTaskId() const {
+  if (message_->submitter_task_id().empty() /* e.g., empty proto default */) {
+    return TaskID::Nil();
+  }
+  return TaskID::FromBinary(message_->submitter_task_id());
 }
 
 size_t TaskSpecification::ParentCounter() const { return message_->parent_counter(); }
@@ -180,17 +191,15 @@ bool TaskSpecification::HasRuntimeEnv() const {
 
 uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
 
+bool TaskSpecification::IsRetry() const { return AttemptNumber() > 0; }
+
+int32_t TaskSpecification::MaxRetries() const { return message_->max_retries(); }
+
 int TaskSpecification::GetRuntimeEnvHash() const {
-  absl::flat_hash_map<std::string, double> required_resource;
-  if (RayConfig::instance().worker_resource_limits_enabled()) {
-    required_resource = GetRequiredResources().GetResourceMap();
-  }
-  WorkerCacheKey env = {
-      SerializedRuntimeEnv(),
-      required_resource,
-      IsActorCreationTask() && RayConfig::instance().isolate_workers_across_task_types(),
-      GetRequiredResources().GetResource("GPU") > 0 &&
-          RayConfig::instance().isolate_workers_across_resource_types()};
+  WorkerCacheKey env = {SerializedRuntimeEnv(),
+                        GetRequiredResources().GetResourceMap(),
+                        IsActorCreationTask(),
+                        GetRequiredResources().GetResource("GPU") > 0};
   return env.IntHash();
 }
 
@@ -205,6 +214,21 @@ size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
 
 ObjectID TaskSpecification::ReturnId(size_t return_index) const {
   return ObjectID::FromIndex(TaskId(), return_index + 1);
+}
+
+bool TaskSpecification::ReturnsDynamic() const { return message_->returns_dynamic(); }
+
+std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
+  RAY_CHECK(message_->returns_dynamic());
+  std::vector<ObjectID> dynamic_return_ids;
+  for (const auto &dynamic_return_id : message_->dynamic_return_ids()) {
+    dynamic_return_ids.push_back(ObjectID::FromBinary(dynamic_return_id));
+  }
+  return dynamic_return_ids;
+}
+
+void TaskSpecification::AddDynamicReturnId(const ObjectID &dynamic_return_id) {
+  message_->add_dynamic_return_ids(dynamic_return_id.Binary());
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
@@ -273,24 +297,15 @@ std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
       dependencies.push_back(ArgId(i));
     }
   }
-  if (IsActorTask()) {
-    dependencies.push_back(PreviousActorTaskDummyObjectId());
-  }
   return dependencies;
 }
 
-std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies(
-    bool add_dummy_dependency) const {
+std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
   std::vector<rpc::ObjectReference> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
       dependencies.push_back(message_->args(i).object_ref());
     }
-  }
-  if (add_dummy_dependency && IsActorTask()) {
-    const auto &dummy_ref =
-        GetReferenceForActorDummyObject(PreviousActorTaskDummyObjectId());
-    dependencies.push_back(dummy_ref);
   }
   return dependencies;
 }
@@ -382,12 +397,6 @@ ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
       message_->actor_task_spec().actor_creation_dummy_object_id());
 }
 
-ObjectID TaskSpecification::PreviousActorTaskDummyObjectId() const {
-  RAY_CHECK(IsActorTask());
-  return ObjectID::FromBinary(
-      message_->actor_task_spec().previous_actor_task_dummy_object_id());
-}
-
 ObjectID TaskSpecification::ActorDummyObject() const {
   RAY_CHECK(IsActorTask() || IsActorCreationTask());
   return ReturnId(NumReturns() - 1);
@@ -439,12 +448,13 @@ std::string TaskSpecification::DebugString() const {
 
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
-         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth();
+         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth()
+         << ", attempt_number=" << AttemptNumber();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
-           << ", max_restarts=" << MaxActorRestarts()
+           << ", max_restarts=" << MaxActorRestarts() << ", max_retries=" << MaxRetries()
            << ", max_concurrency=" << MaxActorConcurrency()
            << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
@@ -453,12 +463,30 @@ std::string TaskSpecification::DebugString() const {
     stream << ", actor_task_spec={actor_id=" << ActorId()
            << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
            << "}";
+  } else if (IsNormalTask()) {
+    stream << ", max_retries=" << MaxRetries();
   }
 
-  // Print runtime env.
+  // Print non-sensitive runtime env info.
   if (HasRuntimeEnv()) {
     const auto &runtime_env_info = RuntimeEnvInfo();
-    stream << ", serialized_runtime_env=" << SerializedRuntimeEnv();
+    stream << ", runtime_env_hash=" << GetRuntimeEnvHash();
+    if (runtime_env_info.has_runtime_env_config()) {
+      stream << ", eager_install="
+             << runtime_env_info.runtime_env_config().eager_install();
+      stream << ", setup_timeout_seconds="
+             << runtime_env_info.runtime_env_config().setup_timeout_seconds();
+    }
+  }
+
+  return stream.str();
+}
+
+std::string TaskSpecification::RuntimeEnvDebugString() const {
+  std::ostringstream stream;
+  if (HasRuntimeEnv()) {
+    const auto &runtime_env_info = RuntimeEnvInfo();
+    stream << "serialized_runtime_env=" << SerializedRuntimeEnv();
     const auto &uris = runtime_env_info.uris();
     if (!uris.working_dir_uri().empty() || uris.py_modules_uris().size() > 0) {
       stream << ", runtime_env_uris=";
@@ -471,6 +499,7 @@ std::string TaskSpecification::DebugString() const {
       // Erase the last ":"
       stream.seekp(-1, std::ios_base::end);
     }
+    stream << ", runtime_env_hash=" << GetRuntimeEnvHash();
     if (runtime_env_info.has_runtime_env_config()) {
       stream << ", eager_install="
              << runtime_env_info.runtime_env_config().eager_install();
@@ -478,8 +507,20 @@ std::string TaskSpecification::DebugString() const {
              << runtime_env_info.runtime_env_config().setup_timeout_seconds();
     }
   }
-
   return stream.str();
+}
+
+bool TaskSpecification::IsRetriable() const {
+  if (IsActorTask()) {
+    return false;
+  }
+  if (IsActorCreationTask() && MaxActorRestarts() == 0) {
+    return false;
+  }
+  if (IsNormalTask() && MaxRetries() == 0) {
+    return false;
+  }
+  return true;
 }
 
 std::string TaskSpecification::CallSiteString() const {
@@ -502,9 +543,39 @@ WorkerCacheKey::WorkerCacheKey(
     bool is_actor,
     bool is_gpu)
     : serialized_runtime_env(serialized_runtime_env),
-      required_resources(std::move(required_resources)),
-      is_actor(is_actor),
-      is_gpu(is_gpu) {}
+      required_resources(RayConfig::instance().worker_resource_limits_enabled()
+                             ? required_resources
+                             : absl::flat_hash_map<std::string, double>{}),
+      is_actor(is_actor && RayConfig::instance().isolate_workers_across_task_types()),
+      is_gpu(is_gpu && RayConfig::instance().isolate_workers_across_resource_types()),
+      hash_(CalculateHash()) {}
+
+std::size_t WorkerCacheKey::CalculateHash() const {
+  size_t hash = 0;
+  if (EnvIsEmpty()) {
+    // It's useful to have the same predetermined value for both unspecified and empty
+    // runtime envs.
+    if (is_actor) {
+      hash = 1;
+    } else {
+      hash = 0;
+    }
+  } else {
+    boost::hash_combine(hash, serialized_runtime_env);
+    boost::hash_combine(hash, is_actor);
+    boost::hash_combine(hash, is_gpu);
+
+    std::vector<std::pair<std::string, double>> resource_vars(required_resources.begin(),
+                                                              required_resources.end());
+    // Sort the variables so different permutations yield the same hash.
+    std::sort(resource_vars.begin(), resource_vars.end());
+    for (auto &pair : resource_vars) {
+      boost::hash_combine(hash, pair.first);
+      boost::hash_combine(hash, pair.second);
+    }
+  }
+  return hash;
+}
 
 bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
   // FIXME we should compare fields
@@ -516,34 +587,7 @@ bool WorkerCacheKey::EnvIsEmpty() const {
          !is_gpu;
 }
 
-std::size_t WorkerCacheKey::Hash() const {
-  // Cache the hash value.
-  if (!hash_) {
-    if (EnvIsEmpty()) {
-      // It's useful to have the same predetermined value for both unspecified and empty
-      // runtime envs.
-      if (is_actor) {
-        hash_ = 1;
-      } else {
-        hash_ = 0;
-      }
-    } else {
-      boost::hash_combine(hash_, serialized_runtime_env);
-      boost::hash_combine(hash_, is_actor);
-      boost::hash_combine(hash_, is_gpu);
-
-      std::vector<std::pair<std::string, double>> resource_vars(
-          required_resources.begin(), required_resources.end());
-      // Sort the variables so different permutations yield the same hash.
-      std::sort(resource_vars.begin(), resource_vars.end());
-      for (auto &pair : resource_vars) {
-        boost::hash_combine(hash_, pair.first);
-        boost::hash_combine(hash_, pair.second);
-      }
-    }
-  }
-  return hash_;
-}
+std::size_t WorkerCacheKey::Hash() const { return hash_; }
 
 int WorkerCacheKey::IntHash() const { return (int)Hash(); }
 

@@ -49,21 +49,33 @@ class Batcher(BatcherInterface):
     # zero-copy views, we sacrifice what should be a small performance hit for better
     # readability.
 
-    def __init__(self, batch_size: Optional[int]):
+    def __init__(self, batch_size: Optional[int], ensure_copy: bool = False):
+        """
+        Construct a batcher that yields batches of batch_sizes rows.
+
+        Args:
+            batch_size: The size of batches to yield.
+            ensure_copy: Whether batches are always copied from the underlying base
+                blocks (not zero-copy views).
+        """
         self._batch_size = batch_size
         self._buffer = []
         self._buffer_size = 0
         self._done_adding = False
+        self._ensure_copy = ensure_copy
 
     def add(self, block: Block):
         """Add a block to the block buffer.
 
+        Note empty block is not added to buffer.
+
         Args:
             block: Block to add to the block buffer.
         """
-        assert self.can_add(block)
-        self._buffer.append(block)
-        self._buffer_size += BlockAccessor.for_block(block).num_rows()
+        if BlockAccessor.for_block(block).num_rows() > 0:
+            assert self.can_add(block)
+            self._buffer.append(block)
+            self._buffer_size += BlockAccessor.for_block(block).num_rows()
 
     def can_add(self, block: Block) -> bool:
         """Whether the block can be added to the buffer."""
@@ -75,7 +87,7 @@ class Batcher(BatcherInterface):
 
     def has_batch(self) -> bool:
         """Whether this Batcher has any full batches."""
-        return self._buffer and (
+        return self.has_any() and (
             self._batch_size is None or self._buffer_size >= self._batch_size
         )
 
@@ -90,10 +102,15 @@ class Batcher(BatcherInterface):
             A batch represented as a Block.
         """
         assert self.has_batch() or (self._done_adding and self.has_any())
+        needs_copy = self._ensure_copy
         # If no batch size, short-circuit.
         if self._batch_size is None:
             assert len(self._buffer) == 1
             block = self._buffer[0]
+            if needs_copy:
+                # Copy block if needing to ensure fresh batch copy.
+                block = BlockAccessor.for_block(block)
+                block = block.slice(0, block.num_rows(), copy=True)
             self._buffer = []
             self._buffer_size = 0
             return block
@@ -123,7 +140,13 @@ class Batcher(BatcherInterface):
         # blocks consumed on the next batch extraction.
         self._buffer = leftover
         self._buffer_size -= self._batch_size
-        return output.build()
+        needs_copy = needs_copy and not output.will_build_yield_copy()
+        batch = output.build()
+        if needs_copy:
+            # Need to ensure that the batch is a fresh copy.
+            batch = BlockAccessor.for_block(batch)
+            batch = batch.slice(0, batch.num_rows(), copy=True)
+        return batch
 
 
 class ShufflingBatcher(BatcherInterface):
@@ -199,11 +222,14 @@ class ShufflingBatcher(BatcherInterface):
     def add(self, block: Block):
         """Add a block to the shuffle buffer.
 
+        Note empty block is not added to buffer.
+
         Args:
             block: Block to add to the shuffle buffer.
         """
-        assert self.can_add(block)
-        self._builder.add_block(block)
+        if BlockAccessor.for_block(block).num_rows() > 0:
+            assert self.can_add(block)
+            self._builder.add_block(block)
 
     def can_add(self, block: Block) -> bool:
         """Whether the block can be added to the shuffle buffer.
@@ -228,11 +254,13 @@ class ShufflingBatcher(BatcherInterface):
     def has_batch(self) -> bool:
         """Whether this batcher has any batches."""
         buffer_size = self._buffer_size()
-        # If still adding blocks, ensure that removing a batch wouldn't cause the
-        # shuffle buffer to dip beneath its configured minimum size.
-        return buffer_size - self._batch_size >= self._buffer_min_size or (
-            self._done_adding and buffer_size >= self._batch_size
-        )
+
+        if not self._done_adding:
+            # If still adding blocks, ensure that removing a batch wouldn't cause the
+            # shuffle buffer to dip beneath its configured minimum size.
+            return buffer_size - self._batch_size >= self._buffer_min_size
+        else:
+            return buffer_size >= self._batch_size
 
     def _buffer_size(self) -> int:
         """Return shuffle buffer size."""

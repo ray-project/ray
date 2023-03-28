@@ -1,5 +1,5 @@
 import logging
-import gym
+import gymnasium as gym
 from typing import Dict, Tuple, List, Optional, Any, Type
 
 import ray
@@ -15,6 +15,7 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchDistributionWrapper,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -42,7 +43,7 @@ logger = logging.getLogger(__name__)
 class ComputeTDErrorMixin:
     def __init__(self: TorchPolicyV2):
         def compute_td_error(
-            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+            obs_t, act_t, rew_t, obs_tp1, terminateds_mask, importance_weights
         ):
             input_dict = self._lazy_tensor_dict(
                 SampleBatch(
@@ -51,7 +52,7 @@ class ComputeTDErrorMixin:
                         SampleBatch.ACTIONS: act_t,
                         SampleBatch.REWARDS: rew_t,
                         SampleBatch.NEXT_OBS: obs_tp1,
-                        SampleBatch.DONES: done_mask,
+                        SampleBatch.TERMINATEDS: terminateds_mask,
                         PRIO_WEIGHTS: importance_weights,
                     }
                 )
@@ -64,43 +65,6 @@ class ComputeTDErrorMixin:
             return self.model.tower_stats["td_error"]
 
         self.compute_td_error = compute_td_error
-
-
-class TargetNetworkMixin:
-    """Mixin class adding a method for (soft) target net(s) synchronizations.
-
-    - Adds the `update_target` method to the policy.
-      Calling `update_target` updates all target Q-networks' weights from their
-      respective "main" Q-metworks, based on tau (smooth, partial updating).
-    """
-
-    def __init__(self):
-        # Hard initial update from Q-net(s) to target Q-net(s).
-        self.update_target(tau=1.0)
-
-    def update_target(self: TorchPolicyV2, tau=None):
-        # Update_target_fn will be called periodically to copy Q network to
-        # target Q network, using (soft) tau-synching.
-        tau = tau or self.config.get("tau")
-        model_state_dict = self.model.state_dict()
-        # Support partial (soft) synching.
-        # If tau == 1.0: Full sync from Q-model to target Q-model.
-        target_state_dict = next(iter(self.target_models.values())).state_dict()
-        model_state_dict = {
-            k: tau * model_state_dict[k] + (1 - tau) * v
-            for k, v in target_state_dict.items()
-        }
-
-        for target in self.target_models.values():
-            target.load_state_dict(model_state_dict)
-
-    @override(TorchPolicyV2)
-    def set_weights(self: TorchPolicyV2, weights):
-        # Makes sure that whenever we restore weights for this policy's
-        # model, we sync the target network (from the main model)
-        # at the same time.
-        TorchPolicyV2.set_weights(self, weights)
-        self.update_target()
 
 
 class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
@@ -302,11 +266,13 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
             q_tp1 = torch.min(q_tp1, twin_q_tp1)
 
         q_tp1_best = torch.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
-        q_tp1_best_masked = (1.0 - train_batch[SampleBatch.DONES].float()) * q_tp1_best
+        q_tp1_best_masked = (
+            1.0 - train_batch[SampleBatch.TERMINATEDS].float()
+        ) * q_tp1_best
 
         # Compute RHS of bellman equation.
         q_t_selected_target = (
-            train_batch[SampleBatch.REWARDS] + gamma ** n_step * q_tp1_best_masked
+            train_batch[SampleBatch.REWARDS] + gamma**n_step * q_tp1_best_masked
         ).detach()
 
         # Compute the error (potentially clipped).
@@ -344,7 +310,7 @@ class DDPGTorchPolicy(TargetNetworkMixin, ComputeTDErrorMixin, TorchPolicyV2):
             # Expand input_dict in case custom_loss' need them.
             input_dict[SampleBatch.ACTIONS] = train_batch[SampleBatch.ACTIONS]
             input_dict[SampleBatch.REWARDS] = train_batch[SampleBatch.REWARDS]
-            input_dict[SampleBatch.DONES] = train_batch[SampleBatch.DONES]
+            input_dict[SampleBatch.TERMINATEDS] = train_batch[SampleBatch.TERMINATEDS]
             input_dict[SampleBatch.NEXT_OBS] = train_batch[SampleBatch.NEXT_OBS]
             [actor_loss, critic_loss] = model.custom_loss(
                 [actor_loss, critic_loss], input_dict

@@ -26,6 +26,7 @@ from ray.rllib.policy.sample_batch import (
     MultiAgentBatch,
     SampleBatch,
     concat_samples,
+    convert_ma_batch_to_sample_batch,
 )
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import unpack_if_needed
@@ -56,6 +57,7 @@ def _adjust_obs_actions_for_policy(json_data: dict, policy: Policy) -> dict:
             if k in policy.view_requirements
             else ""
         )
+        # No action flattening -> Process nested (leaf) action(s).
         if policy.config.get("_disable_action_flattening") and (
             k == SampleBatch.ACTIONS
             or data_col == SampleBatch.ACTIONS
@@ -68,6 +70,7 @@ def _adjust_obs_actions_for_policy(json_data: dict, policy: Policy) -> dict:
                 json_data[k],
                 check_types=False,
             )
+        # No preprocessing -> Process nested (leaf) observation(s).
         elif policy.config.get("_disable_preprocessor_api") and (
             k == SampleBatch.OBS
             or data_col == SampleBatch.OBS
@@ -84,11 +87,26 @@ def _adjust_obs_actions_for_policy(json_data: dict, policy: Policy) -> dict:
 
 
 @DeveloperAPI
+def _adjust_dones(json_data: dict) -> dict:
+    """Make sure DONES in json data is properly translated into TERMINATEDS."""
+    new_json_data = {}
+    for k, v in json_data.items():
+        # Translate DONES into TERMINATEDS.
+        if k == SampleBatch.DONES:
+            new_json_data[SampleBatch.TERMINATEDS] = v
+        # Leave everything else as-is.
+        else:
+            new_json_data[k] = v
+
+    return new_json_data
+
+
+@DeveloperAPI
 def postprocess_actions(batch: SampleBatchType, ioctx: IOContext) -> SampleBatchType:
     # Clip actions (from any values into env's bounds), if necessary.
     cfg = ioctx.config
-    # TODO(jungong) : we should not clip_action in input reader.
-    # Use connector to handle this.
+    # TODO(jungong): We should not clip_action in input reader.
+    #  Use connector to handle this.
     if cfg.get("clip_actions"):
         if ioctx.worker is None:
             raise ValueError(
@@ -174,16 +192,21 @@ def from_json_data(json_data: Any, worker: Optional["RolloutWorker"]):
         if worker is not None:
             policy = next(iter(worker.policy_map.values()))
             json_data = _adjust_obs_actions_for_policy(json_data, policy)
+        json_data = _adjust_dones(json_data)
         return SampleBatch(json_data)
     elif data_type == "MultiAgentBatch":
         policy_batches = {}
         for policy_id, policy_batch in json_data["policy_batches"].items():
             inner = {}
             for k, v in policy_batch.items():
+                # Translate DONES into TERMINATEDS.
+                if k == SampleBatch.DONES:
+                    k = SampleBatch.TERMINATEDS
                 inner[k] = unpack_if_needed(v)
             if worker is not None:
                 policy = worker.policy_map[policy_id]
                 inner = _adjust_obs_actions_for_policy(inner, policy)
+            inner = _adjust_dones(inner)
             policy_batches[policy_id] = SampleBatch(inner)
         return MultiAgentBatch(policy_batches, json_data["count"])
     else:
@@ -306,6 +329,8 @@ class JsonReader(InputReader):
     def _postprocess_if_needed(self, batch: SampleBatchType) -> SampleBatchType:
         if not self.ioctx.config.get("postprocess_inputs"):
             return batch
+
+        batch = convert_ma_batch_to_sample_batch(batch)
 
         if isinstance(batch, SampleBatch):
             out = []

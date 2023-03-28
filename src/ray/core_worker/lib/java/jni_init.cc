@@ -106,6 +106,7 @@ jclass java_actor_creation_options_class;
 jfieldID java_actor_creation_options_name;
 jfieldID java_actor_creation_options_lifetime;
 jfieldID java_actor_creation_options_max_restarts;
+jfieldID java_actor_creation_options_max_task_retries;
 jfieldID java_actor_creation_options_jvm_options;
 jfieldID java_actor_creation_options_max_concurrency;
 jfieldID java_actor_creation_options_group;
@@ -350,6 +351,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
                       "Lio/ray/api/options/ActorLifetime;");
   java_actor_creation_options_max_restarts =
       env->GetFieldID(java_actor_creation_options_class, "maxRestarts", "I");
+  java_actor_creation_options_max_task_retries =
+      env->GetFieldID(java_actor_creation_options_class, "maxTaskRetries", "I");
   java_actor_creation_options_jvm_options = env->GetFieldID(
       java_actor_creation_options_class, "jvmOptions", "Ljava/util/List;");
   java_actor_creation_options_max_concurrency =

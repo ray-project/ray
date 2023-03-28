@@ -3,7 +3,15 @@ from ray._private.ray_constants import env_integer
 DASHBOARD_LOG_FILENAME = "dashboard.log"
 DASHBOARD_AGENT_PORT_PREFIX = "DASHBOARD_AGENT_PORT_PREFIX:"
 DASHBOARD_AGENT_LOG_FILENAME = "dashboard_agent.log"
-DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS = 2
+DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S_ENV_NAME = (
+    "RAY_DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S"  # noqa
+)
+DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S = env_integer(
+    DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S_ENV_NAME, 0.4
+)
+# The maximum time that parent can be considered
+# as dead before agent kills itself.
+_PARENT_DEATH_THREASHOLD = 5
 RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME = "RAY_STATE_SERVER_MAX_HTTP_REQUEST"
 # Default number of in-progress requests to the state api server.
 RAY_STATE_SERVER_MAX_HTTP_REQUEST = env_integer(
@@ -20,7 +28,7 @@ DASHBOARD_RPC_ADDRESS = "dashboard_rpc"
 GCS_SERVER_ADDRESS = "GcsServerAddress"
 # GCS check alive
 GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR = env_integer(
-    "GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR", 10
+    "GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR", 40
 )
 GCS_CHECK_ALIVE_INTERVAL_SECONDS = env_integer("GCS_CHECK_ALIVE_INTERVAL_SECONDS", 5)
 GCS_CHECK_ALIVE_RPC_TIMEOUT = env_integer("GCS_CHECK_ALIVE_RPC_TIMEOUT", 10)
@@ -52,3 +60,22 @@ BAD_RUNTIME_ENV_CACHE_TTL_SECONDS = env_integer(
 # ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
 # Example: "your.module.ray_cluster_activity_hook".
 RAY_CLUSTER_ACTIVITY_HOOK = "RAY_CLUSTER_ACTIVITY_HOOK"
+
+# The number of candidate agents
+CANDIDATE_AGENT_NUMBER = max(env_integer("CANDIDATE_AGENT_NUMBER", 1), 1)
+# when head receive JobSubmitRequest, maybe not any agent is available,
+# we need to wait for agents in other node start
+WAIT_AVAILABLE_AGENT_TIMEOUT = 10
+TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS = 0.1
+RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR = "RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES"
+# Port that dashboard prometheus metrics will be exported to
+DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)
+COMPONENT_METRICS_TAG_KEYS = ["ip", "pid", "Component", "SessionName"]
+# Dashboard metrics are tracked separately at the dashboard. TODO(sang): Support GCS.
+AVAILABLE_COMPONENT_NAMES_FOR_METRICS = {
+    "workers",
+    "raylet",
+    "agent",
+    "dashboard",
+    "gcs",
+}

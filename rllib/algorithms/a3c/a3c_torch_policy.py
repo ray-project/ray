@@ -1,6 +1,5 @@
 from typing import Dict, List, Optional, Type, Union
 
-import ray
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -16,7 +15,6 @@ from ray.rllib.policy.torch_mixins import (
 )
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import apply_grad_clipping, sequence_mask
@@ -31,8 +29,6 @@ class A3CTorchPolicy(
     """PyTorch Policy class used with A3C."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.algorithms.a3c.a3c.A3CConfig().to_dict(), **config)
-
         TorchPolicyV2.__init__(
             self,
             observation_space,
@@ -154,12 +150,3 @@ class A3CTorchPolicy(
         self, optimizer: "torch.optim.Optimizer", loss: TensorType
     ) -> Dict[str, TensorType]:
         return apply_grad_clipping(self, optimizer, loss)
-
-
-@Deprecated(
-    old="rllib.algorithms.a3c.a3c_torch_policy.add_advantages",
-    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-    error=True,
-)
-def add_advantages(*args, **kwargs):
-    pass

@@ -12,6 +12,7 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 class LogHead(dashboard_utils.DashboardHeadModule):
     LOG_URL_TEMPLATE = "http://{ip}:{port}/logs"
+    LOG_INDEX_TEXT_TEMPLATE = "Node ID: {node_id} (IP: {node_ip})"
 
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
@@ -37,20 +38,27 @@ class LogHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/log_index")
     async def get_log_index(self, req) -> aiohttp.web.Response:
-        url_list = []
-        agent_ips = []
+        agent_ips = set()
+        index_text_log_url = []
         for node_id, ports in DataSource.agents.items():
             ip = DataSource.node_id_to_ip[node_id]
-            agent_ips.append(ip)
-            url_list.append(self.LOG_URL_TEMPLATE.format(ip=ip, port=str(ports[0])))
-        if self._dashboard_head.ip not in agent_ips:
-            url_list.append(
-                self.LOG_URL_TEMPLATE.format(
-                    ip=self._dashboard_head.ip, port=self._dashboard_head.http_port
-                )
+            agent_ips.add(ip)
+            # Use node_id(ip) as log url's text
+            index_text = self.LOG_INDEX_TEXT_TEMPLATE.format(
+                node_id=node_id, node_ip=ip
             )
+            log_url = self.LOG_URL_TEMPLATE.format(ip=ip, port=str(ports[0]))
+            index_text_log_url.append((index_text, log_url))
+        if self._dashboard_head.ip not in agent_ips:
+            index_text = self.LOG_INDEX_TEXT_TEMPLATE.format(
+                node_id="head", node_ip=self._dashboard_head.ip
+            )
+            log_url = self.LOG_URL_TEMPLATE.format(
+                ip=self._dashboard_head.ip, port=self._dashboard_head.http_port
+            )
+            index_text_log_url.append((index_text, log_url))
         return aiohttp.web.Response(
-            text=self._directory_as_html(url_list), content_type="text/html"
+            text=self._directory_as_html(index_text_log_url), content_type="text/html"
         )
 
     @routes.get("/log_proxy")
@@ -79,15 +87,15 @@ class LogHead(dashboard_utils.DashboardHeadModule):
             return sr
 
     @staticmethod
-    def _directory_as_html(url_list) -> str:
+    def _directory_as_html(index_text_log_url) -> str:
         # returns directory's index as html
 
         index_of = "Index of logs"
         h1 = f"<h1>{index_of}</h1>"
 
         index_list = []
-        for url in sorted(url_list):
-            index_list.append(f'<li><a href="{url}">{url}</a></li>')
+        for text, log_url in index_text_log_url:
+            index_list.append(f'<li><a href="{log_url}">{text}</a></li>')
         index_list = "\n".join(index_list)
         ul = f"<ul>\n{index_list}\n</ul>"
         body = f"<body>\n{h1}\n{ul}\n</body>"

@@ -24,10 +24,10 @@ class TestReproPPO(unittest.TestCase):
         """Tests whether the algorithm is reproducible within 3 iterations
         on discrete env cartpole."""
 
-        register_env("DeterministicCartPole-v0", create_cartpole_deterministic)
+        register_env("DeterministicCartPole-v1", create_cartpole_deterministic)
         configs = (
             ppo.PPOConfig()
-            .environment(env="DeterministicCartPole-v0", env_config={"seed": 42})
+            .environment(env="DeterministicCartPole-v1", env_config={"seed": 42})
             .rollouts(rollout_fragment_length=8)
             .training(train_batch_size=64, sgd_minibatch_size=32, num_sgd_iter=2)
         )

@@ -1,5 +1,6 @@
 import sys
 import time
+import json
 import pytest
 import requests
 from pydantic import ValidationError
@@ -17,6 +18,7 @@ from ray.serve.schema import (
     DeploymentSchema,
     ServeApplicationSchema,
     ServeStatusSchema,
+    ServeDeploySchema,
     serve_status_to_schema,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
@@ -204,27 +206,7 @@ class TestDeploymentSchema:
     def get_minimal_deployment_schema(self):
         # Generate a DeploymentSchema with the fewest possible attributes set
 
-        return {
-            "name": "deep",
-            "num_replicas": None,
-            "route_prefix": None,
-            "max_concurrent_queries": None,
-            "user_config": None,
-            "autoscaling_config": None,
-            "graceful_shutdown_wait_loop_s": None,
-            "graceful_shutdown_timeout_s": None,
-            "health_check_period_s": None,
-            "health_check_timeout_s": None,
-            "ray_actor_options": {
-                "runtime_env": {},
-                "num_cpus": None,
-                "num_gpus": None,
-                "memory": None,
-                "object_store_memory": None,
-                "resources": {},
-                "accelerator_type": None,
-            },
-        }
+        return {"name": "deep"}
 
     def test_valid_deployment_schema(self):
         # Ensure a valid DeploymentSchema can be generated
@@ -362,6 +344,33 @@ class TestDeploymentSchema:
         with pytest.raises(ValidationError):
             DeploymentSchema.parse_obj(deployment_schema)
 
+    @pytest.mark.parametrize(
+        "option",
+        [
+            "num_replicas",
+            "route_prefix",
+            "autoscaling_config",
+            "user_config",
+        ],
+    )
+    def test_nullable_options(self, option: str):
+        """Check that nullable options can be set to None."""
+
+        deployment_options = {"name": "test", option: None}
+
+        # One of "num_replicas" or "autoscaling_config" must be provided.
+        if option == "num_replicas":
+            deployment_options["autoscaling_config"] = {
+                "min_replicas": 1,
+                "max_replicas": 5,
+                "target_num_ongoing_requests_per_replica": 5,
+            }
+        elif option == "autoscaling_config":
+            deployment_options["num_replicas"] = 5
+
+        # Schema should be created without error.
+        DeploymentSchema.parse_obj(deployment_options)
+
 
 class TestServeApplicationSchema:
     def get_valid_serve_application_schema(self):
@@ -403,24 +412,6 @@ class TestServeApplicationSchema:
                 },
                 {
                     "name": "deep",
-                    "num_replicas": None,
-                    "route_prefix": None,
-                    "max_concurrent_queries": None,
-                    "user_config": None,
-                    "autoscaling_config": None,
-                    "graceful_shutdown_wait_loop_s": None,
-                    "graceful_shutdown_timeout_s": None,
-                    "health_check_period_s": None,
-                    "health_check_timeout_s": None,
-                    "ray_actor_options": {
-                        "runtime_env": {},
-                        "num_cpus": None,
-                        "num_gpus": None,
-                        "memory": None,
-                        "object_store_memory": None,
-                        "resources": {},
-                        "accelerator_type": None,
-                    },
                 },
             ],
         }
@@ -477,6 +468,196 @@ class TestServeApplicationSchema:
         serve_application_schema["import_path"] = path
         with pytest.raises(ValidationError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
+
+    def test_serve_application_kubernetes_config(self):
+        # Test kubernetes_dict() behavior
+
+        config = {
+            "import_path": "module.graph",
+            "runtime_env": {"working_dir": "s3://path/file.zip"},
+            "host": "1.1.1.1",
+            "port": 7470,
+            "deployments": [
+                {
+                    "name": "shallow",
+                    "num_replicas": 2,
+                    "route_prefix": "/shallow",
+                    "user_config": {"a": 1, "b": "c", 2: 3},
+                    "ray_actor_options": {
+                        "runtime_env": {
+                            "py_modules": ["gs://fake2/file2.zip"],
+                        },
+                        "num_cpus": 3,
+                        "memory": 5,
+                        "object_store_memory": 3,
+                        "resources": {"custom_asic": 8},
+                        "accelerator_type": NVIDIA_TESLA_P4,
+                    },
+                },
+                {
+                    "name": "deep",
+                },
+            ],
+        }
+
+        kubernetes_config = ServeApplicationSchema.parse_obj(config).kubernetes_dict(
+            exclude_unset=True
+        )
+
+        assert kubernetes_config == {
+            "importPath": "module.graph",
+            "runtimeEnv": json.dumps({"working_dir": "s3://path/file.zip"}),
+            "host": "1.1.1.1",
+            "port": 7470,
+            "deployments": [
+                {
+                    "name": "shallow",
+                    "numReplicas": 2,
+                    "routePrefix": "/shallow",
+                    "userConfig": json.dumps({"a": 1, "b": "c", 2: 3}),
+                    "rayActorOptions": {
+                        "runtimeEnv": json.dumps(
+                            {
+                                "py_modules": ["gs://fake2/file2.zip"],
+                            }
+                        ),
+                        "numCpus": 3.0,
+                        "memory": 5.0,
+                        "objectStoreMemory": 3.0,
+                        "resources": json.dumps({"custom_asic": 8}),
+                        "acceleratorType": NVIDIA_TESLA_P4,
+                    },
+                },
+                {
+                    "name": "deep",
+                },
+            ],
+        }
+
+    def test_serve_application_import_path_required(self):
+        # If no import path is specified, this should not parse successfully
+        with pytest.raises(ValidationError):
+            ServeApplicationSchema.parse_obj({"host": "127.0.0.1", "port": 8000})
+
+
+class TestServeDeploySchema:
+    def test_deploy_config_duplicate_apps(self):
+        deploy_config_dict = {
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/alice",
+                    "import_path": "module.graph",
+                },
+                {
+                    "name": "app2",
+                    "route_prefix": "/charlie",
+                    "import_path": "module.graph",
+                },
+            ],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
+
+        # Duplicate app1
+        deploy_config_dict["applications"].append(
+            {"name": "app1", "route_prefix": "/bob", "import_path": "module.graph"},
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "app1" in str(e.value) and "app2" not in str(e.value)
+
+        # Duplicate app2
+        deploy_config_dict["applications"].append(
+            {"name": "app2", "route_prefix": "/david", "import_path": "module.graph"}
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "app1" in str(e.value) and "app2" in str(e.value)
+
+    def test_deploy_config_duplicate_routes1(self):
+        """Test that apps with duplicate route prefixes raises validation error"""
+        deploy_config_dict = {
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/alice",
+                    "import_path": "module.graph",
+                },
+                {"name": "app2", "route_prefix": "/bob", "import_path": "module.graph"},
+            ],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
+
+        # Duplicate route prefix /alice
+        deploy_config_dict["applications"].append(
+            {"name": "app3", "route_prefix": "/alice", "import_path": "module.graph"},
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "alice" in str(e.value) and "bob" not in str(e.value)
+
+        # Duplicate route prefix /bob
+        deploy_config_dict["applications"].append(
+            {"name": "app4", "route_prefix": "/bob", "import_path": "module.graph"},
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "alice" in str(e.value) and "bob" in str(e.value)
+
+    def test_deploy_config_duplicate_routes2(self):
+        """Test that multiple apps with route_prefix set to None parses with no error"""
+        deploy_config_dict = {
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": "module.graph",
+                },
+                {"name": "app2", "route_prefix": None, "import_path": "module.graph"},
+                {"name": "app3", "route_prefix": None, "import_path": "module.graph"},
+            ],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
+
+    @pytest.mark.parametrize("option,value", [("host", "127.0.0.1"), ("port", 8000)])
+    def test_deploy_config_nested_http_options(self, option, value):
+        """
+        The application configs inside a deploy config should not have http options set.
+        """
+        deploy_config_dict = {
+            "http_options": {
+                "host": "127.0.0.1",
+                "port": 8000,
+            },
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": "module.graph",
+                },
+            ],
+        }
+        deploy_config_dict["applications"][0][option] = value
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert option in str(e.value)
+
+    def test_deploy_empty_name(self):
+        """The application configs inside a deploy config should have nonempty names."""
+
+        deploy_config_dict = {
+            "applications": [
+                {
+                    "name": "",
+                    "route_prefix": "/app1",
+                    "import_path": "module.graph",
+                },
+            ],
+        }
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        # Error message should be descriptive, mention name must be nonempty
+        assert "name" in str(e.value) and "empty" in str(e.value)
 
 
 class TestServeStatusSchema:
@@ -609,22 +790,23 @@ def test_status_schema_helpers():
     def f2():
         pass
 
-    f1._func_or_class = "ray.serve.tests.test_schema.global_f"
-    f2._func_or_class = "ray.serve.tests.test_schema.global_f"
-
     client = serve.start()
-
-    f1.deploy()
-    f2.deploy()
+    serve.run(f1.bind(), name="app1")
+    serve.run(f2.bind(), name="app2")
 
     # Check statuses
-    statuses = serve_status_to_schema(client.get_serve_status()).deployment_statuses
-    deployment_names = {"f1", "f2"}
-    for deployment_status in statuses:
-        assert deployment_status.status in {"UPDATING", "HEALTHY"}
-        assert deployment_status.name in deployment_names
-        deployment_names.remove(deployment_status.name)
-    assert len(deployment_names) == 0
+    f1_statuses = serve_status_to_schema(
+        client.get_serve_status("app1")
+    ).deployment_statuses
+    f2_statuses = serve_status_to_schema(
+        client.get_serve_status("app2")
+    ).deployment_statuses
+    assert len(f1_statuses) == 1
+    assert f1_statuses[0].status in {"UPDATING", "HEALTHY"}
+    assert f1_statuses[0].name == "app1_f1"
+    assert len(f2_statuses) == 1
+    assert f2_statuses[0].status in {"UPDATING", "HEALTHY"}
+    assert f2_statuses[0].name == "app2_f2"
 
     serve.shutdown()
 

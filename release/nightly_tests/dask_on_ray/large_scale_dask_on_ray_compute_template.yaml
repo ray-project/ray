@@ -6,6 +6,7 @@ aws:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
+            DeleteOnTermination: true
             VolumeSize: 500
 
 head_node_type:

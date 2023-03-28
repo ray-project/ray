@@ -208,7 +208,7 @@ Here's the graph:
 :linenos: true
 ```
 
-Lines 29 and 30 bind two `ClassNodes` from the `AddCls` deployment. Line 32 starts the call graph:
+Lines 31 and 32 bind two `ClassNodes` from the `AddCls` deployment. Line 34 starts the call graph:
 
 ```python
 with InputNode() as http_request:
@@ -235,10 +235,10 @@ The graph then passes `request_number` into a `bind` call on `add_2`'s `add` met
 
 The rest of the call graph uses another `FunctionNode` and `MethodNode` to finish the chain of arithmetic. `add_2_output` is bound to the `subtract_one_fn` deployment, producing the `subtract_1_output` `FunctionNode`. Then, the `subtract_1_output` is bound to the `add_3.add` method, producing the `add_3_output` `MethodNode`. This `add_3_output` `MethodNode` represents the final output from the chain of arithmetic operations.
 
-To run the call graph, you need to use a driver. Drivers are deployments that process the call graph that you've written and route incoming requests through your deployments based on that graph. Ray Serve provides a driver called `DAGDriver` used on line 38:
+To run the call graph, you need to use a driver. Drivers are deployments that process the call graph that you've written and route incoming requests through your deployments based on that graph. Ray Serve provides a driver called `DAGDriver` used on line 40:
 
 ```python
-deployment_graph = DAGDriver.bind(add_3_output)
+graph = DAGDriver.bind(add_3_output)
 ```
 
 Generally, the `DAGDriver` needs to be bound to the `FunctionNode` or `MethodNode` representing the final output of a graph. This `bind` call returns a `ClassNode` that you can run in `serve.run` or `serve run`. Running this `ClassNode` also deploys the rest of the graph's deployments.
@@ -324,6 +324,7 @@ $ python arithmetic.py
 9
 ```
 
+(pydot-visualize-dag)=
 ### Visualizing the Graph
 
 You can render an illustration of your deployment graph to see its nodes and their connection.
@@ -392,6 +393,9 @@ This path includes only the dependencies needed to generate `m1_output`.
 On the other hand, when the script visualizes the final graph output, `combine_output`, it captures all nodes used in execution since they're all required to create the final output.
 
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/visualize_full.svg)
+
+#### Visualizing the Graph with Gradio
+Another option is to visualize your deployment graph through Gradio. Check out the [Graph Visualization with Gradio Tutorial](serve-gradio-dag-visualization) to learn how to interactively run your deployment graph through the Gradio UI and see the intermediate outputs of each node in real time as they finish evaluation.
 
 ## Next Steps
 

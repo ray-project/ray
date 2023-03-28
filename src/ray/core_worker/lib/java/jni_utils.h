@@ -189,6 +189,8 @@ extern jfieldID java_actor_creation_options_name;
 extern jfieldID java_actor_creation_options_lifetime;
 /// maxRestarts field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_restarts;
+/// maxTaskRetries field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_max_task_retries;
 /// jvmOptions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_jvm_options;
 /// maxConcurrency field of ActorCreationOptions class

@@ -138,7 +138,7 @@ def multi_from_logits(
     clip_rho_threshold=1.0,
     clip_pg_rho_threshold=1.0,
 ):
-    """V-trace for softmax policies.
+    r"""V-trace for softmax policies.
 
     Calculates V-trace actor critic targets for softmax polices as described in
 
@@ -257,7 +257,7 @@ def from_importance_weights(
     clip_rho_threshold=1.0,
     clip_pg_rho_threshold=1.0,
 ):
-    """V-trace from log importance weights.
+    r"""V-trace from log importance weights.
 
     Calculates V-trace actor critic targets as described in
 

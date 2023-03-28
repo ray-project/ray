@@ -1,7 +1,7 @@
 from collections import OrderedDict
 import logging
 import numpy as np
-import gym
+import gymnasium as gym
 from typing import Any, List
 
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
@@ -104,6 +104,8 @@ class Preprocessor:
             OneHotPreprocessor,
             RepeatedValuesPreprocessor,
             TupleFlatteningPreprocessor,
+            AtariRamPreprocessor,
+            GenericPixelPreprocessor,
         )
         if isinstance(self, classes):
             obs_space.original_space = self._obs_space
@@ -186,13 +188,7 @@ class OneHotPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
         self.check_shape(observation)
-        arr = np.zeros(self._init_shape(self._obs_space, {}), dtype=np.float32)
-        if isinstance(self._obs_space, gym.spaces.Discrete):
-            arr[observation] = 1
-        else:
-            for i, o in enumerate(observation):
-                arr[np.sum(self._obs_space.nvec[:i]) + o] = 1
-        return arr
+        return gym.spaces.utils.flatten(self._obs_space, observation).astype(np.float32)
 
     @override(Preprocessor)
     def write(self, observation: TensorType, array: np.ndarray, offset: int) -> None:
@@ -218,6 +214,38 @@ class NoPreprocessor(Preprocessor):
     @override(Preprocessor)
     def observation_space(self) -> gym.Space:
         return self._obs_space
+
+
+@PublicAPI
+class MultiBinaryPreprocessor(Preprocessor):
+    """Preprocessor that turns a MultiBinary space into a Box.
+
+    Note: Before RLModules were introduced, RLlib's ModelCatalogV2 would produce
+    ComplexInputNetworks that treat MultiBinary spaces as Boxes. This preprocessor is
+    needed to get rid of the ComplexInputNetworks and use RLModules instead because
+    RLModules lack the logic to handle MultiBinary or other non-Box spaces.
+    """
+
+    @override(Preprocessor)
+    def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
+        return self._obs_space.shape
+
+    @override(Preprocessor)
+    def transform(self, observation: TensorType) -> np.ndarray:
+        # The shape stays the same, but the dtype changes.
+        self.check_shape(observation)
+        return observation.astype(np.float32)
+
+    @override(Preprocessor)
+    def write(self, observation: TensorType, array: np.ndarray, offset: int) -> None:
+        array[offset : offset + self._size] = np.array(observation, copy=False).ravel()
+
+    @property
+    @override(Preprocessor)
+    def observation_space(self) -> gym.Space:
+        obs_space = gym.spaces.Box(0.0, 1.0, self.shape, dtype=np.float32)
+        obs_space.original_space = self._obs_space
+        return obs_space
 
 
 @DeveloperAPI
@@ -350,7 +378,7 @@ class RepeatedValuesPreprocessor(Preprocessor):
 
 
 @PublicAPI
-def get_preprocessor(space: gym.Space) -> type:
+def get_preprocessor(space: gym.Space, include_multi_binary=False) -> type:
     """Returns an appropriate preprocessor class for the given space."""
 
     _legacy_patch_shapes(space)
@@ -359,8 +387,23 @@ def get_preprocessor(space: gym.Space) -> type:
     if isinstance(space, (gym.spaces.Discrete, gym.spaces.MultiDiscrete)):
         preprocessor = OneHotPreprocessor
     elif obs_shape == ATARI_OBS_SHAPE:
+        logger.debug(
+            "Defaulting to RLlib's GenericPixelPreprocessor because input "
+            "space has the atari-typical shape {}. Turn this behaviour off by setting "
+            "`preprocessor_pref=None` or "
+            "`preprocessor_pref='deepmind'` or disabling the preprocessing API "
+            "altogether with `_disable_preprocessor_api=True`.".format(ATARI_OBS_SHAPE)
+        )
         preprocessor = GenericPixelPreprocessor
     elif obs_shape == ATARI_RAM_OBS_SHAPE:
+        logger.debug(
+            "Defaulting to RLlib's AtariRamPreprocessor because input "
+            "space has the atari-typical shape {}. Turn this behaviour off by setting "
+            "`preprocessor_pref=None` or "
+            "`preprocessor_pref='deepmind' or disabling the preprocessing API "
+            "altogether with `_disable_preprocessor_api=True`."
+            "`.".format(ATARI_OBS_SHAPE)
+        )
         preprocessor = AtariRamPreprocessor
     elif isinstance(space, gym.spaces.Tuple):
         preprocessor = TupleFlatteningPreprocessor
@@ -368,6 +411,9 @@ def get_preprocessor(space: gym.Space) -> type:
         preprocessor = DictFlatteningPreprocessor
     elif isinstance(space, Repeated):
         preprocessor = RepeatedValuesPreprocessor
+    # We usually only want to include this when using RLModules
+    elif isinstance(space, gym.spaces.MultiBinary) and include_multi_binary:
+        preprocessor = MultiBinaryPreprocessor
     else:
         preprocessor = NoPreprocessor
 

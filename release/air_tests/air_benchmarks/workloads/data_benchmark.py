@@ -23,7 +23,7 @@ def make_ds(size_gb: int):
 
 
 def run_ingest_bulk(dataset, num_workers, num_cpus_per_worker):
-    dummy_prep = BatchMapper(lambda df: df * 2)
+    dummy_prep = BatchMapper(lambda df: df * 2, batch_format="pandas")
     trainer = DummyTrainer(
         scaling_config=ScalingConfig(
             num_workers=num_workers,
@@ -34,7 +34,7 @@ def run_ingest_bulk(dataset, num_workers, num_cpus_per_worker):
         datasets={"train": dataset},
         preprocessor=dummy_prep,
         num_epochs=1,
-        prefetch_blocks=1,
+        prefetch_batches=1,
         dataset_config={"train": DatasetConfig(split=True)},
     )
     trainer.fit()

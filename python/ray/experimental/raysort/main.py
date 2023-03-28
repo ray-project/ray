@@ -20,6 +20,7 @@ from ray.experimental.raysort.types import (
     Path,
     RecordCount,
 )
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 Args = argparse.Namespace
 
@@ -365,9 +366,11 @@ def sort_main(args: Args):
 
             # Submit merge tasks.
             merge_results[round, :] = [
-                merge_mapper_blocks.options(placement_group=pgs[r]).remote(
-                    args, r, round, *mapper_results[:, r].tolist()
-                )
+                merge_mapper_blocks.options(
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=pgs[r]
+                    )
+                ).remote(args, r, round, *mapper_results[:, r].tolist())
                 for r in range(args.num_reducers)
             ]
 
@@ -376,9 +379,11 @@ def sort_main(args: Args):
 
         # Submit second-stage reduce tasks.
         reducer_results = [
-            final_merge.options(placement_group=pgs[r]).remote(
-                args, r, *merge_results[:, r].tolist()
-            )
+            final_merge.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pgs[r]
+                )
+            ).remote(args, r, *merge_results[:, r].tolist())
             for r in range(args.num_reducers)
         ]
         reducer_results = ray.get(reducer_results)

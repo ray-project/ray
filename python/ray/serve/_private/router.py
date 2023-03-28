@@ -19,11 +19,9 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
     JavaActorHandleProxy,
-    msgpack_serialize,
 )
 from ray.serve.generated.serve_pb2 import (
     RequestMetadata as RequestMetadataProto,
-    RequestWrapper as RequestWrapperProto,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -38,6 +36,9 @@ class RequestMetadata:
     # This flag will be set to true if the input argument is manually pickled
     # and it needs to be deserialized by the replica.
     http_arg_is_pickled: bool = False
+
+    # HTTP route path of the request.
+    route: str = ""
 
 
 @dataclass
@@ -97,7 +98,7 @@ class ReplicaSet:
                 "The current number of queries to this deployment waiting"
                 " to be assigned to a replica."
             ),
-            tag_keys=("deployment", "endpoint"),
+            tag_keys=("deployment", "route"),
         )
         self.num_queued_queries_gauge.set_default_tags(
             {"deployment": self.deployment_name}
@@ -164,11 +165,11 @@ class ReplicaSet:
                     RequestMetadataProto(
                         request_id=query.metadata.request_id,
                         endpoint=query.metadata.endpoint,
-                        call_method=query.metadata.call_method,
+                        call_method=query.metadata.call_method
+                        if query.metadata.call_method != "__call__"
+                        else "call",
                     ).SerializeToString(),
-                    RequestWrapperProto(
-                        body=msgpack_serialize(arg)
-                    ).SerializeToString(),
+                    [arg],
                 )
                 self.in_flight_queries[replica].add(user_ref)
             else:
@@ -226,10 +227,9 @@ class ReplicaSet:
         and only send a query to available replicas (determined by the
         max_concurrent_quries value.)
         """
-        endpoint = query.metadata.endpoint
         self.num_queued_queries += 1
         self.num_queued_queries_gauge.set(
-            self.num_queued_queries, tags={"endpoint": endpoint}
+            self.num_queued_queries, tags={"route": query.metadata.route}
         )
         await query.resolve_async_tasks()
         assigned_ref = self._try_assign_replica(query)
@@ -255,7 +255,7 @@ class ReplicaSet:
             assigned_ref = self._try_assign_replica(query)
         self.num_queued_queries -= 1
         self.num_queued_queries_gauge.set(
-            self.num_queued_queries, tags={"endpoint": endpoint}
+            self.num_queued_queries, tags={"route": query.metadata.route}
         )
         return assigned_ref
 
@@ -279,7 +279,7 @@ class Router:
         self.num_router_requests = metrics.Counter(
             "serve_num_router_requests",
             description="The number of requests processed by the router.",
-            tag_keys=("deployment",),
+            tag_keys=("deployment", "route"),
         )
         self.num_router_requests.set_default_tags({"deployment": deployment_name})
 
@@ -305,7 +305,7 @@ class Router:
     ):
         """Assign a query and returns an object ref represent the result"""
 
-        self.num_router_requests.inc()
+        self.num_router_requests.inc(tags={"route": request_meta.route})
         return await self._replica_set.assign_replica(
             Query(
                 args=list(request_args),

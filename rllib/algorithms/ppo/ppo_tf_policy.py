@@ -5,7 +5,6 @@ TensorFlow policy class used for PPO.
 import logging
 from typing import Dict, List, Type, Union
 
-import ray
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
     compute_gae_for_sample_batch,
@@ -65,7 +64,7 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     ):
         def __init__(
             self,
-            obs_space,
+            observation_space,
             action_space,
             config,
             existing_model=None,
@@ -74,7 +73,6 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
             # TODO: Move into Policy API, if needed at all here. Why not move this into
             #  `PPOConfig`?.
             validate_config(config)
@@ -82,7 +80,7 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             # Initialize base class.
             base.__init__(
                 self,
-                obs_space,
+                observation_space,
                 action_space,
                 config,
                 existing_inputs=existing_inputs,
@@ -165,7 +163,6 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                     1 + self.config["clip_param"],
                 ),
             )
-            mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
             # Compute a value function loss.
             if self.config["use_critic"]:
@@ -194,7 +191,7 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
 
             # Store stats in policy for stats_fn.
             self._total_loss = total_loss
-            self._mean_policy_loss = mean_policy_loss
+            self._mean_policy_loss = reduce_mean_valid(-surrogate_loss)
             self._mean_vf_loss = mean_vf_loss
             self._mean_entropy = mean_entropy
             # Backward compatibility: Deprecate self._mean_kl.

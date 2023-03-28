@@ -7,16 +7,11 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import IntervalStrategy
 
 from ray.air import session
-from ray.air.checkpoint import Checkpoint
-from ray.util import get_node_ip_address
-from ray.data.dataset import Dataset
+from ray.data import DatasetIterator
+from ray.train.huggingface.huggingface_checkpoint import HuggingFaceCheckpoint
 
 if TYPE_CHECKING:
     from torch.utils.data import IterableDataset
-
-# Constants for the sync checkpoint dict. See huggingface_trainer.py
-CHECKPOINT_PATH_ON_NODE_KEY = "checkpoint_path_on_node"
-NODE_IP_KEY = "node_ip"
 
 
 def maybe_add_length(obj: Any, length: Optional[int]) -> Any:
@@ -68,7 +63,7 @@ def wrap_transformers_trainer(
 class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
     """HF ExamplesIterable backed by a Ray Dataset."""
 
-    def __init__(self, dataset: Dataset) -> None:
+    def __init__(self, dataset: DatasetIterator) -> None:
         self.dataset = dataset
         self.generate_examples_fn = self.dataset.iter_rows
 
@@ -80,7 +75,7 @@ class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
             yield (0, {k: v for k, v in row.as_pydict().items()})
 
 
-def process_dataset_for_hf(dataset: Dataset) -> "IterableDataset":
+def process_dataset_for_hf(dataset: DatasetIterator) -> "IterableDataset":
     """Converts a Ray Dataset into a HF IterableDataset."""
     hf_iterable = RayDatasetHFIterable(dataset)
 
@@ -89,8 +84,8 @@ def process_dataset_for_hf(dataset: Dataset) -> "IterableDataset":
     ).with_format("torch")
 
     try:
-        dataset_length = dataset.count()
-    except ValueError:
+        dataset_length = dataset._base_dataset.count()
+    except (ValueError, AttributeError):
         # pipeline case
         dataset_length = None
 
@@ -99,8 +94,8 @@ def process_dataset_for_hf(dataset: Dataset) -> "IterableDataset":
 
 
 def process_datasets(
-    train_dataset: Dataset,
-    eval_dataset: Dataset,
+    train_dataset: DatasetIterator,
+    eval_dataset: DatasetIterator,
 ) -> Tuple["IterableDataset", "IterableDataset"]:
     """Convert Ray train and validation to HF IterableDatasets."""
     train_torch_dataset = process_dataset_for_hf(train_dataset)
@@ -152,11 +147,9 @@ class TrainReportCallback(TrainerCallback):
             transformers.trainer.get_last_checkpoint(args.output_dir)
         ).absolute()
         if checkpoint_path:
-            self.delayed_report["checkpoint"] = Checkpoint.from_dict(
-                {
-                    NODE_IP_KEY: get_node_ip_address(),
-                    CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
-                }
+            # Use HuggingFaceCheckpoint here to avoid a warning in _TrainSession
+            self.delayed_report["checkpoint"] = HuggingFaceCheckpoint.from_directory(
+                str(checkpoint_path)
             )
 
     def _report(self):

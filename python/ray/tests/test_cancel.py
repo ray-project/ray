@@ -1,5 +1,9 @@
+import os
 import random
+import signal
 import sys
+import threading
+import _thread
 import time
 
 import pytest
@@ -12,7 +16,9 @@ from ray.exceptions import (
     WorkerCrashedError,
     ObjectLostError,
 )
-from ray._private.test_utils import SignalActor
+from ray._private.utils import DeferSigint
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.experimental.state.api import list_tasks
 
 
 def valid_exceptions(use_force):
@@ -61,6 +67,223 @@ def test_cancel_chain(ray_start_regular, use_force):
 
     signaler2.send.remote()
     ray.get(obj1)
+
+
+@pytest.mark.parametrize("use_force", [True, False])
+def test_cancel_during_arg_deser(ray_start_regular, use_force):
+    time_to_sleep = 5
+
+    class SlowToDeserialize:
+        def __reduce__(self):
+            def reconstruct():
+                import time
+
+                time.sleep(time_to_sleep)
+                return SlowToDeserialize()
+
+            return reconstruct, ()
+
+    @ray.remote
+    def dummy(a: SlowToDeserialize):
+        # Task should never execute.
+        assert False
+
+    arg = SlowToDeserialize()
+    obj = dummy.remote(arg)
+    # Check that task isn't done.
+    assert len(ray.wait([obj], timeout=0.1)[0]) == 0
+    # Cancel task.
+    ray.cancel(obj, force=use_force)
+    with pytest.raises(valid_exceptions(use_force)):
+        ray.get(obj)
+
+
+def test_defer_sigint():
+    # Tests a helper context manager for deferring SIGINT signals until after the
+    # context is left. This is used by Ray's task cancellation to defer cancellation
+    # interrupts during problematic areas, e.g. task argument deserialization.
+    signal_was_deferred = False
+    orig_sigint_handler = signal.getsignal(signal.SIGINT)
+    try:
+        with DeferSigint():
+            # Send singal to current process.
+            # NOTE: We use _thread.interrupt_main() instead of os.kill() in order to
+            # support Windows.
+            _thread.interrupt_main()
+            # Wait for signal to be delivered.
+            time.sleep(1)
+            # Signal should have been delivered by here, so we consider it deferred if
+            # this is reached.
+            signal_was_deferred = True
+    except KeyboardInterrupt:
+        # Check that SIGINT was deferred until the end of the context.
+        assert signal_was_deferred
+        # Check that original SIGINT handler was restored.
+        assert signal.getsignal(signal.SIGINT) is orig_sigint_handler
+    else:
+        pytest.fail("SIGINT signal was never sent in test")
+
+
+def test_defer_sigint_monkey_patch():
+    # Tests that setting a SIGINT signal handler within a DeferSigint context is not
+    # allowed.
+    orig_sigint_handler = signal.getsignal(signal.SIGINT)
+    with pytest.raises(ValueError):
+        with DeferSigint():
+            signal.signal(signal.SIGINT, orig_sigint_handler)
+
+
+def test_defer_sigint_noop_in_non_main_thread():
+    # Tests that we don't try to defer SIGINT when not in the main thread.
+
+    # Check that DeferSigint.create_if_main_thread() does not return DeferSigint when
+    # not in the main thread.
+    def check_no_defer():
+        cm = DeferSigint.create_if_main_thread()
+        assert not isinstance(cm, DeferSigint)
+
+    check_no_defer_thread = threading.Thread(target=check_no_defer)
+    try:
+        check_no_defer_thread.start()
+        check_no_defer_thread.join()
+    except AssertionError as e:
+        pytest.fail(
+            "DeferSigint.create_if_main_thread() unexpected returned a DeferSigint "
+            f"instance when not in the main thread: {e}"
+        )
+
+    # Check that signal is not deferred when trying to defer it in not the main thread.
+    signal_was_deferred = False
+
+    def maybe_defer():
+        nonlocal signal_was_deferred
+
+        with DeferSigint.create_if_main_thread() as cm:
+            # Check that DeferSigint context manager was NOT returned.
+            assert not isinstance(cm, DeferSigint)
+            # Send singal to current process.
+            # NOTE: We use _thread.interrupt_main() instead of os.kill() in order to
+            # support Windows.
+            _thread.interrupt_main()
+            # Wait for signal to be delivered.
+            time.sleep(1)
+            # Signal should have been delivered by here, so we consider it deferred if
+            # this is reached.
+            signal_was_deferred = True
+
+    # Create thread that will maybe defer SIGINT.
+    maybe_defer_thread = threading.Thread(target=maybe_defer)
+    try:
+        maybe_defer_thread.start()
+        maybe_defer_thread.join()
+        # KeyboardInterrupt should get raised in main thread.
+    except KeyboardInterrupt:
+        # Check that SIGINT was not deferred.
+        assert not signal_was_deferred
+        # Check that original SIGINT handler was not overridden.
+        assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+    else:
+        pytest.fail("SIGINT signal was never sent in test")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason=(
+        "Flaky on OSX. Fine-tuned test timeout period needed. "
+        "TODO(https://github.com/ray-project/ray/issues/30899): tune timeout."
+    ),
+)
+def test_cancel_during_arg_deser_non_reentrant_import(ray_start_regular):
+    # This test ensures that task argument deserialization properly defers task
+    # cancellation interrupts until after deserialization completes, in order to ensure
+    # that non-reentrant imports that happen during both task argument deserialization
+    # and during error storage are not interrupted.
+
+    # We test this by doing the following:
+    #  - register a custom serializer for (a) a task argument that triggers
+    #  non-reentrant imports on deserialization, and (b) RayTaskError that triggers
+    #  non-reentrant imports on serialization; in our case, we chose pandas it is both
+    #  non-reentrant and expensive, with an import time ~0.5 seconds, giving us a wide
+    #  cancellation target,
+    #  - wait until those serializers are registered on all workers,
+    #  - launch the task and wait until we are confident that the cancellation signal
+    #  will be received by the workers during task argument deserialization (currently a
+    #  200 ms wait).
+    #  - check that a graceful task cancellation error is raised, not a
+    # WorkerCrashedError.
+    def non_reentrant_import():
+        # NOTE: Pandas has a non-reentrant import and should take ~0.5 seconds to
+        # import, giving us a wide cancellation target.
+        import pandas  # noqa
+
+    def non_reentrant_import_and_delegate(obj):
+        # Custom serializer for task argument and task error resulting in non-reentrant
+        # imports being imported on both serialization and deserialization. We use the
+        # same custom serializer for both, doing non-reentrant imports on both
+        # serialization and deserialization, for the sake of simplicity/reuse.
+
+        # Import on serialization.
+        non_reentrant_import()
+
+        reduced = obj.__reduce__()
+        func = reduced[0]
+        args = reduced[1]
+        others = reduced[2:]
+
+        def non_reentrant_import_on_reconstruction(*args, **kwargs):
+            # Import on deserialization.
+            non_reentrant_import()
+
+            return func(*args, **kwargs)
+
+        out = (non_reentrant_import_on_reconstruction, args) + others
+        return out
+
+    # Dummy task argument for which we register a serializer that will trigger
+    # non-reentrant imports on deserialization.
+    class DummyArg:
+        pass
+
+    def register_non_reentrant_import_and_delegate_reducer(worker_info):
+        from ray.exceptions import RayTaskError
+
+        context = ray._private.worker.global_worker.get_serialization_context()
+        # Register non-reentrant import serializer for task argument.
+        context._register_cloudpickle_reducer(
+            DummyArg, non_reentrant_import_and_delegate
+        )
+        # Register non-reentrant import serializer for RayTaskError.
+        context._register_cloudpickle_reducer(
+            RayTaskError, non_reentrant_import_and_delegate
+        )
+
+    ray._private.worker.global_worker.run_function_on_all_workers(
+        register_non_reentrant_import_and_delegate_reducer,
+    )
+
+    # Wait for function to run on all workers.
+    time.sleep(3)
+
+    @ray.remote
+    def run_and_fail(a: DummyArg):
+        # Should never be reached.
+        assert False
+
+    arg = DummyArg()
+    obj = run_and_fail.remote(arg)
+    # Check that task isn't done.
+    # NOTE: This timeout was finely tuned to ensure that task cancellation happens while
+    # we are deserializing task arguments (10/10 runs when this comment was added).
+    timeout_to_reach_arg_deserialization = 0.2
+    assert len(ray.wait([obj], timeout=timeout_to_reach_arg_deserialization)[0]) == 0
+
+    # Cancel task.
+    use_force = False
+    ray.cancel(obj, force=use_force)
+
+    # Should raise RayTaskError or TaskCancelledError, NOT WorkerCrashedError.
+    with pytest.raises(valid_exceptions(use_force)):
+        ray.get(obj)
 
 
 @pytest.mark.parametrize("use_force", [True, False])
@@ -306,9 +529,141 @@ def test_recursive_cancel(shutdown_only, use_force):
     assert ray.get(many_fut, timeout=30)
 
 
-if __name__ == "__main__":
-    import os
+def test_recursive_cancel_actor_task(shutdown_only):
+    ray.init()
 
+    @ray.remote(num_cpus=0)
+    class Semaphore:
+        def wait(self):
+            import time
+
+            time.sleep(600)
+
+    @ray.remote(num_cpus=0)
+    class Actor2:
+        def __init__(self, obj):
+            (self.obj,) = obj
+
+        def cancel(self):
+            ray.cancel(self.obj)
+
+    @ray.remote
+    def task(sema):
+        return ray.get(sema.wait.remote())
+
+    sema = Semaphore.remote()
+
+    t = task.remote(sema)
+
+    def wait_until_wait_task_starts():
+        wait_state = list_tasks(
+            filters=[("func_or_class_name", "=", "Semaphore.wait")]
+        )[0]
+        return wait_state["state"] == "RUNNING"
+
+    wait_for_condition(wait_until_wait_task_starts)
+
+    # Make sure this will not crash ray.
+    # https://github.com/ray-project/ray/issues/31398
+    a2 = Actor2.remote((t,))
+    a2.cancel.remote()
+
+    with pytest.raises(RayTaskError, match="TaskCancelledError"):
+        ray.get(t)
+
+    wait_state = list_tasks(filters=[("func_or_class_name", "=", "Semaphore.wait")])
+    assert len(wait_state) == 1
+    wait_state = wait_state[0]
+    task_state = list_tasks(filters=[("func_or_class_name", "=", "task")])
+    assert len(task_state) == 1
+    task_state = task_state[0]
+
+    def verify():
+        wait_state = list_tasks(filters=[("func_or_class_name", "=", "Semaphore.wait")])
+        assert len(wait_state) == 1
+        wait_state = wait_state[0]
+        task_state = list_tasks(filters=[("func_or_class_name", "=", "task")])
+        assert len(task_state) == 1
+        task_state = task_state[0]
+
+        assert task_state["state"] == "FINISHED"
+        assert wait_state["state"] == "RUNNING"
+
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_recursive_cancel_error_messages(shutdown_only, capsys):
+    """
+    Make sure the error message printed from the core worker
+    when the recursive cancelation fails it correct.
+
+    It should only sample 10 tasks.
+
+    Example output:
+    (task pid=55118) [2023-02-07 12:51:45,000 E 55118 6637966] core_worker.cc:3360: Unknown error: Failed to cancel all the children tasks of 85748392bcd969ccffffffffffffffffffffffff01000000 recursively. # noqa
+    (task pid=55118) Here are up to 10 samples tasks that failed to be canceled # noqa
+    (task pid=55118) 	b2094147c88795c9678740914e63d022610d70d501000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	d33d38e548ef4f998e63e2e1aaf05a3270e2722e01000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	46009b11e76c891daae7fa9272cac4a2755bb1a901000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	163f27568ace977d38a1ee4f11d3a358e694488901000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	4a0fec5a878ccb98afd7e48837351bfd14957bf001000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	45757cb171c13b7409953bfd8065a5eb36ba936201000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	a5220c501dc8f624f3ab13166dcf73e3f35068a101000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	f8bdb7979cd66dfc0fb4f8225e6197a779e4b7e901000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	3d941239bca36a1cef9d9405523ce46181ebecfe01000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) 	d6fe9100f5c082db407a983e2f7ada3b5a065e3f01000000, Invalid: Actor task cancellation is not supported. The task won't be cancelled. # noqa
+    (task pid=55118) Total Recursive cancelation success: 0, failures: 12
+    """
+    ray.init(num_cpus=12)
+    NUM_ACTORS = 12
+
+    @ray.remote(num_cpus=0)
+    class Semaphore:
+        def wait(self):
+            print("wait called")
+            import time
+
+            time.sleep(600)
+
+    @ray.remote
+    def task(semas):
+        refs = []
+        for sema in semas:
+            refs.append(sema.wait.remote())
+        return ray.get(refs)
+
+    semas = [Semaphore.remote() for _ in range(NUM_ACTORS)]
+
+    t = task.remote(semas)
+
+    def wait_until_wait_task_starts():
+        wait_state = list_tasks(filters=[("func_or_class_name", "=", "Semaphore.wait")])
+        return len(wait_state) == 12
+
+    wait_for_condition(wait_until_wait_task_starts)
+    ray.cancel(t)
+
+    with pytest.raises(RayTaskError, match="TaskCancelledError"):
+        ray.get(t)
+
+    msgs = capsys.readouterr().err.strip(" \n").split("\n")
+    total_result = msgs[-1]
+
+    samples = []
+    for msg in msgs:
+        if "Invalid: Actor task cancellation is not supported." in msg:
+            samples.append(msg)
+    assert len(samples) == 10
+
+    assert (
+        f"Total Recursive cancelation success: 0, failures: {NUM_ACTORS}"
+        in total_result
+    )
+
+
+if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

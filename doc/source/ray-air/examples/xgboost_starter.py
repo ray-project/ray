@@ -12,7 +12,6 @@ train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
 
 # Create a test dataset by dropping the target column.
 test_dataset = valid_dataset.drop_columns(cols=["target"])
-
 # __air_generic_preprocess_end__
 
 # __air_xgb_preprocess_start__
@@ -32,6 +31,8 @@ trainer = XGBoostTrainer(
         num_workers=2,
         # Whether to use GPU acceleration.
         use_gpu=False,
+        # Make sure to leave some CPUs free for Ray Data operations.
+        _max_cpu_fraction_per_node=0.9,
     ),
     label_column="target",
     num_boost_round=20,

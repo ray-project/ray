@@ -1,4 +1,5 @@
 import sys
+import time
 
 import pytest
 
@@ -9,6 +10,8 @@ from ray._private.test_utils import (
     client_test_enabled,
     run_string_as_driver,
     wait_for_condition,
+    get_gcs_memory_used,
+    run_string_as_driver_nonblocking,
 )
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
@@ -80,19 +83,6 @@ def test_local_mode_deadlock(shutdown_only_with_initialization_check):
     bar = Bar.remote()
     # Expect ping_actor call returns normally without deadlock.
     assert ray.get(foo.ping_actor.remote(bar)) == 3
-
-
-def get_gcs_memory_used():
-    import psutil
-
-    m = sum(
-        [
-            process.memory_info().rss
-            for process in psutil.process_iter()
-            if process.name() in ("gcs_server", "redis-server")
-        ]
-    )
-    return m
 
 
 def function_entry_num(job_id):
@@ -194,6 +184,20 @@ def test_function_table_gc_actor(call_ray_start):
     wait_for_condition(lambda: function_entry_num(job_id) == 0)
 
 
+def test_node_liveness_after_restart(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node()
+    ray.init(cluster.address)
+    worker = cluster.add_node(node_manager_port=9037)
+    wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
+
+    cluster.remove_node(worker)
+    worker = cluster.add_node(node_manager_port=9037)
+    for _ in range(10):
+        wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
+        time.sleep(1)
+
+
 @pytest.mark.skipif(
     sys.platform != "linux",
     reason="This test is only run on linux machines.",
@@ -237,7 +241,7 @@ class A:
 
 a = A.options(lifetime="detached", name="A").remote()
 assert ray.get(a.ready.remote()) == {val}
-assert ray.get_runtime_context().job_id.hex() == '01000000'
+assert ray.get_runtime_context().get_job_id() == '01000000'
     """
     run_string_as_driver(script.format(address=call_ray_start, val=1))
     run_string_as_driver(script.format(address=call_ray_start_2, val=2))
@@ -247,10 +251,103 @@ import ray
 ray.init("{address}", namespace="a")
 a = ray.get_actor(name="A")
 assert ray.get(a.ready.remote()) == {val}
-assert ray.get_runtime_context().job_id.hex() == '02000000'
+assert ray.get_runtime_context().get_job_id() == '02000000'
 """
     run_string_as_driver(script.format(address=call_ray_start, val=1))
     run_string_as_driver(script.format(address=call_ray_start_2, val=2))
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_gcs_connection_no_leak(ray_start_cluster):
+    cluster = ray_start_cluster
+    head_node = cluster.add_node()
+
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+
+    ray.init(cluster.address)
+
+    def get_gcs_num_of_connections():
+        import psutil
+
+        p = psutil.Process(gcs_server_pid)
+        print(">>", p.num_fds())
+        return p.num_fds()
+
+    # Wait for everything to be ready.
+    import time
+
+    time.sleep(10)
+
+    curr_fds = get_gcs_num_of_connections()
+
+    @ray.remote
+    class A:
+        def ready(self):
+            print("HELLO")
+            return "WORLD"
+
+    num_of_actors = 10
+    a = [A.remote() for _ in range(num_of_actors)]
+    print(ray.get([t.ready.remote() for t in a]))
+
+    # Kill the actor
+    del a
+
+    # Make sure the # of fds opened by the GCS dropped.
+    wait_for_condition(lambda: get_gcs_num_of_connections() == curr_fds)
+
+    n = cluster.add_node(wait=True)
+
+    # Make sure the # of fds opened by the GCS increased.
+    wait_for_condition(lambda: get_gcs_num_of_connections() > curr_fds)
+
+    cluster.remove_node(n)
+
+    # Make sure the # of fds opened by the GCS dropped.
+    wait_for_condition(lambda: get_gcs_num_of_connections() == curr_fds)
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --num-cpus=2"],
+    indirect=True,
+)
+def test_demands_when_driver_exits(call_ray_start):
+    script = f"""
+import ray
+ray.init(address='{call_ray_start}')
+
+import os
+import time
+@ray.remote(num_cpus=3)
+def use_gpu():
+    time.sleep(1)
+
+@ray.remote(num_gpus=10)
+class A:
+    pass
+
+A.options(name="a", lifetime="detached").remote()
+
+print(ray.get([use_gpu.remote(), use_gpu.remote()]))
+"""
+
+    proc = run_string_as_driver_nonblocking(script)
+    gcs_cli = ray._private.gcs_utils.GcsClient(address=f"{call_ray_start}")
+
+    def check_demands(n):
+        status = gcs_cli.internal_kv_get(
+            ray._private.ray_constants.DEBUG_AUTOSCALING_STATUS.encode(), namespace=None
+        )
+        import json
+
+        status = json.loads(status.decode())
+        return len(status["load_metrics_report"]["resource_demand"]) == n
+
+    wait_for_condition(lambda: check_demands(2))
+    proc.terminate()
+    wait_for_condition(lambda: check_demands(1))
 
 
 if __name__ == "__main__":

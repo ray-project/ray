@@ -121,7 +121,7 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
             response = requests.get(
                 "http://localhost:{}".format(metrics_export_port),
                 # Fail the request early on if connection timeout
-                timeout=0.01,
+                timeout=1.0,
             )
             return response.status_code == 200
 
@@ -129,8 +129,22 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
             test_prometheus_endpoint,
             (requests.exceptions.ConnectionError,),
             # The dashboard takes more than 2s to startup.
-            timeout_ms=5000,
+            timeout_ms=10 * 1000,
         )
+
+
+def test_opentelemetry_conflict(shutdown_only):
+    ray.init()
+    # If opencensus protobuf doesn't conflict, this shouldn't raise an exception.
+    # Otherwise, it raises an error saying
+    # opencensus/proto/resource/v1/resource.proto:
+    # A file with this name is already in the pool.
+    from opentelemetry.exporter.opencensus.trace_exporter import (  # noqa
+        OpenCensusSpanExporter,
+    )
+
+    # Make sure the similar resource protobuf also doesn't raise an exception.
+    from opentelemetry.proto.resource.v1 import resource_pb2  # noqa
 
 
 if __name__ == "__main__":

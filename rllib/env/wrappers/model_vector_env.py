@@ -1,6 +1,7 @@
 import logging
+from gymnasium.spaces import Discrete
 import numpy as np
-from gym.spaces import Discrete
+
 from ray.rllib.utils.annotations import override
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.rollout_worker import get_global_worker
@@ -29,14 +30,14 @@ def model_vector_env(env: EnvType) -> BaseEnv:
         env = _VectorizedModelGymEnv(
             make_env=worker.make_sub_env_fn,
             existing_envs=[env],
-            num_envs=worker.num_envs,
+            num_envs=worker.config.num_envs_per_worker,
             observation_space=env.observation_space,
             action_space=env.action_space,
         )
     return convert_to_base_env(
         env,
         make_env=worker.make_sub_env_fn,
-        num_envs=worker.num_envs,
+        num_envs=worker.config.num_envs_per_worker,
         remote_envs=False,
         remote_env_batch_wait_ms=0,
     )
@@ -67,6 +68,8 @@ class _VectorizedModelGymEnv(VectorEnv):
         self.num_envs = num_envs
         while len(self.envs) < num_envs:
             self.envs.append(self.make_env(len(self.envs)))
+        self._timesteps = [0 for _ in range(self.num_envs)]
+        self.cur_obs = [None for _ in range(self.num_envs)]
 
         super().__init__(
             observation_space=observation_space or self.envs[0].observation_space,
@@ -79,22 +82,33 @@ class _VectorizedModelGymEnv(VectorEnv):
         )[0]
 
     @override(VectorEnv)
-    def vector_reset(self):
+    def vector_reset(self, *, seeds=None, options=None):
         """Override parent to store actual env obs for upcoming predictions."""
-        self.cur_obs = [e.reset() for e in self.envs]
-        return self.cur_obs
+        seeds = seeds or [None] * self.num_envs
+        options = options or [None] * self.num_envs
+        reset_results = [
+            e.reset(seed=seeds[i], options=options[i]) for i, e in enumerate(self.envs)
+        ]
+        self.cur_obs = [io[0] for io in reset_results]
+        infos = [io[1] for io in reset_results]
+        self._timesteps = [0 for _ in range(self.num_envs)]
+        return self.cur_obs, infos
 
     @override(VectorEnv)
-    def reset_at(self, index):
+    def reset_at(self, index, *, seed=None, options=None):
         """Override parent to store actual env obs for upcoming predictions."""
-        obs = self.envs[index].reset()
+        obs, infos = self.envs[index].reset(seed=seed, options=options)
         self.cur_obs[index] = obs
-        return obs
+        self._timesteps[index] = 0
+        return obs, infos
 
     @override(VectorEnv)
     def vector_step(self, actions):
         if self.cur_obs is None:
             raise ValueError("Need to reset env first")
+
+        for idx in range(self.num_envs):
+            self._timesteps[idx] += 1
 
         # If discrete, need to one-hot actions
         if isinstance(self.action_space, Discrete):
@@ -120,15 +134,30 @@ class _VectorizedModelGymEnv(VectorEnv):
         # If env has a `done` method, use it.
         if hasattr(self.envs[0], "done"):
             dones_batch = self.envs[0].done(next_obs_batch)
+        # Our sub-environments have timestep limits.
+        elif hasattr(self.envs[0], "_max_episode_steps"):
+            dones_batch = np.array(
+                [
+                    self._timesteps[idx] >= self.envs[0]._max_episode_steps
+                    for idx in range(self.num_envs)
+                ]
+            )
         # Otherwise, assume the episode does not end.
         else:
             dones_batch = np.asarray([False for _ in range(self.num_envs)])
+        truncateds_batch = [False for _ in range(self.num_envs)]
 
         info_batch = [{} for _ in range(self.num_envs)]
 
         self.cur_obs = next_obs_batch
 
-        return list(next_obs_batch), list(rew_batch), list(dones_batch), info_batch
+        return (
+            list(next_obs_batch),
+            list(rew_batch),
+            list(dones_batch),
+            truncateds_batch,
+            info_batch,
+        )
 
     @override(VectorEnv)
     def get_sub_environments(self):

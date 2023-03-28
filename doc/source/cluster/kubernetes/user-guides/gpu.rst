@@ -35,8 +35,6 @@ to 5 GPU workers.
 .. code-block:: yaml
 
    groupName: gpu-group
-   rayStartParams:
-       num-gpus: "1" # Advertise GPUs to Ray.
    replicas: 0
    minReplicas: 0
    maxReplicas: 5
@@ -59,19 +57,6 @@ to 5 GPU workers.
             ...
 
 Each of the Ray pods in the group can be scheduled on an AWS `p2.xlarge` instance (1 GPU, 4vCPU, 61Gi RAM).
-
-.. warning::
-
-    Not the following piece of required configuration:
-
-    .. code-block:: yaml
-
-        rayStartParams:
-            num-gpus: "1"
-
-    This extra configuration is required due to a `bug`_ in KubeRay 0.3.0.
-    KubeRay master does not require this piece of configuration, nor will future KubeRay releases;
-    the GPU Ray start parameters will be auto-detected from container resource limits.
 
 .. tip::
 

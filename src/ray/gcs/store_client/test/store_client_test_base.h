@@ -17,6 +17,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <iomanip>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -122,6 +123,7 @@ class StoreClientTestBase : public ::testing::Test {
   void GetAll() {
     auto get_all_callback =
         [this](const absl::flat_hash_map<std::string, std::string> &result) {
+          RAY_LOG(INFO) << "ReceivedKeys=" << result.size();
           static std::unordered_set<ActorID> received_keys;
           for (const auto &item : result) {
             const ActorID &actor_id = ActorID::FromBinary(item.first);
@@ -145,7 +147,8 @@ class StoreClientTestBase : public ::testing::Test {
     for (int i = 0; i < 100; i++) {
       auto key = keys_.at(std::rand() % keys_.size()).Binary();
       auto prefix = key.substr(0, std::rand() % key.size());
-      RAY_LOG(INFO) << "key is: " << key << ", prefix is: " << prefix;
+      RAY_LOG(INFO) << "key is: " << std::hex << key << ", prefix is: " << std::hex
+                    << prefix;
       std::unordered_set<std::string> result_set;
       for (const auto &item1 : key_to_value_) {
         if (item1.first.Binary().find(prefix) == 0) {
@@ -154,8 +157,7 @@ class StoreClientTestBase : public ::testing::Test {
       }
       ASSERT_FALSE(result_set.empty());
 
-      auto get_keys_callback = [this,
-                                &result_set](const std::vector<std::string> result) {
+      auto get_keys_callback = [this, result_set](const std::vector<std::string> result) {
         std::unordered_set<std::string> received_keys(result.begin(), result.end());
         ASSERT_EQ(received_keys, result_set);
         pending_count_ -= result.size();

@@ -185,6 +185,12 @@ class Repeater(Searcher):
     def set_state(self, state: Dict):
         self.__dict__.update(state)
 
+    def save(self, checkpoint_path: str):
+        self.searcher.save(checkpoint_path)
+
+    def restore(self, checkpoint_path: str):
+        self.searcher.restore(checkpoint_path)
+
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
     ) -> bool:

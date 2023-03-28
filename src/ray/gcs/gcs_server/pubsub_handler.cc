@@ -29,7 +29,7 @@ InternalPubSubHandler::InternalPubSubHandler(
   });
 }
 
-void InternalPubSubHandler::HandleGcsPublish(const rpc::GcsPublishRequest &request,
+void InternalPubSubHandler::HandleGcsPublish(rpc::GcsPublishRequest request,
                                              rpc::GcsPublishReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
   if (gcs_publisher_ == nullptr) {
@@ -50,7 +50,7 @@ void InternalPubSubHandler::HandleGcsPublish(const rpc::GcsPublishRequest &reque
 // and convert the reply to rpc::PubsubLongPollingReply because GCS RPC services are
 // required to have the `status` field in replies.
 void InternalPubSubHandler::HandleGcsSubscriberPoll(
-    const rpc::GcsSubscriberPollRequest &request,
+    rpc::GcsSubscriberPollRequest request,
     rpc::GcsSubscriberPollReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   if (gcs_publisher_ == nullptr) {
@@ -82,7 +82,7 @@ void InternalPubSubHandler::HandleGcsSubscriberPoll(
 // rpc::GcsSubscriberCommandBatchReply as reply type instead of using
 // rpc::GcsSubscriberCommandBatchReply directly.
 void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
-    const rpc::GcsSubscriberCommandBatchRequest &request,
+    rpc::GcsSubscriberCommandBatchRequest request,
     rpc::GcsSubscriberCommandBatchReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   if (gcs_publisher_ == nullptr) {
@@ -94,17 +94,31 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
     return;
   }
   const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
+
+  // If the sender_id field is not set, subscriber_id will be used instead.
+  auto sender_id = request.sender_id();
+  if (sender_id.empty()) {
+    sender_id = request.subscriber_id();
+  }
+
+  auto iter = sender_to_subscribers_.find(sender_id);
+  if (iter == sender_to_subscribers_.end()) {
+    iter = sender_to_subscribers_.insert({sender_id, {}}).first;
+  }
+
   for (const auto &command : request.commands()) {
     if (command.has_unsubscribe_message()) {
       gcs_publisher_->GetPublisher()->UnregisterSubscription(
           command.channel_type(),
           subscriber_id,
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
+      iter->second.erase(subscriber_id);
     } else if (command.has_subscribe_message()) {
       gcs_publisher_->GetPublisher()->RegisterSubscription(
           command.channel_type(),
           subscriber_id,
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
+      iter->second.insert(subscriber_id);
     } else {
       RAY_LOG(FATAL) << "Invalid command has received, "
                      << static_cast<int>(command.command_message_one_of_case())
@@ -112,6 +126,17 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
     }
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void InternalPubSubHandler::RemoveSubscriberFrom(const std::string &sender_id) {
+  auto iter = sender_to_subscribers_.find(sender_id);
+  if (iter == sender_to_subscribers_.end()) {
+    return;
+  }
+  for (auto &subscriber_id : iter->second) {
+    gcs_publisher_->GetPublisher()->UnregisterSubscriber(subscriber_id);
+  }
+  sender_to_subscribers_.erase(iter);
 }
 
 void InternalPubSubHandler::Stop() {

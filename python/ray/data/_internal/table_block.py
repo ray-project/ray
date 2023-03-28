@@ -3,18 +3,16 @@ from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
 
 import numpy as np
 
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
+from ray.data._internal.util import _is_tensor_schema
 
 if TYPE_CHECKING:
     from ray.data._internal.sort import SortKeyT
 
-
-# The internal column name used for pure-tensor datasets, represented as
-# single-tensor-column tables.
-VALUE_COL_NAME = "__value__"
 
 T = TypeVar("T")
 
@@ -27,8 +25,18 @@ class TableBlockBuilder(BlockBuilder[T]):
     def __init__(self, block_type):
         # The set of uncompacted Python values buffered.
         self._columns = collections.defaultdict(list)
+        # The column names of uncompacted Python values buffered.
+        self._column_names = None
         # The set of compacted tables we have built so far.
         self._tables: List[Any] = []
+        # Cursor into tables indicating up to which table we've accumulated table sizes.
+        # This is used to defer table size calculation, which can be expensive for e.g.
+        # Pandas DataFrames.
+        # This cursor points to the first table for which we haven't accumulated a table
+        # size.
+        self._tables_size_cursor = 0
+        # Accumulated table sizes, up to the table in _tables pointed to by
+        # _tables_size_cursor.
         self._tables_size_bytes = 0
         # Size estimator for un-compacted table values.
         self._uncompacted_size = SizeEstimator()
@@ -40,12 +48,26 @@ class TableBlockBuilder(BlockBuilder[T]):
         if isinstance(item, TableRow):
             item = item.as_pydict()
         elif isinstance(item, np.ndarray):
-            item = {VALUE_COL_NAME: item}
+            item = {TENSOR_COLUMN_NAME: item}
         if not isinstance(item, dict):
             raise ValueError(
                 "Returned elements of an TableBlock must be of type `dict`, "
                 "got {} (type {}).".format(item, type(item))
             )
+
+        item_column_names = item.keys()
+        if self._column_names is not None:
+            # Check all added rows have same columns.
+            if item_column_names != self._column_names:
+                raise ValueError(
+                    "Current row has different columns compared to previous rows. "
+                    f"Columns of current row: {sorted(item_column_names)}, "
+                    f"Columns of previous rows: {sorted(self._column_names)}."
+                )
+        else:
+            # Initialize column names with the first added row.
+            self._column_names = item_column_names
+
         for key, value in item.items():
             self._columns[key].append(value)
         self._num_rows += 1
@@ -62,18 +84,29 @@ class TableBlockBuilder(BlockBuilder[T]):
             )
         accessor = BlockAccessor.for_block(block)
         self._tables.append(block)
-        self._tables_size_bytes += accessor.size_bytes()
         self._num_rows += accessor.num_rows()
 
-    def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
+    @staticmethod
+    def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
         raise NotImplementedError
 
-    def _concat_tables(self, tables: List[Block]) -> Block:
+    @staticmethod
+    def _concat_tables(tables: List[Block]) -> Block:
         raise NotImplementedError
 
     @staticmethod
     def _empty_table() -> Any:
         raise NotImplementedError
+
+    @staticmethod
+    def _concat_would_copy() -> bool:
+        raise NotImplementedError
+
+    def will_build_yield_copy(self) -> bool:
+        if self._columns:
+            # Building a table from a dict of list columns always creates a copy.
+            return True
+        return self._concat_would_copy() and len(self._tables) > 1
 
     def build(self) -> Block:
         if self._columns:
@@ -92,6 +125,9 @@ class TableBlockBuilder(BlockBuilder[T]):
     def get_estimated_memory_usage(self) -> int:
         if self._num_rows == 0:
             return 0
+        for table in self._tables[self._tables_size_cursor :]:
+            self._tables_size_bytes += BlockAccessor.for_block(table).size_bytes()
+        self._tables_size_cursor = len(self._tables)
         return self._tables_size_bytes + self._uncompacted_size.size_bytes()
 
     def _compact_if_needed(self) -> None:
@@ -123,14 +159,14 @@ class TableBlockAccessor(BlockAccessor):
     def _build_tensor_row(row: TableRow) -> np.ndarray:
         raise NotImplementedError
 
-    def to_native(self) -> Block:
+    def to_default(self) -> Block:
         if self.is_tensor_wrapper():
-            native = self.to_numpy()
+            default = self.to_numpy()
         else:
             # Always promote Arrow blocks to pandas for consistency, since
             # we lazily convert pandas->Arrow internally for efficiency.
-            native = self.to_pandas()
-        return native
+            default = self.to_pandas()
+        return default
 
     def column_names(self) -> List[str]:
         raise NotImplementedError
@@ -139,7 +175,7 @@ class TableBlockAccessor(BlockAccessor):
         return self._table
 
     def is_tensor_wrapper(self) -> bool:
-        return self.column_names() == [VALUE_COL_NAME]
+        return _is_tensor_schema(self.column_names())
 
     def iter_rows(self) -> Iterator[Union[TableRow, np.ndarray]]:
         outer = self

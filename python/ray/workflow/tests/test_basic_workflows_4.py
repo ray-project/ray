@@ -1,6 +1,7 @@
 """Basic tests isolated from other tests for shared fixtures."""
 import os
 import pytest
+from ray._private.test_utils import run_string_as_driver
 
 import ray
 from ray import workflow
@@ -66,6 +67,35 @@ def test_no_init_run(shutdown_only):
 
 def test_no_init_api(shutdown_only):
     workflow.list_all()
+
+
+def test_object_valid(workflow_start_regular):
+    # Test the async api and make sure the object live
+    # across the lifetime of the job.
+    import uuid
+
+    workflow_id = str(uuid.uuid4())
+    script = f"""
+import ray
+from ray import workflow
+from typing import List
+
+ray.init(address="{workflow_start_regular}")
+
+@ray.remote
+def echo(data, sleep_s=0, others=None):
+    from time import sleep
+    sleep(sleep_s)
+    print(data)
+
+a = {{"abc": "def"}}
+e1 = echo.bind(a, 5)
+e2 = echo.bind(a, 0, e1)
+workflow.run_async(e2, workflow_id="{workflow_id}")
+"""
+    run_string_as_driver(script)
+
+    print(ray.get(workflow.get_output_async(workflow_id=workflow_id)))
 
 
 if __name__ == "__main__":

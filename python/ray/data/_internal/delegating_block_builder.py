@@ -53,12 +53,18 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
             return
         if self._builder is None:
             self._builder = accessor.builder()
-        self._builder.add_block(block)
+        self._builder.add_block(accessor.to_block())
+
+    def will_build_yield_copy(self) -> bool:
+        if self._builder is None:
+            return True
+        return self._builder.will_build_yield_copy()
 
     def build(self) -> Block:
         if self._builder is None:
             if self._empty_block is not None:
                 self._builder = BlockAccessor.for_block(self._empty_block).builder()
+                self._builder.add_block(self._empty_block)
             else:
                 self._builder = ArrowBlockBuilder()
         return self._builder.build()

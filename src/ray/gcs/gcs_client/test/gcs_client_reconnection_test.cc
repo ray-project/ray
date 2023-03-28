@@ -68,14 +68,14 @@ class GcsClientReconnectionTest : public ::testing::Test {
     auto channel =
         grpc::CreateChannel(absl::StrCat("127.0.0.1:", config_.grpc_server_port),
                             grpc::InsecureChannelCredentials());
-    std::unique_ptr<rpc::HeartbeatInfoGcsService::Stub> stub =
-        rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+    auto stub = grpc::health::v1::Health::NewStub(channel);
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + 1s);
-    const rpc::CheckAliveRequest request;
-    rpc::CheckAliveReply reply;
-    auto status = stub->CheckAlive(&context, request, &reply);
-    if (!status.ok()) {
+    ::grpc::health::v1::HealthCheckRequest request;
+    ::grpc::health::v1::HealthCheckResponse reply;
+    auto status = stub->Check(&context, request, &reply);
+    if (!status.ok() ||
+        reply.status() != ::grpc::health::v1::HealthCheckResponse::SERVING) {
       RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
                        << status.error_message();
       return false;

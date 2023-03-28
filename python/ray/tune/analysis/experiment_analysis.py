@@ -30,10 +30,7 @@ from ray.tune.result import (
     TRAINING_ITERATION,
 )
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import (
-    _find_newest_experiment_checkpoint,
-    _load_trial_from_checkpoint,
-)
+from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
@@ -103,8 +100,7 @@ class ExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        self._local_base_dir = self._checkpoints_and_paths[0][1].parent
-
+        self._local_experiment_path = self._checkpoints_and_paths[0][1]
         if not pd:
             logger.warning(
                 "pandas not installed. Run `pip install pandas` for "
@@ -113,15 +109,39 @@ class ExperimentAnalysis:
         else:
             self.fetch_trial_dataframes()
 
-        self._sync_config = sync_config
+        remote_storage_path = None
+        if sync_config and sync_config.upload_dir:
+            remote_storage_path = sync_config.upload_dir
+
+        self._remote_storage_path = remote_storage_path
+
+    @property
+    def _local_path(self) -> str:
+        return str(self._local_experiment_path)
+
+    @property
+    def _remote_path(self) -> Optional[str]:
+        return self._parse_cloud_path(self._local_path)
+
+    @property
+    def experiment_path(self) -> str:
+        """Path pointing to the experiment directory on persistent storage.
+
+        This can point to a remote storage location (e.g. S3) or to a local
+        location (path on the head node).
+
+        For instance, if your remote storage path is ``s3://bucket/location``,
+        this will point to ``s3://bucket/location/experiment_name``.
+        """
+        return self._remote_path or self._local_path
 
     def _parse_cloud_path(self, local_path: str):
         """Convert local path into cloud storage path"""
-        if not self._sync_config or not self._sync_config.upload_dir:
+        if not self._remote_storage_path:
             return None
 
         return local_path.replace(
-            str(self._local_base_dir), self._sync_config.upload_dir
+            str(Path(self._local_experiment_path).parent), self._remote_storage_path
         )
 
     def _load_checkpoints(self, experiment_checkpoint_path: str) -> List[str]:
@@ -143,13 +163,10 @@ class ExperimentAnalysis:
 
             if "checkpoints" not in experiment_state:
                 raise TuneError("Experiment state invalid; no checkpoints found.")
+
             self._checkpoints_and_paths += [
-                (_decode_checkpoint_from_experiment_state(cp), Path(path).parent)
-                for cp in experiment_state["checkpoints"]
+                (cp, Path(path).parent) for cp in experiment_state["checkpoints"]
             ]
-            self._checkpoints_and_paths = sorted(
-                self._checkpoints_and_paths, key=lambda tup: tup[0]["trial_id"]
-            )
 
     def _get_latest_checkpoint(self, experiment_checkpoint_path: Path) -> List[str]:
         # Case 1: Dir specified, find latest checkpoint.
@@ -692,7 +709,7 @@ class ExperimentAnalysis:
                 based on `mode`, and compare trials based on `mode=[min,max]`.
         """
         best_trial = self.get_best_trial(metric, mode, scope)
-        return best_trial.logdir if best_trial else None
+        return best_trial.local_path if best_trial else None
 
     def get_last_checkpoint(self, trial=None, metric="training_iteration", mode="max"):
         """Gets the last persistent checkpoint path of the provided trial,
@@ -789,8 +806,8 @@ class ExperimentAnalysis:
     def _get_trial_paths(self) -> List[str]:
         if self.trials:
             # We do not need to set the relative path here
-            # Maybe assert that t.logdir is in local_base_path?
-            _trial_paths = [str(t.logdir) for t in self.trials]
+            # Maybe assert that t.local_path is in local_base_path?
+            _trial_paths = [str(t.local_path) for t in self.trials]
         else:
             logger.info(
                 "No `self.trials`. Drawing logdirs from checkpoint "
@@ -798,12 +815,10 @@ class ExperimentAnalysis:
                 "out of sync, as checkpointing is periodic."
             )
             self.trials = []
-            _trial_paths = []
-            for checkpoint, path in self._checkpoints_and_paths:
+            for trial_json_state, path in self._checkpoints_and_paths:
                 try:
-                    trial = _load_trial_from_checkpoint(
-                        checkpoint, stub=True, local_dir=str(path)
-                    )
+                    trial = Trial.from_json_state(trial_json_state, stub=True)
+                    trial.local_experiment_path = str(path)
                 except Exception:
                     logger.warning(
                         f"Could not load trials from experiment checkpoint. "
@@ -814,7 +829,9 @@ class ExperimentAnalysis:
                     )
                     continue
                 self.trials.append(trial)
-                _trial_paths.append(str(trial.logdir))
+
+            self.trials.sort(key=lambda trial: trial.trial_id)
+            _trial_paths = [str(trial.local_path) for trial in self.trials]
 
         if not _trial_paths:
             raise TuneError("No trials found.")
@@ -882,7 +899,3 @@ class ExperimentAnalysis:
 
         state["trials"] = [make_stub_if_needed(t) for t in state["trials"]]
         return state
-
-
-def _decode_checkpoint_from_experiment_state(cp: Union[str, dict]) -> dict:
-    return json.loads(cp, cls=TuneFunctionDecoder) if isinstance(cp, str) else cp

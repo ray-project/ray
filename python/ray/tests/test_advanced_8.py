@@ -295,7 +295,7 @@ def test_get_system_memory():
 
     # cgroups v1, high
     with tempfile.NamedTemporaryFile("w") as memory_limit_file:
-        memory_limit_file.write(str(2 ** 64))
+        memory_limit_file.write(str(2**64))
         memory_limit_file.flush()
         psutil_memory_in_bytes = psutil.virtual_memory().total
         assert (

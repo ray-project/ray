@@ -201,6 +201,7 @@ class GlobalState:
             job_info["StartTime"] = entry.start_time
             job_info["EndTime"] = entry.end_time
             job_info["IsDead"] = entry.is_dead
+            job_info["Entrypoint"] = entry.entrypoint
             results.append(job_info)
 
         return results
@@ -215,25 +216,46 @@ class GlobalState:
 
         return ray.JobID.from_int(self.global_state_accessor.get_next_job_id())
 
-    def profile_table(self):
+    def profile_events(self):
+        """Retrieve and return task profiling events from GCS.
+
+        Return:
+            Profiling events by component id (e.g. worker id).
+            {
+                <component_id>: [
+                    {
+                        event_type: <event name> ,
+                        component_id: <i.e. worker id>,
+                        node_ip_address: <on which node profiling was done>,
+                        component_type: <i.e. worker/driver>,
+                        start_time: <unix timestamp in seconds>,
+                        end_time: <unix timestamp in seconds>,
+                        extra_data: <e.g. stack trace when error raised>,
+                    }
+                ]
+            }
+        """
         self._check_connected()
 
         result = defaultdict(list)
-        profile_table = self.global_state_accessor.get_profile_table()
-        for i in range(len(profile_table)):
-            profile = gcs_utils.ProfileTableData.FromString(profile_table[i])
+        task_events = self.global_state_accessor.get_task_events()
+        for i in range(len(task_events)):
+            event = gcs_utils.TaskEvents.FromString(task_events[i])
+            profile = event.profile_events
+            if not profile:
+                continue
 
             component_type = profile.component_type
             component_id = binary_to_hex(profile.component_id)
             node_ip_address = profile.node_ip_address
 
-            for event in profile.profile_events:
+            for event in profile.events:
                 try:
                     extra_data = json.loads(event.extra_data)
                 except ValueError:
                     extra_data = {}
                 profile_event = {
-                    "event_type": event.event_type,
+                    "event_type": event.event_name,
                     "component_id": component_id,
                     "node_ip_address": node_ip_address,
                     "component_type": component_type,
@@ -347,9 +369,9 @@ class GlobalState:
             },
         }
 
-    def _seconds_to_microseconds(self, time_in_seconds):
-        """A helper function for converting seconds to microseconds."""
-        time_in_microseconds = 10 ** 6 * time_in_seconds
+    def _nanoseconds_to_microseconds(self, time_in_nanoseconds):
+        """A helper function for converting nanoseconds to microseconds."""
+        time_in_microseconds = time_in_nanoseconds / 1000
         return time_in_microseconds
 
     # Colors are specified at
@@ -440,10 +462,10 @@ class GlobalState:
 
         time.sleep(1)
 
-        profile_table = self.profile_table()
+        profile_events = self.profile_events()
         all_events = []
 
-        for component_id_hex, component_events in profile_table.items():
+        for component_id_hex, component_events in profile_events.items():
             # Only consider workers and drivers.
             component_type = component_events[0]["component_type"]
             if component_type not in ["worker", "driver"]:
@@ -461,9 +483,9 @@ class GlobalState:
                     # The identifier for the row that the event appears in.
                     "tid": event["component_type"] + ":" + event["component_id"],
                     # The start time in microseconds.
-                    "ts": self._seconds_to_microseconds(event["start_time"]),
+                    "ts": self._nanoseconds_to_microseconds(event["start_time"]),
                     # The duration in microseconds.
-                    "dur": self._seconds_to_microseconds(
+                    "dur": self._nanoseconds_to_microseconds(
                         event["end_time"] - event["start_time"]
                     ),
                     # What is this?
@@ -486,7 +508,8 @@ class GlobalState:
         if not all_events:
             logger.warning(
                 "No profiling events found. Ray profiling must be enabled "
-                "by setting RAY_PROFILING=1."
+                "by setting RAY_PROFILING=1, and make sure "
+                "RAY_task_events_report_interval_ms is a positive value (default 1000)."
             )
 
         if filename is not None:
@@ -521,7 +544,7 @@ class GlobalState:
 
         all_events = []
 
-        for key, items in self.profile_table().items():
+        for key, items in self.profile_events().items():
             # Only consider object manager events.
             if items[0]["component_type"] != "object_manager":
                 continue
@@ -557,9 +580,9 @@ class GlobalState:
                     # The identifier for the row that the event appears in.
                     "tid": node_id_to_address[remote_node_id],
                     # The start time in microseconds.
-                    "ts": self._seconds_to_microseconds(event["start_time"]),
+                    "ts": self._nanoseconds_to_microseconds(event["start_time"]),
                     # The duration in microseconds.
-                    "dur": self._seconds_to_microseconds(
+                    "dur": self._nanoseconds_to_microseconds(
                         event["end_time"] - event["start_time"]
                     ),
                     # What is this?
@@ -829,7 +852,8 @@ def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 
     Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
-    variable prior to starting Ray.
+    variable prior to starting Ray, and RAY_task_events_report_interval_ms set
+    to be positive (default 1000)
 
     To view this information as a timeline, simply dump it as a json file by
     passing in "filename" or using using json.dump, and then load go to

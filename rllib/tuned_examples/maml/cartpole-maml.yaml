@@ -1,13 +1,12 @@
 # Same configs as Pendulum
 cartpole-maml:
-    env: CartPole-v0
+    env: CartPole-v1
     run: MAML
     stop:
         training_iteration: 100   
     config:
         # Works with both frameworks, "tf" and "torch".
         framework: torch
-        horizon: 200
         rollout_fragment_length: 200
         num_envs_per_worker: 10
         inner_adaptation_steps: 1

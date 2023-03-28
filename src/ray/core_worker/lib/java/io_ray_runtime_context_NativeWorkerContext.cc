@@ -41,12 +41,12 @@ Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskId(JNIEnv *e
   return IdToJavaByteBuffer<TaskID>(env, task_id);
 }
 
-JNIEXPORT jobject JNICALL
+JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentJobId(JNIEnv *env,
                                                                       jclass) {
-  const auto &job_id =
+  const auto job_id =
       CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentJobID();
-  return IdToJavaByteBuffer<JobID>(env, job_id);
+  return IdToJavaByteArray<JobID>(env, job_id);
 }
 
 JNIEXPORT jobject JNICALL

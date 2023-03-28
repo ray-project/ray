@@ -1,7 +1,7 @@
 # Code in this file is copied and adapted from
 # https://github.com/openai/evolution-strategies-starter.
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 from typing import Optional
@@ -11,6 +11,7 @@ import ray.experimental.tf_utils
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
@@ -55,18 +56,18 @@ def rollout(
     )
     rewards = []
     t = 0
-    observation = env.reset()
+    observation, _ = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
         ac, _, _ = policy.compute_actions(
             [observation], add_noise=add_noise, update=True
         )
         ac = ac[0]
-        observation, r, done, _ = env.step(ac)
+        observation, r, terminated, truncated, _ = env.step(ac)
         if offset != 0.0:
             r -= np.abs(offset)
         rewards.append(r)
         t += 1
-        if done:
+        if terminated or truncated:
             break
     rewards = np.array(rewards, dtype=np.float32)
     return rewards, t
@@ -91,9 +92,10 @@ class ESTFPolicy(Policy):
         self.observation_filter = get_filter(
             self.config["observation_filter"], self.preprocessor.shape
         )
-        self.single_threaded = self.config.get("single_threaded", False)
         if self.config["framework"] == "tf":
-            self.sess = make_session(single_threaded=self.single_threaded)
+            self.sess = make_session(
+                single_threaded=self.config.get("tf_single_threaded", True)
+            )
 
             # Set graph-level seed.
             if config.get("seed") is not None:
@@ -109,10 +111,10 @@ class ESTFPolicy(Policy):
             self.sess = self.inputs = None
             if config.get("seed") is not None:
                 # Tf2.x.
-                if config.get("framework") == "tf2":
+                if tfv == 2:
                     tf.random.set_seed(config["seed"])
-                # Tf-eager.
-                elif tf1 and config.get("framework") == "tfe":
+                # Tf1.x.
+                else:
                     tf1.set_random_seed(config["seed"])
 
         # Policy network.
@@ -147,10 +149,23 @@ class ESTFPolicy(Policy):
         )
 
     @override(Policy)
-    def compute_actions(self, observation, add_noise=False, update=True, **kwargs):
+    def compute_actions(self, obs_batch=None, add_noise=False, update=True, **kwargs):
+        if "observation" in kwargs:
+            assert obs_batch is None, (
+                "You can not use both arguments, "
+                "`observation` and `obs_batch`. `observation` "
+                "is deprecated."
+            )
+            deprecation_warning(
+                old="ESTFPolicy.compute_actions(observation=...)`",
+                new="ESTFPolicy.compute_actions(obs_batch=...)",
+            )
+            obs_batch = kwargs["observation"]
+        else:
+            assert obs_batch is not None
         # Squeeze batch dimension (we always calculate actions for only a
         # single obs).
-        observation = observation[0]
+        observation = obs_batch[0]
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
         # `actions` is a list of (component) batches.

@@ -108,14 +108,14 @@ class Domain:
 
     def sample(
         self,
-        spec: Optional[Union[List[Dict], Dict]] = None,
+        config: Optional[Union[List[Dict], Dict]] = None,
         size: int = 1,
         random_state: "RandomState" = None,
     ):
         if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
             random_state = _BackwardsCompatibleNumpyRng(random_state)
         sampler = self.get_sampler()
-        return sampler.sample(self, spec=spec, size=size, random_state=random_state)
+        return sampler.sample(self, config=config, size=size, random_state=random_state)
 
     def is_grid(self):
         return isinstance(self.sampler, Grid)
@@ -137,7 +137,7 @@ class Sampler:
     def sample(
         self,
         domain: Domain,
-        spec: Optional[Union[List[Dict], Dict]] = None,
+        config: Optional[Union[List[Dict], Dict]] = None,
         size: int = 1,
         random_state: "RandomState" = None,
     ):
@@ -185,7 +185,7 @@ class Grid(Sampler):
     def sample(
         self,
         domain: Domain,
-        spec: Optional[Union[List[Dict], Dict]] = None,
+        config: Optional[Union[List[Dict], Dict]] = None,
         size: int = 1,
         random_state: "RandomState" = None,
     ):
@@ -198,7 +198,7 @@ class Float(Domain):
         def sample(
             self,
             domain: "Float",
-            spec: Optional[Union[List[Dict], Dict]] = None,
+            config: Optional[Union[List[Dict], Dict]] = None,
             size: int = 1,
             random_state: "RandomState" = None,
         ):
@@ -213,7 +213,7 @@ class Float(Domain):
         def sample(
             self,
             domain: "Float",
-            spec: Optional[Union[List[Dict], Dict]] = None,
+            config: Optional[Union[List[Dict], Dict]] = None,
             size: int = 1,
             random_state: "RandomState" = None,
         ):
@@ -233,7 +233,7 @@ class Float(Domain):
         def sample(
             self,
             domain: "Float",
-            spec: Optional[Union[List[Dict], Dict]] = None,
+            config: Optional[Union[List[Dict], Dict]] = None,
             size: int = 1,
             random_state: "RandomState" = None,
         ):
@@ -331,7 +331,7 @@ class Integer(Domain):
         def sample(
             self,
             domain: "Integer",
-            spec: Optional[Union[List[Dict], Dict]] = None,
+            config: Optional[Union[List[Dict], Dict]] = None,
             size: int = 1,
             random_state: "RandomState" = None,
         ):
@@ -344,7 +344,7 @@ class Integer(Domain):
         def sample(
             self,
             domain: "Integer",
-            spec: Optional[Union[List[Dict], Dict]] = None,
+            config: Optional[Union[List[Dict], Dict]] = None,
             size: int = 1,
             random_state: "RandomState" = None,
         ):
@@ -413,7 +413,7 @@ class Categorical(Domain):
         def sample(
             self,
             domain: "Categorical",
-            spec: Optional[Union[List[Dict], Dict]] = None,
+            config: Optional[Union[List[Dict], Dict]] = None,
             size: int = 1,
             random_state: "RandomState" = None,
         ):
@@ -459,18 +459,34 @@ class Categorical(Domain):
 @DeveloperAPI
 class Function(Domain):
     class _CallSampler(BaseSampler):
+        def __try_fn(self, domain: "Function", config: Dict[str, Any]):
+            try:
+                return domain.func(config)
+            except (AttributeError, KeyError):
+                from ray.tune.search.variant_generator import _UnresolvedAccessGuard
+
+                r = domain.func(_UnresolvedAccessGuard({"config": config}))
+                logger.warning(
+                    "sample_from functions that take a spec dict are "
+                    "deprecated. Please update your function to work with "
+                    "the config dict directly."
+                )
+                return r
+
         def sample(
             self,
             domain: "Function",
-            spec: Optional[Union[List[Dict], Dict]] = None,
+            config: Optional[Union[List[Dict], Dict]] = None,
             size: int = 1,
             random_state: "RandomState" = None,
         ):
             if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
                 random_state = _BackwardsCompatibleNumpyRng(random_state)
-            if domain.pass_spec:
+            if domain.pass_config:
                 items = [
-                    domain.func(spec[i] if isinstance(spec, list) else spec)
+                    self.__try_fn(domain, config[i])
+                    if isinstance(config, list)
+                    else self.__try_fn(domain, config)
                     for i in range(size)
                 ]
             else:
@@ -483,13 +499,13 @@ class Function(Domain):
     def __init__(self, func: Callable):
         sig = signature(func)
 
-        pass_spec = True  # whether we should pass `spec` when calling `func`
+        pass_config = True  # whether we should pass `config` when calling `func`
         try:
             sig.bind({})
         except TypeError:
-            pass_spec = False
+            pass_config = False
 
-        if not pass_spec:
+        if not pass_config:
             try:
                 sig.bind()
             except TypeError as exc:
@@ -498,7 +514,7 @@ class Function(Domain):
                     "callable with either 0 or 1 parameters."
                 ) from exc
 
-        self.pass_spec = pass_spec
+        self.pass_config = pass_config
         self.func = func
 
     def is_function(self):
@@ -526,14 +542,24 @@ class Quantized(Sampler):
     def sample(
         self,
         domain: Domain,
-        spec: Optional[Union[List[Dict], Dict]] = None,
+        config: Optional[Union[List[Dict], Dict]] = None,
         size: int = 1,
         random_state: "RandomState" = None,
     ):
         if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
             random_state = _BackwardsCompatibleNumpyRng(random_state)
-        values = self.sampler.sample(domain, spec, size, random_state=random_state)
+
+        if self.q == 1:
+            return self.sampler.sample(domain, config, size, random_state=random_state)
+
+        quantized_domain = copy(domain)
+        quantized_domain.lower = np.ceil(domain.lower / self.q) * self.q
+        quantized_domain.upper = np.floor(domain.upper / self.q) * self.q
+        values = self.sampler.sample(
+            quantized_domain, config, size, random_state=random_state
+        )
         quantized = np.round(np.divide(values, self.q)) * self.q
+
         if not isinstance(quantized, np.ndarray):
             return domain.cast(quantized)
         return list(quantized)

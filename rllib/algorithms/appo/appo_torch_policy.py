@@ -5,7 +5,7 @@ Adapted from VTraceTFPolicy to use the PPO surrogate loss.
 Keep in sync with changes to VTraceTFPolicy.
 """
 
-import gym
+import gymnasium as gym
 import numpy as np
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
@@ -144,7 +144,7 @@ class APPOTorchPolicy(
             )
 
         actions = train_batch[SampleBatch.ACTIONS]
-        dones = train_batch[SampleBatch.DONES]
+        dones = train_batch[SampleBatch.TERMINATEDS]
         rewards = train_batch[SampleBatch.REWARDS]
         behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 

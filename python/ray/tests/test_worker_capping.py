@@ -182,6 +182,69 @@ def test_exponential_wait(shutdown_only):
     assert 7 < last_wait
 
 
+def test_spillback(ray_start_cluster):
+    """Ensure that we can spillback without waiting for the worker cap to be lifed"""
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=1,
+        resources={"head": 1},
+        _system_config={
+            "worker_cap_initial_backoff_delay_ms": 36000_000,
+            "worker_cap_max_backoff_delay_ms": 36000_000,
+        },
+    )
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=0)
+    class Counter:
+        def __init__(self):
+            self.i = 0
+
+        def inc(self):
+            self.i = self.i + 1
+
+        def get(self):
+            return self.i
+
+    counter = Counter.remote()
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id
+
+    @ray.remote
+    def func(i, counter):
+        if i == 0:
+            counter.inc.remote()
+            while True:
+                time.sleep(1)
+        else:
+            return ray.get_runtime_context().node_id
+
+    refs = [func.remote(i, counter) for i in range(2)]
+
+    # Make sure the first task is running
+    # and the second task is in the dispatch queue hitting the worker cap
+    while ray.get(counter.get.remote()) != 1:
+        time.sleep(0.1)
+    time.sleep(1)
+
+    # A new node is added,
+    # the second task should be spilled back to it
+    # instead of waiting for the cap to be lifted on the head node after 10h.
+    cluster.add_node(
+        num_cpus=1,
+        resources={"worker": 1},
+    )
+    worker_node_id = ray.get(
+        get_node_id.options(num_cpus=0, resources={"worker": 1}).remote()
+    )
+    assert ray.get(refs[1]) == worker_node_id
+
+    ray.cancel(refs[0], force=True)
+
+
 if __name__ == "__main__":
     os.environ["RAY_worker_cap_enabled"] = "true"
     if os.environ.get("PARALLEL_CI"):

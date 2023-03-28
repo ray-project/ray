@@ -4,7 +4,6 @@ import inspect
 import os
 import logging
 from pathlib import Path
-from threading import Thread
 
 from typing import (
     Tuple,
@@ -85,23 +84,6 @@ def construct_path(path: Path, parent_path: Path) -> Path:
         return path.expanduser().resolve()
     else:
         return parent_path.joinpath(path).expanduser().resolve()
-
-
-class PropagatingThread(Thread):
-    """A Thread subclass that stores exceptions and results."""
-
-    def run(self):
-        self.exc = None
-        try:
-            self.ret = self._target(*self._args, **self._kwargs)
-        except BaseException as e:
-            self.exc = e
-
-    def join(self, timeout=None):
-        super(PropagatingThread, self).join(timeout)
-        if self.exc:
-            raise self.exc
-        return self.ret
 
 
 def update_env_vars(env_vars: Dict[str, Any]):

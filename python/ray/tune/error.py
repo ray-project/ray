@@ -46,3 +46,10 @@ class _TuneNoNextExecutorEventError(_SubCategoryTuneError):
     this category. This category is for everything else."""
 
     pass
+
+
+class _TuneRestoreError(_SubCategoryTuneError):
+    """Error that happens in restoring a remote trainable."""
+
+    def __init__(self, exc: Exception):
+        self.exc = exc

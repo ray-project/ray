@@ -3,13 +3,11 @@ and use it in a serving/inference setting.
 """
 
 import argparse
-import gym
+import gymnasium as gym
 from pathlib import Path
 
-from ray.rllib.utils.policy import (
-    load_policies_from_checkpoint,
-    local_policy_inference,
-)
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.policy import local_policy_inference
 
 
 parser = argparse.ArgumentParser()
@@ -31,15 +29,18 @@ assert args.checkpoint_file, "Must specify flag --checkpoint_file."
 def run(checkpoint_path):
     # __sphinx_doc_begin__
     # Restore policy.
-    policies = load_policies_from_checkpoint(checkpoint_path, [args.policy_id])
+    policies = Policy.from_checkpoint(
+        checkpoint=checkpoint_path,
+        policy_ids=[args.policy_id],
+    )
     policy = policies[args.policy_id]
 
     # Run CartPole.
-    env = gym.make("CartPole-v0")
-    obs = env.reset()
-    done = False
+    env = gym.make("CartPole-v1")
+    obs, info = env.reset()
+    terminated = truncated = False
     step = 0
-    while not done:
+    while not terminated and not truncated:
         step += 1
 
         # Use local_policy_inference() to run inference, so we do not have to
@@ -51,7 +52,7 @@ def run(checkpoint_path):
         print(f"step {step}", obs, action)
 
         # Step environment forward one more step.
-        obs, _, done, _ = env.step(action[0])
+        obs, _, terminated, truncated, _ = env.step(action)
     # __sphinx_doc_end__
 
 

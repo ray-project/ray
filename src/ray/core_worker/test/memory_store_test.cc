@@ -91,7 +91,7 @@ TEST(TestMemoryStore, TestMemoryStoreStats) {
           expected_item.num_in_plasma += 1;
         } else {
           expected_item.num_local_objects += 1;
-          expected_item.used_object_store_memory += it.second->GetSize();
+          expected_item.num_local_objects_bytes += it.second->GetSize();
         }
       }
     }
@@ -114,7 +114,7 @@ TEST(TestMemoryStore, TestMemoryStoreStats) {
   MemoryStoreStats item = provider->GetMemoryStoreStatisticalData();
   ASSERT_EQ(item.num_in_plasma, expected_item.num_in_plasma);
   ASSERT_EQ(item.num_local_objects, expected_item.num_local_objects);
-  ASSERT_EQ(item.used_object_store_memory, expected_item.used_object_store_memory);
+  ASSERT_EQ(item.num_local_objects_bytes, expected_item.num_local_objects_bytes);
 
   // Delete all other objects and see if stats are recorded correctly.
   provider->Delete({id1, id2});
@@ -124,7 +124,7 @@ TEST(TestMemoryStore, TestMemoryStoreStats) {
   item = provider->GetMemoryStoreStatisticalData();
   ASSERT_EQ(item.num_in_plasma, expected_item2.num_in_plasma);
   ASSERT_EQ(item.num_local_objects, expected_item2.num_local_objects);
-  ASSERT_EQ(item.used_object_store_memory, expected_item2.used_object_store_memory);
+  ASSERT_EQ(item.num_local_objects_bytes, expected_item2.num_local_objects_bytes);
 
   RAY_CHECK(provider->Put(obj1, id1));
   RAY_CHECK(provider->Put(obj2, id2));
@@ -134,7 +134,7 @@ TEST(TestMemoryStore, TestMemoryStoreStats) {
   item = provider->GetMemoryStoreStatisticalData();
   ASSERT_EQ(item.num_in_plasma, expected_item3.num_in_plasma);
   ASSERT_EQ(item.num_local_objects, expected_item3.num_local_objects);
-  ASSERT_EQ(item.used_object_store_memory, expected_item3.used_object_store_memory);
+  ASSERT_EQ(item.num_local_objects_bytes, expected_item3.num_local_objects_bytes);
 }
 
 /// A mock manager that manages all test buffers. This mocks

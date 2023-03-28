@@ -11,11 +11,12 @@ import {
 } from "@material-ui/core";
 import { SearchOutlined } from "@material-ui/icons";
 import React, { useEffect, useRef, useState } from "react";
-import { RouteComponentProps } from "react-router-dom";
+import { Outlet, useLocation, useParams } from "react-router-dom";
 import LogVirtualView from "../../components/LogView/LogVirtualView";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
-import { getLogDetail } from "../../service/log";
+import { getLogDetail, getLogDownloadUrl } from "../../service/log";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -35,17 +36,13 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-type LogsProps = RouteComponentProps<{ host?: string; path?: string }> & {
+type LogsProps = {
   theme?: "dark" | "light";
 };
 
-const useLogs = (props: LogsProps) => {
-  const {
-    match: { params },
-    location: { search: urlSearch },
-    theme,
-  } = props;
-  const { host, path } = params;
+const useLogs = ({ theme }: LogsProps) => {
+  const { search: urlSearch } = useLocation();
+  const { host, path } = useParams();
   const searchMap = new URLSearchParams(urlSearch);
   const urlFileName = searchMap.get("fileName");
   const el = useRef<HTMLDivElement>(null);
@@ -60,6 +57,7 @@ const useLogs = (props: LogsProps) => {
   const [fileName, setFileName] = useState(searchMap.get("fileName") || "");
   const [log, setLogs] =
     useState<undefined | string | { [key: string]: string }[]>();
+  const [downloadUrl, setDownloadUrl] = useState<string>();
   const [startTime, setStart] = useState<string>();
   const [endTime, setEnd] = useState<string>();
 
@@ -79,6 +77,7 @@ const useLogs = (props: LogsProps) => {
     } else {
       setOrigin(undefined);
     }
+    setDownloadUrl(getLogDownloadUrl(url));
     getLogDetail(url)
       .then((res) => {
         if (res) {
@@ -95,6 +94,7 @@ const useLogs = (props: LogsProps) => {
   return {
     log,
     origin,
+    downloadUrl,
     host,
     path,
     el,
@@ -115,6 +115,7 @@ const Logs = (props: LogsProps) => {
   const {
     log,
     origin,
+    downloadUrl,
     path,
     el,
     search,
@@ -127,7 +128,7 @@ const Logs = (props: LogsProps) => {
     endTime,
     setEnd,
   } = useLogs(props);
-  let href = "#/log/";
+  let href = "#/logs/";
 
   if (origin) {
     if (path) {
@@ -140,12 +141,11 @@ const Logs = (props: LogsProps) => {
       }
     }
   }
-
   return (
     <div className={classes.root} ref={el}>
       <TitleCard title="Logs Viewer">
         <Paper>
-          {!origin && <p>Please choose an url to see logs for that node</p>}
+          {!origin && <p>Select a node to view logs</p>}
           {origin && (
             <p>
               Node: {origin}
@@ -181,7 +181,7 @@ const Logs = (props: LogsProps) => {
                 .map((e: { [key: string]: string }) => (
                   <ListItem key={e.name}>
                     <a
-                      href={`#/log/${
+                      href={`#/logs/${
                         origin ? `${encodeURIComponent(origin)}/` : ""
                       }${encodeURIComponent(e.href)}`}
                     >
@@ -275,6 +275,20 @@ const Logs = (props: LogsProps) => {
                   >
                     Reset Time
                   </Button>
+                  {downloadUrl && path && (
+                    <Button
+                      variant="contained"
+                      component="a"
+                      href={downloadUrl}
+                      download={
+                        path.startsWith("/logs/")
+                          ? path.substring("/logs/".length)
+                          : path
+                      }
+                    >
+                      Download log file
+                    </Button>
+                  )}
                 </div>
               </div>
               <LogVirtualView
@@ -300,6 +314,20 @@ const Logs = (props: LogsProps) => {
         </Paper>
       </TitleCard>
     </div>
+  );
+};
+
+/**
+ * Logs page for the new information architecture
+ */
+export const LogsLayout = () => {
+  return (
+    <React.Fragment>
+      <MainNavPageInfo
+        pageInfo={{ title: "Logs", id: "logs", path: "/logs" }}
+      />
+      <Outlet />
+    </React.Fragment>
   );
 };
 

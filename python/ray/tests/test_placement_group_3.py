@@ -20,6 +20,7 @@ from ray.autoscaler._private.commands import debug_status
 from ray.exceptions import RaySystemError
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.placement_group import placement_group, remove_placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 try:
     import pytest_timeout
@@ -49,7 +50,9 @@ def get_ray_status_output(address):
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60
+            health_check_initial_delay_ms=0,
+            health_check_failure_threshold=10,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -78,7 +81,9 @@ def test_create_placement_group_during_gcs_server_restart(
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60
+            health_check_initial_delay_ms=0,
+            health_check_failure_threshold=10,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -107,6 +112,18 @@ def test_placement_group_wait_api(ray_start_cluster_head_with_external_redis):
     # Wait for placement group 1 after it is removed.
     with pytest.raises(Exception):
         placement_group1.wait(10)
+
+
+def test_placement_group_wait_api_timeout(shutdown_only):
+    """Make sure the wait API timeout works
+
+    https://github.com/ray-project/ray/issues/27287
+    """
+    ray.init(num_cpus=1)
+    pg = ray.util.placement_group(bundles=[{"CPU": 2}])
+    start = time.time()
+    assert not pg.wait(5)
+    assert 5 <= time.time() - start
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -144,6 +161,7 @@ def test_detached_placement_group(ray_start_cluster):
     # Make sure detached placement group will alive when job dead.
     driver_code = f"""
 import ray
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 ray.init(address="{info["address"]}")
 
@@ -158,8 +176,9 @@ class Actor:
         return True
 
 for bundle_index in range(2):
-    actor = Actor.options(lifetime="detached", placement_group=pg,
-                placement_group_bundle_index=bundle_index).remote()
+    actor = Actor.options(lifetime="detached",
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg,
+                placement_group_bundle_index=bundle_index)).remote()
     ray.get(actor.ready.remote())
 
 ray.shutdown()
@@ -224,8 +243,9 @@ ray.shutdown()
             # Schedule nested actor with the placement group.
             for bundle_index in range(2):
                 actor = NestedActor.options(
-                    placement_group=pg,
-                    placement_group_bundle_index=bundle_index,
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=pg, placement_group_bundle_index=bundle_index
+                    ),
                     lifetime="detached",
                 ).remote()
                 ray.get(actor.ready.remote())
@@ -292,7 +312,9 @@ ray.shutdown()
     assert placement_group is not None
     assert placement_group.wait(5)
     actor = Actor.options(
-        placement_group=placement_group, placement_group_bundle_index=0
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=placement_group, placement_group_bundle_index=0
+        )
     ).remote()
 
     ray.get(actor.ping.remote())
@@ -378,13 +400,17 @@ def test_placement_group_gpu_set(ray_start_cluster, connect_to_client):
             return ray.get_gpu_ids()
 
         result = get_gpus.options(
-            placement_group=placement_group, placement_group_bundle_index=0
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group, placement_group_bundle_index=0
+            )
         ).remote()
         result = ray.get(result)
         assert result == [0]
 
         result = get_gpus.options(
-            placement_group=placement_group, placement_group_bundle_index=1
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group, placement_group_bundle_index=1
+            )
         ).remote()
         result = ray.get(result)
         assert result == [0]
@@ -410,8 +436,24 @@ def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
         assert pg1.wait(10)
         assert pg2.wait(10)
 
-        gpu_ids_res.add(ray.get(f.options(placement_group=pg1).remote()))
-        gpu_ids_res.add(ray.get(f.options(placement_group=pg2).remote()))
+        gpu_ids_res.add(
+            ray.get(
+                f.options(
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=pg1
+                    )
+                ).remote()
+            )
+        )
+        gpu_ids_res.add(
+            ray.get(
+                f.options(
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=pg2
+                    )
+                ).remote()
+            )
+        )
 
         assert len(gpu_ids_res) == 2
 
@@ -435,7 +477,12 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
 
     actor_num = 1000
     pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(actor_num)]
-    actors = [A.options(placement_group=pg).remote() for pg in pgs]
+    actors = [
+        A.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+        for pg in pgs
+    ]
     refs = [actor.ready.remote() for actor in actors]
 
     expected_created_num = 1
@@ -493,16 +540,32 @@ def test_placement_group_gpu_unique_assigned(ray_start_cluster, connect_to_clien
     # Create actors out of order.
     actors = []
     actors.append(
-        Actor.options(placement_group=pg, placement_group_bundle_index=0).remote()
+        Actor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_bundle_index=0
+            )
+        ).remote()
     )
     actors.append(
-        Actor.options(placement_group=pg, placement_group_bundle_index=3).remote()
+        Actor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_bundle_index=3
+            )
+        ).remote()
     )
     actors.append(
-        Actor.options(placement_group=pg, placement_group_bundle_index=2).remote()
+        Actor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_bundle_index=2
+            )
+        ).remote()
     )
     actors.append(
-        Actor.options(placement_group=pg, placement_group_bundle_index=1).remote()
+        Actor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_bundle_index=1
+            )
+        ).remote()
     )
 
     for actor in actors:
@@ -569,7 +632,12 @@ def test_placement_group_status(ray_start_cluster):
 
     # 2 CPU + 1 PG CPU == 3.0/4.0 CPU (1 used by pg)
     actors = [A.remote() for _ in range(2)]
-    actors_in_pg = [A.options(placement_group=pg).remote() for _ in range(1)]
+    actors_in_pg = [
+        A.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+        for _ in range(1)
+    ]
 
     ray.get([actor.ready.remote() for actor in actors])
     ray.get([actor.ready.remote() for actor in actors_in_pg])
@@ -665,9 +733,14 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
         # Local resource will be allocated and here we are to ensure
         # local view is consistent and node resouce updates are discarded
         workers = [
-            Worker.options(placement_group=pg).remote(i) for i in range(NUM_CPU_BUNDLES)
+            Worker.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+            ).remote(i)
+            for i in range(NUM_CPU_BUNDLES)
         ]
-        trainer = Trainer.options(placement_group=pg).remote(0)
+        trainer = Trainer.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote(0)
         ray.get([workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)])
         ray.get(trainer.train.remote())
 

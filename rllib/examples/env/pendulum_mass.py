@@ -1,5 +1,5 @@
-from gym.envs.classic_control.pendulum import PendulumEnv
-from gym.utils import EzPickle
+from gymnasium.envs.classic_control.pendulum import PendulumEnv
+from gymnasium.utils import EzPickle
 import numpy as np
 
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv

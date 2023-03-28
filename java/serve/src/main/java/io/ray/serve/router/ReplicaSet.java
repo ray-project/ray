@@ -162,7 +162,10 @@ public class ReplicaSet {
           .remote();
     } else {
       return ((ActorHandle<RayServeWrappedReplica>) replica)
-          .task(RayServeWrappedReplica::handleRequest, query.getMetadata(), query.getArgs())
+          .task(
+              RayServeWrappedReplica::handleRequest,
+              query.getMetadata().toByteArray(),
+              query.getArgs())
           .remote();
     }
   }

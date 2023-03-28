@@ -8,8 +8,6 @@ pendulum-ddpg:
     config:
         # Works for both torch and tf.
         seed: 42
-        soft_horizon: false
-        no_done_at_end: true
         framework: torch
         # === Model ===
         actor_hiddens: [64, 64]

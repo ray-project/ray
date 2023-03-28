@@ -11,8 +11,8 @@ parser.add_argument(
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
-    default="tf",
+    choices=["tf", "tf2", "torch"],
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument("--eager-tracing", action="store_true")
@@ -70,8 +70,11 @@ if __name__ == "__main__":
                 "lstm_use_prev_reward": args.use_prev_reward,
             },
             "framework": args.framework,
-            # Run with tracing enabled for tfe/tf2?
+            # Run with tracing enabled for tf2?
             "eager_tracing": args.eager_tracing,
+            # TODO (Kourosh): Enable when LSTMs are supported.
+            "_enable_learner_api": False,
+            "_enable_rl_module_api": False,
         }
     )
 
@@ -91,7 +94,7 @@ if __name__ == "__main__":
     # >> algo = PPO(config)
     # >> lstm_cell_size = config["model"]["lstm_cell_size"]
     # >> env = StatelessCartPole()
-    # >> obs = env.reset()
+    # >> obs, info = env.reset()
     # >>
     # >> # range(2) b/c h- and c-states of the LSTM.
     # >> init_state = state = [
@@ -103,9 +106,9 @@ if __name__ == "__main__":
     # >> while True:
     # >>     a, state_out, _ = algo.compute_single_action(
     # ..         obs, state, prev_a, prev_r)
-    # >>     obs, reward, done, _ = env.step(a)
+    # >>     obs, reward, done, truncated, _ = env.step(a)
     # >>     if done:
-    # >>         obs = env.reset()
+    # >>         obs, info = env.reset()
     # >>         state = init_state
     # >>         prev_a = 0
     # >>         prev_r = 0.0

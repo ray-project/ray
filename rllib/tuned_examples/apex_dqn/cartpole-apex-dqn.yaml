@@ -6,14 +6,14 @@
 # evaluation_config:
 #     explore: False
 cartpole-apex-dqn-training-itr:
-    env: CartPole-v0
+    env: CartPole-v1
     run: APEX
     stop:
         episode_reward_mean: 150.0
         timesteps_total: 250000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         # Make this work with only 5 CPUs and 0 GPUs:
         num_workers: 3
         optimizer:

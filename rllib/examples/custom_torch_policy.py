@@ -27,7 +27,8 @@ MyTorchPolicy = build_policy_class(
 
 # Create a new Algorithm using the Policy defined above.
 class MyAlgorithm(Algorithm):
-    def get_default_policy_class(self, config):
+    @classmethod
+    def get_default_policy_class(cls, config):
         return MyTorchPolicy
 
 
@@ -40,7 +41,7 @@ if __name__ == "__main__":
             stop={"training_iteration": args.stop_iters},
         ),
         param_space={
-            "env": "CartPole-v0",
+            "env": "CartPole-v1",
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "num_workers": 2,

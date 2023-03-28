@@ -135,6 +135,122 @@ def test_shutdown(ray_shutdown):
     wait_for_condition(check_dead)
 
 
+def test_v1_shutdown_actors(ray_shutdown):
+    """Tests serve.shutdown() works correctly in 1.x case.
+
+    Ensures that after deploying deployments using 1.x API, serve.shutdown()
+    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
+    """
+    ray.init(num_cpus=16)
+    serve.start(http_options=dict(port=8003), detached=True)
+
+    @serve.deployment
+    def f():
+        pass
+
+    f.deploy()
+
+    actor_names = {
+        "ServeController",
+        "HTTPProxyActor",
+        "ServeReplica:f",
+    }
+
+    def check_alive():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return {actor["class_name"] for actor in actors} == actor_names
+
+    def check_dead():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_alive)
+    serve.shutdown()
+    wait_for_condition(check_dead)
+
+
+def test_single_app_shutdown_actors(ray_shutdown):
+    """Tests serve.shutdown() works correctly in single-app case
+
+    Ensures that after deploying a (nameless) app using serve.run(), serve.shutdown()
+    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
+    """
+    ray.init(num_cpus=16)
+    serve.start(http_options=dict(port=8003), detached=True)
+
+    @serve.deployment
+    def f():
+        pass
+
+    serve.run(f.bind())
+
+    actor_names = {
+        "ServeController",
+        "HTTPProxyActor",
+        "ServeReplica:f",
+    }
+
+    def check_alive():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return {actor["class_name"] for actor in actors} == actor_names
+
+    def check_dead():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_alive)
+    serve.shutdown()
+    wait_for_condition(check_dead)
+
+
+def test_multi_app_shutdown_actors(ray_shutdown):
+    """Tests serve.shutdown() works correctly in multi-app case.
+
+    Ensures that after deploying multiple distinct applications, serve.shutdown()
+    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
+    """
+    ray.init(num_cpus=16)
+    serve.start(http_options=dict(port=8003), detached=True)
+
+    @serve.deployment
+    def f():
+        pass
+
+    serve.run(f.bind(), name="app1", route_prefix="/app1")
+    serve.run(f.bind(), name="app2", route_prefix="/app2")
+
+    actor_names = {
+        "ServeController",
+        "HTTPProxyActor",
+        "ServeReplica:app1_f",
+        "ServeReplica:app2_f",
+    }
+
+    def check_alive():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return {actor["class_name"] for actor in actors} == actor_names
+
+    def check_dead():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_alive)
+    serve.shutdown()
+    wait_for_condition(check_dead)
+
+
 def test_detached_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
@@ -143,7 +259,7 @@ def test_detached_deployment(ray_cluster):
 
     # Create first job, check we can run a simple serve endpoint
     ray.init(head_node.address, namespace=SERVE_NAMESPACE)
-    first_job_id = ray.get_runtime_context().job_id
+    first_job_id = ray.get_runtime_context().get_job_id()
     serve.start(detached=True)
 
     @serve.deployment(route_prefix="/say_hi_f")
@@ -159,7 +275,7 @@ def test_detached_deployment(ray_cluster):
 
     # Create the second job, make sure we can still create new deployments.
     ray.init(head_node.address, namespace="serve")
-    assert ray.get_runtime_context().job_id != first_job_id
+    assert ray.get_runtime_context().get_job_id() != first_job_id
 
     @serve.deployment(route_prefix="/say_hi_g")
     def g(*args):
@@ -661,7 +777,7 @@ def test_recovering_controller_no_redeploy():
 
     serve.run(f.bind())
 
-    num_actors = len(list_actors(address))
+    num_actors = len(list_actors(address, filters=[("state", "=", "ALIVE")]))
     assert num_actors > 0
 
     pid = ray.get(client._controller.get_pid.remote())
@@ -673,7 +789,8 @@ def test_recovering_controller_no_redeploy():
     # Confirm that no new deployment is deployed over the next 5 seconds
     with pytest.raises(RuntimeError):
         wait_for_condition(
-            lambda: len(list_actors(address)) > num_actors,
+            lambda: len(list_actors(address, filters=[("state", "=", "ALIVE")]))
+            > num_actors,
             timeout=5,
         )
 
@@ -757,7 +874,7 @@ def test_run_graph_task_uses_zero_cpus():
 
     config = {"import_path": "ray.serve.tests.test_standalone.WaiterNode"}
     config = ServeApplicationSchema.parse_obj(config)
-    client.deploy_app(config)
+    client.deploy_apps(config)
 
     with pytest.raises(RuntimeError):
         wait_for_condition(lambda: ray.available_resources()["CPU"] < 1.9, timeout=5)

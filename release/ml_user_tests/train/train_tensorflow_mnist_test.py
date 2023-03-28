@@ -3,7 +3,7 @@ import os
 import time
 
 import ray
-from ray.train.examples.tensorflow_mnist_example import train_tensorflow_mnist
+from ray.train.examples.tf.tensorflow_mnist_example import train_tensorflow_mnist
 
 if __name__ == "__main__":
     start = time.time()

@@ -25,7 +25,7 @@ def test_allreduce_different_name(
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("array_size", [2, 2 ** 5, 2 ** 10, 2 ** 15, 2 ** 20])
+@pytest.mark.parametrize("array_size", [2, 2**5, 2**10, 2**15, 2**20])
 def test_allreduce_different_array_size(
     ray_start_distributed_2_nodes, array_size, backend
 ):

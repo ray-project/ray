@@ -190,6 +190,17 @@ class ReferenceCounter : public ReferenceCounterInterface,
                       const absl::optional<NodeID> &pinned_at_raylet_id =
                           absl::optional<NodeID>()) LOCKS_EXCLUDED(mutex_);
 
+  /// Add an owned object that was dynamically created. These are objects that
+  /// were created by a task that we called, but that we own.
+  ///
+  /// \param[in] object_id The ID of the object that we now own.
+  /// \param[in] generator_id The ID of the object that wraps the dynamically
+  /// created object ref. This should be an object that we own, and we will
+  /// update its ref count info to show that it contains the dynamically
+  /// created ObjectID.
+  void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id)
+      LOCKS_EXCLUDED(mutex_);
+
   /// Update the size of the object.
   ///
   /// \param[in] object_id The ID of the object.
@@ -214,6 +225,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Get the owner address of the given object.
   ///
+  /// Use `HasOwner` instead if the caller doesn't need to use owner_address for
+  /// performance.
+  ///
   /// \param[in] object_id The ID of the object to look up.
   /// \param[out] owner_address The address of the object owner.
   /// \return false if the object is out of scope or we do not yet have
@@ -221,6 +235,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// out of band.
   bool GetOwner(const ObjectID &object_id, rpc::Address *owner_address = nullptr) const
       LOCKS_EXCLUDED(mutex_);
+
+  /// Check if the object has an owner.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return if the object has an owner.
+  bool HasOwner(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner addresses of the given objects. The owner address
   /// must be registered for these objects.
@@ -734,6 +754,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
   using ReferenceProtoTable = absl::flat_hash_map<ObjectID, rpc::ObjectReferenceCount>;
+
+  bool AddOwnedObjectInternal(const ObjectID &object_id,
+                              const std::vector<ObjectID> &contained_ids,
+                              const rpc::Address &owner_address,
+                              const std::string &call_site,
+                              const int64_t object_size,
+                              bool is_reconstructable,
+                              bool add_local_ref,
+                              const absl::optional<NodeID> &pinned_at_raylet_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);

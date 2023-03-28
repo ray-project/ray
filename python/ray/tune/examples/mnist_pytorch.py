@@ -12,6 +12,7 @@ from torchvision import datasets, transforms
 import ray
 from ray import air, tune
 from ray.air import session
+from ray.train.torch import TorchCheckpoint
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 # Change these values if you want the training to run quicker or slower.
@@ -64,7 +65,7 @@ def test(model, data_loader, device=None):
     return correct / total
 
 
-def get_data_loaders():
+def get_data_loaders(batch_size=64):
     mnist_transforms = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
     )
@@ -77,20 +78,21 @@ def get_data_loaders():
             datasets.MNIST(
                 "~/data", train=True, download=True, transform=mnist_transforms
             ),
-            batch_size=64,
+            batch_size=batch_size,
             shuffle=True,
         )
         test_loader = torch.utils.data.DataLoader(
             datasets.MNIST(
                 "~/data", train=False, download=True, transform=mnist_transforms
             ),
-            batch_size=64,
+            batch_size=batch_size,
             shuffle=True,
         )
     return train_loader, test_loader
 
 
 def train_mnist(config):
+    should_checkpoint = config.get("should_checkpoint", False)
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     train_loader, test_loader = get_data_loaders()
@@ -103,8 +105,11 @@ def train_mnist(config):
     while True:
         train(model, optimizer, train_loader, device)
         acc = test(model, test_loader, device)
-        # Set this to run Tune.
-        session.report({"mean_accuracy": acc})
+        checkpoint = None
+        if should_checkpoint:
+            checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
+        # Report metrics (and possibly a checkpoint) to Tune
+        session.report({"mean_accuracy": acc}, checkpoint=checkpoint)
 
 
 if __name__ == "__main__":
@@ -115,25 +120,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--ray-address",
-        help="Address of Ray cluster for seamless distributed execution.",
-    )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     args, _ = parser.parse_known_args()
 
-    if args.server_address:
-        ray.init(f"ray://{args.server_address}")
-    elif args.ray_address:
-        ray.init(address=args.ray_address)
-    else:
-        ray.init(num_cpus=2 if args.smoke_test else None)
+    ray.init(num_cpus=2 if args.smoke_test else None)
 
     # for early stopping
     sched = AsyncHyperBandScheduler()

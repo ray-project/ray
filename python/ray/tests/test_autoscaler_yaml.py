@@ -15,11 +15,9 @@ from click.exceptions import ClickException
 
 import mock
 from ray._private.test_utils import load_test_config, recursive_fnmatch
-from ray._private import ray_constants
 from ray.autoscaler._private._azure.config import (
     _configure_key_pair as _azure_configure_key_pair,
 )
-from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 from ray.autoscaler._private.gcp import config as gcp_config
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private.util import (
@@ -28,24 +26,11 @@ from ray.autoscaler._private.util import (
     prepare_config,
     validate_config,
 )
-from ray.autoscaler._private._kubernetes.config import get_autodetected_resources
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 CONFIG_PATHS = recursive_fnmatch(os.path.join(RAY_PATH, "autoscaler"), "*.yaml")
 
 CONFIG_PATHS += recursive_fnmatch(os.path.join(RAY_PATH, "tune", "examples"), "*.yaml")
-
-
-def ignore_k8s_operator_configs(paths):
-    return [
-        path
-        for path in paths
-        if "kubernetes/operator_configs" not in path
-        and "kubernetes/job-example.yaml" not in path
-    ]
-
-
-CONFIG_PATHS = ignore_k8s_operator_configs(CONFIG_PATHS)
 
 EXPECTED_LOCAL_CONFIG_STR = """
 cluster_name: minimal-manual
@@ -92,7 +77,7 @@ def fake_fillout_available_node_types_resources(config: Dict[str, Any]) -> None:
     """A cheap way to fill out the resources field (the same way a node
     provider would autodetect them) as far as schema validation is concerned."""
     available_node_types = config.get("available_node_types", {})
-    for label, value in available_node_types.items():
+    for value in available_node_types.values():
         value["resources"] = value.get("resources", {"filler": 1})
 
 
@@ -115,10 +100,6 @@ class AutoscalingConfigTest(unittest.TestCase):
                 with open(config_path) as f:
                     config = yaml.safe_load(f)
                 config = prepare_config(config)
-                if config["provider"]["type"] == "kubernetes":
-                    KubernetesNodeProvider.fillout_available_node_types_resources(
-                        config
-                    )
                 if config["provider"]["type"] == "aws":
                     fake_fillout_available_node_types_resources(config)
                 validate_config(config)
@@ -173,16 +154,18 @@ class AutoscalingConfigTest(unittest.TestCase):
         expected_available_node_types["cpu_4_ondemand"]["resources"] = {"CPU": 4}
         expected_available_node_types["cpu_16_spot"]["resources"] = {
             "CPU": 16,
-            "memory": 41231686041,
+            "memory": 48103633715,
             "Custom1": 1,
             "is_spot": 1,
         }
         expected_available_node_types["gpu_8_ondemand"]["resources"] = {
             "CPU": 32,
-            "memory": 157195803033,
+            "memory": 183395103539,
             "GPU": 4,
             "accelerator_type:V100": 1,
         }
+        expected_available_node_types["cpu_16_spot"]["min_workers"] = 0
+        expected_available_node_types["gpu_8_ondemand"]["min_workers"] = 0
 
         boto3_dict = {
             "InstanceTypes": [
@@ -222,7 +205,9 @@ class AutoscalingConfigTest(unittest.TestCase):
                     new_config
                 )
                 validate_config(new_config)
-                expected_available_node_types == new_config["available_node_types"]
+                assert (
+                    expected_available_node_types == new_config["available_node_types"]
+                )
             except Exception:
                 self.fail("Config did not pass multi node types auto fill test!")
 
@@ -640,24 +625,6 @@ class AutoscalingConfigTest(unittest.TestCase):
         node_type["resources"] = {"CPU": "a string is not valid here"}
         with pytest.raises(jsonschema.exceptions.ValidationError):
             validate_config(config)
-
-    @pytest.mark.skipif(sys.platform.startswith("win"), reason="Fails on Windows.")
-    def test_k8s_get_autodetected_resources(self):
-        """Verify container requests are ignored when detected resource limits for the
-        Ray Operator.
-        """
-        sample_container = {
-            "resources": {
-                "limits": {"memory": "1G", "cpu": "2"},
-                "requests": {"memory": "512M", "cpu": "2"},
-            }
-        }
-        out = get_autodetected_resources(sample_container)
-        expected_memory = int(
-            2 ** 30 * (1 - ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
-        )
-        expected_out = {"CPU": 2, "memory": expected_memory, "GPU": 0}
-        assert out == expected_out
 
 
 if __name__ == "__main__":

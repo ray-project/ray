@@ -14,7 +14,7 @@ import {
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";
 import PercentageBar from "../../components/PercentageBar";
 import { SearchInput, SearchSelect } from "../../components/SearchComponent";
@@ -23,6 +23,7 @@ import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import { NodeDetail } from "../../type/node";
 import { memoryConverter } from "../../util/converter";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeList } from "./hook/useNodeList";
 import { NodeRows } from "./NodeRow";
 
@@ -40,6 +41,7 @@ const columns = [
   "State",
   "ID",
   "IP / PID",
+  "Actions",
   "CPU Usage",
   "Memory",
   "GPU",
@@ -48,7 +50,6 @@ const columns = [
   "Disk(root)",
   "Sent",
   "Received",
-  "Log",
 ];
 
 export const brpcLinkChanger = (href: string) => {
@@ -82,7 +83,7 @@ export const NodeCard = (props: { node: NodeDetail }) => {
   return (
     <Paper variant="outlined" style={{ padding: "12px 12px", margin: 12 }}>
       <p style={{ fontWeight: "bold", fontSize: 12, textDecoration: "none" }}>
-        <Link to={`node/${nodeId}`}>{nodeId}</Link>{" "}
+        <Link to={`nodes/${nodeId}`}>{nodeId}</Link>{" "}
       </p>
       <p>
         <Grid container spacing={1}>
@@ -145,7 +146,7 @@ export const NodeCard = (props: { node: NodeDetail }) => {
       <Grid container justify="flex-end" spacing={1} style={{ margin: 8 }}>
         <Grid>
           <Button>
-            <Link to={`/log/${encodeURIComponent(logUrl)}`}>log</Link>
+            <Link to={`/logs/${encodeURIComponent(logUrl)}`}>log</Link>
           </Button>
         </Grid>
       </Grid>
@@ -278,7 +279,7 @@ const Nodes = () => {
                     (page.pageNo - 1) * page.pageSize,
                     page.pageNo * page.pageSize,
                   )
-                  .map((node, i) => (
+                  .map((node) => (
                     <NodeRows
                       key={node.raylet.nodeId}
                       node={node}
@@ -306,6 +307,24 @@ const Nodes = () => {
         )}
       </TitleCard>
     </div>
+  );
+};
+
+/**
+ * Cluster page for the new IA
+ */
+export const ClusterMainPageLayout = () => {
+  return (
+    <React.Fragment>
+      <MainNavPageInfo
+        pageInfo={{
+          title: "Cluster",
+          id: "cluster",
+          path: "/cluster",
+        }}
+      />
+      <Outlet />
+    </React.Fragment>
   );
 };
 

@@ -3,7 +3,7 @@
 # __reproducible_start__
 import numpy as np
 from ray import tune
-from ray.air import session
+from ray.air import session, ScalingConfig
 
 
 def train(config):
@@ -92,6 +92,33 @@ if not MOCK:
     )
     tuner.fit()
     # __resources_pgf_end__
+
+    # __resources_scalingconfig_start__
+    tuner = tune.Tuner(
+        tune.with_resources(
+            train_fn,
+            resources=ScalingConfig(
+                trainer_resources={"CPU": 2, "GPU": 0.5, "hdd": 80},
+                num_workers=2,
+                resources_per_worker={"CPU": 1},
+            ),
+        )
+    )
+    tuner.fit()
+    # __resources_scalingconfig_end__
+
+    # __resources_lambda_start__
+    tuner = tune.Tuner(
+        tune.with_resources(
+            train_fn,
+            resources=lambda config: {"GPU": 1} if config["use_gpu"] else {"GPU": 0},
+        ),
+        param_space={
+            "use_gpu": True,
+        },
+    )
+    tuner.fit()
+    # __resources_lambda_end__
 
     metric = None
 
@@ -273,7 +300,11 @@ if not MOCK:
                 source=local_dir,
                 target=remote_dir,
             )
-            subprocess.check_call(cmd_str, shell=True)
+            try:
+                subprocess.check_call(cmd_str, shell=True)
+            except Exception as e:
+                print(f"Exception when syncing up {local_dir} to {remote_dir}: {e}")
+                return False
             return True
 
         def sync_down(
@@ -283,14 +314,22 @@ if not MOCK:
                 source=remote_dir,
                 target=local_dir,
             )
-            subprocess.check_call(cmd_str, shell=True)
+            try:
+                subprocess.check_call(cmd_str, shell=True)
+            except Exception as e:
+                print(f"Exception when syncing down {remote_dir} to {local_dir}: {e}")
+                return False
             return True
 
         def delete(self, remote_dir: str) -> bool:
             cmd_str = self.delete_template.format(
                 target=remote_dir,
             )
-            subprocess.check_call(cmd_str, shell=True)
+            try:
+                subprocess.check_call(cmd_str, shell=True)
+            except Exception as e:
+                print(f"Exception when deleting {remote_dir}: {e}")
+                return False
             return True
 
         def retry(self):
@@ -375,3 +414,92 @@ tuner = tune.Tuner(
     ),
 )
 # __grid_search_2_end__
+
+if not MOCK:
+    import os
+    from pathlib import Path
+
+    # __no_chdir_start__
+    def train_func(config):
+        # Read from relative paths
+        print(open("./read.txt").read())
+
+        # The working directory shouldn't have changed from the original
+        # NOTE: The `TUNE_ORIG_WORKING_DIR` environment variable is deprecated.
+        assert os.getcwd() == os.environ["TUNE_ORIG_WORKING_DIR"]
+
+        # Write to the Tune trial directory, not the shared working dir
+        tune_trial_dir = Path(session.get_trial_dir())
+        with open(tune_trial_dir / "write.txt", "w") as f:
+            f.write("trial saved artifact")
+
+    tuner = tune.Tuner(
+        train_func,
+        tune_config=tune.TuneConfig(..., chdir_to_trial_dir=False),
+    )
+    tuner.fit()
+    # __no_chdir_end__
+
+
+# __iter_experimentation_initial_start__
+from ray import air, tune
+from ray.air import Checkpoint, session
+import random
+
+
+def trainable(config):
+    for epoch in range(1, config["num_epochs"]):
+        # Do some training...
+
+        session.report(
+            {"score": random.random()},
+            checkpoint=Checkpoint.from_dict({"model_state_dict": {"x": 1}}),
+        )
+
+
+tuner = tune.Tuner(
+    trainable,
+    param_space={"num_epochs": 10, "hyperparam": tune.grid_search([1, 2, 3])},
+    tune_config=tune.TuneConfig(metric="score", mode="max"),
+)
+result_grid = tuner.fit()
+
+best_result = result_grid.get_best_result()
+best_checkpoint = best_result.checkpoint
+# __iter_experimentation_initial_end__
+
+
+# __iter_experimentation_resume_start__
+import ray
+
+
+def trainable(config):
+    # Add logic to handle the initial checkpoint.
+    checkpoint_ref = config["start_from_checkpoint"]
+    checkpoint: Checkpoint = ray.get(checkpoint_ref)
+    model_state_dict = checkpoint.to_dict()["model_state_dict"]
+    # Initialize a model from the checkpoint...
+
+    for epoch in range(1, config["num_epochs"]):
+        # Do some training...
+
+        session.report(
+            {"score": random.random()},
+            checkpoint=Checkpoint.from_dict({"model_state_dict": {"x": 1}}),
+        )
+
+
+new_tuner = tune.Tuner(
+    trainable,
+    param_space={
+        "num_epochs": 10,
+        "hyperparam": tune.grid_search([4, 5, 6]),
+        # Put the best checkpoint from above into the object store.
+        # This way, all trials will be able to access the checkpoint,
+        # regardless of which node they are on.
+        "start_from_checkpoint": ray.put(best_checkpoint),
+    },
+    tune_config=tune.TuneConfig(metric="score", mode="max"),
+)
+result_grid = new_tuner.fit()
+# __iter_experimentation_resume_end__

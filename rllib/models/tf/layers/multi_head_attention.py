@@ -40,7 +40,7 @@ class MultiHeadAttention(tf.keras.layers.Layer if tf else object):
         values = tf.reshape(values, [-1, L, H, D])
 
         score = tf.einsum("bihd,bjhd->bijh", queries, keys)
-        score = score / D ** 0.5
+        score = score / D**0.5
 
         # causal mask of the same length as the sequence
         mask = tf.sequence_mask(tf.range(1, L + 1), dtype=score.dtype)

@@ -1,16 +1,20 @@
+from typing import Dict, Any, List
+import numpy as np
+import math
+
+from ray.data import Dataset
+
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
-from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
+from ray.rllib.offline.offline_evaluation_utils import compute_is_weights
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import SampleBatchType
-import numpy as np
-from typing import Dict, Any
 
 
 @DeveloperAPI
 class WeightedImportanceSampling(OffPolicyEstimator):
-    """The step-wise WIS estimator.
+    r"""The step-wise WIS estimator.
 
     Let s_t, a_t, and r_t be the state, action, and reward at timestep t.
 
@@ -28,73 +32,147 @@ class WeightedImportanceSampling(OffPolicyEstimator):
     For more information refer to https://arxiv.org/pdf/1911.06854.pdf"""
 
     @override(OffPolicyEstimator)
-    def __init__(self, policy: Policy, gamma: float):
-        super().__init__(policy, gamma)
-        self.filter_values = []
-        self.filter_counts = []
+    def __init__(self, policy: Policy, gamma: float, epsilon_greedy: float = 0.0):
+        super().__init__(policy, gamma, epsilon_greedy)
+        # map from time to cummulative propensity values
+        self.cummulative_ips_values = []
+        # map from time to number of episodes that reached this time
+        self.episode_timestep_count = []
+        # map from eps id to mapping from time to propensity values
+        self.p = {}
 
     @override(OffPolicyEstimator)
-    def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
-        """Compute off-policy estimates.
+    def estimate_on_single_episode(self, episode: SampleBatch) -> Dict[str, Any]:
+        estimates_per_epsiode = {}
+        rewards = episode["rewards"]
+
+        eps_id = episode[SampleBatch.EPS_ID][0]
+        if eps_id not in self.p:
+            raise ValueError(
+                f"Cannot find target weight for episode {eps_id}. "
+                f"Did it go though the peek_on_single_episode() function?"
+            )
+
+        # calculate stepwise weighted IS estimate
+        v_behavior = 0.0
+        v_target = 0.0
+        episode_p = self.p[eps_id]
+        for t in range(episode.count):
+            v_behavior += rewards[t] * self.gamma**t
+            w_t = self.cummulative_ips_values[t] / self.episode_timestep_count[t]
+            v_target += episode_p[t] / w_t * rewards[t] * self.gamma**t
+
+        estimates_per_epsiode["v_behavior"] = v_behavior
+        estimates_per_epsiode["v_target"] = v_target
+
+        return estimates_per_epsiode
+
+    @override(OffPolicyEstimator)
+    def estimate_on_single_step_samples(
+        self, batch: SampleBatch
+    ) -> Dict[str, List[float]]:
+        estimates_per_epsiode = {}
+        rewards, old_prob = batch["rewards"], batch["action_prob"]
+        new_prob = self.compute_action_probs(batch)
+
+        weights = new_prob / old_prob
+        v_behavior = rewards
+        v_target = weights * rewards / np.mean(weights)
+
+        estimates_per_epsiode["v_behavior"] = v_behavior
+        estimates_per_epsiode["v_target"] = v_target
+        estimates_per_epsiode["weights"] = weights
+        estimates_per_epsiode["new_prob"] = new_prob
+        estimates_per_epsiode["old_prob"] = old_prob
+
+        return estimates_per_epsiode
+
+    @override(OffPolicyEstimator)
+    def on_before_split_batch_by_episode(
+        self, sample_batch: SampleBatch
+    ) -> SampleBatch:
+        self.cummulative_ips_values = []
+        self.episode_timestep_count = []
+        self.p = {}
+
+        return sample_batch
+
+    @override(OffPolicyEstimator)
+    def peek_on_single_episode(self, episode: SampleBatch) -> None:
+        old_prob = episode["action_prob"]
+        new_prob = self.compute_action_probs(episode)
+
+        # calculate importance ratios
+        episode_p = []
+        for t in range(episode.count):
+            if t == 0:
+                pt_prev = 1.0
+            else:
+                pt_prev = episode_p[t - 1]
+            episode_p.append(pt_prev * new_prob[t] / old_prob[t])
+
+        for t, p_t in enumerate(episode_p):
+            if t >= len(self.cummulative_ips_values):
+                self.cummulative_ips_values.append(p_t)
+                self.episode_timestep_count.append(1.0)
+            else:
+                self.cummulative_ips_values[t] += p_t
+                self.episode_timestep_count[t] += 1.0
+
+        eps_id = episode[SampleBatch.EPS_ID][0]
+        if eps_id in self.p:
+            raise ValueError(
+                f"eps_id {eps_id} was already passed to the peek function. "
+                f"Make sure dataset contains only unique episodes with unique ids."
+            )
+        self.p[eps_id] = episode_p
+
+    @override(OfflineEvaluator)
+    def estimate_on_dataset(
+        self, dataset: Dataset, *, n_parallelism: int = ...
+    ) -> Dict[str, Any]:
+        """Computes the weighted importance sampling estimate on a dataset.
+
+        Note: This estimate works for both continuous and discrete action spaces.
 
         Args:
-            batch: The SampleBatch to run off-policy estimation on
+            dataset: Dataset to compute the estimate on. Each record in dataset should
+                include the following columns: `obs`, `actions`, `action_prob` and
+                `rewards`. The `obs` on each row shoud be a vector of D dimensions.
+            n_parallelism: Number of parallel workers to use for the computation.
 
         Returns:
-            A dict consists of the following metrics:
-            - v_behavior: The discounted return averaged over episodes in the batch
-            - v_behavior_std: The standard deviation corresponding to v_behavior
-            - v_target: The estimated discounted return for `self.policy`,
-            averaged over episodes in the batch
-            - v_target_std: The standard deviation corresponding to v_target
-            - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes
-            - v_gain_std: The standard deviation corresponding to v_gain
-            - v_delta: The difference between v_target and v_behavior.
+            Dictionary with the following keys:
+                v_target: The weighted importance sampling estimate.
+                v_behavior: The behavior policy estimate.
+                v_gain_mean: The mean of the gain of the target policy over the
+                    behavior policy.
+                v_gain_ste: The standard error of the gain of the target policy over
+                    the behavior policy.
         """
-        batch = self.convert_ma_batch_to_sample_batch(batch)
-        self.check_action_prob_in_batch(batch)
-        estimates_per_epsiode = {"v_behavior": [], "v_target": []}
-        for episode in batch.split_by_episode():
-            rewards, old_prob = episode["rewards"], episode["action_prob"]
-            log_likelihoods = compute_log_likelihoods_from_input_dict(
-                self.policy, episode
-            )
-            new_prob = np.exp(convert_to_numpy(log_likelihoods))
+        # compute the weights and weighted rewards
+        batch_size = max(dataset.count() // n_parallelism, 1)
+        updated_ds = dataset.map_batches(
+            compute_is_weights,
+            batch_size=batch_size,
+            fn_kwargs={
+                "policy_state": self.policy.get_state(),
+                "estimator_class": self.__class__,
+            },
+        )
+        v_target = updated_ds.mean("weighted_rewards") / updated_ds.mean("weights")
+        v_behavior = updated_ds.mean("rewards")
+        v_gain_mean = v_target / v_behavior
+        v_gain_ste = (
+            updated_ds.std("weighted_rewards")
+            / updated_ds.mean("weights")
+            / v_behavior
+            / math.sqrt(dataset.count())
+        )
 
-            # calculate importance ratios
-            p = []
-            for t in range(episode.count):
-                if t == 0:
-                    pt_prev = 1.0
-                else:
-                    pt_prev = p[t - 1]
-                p.append(pt_prev * new_prob[t] / old_prob[t])
-            for t, v in enumerate(p):
-                if t >= len(self.filter_values):
-                    self.filter_values.append(v)
-                    self.filter_counts.append(1.0)
-                else:
-                    self.filter_values[t] += v
-                    self.filter_counts[t] += 1.0
-
-            # calculate stepwise weighted IS estimate
-            v_behavior = 0.0
-            v_target = 0.0
-            for t in range(episode.count):
-                v_behavior += rewards[t] * self.gamma ** t
-                w_t = self.filter_values[t] / self.filter_counts[t]
-                v_target += p[t] / w_t * rewards[t] * self.gamma ** t
-
-            estimates_per_epsiode["v_behavior"].append(v_behavior)
-            estimates_per_epsiode["v_target"].append(v_target)
-
-        estimates = {
-            "v_behavior": np.mean(estimates_per_epsiode["v_behavior"]),
-            "v_behavior_std": np.std(estimates_per_epsiode["v_behavior"]),
-            "v_target": np.mean(estimates_per_epsiode["v_target"]),
-            "v_target_std": np.std(estimates_per_epsiode["v_target"]),
+        return {
+            "v_target": v_target,
+            "v_behavior": v_behavior,
+            "v_gain_mean": v_gain_mean,
+            "v_gain_ste": v_gain_ste,
         }
-        estimates["v_gain"] = estimates["v_target"] / max(estimates["v_behavior"], 1e-8)
-        estimates["v_delta"] = estimates["v_target"] - estimates["v_behavior"]
-
-        return estimates

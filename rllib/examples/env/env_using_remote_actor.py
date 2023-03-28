@@ -3,8 +3,8 @@ Example of an environment that uses a named remote actor as parameter
 server.
 
 """
-from gym.envs.classic_control.cartpole import CartPoleEnv
-from gym.utils import seeding
+from gymnasium.envs.classic_control.cartpole import CartPoleEnv
+from gymnasium.utils import seeding
 
 import ray
 
@@ -28,18 +28,14 @@ class CartPoleWithRemoteParamServer(CartPoleEnv):
         self.rng_seed = None
         self.np_random, _ = seeding.np_random(self.rng_seed)
 
-    def seed(self, rng_seed: int = None):
-        if not rng_seed:
-            return
+    def reset(self, *, seed=None, options=None):
+        if seed is not None:
+            self.rng_seed = int(seed)
+            self.np_random, _ = seeding.np_random(seed)
+            print(
+                f"Seeding env (worker={self.env_config.worker_index}) " f"with {seed}"
+            )
 
-        print(
-            f"Seeding env (worker={self.env_config.worker_index}) " f"with {rng_seed}"
-        )
-
-        self.rng_seed = rng_seed
-        self.np_random, _ = seeding.np_random(rng_seed)
-
-    def reset(self):
         # Pass in our RNG to guarantee no race conditions.
         # If `self._handler` had its own RNG, this may clash with other
         # envs trying to use the same param-server.
@@ -50,8 +46,8 @@ class CartPoleWithRemoteParamServer(CartPoleEnv):
         # Or create a new RNG from another random number:
         # Seed the RNG with a deterministic seed if set, otherwise, create
         # a random one.
-        new_seed = (
-            self.np_random.randint(0, 1000000) if not self.rng_seed else self.rng_seed
+        new_seed = int(
+            self.np_random.integers(0, 1000000) if not self.rng_seed else self.rng_seed
         )
         self.np_random, _ = seeding.np_random(new_seed)
 

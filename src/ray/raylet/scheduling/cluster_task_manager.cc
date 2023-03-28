@@ -77,9 +77,60 @@ void ReplyCancelled(const internal::Work &work,
 }
 }  // namespace
 
+bool ClusterTaskManager::CancelAllTaskOwnedBy(
+    const WorkerID &worker_id,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+    const std::string &scheduling_failure_message) {
+  // Only tasks and regular actors are canceled because their lifetime is
+  // the same as the owner.
+  auto shapes_it = tasks_to_schedule_.begin();
+  while (shapes_it != tasks_to_schedule_.end()) {
+    auto &work_queue = shapes_it->second;
+    auto work_it = work_queue.begin();
+    while (work_it != work_queue.end()) {
+      const auto &task = (*work_it)->task;
+      const auto &spec = task.GetTaskSpecification();
+      if (!spec.IsDetachedActor() && spec.CallerWorkerId() == worker_id) {
+        ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
+        work_it = work_queue.erase(work_it);
+      } else {
+        ++work_it;
+      }
+    }
+    if (work_queue.empty()) {
+      tasks_to_schedule_.erase(shapes_it++);
+    } else {
+      ++shapes_it;
+    }
+  }
+
+  shapes_it = infeasible_tasks_.begin();
+  while (shapes_it != infeasible_tasks_.end()) {
+    auto &work_queue = shapes_it->second;
+    auto work_it = work_queue.begin();
+    while (work_it != work_queue.end()) {
+      const auto &task = (*work_it)->task;
+      const auto &spec = task.GetTaskSpecification();
+      if (!spec.IsDetachedActor() && spec.CallerWorkerId() == worker_id) {
+        ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
+        work_it = work_queue.erase(work_it);
+      } else {
+        ++work_it;
+      }
+    }
+    if (work_queue.empty()) {
+      infeasible_tasks_.erase(shapes_it++);
+    } else {
+      ++shapes_it;
+    }
+  }
+  return true;
+}
+
 void ClusterTaskManager::ScheduleAndDispatchTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryScheduleInfeasibleTask();
+  std::deque<std::shared_ptr<internal::Work>> works_to_cancel;
   for (auto shapes_it = tasks_to_schedule_.begin();
        shapes_it != tasks_to_schedule_.end();) {
     auto &work_queue = shapes_it->second;
@@ -96,7 +147,8 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
                      << task.GetTaskSpecification().TaskId();
       auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
           task.GetTaskSpecification(),
-          work->PrioritizeLocalNode(),
+          /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
+                                                            : task.GetPreferredNodeID(),
           /*exclude_local_node*/ false,
           /*requires_object_store_memory*/ false,
           &is_infeasible);
@@ -112,14 +164,23 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
             !task.GetTaskSpecification().GetNodeAffinitySchedulingStrategySoft()) {
           // This can only happen if the target node doesn't exist or is infeasible.
           // The task will never be schedulable in either case so we should fail it.
-          ReplyCancelled(
-              *work,
-              rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
-              "The node specified via NodeAffinitySchedulingStrategy doesn't exist "
-              "any more or is infeasible, and soft=False was specified.");
-          // We don't want to trigger the normal infeasible task logic (i.e. waiting),
-          // but rather we want to fail the task immediately.
-          work_it = work_queue.erase(work_it);
+          if (cluster_resource_scheduler_->IsLocalNodeWithRaylet()) {
+            ReplyCancelled(
+                *work,
+                rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+                "The node specified via NodeAffinitySchedulingStrategy doesn't exist "
+                "any more or is infeasible, and soft=False was specified.");
+            // We don't want to trigger the normal infeasible task logic (i.e. waiting),
+            // but rather we want to fail the task immediately.
+            work_it = work_queue.erase(work_it);
+          } else {
+            // If scheduling is done by gcs, we can not `ReplyCancelled` now because it
+            // would synchronously call `ClusterTaskManager::CancelTask`, where
+            // `task_to_schedule_`'s iterator will be invalidated. So record this work and
+            // it will be handled below (out of the loop).
+            works_to_cancel.push_back(*work_it);
+            work_it++;
+          }
           is_infeasible = false;
           continue;
         }
@@ -151,6 +212,18 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       shapes_it++;
     }
   }
+
+  for (const auto &work : works_to_cancel) {
+    // All works in `works_to_cancel` are scheduled by gcs. So `ReplyCancelled`
+    // will synchronously call `ClusterTaskManager::CancelTask`, where works are
+    // erased from the pending queue.
+    ReplyCancelled(*work,
+                   rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+                   "The node specified via NodeAffinitySchedulingStrategy doesn't exist "
+                   "any more or is infeasible, and soft=False was specified.");
+  }
+  works_to_cancel.clear();
+
   local_task_manager_->ScheduleAndDispatchTasks();
 }
 
@@ -169,7 +242,8 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
     bool is_infeasible;
     cluster_resource_scheduler_->GetBestSchedulableNode(
         task.GetTaskSpecification(),
-        work->PrioritizeLocalNode(),
+        /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
+                                                          : task.GetPreferredNodeID(),
         /*exclude_local_node*/ false,
         /*requires_object_store_memory*/ false,
         &is_infeasible);
@@ -234,8 +308,42 @@ bool ClusterTaskManager::CancelTask(
       task_id, failure_type, scheduling_failure_message);
 }
 
-void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
-  scheduler_resource_reporter_.FillPendingActorInfo(reply);
+void ClusterTaskManager::CancelTaskForOwner(
+    const TaskID &owner_task_id,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+    const std::string &scheduling_failure_message) {
+  std::function<bool(std::shared_ptr<internal::Work>)> filter(
+      [owner_task_id, failure_type, scheduling_failure_message](
+          std::shared_ptr<internal::Work> work) {
+        auto task = work->task;
+        if (task.GetTaskSpecification().ParentTaskId() == owner_task_id) {
+          if (!task.GetTaskSpecification().IsDetachedActor()) {
+            RAY_LOG(DEBUG) << "Canceling task from owner " << owner_task_id
+                           << " for task " << task.GetTaskSpecification().DebugString();
+            ReplyCancelled(*work, failure_type, scheduling_failure_message);
+            return true;
+          }
+        }
+        return false;
+      });
+
+  for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
+       shapes_it++) {
+    auto &work_queue = shapes_it->second;
+    remove_elements(filter, work_queue);
+    if (work_queue.empty()) {
+      tasks_to_schedule_.erase(shapes_it);
+    }
+  }
+
+  for (auto shapes_it = infeasible_tasks_.begin(); shapes_it != infeasible_tasks_.end();
+       shapes_it++) {
+    auto &work_queue = shapes_it->second;
+    remove_elements(filter, work_queue);
+    if (work_queue.empty()) {
+      infeasible_tasks_.erase(shapes_it);
+    }
+  }
 }
 
 void ClusterTaskManager::FillResourceUsage(
@@ -295,7 +403,10 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
   return *any_pending;
 }
 
-void ClusterTaskManager::RecordMetrics() const { internal_stats_.RecordMetrics(); }
+void ClusterTaskManager::RecordMetrics() const {
+  internal_stats_.RecordMetrics();
+  cluster_resource_scheduler_->GetLocalResourceManager().RecordMetrics();
+}
 
 std::string ClusterTaskManager::DebugStr() const {
   return internal_stats_.ComputeAndReportDebugStr();
