@@ -108,6 +108,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     rpc::DrainAndResetServerCallExecutor();
     server_io_service_thread_->join();
     gcs_server_->Stop();
+    gcs_server_.reset();
     if (!no_redis_) {
       TestSetupUtil::FlushAllRedisServers();
     }

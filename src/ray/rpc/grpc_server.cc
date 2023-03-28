@@ -49,14 +49,9 @@ GrpcServer::GrpcServer(std::string name,
   grpc::channelz::experimental::InitChannelzService();
 }
 
-void GrpcServer::Shutdown(bool drain_traffic) {
+void GrpcServer::Shutdown(size_t timeout_s) {
   if (!is_closed_) {
-    if (drain_traffic) {
-      server_->Shutdown();
-    } else {
-      server_->Shutdown(gpr_now(GPR_CLOCK_REALTIME));
-    }
-
+    server_->Shutdown(gpr_time_from_seconds(timeout_s, GPR_CLOCK_MONOTONIC));
     for (const auto &cq : cqs_) {
       cq->Shutdown();
     }

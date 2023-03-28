@@ -226,7 +226,7 @@ void GcsServer::Stop() {
     pubsub_handler_.reset();
 
     // Shutdown the rpc server
-    rpc_server_.Shutdown(/* drain_traffic */ true);
+    rpc_server_.Shutdown(/* timeout_s */ 5);
 
     kv_manager_.reset();
 
