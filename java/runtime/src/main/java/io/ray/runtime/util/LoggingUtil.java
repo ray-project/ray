@@ -79,8 +79,12 @@ public class LoggingUtil {
       RootLoggerComponentBuilder rootLoggerBuilder = globalConfigBuilder.newAsyncRootLogger(level);
       rootLoggerBuilder.addAttribute("RingBufferSize", "1048576");
       final String javaWorkerLogName = "JavaWorkerLogToRollingFile";
-      String logFileName = rayConfig.getInternalConfig().getString("ray.logging.file-prefix")
-        + "-" + jobIdHex + "-" + SystemUtil.pid();
+      String logFileName =
+          rayConfig.getInternalConfig().getString("ray.logging.file-prefix")
+              + "-"
+              + jobIdHex
+              + "-"
+              + SystemUtil.pid();
       setupLogger(
           globalConfigBuilder,
           rayConfig.logDir,
