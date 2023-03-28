@@ -21,6 +21,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
 
 
@@ -166,6 +167,8 @@ class OpState:
         queued = self.num_queued() + self.op.internal_queue_size()
         active = self.op.num_active_work_refs()
         desc = f"{self.op.name}: {active} active, {queued} queued"
+        mem = memory_string(self.op.current_resource_usage().object_store_memory or 0)
+        desc += f", {mem} objects"
         suffix = self.op.progress_str()
         if suffix:
             desc += f", {suffix}"
@@ -465,6 +468,15 @@ def _execution_allowed(
         object_store_memory=global_usage.overall.object_store_memory,
     )
     inc = op.incremental_resource_usage()
+    if inc.cpu and inc.gpu:
+        raise NotImplementedError(
+            "Operator incremental resource usage cannot specify both CPU "
+            "and GPU at the same time, since it may cause deadlock."
+        )
+    elif inc.object_store_memory:
+        raise NotImplementedError(
+            "Operator incremental resource usage must not include memory."
+        )
     inc_indicator = ExecutionResources(
         cpu=1 if inc.cpu else 0,
         gpu=1 if inc.gpu else 0,

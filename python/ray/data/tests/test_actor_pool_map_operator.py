@@ -103,18 +103,6 @@ class TestActorPool:
         # Check that the 3rd pick doesn't return the actor.
         assert pool.pick_actor() is None
 
-    def test_pick_max_tasks_in_flight_with_rampup(self, ray_start_regular_shared):
-        # Test that max_tasks_in_flight starts at 1, and ramps up after meeting
-        # the threshold.
-        pool = _ActorPool(max_tasks_in_flight=2, max_tasks_rampup_threshold=2)
-        actor = self._add_ready_worker(pool)
-        assert pool.pick_actor() == actor
-        assert pool.pick_actor() is None
-        actor2 = self._add_ready_worker(pool)
-        # Actors can be selected again after ramping up.
-        assert pool.pick_actor() == actor2
-        assert pool.pick_actor() in [actor, actor2]
-
     def test_pick_ordering_lone_idle(self, ray_start_regular_shared):
         # Test that a lone idle actor is the one that's picked.
         pool = _ActorPool()
