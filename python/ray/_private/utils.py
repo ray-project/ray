@@ -24,7 +24,17 @@ import warnings
 from inspect import signature
 from pathlib import Path
 from subprocess import list2cmdline
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union, Coroutine
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    Coroutine,
+    List,
+)
 
 import grpc
 import numpy as np
@@ -1271,9 +1281,7 @@ def get_wheel_filename(
     assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
 
     py_version_str = "".join(map(str, py_version))
-    if py_version_str in ["36", "37"]:
-        darwin_os_string = "macosx_10_15_intel"
-    elif py_version_str in ["38", "39"]:
+    if py_version_str in ["36", "37", "38", "39"]:
         darwin_os_string = "macosx_10_15_x86_64"
     else:
         darwin_os_string = "macosx_10_15_universal2"
@@ -1912,3 +1920,15 @@ def run_background_task(coroutine: Coroutine) -> asyncio.Task:
     # completion:
     task.add_done_callback(background_tasks.discard)
     return task
+
+
+def try_import_each_module(module_names_to_import: List[str]) -> None:
+    """
+    Make a best-effort attempt to import each named Python module.
+    This is used by the Python default_worker.py to preload modules.
+    """
+    for module_to_preload in module_names_to_import:
+        try:
+            importlib.import_module(module_to_preload)
+        except ImportError:
+            logger.exception(f'Failed to preload the module "{module_to_preload}"')
