@@ -1753,6 +1753,14 @@
 
   alert: long_running_tests
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
+
 - name: long_running_apex
   group: Long running tests
   working_dir: long_running_tests
@@ -1779,6 +1787,14 @@
 
   alert: long_running_tests
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: ../rllib_tests/app_config.yaml
+        cluster_compute: tpl_cpu_3_gce.yaml
+
 - name: long_running_impala
   group: Long running tests
   working_dir: long_running_tests
@@ -1801,6 +1817,14 @@
       timeout: 3600
 
   alert: long_running_tests
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: ../rllib_tests/app_config.yaml
+        cluster_compute: tpl_cpu_1_large_gce.yaml
 
 - name: long_running_many_actor_tasks
   group: Long running tests
@@ -1825,6 +1849,14 @@
 
   alert: long_running_tests
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
+
 - name: long_running_many_drivers
   group: Long running tests
   working_dir: long_running_tests
@@ -1847,6 +1879,14 @@
       timeout: 3600
 
   alert: long_running_tests
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_ppo
   group: Long running tests
@@ -1876,6 +1916,14 @@
 
   alert: long_running_tests
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: ../rllib_tests/app_config.yaml
+        cluster_compute: many_ppo_gce.yaml
+
 - name: long_running_many_tasks
   group: Long running tests
   working_dir: long_running_tests
@@ -1898,6 +1946,14 @@
       timeout: 3600
 
   alert: long_running_tests
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_tasks_serialized_ids
   group: Long running tests
@@ -1922,6 +1978,14 @@
 
   alert: long_running_tests
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
+
 - name: long_running_node_failures
   group: Long running tests
   working_dir: long_running_tests
@@ -1944,6 +2008,14 @@
       timeout: 3600
 
   alert: long_running_tests
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_pbt
   group: Long running tests
@@ -1968,6 +2040,14 @@
 
   alert: long_running_tests
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: ../rllib_tests/app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
+
 - name: long_running_serve
   group: Long running tests
   working_dir: long_running_tests
@@ -1990,6 +2070,14 @@
       timeout: 3600
 
   alert: long_running_tests
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve_failure
   group: Long running tests
@@ -2019,6 +2107,14 @@
 
   alert: long_running_tests
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_c5_gce.yaml
+
 - name: long_running_many_jobs
   group: Long running tests
   working_dir: long_running_tests
@@ -2044,6 +2140,14 @@
 
   alert: long_running_tests
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
+
 - name: long_running_distributed_pytorch_pbt_failure
   group: Long running tests
   working_dir: long_running_distributed_tests
@@ -2065,6 +2169,14 @@
       timeout: 3600
 
   alert: long_running_tests
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce.yaml
 
 ########################
 # Jobs tests
@@ -3175,6 +3287,14 @@
 
   alert: default
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml 
+
 - name: rllib_multi_gpu_with_lstm_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
@@ -3193,6 +3313,14 @@
 
   alert: default
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml 
+
 - name: rllib_multi_gpu_with_attention_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
@@ -3210,6 +3338,14 @@
 
 
   alert: default
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml 
 
 - name: rllib_stress_tests
   group: RLlib tests
@@ -3238,6 +3374,14 @@
       timeout: 2000
 
   alert: default
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 4gpus_544_cpus_gce.yaml 
 
 ########################
 # Core Nightly Tests
