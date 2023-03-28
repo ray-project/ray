@@ -63,7 +63,7 @@ def _multi_action_dist_partial_helper(
         )
 
         multi_action_dist_cls = TorchMultiDistribution
-    elif framework == "tf":
+    elif framework == "tf2":
         from ray.rllib.models.tf.tf_distributions import TfMultiDistribution
 
         multi_action_dist_cls = TfMultiDistribution
@@ -98,7 +98,7 @@ def _multi_categorical_dist_partial_helper(
         from ray.rllib.models.torch.torch_distributions import TorchMultiCategorical
 
         multi_categorical_dist_cls = TorchMultiCategorical
-    elif framework == "tf":
+    elif framework == "tf2":
         from ray.rllib.models.tf.tf_distributions import TfMultiCategorical
 
         multi_categorical_dist_cls = TfMultiCategorical
@@ -238,7 +238,7 @@ class Catalog:
         By default this method builds an encoder instance from Catalog.encoder_config.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The encoder.
@@ -255,11 +255,11 @@ class Catalog:
 
         The default behavior is to get the action distribution from the
         `Catalog.action_dist_class_fn`. This can be overridden to build a custom action
-        distribution as a means of configuring the behavior of a PPORLModuleBase
+        distribution as a means of configuring the behavior of a RLModule
         implementation.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The action distribution.
@@ -455,7 +455,7 @@ class Catalog:
                 DistEnum.DiagGaussian: TorchDiagGaussian,
                 DistEnum.Categorical: TorchCategorical,
             }
-        elif framework == "tf":
+        elif framework == "tf2":
             from ray.rllib.models.tf.tf_distributions import (
                 TfCategorical,
                 TfDeterministic,

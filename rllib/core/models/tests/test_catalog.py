@@ -57,7 +57,7 @@ class TestCatalog(unittest.TestCase):
             input_space: The input space to use.
         """
         convert_method = (
-            tf.convert_to_tensor if framework == "tf" else convert_to_torch_tensor
+            tf.convert_to_tensor if framework == "tf2" else convert_to_torch_tensor
         )
         # In order to stay backward compatible, we default to fcnet_hiddens[-1].
         # See MODEL_DEFAULTS for more details
@@ -160,7 +160,7 @@ class TestCatalog(unittest.TestCase):
             # }
         ]
 
-        frameworks = ["tf", "torch"]
+        frameworks = ["tf2", "torch"]
 
         # First check if encoders can be created for non-composite spaces
         print("Testing encoders for non-composite input spaces...")
@@ -172,7 +172,7 @@ class TestCatalog(unittest.TestCase):
         for config in itertools.product(*config_combinations):
             framework, input_space_and_config_type, model_config_dict = config
             input_space, model_config_type = input_space_and_config_type
-            if model_config_type is not MLPEncoderConfig and framework == "tf":
+            if model_config_type is not MLPEncoderConfig and framework == "tf2":
                 # TODO (Artur): Enable this once we have TF implementations
                 continue
             print(
@@ -217,10 +217,10 @@ class TestCatalog(unittest.TestCase):
             # Box
             TestConfig(
                 Box(-np.inf, np.inf, (7,), dtype=np.float32),
-                {"torch": TorchDiagGaussian, "tf": TfDiagGaussian},
+                {"torch": TorchDiagGaussian, "tf2": TfDiagGaussian},
             ),
             # Discrete
-            TestConfig(Discrete(5), {"torch": TorchCategorical, "tf": TfCategorical}),
+            TestConfig(Discrete(5), {"torch": TorchCategorical, "tf2": TfCategorical}),
             # Nested Dict
             TestConfig(
                 Dict(
@@ -231,7 +231,7 @@ class TestCatalog(unittest.TestCase):
                 ),
                 {
                     "torch": TorchMultiDistribution,
-                    "tf": TfMultiDistribution,
+                    "tf2": TfMultiDistribution,
                 },
             ),
             # Nested Tuple
@@ -244,7 +244,7 @@ class TestCatalog(unittest.TestCase):
                 ),
                 {
                     "torch": TorchMultiDistribution,
-                    "tf": TfMultiDistribution,
+                    "tf2": TfMultiDistribution,
                 },
             ),
             # Tuple nested inside Dict
@@ -266,7 +266,7 @@ class TestCatalog(unittest.TestCase):
                 ),
                 {
                     "torch": TorchMultiDistribution,
-                    "tf": TfMultiDistribution,
+                    "tf2": TfMultiDistribution,
                 },
             ),
             # Dict nested inside Tuple
@@ -291,13 +291,13 @@ class TestCatalog(unittest.TestCase):
                 ),
                 {
                     "torch": TorchMultiDistribution,
-                    "tf": TfMultiDistribution,
+                    "tf2": TfMultiDistribution,
                 },
             ),
             # MultiDiscrete
             TestConfig(
                 MultiDiscrete([5, 5, 5]),
-                {"torch": TorchMultiCategorical, "tf": TfMultiCategorical},
+                {"torch": TorchMultiCategorical, "tf2": TfMultiCategorical},
             ),
         ]
 
@@ -315,7 +315,7 @@ class TestCatalog(unittest.TestCase):
             for framework in framework_iterator(frameworks=["tf2", "torch"]):
 
                 if framework == "tf2":
-                    framework = "tf"
+                    framework = "tf2"
 
                 dist_cls = catalog.get_dist_cls_from_action_space(
                     action_space=action_space,
