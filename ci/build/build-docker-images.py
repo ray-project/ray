@@ -710,6 +710,7 @@ BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
 @click.command()
 @click.option(
     "--py-versions",
+    "-V",
     default=["py37"],
     type=click.Choice(list(PY_MATRIX.keys())),
     multiple=True,
@@ -718,6 +719,7 @@ BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
 )
 @click.option(
     "--device-types",
+    "-T",
     default=[],
     type=click.Choice(list(BASE_IMAGES.keys())),
     multiple=True,
@@ -746,17 +748,21 @@ BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
     help="Whether only to build ray-worker-container",
 )
 def main(
-    py_versions: List[str],
-    device_types: List[str],
+    py_versions: Tuple[str],
+    device_types: Tuple[str],
     build_type: str,
     suffix: Optional[str] = None,
     build_base: bool = True,
     only_build_worker_container: bool = False,
 ):
-    py_versions = py_versions
-    py_versions = py_versions if isinstance(py_versions, list) else [py_versions]
-
-    image_types = device_types if device_types else list(BASE_IMAGES.keys())
+    py_versions = (
+        list(py_versions) if isinstance(py_versions, (list, tuple)) else [py_versions]
+    )
+    image_types = (
+        list(device_types)
+        if isinstance(device_types, (list, tuple))
+        else list(BASE_IMAGES.keys())
+    )
 
     assert set(list(CUDA_FULL.keys()) + ["cpu"]) == set(BASE_IMAGES.keys())
 
