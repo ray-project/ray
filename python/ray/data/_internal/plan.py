@@ -16,6 +16,8 @@ from typing import (
 )
 
 import ray
+from ray.data.block import BlockMetadata
+from ray.data._internal.util import capitalize
 from ray.types import ObjectRef
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data._internal.block_list import BlockList
@@ -46,30 +48,6 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
 logger = DatasetLogger(__name__)
-
-
-def capfirst(s: str):
-    """Capitalize the first letter of a string
-
-    Args:
-        s: String to capitalize
-
-    Returns:
-       Capitalized string
-    """
-    return s[0].upper() + s[1:]
-
-
-def capitalize(s: str):
-    """Capitalize a string, removing '_' and keeping camelcase.
-
-    Args:
-        s: String to capitalize
-
-    Returns:
-        Capitalized string with no underscores.
-    """
-    return "".join(capfirst(x) for x in s.split("_"))
 
 
 class Stage:
@@ -182,7 +160,7 @@ class ExecutionPlan:
         if self._stages_after_snapshot:
             # Get string representation of each stage in reverse order.
             for stage in self._stages_after_snapshot[::-1]:
-                # Get name of each stage in camel case.
+                # Get name of each stage in pascal case.
                 # The stage representation should be in "<stage-name>(...)" format,
                 # e.g. "MapBatches(my_udf)".
                 #
@@ -504,7 +482,11 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
-    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats, Optional["Executor"]]:
+    ) -> Tuple[
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+        DatasetStats,
+        Optional["Executor"],
+    ]:
         """Execute this plan, returning an iterator.
 
         If the streaming execution backend is enabled, this will use streaming
@@ -520,9 +502,11 @@ class ExecutionPlan:
         """
 
         ctx = DatasetContext.get_current()
-        if not ctx.use_streaming_executor:
+        if not ctx.use_streaming_executor or self.has_computed_output():
             return (
-                self.execute(allow_clear_input_blocks, force_read).iter_blocks(),
+                self.execute(
+                    allow_clear_input_blocks, force_read
+                ).iter_blocks_with_metadata(),
                 self._snapshot_stats,
                 None,
             )
@@ -553,15 +537,15 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
+        preserve_order: bool = False,
     ) -> BlockList:
         """Execute this plan.
-
-        This will always execute the plan using bulk execution.
 
         Args:
             allow_clear_input_blocks: Whether we should try to clear the input blocks
                 for each stage.
             force_read: Whether to force the read stage to fully execute.
+            preserve_order: Whether to preserve order in execution.
 
         Returns:
             The blocks of the output dataset.
@@ -598,6 +582,7 @@ class ExecutionPlan:
                     self,
                     allow_clear_input_blocks=allow_clear_input_blocks,
                     dataset_uuid=self._dataset_uuid,
+                    preserve_order=preserve_order,
                 )
                 # TODO(ekl) we shouldn't need to set this in the future once we move
                 # to a fully lazy execution model, unless .cache() is used. The reason
@@ -1071,12 +1056,14 @@ class AllToAllStage(Stage):
         supports_block_udf: bool = False,
         block_udf: Optional[BlockTransform] = None,
         remote_args: Optional[Dict[str, Any]] = None,
+        sub_stage_names: Optional[List[str]] = None,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
         self.supports_block_udf = supports_block_udf
         self.block_udf = block_udf
         self.ray_remote_args = remote_args or {}
+        self.sub_stage_names = sub_stage_names
 
     def can_fuse(self, prev: Stage):
         context = DatasetContext.get_current()
@@ -1123,7 +1110,13 @@ class AllToAllStage(Stage):
                 yield from self_block_udf(blocks, ctx)
 
         return AllToAllStage(
-            name, self.num_blocks, self.fn, True, block_udf, prev.ray_remote_args
+            name,
+            self.num_blocks,
+            self.fn,
+            True,
+            block_udf,
+            prev.ray_remote_args,
+            self.sub_stage_names,
         )
 
     def __call__(
@@ -1213,7 +1206,7 @@ def _rewrite_read_stage(
         if stages and isinstance(stages[0], RandomizeBlocksStage):
             block_list, _ = stages[0].do_randomize(block_list)
             stages = stages[1:]
-        name += "->randomize_block_order"
+        name += "->RandomizeBlockOrder"
 
     stage = OneToOneStage(
         name,
@@ -1248,7 +1241,7 @@ def _reorder_stages(stages: List[Stage]) -> List[Stage]:
             reorder_buf.append(s)
         else:
             # Barrier: flush the reorder buffer.
-            if isinstance(s, AllToAllStage) or s.name == "write":
+            if isinstance(s, AllToAllStage) or s.name == "Write":
                 output.extend(reorder_buf)
                 reorder_buf = []
             output.append(s)
