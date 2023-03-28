@@ -147,7 +147,12 @@ def test_failed_task_error(shutdown_only):
         def f(self):
             time.sleep(999)
 
+        def ready(self):
+            pass
+
     a = Actor.remote()
+    ray.get(a.ready.remote())
+
     with pytest.raises(ray.exceptions.RayActorError):
         ray.kill(a)
         ray.get(a.f.options(name="actor-killed").remote())
