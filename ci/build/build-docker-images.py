@@ -876,5 +876,35 @@ def main(
         # push_readmes(build_type is MERGE)
 
 
+def fix_docker_images():
+    repo = "rayproject"
+    image = "ray-ml"
+
+    tags = create_image_tags(
+        image_name=image,
+        py_versions=list(PY_MATRIX.keys()),
+        image_types=list(BASE_IMAGES.keys()),
+        specific_tag=None,
+        version="2.3.0",
+        suffix=None,
+    )
+    print(dict(tags))
+
+    for base_tag in tags:
+        base_image = f"{repo}/{image}:{base_tag}"
+
+        print(f"docker pull {base_image}")
+
+    for base_tag in tags:
+        base_image = f"{repo}/{image}:{base_tag}"
+        print(f"docker build --build-args BASE_IMAGE={base_image} -t {base_image} .")
+        for subtag in tags[base_tag]:
+            if subtag == base_tag:
+                continue
+
+            target_image = f"{repo}/{image}:{subtag}"
+            print(f"docker tag {base_image} {target_image}")
+
+
 if __name__ == "__main__":
-    main()
+    fix_docker_images()
