@@ -716,12 +716,14 @@ class EagerTFPolicyV2(Policy):
         # Legacy Policy state (w/o keras model and w/o PolicySpec).
         state = super().get_state()
 
-        if not self.config.get("_enable_rl_module_api", False):
-            state["global_timestep"] = state["global_timestep"].numpy()
+        state["global_timestep"] = state["global_timestep"].numpy()
+        # In the new Learner API stack, the optimizers live in the learner.
+        state["_optimizer_variables"] = []
+        if not self.config.get("_enable_learner_api", False):
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
-            # Add exploration state.
-            state["_exploration_state"] = self.exploration.get_state()
+        # Add exploration state.
+        state["_exploration_state"] = self.exploration.get_state()
         return state
 
     @override(Policy)
