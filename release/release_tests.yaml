@@ -2180,7 +2180,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: compute_tpl_gce_4_xlarge.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 
   alert: default
@@ -2202,7 +2204,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: compute_tpl_gce_4_xlarge.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_check_cuda_available
   group: Jobs tests
@@ -2221,7 +2225,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: compute_tpl_gce_gpu_node.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_gpu_node.yaml
 
 - name: jobs_specify_num_gpus
   group: Jobs tests
@@ -2240,7 +2246,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: compute_tpl_gce_gpu_worker.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_gpu_worker.yaml
 
 
 ########################
@@ -2269,7 +2277,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: rte_gce_small.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: rte_gce_small.yaml
 
 - name: runtime_env_wheel_urls
   group: Runtime env tests
@@ -2294,7 +2304,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: rte_gce_minimal.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: rte_gce_minimal.yaml
 
 # It seems like the consensus is that this should be tested in CI, and not in a nightly test.
 
