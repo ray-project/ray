@@ -8,6 +8,8 @@ from ray.rllib.utils.annotations import override
 
 class PPOBaseLearner(Learner):
     def build(self) -> None:
+        super().build()
+
         # TODO (Kourosh): Move these failures to config.validate() or support them.
         self.entropy_coeff_scheduler = None
         if self.hps.entropy_coeff_schedule:
