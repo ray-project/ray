@@ -112,6 +112,9 @@ class TestPPO(unittest.TestCase):
                     lstm_cell_size=10,
                     max_seq_len=20,
                 ),
+                # TODO (Kourosh): Enable when the scheduler is supported in the new
+                # Learner API stack.
+                _enable_learner_api=False,
             )
             .rollouts(
                 num_rollout_workers=1,
@@ -120,6 +123,7 @@ class TestPPO(unittest.TestCase):
                 enable_connectors=True,
             )
             .callbacks(MyCallbacks)
+            .rl_module(_enable_rl_module_api=False)
         )  # For checking lr-schedule correctness.
 
         num_iterations = 2
@@ -177,6 +181,9 @@ class TestPPO(unittest.TestCase):
                     lstm_cell_size=10,
                     max_seq_len=20,
                 ),
+                # TODO (Kourosh): Enable when the scheduler is supported in the new
+                # Learner API stack.
+                _enable_learner_api=False,
             )
             .rollouts(
                 num_rollout_workers=1,
@@ -184,6 +191,7 @@ class TestPPO(unittest.TestCase):
                 compress_observations=True,
             )
             .callbacks(MyCallbacks)
+            .rl_module(_enable_rl_module_api=False)
         )  # For checking lr-schedule correctness.
 
         num_iterations = 2
@@ -283,7 +291,13 @@ class TestPPO(unittest.TestCase):
             trainer.stop()
 
     def test_ppo_free_log_std(self):
-        """Tests the free log std option works."""
+        """Tests the free log std option works.
+
+        This test is overfitted to the old ModelV2 stack (e.g.
+        policy.model.trainable_variables is not callable in the new stack)
+        # TODO (Kourosh) we should create a new test for the new RLModule stack.
+        """
+
         config = (
             ppo.PPOConfig()
             .environment("CartPole-v1")
@@ -298,7 +312,9 @@ class TestPPO(unittest.TestCase):
                     free_log_std=True,
                     vf_share_layers=True,
                 ),
+                _enable_learner_api=False,
             )
+            .rl_module(_enable_rl_module_api=False)
         )
 
         for fw, sess in framework_iterator(config, session=True):
@@ -342,7 +358,12 @@ class TestPPO(unittest.TestCase):
             trainer.stop()
 
     def test_ppo_loss_function(self):
-        """Tests the PPO loss function math."""
+        """Tests the PPO loss function math.
+
+        This test is overfitted to the old ModelV2 stack (e.g.
+        policy.model.trainable_variables is not callable in the new stack)
+        # TODO (Kourosh) we should create a new test for the new RLModule stack.
+        """
         config = (
             ppo.PPOConfig()
             .environment("CartPole-v1")
@@ -356,7 +377,9 @@ class TestPPO(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=True,
                 ),
+                _enable_learner_api=False,
             )
+            .rl_module(_enable_rl_module_api=False)
         )
 
         for fw, sess in framework_iterator(config, session=True):
