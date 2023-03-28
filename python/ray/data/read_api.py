@@ -33,7 +33,7 @@ from ray.data._internal.util import (
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
-from ray.data.datastream import Datastream, CachedData
+from ray.data.datastream import Datastream, InMemoryData
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     BinaryDatasource,
@@ -88,7 +88,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-def from_items(items: List[Any], *, parallelism: int = -1) -> CachedData[Any]:
+def from_items(items: List[Any], *, parallelism: int = -1) -> InMemoryData[Any]:
     """Create a dataset from a list of local Python objects.
 
     Examples:
@@ -144,7 +144,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> CachedData[Any]:
             )
         )
 
-    return CachedData(
+    return InMemoryData(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromItems": metadata}, parent=None),
@@ -1391,7 +1391,7 @@ def read_sql(
 
 
 @PublicAPI
-def from_dask(df: "dask.DataFrame") -> CachedData[ArrowRow]:
+def from_dask(df: "dask.DataFrame") -> InMemoryData[ArrowRow]:
     """Create a dataset from a Dask DataFrame.
 
     Args:
@@ -1425,7 +1425,7 @@ def from_dask(df: "dask.DataFrame") -> CachedData[ArrowRow]:
 
 
 @PublicAPI
-def from_mars(df: "mars.DataFrame") -> CachedData[ArrowRow]:
+def from_mars(df: "mars.DataFrame") -> InMemoryData[ArrowRow]:
     """Create a dataset from a MARS dataframe.
 
     Args:
@@ -1440,7 +1440,7 @@ def from_mars(df: "mars.DataFrame") -> CachedData[ArrowRow]:
 
 
 @PublicAPI
-def from_modin(df: "modin.DataFrame") -> CachedData[ArrowRow]:
+def from_modin(df: "modin.DataFrame") -> InMemoryData[ArrowRow]:
     """Create a dataset from a Modin dataframe.
 
     Args:
@@ -1458,7 +1458,7 @@ def from_modin(df: "modin.DataFrame") -> CachedData[ArrowRow]:
 @PublicAPI
 def from_pandas(
     dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
-) -> CachedData[ArrowRow]:
+) -> InMemoryData[ArrowRow]:
     """Create a dataset from a list of Pandas dataframes.
 
     Args:
@@ -1485,7 +1485,7 @@ def from_pandas(
 @DeveloperAPI
 def from_pandas_refs(
     dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]]
-) -> CachedData[ArrowRow]:
+) -> InMemoryData[ArrowRow]:
     """Create a dataset from a list of Ray object references to Pandas
     dataframes.
 
@@ -1514,7 +1514,7 @@ def from_pandas_refs(
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(_get_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
-        return CachedData(
+        return InMemoryData(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
                 DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
@@ -1529,7 +1529,7 @@ def from_pandas_refs(
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
-    return CachedData(
+    return InMemoryData(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
@@ -1541,7 +1541,7 @@ def from_pandas_refs(
 
 
 @PublicAPI
-def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> CachedData[ArrowRow]:
+def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> InMemoryData[ArrowRow]:
     """Create a dataset from a list of NumPy ndarrays.
 
     Args:
@@ -1559,7 +1559,7 @@ def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> CachedData[Arro
 @DeveloperAPI
 def from_numpy_refs(
     ndarrays: Union[ObjectRef[np.ndarray], List[ObjectRef[np.ndarray]]],
-) -> CachedData[ArrowRow]:
+) -> InMemoryData[ArrowRow]:
     """Create a dataset from a list of NumPy ndarray futures.
 
     Args:
@@ -1588,7 +1588,7 @@ def from_numpy_refs(
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
-    return CachedData(
+    return InMemoryData(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromNumpyRefs": metadata}, parent=None),
@@ -1602,7 +1602,7 @@ def from_numpy_refs(
 @PublicAPI
 def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]]
-) -> CachedData[ArrowRow]:
+) -> InMemoryData[ArrowRow]:
     """Create a dataset from a list of Arrow tables.
 
     Args:
@@ -1625,7 +1625,7 @@ def from_arrow_refs(
         ObjectRef[Union["pyarrow.Table", bytes]],
         List[ObjectRef[Union["pyarrow.Table", bytes]]],
     ]
-) -> CachedData[ArrowRow]:
+) -> InMemoryData[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
 
     Args:
@@ -1640,7 +1640,7 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
-    return CachedData(
+    return InMemoryData(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromArrowRefs": metadata}, parent=None),
@@ -1654,7 +1654,7 @@ def from_arrow_refs(
 @PublicAPI
 def from_spark(
     df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None
-) -> CachedData[ArrowRow]:
+) -> InMemoryData[ArrowRow]:
     """Create a dataset from a Spark dataframe.
 
     Args:
@@ -1675,7 +1675,7 @@ def from_spark(
 @PublicAPI
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
-) -> Union[CachedData[ArrowRow], Dict[str, CachedData[ArrowRow]]]:
+) -> Union[InMemoryData[ArrowRow], Dict[str, InMemoryData[ArrowRow]]]:
     """Create a dataset from a Hugging Face Datasets Dataset.
 
     This function is not parallelized, and is intended to be used
@@ -1709,7 +1709,7 @@ def from_huggingface(
 @PublicAPI
 def from_tf(
     dataset: "tf.data.Dataset",
-) -> CachedData:
+) -> InMemoryData:
     """Create a dataset from a TensorFlow dataset.
 
     This function is inefficient. Use it to read small datasets or prototype.
@@ -1762,7 +1762,7 @@ def from_tf(
 @PublicAPI
 def from_torch(
     dataset: "torch.utils.data.Dataset",
-) -> CachedData:
+) -> InMemoryData:
     """Create a dataset from a Torch dataset.
 
     This function is inefficient. Use it to read small datasets or prototype.
