@@ -7,18 +7,16 @@ from ray.rllib.models.distributions import Distribution
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
 
 tf1, tf, _ = try_import_tf()
-tf1.enable_eager_execution()
 
 
 class PPOTfRLModule(PPORLModuleBase, TfRLModule):
-    framework = "tf"
+    framework = "tf2"
 
     def __init__(self, *args, **kwargs):
         TfRLModule.__init__(self, *args, **kwargs)
@@ -34,19 +32,17 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
 
     @override(RLModule)
     def input_specs_train(self) -> List[str]:
-        return [SampleBatch.OBS, SampleBatch.ACTIONS]
+        return [SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.ACTION_LOGP]
 
     @override(RLModule)
-    def output_specs_train(self) -> SpecDict:
-        spec = SpecDict(
-            {
-                SampleBatch.ACTION_DIST: Distribution,
-                SampleBatch.ACTION_LOGP: TFTensorSpecs("b", dtype=tf.float32),
-                SampleBatch.VF_PREDS: TFTensorSpecs("b", dtype=tf.float32),
-                "entropy": TFTensorSpecs("b", dtype=tf.float32),
-            }
-        )
-        return spec
+    def output_specs_train(self) -> List[str]:
+        return [
+            SampleBatch.ACTION_DIST_INPUTS,
+            SampleBatch.ACTION_DIST,
+            SampleBatch.ACTION_LOGP,
+            SampleBatch.VF_PREDS,
+            "entropy",
+        ]
 
     @override(RLModule)
     def input_specs_exploration(self):

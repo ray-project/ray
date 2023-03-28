@@ -36,7 +36,7 @@ class TestPreprocessors(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_preprocessing_disabled(self):
+    def test_rlms_and_preprocessing(self):
         config = (
             ppo.PPOConfig()
             .environment(
@@ -283,7 +283,6 @@ class TestPreprocessors(unittest.TestCase):
 if __name__ == "__main__":
     # Call this on startup to prevet TF from complaining further down the line about
     # not calling in on startup.
-    tf.enable_eager_execution()
     import pytest
     import sys
 
