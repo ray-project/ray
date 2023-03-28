@@ -144,15 +144,16 @@ Stage N Map: N/N blocks executed in T
 'obj_store_mem_peak': N}
 
 Dataset iterator time breakdown:
-* In ray.wait(): T
-* In ray.get(): T
+* Total time user code is blocked: T
+* Total time in user code: T
+* Total time overall: T
 * Num blocks local: Z
 * Num blocks remote: Z
 * Num blocks unknown location: N
-* In next_batch(): T
-* In format_batch(): T
-* In user code: T
-* Total time: T
+* Batch iteration time breakdown (summed across prefetch threads):
+    * In ray.get(): T min, T max, T avg, T total
+    * In batch creation: T min, T max, T avg, T total
+    * In batch formatting: T min, T max, T avg, T total
 """
         )
     else:
@@ -175,12 +176,16 @@ Stage N Map: N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 
 Dataset iterator time breakdown:
-* In ray.wait(): T
-* In ray.get(): T
-* In next_batch(): T
-* In format_batch(): T
-* In user code: T
-* Total time: T
+* Total time user code is blocked: T
+* Total time in user code: T
+* Total time overall: T
+* Num blocks local: Z
+* Num blocks remote: Z
+* Num blocks unknown location: N
+* Batch iteration time breakdown (summed across prefetch threads):
+    * In ray.get(): T min, T max, T avg, T total
+    * In batch creation: T min, T max, T avg, T total
+    * In batch formatting: T min, T max, T avg, T total
 """
         )
 
