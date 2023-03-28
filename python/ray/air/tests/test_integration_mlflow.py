@@ -202,37 +202,16 @@ class MLflowTest(unittest.TestCase):
         clear_env_vars()
         trial_config = {"par1": 4, "par2": 9.0}
 
-        @mlflow_mixin
-        def train_fn(config):
-            return 1
+        with self.assertRaises(DeprecationWarning):
+
+            @mlflow_mixin
+            def train_fn(config):
+                return 1
 
         train_fn.__mixins__ = (MLflowTrainableMixin,)
 
-        # No MLflow config passed in.
-        with self.assertRaises(ValueError):
+        with self.assertRaises(DeprecationWarning):
             wrap_function(train_fn)(trial_config)
-
-        trial_config.update({"mlflow": {}})
-        # No tracking uri or experiment_id/name passed in.
-        with self.assertRaises(ValueError):
-            wrap_function(train_fn)(trial_config)
-
-        # Invalid experiment-id
-        trial_config["mlflow"].update({"experiment_id": "500"})
-        # No tracking uri or experiment_id/name passed in.
-        with self.assertRaises(ValueError):
-            wrap_function(train_fn)(trial_config)
-
-        # Set to experiment that does not already exist.
-        # This will fail because the experiment has to be created explicitly first.
-        trial_config["mlflow"]["tracking_uri"] = self.tracking_uri
-        trial_config["mlflow"]["experiment_name"] = "new_experiment"
-        with self.assertRaises(ValueError):
-            wrap_function(train_fn)(trial_config)
-
-        # This should now pass
-        trial_config["mlflow"]["experiment_name"] = "existing_experiment"
-        wrap_function(train_fn)(trial_config).stop()
 
     def testMlFlowSetupConfig(self):
         clear_env_vars()

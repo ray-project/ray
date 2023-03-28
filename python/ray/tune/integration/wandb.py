@@ -15,7 +15,7 @@ callback_deprecation_message = (
 
 mixin_deprecation_message = (
     "The `wandb_mixin`/`WandbTrainableMixin` is deprecated. "
-    "Use `ray.air.integrations.wandb.setup_wandb` instead.",
+    "Use `ray.air.integrations.wandb.setup_wandb` instead."
 )
 
 
