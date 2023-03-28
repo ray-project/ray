@@ -4070,7 +4070,7 @@ class Datastream(Generic[T]):
         return pipe
 
     @Deprecated(message="Use `Dataset.cache()` instead.")
-    def fully_executed(self) -> "Datastream[T]":
+    def fully_executed(self) -> "InMemoryData[T]":
         warnings.warn(
             "The 'fully_executed' call has been renamed to 'cache'.",
             DeprecationWarning,
@@ -4094,7 +4094,7 @@ class Datastream(Generic[T]):
         return self._plan.has_computed_output()
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
-    def cache(self) -> "Datastream[T]":
+    def cache(self) -> "InMemoryData[T]":
         """Evaluate and cache the blocks of this Dataset in object store memory.
 
         This can be used to read all blocks into memory. By default, Datasets
