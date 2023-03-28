@@ -10,6 +10,7 @@ from typing import (
     TypeVar,
     Union,
 )
+import warnings
 
 
 import numpy as np
@@ -1257,6 +1258,7 @@ def read_binary_files(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
+    output_arrow_format: bool = False,
 ) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -1289,10 +1291,20 @@ def read_binary_files(
             that describes how paths are organized. Defaults to ``None``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        output_arrow_format: If True, returns data in Arrow format, instead of Python
+            list format. Defaults to False.
 
     Returns:
-        Dataset holding Arrow records read from the specified paths.
+        Dataset holding records read from the specified paths.
     """
+    if not output_arrow_format:
+        warnings.warn(
+            "read_binary_files() returns Dataset in Python list format as of Ray "
+            "v2.4. Use read_binary_files(output_arrow_format=True) to return Dataset "
+            "in Arrow format.",
+            DeprecationWarning,
+        )
+
     return read_datasource(
         BinaryDatasource(),
         parallelism=parallelism,
@@ -1305,6 +1317,7 @@ def read_binary_files(
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
+        output_arrow_format=output_arrow_format,
     )
 
 
