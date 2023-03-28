@@ -51,6 +51,38 @@ Actor log messages look like the following by default.
 
     (MyActor pid=480956) actor log message
 
+Log deduplication
+~~~~~~~~~~~~~~~~~
+
+By default, Ray will deduplicate logs that appear redundantly across multiple processes. The first instance of each log message will always be immediately printed. However, subsequent log messages of the same pattern (ignoring words with numeric components) will be buffered for up to five seconds and printed in batch. For example, for the following code snippet:
+
+.. code-block:: python
+
+    import ray
+    import random
+
+    @ray.remote
+    def task():
+        print("Hello there, I am a task", random.random())
+
+    ray.get([task.remote() for _ in range(100)])
+
+The output will be as follows:
+
+.. code-block:: bash
+
+    2023-03-27 15:08:34,195	INFO worker.py:1603 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
+    (task pid=534172) Hello there, I am a task 0.20583517821231412
+    (task pid=534174) Hello there, I am a task 0.17536720316370757 [repeated 99x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication)
+
+This feature is especially useful when importing libraries such as `tensorflow` or `numpy`, which may emit many verbose warning messages when imported. You can configure this feature as follows:
+
+1. Set ``RAY_DEDUP_LOGS=0`` to disable this feature entirely.
+2. Set ``RAY_DEDUP_LOGS_AGG_WINDOW_S=<int>`` to change the agggregation window.
+3. Set ``RAY_DEDUP_LOGS_ALLOW_REGEX=<string>`` to specify log messages to never deduplicate.
+4. Set ``RAY_DEDUP_LOGS_SKIP_REGEX=<string>`` to specify log messages to skip printing.
+
+
 Disabling logging to the driver
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
