@@ -358,13 +358,9 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
     setShowErrorDetailsDialog(true);
   };
 
-  const executeEvent = task.profiling_data?.events?.find(
-    ({ event_name }) => event_name === "task:execute",
-  );
-  const errorDetails =
-    executeEvent?.extra_data?.traceback && executeEvent?.extra_data?.type
-      ? `${executeEvent?.extra_data?.type}\n${executeEvent?.extra_data?.traceback}`
-      : undefined;
+  const errorDetails = task.error_type
+    ? `Error Type: ${task.error_type}\n\n${task.error_message}`
+    : undefined;
 
   return (
     <React.Fragment>
