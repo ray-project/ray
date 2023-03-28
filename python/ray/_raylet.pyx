@@ -1564,6 +1564,13 @@ cdef class GcsClient:
 
         return result
 
+    def internal_kv_exists(self, bytes key, namespace=None):
+        cdef:
+            c_string ns = namespace or b""
+            c_bool exists
+        check_status(self.inner.get().InternalKVExists(ns, key, exists))
+        return exists
+
 
 cdef class CoreWorker:
 

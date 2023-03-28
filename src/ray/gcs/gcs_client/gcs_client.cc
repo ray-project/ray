@@ -215,8 +215,28 @@ Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &ke
 Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &prefix, std::vector<std::string> &value) {
   grpc::ClientContext context;
 
+  // TODO: Fill this out
 
   return Status::OK();
+}
+
+Status GcsSyncClient::InternalKVExists(const std::string &ns, const std::string &key, bool &exists) {
+  grpc::ClientContext context;
+
+  rpc::InternalKVExistsRequest request;
+  request.set_namespace_(ns);
+  request.set_key(key);
+
+  rpc::InternalKVExistsReply reply;
+
+  grpc::Status status = kv_stub_->InternalKVExists(&context, request, &reply);
+  if (status.ok()) {
+    exists = reply.exists();
+    return Status::OK();
+  } else {
+    // TODO: Convert to appropriate error
+    return Status::UnknownError(status.error_message());
+  }
 }
 
 }  // namespace gcs

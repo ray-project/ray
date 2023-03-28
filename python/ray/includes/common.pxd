@@ -315,6 +315,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus InternalKVGet(const c_string &ns, const c_string &key, c_string &value)
         CRayStatus InternalKVPut(const c_string &ns, const c_string &key, const c_string &value, c_bool overwrite, c_bool &added);
         CRayStatus InternalKVKeys(const c_string &ns, const c_string &prefix, c_vector[c_string] &value);
+        CRayStatus InternalKVExists(const c_string &ns, const c_string &key, c_bool &exists);
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":

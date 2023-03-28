@@ -2201,13 +2201,13 @@ def connect(
     worker.core_worker.notify_raylet()
     worker_id = worker.worker_id
     worker.gcs_error_subscriber = GcsErrorSubscriber(
-        worker_id=worker_id, address=worker.gcs_client.address
+        worker_id=worker_id, address=node.address
     )
     worker.gcs_log_subscriber = GcsLogSubscriber(
-        worker_id=worker_id, address=worker.gcs_client.address
+        worker_id=worker_id, address=node.address
     )
     worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
-        worker_id=worker_id, address=worker.gcs_client.address
+        worker_id=worker_id, address=node.address
     )
 
     if driver_object_store_memory is not None:

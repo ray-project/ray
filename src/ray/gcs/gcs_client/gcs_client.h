@@ -198,6 +198,7 @@ public:
   Status InternalKVGet(const std::string &ns, const std::string &key, std::string &value);
   Status InternalKVPut(const std::string &ns, const std::string &key, const std::string &value, bool overwrite, int &added_num);
   Status InternalKVKeys(const std::string &ns, const std::string &prefix, std::vector<std::string> &value);
+  Status InternalKVExists(const std::string &ns, const std::string &key, bool &exists);
 
 private:
   GcsClientOptions options_;
