@@ -22,6 +22,7 @@ OUTPUT_JSON_FILENAME = "output.json"
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = 124  # same as bash timeout
 
+installed_pips = []
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(stream=sys.stderr)
@@ -70,7 +71,7 @@ def run_storage_cp(source: str, target: str):
     storage_service = urlparse(target).scheme
     cp_cmd_args = []
     if storage_service == "s3":
-        install_aws_cli()
+        install_pip("awscli")
         cp_cmd_args = [
             "aws",
             "s3",
@@ -81,7 +82,7 @@ def run_storage_cp(source: str, target: str):
             "bucket-owner-full-control",
         ]
     elif storage_service == "gs":
-        install_gsutil_cli()
+        install_pip("gsutil")
         cp_cmd_args = [
             "gsutil",
             "cp",
