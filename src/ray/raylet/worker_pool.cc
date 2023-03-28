@@ -329,6 +329,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   if (language == Language::PYTHON) {
     worker_command_args.push_back("--startup-token=" +
                                   std::to_string(worker_startup_token_counter_));
+    worker_command_args.push_back("--worker-launch-time-ms=" +
+                                  std::to_string(current_sys_time_ms()));
   } else if (language == Language::CPP) {
     worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
@@ -470,12 +472,9 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                               serialized_runtime_env_context,
                               state);
 
-  // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
+  // Start a process and measure the startup time.
   Process proc = StartProcess(worker_command_args, env);
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-  stats::ProcessStartupTimeMs.Record(duration.count());
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
                 << worker_startup_token_counter_;
@@ -791,9 +790,7 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 void WorkerPool::ExecuteOnPrestartWorkersStarted(std::function<void()> callback) {
   if (first_job_registered_ ||
       first_job_registered_python_worker_count_ >=  // Don't wait if prestart is completed
-          first_job_driver_wait_num_python_workers_ ||
-      !RayConfig::instance()
-           .enable_worker_prestart()) {  // Don't wait if worker prestart is disabled
+          first_job_driver_wait_num_python_workers_) {
     callback();
     return;
   }
@@ -818,11 +815,21 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   const auto job_id = driver->GetAssignedJobId();
   HandleJobStarted(job_id, job_config);
 
-  // Invoke the `send_reply_callback` later to only finish driver
-  // registration after all prestarted workers are registered to Raylet.
-  ExecuteOnPrestartWorkersStarted([send_reply_callback = std::move(send_reply_callback),
-                                   port]() { send_reply_callback(Status::OK(), port); });
+  if (driver->GetLanguage() == Language::JAVA) {
+    send_reply_callback(Status::OK(), port);
+  } else {
+    if (!first_job_registered_ && !RayConfig::instance().enable_worker_prestart()) {
+      PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+    }
 
+    // Invoke the `send_reply_callback` later to only finish driver
+    // registration after all prestarted workers are registered to Raylet.
+    // NOTE(clarng): prestart is only for python workers.
+    ExecuteOnPrestartWorkersStarted(
+        [send_reply_callback = std::move(send_reply_callback), port]() {
+          send_reply_callback(Status::OK(), port);
+        });
+  }
   return Status::OK();
 }
 

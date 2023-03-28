@@ -1,4 +1,5 @@
 import ray
+from ray.experimental.state.api import list_workers
 from ray._private.test_utils import (
     get_load_metrics_report,
     run_string_as_driver,
@@ -11,6 +12,7 @@ import os
 from ray.experimental.state.api import list_objects
 import subprocess
 from ray._private.utils import get_num_cpus
+import time
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
@@ -256,16 +258,26 @@ ds.map(leak_repro, max_retries=0)
     wait_for_condition(no_object_leaks, timeout=10, retry_interval_ms=1000)
 
 
-def num_idle_workers(count):
-    try:
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head --system-config={"enable_worker_prestart":true}"""],
+    indirect=True,
+)
+def test_worker_prestart_on_node_manager_start(call_ray_start, shutdown_only):
+    def num_idle_workers(count):
         result = subprocess.check_output(
             "ps aux | grep ray::IDLE | grep -v grep",
             shell=True,
         )
-    except subprocess.CalledProcessError:
-        # Command fails if there are no idle workers
-        return count == 0
-    return len(result.splitlines()) == count
+        return len(result.splitlines()) == count
+
+    wait_for_condition(num_idle_workers, count=get_num_cpus())
+
+    with ray.init():
+        for _ in range(5):
+            workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+            assert len(workers) == get_num_cpus(), workers
+            time.sleep(1)
 
 
 @pytest.mark.parametrize(
@@ -273,22 +285,15 @@ def num_idle_workers(count):
     ["""ray start --head"""],
     indirect=True,
 )
-def test_worker_prestart_on_node_manager_start(call_ray_start, shutdown_only):
-    wait_for_condition(num_idle_workers, count=get_num_cpus())
-
-
-def test_driver_waits_for_worker_prestart(shutdown_only):
+def test_jobs_prestart_worker_once(call_ray_start, shutdown_only):
     with ray.init():
-        assert num_idle_workers(get_num_cpus()), f"get_num_cpus={get_num_cpus()}"
-
-
-def test_prestart_disabed_driver_skip_wait(shutdown_only):
-    with ray.init(
-        _system_config={
-            "enable_worker_prestart": False,
-        },
-    ):
-        assert num_idle_workers(0)
+        workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+        assert len(workers) == get_num_cpus(), workers
+    with ray.init():
+        for _ in range(5):
+            workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+            assert len(workers) == get_num_cpus(), workers
+            time.sleep(1)
 
 
 if __name__ == "__main__":

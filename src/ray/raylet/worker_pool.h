@@ -777,6 +777,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   int64_t process_failed_runtime_env_setup_failed_ = 0;
 
   friend class WorkerPoolTest;
+  friend class WorkerPoolDriverRegisteredTest;
 };
 
 }  // namespace raylet
