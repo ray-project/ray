@@ -256,3 +256,6 @@ def serve_start(
         f'namespace "{SERVE_NAMESPACE}".'
     )
     return client
+
+
+# test test
