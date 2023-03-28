@@ -84,13 +84,13 @@ class StreamingExecutor(Executor, threading.Thread):
             self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
 
         # Setup the streaming DAG topology and start the runner thread.
+        _validate_dag(dag, self._get_or_refresh_resource_limits())
         self._topology, progress_bar_position = build_streaming_topology(
             dag, self._options
         )
         self._output_info = ProgressBar(
             "Output", dag.num_outputs_total() or 1, progress_bar_position
         )
-        _validate_topology(self._topology, self._get_or_refresh_resource_limits())
 
         self._output_node: OpState = self._topology[dag]
         self.start()
@@ -280,30 +280,31 @@ class StreamingExecutor(Executor, threading.Thread):
             )
 
 
-def _validate_topology(topology: Topology, limits: ExecutionResources) -> None:
-    """Raises an exception on invalid topologies.
+def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
+    """Raises an exception on invalid DAGs.
 
     It checks if the the sum of min actor pool sizes are larger than the resource
     limit, as well as other unsupported resource configurations.
 
+    This should be called prior to creating the topology from the DAG.
+
     Args:
-        topology: The topology to validate.
+        dag: The DAG to validate.
         limits: The limits to validate against.
     """
 
+    seen = set()
+
+    def walk(op):
+        seen.add(op)
+        for parent in op.input_dependencies:
+            if parent not in seen:
+                yield from walk(parent)
+        yield op
+
     base_usage = ExecutionResources(cpu=1)
-    for op in topology:
+    for op in walk(dag):
         base_usage = base_usage.add(op.base_resource_usage())
-        inc_usage = op.incremental_resource_usage()
-        if inc_usage.cpu and inc_usage.gpu:
-            raise NotImplementedError(
-                "Operator incremental resource usage cannot specify both CPU "
-                "and GPU at the same time, since it may cause deadlock."
-            )
-        elif inc_usage.object_store_memory:
-            raise NotImplementedError(
-                "Operator incremental resource usage must not include memory."
-            )
 
     if not base_usage.satisfies_limit(limits):
         raise ValueError(

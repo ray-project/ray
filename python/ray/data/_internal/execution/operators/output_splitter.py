@@ -4,6 +4,7 @@ from typing import List, Dict, Optional
 from ray.data.block import Block, BlockMetadata, BlockAccessor
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.execution.util import locality_string
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
@@ -141,9 +142,7 @@ class OutputSplitter(PhysicalOperator):
 
     def progress_str(self) -> str:
         if self._locality_hints:
-            return (
-                f"[{self._locality_hits} locality hits, {self._locality_misses} misses]"
-            )
+            return locality_string(self._locality_hits, self._locality_misses)
         else:
             return "[locality disabled]"
 
