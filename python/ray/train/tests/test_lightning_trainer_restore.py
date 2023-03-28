@@ -5,13 +5,14 @@ import ray
 from ray.air import RunConfig, CheckpointConfig
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
 from ray.train.constants import MODEL_KEY
+from ray.train.trainer import TrainingFailedError
 from ray.train.lightning import LightningConfigBuilder, LightningTrainer
 from ray.train.tests.lightning_test_utils import (
     DoubleLinearModule,
     DummyDataModule,
     LinearModule,
 )
-from ray.tune import Callback, TuneError
+from ray.tune import Callback
 
 
 @pytest.fixture
@@ -136,7 +137,7 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir):
         ),
     )
 
-    with pytest.raises(TuneError):
+    with pytest.raises(TrainingFailedError):
         result = trainer.fit()
 
     trainer = LightningTrainer.restore(str(tmpdir / exp_name))
