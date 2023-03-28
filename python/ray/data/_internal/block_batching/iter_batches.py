@@ -169,14 +169,17 @@ def iter_batches(
 
         yield from extract_data_from_batch(batch_iter)
 
-    # Run everything in a separate thread to not block the main thread when waiting
-    # for streaming results.
-    async_batch_iter = make_async_gen(block_refs, fn=_async_iter_batches, num_workers=1)
+    if context.use_streaming_executor:
+        # Run everything in a separate thread to not block the main thread when waiting
+        # for streaming results.
+        batch_iter = make_async_gen(block_refs, fn=_async_iter_batches, num_workers=1)
+    else:
+        batch_iter = _async_iter_batches(block_refs)
 
     while True:
         with stats.iter_total_blocked_s.timer() if stats else nullcontext():
             try:
-                next_batch = next(async_batch_iter)
+                next_batch = next(batch_iter)
             except StopIteration:
                 break
         with stats.iter_user_s.timer() if stats else nullcontext():

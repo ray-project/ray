@@ -989,7 +989,9 @@ def test_iter_batches_grid(ray_start_regular_shared):
 def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
-    for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
+    for _, expected in zip(
+        ds.iter_batches(batch_size=None, prefetch_batches=0), expected_num_blocks
+    ):
         if ray.data.context.DatasetContext.get_current().use_streaming_executor:
             # In streaming execution of ds.iter_batches(), there is no partial
             # execution so _num_computed() in LazyBlocklist is 0.
