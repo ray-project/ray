@@ -14,9 +14,10 @@ parts:
       - file: ray-overview/ray-libraries
         title: "Ecosystem"
 
-      - file: ray-core/walkthrough
-        title: "Ray Core"
+      - title: "Ray Core"
         sections:
+          - file: ray-core/walkthrough
+            title: "What is Ray Core?"
           - file: ray-core/key-concepts
             title: "Key Concepts"
           - file: ray-core/user-guide
@@ -37,9 +38,10 @@ parts:
               - file: ray-core/examples/web-crawler
           - file: ray-core/api/index
 
-      - file: ray-air/getting-started
-        title: "Ray AI Runtime (AIR)"
+      - title: "Ray AI Runtime (AIR)"
         sections:
+          - file: ray-air/getting-started
+            title: "What is Ray AI Runtime (AIR)?"
           - file: ray-air/key-concepts
           - file: ray-air/user-guides
             sections:
@@ -82,9 +84,10 @@ parts:
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
-      - file: data/dataset
-        title: Ray Data
+      - title: Ray Data
         sections:
+          - file: data/dataset
+            title: "What is Ray Data?"
           - file: data/getting-started
           - file: data/key-concepts
           - file: data/user-guide
@@ -103,9 +106,10 @@ parts:
           - file: data/glossary
           - file: data/integrations
 
-      - file: train/train
-        title: Ray Train
+      - title: Ray Train
         sections:
+          - file: train/train
+            title: "What is Ray Train?"
           - file: train/getting-started
             title: "Getting Started"
           - file: train/key-concepts
@@ -147,9 +151,10 @@ parts:
           - file: train/faq
           - file: train/api/api
 
-      - file: tune/index
-        title: Ray Tune
+      - title: Ray Tune
         sections:
+          - file: tune/index
+            title: "What is Ray Tune?"
           - file: tune/getting-started
             title: "Getting Started"
           - file: tune/key-concepts
@@ -250,9 +255,10 @@ parts:
           - file: tune/faq
           - file: tune/api/api.rst
 
-      - file: serve/index
-        title: Ray Serve
+      - title: Ray Serve
         sections:
+          - file: serve/index
+            title: "What is Ray Serve?"
           - file: serve/getting_started
           - file: serve/key-concepts
           - file: serve/user-guide
@@ -283,9 +289,10 @@ parts:
                   - file: serve/tutorials/deployment-graph-patterns/conditional
           - file: serve/api/index
 
-      - file: rllib/index
-        title: Ray RLlib
+      - title: Ray RLlib
         sections:
+          - file: rllib/index
+            title: "What is RLlib?"
           - file: rllib/rllib-training
           - file: rllib/core-concepts
           - file: rllib/rllib-env
@@ -325,9 +332,10 @@ parts:
               - file: workflows/advanced
               - file: workflows/api/api
 
-      - file: cluster/getting-started
-        title: "Ray Clusters"
+      - title: "Ray Clusters"
         sections:
+          - file: cluster/getting-started
+            title: "Ray Clusters overview"
           - file: cluster/key-concepts
             title: Key Concepts
           - file: cluster/kubernetes/index
