@@ -5,14 +5,14 @@ In Ray 2.4+, deploying multiple independent Serve applications is supported. Thi
 ## Get Started
 
 Define a Serve application:
-```{literalinclude} ../doc_code/basic_calculator.py
+```{literalinclude} doc_code/basic_calculator.py
 :language: python
 ```
 
 Copy this to a file `calculator.py`.
 
 Define a second Serve application:
-```{literalinclude} ../doc_code/basic_greet.py
+```{literalinclude} doc_code/basic_greet.py
 :language: python
 ```
 Copy this to a file `greet.py`.

@@ -261,6 +261,7 @@ parts:
               - file: serve/scaling-and-resource-allocation
               - file: serve/model_composition
               - file: serve/dev-workflow
+              - file: serve/multi-app
               - file: serve/production-guide/index
                 sections:
                   - file: serve/production-guide/config
@@ -268,7 +269,6 @@ parts:
                   - file: serve/production-guide/kubernetes
                   - file: serve/production-guide/monitoring
                   - file: serve/production-guide/fault-tolerance
-                  - file: serve/production-guide/multi-app
               - file: serve/performance
               - file: serve/handling-dependencies
               - file: serve/managing-java-deployments
