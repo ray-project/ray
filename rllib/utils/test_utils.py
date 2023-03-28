@@ -688,6 +688,11 @@ def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict
     for pid, policy_stats in learner_info.items():
         if pid == "batch_count":
             continue
+        
+        # the pid can be __all__ in multi-agent case when the new learner stack is 
+        # enabled.
+        if pid == "__all__":
+            continue
 
         # Make sure each policy has the LEARNER_STATS_KEY under it.
         assert LEARNER_STATS_KEY in policy_stats
