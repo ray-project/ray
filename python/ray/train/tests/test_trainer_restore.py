@@ -5,15 +5,15 @@ import warnings
 import ray
 from ray.air import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig, session
 from ray.air._internal.remote_storage import upload_to_uri
-from ray.exceptions import RayTaskError
 from ray.train.base_trainer import BaseTrainer
+from ray.train.trainer import TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
 from ray.train.huggingface import HuggingFaceTrainer
 from ray.train.rl import RLTrainer
-from ray.tune import Callback, TuneError
+from ray.tune import Callback
 from ray.data.preprocessors.batch_mapper import BatchMapper
 from ray.data.preprocessor import Preprocessor
 
@@ -36,6 +36,10 @@ def ray_start_6_cpus():
         ray.shutdown()
 
 
+class _TestSpecificError(RuntimeError):
+    pass
+
+
 def _failing_train_fn(config):
     checkpoint = session.get_checkpoint()
     it = 1
@@ -44,7 +48,7 @@ def _failing_train_fn(config):
         print(f"\nLoading from checkpoint, which is at iteration {it}...\n")
     session.report({"it": it}, checkpoint=Checkpoint.from_dict({"it": it}))
     if it == 1:
-        raise RuntimeError
+        raise _TestSpecificError
 
 
 class FailureInjectionCallback(Callback):
@@ -56,7 +60,7 @@ class FailureInjectionCallback(Callback):
     def on_trial_save(self, iteration, trials, trial, **info):
         if trial.last_result["training_iteration"] == self.num_iters:
             print(f"Failing after {self.num_iters} iters...")
-            raise RuntimeError
+            raise _TestSpecificError
 
 
 def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
@@ -98,8 +102,9 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
             checkpoint_config=CheckpointConfig(num_to_keep=1),
         ),
     )
-    with pytest.raises(RayTaskError):
+    with pytest.raises(TrainingFailedError) as exc_info:
         result = trainer.fit()
+    assert isinstance(exc_info.value.__cause__, _TestSpecificError)
 
     # Include an explicit cluster shutdown.
     # Otherwise, the previously registered object references will still exist,
@@ -156,7 +161,7 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
         ),
         num_boost_round=5,
     )
-    with pytest.raises(TuneError):
+    with pytest.raises(TrainingFailedError):
         result = trainer.fit()
 
     trainer = trainer_cls.restore(str(tmpdir / exp_name), datasets=datasets)
@@ -204,7 +209,7 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
             callbacks=[FailureInjectionCallback(num_iters=2)],
         ),
     )
-    with pytest.raises(TuneError):
+    with pytest.raises(TrainingFailedError):
         result = trainer.fit()
 
     trainer = trainer_cls.restore(str(tmpdir / exp_name), datasets=datasets)
@@ -231,7 +236,7 @@ def test_rl_trainer_restore(ray_start_4_cpus, tmpdir):
             stop={"training_iteration": 5},
         ),
     )
-    with pytest.raises(TuneError):
+    with pytest.raises(TrainingFailedError):
         result = trainer.fit()
 
     trainer = RLTrainer.restore(str(tmpdir / "rl_trainer_restore"))
@@ -303,8 +308,9 @@ def test_preprocessor_restore(ray_start_4_cpus, tmpdir, new_preprocessor):
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(name="preprocessor_restore_test", local_dir=tmpdir),
     )
-    with pytest.raises(RayTaskError):
-        trainer.fit()
+    with pytest.raises(TrainingFailedError) as exc_info:
+        result = trainer.fit()
+    assert isinstance(exc_info.value.__cause__, _TestSpecificError)
 
     new_preprocessor = MyPreprocessor(id=2) if new_preprocessor else None
     trainer = DataParallelTrainer.restore(
