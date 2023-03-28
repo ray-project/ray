@@ -248,6 +248,7 @@ you can resume it any time starting from the experiment checkpoint state saved i
     from ray import tune
     tuner = tune.Tuner.restore(
         "s3://my-checkpoints-bucket/path/my-tune-exp",
+        trainable=my_trainable,
         resume_errored=True
     )
     tuner.fit()
@@ -307,6 +308,7 @@ This experiment can be resumed from the head node:
     from ray import tune
     tuner = tune.Tuner.restore(
         "/tmp/mypath/my-tune-exp",
+        trainable=my_trainable,
         resume_errored=True
     )
     tuner.fit()
