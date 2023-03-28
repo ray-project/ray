@@ -459,7 +459,11 @@ class TorchMultiDistribution(Distribution):
 
         def map_(val, dist):
             # Remove extra dimension if present.
-            if val.shape[-1] == 1 and len(val.shape) > 1:
+            if (
+                isinstance(dist, TorchCategorical)
+                and val.shape[-1] == 1
+                and len(val.shape) > 1
+            ):
                 val = torch.squeeze(val, dim=-1)
             return dist.logp(val)
 
