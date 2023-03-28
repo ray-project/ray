@@ -1743,7 +1743,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_cpu_1_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_apex
   group: Long running tests
@@ -1775,7 +1777,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_cpu_3_gce.yaml
+      cluster:
+        cluster_env: ../rllib_tests/app_config.yaml
+        cluster_compute: tpl_cpu_3_gce.yaml
 
 - name: long_running_impala
   group: Long running tests
@@ -1804,7 +1808,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_cpu_1_large_gce.yaml
+      cluster:
+        cluster_env: ../rllib_tests/app_config.yaml
+        cluster_compute: tpl_cpu_1_large_gce.yaml
 
 - name: long_running_many_actor_tasks
   group: Long running tests
@@ -1832,8 +1838,10 @@
   flavors:
     - name: aws
     - name: gce
-      env: gce
-      cluster_compute: tpl_cpu_1_gce.yaml
+      cluster:
+        env: gce
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_drivers
   group: Long running tests
@@ -1862,7 +1870,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_cpu_1_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_ppo
   group: Long running tests
@@ -1896,7 +1906,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: many_ppo_gce.yaml
+      cluster:
+        cluster_env: ../rllib_tests/app_config.yaml
+        cluster_compute: many_ppo_gce.yaml
 
 - name: long_running_many_tasks
   group: Long running tests
@@ -1925,7 +1937,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_cpu_1_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_tasks_serialized_ids
   group: Long running tests
@@ -1954,7 +1968,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_cpu_1_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_node_failures
   group: Long running tests
@@ -1983,7 +1999,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_cpu_1_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_pbt
   group: Long running tests
@@ -2012,7 +2030,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_cpu_1_gce.yaml
+      cluster:
+        cluster_env: ../rllib_tests/app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve
   group: Long running tests
@@ -2041,7 +2061,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_cpu_1_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve_failure
   group: Long running tests
@@ -2075,7 +2097,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_cpu_1_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_jobs
   group: Long running tests
@@ -2106,7 +2130,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: tpl_cpu_1_gce.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_distributed_pytorch_pbt_failure
   group: Long running tests
@@ -2157,7 +2183,9 @@
     - name: aws
     - name: gce
       env: gce
-      cluster_compute: compute_tpl_gce_4_xlarge.yaml
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_basic_remote_working_dir
   group: Jobs tests
