@@ -164,38 +164,36 @@ class JobFileManager(FileManager):
 
         self.delete(remote_upload_to)
 
-    def delete(self, target: str, recursive: bool = False):
+    def _delete_gs_fn(self, key: str, recursive: bool = False):
+        if recursive:
+            blobs = self.gs_client.list_blobs(
+                self.bucket,
+                prefix=key,
+            )
+            for blob in blobs:
+                blob.delete()
+        else:
+            blob = self.gs_client.bucket(self.bucket).blob(key)
+            blob.delete()
+
+    def _delete_s3_fn(self, key: str, recursive: bool = False):
+        if recursive:
+            response = self.s3_client.list_objects_v2(
+                Bucket=self.bucket, Prefix=key
+            )
+            for object in response["Contents"]:
+                self.s3_client.delete_object(Bucket=self.bucket, Key=object["Key"])
+        else:
+            self.s3_client.delete_object(Bucket=self.bucket, Key=key)
+
+    def delete(self, cloud_key: str, recursive: bool = False):
         def delete_fn():
             if self.cloud_storage_provider == "s3":
-                delete_aws_fn()
+                self.delete_s3_fn(cloud_key, recursive)
                 return
             if self.cloud_storage_provider == "gs":
-                delete_gs_fn()
+                self.delete_gs_fn(cloud_key, recursive)
                 return
-
-        def delete_gs_fn():
-            if recursive:
-                blobs = self.gs_client.list_blobs(
-                    self.bucket,
-                    prefix=target,
-                )
-                for blob in blobs:
-                    blob.delete()
-            else:
-                blob = self.gs_client.bucket(self.bucket).blob(target)
-                blob.delete()
-
-        def delete_aws_fn():
-            if recursive:
-                response = self.s3_client.list_objects_v2(
-                    Bucket=self.bucket, Prefix=target
-                )
-
-                for object in response["Contents"]:
-                    self.s3_client.delete_object(Bucket=self.bucket, Key=object["Key"])
-            else:
-                self.s3_client.delete_object(Bucket=self.bucket, Key=target)
-
         try:
             self._run_with_retry(
                 delete_fn,
