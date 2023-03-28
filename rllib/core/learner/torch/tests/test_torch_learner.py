@@ -165,26 +165,51 @@ class TestLearner(unittest.TestCase):
             )
             learner2.build()
             learner2.load_state(tmpdir)
-            check(learner1.get_weights(), learner2.get_weights())
+            self._check_learner_states(learner1, learner2)
 
-            # check all internal optimizer state dictionaries have been updated
-            learner_1_optims_serialized = {
-                name: optim.state_dict()
-                for name, optim in learner1._name_to_optim.items()
-            }
-            learner_2_optims_serialized = {
-                name: optim.state_dict()
-                for name, optim in learner2._name_to_optim.items()
-            }
-            check(learner_1_optims_serialized, learner_2_optims_serialized)
+        # add a module then save/load and check states
+        with tempfile.TemporaryDirectory() as tmpdir:
+            learner1.add_module(
+                module_id="test",
+                module_spec=SingleAgentRLModuleSpec(
+                    module_class=DiscreteBCTorchModule,
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    model_config_dict={"fcnet_hiddens": [32]},
+                ),
+            )
+            learner1.save_state(tmpdir)
+            learner2.load_state(tmpdir)
+            self._check_learner_states(learner1, learner2)
 
-            learner_1_optims_serialized = [
-                optim.state_dict() for optim in learner1._optim_to_param.keys()
-            ]
-            learner_2_optims_serialized = [
-                optim.state_dict() for optim in learner2._optim_to_param.keys()
-            ]
-            check(learner_1_optims_serialized, learner_2_optims_serialized)
+        # remove a module then save/load and check states
+        with tempfile.TemporaryDirectory() as tmpdir:
+            learner1.remove_module(module_id=DEFAULT_POLICY_ID)
+            learner1.save_state(tmpdir)
+            learner2.load_state(tmpdir)
+            self._check_learner_states(learner1, learner2)
+
+    def _check_learner_states(self, learner1, learner2):
+        check(learner1.get_weights(), learner2.get_weights())
+
+        # check all internal optimizer state dictionaries have been updated
+        learner_1_optims_serialized = {
+            name: optim.state_dict() for name, optim in learner1._name_to_optim.items()
+        }
+        learner_2_optims_serialized = {
+            name: optim.state_dict() for name, optim in learner2._name_to_optim.items()
+        }
+        check(learner_1_optims_serialized, learner_2_optims_serialized)
+
+        learner_1_optims_serialized = [
+            optim.state_dict() for optim in learner1._optim_to_param.keys()
+        ]
+        learner_2_optims_serialized = [
+            optim.state_dict() for optim in learner2._optim_to_param.keys()
+        ]
+        check(learner_1_optims_serialized, learner_2_optims_serialized)
+
+        check(learner1._module_to_optim_name, learner2._module_to_optim_name)
 
 
 if __name__ == "__main__":

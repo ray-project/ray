@@ -295,7 +295,9 @@ class Learner:
                 ) = self._configure_optimizers_per_module_helper(module_id)
                 pairs.extend(module_pairs)
                 name_to_optim.update(module_name_to_optim)
-                self._module_to_optim_name[module_id].extend(list(name_to_optim.keys()))
+                self._module_to_optim_name[module_id].extend(
+                    list(module_name_to_optim.keys())
+                )
         self._name_to_optim = name_to_optim
         return pairs
 
@@ -1003,6 +1005,7 @@ class Learner:
         self._params = {}
         self._optim_to_param = {}
         self._name_to_optim = {}
+        self._module_to_optim_name = defaultdict(list)
         self._is_built = False
 
     def apply(self, func, *_args, **_kwargs):
