@@ -4131,6 +4131,10 @@ class Dataset(Generic[T]):
         self._synchronize_progress_bar()
         return blocks
 
+    @Deprecated(
+        message="Dataset is lazy by default, so this conversion call is no longer "
+        "needed and this API will be removed in future release"
+    )
     def lazy(self) -> "Dataset[T]":
         """Enable lazy evaluation.
 
