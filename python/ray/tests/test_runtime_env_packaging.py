@@ -533,26 +533,25 @@ class TestDownloadAndUnpackPackage:
         self, ray_start_regular
     ):
         # Test the guard clause for giving GCS URIs without a GCS client.
-        with (
-            tempfile.TemporaryDirectory() as temp_dest_dir,
-            tempfile.NamedTemporaryFile(suffix=".zip") as zip_file,
-        ):
-            # Create a temporary file with a zip extension in the temporary directory
-            with zipfile.ZipFile(zip_file.name, "w") as zip:
-                # Add a file to the zip file
-                zip.writestr("file.txt", "Hello, world!")
 
-            # upload the zip file to GCS pkg_uri
-            pkg_uri = "gcs://my-zipfile.zip"
-            upload_package_to_gcs(pkg_uri, zip_file.read())
+        with tempfile.TemporaryDirectory() as temp_dest_dir:
+            with tempfile.NamedTemporaryFile(suffix=".zip") as zip_file:
+                # Create a temporary file with a zip extension in the temp directory
+                with zipfile.ZipFile(zip_file.name, "w") as zip:
+                    # Add a file to the zip file
+                    zip.writestr("file.txt", "Hello, world!")
 
-            with pytest.raises(ValueError):
-                # Download the zip file from GCS pkg_uri
-                await download_and_unpack_package(
-                    pkg_uri=pkg_uri,
-                    base_directory=temp_dest_dir,
-                    gcs_aio_client=None,
-                )
+                # upload the zip file to GCS pkg_uri
+                pkg_uri = "gcs://my-zipfile.zip"
+                upload_package_to_gcs(pkg_uri, zip_file.read())
+
+                with pytest.raises(ValueError):
+                    # Download the zip file from GCS pkg_uri
+                    await download_and_unpack_package(
+                        pkg_uri=pkg_uri,
+                        base_directory=temp_dest_dir,
+                        gcs_aio_client=None,
+                    )
 
     async def test_download_and_unpack_package_with_gcs_uri(self, ray_start_regular):
         # Test downloading and unpacking a GCS package with a GCS client.
@@ -561,28 +560,27 @@ class TestDownloadAndUnpackPackage:
             address=ray._private.worker.global_worker.gcs_client.address
         )
 
-        with (
-            tempfile.TemporaryDirectory() as temp_dest_dir,
-            tempfile.NamedTemporaryFile(suffix=".zip") as zip_file,
-        ):
-            # Create a temporary file with a zip extension in the temporary directory
-            with zipfile.ZipFile(zip_file.name, "w") as zip:
-                # Add a file to the zip file
-                zip.writestr("file.txt", "Hello, world!")
+        with tempfile.TemporaryDirectory() as temp_dest_dir:
+            with tempfile.NamedTemporaryFile(suffix=".zip") as zip_file:
+                # Create a temporary file with a zip extension in the temp directory
 
-            # upload the zip file to GCS pkg_uri
-            pkg_uri = "gcs://my-zipfile.zip"
-            upload_package_to_gcs(pkg_uri, zip_file.read())
+                with zipfile.ZipFile(zip_file.name, "w") as zip:
+                    # Add a file to the zip file
+                    zip.writestr("file.txt", "Hello, world!")
 
-            # Download the zip file from GCS pkg_uri
-            local_dir = await download_and_unpack_package(
-                pkg_uri=pkg_uri,
-                base_directory=temp_dest_dir,
-                gcs_aio_client=gcs_aio_client,
-            )
+                # upload the zip file to GCS pkg_uri
+                pkg_uri = "gcs://my-zipfile.zip"
+                upload_package_to_gcs(pkg_uri, zip_file.read())
 
-            # Check that the file was extracted to the destination directory
-            assert (Path(local_dir) / "file.txt").exists()
+                # Download the zip file from GCS pkg_uri
+                local_dir = await download_and_unpack_package(
+                    pkg_uri=pkg_uri,
+                    base_directory=temp_dest_dir,
+                    gcs_aio_client=gcs_aio_client,
+                )
+
+                # Check that the file was extracted to the destination directory
+                assert (Path(local_dir) / "file.txt").exists()
 
     async def test_download_and_unpack_package_with_https_uri(self):
         with tempfile.TemporaryDirectory() as temp_dest_dir:
@@ -622,24 +620,22 @@ class TestDownloadAndUnpackPackage:
                 mock_unzip_package.assert_called_once()
 
     async def test_download_and_unpack_package_with_file_uri(self):
-        with (
-            tempfile.TemporaryDirectory() as temp_dest_dir,
-            tempfile.NamedTemporaryFile(suffix=".zip") as zip_file,
-        ):
-            # Create a temporary file with a zip extension in the temporary directory
+        with tempfile.TemporaryDirectory() as temp_dest_dir:
+            with tempfile.NamedTemporaryFile(suffix=".zip") as zip_file:
+                # Create a temporary file with a zip extension in the temp directory
 
-            with zipfile.ZipFile(zip_file.name, "w") as zip:
-                # Add a file to the zip file
-                zip.writestr("file.txt", "Hello, world!")
+                with zipfile.ZipFile(zip_file.name, "w") as zip:
+                    # Add a file to the zip file
+                    zip.writestr("file.txt", "Hello, world!")
 
-            pkg_uri = f"file://{zip_file.name}"
+                pkg_uri = f"file://{zip_file.name}"
 
-            local_dir = await download_and_unpack_package(
-                pkg_uri=pkg_uri, base_directory=temp_dest_dir
-            )
+                local_dir = await download_and_unpack_package(
+                    pkg_uri=pkg_uri, base_directory=temp_dest_dir
+                )
 
-            # Check that the file was extracted to the destination directory
-            assert (Path(local_dir) / "file.txt").exists()
+                # Check that the file was extracted to the destination directory
+                assert (Path(local_dir) / "file.txt").exists()
 
     @pytest.mark.parametrize(
         "protocol",
