@@ -87,7 +87,7 @@ def test_serve_metrics_for_successful_connection(serve_start_shutdown):
 
 
 def test_http_metrics(serve_start_shutdown):
-    
+
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
     # Any updates here should be reflected there too.
