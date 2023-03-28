@@ -213,7 +213,7 @@ class TunerTest(unittest.TestCase):
 
         # Test resume
         restore_path = os.path.join(DEFAULT_RESULTS_DIR, "test_tuner_driver_fail")
-        tuner = Tuner.restore(restore_path)
+        tuner = Tuner.restore(restore_path, trainable=trainer)
         # A hack before we figure out RunConfig semantics across resumes.
         tuner._local_tuner._run_config.callbacks = None
         results = tuner.fit()
