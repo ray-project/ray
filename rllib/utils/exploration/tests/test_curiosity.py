@@ -140,6 +140,7 @@ class TestCuriosity(unittest.TestCase):
         ray.shutdown()
 
     def test_curiosity_on_frozen_lake(self):
+
         config = (
             ppo.PPOConfig()
             # A very large frozen-lake that's hard for a random policy to solve

@@ -286,6 +286,7 @@ class QMixTorchPolicy(TorchPolicy):
         timestep: Optional[int] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+
         obs_batch = input_dict[SampleBatch.OBS]
         state_batches = []
         i = 0

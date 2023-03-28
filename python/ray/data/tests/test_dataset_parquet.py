@@ -53,6 +53,7 @@ def check_num_computed(ds, expected, streaming_expected) -> None:
 def test_parquet_deserialize_pieces_with_retry(
     ray_start_regular_shared, fs, data_path, monkeypatch
 ):
+
     setup_data_path = _unwrap_protocol(data_path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
