@@ -14,7 +14,10 @@ from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
+from ray.data.datasource.file_meta_provider import (
+    BaseFileMetadataProvider,
+    DefaultFileMetadataProvider,
+)
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.util.annotations import DeveloperAPI
 
@@ -134,7 +137,7 @@ class _ImageDatasourceReader(_FileBasedDatasourceReader):
         filesystem: "pyarrow.fs.FileSystem",
         partition_filter: PathPartitionFilter,
         partitioning: Partitioning,
-        meta_provider: _ImageFileMetadataProvider = _ImageFileMetadataProvider(),
+        meta_provider: BaseFileMetadataProvider,
         **reader_args,
     ):
         super().__init__(
@@ -148,11 +151,20 @@ class _ImageDatasourceReader(_FileBasedDatasourceReader):
             partitioning=partitioning,
             **reader_args,
         )
-        self._encoding_ratio = self._estimate_files_encoding_ratio()
-        meta_provider._set_encoding_ratio(self._encoding_ratio)
+        if isinstance(meta_provider, _ImageFileMetadataProvider):
+            self._encoding_ratio = self._estimate_files_encoding_ratio()
+            meta_provider._set_encoding_ratio(self._encoding_ratio)
+        else:
+            self._encoding_ratio = IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        return sum(self._file_sizes) * self._encoding_ratio
+        total_size = 0
+        for file_size in self._file_sizes:
+            # NOTE: check if file size is not None, because some metadata provider
+            # such as FastFileMetadataProvider does not provide file size information.
+            if file_size is not None:
+                total_size += file_size
+        return total_size * self._encoding_ratio
 
     def _estimate_files_encoding_ratio(self) -> float:
         """Return an estimate of the image files encoding ratio."""
