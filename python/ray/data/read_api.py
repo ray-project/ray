@@ -63,6 +63,7 @@ from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
     _wrap_arrow_serialization_workaround,
 )
+from ray.data.datasource.image_datasource import _ImageFileMetadataProvider
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
@@ -573,6 +574,7 @@ def read_images(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
+    meta_provider: BaseFileMetadataProvider = _ImageFileMetadataProvider(),
     partition_filter: Optional[
         PathPartitionFilter
     ] = ImageDatasource.file_extension_filter(),
@@ -659,6 +661,7 @@ def read_images(
         paths=paths,
         filesystem=filesystem,
         parallelism=parallelism,
+        meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         size=size,
