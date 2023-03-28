@@ -185,7 +185,7 @@ def _resolve_storage_path(
     legacy_local_dir: Optional[str],
     legacy_upload_dir: Optional[str],
     error_location: str = "air.RunConfig",
-):
+) -> Tuple[Optional[str], Optional[str]]:
     local_path, remote_path = _split_remote_local_path(
         path=path, default_local_path=None
     )
