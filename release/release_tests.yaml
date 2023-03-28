@@ -2198,6 +2198,10 @@
     - name: aws
     - name: gce
       env: gce
+      run:
+        timeout: 600
+        script: python workloads/serve_failure.py
+        type: anyscale_job
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
