@@ -6,7 +6,7 @@ cartpole-a2c:
         timesteps_total: 500000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         train_batch_size: 40
         rollout_fragment_length: auto
         num_workers: 0

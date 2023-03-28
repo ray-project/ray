@@ -1,12 +1,20 @@
-import { createStyles, makeStyles, Typography } from "@material-ui/core";
+import {
+  createStyles,
+  IconButton,
+  makeStyles,
+  Tooltip,
+  Typography,
+} from "@material-ui/core";
 import classNames from "classnames";
 import React, { useContext } from "react";
+import { RiBookMarkLine, RiFeedbackLine } from "react-icons/ri/";
 import { Link, Outlet } from "react-router-dom";
+import { GlobalContext } from "../../App";
 import Logo from "../../logo.svg";
 import { MainNavContext, useMainNavState } from "./mainNavContext";
 
-const MAIN_NAV_HEIGHT = 56;
-const BREADCRUMBS_HEIGHT = 36;
+export const MAIN_NAV_HEIGHT = 56;
+export const BREADCRUMBS_HEIGHT = 36;
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -14,7 +22,7 @@ const useStyles = makeStyles((theme) =>
       position: "fixed",
       width: "100%",
       backgroundColor: "white",
-      zIndex: 10000,
+      zIndex: 1000,
     },
   }),
 );
@@ -88,13 +96,14 @@ const useMainNavBarStyles = makeStyles((theme) =>
       boxShadow: "0px 1px 0px #D2DCE6",
     },
     logo: {
-      width: 60,
       display: "flex",
       justifyContent: "center",
+      marginLeft: theme.spacing(2),
+      marginRight: theme.spacing(3),
     },
     navItem: {
-      marginRight: theme.spacing(2),
-      fontSize: "1em",
+      marginRight: theme.spacing(6),
+      fontSize: "1rem",
       fontWeight: 500,
       color: "black",
       textDecoration: "none",
@@ -102,28 +111,60 @@ const useMainNavBarStyles = makeStyles((theme) =>
     navItemHighlighted: {
       color: "#036DCF",
     },
+    flexSpacer: {
+      flexGrow: 1,
+    },
+    actionItemsContainer: {
+      marginRight: theme.spacing(2),
+    },
+    backToOld: {
+      marginRight: theme.spacing(1.5),
+      textDecoration: "none",
+    },
+    backToOldText: {
+      letterSpacing: 0.25,
+      fontWeight: 500,
+    },
+    actionItem: {
+      color: "#5F6469",
+    },
   }),
 );
 
 const NAV_ITEMS = [
   {
     title: "Overview",
-    path: "/new/overview",
+    path: "/overview",
     id: "overview",
   },
   {
     title: "Jobs",
-    path: "/new/jobs",
+    path: "/jobs",
     id: "jobs",
   },
   {
+    title: "Serve",
+    path: "/serve",
+    id: "serve",
+  },
+  {
     title: "Cluster",
-    path: "/new/cluster",
+    path: "/cluster",
     id: "cluster",
   },
   {
+    title: "Actors",
+    path: "/actors",
+    id: "actors",
+  },
+  {
+    title: "Metrics",
+    path: "/metrics",
+    id: "metrics",
+  },
+  {
     title: "Logs",
-    path: "/new/logs",
+    path: "/logs",
     id: "logs",
   },
 ];
@@ -132,14 +173,19 @@ const MainNavBar = () => {
   const classes = useMainNavBarStyles();
   const { mainNavPageHierarchy } = useContext(MainNavContext);
   const rootRouteId = mainNavPageHierarchy[0]?.id;
+  const { metricsContextLoaded, grafanaHost } = useContext(GlobalContext);
+
+  let navItems = NAV_ITEMS;
+  if (!metricsContextLoaded || grafanaHost === "DISABLED") {
+    navItems = navItems.filter(({ id }) => id !== "metrics");
+  }
 
   return (
     <div className={classes.root}>
-      <div className={classes.logo}>
+      <Link className={classes.logo} to="/">
         <img width={28} src={Logo} alt="Ray" />
-      </div>
-      {/* TODO (aguo): Get rid of /new prefix */}
-      {NAV_ITEMS.map(({ title, path, id }) => (
+      </Link>
+      {navItems.map(({ title, path, id }) => (
         <Typography key={id}>
           <Link
             className={classNames(classes.navItem, {
@@ -151,6 +197,29 @@ const MainNavBar = () => {
           </Link>
         </Typography>
       ))}
+      <div className={classes.flexSpacer}></div>
+      <div className={classes.actionItemsContainer}>
+        <Tooltip title="Docs">
+          <IconButton
+            className={classes.actionItem}
+            href="https://docs.ray.io/en/latest/ray-core/ray-dashboard.html"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <RiBookMarkLine />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Leave feedback">
+          <IconButton
+            className={classes.actionItem}
+            href="https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdashboard&template=bug-report.yml&title=%5BDashboard%5D+%3CTitle%3E"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <RiFeedbackLine />
+          </IconButton>
+        </Tooltip>
+      </div>
     </div>
   );
 };
@@ -171,6 +240,7 @@ const useMainNavBreadcrumbsStyles = makeStyles((theme) =>
     },
     breadcrumbItem: {
       fontWeight: 500,
+      color: "#8C9196",
       "&:not(:first-child)": {
         marginLeft: theme.spacing(1),
       },
@@ -211,15 +281,21 @@ const MainNavBreadcrumbs = () => {
         );
         if (index === 0) {
           return (
-            <Typography key={id} className={classes.breadcrumbItem}>
+            <Typography
+              key={id}
+              className={classes.breadcrumbItem}
+              variant="body2"
+            >
               {linkOrText}
             </Typography>
           );
         } else {
           return (
             <React.Fragment key={id}>
-              <Typography className={classes.breadcrumbItem}>{"/"}</Typography>
-              <Typography className={classes.breadcrumbItem}>
+              <Typography className={classes.breadcrumbItem} variant="body2">
+                {"/"}
+              </Typography>
+              <Typography className={classes.breadcrumbItem} variant="body2">
                 {linkOrText}
               </Typography>
             </React.Fragment>

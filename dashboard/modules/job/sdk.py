@@ -75,7 +75,7 @@ class JobSubmissionClient(SubmissionClient):
         if requests is None:
             raise RuntimeError(
                 "The Ray jobs CLI & SDK require the ray[default] "
-                "installation: `pip install 'ray[default']``"
+                "installation: `pip install 'ray[default]'`"
             )
 
         # Check types of arguments
@@ -231,6 +231,8 @@ class JobSubmissionClient(SubmissionClient):
         job_id: str,
     ) -> bool:
         """Request a job to exit asynchronously.
+
+        Attempts to terminate process first, then kills process after timeout.
 
         Example:
             >>> from ray.job_submission import JobSubmissionClient

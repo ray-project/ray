@@ -345,6 +345,7 @@ message GetTaskFailureCauseRequest {
 
 message GetTaskFailureCauseReply {
   optional RayErrorInfo failure_cause = 1;
+  bool fail_task_immediately = 2;
 }
 
 // Service for inter-node-manager communication.

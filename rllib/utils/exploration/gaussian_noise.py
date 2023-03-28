@@ -1,4 +1,4 @@
-from gym.spaces import Space
+from gymnasium.spaces import Space
 import numpy as np
 from typing import Union, Optional
 

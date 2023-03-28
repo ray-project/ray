@@ -4,9 +4,11 @@
 #    32 workers -> 7 minutes
 # See also: pong-impala.yaml, pong-impala-vectorized.yaml
 pong-impala-fast:
-    env: PongNoFrameskip-v4
+    env: ALE/Pong-v5
     run: IMPALA
     config:
+        env_config:
+            frameskip: 1  # no frameskip
         rollout_fragment_length: 50
         train_batch_size: 1000
         num_workers: 128

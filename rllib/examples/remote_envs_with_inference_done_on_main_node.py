@@ -11,13 +11,16 @@ https://ai.googleblog.com/2020/03/massively-scaling-reinforcement.html
 """
 import argparse
 import os
+from typing import Union
 
 import ray
+from ray import air, tune
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import air, tune
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict
 from ray.tune import PlacementGroupFactory
 from ray.tune.logger import pretty_print
 
@@ -34,7 +37,7 @@ def get_cli_args():
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "torch"],
-        default="tf",
+        default="torch",
         help="The DL framework specifier.",
     )
     parser.add_argument(
@@ -82,8 +85,14 @@ def get_cli_args():
 class PPORemoteInference(PPO):
     @classmethod
     @override(Algorithm)
-    def default_resource_request(cls, config):
-        cf = dict(cls.get_default_config(), **config)
+    def default_resource_request(
+        cls,
+        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
+    ):
+        if isinstance(config, AlgorithmConfig):
+            cf = config
+        else:
+            cf = cls.get_default_config().update_from_dict(config)
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -94,15 +103,15 @@ class PPORemoteInference(PPO):
                     # main model in this example (num_workers=0).
                     "CPU": 1,
                     # Possibly add n GPUs to this.
-                    "GPU": cf["num_gpus"],
+                    "GPU": cf.num_gpus,
                 },
                 {
                     # Different bundle (meaning: possibly different node)
                     # for your n "remote" envs (set remote_worker_envs=True).
-                    "CPU": cf["num_envs_per_worker"],
+                    "CPU": cf.num_envs_per_worker,
                 },
             ],
-            strategy=config.get("placement_strategy", "PACK"),
+            strategy=cf.placement_strategy,
         )
 
 

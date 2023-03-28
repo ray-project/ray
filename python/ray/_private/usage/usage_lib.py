@@ -41,12 +41,10 @@ Note that it is also possible to configure the interval using the environment va
 To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
 """
-import glob
 import json
 import logging
 import threading
 import os
-import re
 import sys
 import time
 import uuid
@@ -63,8 +61,10 @@ import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
 from ray._private import gcs_utils
 from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
+from ray.core.generated import usage_pb2
 
 logger = logging.getLogger(__name__)
+TagKey = usage_pb2.TagKey
 
 #################
 # Internal APIs #
@@ -173,52 +173,6 @@ _recorded_extra_usage_tags = dict()
 _recorded_extra_usage_tags_lock = threading.Lock()
 
 
-# NOTE: Do not change the write / read protocol. That will cause
-# version incompatibility issues.
-class LibUsageRecorder:
-    """A class to put/get the library usage to the ray tmp folder.
-
-    See https://github.com/ray-project/ray/pull/25842 for more details.
-    """
-
-    def __init__(self, temp_dir_path: str):
-        self._lib_usage_dir = Path(temp_dir_path)
-        self._lib_usage_prefix = "_ray_lib_usage-"
-        self._lib_usage_filename_match = re.compile(
-            f"{self._lib_usage_prefix}([0-9a-zA-Z_.]+).txt"
-        )
-
-    def put_lib_usage(self, lib_name: str):
-        """Put the library usage to the ray tmp folder."""
-        lib_usage_file = self._lib_usage_dir / self._lib_usage_filename(lib_name)
-        lib_usage_file.touch(exist_ok=True)
-
-    def read_lib_usages(self) -> List[str]:
-        """Read a list of library usages from the ray tmp folder."""
-        # For checking if the file exists, it is okay to have a minor chance of
-        # having race condition.
-        lib_usages = []
-        file_paths = glob.glob(f"{self._lib_usage_dir}/{self._lib_usage_prefix}*")
-        for file_path in file_paths:
-            file_path = Path(file_path)
-            if file_path.exists():
-                lib_usages.append(self._get_lib_usage_from_filename(file_path.name))
-        return lib_usages
-
-    def delete_lib_usages(self):
-        """Delete all usage files. Test only"""
-        file_paths = glob.glob(f"{self._lib_usage_dir}/{self._lib_usage_prefix}*")
-        for file_path in file_paths:
-            file_path = Path(file_path)
-            file_path.unlink()
-
-    def _lib_usage_filename(self, lib_name: str) -> str:
-        return f"{self._lib_usage_prefix}{lib_name}.txt"
-
-    def _get_lib_usage_from_filename(self, filename: str) -> str:
-        return self._lib_usage_filename_match.match(filename).group(1)
-
-
 def _put_library_usage(library_usage: str):
     assert _internal_kv_initialized()
     try:
@@ -230,73 +184,6 @@ def _put_library_usage(library_usage: str):
     except Exception as e:
         logger.debug(f"Failed to put library usage, {e}")
 
-    # Record the library usage to the temp (e.g., /tmp/ray) folder.
-    # Note that although we always write this file, it is not
-    # reported when the usage stats is disabled.
-    if ray._private.worker.global_worker.mode == ray.SCRIPT_MODE:
-        try:
-            lib_usage_recorder = LibUsageRecorder(ray._private.utils.get_ray_temp_dir())
-            lib_usage_recorder.put_lib_usage(library_usage)
-        except Exception as e:
-            logger.debug(f"Failed to write a library usage to the home folder, {e}")
-
-
-class TagKey(Enum):
-    _TEST1 = auto()
-    _TEST2 = auto()
-
-    # RLlib
-    # The deep learning framework ("tf", "torch", etc.).
-    RLLIB_FRAMEWORK = auto()
-    # The algorithm name (only built-in algorithms).
-    RLLIB_ALGORITHM = auto()
-    # The number of workers as a string.
-    RLLIB_NUM_WORKERS = auto()
-
-    # Serve
-    # The public Python API version ("v1", "v2").
-    SERVE_API_VERSION = auto()
-    # The total number of running serve deployments as a string.
-    SERVE_NUM_DEPLOYMENTS = auto()
-
-    # The GCS storage type, which could be memory or redis.
-    GCS_STORAGE = auto()
-
-    # Ray Core State API
-    # NOTE(rickyxx): Currently only setting "1" for tracking existence of
-    # invocations only.
-    CORE_STATE_API_LIST_ACTORS = auto()
-    CORE_STATE_API_LIST_TASKS = auto()
-    CORE_STATE_API_LIST_JOBS = auto()
-    CORE_STATE_API_LIST_NODES = auto()
-    CORE_STATE_API_LIST_PLACEMENT_GROUPS = auto()
-    CORE_STATE_API_LIST_WORKERS = auto()
-    CORE_STATE_API_LIST_OBJECTS = auto()
-    CORE_STATE_API_LIST_RUNTIME_ENVS = auto()
-    CORE_STATE_API_LIST_CLUSTER_EVENTS = auto()
-    CORE_STATE_API_LIST_LOGS = auto()
-    CORE_STATE_API_GET_LOG = auto()
-    CORE_STATE_API_SUMMARIZE_TASKS = auto()
-    CORE_STATE_API_SUMMARIZE_ACTORS = auto()
-    CORE_STATE_API_SUMMARIZE_OBJECTS = auto()
-
-    # Dashboard
-    # {True, False}
-    # True if the dashboard page has been ever opened.
-    DASHBOARD_USED = auto()
-    # Whether a user is running ray with some third party metrics
-    # services (Ex: "True", "False")
-    DASHBOARD_METRICS_PROMETHEUS_ENABLED = auto()
-    DASHBOARD_METRICS_GRAFANA_ENABLED = auto()
-
-    # The count(int) of worker crash with exit type 'system error' since
-    # the cluster started, emitted from GCS
-    WORKER_CRASH_SYSTEM_ERROR = auto()
-
-    # The count(int) of worker crash with exit type 'out-of-memory' since
-    # the cluster started, emitted from GCS
-    WORKER_CRASH_OOM = auto()
-
 
 def record_extra_usage_tag(key: TagKey, value: str):
     """Record extra kv usage tag.
@@ -307,7 +194,7 @@ def record_extra_usage_tag(key: TagKey, value: str):
     then call this function.
     It will make a synchronous call to the internal kv store if the tag is updated.
     """
-    key = key.name.lower()
+    key = TagKey.Name(key).lower()
     with _recorded_extra_usage_tags_lock:
         if _recorded_extra_usage_tags.get(key) == value:
             return
@@ -334,11 +221,6 @@ def _put_extra_usage_tag(key: str, value: str):
 
 def record_library_usage(library_usage: str):
     """Record library usage (e.g. which library is used)"""
-    if "-" in library_usage:
-        # - is not permitted since it should be used as a separator
-        # of the lib usage file name. See LibUsageRecorder.
-        raise ValueError("The library name contains a char - which is not permitted.")
-
     with _recorded_library_usages_lock:
         if library_usage in _recorded_library_usages:
             return
@@ -623,15 +505,6 @@ def get_library_usages_to_report(gcs_client) -> List[str]:
             library_usage = library_usage.decode("utf-8")
             result.append(library_usage[len(usage_constant.LIBRARY_USAGE_PREFIX) :])
 
-        try:
-            historical_lib_usages = LibUsageRecorder(
-                ray._private.utils.get_ray_temp_dir()
-            ).read_lib_usages()
-            for library_usage in historical_lib_usages:
-                if library_usage not in result:
-                    result.append(library_usage)
-        except Exception as e:
-            logger.info(f"Failed to read historical library usage {e}")
         return result
     except Exception as e:
         logger.info(f"Failed to get library usages to report {e}")
@@ -659,7 +532,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
         except Exception as e:
             logger.info(f"Failed to parse extra usage tags env var. Error: {e}")
 
-    valid_tag_keys = [tag_key.name.lower() for tag_key in TagKey]
+    valid_tag_keys = [tag_key.lower() for tag_key in TagKey.keys()]
     try:
         keys = gcs_client.internal_kv_keys(
             usage_constant.EXTRA_USAGE_TAG_PREFIX.encode(),

@@ -2,6 +2,7 @@ import pytest
 import ray
 import time
 import numpy as np
+import os
 
 
 # https://github.com/ray-project/ray/issues/19659
@@ -153,9 +154,45 @@ def test_multiple_objects(ray_start_cluster):
     assert ray.get(owner.remote_get_object_refs.remote(borrower), timeout=60)
 
 
+# https://github.com/ray-project/ray/issues/30341
+def test_owner_assign_inner_object(shutdown_only):
+
+    ray.init()
+
+    @ray.remote
+    class Owner:
+        def warmup(self):
+            pass
+
+    @ray.remote
+    def get_borrowed_object():
+        ref = ray.put(("test_borrowed"))
+        return [ref]
+
+    owner = Owner.remote()
+    ray.get(owner.warmup.remote())
+
+    class OutObject:
+        def __init__(self, owned_inner_ref, borrowed_inner_ref):
+            self.owned_inner_ref = owned_inner_ref
+            self.borrowed_inner_ref = borrowed_inner_ref
+
+    owned_inner_ref = ray.put("test_owned")
+
+    borrowed_inner_ref = ray.get(get_borrowed_object.remote())[0]
+    out_ref = ray.put(OutObject(owned_inner_ref, borrowed_inner_ref), _owner=owner)
+
+    # wait enough time to delete data when the reference count is lower
+    # than expected
+    del owned_inner_ref, borrowed_inner_ref
+    time.sleep(10)
+
+    assert ray.get(ray.get(out_ref).owned_inner_ref) == "test_owned"
+    assert ray.get(ray.get(out_ref).borrowed_inner_ref) == "test_borrowed"
+
+
 if __name__ == "__main__":
     import pytest
-    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

@@ -23,7 +23,7 @@ You may connect more than one policy client to any open listen port.
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import os
 
 import ray
@@ -84,7 +84,7 @@ def get_cli_args():
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "torch"],
-        default="tf",
+        default="torch",
         help="The DL framework specifier.",
     )
     parser.add_argument(

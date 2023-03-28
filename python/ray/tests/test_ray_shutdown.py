@@ -56,6 +56,99 @@ def test_ray_shutdown(short_gcs_publish_timeout, shutdown_only):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
+def test_ray_shutdown_then_call(short_gcs_publish_timeout, shutdown_only):
+    """Make sure ray will not kill cpython when using unrecognized ObjectId"""
+    # Set include_dashboard=False to have faster startup.
+    ray.init(num_cpus=1, include_dashboard=False)
+
+    my_ref = ray.put("anystring")
+
+    @ray.remote
+    def f(s):
+        print(s)
+
+    ray.shutdown()
+
+    ray.init(num_cpus=1, include_dashboard=False)
+    with pytest.raises(ValueError, match="Ray object whose owner is unknown"):
+        f.remote(my_ref)  # This would cause full CPython death.
+
+    ray.shutdown()
+    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
+def test_ray_shutdown_then_call_list(short_gcs_publish_timeout, shutdown_only):
+    """Make sure ray will not kill cpython when using unrecognized ObjectId"""
+    # Set include_dashboard=False to have faster startup.
+    ray.init(num_cpus=1, include_dashboard=False)
+
+    my_ref = ray.put("anystring")
+
+    @ray.remote
+    def f(s):
+        print(s)
+
+    ray.shutdown()
+
+    ray.init(num_cpus=1, include_dashboard=False)
+    with pytest.raises(ValueError, match="Ray object whose owner is unknown"):
+        f.remote([my_ref])  # This would cause full CPython death.
+
+    ray.shutdown()
+    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
+def test_ray_shutdown_then_get(short_gcs_publish_timeout, shutdown_only):
+    """Make sure ray will not hang when trying to Get an unrecognized Obj."""
+    # Set include_dashboard=False to have faster startup.
+    ray.init(num_cpus=1, include_dashboard=False)
+
+    my_ref = ray.put("anystring")
+
+    ray.shutdown()
+
+    ray.init(num_cpus=1, include_dashboard=False)
+    with pytest.raises(ValueError, match="Ray objects whose owner is unknown"):
+        # This used to cause ray to hang indefinitely (without timeout) or
+        # throw a timeout exception if a timeout was provided. Now it is expected to
+        # throw an exception reporting the unknown object.
+        ray.get(my_ref, timeout=30)
+
+    ray.shutdown()
+    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
+def test_ray_shutdown_then_wait(short_gcs_publish_timeout, shutdown_only):
+    """Make sure ray will not hang when trying to Get an unrecognized Obj."""
+    # Set include_dashboard=False to have faster startup.
+    ray.init(num_cpus=1, include_dashboard=False)
+
+    my_ref = ray.put("anystring")
+
+    ray.shutdown()
+
+    ray.init(num_cpus=1, include_dashboard=False)
+    my_new_ref = ray.put("anyotherstring")
+
+    # If we have some known and some unknown references, we allow the
+    # function to wait for the valid references; however, if all the
+    # references are unknown, we expect an error.
+    ready, not_ready = ray.wait([my_new_ref, my_ref])
+    with pytest.raises(ValueError, match="Ray object whose owner is unknown"):
+        # This used to cause ray to hang indefinitely (without timeout) or
+        # forever return all tasks as not-ready if a timeout was provided.
+        # Now it is expected to throw an exception reporting if all objects are
+        # unknown.
+        ray.wait(not_ready, timeout=30)
+
+    ray.shutdown()
+    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
 def test_driver_dead(short_gcs_publish_timeout, shutdown_only):
     """Make sure all ray workers are shutdown when driver is killed."""
     driver = """

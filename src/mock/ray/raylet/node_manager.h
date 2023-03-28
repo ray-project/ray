@@ -25,16 +25,6 @@ class MockNodeManagerConfig : public NodeManagerConfig {
 namespace ray {
 namespace raylet {
 
-class MockHeartbeatSender : public HeartbeatSender {
- public:
-};
-
-}  // namespace raylet
-}  // namespace ray
-
-namespace ray {
-namespace raylet {
-
 class MockNodeManager : public NodeManager {
  public:
   MOCK_METHOD(void,

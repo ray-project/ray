@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import unittest
 
 from ray.rllib.models.catalog import ModelCatalog, MODEL_DEFAULTS

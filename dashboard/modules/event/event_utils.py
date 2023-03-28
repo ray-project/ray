@@ -11,8 +11,9 @@ from ray._private.utils import get_or_create_event_loop
 
 from concurrent.futures import ThreadPoolExecutor
 
+from ray._private.utils import run_background_task
 from ray.dashboard.modules.event import event_consts
-from ray.dashboard.utils import async_loop_forever, create_task
+from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
 
@@ -206,4 +207,4 @@ def monitor_events(
             ]
         )
 
-    return create_task(_scan_event_log_files())
+    return run_background_task(_scan_event_log_files())

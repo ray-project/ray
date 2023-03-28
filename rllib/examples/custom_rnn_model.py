@@ -22,7 +22,7 @@ parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -72,9 +72,12 @@ if __name__ == "__main__":
                 },
             },
             gamma=0.9,
+            # TODO (Kourosh): Enable when LSTMs are supported.
+            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(_enable_rl_module_api=False)
     )
 
     if args.run == "PPO":
@@ -96,7 +99,7 @@ if __name__ == "__main__":
     # >> algo = config.build()
     # >> lstm_cell_size = config.model["custom_model_config"]["cell_size"]
     # >> env = RepeatAfterMeEnv({})
-    # >> obs = env.reset()
+    # >> obs, info = env.reset()
     # >>
     # >> # range(2) b/c h- and c-states of the LSTM.
     # >> init_state = state = [
@@ -105,9 +108,9 @@ if __name__ == "__main__":
     # >>
     # >> while True:
     # >>     a, state_out, _ = algo.compute_single_action(obs, state)
-    # >>     obs, reward, done, _ = env.step(a)
+    # >>     obs, reward, done, _, _ = env.step(a)
     # >>     if done:
-    # >>         obs = env.reset()
+    # >>         obs, info = env.reset()
     # >>         state = init_state
     # >>     else:
     # >>         state = state_out

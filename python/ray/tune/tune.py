@@ -1,19 +1,41 @@
+import abc
+import contextlib
+import copy
 import datetime
 import logging
 import os
+from pathlib import Path
 import signal
 import sys
 import threading
 import time
 import warnings
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Mapping,
+    Optional,
+    Sequence,
+    Type,
+    Union,
+    TYPE_CHECKING,
+)
 
 import ray
 from ray.air import CheckpointConfig
+from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
+from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
+from ray.tune.experimental.output import (
+    get_air_verbosity,
+    _detect_reporter as _detect_air_reporter,
+)
+
+from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.progress_reporter import (
     ProgressReporter,
     _detect_reporter,
@@ -48,16 +70,22 @@ from ray.tune.search.util import (
     _set_search_properties_backwards_compatible as searcher_set_search_props,
 )
 from ray.tune.search.variant_generator import _has_unresolved_values
-from ray.tune.syncer import SyncConfig, SyncerCallback
+from ray.tune.syncer import SyncConfig
 from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
-from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-from ray.tune.utils.node import _force_on_current_node
+from ray.tune.utils.log import (
+    Verbosity,
+    has_verbosity,
+    set_verbosity,
+)
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
+
+if TYPE_CHECKING:
+    from ray.tune.experimental.output import ProgressReporter as AirProgressReporter
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +125,17 @@ def _check_default_resources_override(
     )
 
 
+def _check_mixin(run_identifier: Union[Experiment, str, Type, Callable]) -> bool:
+    trainable_cls = _get_trainable(run_identifier)
+    if not trainable_cls:
+        # Default to True
+        return True
+
+    return hasattr(trainable_cls, "__mixins__") or getattr(
+        trainable_cls, "_is_mixin", False
+    )
+
+
 def _check_gpus_in_resources(
     resources: Optional[Union[Dict, PlacementGroupFactory]]
 ) -> bool:
@@ -123,8 +162,18 @@ def _report_progress(
     trials = runner.get_trials()
     if reporter.should_report(trials, done=done):
         sched_debug_str = runner.scheduler_alg.debug_string()
-        executor_debug_str = runner.trial_executor.debug_string()
-        reporter.report(trials, done, sched_debug_str, executor_debug_str)
+        used_resources_str = runner._used_resources_string()
+        reporter.report(trials, done, sched_debug_str, used_resources_str)
+
+
+def _report_air_progress(
+    runner: TrialRunner, reporter: "AirProgressReporter", force: bool = False
+):
+    trials = runner.get_trials()
+    reporter_args = []
+    executor_debug_str = runner.trial_executor.debug_string()
+    reporter_args.append(executor_debug_str)
+    reporter.print_heartbeat(trials, *reporter_args, force=force)
 
 
 def _setup_signal_catching() -> threading.Event:
@@ -160,9 +209,29 @@ def _setup_signal_catching() -> threading.Event:
     return experiment_interrupted_event
 
 
+def _ray_auto_init(entrypoint: str):
+    """Initialize Ray unless already configured."""
+    if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
+        logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
+    elif not ray.is_initialized():
+        ray.init()
+        logger.info(
+            "Initializing Ray automatically. "
+            "For cluster usage or custom Ray initialization, "
+            f"call `ray.init(...)` before `{entrypoint}`."
+        )
+
+
+class _Config(abc.ABC):
+    def to_dict(self) -> dict:
+        """Converts this configuration to a dict format."""
+        raise NotImplementedError
+
+
 @PublicAPI
 def run(
     run_or_experiment: Union[str, Callable, Type],
+    *,
     name: Optional[str] = None,
     metric: Optional[str] = None,
     mode: Optional[str] = None,
@@ -194,15 +263,17 @@ def run(
     server_port: Optional[int] = None,
     resume: Union[bool, str] = False,
     reuse_actors: Optional[bool] = None,
-    trial_executor: Optional[RayTrialExecutor] = None,
     raise_on_failed_trial: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
     max_concurrent_trials: Optional[int] = None,
+    # Deprecated
+    trial_executor: Optional[RayTrialExecutor] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
     # Passed by the Tuner.
     _remote_string_queue: Optional[Queue] = None,
+    _tuner_api: bool = False,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -380,7 +451,6 @@ def run(
             requires trials to have the same resource requirements.
             Defaults to ``True`` for function trainables and ``False`` for
             class and registered trainables.
-        trial_executor: Manage the execution of trials.
         raise_on_failed_trial: Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
         callbacks: List of callbacks that will be called at different
@@ -411,16 +481,40 @@ def run(
     remote_run_kwargs = locals().copy()
     remote_run_kwargs.pop("_remote")
 
+    error_message_map = (
+        {
+            "entrypoint": "Tuner(...)",
+            "search_space_arg": "param_space",
+            "restore_entrypoint": 'Tuner.restore(path="{path}", trainable=...)',
+        }
+        if _tuner_api
+        else {
+            "entrypoint": "tune.run(...)",
+            "search_space_arg": "config",
+            "restore_entrypoint": "tune.run(..., resume=True)",
+        }
+    )
+    _ray_auto_init(entrypoint=error_message_map["entrypoint"])
+
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 
     if _remote is True and trial_executor:
         raise ValueError("cannot use custom trial executor")
-
-    if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
-        _ray_auto_init()
+    elif trial_executor:
+        warnings.warn(
+            "Passing a custom `trial_executor` is deprecated and will be removed "
+            "in the future.",
+            DeprecationWarning,
+        )
 
     if _remote:
+        if get_air_verbosity():
+            logger.warning(
+                "Ignoring AIR_VERBOSITY setting, "
+                "as it doesn't support ray client mode yet."
+            )
+
         remote_run = ray.remote(num_cpus=0)(run)
 
         # Make sure tune.run is called on the sever node.
@@ -450,13 +544,30 @@ def run(
 
     if mode and mode not in ["min", "max"]:
         raise ValueError(
-            "The `mode` parameter passed to `tune.run()` has to be one of "
-            "['min', 'max']"
+            f"The `mode` parameter passed to `{error_message_map['entrypoint']}` "
+            "must be one of ['min', 'max']"
         )
 
-    set_verbosity(verbose)
+    air_verbosity = get_air_verbosity()
+    if air_verbosity:
+        logger.warning(
+            f"Testing new AIR console output flow with verbosity={air_verbosity}. "
+            f"This will also disable the old flow - setting it to 0 now."
+        )
+        set_verbosity(0)
+    else:
+        set_verbosity(verbose)
 
     config = config or {}
+    if isinstance(config, _Config):
+        config = config.to_dict()
+    if not isinstance(config, dict):
+        raise ValueError(
+            f"The `{error_message_map['search_space_arg']}` passed to "
+            f"`{error_message_map['entrypoint']}` must be a dict. "
+            f"Got '{type(config)}' instead."
+        )
+
     sync_config = sync_config or SyncConfig()
     sync_config.validate_upload_dir()
 
@@ -529,7 +640,13 @@ def run(
                 # will be requested, yet, so default to False
                 _check_default_resources_override(trainable)
             )
+            and not (
+                # Mixins do not work with reuse_actors as the mixin setup will only
+                # be invoked once
+                _check_mixin(trainable)
+            )
         )
+        logger.debug(f"Auto-detected `reuse_actors={reuse_actors}`")
 
     if (
         isinstance(scheduler, (PopulationBasedTraining, PopulationBasedTrainingReplay))
@@ -539,6 +656,20 @@ def run(
             "Consider boosting PBT performance by enabling `reuse_actors` as "
             "well as implementing `reset_config` for Trainable."
         )
+
+    # Before experiments are created, we first clean up the passed in
+    # Config dictionary by replacing all the non-primitive config values
+    # with placeholders. This serves two purposes:
+    # 1. we can replace and "fix" these objects if a Trial is restored.
+    # 2. the config dictionary will then be compatible with all supported
+    #   search algorithms, since a lot of them do not support non-primitive
+    #   config values.
+    placeholder_resolvers = create_resolvers_map()
+    config = inject_placeholders(
+        # Make a deep copy here to avoid modifying the original config dict.
+        copy.deepcopy(config),
+        placeholder_resolvers,
+    )
 
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
@@ -566,8 +697,6 @@ def run(
                 max_failures=max_failures,
                 restore=restore,
             )
-    else:
-        logger.debug("Ignoring some parameters passed into tune.run.")
 
     if fail_fast and max_failures != 0:
         raise ValueError("max_failures must be 0 if fail_fast=True.")
@@ -631,7 +760,8 @@ def run(
     ):
         if _has_unresolved_values(config):
             raise ValueError(
-                "You passed a `config` parameter to `tune.run()` with "
+                f"You passed a `{error_message_map['search_space_arg']}` parameter to "
+                f"`{error_message_map['entrypoint']}` with "
                 "unresolved parameters, but the search algorithm was already "
                 "instantiated with a search space. Make sure that `config` "
                 "does not contain any more parameter definitions - include "
@@ -642,17 +772,22 @@ def run(
         scheduler.set_search_properties, metric, mode, **experiments[0].public_spec
     ):
         raise ValueError(
-            "You passed a `metric` or `mode` argument to `tune.run()`, but "
+            "You passed a `metric` or `mode` argument to "
+            f"`{error_message_map['entrypoint']}`, but "
             "the scheduler you are using was already instantiated with their "
             "own `metric` and `mode` parameters. Either remove the arguments "
-            "from your scheduler or from your call to `tune.run()`"
+            f"from your scheduler or from `{error_message_map['entrypoint']}` args."
         )
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
     # Create syncer callbacks
     callbacks = _create_default_callbacks(
-        callbacks, sync_config, metric=metric, progress_metrics=progress_metrics
+        callbacks,
+        sync_config=sync_config,
+        air_verbosity=air_verbosity,
+        metric=metric,
+        progress_metrics=progress_metrics,
     )
 
     # User Warning for GPUs
@@ -678,18 +813,26 @@ def run(
 
     experiment_interrupted_event = _setup_signal_catching()
 
-    progress_reporter = progress_reporter or _detect_reporter()
+    if progress_reporter and air_verbosity:
+        logger.warning(
+            "AIR_VERBOSITY is set, ignoring passed-in ProgressReporter for now."
+        )
+        progress_reporter = None
+
+    if not air_verbosity:
+        progress_reporter = progress_reporter or _detect_reporter()
 
     trial_executor = trial_executor or RayTrialExecutor(
         reuse_actors=reuse_actors,
         result_buffer_length=result_buffer_length,
         chdir_to_trial_dir=chdir_to_trial_dir,
     )
-    runner = TrialRunner(
+    runner_kwargs = dict(
         search_alg=search_alg,
+        placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
-        local_checkpoint_dir=experiments[0].checkpoint_dir,
-        remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
+        experiment_path=experiments[0].local_path,
+        experiment_dir_name=experiments[0].dir_name,
         sync_config=sync_config,
         stopper=experiments[0].stopper,
         resume=resume,
@@ -699,18 +842,26 @@ def run(
         callbacks=callbacks,
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
-        # Driver should only sync trial checkpoints if
-        # checkpoints are not synced to cloud
-        driver_sync_trial_checkpoints=not bool(sync_config.upload_dir),
     )
+
+    if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "0"))):
+        trial_runner_cls = TuneController
+        runner_kwargs.pop("trial_executor")
+        runner_kwargs["reuse_actors"] = reuse_actors
+        runner_kwargs["chdir_to_trial_dir"] = chdir_to_trial_dir
+    else:
+        trial_runner_cls = TrialRunner
+
+    runner = trial_runner_cls(**runner_kwargs)
 
     if not runner.resumed:
         for exp in experiments:
             search_alg.add_configurations([exp])
     else:
-        logger.info(
-            "TrialRunner resumed, ignoring new add_experiment but "
-            "updating trial resources."
+        logger.debug(
+            "You have resumed the Tune run, which means that any newly specified "
+            "`Experiment`s will be ignored. "
+            "Tune will just continue what was previously running."
         )
         if resources_per_trial:
             runner.update_pending_trial_resources(resources_per_trial)
@@ -722,36 +873,59 @@ def run(
 
     tune_start = time.time()
 
-    progress_reporter.setup(
-        start_time=tune_start,
-        total_samples=search_alg.total_samples,
-        metric=metric,
-        mode=mode,
-    )
-    while not runner.is_finished() and not experiment_interrupted_event.is_set():
-        runner.step()
+    air_progress_reporter = None
+    if not air_verbosity:
+        progress_reporter.setup(
+            start_time=tune_start,
+            total_samples=search_alg.total_samples,
+            metric=metric,
+            mode=mode,
+        )
+    else:
+        air_progress_reporter = _detect_air_reporter(
+            air_verbosity, search_alg.total_samples, metric=metric, mode=mode
+        )
+
+    # rich live context manager has to be called encapsulting
+    # the while loop. For other kind of reporters, no op.
+    # `ExitStack` allows us to *conditionally* apply context manager.
+    with contextlib.ExitStack() as stack:
+        from ray.tune.experimental.output import TuneRichReporter
+
+        if air_progress_reporter and isinstance(
+            air_progress_reporter, TuneRichReporter
+        ):
+            stack.enter_context(air_progress_reporter.with_live())
+
+        try:
+            while (
+                not runner.is_finished() and not experiment_interrupted_event.is_set()
+            ):
+                runner.step()
+                if has_verbosity(Verbosity.V1_EXPERIMENT):
+                    _report_progress(runner, progress_reporter)
+
+                if air_verbosity:
+                    _report_air_progress(runner, air_progress_reporter)
+        except Exception:
+            runner.cleanup()
+            raise
+
+        tune_taken = time.time() - tune_start
+
+        try:
+            runner.checkpoint(force=True, wait=True)
+        except Exception as e:
+            logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
+
         if has_verbosity(Verbosity.V1_EXPERIMENT):
-            _report_progress(runner, progress_reporter)
-    tune_taken = time.time() - tune_start
+            _report_progress(runner, progress_reporter, done=True)
 
-    try:
-        runner.checkpoint(force=True)
-    except Exception as e:
-        logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
-
-    if has_verbosity(Verbosity.V1_EXPERIMENT):
-        _report_progress(runner, progress_reporter, done=True)
+        if air_verbosity:
+            _report_air_progress(runner, air_progress_reporter, force=True)
 
     all_trials = runner.get_trials()
-    experiment_checkpoint = runner.checkpoint_file
-
-    # Wait for syncing to finish
-    for callback in callbacks:
-        if isinstance(callback, SyncerCallback):
-            try:
-                callback.wait_for_all()
-            except TuneError as e:
-                logger.error(e)
+    experiment_checkpoint = runner.experiment_state_path
 
     runner.cleanup()
 
@@ -774,19 +948,22 @@ def run(
         )
 
     if experiment_interrupted_event.is_set():
-        logger.warning(
-            "Experiment has been interrupted, but the most recent state was "
-            "saved. You can continue running this experiment by passing "
-            "`resume=True` to `tune.run()`"
+        restore_entrypoint = error_message_map["restore_entrypoint"].format(
+            path=Path(experiment_checkpoint).parent,
         )
-
-    return ExperimentAnalysis(
+        logger.warning(
+            "Experiment has been interrupted, but the most recent state was saved.\n"
+            f"Continue running this experiment with: {restore_entrypoint}"
+        )
+    ea = ExperimentAnalysis(
         experiment_checkpoint,
         trials=all_trials,
         default_metric=metric,
         default_mode=mode,
         sync_config=sync_config,
     )
+
+    return ea
 
 
 @PublicAPI
@@ -826,9 +1003,14 @@ def run_experiments(
         raise ValueError("cannot use custom trial executor")
 
     if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
-        _ray_auto_init()
+        _ray_auto_init(entrypoint="tune.run_experiments(...)")
 
     if _remote:
+        if get_air_verbosity():
+            logger.warning(
+                "Ignoring AIR_VERBOSITY setting, "
+                "as it doesn't support ray client mode yet."
+            )
         remote_run = ray.remote(num_cpus=0)(run_experiments)
 
         # Make sure tune.run_experiments is run on the server node.
@@ -885,16 +1067,3 @@ def run_experiments(
                 callbacks=callbacks,
             ).trials
         return trials
-
-
-def _ray_auto_init():
-    """Initialize Ray unless already configured."""
-    if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
-        logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
-    elif not ray.is_initialized():
-        logger.info(
-            "Initializing Ray automatically."
-            "For cluster usage or custom Ray initialization, "
-            "call `ray.init(...)` before `tune.run`."
-        )
-        ray.init()

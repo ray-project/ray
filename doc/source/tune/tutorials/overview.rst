@@ -57,15 +57,31 @@ Tune Feature Guides
 
     .. link-button:: tune-stopping
         :type: ref
-        :text: How to Stop and Resume
+        :text: How to Define Stopping Criteria for a Ray Tune Experiment
         :classes: btn-link btn-block stretched-link
 
     ---
     :img-top: /images/tune.png
 
-    .. link-button:: tune-checkpoints
+    .. link-button:: tune-trial-checkpoints
         :type: ref
-        :text: Working with Checkpoints
+        :text: How to Save and Load Trial Checkpoints
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/tune.png
+
+    .. link-button:: tune-storage
+        :type: ref
+        :text: How to Configure Storage Options for a Distributed Tune Experiment
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/tune.png
+
+    .. link-button:: tune-fault-tolerance
+        :type: ref
+        :text: How to Enable Fault Tolerance in Ray Tune
         :classes: btn-link btn-block stretched-link
 
     ---
@@ -74,6 +90,14 @@ Tune Feature Guides
     .. link-button:: tune-metrics
         :type: ref
         :text: Using Callbacks and Metrics
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/tune.png
+
+    .. link-button:: ../tutorials/tune_get_data_in_and_out
+        :type: ref
+        :text: Getting Data in and out of Tune
         :classes: btn-link btn-block stretched-link
 
     ---

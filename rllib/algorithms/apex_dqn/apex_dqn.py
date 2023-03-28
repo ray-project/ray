@@ -15,7 +15,7 @@ import copy
 import platform
 import random
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray._private.dict import merge_dicts
@@ -29,7 +29,7 @@ from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -42,6 +42,7 @@ from ray.rllib.utils.metrics import (
     TARGET_NET_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
+    PartialAlgorithmConfigDict,
     ResultDict,
     SampleBatchType,
 )
@@ -410,7 +411,10 @@ class ApexDQN(DQN):
 
         # Training step done. Try to bring replay actors back to life if necessary.
         # Replay actors can start fresh, so we do not need to restore any state.
-        self._replay_actor_manager.probe_unhealthy_actors()
+        self._replay_actor_manager.probe_unhealthy_actors(
+            timeout_seconds=self.config.worker_health_probe_timeout_s,
+            mark_healthy=True,
+        )
 
         return copy.deepcopy(self.learner_thread.learner_info)
 
@@ -422,7 +426,7 @@ class ApexDQN(DQN):
                 batch = local_sampling_worker.sample()
                 actor_id = random.choice(self._replay_actor_manager.healthy_actor_ids())
                 self._replay_actor_manager.foreach_actor(
-                    lambda actor: actor.add_batch(batch),
+                    lambda actor: actor.add(batch),
                     remote_actor_ids=[actor_id],
                     timeout_seconds=0,
                 )
@@ -697,10 +701,16 @@ class ApexDQN(DQN):
 
     @classmethod
     @override(Algorithm)
-    def default_resource_request(cls, config):
-        cf = dict(cls.get_default_config(), **config)
+    def default_resource_request(
+        cls,
+        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
+    ):
+        if isinstance(config, AlgorithmConfig):
+            cf: ApexDQNConfig = config
+        else:
+            cf: ApexDQNConfig = cls.get_default_config().update_from_dict(config)
 
-        eval_config = cf["evaluation_config"]
+        eval_config = cf.get_evaluation_config_object()
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -712,19 +722,19 @@ class ApexDQN(DQN):
                     # data bandwidth between buffers and the learner (driver).
                     # Replay buffer actors each contain one shard of the total
                     # replay buffer and use 1 CPU each.
-                    "CPU": cf["num_cpus_for_driver"]
-                    + cf["optimizer"]["num_replay_buffer_shards"],
-                    "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
+                    "CPU": cf.num_cpus_for_local_worker
+                    + cf.optimizer["num_replay_buffer_shards"],
+                    "GPU": 0 if cf._fake_gpus else cf.num_gpus,
                 }
             ]
             + [
                 {
                     # RolloutWorkers.
-                    "CPU": cf["num_cpus_per_worker"],
-                    "GPU": cf["num_gpus_per_worker"],
-                    **cf["custom_resources_per_worker"],
+                    "CPU": cf.num_cpus_per_worker,
+                    "GPU": cf.num_gpus_per_worker,
+                    **cf.custom_resources_per_worker,
                 }
-                for _ in range(cf["num_workers"])
+                for _ in range(cf.num_rollout_workers)
             ]
             + (
                 [
@@ -732,38 +742,14 @@ class ApexDQN(DQN):
                         # Evaluation workers.
                         # Note: The local eval worker is located on the driver
                         # CPU.
-                        "CPU": eval_config.get(
-                            "num_cpus_per_worker", cf["num_cpus_per_worker"]
-                        ),
-                        "GPU": eval_config.get(
-                            "num_gpus_per_worker", cf["num_gpus_per_worker"]
-                        ),
-                        **eval_config.get(
-                            "custom_resources_per_worker",
-                            cf["custom_resources_per_worker"],
-                        ),
+                        "CPU": eval_config.num_cpus_per_worker,
+                        "GPU": eval_config.num_gpus_per_worker,
+                        **eval_config.custom_resources_per_worker,
                     }
-                    for _ in range(cf["evaluation_num_workers"])
+                    for _ in range(cf.evaluation_num_workers)
                 ]
-                if cf["evaluation_interval"]
+                if cf.evaluation_interval
                 else []
             ),
-            strategy=config.get("placement_strategy", "PACK"),
+            strategy=cf.placement_strategy,
         )
-
-
-# Deprecated: Use ray.rllib.algorithms.apex_dqn.ApexDQNConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(ApexDQNConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.dqn.apex.APEX_DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.apex_dqn.apex_dqn.ApexDQNConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-APEX_DEFAULT_CONFIG = _deprecated_default_config()

@@ -1,4 +1,3 @@
-import json
 import os
 import ray
 import ray._private.test_utils as test_utils
@@ -6,6 +5,7 @@ import time
 import tqdm
 
 from dashboard_test import DashboardTestAtScale
+from ray._private.state_api_test_utils import summarize_worker_startup_time
 
 is_smoke_test = True
 if "SMOKE_TEST" in os.environ:
@@ -29,11 +29,9 @@ def test_max_actors():
         for _ in tqdm.trange(MAX_ACTORS_IN_CLUSTER, desc="Launching actors")
     ]
 
-    not_ready = [actor.foo.remote() for actor in actors]
-
-    for _ in tqdm.trange(len(actors)):
-        ready, not_ready = ray.wait(not_ready)
-        assert ray.get(*ready) is None
+    done = ray.get([actor.foo.remote() for actor in actors])
+    for result in done:
+        assert result is None
 
 
 def no_resource_leaks():
@@ -43,6 +41,11 @@ def no_resource_leaks():
 addr = ray.init(address="auto")
 
 test_utils.wait_for_condition(no_resource_leaks)
+try:
+    summarize_worker_startup_time()
+except Exception as e:
+    print("Failed to summarize worker startup time.")
+    print(e)
 monitor_actor = test_utils.monitor_memory_usage()
 dashboard_test = DashboardTestAtScale(addr)
 
@@ -65,23 +68,21 @@ print(
     f"{end_time - start_time}s. ({rate} actors/s)"
 )
 
-if "TEST_OUTPUT_JSON" in os.environ:
-    out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-    results = {
-        "actors_per_second": rate,
-        "num_actors": MAX_ACTORS_IN_CLUSTER,
-        "time": end_time - start_time,
-        "success": "1",
-        "_peak_memory": round(used_gb, 2),
-        "_peak_process_memory": usage,
-    }
-    if not is_smoke_test:
-        results["perf_metrics"] = [
-            {
-                "perf_metric_name": "actors_per_second",
-                "perf_metric_value": rate,
-                "perf_metric_type": "THROUGHPUT",
-            }
-        ]
-    dashboard_test.update_release_test_result(results)
-    json.dump(results, out_file)
+results = {
+    "actors_per_second": rate,
+    "num_actors": MAX_ACTORS_IN_CLUSTER,
+    "time": end_time - start_time,
+    "success": "1",
+    "_peak_memory": round(used_gb, 2),
+    "_peak_process_memory": usage,
+}
+if not is_smoke_test:
+    results["perf_metrics"] = [
+        {
+            "perf_metric_name": "actors_per_second",
+            "perf_metric_value": rate,
+            "perf_metric_type": "THROUGHPUT",
+        }
+    ]
+dashboard_test.update_release_test_result(results)
+test_utils.safe_write_to_results_json(results)

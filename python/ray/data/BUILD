@@ -12,6 +12,13 @@ py_library(
 )
 
 py_test_module_list(
+    files = glob(["tests/block_batching/test_*.py"]),
+    size = "medium",
+    tags = ["team:ml", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
     files = glob(["tests/preprocessors/test_*.py"]),
     size = "small",
     tags = ["team:ml", "exclusive", "ray_air"],
@@ -23,7 +30,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_dataset_formats.py"],
     data = glob(["tests/image-folder/**/*"]),
-    tags = ["team:core", "exclusive"],
+    tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -31,7 +38,7 @@ py_test(
     name = "test_mongo_dataset",
     size = "large",
     srcs = ["tests/test_mongo_dataset.py"],
-    tags = ["team:core", "exclusive", "dataset_integration"],
+    tags = ["team:data", "exclusive", "dataset_integration"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -45,6 +52,6 @@ py_test_module_list(
     ],
   ),
   size = "large",
-  tags = ["team:core", "exclusive"],
+  tags = ["team:data", "exclusive"],
   deps = ["//:ray_lib", ":conftest"],
 )

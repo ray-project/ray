@@ -96,15 +96,21 @@ less_sampled_buffer = LessSampledReplayBuffer(**config.replay_buffer_config)
 
 # Gather some random experiences
 env = RandomEnv()
-done = False
+terminated = truncated = False
 batch = SampleBatch({})
 t = 0
-while not done:
-    obs, reward, done, info = env.step([0, 0])
+while not terminated and not truncated:
+    obs, reward, terminated, truncated, info = env.step([0, 0])
     # Note that in order for RLlib to find out about start and end of an episode,
-    # "t" and "dones" have to properly mark an episode's trajectory
+    # "t" and "terminateds" have to properly mark an episode's trajectory
     one_step_batch = SampleBatch(
-        {"obs": [obs], "t": [t], "reward": [reward], "dones": [done]}
+        {
+            "obs": [obs],
+            "t": [t],
+            "reward": [reward],
+            "terminateds": [terminated],
+            "truncateds": [truncated],
+        }
     )
     batch = concat_samples([batch, one_step_batch])
     t += 1
@@ -138,8 +144,6 @@ config = (
 tune.Tuner(
     "DQN",
     param_space=config.to_dict(),
-    run_config=air.RunConfig(
-        stop={"episode_reward_mean": 50, "training_iteration": 10}
-    ),
+    run_config=air.RunConfig(stop={"episode_reward_mean": 40, "training_iteration": 7}),
 ).fit()
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__end__

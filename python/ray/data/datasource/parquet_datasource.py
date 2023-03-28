@@ -1,4 +1,3 @@
-import itertools
 import logging
 from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
@@ -18,7 +17,6 @@ from ray.data.datasource.file_meta_provider import (
     _handle_read_os_error,
 )
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
-from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 import ray.cloudpickle as cloudpickle
 
@@ -160,6 +158,13 @@ class ParquetDatasource(ParquetBaseDatasource):
         ...     source, paths="/path/to/dir").take()
         [{"a": 1, "b": "foo"}, ...]
     """
+
+    def get_name(self):
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        Note: overrides the base `ParquetBaseDatasource` method.
+        """
+        return "Parquet"
 
     def create_reader(self, **kwargs):
         return _ParquetDatasourceReader(**kwargs)
@@ -374,13 +379,14 @@ def _read_pieces(
 
     logger.debug(f"Reading {len(pieces)} parquet pieces")
     use_threads = reader_args.pop("use_threads", False)
+    batch_size = reader_args.pop("batch_size", PARQUET_READER_ROW_BATCH_SIZE)
     for piece in pieces:
         part = _get_partition_keys(piece.partition_expression)
         batches = piece.to_batches(
             use_threads=use_threads,
             columns=columns,
             schema=schema,
-            batch_size=PARQUET_READER_ROW_BATCH_SIZE,
+            batch_size=batch_size,
             **reader_args,
         )
         for batch in batches:
@@ -402,29 +408,8 @@ def _read_pieces(
         yield output_buffer.next()
 
 
-def _fetch_metadata_remotely(
-    pieces: List["pyarrow._dataset.ParquetFileFragment"],
-    **ray_remote_args,
-) -> List[ObjectRef["pyarrow.parquet.FileMetaData"]]:
-
-    remote_fetch_metadata = cached_remote_fn(_fetch_metadata_serialization_wrapper)
-    metas = []
-    parallelism = min(len(pieces) // PIECES_PER_META_FETCH, 100)
-    meta_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
-    for pcs in np.array_split(pieces, parallelism):
-        if len(pcs) == 0:
-            continue
-        metas.append(
-            remote_fetch_metadata.options(**ray_remote_args).remote(
-                [_SerializedPiece(p) for p in pcs]
-            )
-        )
-    metas = meta_fetch_bar.fetch_until_complete(metas)
-    return list(itertools.chain.from_iterable(metas))
-
-
 def _fetch_metadata_serialization_wrapper(
-    pieces: str,
+    pieces: _SerializedPiece,
 ) -> List["pyarrow.parquet.FileMetaData"]:
 
     pieces: List[
@@ -461,6 +446,9 @@ def _sample_piece(
     batch_size = max(
         min(piece.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS), 1
     )
+    # Use the batch_size calculated above, and ignore the one specified by user if set.
+    # This is to avoid sampling too few or too many rows.
+    reader_args.pop("batch_size", None)
     batches = piece.to_batches(
         columns=columns,
         schema=schema,

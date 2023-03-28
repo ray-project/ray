@@ -18,23 +18,27 @@ PY_VERSIONS=("3.6.2"
              "3.7.0"
              "3.8.2"
              "3.9.1"
-             "3.10.4")
+             "3.10.4"
+             )
 PY_INSTS=("python-3.6.2-macosx10.6.pkg"
           "python-3.7.0-macosx10.6.pkg"
           "python-3.8.2-macosx10.9.pkg"
           "python-3.9.1-macosx10.9.pkg"
-          "python-3.10.4-macos11.pkg")
+          "python-3.10.4-macos11.pkg"
+          )
 PY_MMS=("3.6"
         "3.7"
         "3.8"
         "3.9"
-        "3.10")
+        "3.10"
+        )
 
 NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.14.5"
                 "1.19.3"
-                "1.22.0")
+                "1.22.0"
+                )
 
 ./ci/env/install-bazel.sh
 
@@ -93,7 +97,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     $PIP_CMD install -q setuptools_scm==3.1.0
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    $PIP_CMD install -q numpy=="$NUMPY_VERSION" cython==0.29.26
+    $PIP_CMD install -q numpy=="$NUMPY_VERSION" cython==0.29.32
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
     # Set the commit SHA in __init__.py.

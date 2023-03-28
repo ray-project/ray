@@ -8,7 +8,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.sac.rnnsac_torch_policy import RNNSACTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
 class RNNSACConfig(SACConfig):
@@ -26,8 +26,10 @@ class RNNSACConfig(SACConfig):
 
     def __init__(self, algo_class=None):
         super().__init__(algo_class=algo_class or RNNSAC)
+
         # fmt: off
         # __sphinx_doc_begin__
+        self.framework_str = "torch"
         self.batch_mode = "complete_episodes"
         self.zero_init_states = True
         self.replay_buffer_config = {
@@ -49,11 +51,11 @@ class RNNSACConfig(SACConfig):
             # model->max_seq_len + burn_in.
             # Do not set this to any valid value!
             "replay_sequence_length": -1,
-        },
-        self.burn_in = DEPRECATED_VALUE
-
+        }
         # fmt: on
         # __sphinx_doc_end__
+
+        self.burn_in = DEPRECATED_VALUE
 
     @override(SACConfig)
     def training(
@@ -122,19 +124,3 @@ class RNNSAC(SAC):
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         return RNNSACTorchPolicy
-
-
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(RNNSACConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.sac.rnnsac.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.sac.rnnsac.RNNSACConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

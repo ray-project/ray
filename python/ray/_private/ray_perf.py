@@ -154,6 +154,14 @@ def main(results=None):
         "single client get object containing 10k refs", get_containing_object_ref
     )
 
+    def wait_multiple_refs():
+        num_objs = 1000
+        not_ready = [small_value.remote() for _ in range(num_objs)]
+        for _ in range(num_objs):
+            _ready, not_ready = ray.wait(not_ready)
+
+    results += timeit("single client wait 1k refs", wait_multiple_refs)
+
     def small_task():
         ray.get(small_value.remote())
 

@@ -46,8 +46,8 @@ When the Trainable terminates (or is stopped), the actor is also terminated.
 
 .. _trainable-execution:
 
-The execution of a trainable
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The execution of a trainable in Tune
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Tune uses :ref:`Ray actors <actor-guide>` to parallelize the evaluation of multiple hyperparameter configurations.
 Each actor is a Python process that executes an instance of the user-provided Trainable.
@@ -79,8 +79,8 @@ See :doc:`tune-resources` for more information.
 
 .. _trial-lifecycle:
 
-Lifecycle of a Trial
---------------------
+Lifecycle of a Tune Trial
+-------------------------
 
 A trial's life cycle consists of 6 stages:
 
@@ -128,6 +128,7 @@ This is an illustration of the high-level training flow and how some of the comp
 
 TrialRunner
 ~~~~~~~~~~~
+
 [`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/execution/trial_runner.py>`__]
 This is the main driver of the training loop. This component
 uses the TrialScheduler to prioritize and execute trials,
@@ -148,6 +149,7 @@ See the docstring at :ref:`trialrunner-docstring`.
 
 Trial objects
 ~~~~~~~~~~~~~
+
 [`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/experiment/trial.py>`__]
 This is an internal data structure that contains metadata about each training run. Each Trial
 object is mapped one-to-one with a Trainable object but are not themselves

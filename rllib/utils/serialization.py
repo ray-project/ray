@@ -1,17 +1,27 @@
 import base64
+import importlib
 import io
 import zlib
-from typing import Dict
+from typing import Any, Dict, Optional, Sequence, Type, Union
 
-import gym
 import numpy as np
 
+import ray
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.gym import try_import_gymnasium_and_gym
+from ray.rllib.utils.error import NotSerializable
 from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
 
-text_space_class = getattr(gym.spaces, "Text", None)
+gym, old_gym = try_import_gymnasium_and_gym()
+
+old_gym_text_class = None
+if old_gym:
+    old_gym_text_class = getattr(old_gym.spaces, "Text", None)
+
+
+NOT_SERIALIZABLE = "__not_serializable__"
 
 
 def _serialize_ndarray(array: np.ndarray) -> str:
@@ -68,17 +78,17 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
     def _discrete(sp: gym.spaces.Discrete) -> Dict:
         d = {
             "space": "discrete",
-            "n": sp.n,
+            "n": int(sp.n),
         }
         # Offset is a relatively new Discrete space feature.
         if hasattr(sp, "start"):
-            d["start"] = sp.start
+            d["start"] = int(sp.start)
         return d
 
     def _multi_binary(sp: gym.spaces.MultiBinary) -> Dict:
         return {
             "space": "multi-binary",
-            "n": sp.n,
+            "n": int(sp.n),
             "dtype": sp.dtype.str,
         }
 
@@ -152,7 +162,7 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
         return _tuple(space)
     elif isinstance(space, gym.spaces.Dict):
         return _dict(space)
-    elif text_space_class and isinstance(space, text_space_class):
+    elif isinstance(space, gym.spaces.Text):
         return _text(space)
     elif isinstance(space, Simplex):
         return _simplex(space)
@@ -160,6 +170,19 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
         return _repeated(space)
     elif isinstance(space, FlexDict):
         return _flex_dict(space)
+    # Old gym Spaces.
+    elif old_gym and isinstance(space, old_gym.spaces.Box):
+        return _box(space)
+    elif old_gym and isinstance(space, old_gym.spaces.Discrete):
+        return _discrete(space)
+    elif old_gym and isinstance(space, old_gym.spaces.MultiDiscrete):
+        return _multi_discrete(space)
+    elif old_gym and isinstance(space, old_gym.spaces.Tuple):
+        return _tuple(space)
+    elif old_gym and isinstance(space, old_gym.spaces.Dict):
+        return _dict(space)
+    elif old_gym and old_gym_text_class and isinstance(space, old_gym_text_class):
+        return _text(space)
     else:
         raise ValueError("Unknown space type for serialization, ", type(space))
 
@@ -168,7 +191,7 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
 def space_to_dict(space: gym.spaces.Space) -> Dict:
     d = {"space": gym_space_to_dict(space)}
     if "original_space" in space.__dict__:
-        d["original_space"] = gym_space_to_dict(space.original_space)
+        d["original_space"] = space_to_dict(space.original_space)
     return d
 
 
@@ -236,9 +259,7 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
         return FlexDict(spaces=spaces)
 
     def _text(d: Dict) -> "gym.spaces.Text":
-        if not text_space_class:
-            raise ValueError("gym.spaces.Text is only available on gym >= 0.25.0")
-        return text_space_class(**__common(d))
+        return gym.spaces.Text(**__common(d))
 
     space_map = {
         "box": _box,
@@ -264,5 +285,111 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
 def space_from_dict(d: Dict) -> gym.spaces.Space:
     space = gym_space_from_dict(d["space"])
     if "original_space" in d:
-        space.original_space = gym_space_from_dict(d["original_space"])
+        assert "space" in d["original_space"]
+        if isinstance(d["original_space"]["space"], str):
+            # For backward compatibility reasons, if d["original_space"]["space"]
+            # is a string, this original space was serialized by gym_space_to_dict.
+            space.original_space = gym_space_from_dict(d["original_space"])
+        else:
+            # Otherwise, this original space was serialized by space_to_dict.
+            space.original_space = space_from_dict(d["original_space"])
     return space
+
+
+@DeveloperAPI
+def check_if_args_kwargs_serializable(args: Sequence[Any], kwargs: Dict[str, Any]):
+    """Check if parameters to a function are serializable by ray.
+
+    Args:
+        args: arguments to be checked.
+        kwargs: keyword arguments to be checked.
+
+    Raises:
+        NoteSerializable if either args are kwargs are not serializable
+            by ray.
+    """
+    for arg in args:
+        try:
+            # if the object is truly serializable we should be able to
+            # ray.put and ray.get it.
+            ray.get(ray.put(arg))
+        except TypeError as e:
+            raise NotSerializable(
+                "RLModule constructor arguments must be serializable. "
+                f"Found non-serializable argument: {arg}.\n"
+                f"Original serialization error: {e}"
+            )
+    for k, v in kwargs.items():
+        try:
+            # if the object is truly serializable we should be able to
+            # ray.put and ray.get it.
+            ray.get(ray.put(v))
+        except TypeError as e:
+            raise NotSerializable(
+                "RLModule constructor arguments must be serializable. "
+                f"Found non-serializable keyword argument: {k} = {v}.\n"
+                f"Original serialization error: {e}"
+            )
+
+
+@DeveloperAPI
+def serialize_type(type_: Union[Type, str]) -> str:
+    """Converts a type into its full classpath ([module file] + "." + [class name]).
+
+    Args:
+        type_: The type to convert.
+
+    Returns:
+        The full classpath of the given type, e.g. "ray.rllib.algorithms.ppo.PPOConfig".
+    """
+    # TODO (avnishn): find a way to incorporate the tune registry here.
+    # Already serialized.
+    if isinstance(type_, str):
+        return type_
+
+    return type_.__module__ + "." + type_.__qualname__
+
+
+@DeveloperAPI
+def deserialize_type(
+    module: Union[str, Type], error: bool = False
+) -> Optional[Union[str, Type]]:
+    """Resolves a class path to a class.
+    If the given module is already a class, it is returned as is.
+    If the given module is a string, it is imported and the class is returned.
+
+    Args:
+        module: The classpath (str) or type to resolve.
+        error: Whether to throw a ValueError if `module` could not be resolved into
+            a class. If False and `module` is not resolvable, returns None.
+
+    Returns:
+        The resolved class or `module` (if `error` is False and no resolution possible).
+
+    Raises:
+        ValueError: If `error` is True and `module` cannot be resolved.
+    """
+    # Already a class, return as-is.
+    if isinstance(module, type):
+        return module
+    # A string.
+    elif isinstance(module, str):
+        # Try interpreting (as classpath) and importing the given module.
+        try:
+            module_path, class_name = module.rsplit(".", 1)
+            module = importlib.import_module(module_path)
+            return getattr(module, class_name)
+        # Module not found OR not a module (but a registered string?).
+        except (ModuleNotFoundError, ImportError, AttributeError, ValueError) as e:
+            # Ignore if error=False.
+            if error:
+                raise ValueError(
+                    f"Could not deserialize the given classpath `module={module}` into "
+                    "a valid python class! Make sure you have all necessary pip "
+                    "packages installed and all custom modules are in your "
+                    "`PYTHONPATH` env variable."
+                ) from e
+    else:
+        raise ValueError(f"`module` ({module} must be type or string (classpath)!")
+
+    return module

@@ -48,7 +48,7 @@ DEFINE_stats(
     // Name: the name of the function called.
     // Source: component reporting, e.g., "core_worker", "executor", or "pull_manager".
     // IsRetry: whether this task is a retry.
-    ("State", "Name", "Source", "IsRetry"),
+    ("State", "Name", "Source", "IsRetry", "JobId"),
     (),
     ray::stats::GAUGE);
 
@@ -62,7 +62,7 @@ DEFINE_stats(actors,
              // but can also be RUNNING_TASK, RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
              // Name: the name of actor class.
              // Source: component reporting, e.g., "gcs" or "executor".
-             ("State", "Name", "Source"),
+             ("State", "Name", "Source", "JobId"),
              (),
              ray::stats::GAUGE);
 
@@ -299,12 +299,43 @@ DEFINE_stats(gcs_actors_count,
              (),
              ray::stats::GAUGE);
 
-/// Memory Manager
-DEFINE_stats(memory_manager_worker_eviction_total,
-             "Total worker eviction events broken per work type {Actor, Task}",
+/// GCS Task Manager
+DEFINE_stats(gcs_task_manager_task_events_reported,
+             "Number of all task events reported to gcs.",
+             (),
+             (),
+             ray::stats::GAUGE);
+
+DEFINE_stats(gcs_task_manager_task_events_dropped,
+             /// Type:
+             ///     - PROFILE_EVENT: number of profile task events dropped from both
+             ///     workers and GCS.
+             ///     - STATUS_EVENT: number of task status updates events dropped from
+             ///     both workers and GCS.
+             "Number of task events dropped per type {PROFILE_EVENT, STATUS_EVENT}",
              ("Type"),
              (),
-             ray::stats::COUNT);
+             ray::stats::GAUGE);
+
+DEFINE_stats(gcs_task_manager_task_events_stored,
+             "Number of task events stored in GCS.",
+             (),
+             (),
+             ray::stats::GAUGE);
+
+DEFINE_stats(gcs_task_manager_task_events_stored_bytes,
+             "Number of bytes of all task events stored in GCS.",
+             (),
+             (),
+             ray::stats::GAUGE);
+
+/// Memory Manager
+DEFINE_stats(
+    memory_manager_worker_eviction_total,
+    "Total worker eviction events broken per work type {Actor, Task, Driver} and name.",
+    ("Type", "Name"),
+    (),
+    ray::stats::COUNT);
 }  // namespace stats
 
 }  // namespace ray

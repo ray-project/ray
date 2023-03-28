@@ -1,7 +1,7 @@
 from collections import OrderedDict
 import contextlib
-import gym
-from gym.spaces import Space
+import gymnasium as gym
+from gymnasium.spaces import Space
 import numpy as np
 from typing import Dict, List, Any, Union
 

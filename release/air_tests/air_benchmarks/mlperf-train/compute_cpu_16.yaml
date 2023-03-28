@@ -13,3 +13,10 @@ worker_node_types:
       min_workers: 0
       max_workers: 0
       use_spot: false
+
+aws:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 400

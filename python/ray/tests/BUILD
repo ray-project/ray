@@ -58,7 +58,6 @@ py_test_module_list(
     "test_get_locations.py",
     "test_global_state.py",
     "test_healthcheck.py",
-    "test_ray_shutdown.py",
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
     "test_protobuf_compatibility.py"
@@ -103,15 +102,32 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
+# Issue #33491
+# Once test_memory_deadlock is fixed, remove this rule and move
+# test_memory_deadlock.py to the files list in the rule below.
+# Also, edit test_memory_deadlock and uncomment the last line
+# (the pytest.main invocation in the if __name__ == "__main__":
+# block)
+py_test_module_list(
+  files = [
+    "test_memory_deadlock.py",  # Timing out right now. #33491
+  ],
+  size = "medium",
+  tags = ["exclusive", "no_main", "medium_size_python_tests_k_to_z", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
 py_test_module_list(
   files = [
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
+    "test_log_dedup.py",
     "test_logging.py",
-    "test_memory_deadlock.py",
     "test_memory_scheduling.py",
     "test_memory_pressure.py",
     "test_nested_task.py",
     "test_metrics.py",
+    "test_task_events.py",
+    "test_task_events_2.py",
     "test_task_metrics.py",
     "test_task_metrics_reconstruction.py",
     "test_actor_state_metrics.py",
@@ -120,6 +136,7 @@ py_test_module_list(
     "test_multi_node_2.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
+    "test_node_manager.py",
     "test_object_assign_owner.py",
     "test_placement_group.py",
     "test_placement_group_2.py",
@@ -127,6 +144,7 @@ py_test_module_list(
     "test_placement_group_failover.py",
     "test_ray_init.py",
     "test_ray_init_2.py",
+    "test_ray_shutdown.py",
     "test_resource_demand_scheduler.py",
     "test_resource_metrics.py",
     "test_runtime_context.py",
@@ -162,6 +180,7 @@ py_test_module_list(
   files = [
     "test_actor_out_of_order.py",
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
+    "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_concurrency_group.py",
@@ -178,7 +197,6 @@ py_test_module_list(
     "test_metrics_agent_2.py",
     "test_microbenchmarks.py",
     "test_mini.py",
-    "test_node_manager.py",
     "test_numba.py",
     "test_redis_tls.py",
     "test_raylet_output.py",
@@ -201,6 +219,14 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test_module_list(
+  files = [
+    "test_monitor_service.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serverless"],
+  deps = ["//:ray_lib", ":conftest"],
+)
 
 py_test_module_list(
   files = [
@@ -264,6 +290,7 @@ py_test_module_list(
     "test_threaded_actor.py",
     "test_stress_failure.py",
     "test_state_api.py",
+    "test_state_api_2.py",
     "test_reconstruction.py",
     "test_reconstruction_2.py",
     "test_reconstruction_stress.py",
@@ -296,6 +323,7 @@ py_test_module_list(
   files = [
     "test_basic_3.py",
     "test_output.py",
+    "test_tqdm.py",
     "test_out_of_disk_space.py",
     "test_failure_4.py",
     "test_iter.py",
@@ -516,4 +544,21 @@ py_test_module_list(
   name_suffix = "_asan",
   tags = ["exclusive", "asan_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "spark/test_basic.py",
+    "spark/test_GPU.py",
+    "spark/test_multicores_per_task.py",
+    "spark/test_utils.py",
+    "spark/test_databricks_hook.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "spark_plugin_tests", "team:serverless"],
+  deps = ["//:ray_lib", ":conftest"],
+  data = [
+    "spark/discover_2_gpu.sh",
+    "spark/discover_4_gpu.sh"
+  ],
 )

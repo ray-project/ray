@@ -6,6 +6,7 @@ import com.google.gson.Gson;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.api.exception.RayException;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.object.ObjectRefImpl;
@@ -112,9 +113,14 @@ public class ReferenceCountingTest extends BaseTest {
     if (succeed) {
       TestUtils.getRuntime().getObjectStore().getRaw(ImmutableList.of(objectId), Long.MAX_VALUE);
     } else {
-      List<Boolean> result =
-          TestUtils.getRuntime().getObjectStore().wait(ImmutableList.of(objectId), 1, 100, true);
-      Assert.assertFalse(result.get(0));
+      try {
+        List<Boolean> result =
+            TestUtils.getRuntime().getObjectStore().wait(ImmutableList.of(objectId), 0, 100, true);
+        Assert.fail(
+            "Ray did not fail when waiting for an object that does not belong in this session");
+      } catch (RayException e) {
+        // This is the expected outcome for succeed=false, as we wait for non-existent objects.
+      }
     }
   }
 
@@ -165,27 +171,7 @@ public class ReferenceCountingTest extends BaseTest {
   }
 
   /** Based on Python test case `test_dependency_refcounts`. */
-  public void testDependencyRefCounts() {
-    {
-      // Test that regular plasma dependency refcounts are decremented once the
-      // task finishes.
-      ActorHandle<SignalActor> signal = SignalActor.create();
-      ObjectRefImpl<TestUtils.LargeObject> largeDep =
-          (ObjectRefImpl<TestUtils.LargeObject>) Ray.put(new TestUtils.LargeObject());
-      ObjectRefImpl<Object> result =
-          (ObjectRefImpl<Object>)
-              Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Object>task(
-                      ReferenceCountingTest::oneDep, largeDep, signal)
-                  .remote();
-      checkRefCounts(largeDep.getId(), 1, 1, result.getId(), 1, 0);
-      sendSignal(signal);
-      // Reference count should be removed once the task finishes.
-      checkRefCounts(largeDep.getId(), 1, 0, result.getId(), 1, 0);
-      del(largeDep);
-      del(result);
-      checkRefCounts(ImmutableMap.of());
-    }
-
+  public void testDependencyRefCounts1() {
     {
       // Test that inlined dependency refcounts are decremented once they are
       // inlined.
@@ -207,7 +193,9 @@ public class ReferenceCountingTest extends BaseTest {
       del(result);
       checkRefCounts(ImmutableMap.of());
     }
+  }
 
+  public void testDependencyRefCounts2() {
     {
       // Test that spilled plasma dependency refcounts are decremented once
       // the task finishes.
@@ -236,7 +224,9 @@ public class ReferenceCountingTest extends BaseTest {
       del(result);
       checkRefCounts(ImmutableMap.of());
     }
+  }
 
+  public void testDependencyRefCounts3() {
     {
       // Test that regular plasma dependency refcounts are decremented if a task
       // fails.
@@ -257,7 +247,9 @@ public class ReferenceCountingTest extends BaseTest {
       del(result);
       checkRefCounts(ImmutableMap.of());
     }
+  }
 
+  public void testDependencyRefCounts4() {
     {
       // Test that spilled plasma dependency refcounts are decremented if a task
       // fails.
@@ -283,6 +275,28 @@ public class ReferenceCountingTest extends BaseTest {
       // Reference count should be removed because the task finished.
       checkRefCounts(dep.getId(), 1, 0, result.getId(), 1, 0);
       del(dep);
+      del(result);
+      checkRefCounts(ImmutableMap.of());
+    }
+  }
+
+  public void testDependencyRefCounts5() {
+    {
+      // Test that regular plasma dependency refcounts are decremented once the
+      // task finishes.
+      ActorHandle<SignalActor> signal = SignalActor.create();
+      ObjectRefImpl<TestUtils.LargeObject> largeDep =
+          (ObjectRefImpl<TestUtils.LargeObject>) Ray.put(new TestUtils.LargeObject());
+      ObjectRefImpl<Object> result =
+          (ObjectRefImpl<Object>)
+              Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Object>task(
+                      ReferenceCountingTest::oneDep, largeDep, signal)
+                  .remote();
+      checkRefCounts(largeDep.getId(), 1, 1, result.getId(), 1, 0);
+      sendSignal(signal);
+      // Reference count should be removed once the task finishes.
+      checkRefCounts(largeDep.getId(), 1, 0, result.getId(), 1, 0);
+      del(largeDep);
       del(result);
       checkRefCounts(ImmutableMap.of());
     }

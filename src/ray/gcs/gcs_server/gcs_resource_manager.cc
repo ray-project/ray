@@ -142,6 +142,11 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
   }
 }
 
+const absl::flat_hash_map<NodeID, rpc::ResourcesData>
+    &GcsResourceManager::NodeResourceReportView() const {
+  return node_resource_usages_;
+}
+
 void GcsResourceManager::HandleReportResourceUsage(
     rpc::ReportResourceUsageRequest request,
     rpc::ReportResourceUsageReply *reply,

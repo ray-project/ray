@@ -2,13 +2,13 @@
 # isn't actually any more efficient on Atari, since the network size is
 # relatively small and the env doesn't require a GPU.
 atari-ddppo:
-    env:
-        grid_search:
-            - BreakoutNoFrameskip-v4
+    env: ALE/Breakout-v5
     run: DDPPO
     config:
         # DDPPO only supports PyTorch so far.
         framework: torch
+        env_config:
+            frameskip: 1  # no frameskip
         # Worker config: 10 workers, each of which requires a GPU.
         num_workers: 10
         num_gpus_per_worker: 1

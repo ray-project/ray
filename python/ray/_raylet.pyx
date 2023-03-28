@@ -109,7 +109,7 @@ from ray.includes.libcoreworker cimport (
 
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
-
+from ray.includes.global_state_accessor cimport RedisDelKeySync
 from ray.includes.optional cimport (
     optional
 )
@@ -134,6 +134,7 @@ from ray.util.scheduling_strategies import (
 )
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
+from ray.core.generated.common_pb2 import ActorDiedErrorContext
 from ray._private.async_compat import sync_to_async, get_new_event_loop
 from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils
@@ -164,6 +165,9 @@ logger = logging.getLogger(__name__)
 # interruption for ray.cancel.
 current_task_id = None
 current_task_id_lock = threading.Lock()
+
+job_config_initialized = False
+job_config_initialization_lock = threading.Lock()
 
 
 class ObjectRefGenerator:
@@ -197,6 +201,10 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsTimedOut():
         raise GetTimeoutError(message)
     elif status.IsNotFound():
+        raise ValueError(message)
+    elif status.IsObjectNotFound():
+        raise ValueError(message)
+    elif status.IsObjectUnknownOwner():
         raise ValueError(message)
     else:
         raise RaySystemError(message)
@@ -257,9 +265,19 @@ cdef increase_recursion_limit():
     """Double the recusion limit if current depth is close to the limit"""
     cdef:
         CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
-        int current_depth = s.recursion_depth
         int current_limit = Py_GetRecursionLimit()
         int new_limit = current_limit * 2
+        cdef extern from *:
+            """
+#if PY_VERSION_HEX >= 0x30B00A4
+    #define CURRENT_DEPTH(x)  ((x)->recursion_limit - (x)->recursion_remaining)
+#else
+    #define CURRENT_DEPTH(x)  ((x)->recursion_depth)
+#endif
+            """
+            int CURRENT_DEPTH(CPyThreadState *x)
+
+        int current_depth = CURRENT_DEPTH(s)
 
     if current_limit - current_depth < 500:
         Py_SetRecursionLimit(new_limit)
@@ -421,6 +439,8 @@ cdef prepare_args_internal(
         c_vector[CObjectID] inlined_ids
         c_string put_arg_call_site
         c_vector[CObjectReference] inlined_refs
+        CAddress c_owner_address
+        CRayStatus op_status
 
     worker = ray._private.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -429,11 +449,13 @@ cdef prepare_args_internal(
     for arg in args:
         if isinstance(arg, ObjectRef):
             c_arg = (<ObjectRef>arg).native()
+            op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                    c_arg, &c_owner_address)
+            check_status(op_status)
             args_vector.push_back(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
-                    CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                        c_arg),
+                    c_owner_address,
                     arg.call_site())))
 
         else:
@@ -560,13 +582,14 @@ cdef store_task_errors(
         CTaskType task_type,
         proctitle,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
+        c_string* application_error,
         ):
     cdef:
         CoreWorker core_worker = worker.core_worker
 
     # If the debugger is enabled, drop into the remote pdb here.
-    if "RAY_PDB" in os.environ:
-        ray.util.pdb.post_mortem()
+    if ray.util.pdb._is_ray_debugger_enabled():
+        ray.util.pdb._post_mortem()
 
     backtrace = ray._private.utils.format_error_message(
         "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
@@ -584,6 +607,14 @@ cdef store_task_errors(
         failure_object = RayTaskError(function_name, backtrace,
                                       exc, proctitle=proctitle,
                                       actor_repr=actor_repr)
+
+    # Pass the failure object back to the CoreWorker.
+    # We also cap the size of the error message to the last
+    # MAX_APPLICATION_ERROR_LEN characters of the error message.
+    if application_error != NULL:
+        application_error[0] = str(failure_object)[
+            -ray_constants.MAX_APPLICATION_ERROR_LEN:]
+
     errors = []
     for _ in range(returns[0].size()):
         errors.append(failure_object)
@@ -607,7 +638,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
         const c_string &serialized_retry_exception_allowlist,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_bool *is_retryable_error,
-        c_bool *is_application_error,
+        c_string *application_error,
         c_bool is_reattempt,
         function_name,
         function_descriptor,
@@ -622,7 +653,6 @@ cdef execute_dynamic_generator_and_store_task_outputs(
             dynamic_returns,
             generator_id)
     except Exception as error:
-        is_application_error[0] = True
         is_retryable_error[0] = determine_if_retryable(
             error,
             serialized_retry_exception_allowlist,
@@ -661,7 +691,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         False,  # task_exception
                         None,  # actor
                         function_name, task_type, title,
-                        dynamic_returns)
+                        dynamic_returns, application_error)
             if num_errors_stored == 0:
                 assert is_reattempt
                 # TODO(swang): The generator task failed and we
@@ -690,7 +720,7 @@ cdef void execute_task(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_bool *is_retryable_error,
-        c_bool *is_application_error,
+        c_string *application_error,
         # This parameter is only used for actor creation task to define
         # the concurrency groups of this actor.
         const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
@@ -725,8 +755,8 @@ cdef void execute_task(
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
     function_name = execution_info.function_name
-    extra_data = (b'{"name": ' + function_name.encode("ascii") +
-                  b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
+    extra_data = (b'{"name": "' + function_name.encode("ascii") +
+                  b'", "task_id": "' + task_id.hex().encode("ascii") + b'"}')
 
     name_of_concurrency_group_to_execute = \
         c_name_of_concurrency_group_to_execute.decode("ascii")
@@ -753,10 +783,17 @@ cdef void execute_task(
                 if len(inspect.getmembers(
                         actor.__class__,
                         predicate=inspect.iscoroutinefunction)) == 0:
+                    error_message = (
+                        "Failed to create actor. The failure reason "
+                        "is that you set the async flag, but the actor does not "
+                        "have any coroutine functions.")
                     raise RayActorError(
-                        f"Failed to create the actor {core_worker.get_actor_id()}. "
-                        "The failure reason is that you set the async flag, "
-                        "but the actor has no any coroutine function.")
+                        ActorDiedErrorContext(
+                            error_message=error_message,
+                            actor_id=core_worker.get_actor_id(),
+                            class_name=class_name
+                            )
+                        )
                 # Increase recursion limit if necessary. In asyncio mode,
                 # we have many parallel callstacks (represented in fibers)
                 # that's suspended for execution. Python interpreter will
@@ -783,11 +820,6 @@ cdef void execute_task(
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         try:
-            if (not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
-                     and function_name == "__ray_terminate__") and
-                    ray._config.memory_monitor_refresh_ms() == 0):
-                worker.memory_monitor.raise_if_low_memory()
-
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 if c_args.empty():
                     args, kwargs = [], {}
@@ -830,6 +862,8 @@ cdef void execute_task(
                 class_name = actor.__class__.__name__
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
+
+            worker.record_task_log_start()
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
@@ -864,7 +898,6 @@ cdef void execute_task(
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
                 except Exception as e:
-                    is_application_error[0] = True
                     is_retryable_error[0] = determine_if_retryable(
                         e,
                         serialized_retry_exception_allowlist,
@@ -874,16 +907,21 @@ cdef void execute_task(
                         is_retryable_error[0]
                         and core_worker.get_current_task_retry_exceptions()
                     ):
-                        logger.info("Task failed with retryable exception:"
-                                    " {}.".format(
+                        logger.debug("Task failed with retryable exception:"
+                                     " {}.".format(
                                         core_worker.get_current_task_id()),
-                                    exc_info=True)
+                                     exc_info=True)
                     else:
                         logger.debug("Task failed with unretryable exception:"
                                      " {}.".format(
                                         core_worker.get_current_task_id()),
                                      exc_info=True)
                     raise e
+                finally:
+                    # Record the task logs end offsets regardless of
+                    # task execution results.
+                    worker.record_task_log_end()
+
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
                     # all return values as a single object.
@@ -898,11 +936,16 @@ cdef void execute_task(
                 if (hasattr(actor_class, "__ray_actor_class__") and
                         (actor_class.__ray_actor_class__.__repr__
                          != object.__repr__)):
+                    actor_repr = repr(actor)
                     actor_magic_token = "{}{}\n".format(
-                        ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
+                        ray_constants.LOG_PREFIX_ACTOR_NAME, actor_repr)
                     # Flush on both stdout and stderr.
                     print(actor_magic_token, end="")
                     print(actor_magic_token, file=sys.stderr, end="")
+
+                    # Sets the actor repr name for the actor so other components
+                    # like GCS has such info.
+                    core_worker.set_actor_repr_name(actor_repr)
 
             if (returns[0].size() > 0 and
                     not inspect.isgenerator(outputs) and
@@ -929,7 +972,7 @@ cdef void execute_task(
                             serialized_retry_exception_allowlist,
                             dynamic_returns,
                             is_retryable_error,
-                            is_application_error,
+                            application_error,
                             is_reattempt,
                             function_name,
                             function_descriptor,
@@ -955,7 +998,7 @@ cdef void execute_task(
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, function_name,
-                    task_type, title, returns)
+                    task_type, title, returns, application_error)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
                         "Unhandled error: Task threw exception, but all "
@@ -977,14 +1020,13 @@ cdef execute_task_with_cancellation_handler(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_bool *is_retryable_error,
-        c_bool *is_application_error,
+        c_string *application_error,
         # This parameter is only used for actor creation task to define
         # the concurrency groups of this actor.
         const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
         const c_string c_name_of_concurrency_group_to_execute,
         c_bool is_reattempt):
 
-    is_application_error[0] = False
     is_retryable_error[0] = False
 
     worker = ray._private.worker.global_worker
@@ -1065,7 +1107,7 @@ cdef execute_task_with_cancellation_handler(
                      returns,
                      dynamic_returns,
                      is_retryable_error,
-                     is_application_error,
+                     application_error,
                      c_defined_concurrency_groups,
                      c_name_of_concurrency_group_to_execute,
                      is_reattempt, execution_info, title, task_name)
@@ -1090,7 +1132,10 @@ cdef execute_task_with_cancellation_handler(
                 # to differentiate between mid-task or not.
                 False,  # task_exception
                 actor, execution_info.function_name,
-                task_type, title, returns)
+                task_type, title, returns,
+                # application_error: we are passing NULL since we don't want the
+                # cancel tasks to fail.
+                NULL)
     finally:
         with current_task_id_lock:
             current_task_id = None
@@ -1132,12 +1177,16 @@ cdef CRayStatus task_execution_handler(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
         c_bool *is_retryable_error,
-        c_bool *is_application_error,
+        c_string *application_error,
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute,
         c_bool is_reattempt) nogil:
 
     with gil, disable_client_hook():
+        # Initialize job_config if it hasn't already.
+        # Setup system paths configured in job_config.
+        maybe_initialize_job_config()
+
         try:
             try:
                 # Exceptions, including task cancellation, should be handled
@@ -1153,7 +1202,7 @@ cdef CRayStatus task_execution_handler(
                         returns,
                         dynamic_returns,
                         is_retryable_error,
-                        is_application_error,
+                        application_error,
                         defined_concurrency_groups,
                         name_of_concurrency_group_to_execute,
                         is_reattempt)
@@ -1364,6 +1413,43 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
         worker.raise_errors([(data, metadata)], object_ids)
 
 
+def maybe_initialize_job_config():
+    with job_config_initialization_lock:
+        global job_config_initialized
+        if job_config_initialized:
+            return
+        # Add code search path to sys.path, set load_code_from_local.
+        core_worker = ray._private.worker.global_worker.core_worker
+        code_search_path = core_worker.get_job_config().code_search_path
+        load_code_from_local = False
+        if code_search_path:
+            load_code_from_local = True
+            for p in code_search_path:
+                if os.path.isfile(p):
+                    p = os.path.dirname(p)
+                sys.path.insert(0, p)
+        ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
+
+        # Add driver's system path to sys.path
+        py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
+        if py_driver_sys_path:
+            for p in py_driver_sys_path:
+                sys.path.insert(0, p)
+
+        # Record the task name via :task_name: magic token in the log file.
+        # This is used for the prefix in driver logs `(task_name pid=123) ...`
+        job_id_magic_token = "{}{}\n".format(
+            ray_constants.LOG_PREFIX_JOB_ID, core_worker.get_current_job_id().hex())
+        # Print on both .out and .err
+        print(job_id_magic_token, end="")
+        print(job_id_magic_token, file=sys.stderr, end="")
+
+        # Only start import thread after job_config is initialized
+        ray._private.worker.start_import_thread()
+
+        job_config_initialized = True
+
+
 # This function introduces ~2-7us of overhead per call (i.e., it can be called
 # up to hundreds of thousands of times per second).
 cdef void get_py_stack(c_string* stack_out) nogil:
@@ -1437,7 +1523,8 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token, session_name, entrypoint):
+                  startup_token, session_name, entrypoint,
+                  worker_launch_time_ms, worker_launched_time_ms):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -1489,6 +1576,8 @@ cdef class CoreWorker:
         options.startup_token = startup_token
         options.session_name = session_name
         options.entrypoint = entrypoint
+        options.worker_launch_time_ms = worker_launch_time_ms
+        options.worker_launched_time_ms = worker_launched_time_ms
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
@@ -1555,6 +1644,9 @@ cdef class CoreWorker:
     def set_actor_title(self, title):
         CCoreWorkerProcess.GetCoreWorker().SetActorTitle(title)
 
+    def set_actor_repr_name(self, repr_name):
+        CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
+
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
 
@@ -1565,8 +1657,9 @@ cdef class CoreWorker:
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, timeout_ms, &results))
+            op_status = CCoreWorkerProcess.GetCoreWorker().Get(
+                c_object_ids, timeout_ms, &results)
+        check_status(op_status)
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -1770,8 +1863,9 @@ cdef class CoreWorker:
 
         wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Wait(
-                wait_ids, num_returns, timeout_ms, &results, fetch_local))
+            op_status = CCoreWorkerProcess.GetCoreWorker().Wait(
+                wait_ids, num_returns, timeout_ms, &results, fetch_local)
+        check_status(op_status)
 
         assert len(results) == len(object_refs)
 
@@ -2322,16 +2416,20 @@ cdef class CoreWorker:
     def get_owner_address(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
-        return CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                c_object_id).SerializeAsString()
+            CAddress c_owner_address
+        op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                c_object_id, &c_owner_address)
+        check_status(op_status)
+        return c_owner_address.SerializeAsString()
 
     def serialize_object_ref(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address = CAddress()
             c_string serialized_object_status
-        CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
+        op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id, &c_owner_address, &serialized_object_status)
+        check_status(op_status)
         return (object_ref,
                 c_owner_address.SerializeAsString(),
                 serialized_object_status)
@@ -2577,10 +2675,7 @@ cdef class CoreWorker:
         eventloop, async_thread = self.get_event_loop(
             function_descriptor, specified_cgname)
         coroutine = func(*args, **kwargs)
-        if threading.get_ident() == async_thread.ident:
-            future = asyncio.ensure_future(coroutine, eventloop)
-        else:
-            future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
+        future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
         future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
@@ -2707,6 +2802,16 @@ cdef class CoreWorker:
 
         return (num_tasks_submitted, num_leases_requested)
 
+    def record_task_log_start(self, stdout_path, stderr_path,
+                              int64_t out_start_offset, int64_t err_start_offset):
+        CCoreWorkerProcess.GetCoreWorker() \
+            .RecordTaskLogStart(stdout_path, stderr_path,
+                                out_start_offset, err_start_offset)
+
+    def record_task_log_end(self, int64_t out_end_offset, int64_t err_end_offset):
+        CCoreWorkerProcess.GetCoreWorker() \
+            .RecordTaskLogEnd(out_end_offset, err_end_offset)
+
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
                          void *user_callback) with gil:
@@ -2725,3 +2830,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     py_callback = <object>user_callback
     py_callback(result)
     cpython.Py_DECREF(py_callback)
+
+
+def del_key_from_storage(host, port, password, use_ssl, key):
+    return RedisDelKeySync(host, port, password, use_ssl, key)

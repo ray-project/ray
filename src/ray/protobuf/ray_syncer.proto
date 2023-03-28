@@ -32,37 +32,6 @@ message RaySyncMessage {
   bytes node_id = 4;
 }
 
-message RaySyncMessages {
-  // The bached messages.
-  repeated RaySyncMessage sync_messages = 1;
-}
-
-message StartSyncRequest {
-  bytes node_id = 1;
-}
-
-message StartSyncResponse {
-  bytes node_id = 1;
-}
-
-message DummyRequest {}
-message DummyResponse {}
-
 service RaySyncer {
-  // Ideally these should be a streaming API like this
-  //   rpc StartSync(stream RaySyncMessages) returns (stream RaySyncMessages);
-  // But to make sure it's the same as the current protocol, we still use
-  // unary rpc.
-  // TODO (iycheng): Using grpc streaming for the protocol.
-
-  // This is the first message that should be sent. It will initialize
-  // some structure between nodes.
-  rpc StartSync(StartSyncRequest) returns (StartSyncResponse);
-
-  // These two RPCs are for messages reporting and broadcasting.
-  // Update is used by the client to send update request to the server.
-  rpc Update(RaySyncMessages) returns (DummyResponse);
-
-  // LongPolling is used by the server to send request to the client.
-  rpc LongPolling(DummyRequest) returns (RaySyncMessages);
+  rpc StartSync(stream RaySyncMessage) returns (stream RaySyncMessage);
 }

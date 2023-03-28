@@ -1,6 +1,7 @@
 from collections import deque
 import threading
 from typing import Dict, Set
+import logging
 
 import ray
 from ray.rllib.policy.policy import Policy
@@ -12,6 +13,7 @@ from ray.rllib.utils.typing import PolicyID
 from ray.util.annotations import PublicAPI
 
 tf1, tf, tfv = try_import_tf()
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
@@ -129,9 +131,10 @@ class PolicyMap(dict):
         # -> Load new policy's state into the one that just got removed from the cache.
         # This way, we save the costly re-creation step.
         if policy is not None and self.policy_states_are_swappable:
+            logger.debug(f"restoring policy: {item}")
             policy.set_state(policy_state)
-        #
         else:
+            logger.debug(f"creating new policy: {item}")
             policy = Policy.from_state(policy_state)
 
         self.cache[item] = policy
@@ -166,6 +169,9 @@ class PolicyMap(dict):
     def __delitem__(self, key: PolicyID):
         # Make key invalid.
         self._valid_keys.remove(key)
+        # Remove policy from deque if contained
+        if key in self._deque:
+            self._deque.remove(key)
         # Remove policy from memory if currently cached.
         if key in self.cache:
             policy = self.cache[key]
@@ -192,6 +198,7 @@ class PolicyMap(dict):
 
     @override(dict)
     def keys(self):
+        """Returns all valid keys, even the stashed ones."""
         self._lock.acquire()
         ks = list(self._valid_keys)
         self._lock.release()
@@ -204,6 +211,7 @@ class PolicyMap(dict):
 
     @override(dict)
     def values(self):
+        """Returns all valid values, even the stashed ones."""
         self._lock.acquire()
         vs = [self[k] for k in self._valid_keys]
         self._lock.release()
@@ -217,6 +225,7 @@ class PolicyMap(dict):
     @with_lock
     @override(dict)
     def update(self, __m, **kwargs):
+        """Updates the map with the given dict and/or kwargs."""
         for k, v in __m.items():
             self[k] = v
         for k, v in kwargs.items():
@@ -225,6 +234,7 @@ class PolicyMap(dict):
     @with_lock
     @override(dict)
     def get(self, key: PolicyID):
+        """Returns the value for the given key or None if not found."""
         if key not in self._valid_keys:
             return None
         return self[key]
@@ -239,6 +249,15 @@ class PolicyMap(dict):
     @override(dict)
     def __contains__(self, item: PolicyID):
         return item in self._valid_keys
+
+    @override(dict)
+    def __str__(self) -> str:
+        # Only print out our keys (policy IDs), not values as this could trigger
+        # the LRU caching.
+        return (
+            f"<PolicyMap lru-caching-capacity={self.capacity} policy-IDs="
+            f"{list(self.keys())}>"
+        )
 
     def _stash_least_used_policy(self) -> Policy:
         """Writes the least-recently used policy's state to the Ray object store.

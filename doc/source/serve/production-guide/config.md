@@ -170,3 +170,31 @@ Serve will set `num_replicas=5`, using the config file value, and `max_concurren
 :::{tip}
 Remember that `ray_actor_options` counts as a single setting. The entire `ray_actor_options` dictionary in the config file overrides the entire `ray_actor_options` dictionary from the graph code. If there are individual options within `ray_actor_options` (e.g. `runtime_env`, `num_gpus`, `memory`) that are set in the code but not in the config, Serve still won't use the code settings if the config has a `ray_actor_options` dictionary. It will treat these missing options as though the user never set them and will use defaults instead. This dictionary overriding behavior also applies to `user_config`.
 :::
+
+## Dynamically adjusting parameters in deployment
+
+The `user_config` field can be used to supply structured configuration for your deployment. You can pass arbitrary JSON serializable objects to the YAML configuration. Serve will then apply it to all running and future deployment replicas. The application of user configuration *will not* restart the replica. This means you can use this field to dynamically:
+- adjust model weights and versions without restarting the cluster.
+- adjust traffic splitting percentage for your model composition graph.
+- configure any feature flag, A/B tests, and hyper-parameters for your deployments.
+
+To enable the `user_config` feature, you need to implement a `reconfigure` method that takes a dictionary as its only argument:
+
+```python
+@serve.deployment
+class Model:
+    def reconfigure(self, config: Dict[str, Any]):
+        self.threshold = config["threshold"]
+```
+
+If the `user_config` is set when the deployment is created (e.g. in the decorator or the Serve config file), this `reconfigure` method is called right after the deployment's `__init__` method, and the `user_config` is passed in as an argument. You can also trigger the `reconfigure` method by updating your Serve config file with a new `user_config` and reapplying it to your Ray cluster.
+
+The corresponding YAML snippet is
+
+```yaml
+...
+deployments:
+    - name: Model
+      user_config:
+        threshold: 1.5
+```

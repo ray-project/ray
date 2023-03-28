@@ -10,24 +10,14 @@ import ray
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 
-@pytest.fixture(params=[True, False])
+@pytest.fixture
 def config(request):
-    pull_based = request.param
-    if pull_based:
-        config = {
-            "health_check_initial_delay_ms": 0,
-            "health_check_period_ms": 100,
-            "health_check_failure_threshold": 10,
-            "object_timeout_milliseconds": 200,
-            "pull_based_healthcheck": True,
-        }
-    else:
-        config = {
-            "num_heartbeats_timeout": 10,
-            "raylet_heartbeat_period_milliseconds": 100,
-            "pull_based_healthcheck": False,
-            "object_timeout_milliseconds": 200,
-        }
+    config = {
+        "health_check_initial_delay_ms": 0,
+        "health_check_period_ms": 100,
+        "health_check_failure_threshold": 10,
+        "object_timeout_milliseconds": 200,
+    }
     yield config
 
 

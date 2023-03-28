@@ -1,6 +1,6 @@
 from typing import List, Sequence
 
-import gym
+import gymnasium as gym
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.framework import try_import_torch

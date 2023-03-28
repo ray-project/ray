@@ -124,6 +124,7 @@ test_core() {
         -//:event_test
         -//:gcs_server_rpc_test
         -//:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
+        -//:gcs_health_check_manager_test
         -//:gcs_client_reconnection_test
       )
       ;;
@@ -307,7 +308,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      make html
+      FAST=True make html
       pip install datasets==2.0.0
       RAY_MOCK_MODULES=0 make doctest
     fi
@@ -320,7 +321,7 @@ check_sphinx_links() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      make linkcheck
+      FAST=True make linkcheck
     fi
   )
 }
@@ -414,11 +415,10 @@ validate_wheels_commit_str() {
       continue
     fi
 
-    folder=${basename%%-cp*}
-    WHL_COMMIT=$(unzip -p "$whl" "${folder}.data/purelib/ray/__init__.py" | grep "__commit__" | awk -F'"' '{print $2}')
+    WHL_COMMIT=$(unzip -p "$whl" "*ray/__init__.py" | grep "^__commit__" | awk -F'"' '{print $2}')
 
     if [ "${WHL_COMMIT}" != "${EXPECTED_COMMIT}" ]; then
-      echo "Error: Observed wheel commit (${WHL_COMMIT}) is not expected commit (${EXPECTED_COMMIT}). Aborting."
+      echo "Wheel ${basename} has incorrect commit: (${WHL_COMMIT}) is not expected commit (${EXPECTED_COMMIT}). Aborting."
       exit 1
     fi
 
@@ -455,11 +455,14 @@ build_wheels() {
         -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
       )
 
+      IMAGE_NAME="quay.io/pypa/manylinux2014_${HOSTTYPE}"
+      IMAGE_TAG="2022-12-20-b4884d9"
+
       if [ -z "${BUILDKITE-}" ]; then
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the "${MOUNT_BAZEL_CACHE[@]}" part.
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-        quay.io/pypa/manylinux2014_x86_64:2021-11-07-28723f3 /ray/python/build-wheel-manylinux2014.sh
+        "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
       else
         rm -rf /ray-mount/*
         rm -rf /ray-mount/.whl || true
@@ -469,7 +472,7 @@ build_wheels() {
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          quay.io/pypa/manylinux2014_x86_64:2021-11-07-28723f3 /ray/python/build-wheel-manylinux2014.sh
+          "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
         cp -rT /ray-mount /ray # copy new files back here
         find . | grep whl # testing
 
@@ -543,7 +546,7 @@ lint_bazel() {
 lint_bazel_pytest() {
   pip install yq
   cd "${WORKSPACE_DIR}"
-  for team in "team:ml" "team:rllib" "team:serve"; do
+  for team in "team:core" "team:ml" "team:rllib" "team:serve"; do
     # this does the following:
     # - find all py_test rules in bazel that have the specified team tag EXCEPT ones with "no_main" tag and outputs them as xml
     # - converts the xml to json
@@ -786,9 +789,9 @@ run_minimal_test() {
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_ray_minimal
   # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env
   # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_2
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_2
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_utils
 
@@ -812,6 +815,7 @@ run_minimal_test() {
 
 test_minimal() {
   ./ci/env/install-minimal.sh "$1"
+  echo "Installed minimal dependencies."
   ./ci/env/env_info.sh
   python ./ci/env/check_minimal_install.py
   run_minimal_test "$1"
@@ -820,8 +824,11 @@ test_minimal() {
 
 test_latest_core_dependencies() {
   ./ci/env/install-minimal.sh "$1"
+  echo "Installed minimal dependencies."
   ./ci/env/env_info.sh
   ./ci/env/install-core-prerelease-dependencies.sh
+  echo "Installed Core prerelease dependencies."
+  ./ci/env/env_info.sh
   run_minimal_test "$1"
 }
 

@@ -369,6 +369,7 @@ def main():
     }
     check_kuberay_installed()
     users = 60
+    exception = None
     for kill_node_type, kill_interval, test_duration in [
         (TestScenario.KILL_WORKER_NODE, 60, 600),
         (TestScenario.KILL_HEAD_NODE, 300, 1200),
@@ -388,6 +389,7 @@ def main():
             assert qps > users * 10 * 0.8
         except Exception as e:
             print(f"{kill_node_type} HA test failed, {e}")
+            exception = e
         finally:
             print("=== Cleanup ===")
             subprocess.run(
@@ -401,6 +403,10 @@ def main():
             for p in procs:
                 p.kill()
             print("==== Cleanup done ===")
+
+        if exception:
+            raise exception
+
         print("Result:", result)
 
         test_output_json_path = os.environ.get(

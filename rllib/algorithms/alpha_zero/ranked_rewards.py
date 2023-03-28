@@ -45,20 +45,20 @@ def get_r2_env_wrapper(env_creator, r2_config):
         def _initialize_buffer(self, num_init_rewards=100):
             # initialize buffer with random policy
             for _ in range(num_init_rewards):
-                obs = self.env.reset()
-                done = False
-                while not done:
+                obs, info = self.env.reset()
+                terminated = truncated = False
+                while not terminated and not truncated:
                     mask = obs["action_mask"]
                     probs = mask / mask.sum()
                     action = np.random.choice(np.arange(mask.shape[0]), p=probs)
-                    obs, reward, done, _ = self.env.step(action)
+                    obs, reward, terminated, truncated, _ = self.env.step(action)
                 self.r2_buffer.add_reward(reward)
 
         def step(self, action):
-            obs, reward, done, info = self.env.step(action)
-            if done:
+            obs, reward, terminated, truncated, info = self.env.step(action)
+            if terminated or truncated:
                 reward = self.r2_buffer.normalize(reward)
-            return obs, reward, done, info
+            return obs, reward, terminated, truncated, info
 
         def get_state(self):
             state = {
@@ -67,7 +67,7 @@ def get_r2_env_wrapper(env_creator, r2_config):
             }
             return deepcopy(state)
 
-        def reset(self):
+        def reset(self, *, seed=None, options=None):
             return self.env.reset()
 
         def set_state(self, state):

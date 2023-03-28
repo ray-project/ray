@@ -3,6 +3,8 @@
 Profiling
 =========
 
+.. _ray-core-timeline:
+
 Visualizing Tasks in the Ray Timeline
 -------------------------------------
 
@@ -11,7 +13,7 @@ in the Ray timeline, you can dump the timeline as a JSON file by running ``ray
 timeline`` from the command line or ``ray.timeline`` from the Python API.
 
 To use the timeline, Ray profiling must be enabled by setting the
-``RAY_PROFILING=1`` environment variable prior to starting Ray on every machine.
+``RAY_PROFILING=1`` environment variable prior to starting Ray on every machine, and ``RAY_task_events_report_interval_ms`` must be larger than 0 (default 1000).
 
 .. code-block:: python
 
@@ -27,8 +29,8 @@ Then open `chrome://tracing`_ in the Chrome web browser, and load
 Python CPU Profiling in the Dashboard
 -------------------------------------
 
-The :ref:`ray-dashboard`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "Flame Graph"
-actions for active workers and actors.
+The :ref:`ray-dashboard`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph"
+actions for active workers, actors, and jobs.
 
 .. image:: /images/profile.png
    :align: center
@@ -41,7 +43,7 @@ trace is shown. To show native code frames, set the URL parameter ``native=1`` (
    :align: center
    :width: 60%
 
-Clicking "Flame Graph" will take a number of stack trace samples and combine them into a flame graph visualization.
+Clicking "CPU Flame Graph" will take a number of stack trace samples and combine them into a flame graph visualization.
 This flame graph can be useful for understanding the CPU activity of the particular process. To adjust the duration
 of the flame graph, you can change the ``duration`` parameter in the URL. Similarly, you can change the ``native``
 parameter to enable native profiling.

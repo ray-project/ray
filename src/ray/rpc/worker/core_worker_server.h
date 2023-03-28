@@ -48,6 +48,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, RemoteCancelTask, -1)   \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, GetCoreWorkerStats, -1) \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, LocalGC, -1)            \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, DeleteObjects, -1)      \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, SpillObjects, -1)       \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(                                           \
       CoreWorkerService, RestoreSpilledObjects, -1)                                      \
@@ -72,6 +73,7 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoteCancelTask)               \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)             \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(LocalGC)                        \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteObjects)                  \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(SpillObjects)                   \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RestoreSpilledObjects)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteSpilledObjects)           \

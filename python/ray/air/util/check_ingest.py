@@ -2,15 +2,16 @@
 
 import sys
 import time
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 
 import ray
 from ray.air import session
 from ray.air.config import DatasetConfig, ScalingConfig
-from ray.data import DatasetPipeline, Dataset
+from ray.data import Dataset, DatasetIterator, Preprocessor
 from ray.data.preprocessors import BatchMapper, Chain
+from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import DeveloperAPI
 
@@ -23,6 +24,19 @@ class DummyTrainer(DataParallelTrainer):
 
     This is useful for debugging data ingest problem. This trainer supports normal
     scaling options same as any other Trainer (e.g., num_workers, use_gpu).
+
+    Args:
+        scaling_config: Configuration for how to scale training. This is the same
+            as for :class:`~ray.train.base_trainer.BaseTrainer`.
+        num_epochs: How many many times to iterate through the datasets for.
+        prefetch_batches: The number of batches to prefetch ahead of the
+            current block during the scan. This is the same as
+            :meth:`~ray.data.dataset.Dataset.iter_batches`
+        time_preprocessing_separately: Whether to time the preprocessing separately
+            from actual iteration during training. If set to True, preprocessing
+            execution is fully executed before training begins and the preprocessing
+            time is printed out. Defaults to False, which mimics the actual behavior of
+            Trainers.
     """
 
     def __init__(
@@ -30,37 +44,49 @@ class DummyTrainer(DataParallelTrainer):
         *args,
         scaling_config: Optional[ScalingConfig] = None,
         num_epochs: int = 1,
-        prefetch_blocks: int = 1,
+        prefetch_batches: int = 1,
         batch_size: Optional[int] = 4096,
-        **kwargs
+        time_preprocessing_separately: bool = False,
+        # Deprecated.
+        prefetch_blocks: int = 0,
+        **kwargs,
     ):
         if not scaling_config:
             scaling_config = ScalingConfig(num_workers=1)
         super().__init__(
             train_loop_per_worker=DummyTrainer.make_train_loop(
-                num_epochs, prefetch_blocks, batch_size
+                num_epochs, prefetch_batches, prefetch_blocks, batch_size
             ),
             *args,
             scaling_config=scaling_config,
-            **kwargs
+            **kwargs,
         )
+        self.time_preprocessing_separately = time_preprocessing_separately
 
     def preprocess_datasets(self):
         print("Starting dataset preprocessing")
-        start = time.perf_counter()
         super().preprocess_datasets()
-        print("Preprocessed datasets in", time.perf_counter() - start, "seconds")
-        if self.preprocessor:
-            print("Preprocessor", self.preprocessor)
-            print(
-                "Preprocessor transform stats:\n\n{}".format(
-                    self.preprocessor.transform_stats()
+        if self.time_preprocessing_separately:
+            for dataset_name, ds in self.datasets.items():
+                start = time.perf_counter()
+                # Force execution to time preprocessing since Datasets are lazy by
+                # default.
+                ds.cache()
+                print(
+                    f"Preprocessed {dataset_name} in",
+                    time.perf_counter() - start,
+                    "seconds",
                 )
-            )
+                if self.preprocessor:
+                    print("Preprocessor", self.preprocessor)
+                    print("Preprocessor transform stats:\n\n{}".format(ds.stats()))
 
     @staticmethod
     def make_train_loop(
-        num_epochs: int, prefetch_blocks: int, batch_size: Optional[int]
+        num_epochs: int,
+        prefetch_batches: int,
+        prefetch_blocks: int,
+        batch_size: Optional[int],
     ):
         """Make a debug train loop that runs for the given amount of epochs."""
 
@@ -73,21 +99,14 @@ class DummyTrainer(DataParallelTrainer):
             epochs_read, batches_read, bytes_read = 0, 0, 0
             batch_delays = []
 
-            def generate_epochs(data: Union[Dataset, DatasetPipeline], epochs: int):
-                if isinstance(data, DatasetPipeline):
-                    for epoch in data_shard.iter_epochs(epochs):
-                        yield epoch
-                else:
-                    # Dataset
-                    for _ in range(epochs):
-                        yield data
-
             print("Starting train loop on worker", rank)
-            for epoch_data in generate_epochs(data_shard, num_epochs):
+            for epoch in range(num_epochs):
                 epochs_read += 1
                 batch_start = time.perf_counter()
-                for batch in epoch_data.iter_batches(
-                    prefetch_blocks=prefetch_blocks, batch_size=batch_size
+                for batch in data_shard.iter_batches(
+                    prefetch_batches=prefetch_batches,
+                    prefetch_blocks=prefetch_blocks,
+                    batch_size=batch_size,
                 ):
                     batch_delay = time.perf_counter() - batch_start
                     batch_delays.append(batch_delay)
@@ -133,6 +152,41 @@ class DummyTrainer(DataParallelTrainer):
         return train_loop_per_worker
 
 
+@DeveloperAPI
+def make_local_dataset_iterator(
+    dataset: Dataset,
+    preprocessor: Preprocessor,
+    dataset_config: DatasetConfig,
+) -> DatasetIterator:
+    """A helper function to create a local
+    :py:class:`DatasetIterator <ray.data.DatasetIterator>`,
+    like the one returned by :meth:`~ray.air.session.get_dataset_shard`.
+
+    This function should only be used for development and debugging. It will
+    raise an exception if called by a worker instead of the driver.
+
+    Args:
+        dataset: The input Dataset.
+        preprocessor: The preprocessor that will be applied to the input dataset.
+        dataset_config: The dataset config normally passed to the trainer.
+    """
+    runtime_context = ray.runtime_context.get_runtime_context()
+    if runtime_context.worker.mode == ray._private.worker.WORKER_MODE:
+        raise RuntimeError(
+            "make_local_dataset_iterator should only be used by the driver "
+            "for development and debugging. To consume a dataset from a "
+            "worker or AIR trainer, see "
+            "https://docs.ray.io/en/latest/ray-air/check-ingest.html."
+        )
+
+    dataset_config = dataset_config.fill_defaults()
+    spec = DataParallelIngestSpec({"train": dataset_config})
+    spec.preprocess_datasets(preprocessor, {"train": dataset})
+    training_worker_handles = [None]
+    it = spec.get_dataset_shards(training_worker_handles)[0]["train"]
+    return it
+
+
 if __name__ == "__main__":
 
     import argparse
@@ -142,19 +196,13 @@ if __name__ == "__main__":
         "--num-epochs", "-e", type=int, default=1, help="Number of epochs to read."
     )
     parser.add_argument(
-        "--prefetch-blocks",
+        "--prefetch-batches",
         "-b",
         type=int,
         default=1,
-        help="Number of blocks to prefetch when reading data.",
+        help="Number of batches to prefetch when reading data.",
     )
 
-    parser.add_argument(
-        "--use-stream-api",
-        "-s",
-        action="store_true",
-        help="If enabled, the input Dataset will be streamed (as a DatasetPipeline).",
-    )
     args = parser.parse_args()
 
     # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded
@@ -174,8 +222,8 @@ if __name__ == "__main__":
         datasets={"train": dataset},
         preprocessor=preprocessor,
         num_epochs=args.num_epochs,
-        prefetch_blocks=args.prefetch_blocks,
-        dataset_config={"train": DatasetConfig(use_stream_api=args.use_stream_api)},
+        prefetch_batches=args.prefetch_batches,
+        dataset_config={"train": DatasetConfig()},
         batch_size=None,
     )
     print("Dataset config", trainer.get_dataset_config())

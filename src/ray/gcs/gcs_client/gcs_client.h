@@ -69,7 +69,11 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Constructor of GcsClient.
   ///
   /// \param options Options for client.
-  explicit GcsClient(const GcsClientOptions &options);
+  /// \param gcs_client_id The unique ID for the owner of this object.
+  ///    This potentially will be used to tell GCS who is client connecting
+  ///    to GCS.
+  explicit GcsClient(const GcsClientOptions &options,
+                     UniqueID gcs_client_id = UniqueID::FromRandom());
 
   virtual ~GcsClient() { Disconnect(); };
 
@@ -129,13 +133,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *error_accessor_;
   }
 
-  /// Get the sub-interface for accessing stats information in GCS.
-  /// This function is thread safe.
-  StatsInfoAccessor &Stats() {
-    RAY_CHECK(stats_accessor_ != nullptr);
-    return *stats_accessor_;
-  }
-
   TaskInfoAccessor &Tasks() {
     RAY_CHECK(task_accessor_ != nullptr);
     return *task_accessor_;
@@ -171,7 +168,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<NodeInfoAccessor> node_accessor_;
   std::unique_ptr<NodeResourceInfoAccessor> node_resource_accessor_;
   std::unique_ptr<ErrorInfoAccessor> error_accessor_;
-  std::unique_ptr<StatsInfoAccessor> stats_accessor_;
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;

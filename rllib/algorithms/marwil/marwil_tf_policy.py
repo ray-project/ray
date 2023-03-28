@@ -1,7 +1,6 @@
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
-import ray
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
 from ray.rllib.models.action_dist import ActionDistribution
@@ -46,7 +45,7 @@ class PostprocessAdvantages:
         )
 
         # Trajectory is actually complete -> last r=0.0.
-        if sample_batch[SampleBatch.DONES][-1]:
+        if sample_batch[SampleBatch.TERMINATEDS][-1]:
             last_r = 0.0
         # Trajectory has been truncated -> last r=VF estimate of last obs.
         else:
@@ -173,10 +172,6 @@ def get_marwil_tf_policy(name: str, base: type) -> type:
         ):
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
-
-            config = dict(
-                ray.rllib.algorithms.marwil.marwil.MARWILConfig().to_dict(), **config
-            )
 
             # Initialize base class.
             base.__init__(

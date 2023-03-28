@@ -20,6 +20,7 @@ from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     AUTOSCALER_MAX_LAUNCH_BATCH,
     AUTOSCALER_MAX_NUM_FAILURES,
+    AUTOSCALER_STATUS_LOG,
     AUTOSCALER_UPDATE_INTERVAL_S,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
@@ -108,6 +109,10 @@ class AutoscalerSummary:
         default_factory=lambda: NodeAvailabilitySummary({})
     )
     pending_resources: Dict[str, int] = field(default_factory=lambda: {})
+    # A mapping from node name (the same key as `usage_by_node`) to node type.
+    # Optional for deployment modes which have the concept of node types and
+    # backwards compatibility.
+    node_type_mapping: Optional[Dict[str, str]] = None
 
 
 class NonTerminatedNodes:
@@ -186,6 +191,7 @@ class StandardAutoscaler:
         config_reader: Union[str, Callable[[], dict]],
         load_metrics: LoadMetrics,
         gcs_node_info_stub: gcs_service_pb2_grpc.NodeInfoGcsServiceStub,
+        session_name: Optional[str] = None,
         max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
         max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
         max_failures: int = AUTOSCALER_MAX_NUM_FAILURES,
@@ -201,6 +207,8 @@ class StandardAutoscaler:
             config_reader: Path to a Ray Autoscaler YAML, or a function to read
                 and return the latest config.
             load_metrics: Provides metrics for the Ray cluster.
+            session_name: The session name of the cluster this autoscaler
+                is deployed.
             max_launch_batch: Max number of nodes to launch in one request.
             max_concurrent_launches: Max number of nodes that can be
                 concurrently launched. This value and `max_launch_batch`
@@ -236,7 +244,9 @@ class StandardAutoscaler:
         # Keep this before self.reset (if an exception occurs in reset
         # then prom_metrics must be instantitiated to increment the
         # exception counter)
-        self.prom_metrics = prom_metrics or AutoscalerPrometheusMetrics()
+        self.prom_metrics = prom_metrics or AutoscalerPrometheusMetrics(
+            session_name=session_name
+        )  # noqa
         self.resource_demand_scheduler = None
         self.reset(errors_fatal=True)
         self.load_metrics = load_metrics
@@ -317,6 +327,7 @@ class StandardAutoscaler:
                 pending=self.pending_launches,
                 event_summarizer=self.event_summarizer,
                 node_provider_availability_tracker=self.node_provider_availability_tracker,  # noqa: E501 Flake and black disagree how to format this.
+                session_name=session_name,
                 node_types=self.available_node_types,
                 prom_metrics=self.prom_metrics,
             )
@@ -331,6 +342,7 @@ class StandardAutoscaler:
                     pending=self.pending_launches,
                     event_summarizer=self.event_summarizer,
                     node_provider_availability_tracker=self.node_provider_availability_tracker,  # noqa: E501 Flake and black disagreee how to format this.
+                    session_name=session_name,
                     node_types=self.available_node_types,
                     prom_metrics=self.prom_metrics,
                 )
@@ -407,7 +419,8 @@ class StandardAutoscaler:
         )
 
         # Update status strings
-        logger.info(self.info_string())
+        if AUTOSCALER_STATUS_LOG:
+            logger.info(self.info_string())
         legacy_log_info_string(self, self.non_terminated_nodes.worker_ids)
 
         if not self.provider.is_readonly():
@@ -1356,7 +1369,6 @@ class StandardAutoscaler:
     def launch_new_node(self, count: int, node_type: str) -> None:
         logger.info("StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.pending_launches.inc(node_type, count)
-        self.prom_metrics.pending_nodes.set(self.pending_launches.value)
         config = copy.deepcopy(self.config)
         if self.foreground_node_launch:
             assert self.foreground_node_launcher is not None
@@ -1403,6 +1415,8 @@ class StandardAutoscaler:
         failed_nodes = []
         non_failed = set()
 
+        node_type_mapping = {}
+
         for node_id in self.non_terminated_nodes.all_node_ids:
             ip = self.provider.internal_ip(node_id)
             node_tags = self.provider.node_tags(node_id)
@@ -1422,6 +1436,8 @@ class StandardAutoscaler:
             if node_tags[TAG_RAY_NODE_KIND] == NODE_KIND_UNMANAGED:
                 continue
             node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
+
+            node_type_mapping[ip] = node_type
 
             # TODO (Alex): If a node's raylet has died, it shouldn't be marked
             # as active.
@@ -1468,6 +1484,7 @@ class StandardAutoscaler:
             failed_nodes=failed_nodes,
             node_availability_summary=self.node_provider_availability_tracker.summary(),
             pending_resources=pending_resources,
+            node_type_mapping=node_type_mapping,
         )
 
     def info_string(self):

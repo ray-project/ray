@@ -1,6 +1,7 @@
 # Production requirements. This is what readthedocs.org picks up
 
 # Python / ML libraries
+accelerate>=0.17.0
 click
 colorama
 colorful
@@ -36,6 +37,9 @@ torch
 torchvision
 transformers
 
+# Train
+mxnet==1.8.0.post0
+
 # Ray libraries
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
 git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray
@@ -60,6 +64,8 @@ sphinx-sitemap==2.2.0
 sphinx-thebe==0.1.1
 autodoc_pydantic==1.6.1
 sphinxcontrib-redoc==1.6.0
+sphinx-tabs==3.4.0
+sphinx-remove-toctrees==0.0.3
 
 # MyST
 myst-parser==0.15.2

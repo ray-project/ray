@@ -1,9 +1,8 @@
 import argparse
 import base64
 import json
-import os
-import sys
 import time
+import sys
 
 import ray
 import ray._private.node
@@ -146,7 +145,22 @@ parser.add_argument(
     required=False,
     help="The address of web ui",
 )
+parser.add_argument(
+    "--worker-launch-time-ms",
+    required=True,
+    type=int,
+    help="The time when raylet starts to launch the worker process.",
+)
 
+parser.add_argument(
+    "--worker-preload-modules",
+    type=str,
+    required=False,
+    help=(
+        "A comma-separated list of Python module names "
+        "to import before accepting work."
+    ),
+)
 
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
@@ -155,6 +169,13 @@ if __name__ == "__main__":
     # https://github.com/ray-project/ray/pull/12225#issue-525059663.
     args = parser.parse_args()
     ray._private.ray_logging.setup_logger(args.logging_level, args.logging_format)
+
+    if sys.version_info >= (3, 7):
+        worker_launched_time_ms = time.time_ns() // 1e6
+    else:
+        # This value might be inaccurate in Python 3.6.
+        # We will anyway deprecate Python 3.6.
+        worker_launched_time_ms = time.time() * 1000
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
@@ -216,25 +237,21 @@ if __name__ == "__main__":
         runtime_env_hash=args.runtime_env_hash,
         startup_token=args.startup_token,
         ray_debugger_external=args.ray_debugger_external,
+        worker_launch_time_ms=args.worker_launch_time_ms,
+        worker_launched_time_ms=worker_launched_time_ms,
     )
-
-    # Add code search path to sys.path, set load_code_from_local.
-    core_worker = ray._private.worker.global_worker.core_worker
-    code_search_path = core_worker.get_job_config().code_search_path
-    load_code_from_local = False
-    if code_search_path:
-        load_code_from_local = True
-        for p in code_search_path:
-            if os.path.isfile(p):
-                p = os.path.dirname(p)
-            sys.path.insert(0, p)
-    ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(
         get_worker_log_file_name(args.worker_type)
     )
     configure_log_file(out_file, err_file)
+    ray._private.worker.global_worker.set_out_file(out_file)
+    ray._private.worker.global_worker.set_err_file(err_file)
+
+    if mode == ray.WORKER_MODE and args.worker_preload_modules:
+        module_names_to_import = args.worker_preload_modules.split(",")
+        ray._private.utils.try_import_each_module(module_names_to_import)
 
     if mode == ray.WORKER_MODE:
         ray._private.worker.global_worker.main_loop()

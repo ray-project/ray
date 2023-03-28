@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import os
 from pathlib import Path
@@ -84,7 +84,7 @@ class TestAlgorithm(unittest.TestCase):
                 # Add a new policy either by class (and options) or by instance.
                 pid = f"p{i}"
                 print(f"Adding policy {pid} ...")
-                # By instance.
+                # By (already instantiated) instance.
                 if i == 2:
                     new_pol = algo.add_policy(
                         pid,
@@ -109,12 +109,14 @@ class TestAlgorithm(unittest.TestCase):
                 # Make sure new policy is part of remote workers in the
                 # worker set and the eval worker set.
                 self.assertTrue(
-                    algo.workers.foreach_worker(func=lambda w: pid in w.policy_map)[0]
+                    all(algo.workers.foreach_worker(func=lambda w: pid in w.policy_map))
                 )
                 self.assertTrue(
-                    algo.evaluation_workers.foreach_worker(
-                        func=lambda w: pid in w.policy_map
-                    )[0]
+                    all(
+                        algo.evaluation_workers.foreach_worker(
+                            func=lambda w: pid in w.policy_map
+                        )
+                    )
                 )
 
                 # Assert new policy is part of local worker (eval worker set does NOT
@@ -196,7 +198,7 @@ class TestAlgorithm(unittest.TestCase):
                     # Note that the complete signature of a policy_mapping_fn
                     # is: `agent_id, episode, worker, **kwargs`.
                     policy_mapping_fn=(
-                        lambda agent_id, worker, episode, **kwargs: f"p{i - 1}"
+                        lambda agent_id, episode, worker, **kwargs: f"p{i - 1}"
                     ),
                     # Update list of policies to train.
                     policies_to_train=[f"p{i - 1}"],
@@ -271,6 +273,7 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_config=dqn.DQNConfig.overrides(gamma=0.98),
                 always_attach_evaluation_results=True,
             )
+            .reporting(min_sample_timesteps_per_iteration=100)
             .callbacks(callbacks_class=AssertEvalCallback)
         )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):

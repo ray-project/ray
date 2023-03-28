@@ -8,7 +8,8 @@ WORKSPACE_DIR="${ROOT_DIR}/.."
 PY_VERSIONS=("3.7"
              "3.8"
              "3.9"
-             "3.10")
+             "3.10"
+             )
 
 bazel_preclean() {
   "${WORKSPACE_DIR}"/ci/run/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"

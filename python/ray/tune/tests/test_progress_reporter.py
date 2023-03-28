@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+import numpy as np
 
 from ray import tune
 from ray._private.test_utils import run_string_as_driver
@@ -21,7 +22,7 @@ from ray.tune.progress_reporter import (
     _max_len,
 )
 from ray.tune.result import AUTO_RESULT_KEYS
-from ray.tune.trial import Trial
+from ray.tune.experiment.trial import Trial
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -324,6 +325,9 @@ with patch("ray.tune.progress_reporter._get_trial_location",
 # Add "verbose=3)" etc
 
 
+@pytest.mark.skipif(
+    "AIR_VERBOSITY" in os.environ, reason="console v2 doesn't work with this v1 test."
+)
 class ProgressReporterTest(unittest.TestCase):
     def setUp(self) -> None:
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"
@@ -438,7 +442,7 @@ class ProgressReporterTest(unittest.TestCase):
             else:
                 t.status = "RUNNING"
             t.trial_id = "%05d" % i
-            t.local_dir = "/foo"
+            t.local_experiment_path = "/foo"
             t.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
             t.evaluated_params = {"a": i, "b": i * 2, "n/k/0": i, "n/k/1": 2 * i}
@@ -513,6 +517,33 @@ class ProgressReporterTest(unittest.TestCase):
         best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
         assert best_trial == trial2
 
+    def testBestTrialNan(self):
+        trial1 = Trial("", config={}, stub=True)
+        trial1.last_result = {"metric": np.nan, "config": {}}
+
+        trial2 = Trial("", config={}, stub=True)
+        trial2.last_result = {"metric": 0, "config": {}}
+
+        trial3 = Trial("", config={}, stub=True)
+        trial3.last_result = {"metric": 2, "config": {}}
+
+        reporter = TuneReporterBase(metric="metric", mode="min")
+        best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
+        assert best_trial == trial2
+
+        trial1 = Trial("", config={}, stub=True)
+        trial1.last_result = {"metric": np.nan, "config": {}}
+
+        trial2 = Trial("", config={}, stub=True)
+        trial2.last_result = {"metric": 0, "config": {}}
+
+        trial3 = Trial("", config={}, stub=True)
+        trial3.last_result = {"metric": 2, "config": {}}
+
+        reporter = TuneReporterBase(metric="metric", mode="max")
+        best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
+        assert best_trial == trial3
+
     def testTimeElapsed(self):
         # Sun Feb 7 14:18:40 2016 -0800
         # (time of the first Ray commit)
@@ -541,7 +572,7 @@ class ProgressReporterTest(unittest.TestCase):
             t = Mock()
             t.status = "RUNNING"
             t.trial_id = "%05d" % i
-            t.local_dir = "/foo"
+            t.local_experiment_path = "/foo"
             t.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
             t.evaluated_params = {"a": i}
@@ -575,7 +606,7 @@ class ProgressReporterTest(unittest.TestCase):
             else:
                 t.status = "RUNNING"
             t.trial_id = "%05d" % i
-            t.local_dir = "/foo"
+            t.local_experiment_path = "/foo"
             t.location = "here"
             t.config = {"a": i}
             t.evaluated_params = {"a": i}
@@ -656,7 +687,9 @@ class ProgressReporterTest(unittest.TestCase):
             os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "100"
             output = run_string_as_driver(END_TO_END_COMMAND)
             try:
-                assert EXPECTED_END_TO_END_START in output
+                # New execution path is too fast, trials are already terminated
+                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                    assert EXPECTED_END_TO_END_START in output
                 assert EXPECTED_END_TO_END_END in output
                 assert "(raylet)" not in output, "Unexpected raylet log messages"
             except Exception:
@@ -680,7 +713,8 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
-                self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
+                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                    self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
                 print(output)
@@ -690,13 +724,16 @@ class ProgressReporterTest(unittest.TestCase):
             verbose_1_cmd = VERBOSE_CMD + "verbose=1)"
             output = run_string_as_driver(verbose_1_cmd)
             try:
-                self.assertIn(VERBOSE_EXP_OUT_1, output)
+                # New execution path is too fast, trials are already terminated
+                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                    self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
                 self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
-                self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
+                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                    self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
                 print(output)
@@ -706,7 +743,8 @@ class ProgressReporterTest(unittest.TestCase):
             verbose_2_cmd = VERBOSE_CMD + "verbose=2)"
             output = run_string_as_driver(verbose_2_cmd)
             try:
-                self.assertIn(VERBOSE_EXP_OUT_1, output)
+                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                    self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertIn(VERBOSE_TRIAL_NORM_1, output)
                 self.assertIsNotNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
@@ -722,13 +760,15 @@ class ProgressReporterTest(unittest.TestCase):
             verbose_3_cmd = VERBOSE_CMD + "verbose=3)"
             output = run_string_as_driver(verbose_3_cmd)
             try:
-                self.assertIn(VERBOSE_EXP_OUT_1, output)
+                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                    self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
                 self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
-                self.assertIn(VERBOSE_TRIAL_DETAIL, output)
+                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                    self.assertIn(VERBOSE_TRIAL_DETAIL, output)
                 # Check that we don't print duplicate results at the end
                 self.assertTrue(output.count(VERBOSE_TRIAL_WITH_ONCE_RESULT) == 1)
                 self.assertIn(VERBOSE_TRIAL_WITH_ONCE_COMPLETED, output)
@@ -767,7 +807,7 @@ class ProgressReporterTest(unittest.TestCase):
             t = Mock()
             t.status = "TERMINATED"
             t.trial_id = "%05d" % i
-            t.local_dir = "/foo"
+            t.local_experiment_path = "/foo"
             t.location = "here"
             t.config = {"verylong" * 20: i}
             t.evaluated_params = {"verylong" * 20: i}

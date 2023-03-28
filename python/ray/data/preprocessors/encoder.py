@@ -2,6 +2,7 @@ from functools import partial
 from typing import List, Dict, Optional
 
 from collections import Counter, OrderedDict
+import numpy as np
 import pandas as pd
 import pandas.api.types
 
@@ -324,7 +325,9 @@ class MultiHotEncoder(Preprocessor):
         _validate_df(df, *self.columns)
 
         def encode_list(element: list, *, name: str):
-            if not isinstance(element, list):
+            if isinstance(element, np.ndarray):
+                element = element.tolist()
+            elif not isinstance(element, list):
                 element = [element]
             stats = self.stats_[f"unique_values({name})"]
             counter = Counter(element)
@@ -509,6 +512,7 @@ def _get_unique_value_indices(
     encode_lists: bool = True,
 ) -> Dict[str, Dict[str, int]]:
     """If drop_na_values is True, will silently drop NA values."""
+
     if max_categories is None:
         max_categories = {}
     for column in max_categories:
@@ -601,5 +605,5 @@ def _is_series_composed_of_lists(series: pd.Series) -> bool:
         (element for element in series if element is not None), None
     )
     return pandas.api.types.is_object_dtype(series.dtype) and isinstance(
-        first_not_none_element, list
+        first_not_none_element, (list, np.ndarray)
     )

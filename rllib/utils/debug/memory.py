@@ -63,7 +63,7 @@ def check_memory_leaks(
                 # If masking is used, try something like this:
                 # np.random.choice(
                 #    action_space.n, p=(obs["action_mask"] / sum(obs["action_mask"])))
-                _, _, done, _ = env.step(action_sample)
+                _, _, done, _, _ = env.step(action_sample)
                 ts += 1
                 if done:
                     break

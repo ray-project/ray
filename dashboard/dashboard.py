@@ -35,6 +35,8 @@ class Dashboard:
         port: Port number of dashboard aiohttp server.
         port_retries: The retry times to select a valid port.
         gcs_address: GCS address of the cluster
+        serve_frontend: If configured, frontend HTML
+            is not served from the dashboard.
         log_dir: Log directory of dashboard.
     """
 
@@ -48,6 +50,7 @@ class Dashboard:
         temp_dir: str = None,
         session_dir: str = None,
         minimal: bool = False,
+        serve_frontend: bool = True,
         modules_to_load: Optional[Set[str]] = None,
     ):
         self.dashboard_head = dashboard_head.DashboardHead(
@@ -59,6 +62,7 @@ class Dashboard:
             temp_dir=temp_dir,
             session_dir=session_dir,
             minimal=minimal,
+            serve_frontend=serve_frontend,
             modules_to_load=modules_to_load,
         )
 
@@ -166,6 +170,11 @@ if __name__ == "__main__":
             "If nothing is specified, all modules are loaded."
         ),
     )
+    parser.add_argument(
+        "--disable-frontend",
+        action="store_true",
+        help=("If configured, frontend html is not served from the server."),
+    )
 
     args = parser.parse_args()
 
@@ -190,7 +199,6 @@ if __name__ == "__main__":
         # which assumes a working event loop. Ref:
         # https://github.com/grpc/grpc/blob/master/src/python/grpcio/grpc/_cython/_cygrpc/aio/common.pyx.pxi#L174-L188
         loop = ray._private.utils.get_or_create_event_loop()
-
         dashboard = Dashboard(
             args.host,
             args.port,
@@ -200,6 +208,7 @@ if __name__ == "__main__":
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
             minimal=args.minimal,
+            serve_frontend=(not args.disable_frontend),
             modules_to_load=modules_to_load,
         )
 

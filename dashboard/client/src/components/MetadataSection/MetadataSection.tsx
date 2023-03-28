@@ -8,9 +8,9 @@ import {
   Tooltip,
   Typography,
 } from "@material-ui/core";
-import FileCopyOutlined from "@material-ui/icons/FileCopyOutlined";
 import copy from "copy-to-clipboard";
 import React, { useState } from "react";
+import { RiFileCopyLine } from "react-icons/ri";
 import { Link as RouterLink } from "react-router-dom";
 import { HelpInfo } from "../Tooltip";
 
@@ -88,7 +88,8 @@ const useStyles = makeStyles((theme) =>
  */
 export const MetadataContentField: React.FC<{
   content: Metadata["content"];
-}> = ({ content }) => {
+  label: string;
+}> = ({ content, label }) => {
   const classes = useStyles();
   const [copyIconClicked, setCopyIconClicked] = useState<boolean>(false);
 
@@ -99,6 +100,7 @@ export const MetadataContentField: React.FC<{
           className={classes.content}
           variant="body2"
           title={content?.value}
+          data-testid={`metadata-content-for-${label}`}
         >
           {content?.value ?? "-"}
         </Typography>
@@ -121,13 +123,17 @@ export const MetadataContentField: React.FC<{
               size="small"
               className={classes.button}
             >
-              <FileCopyOutlined />
+              <RiFileCopyLine />
             </IconButton>
           </Tooltip>
         )}
       </div>
     ) : content.link.startsWith("http") ? (
-      <Link className={classes.content} href={content.link}>
+      <Link
+        className={classes.content}
+        href={content.link}
+        data-testid={`metadata-content-for-${label}`}
+      >
         {content.value}
       </Link>
     ) : (
@@ -135,12 +141,13 @@ export const MetadataContentField: React.FC<{
         className={classes.content}
         component={RouterLink}
         to={content.link}
+        data-testid={`metadata-content-for-${label}`}
       >
         {content.value}
       </Link>
     );
   }
-  return content;
+  return <div data-testid={`metadata-content-for-${label}`}>{content}</div>;
 };
 
 /**
@@ -168,7 +175,7 @@ const MetadataList: React.FC<{
               </HelpInfo>
             )}
           </Box>
-          <MetadataContentField content={content} />
+          <MetadataContentField content={content} label={label} />
         </Box>
       ))}
     </Box>

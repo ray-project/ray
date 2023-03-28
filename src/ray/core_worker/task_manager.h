@@ -38,7 +38,7 @@ class TaskFinisherInterface {
                                    bool is_application_error) = 0;
 
   virtual bool RetryTaskIfPossible(const TaskID &task_id,
-                                   bool task_failed_due_to_oom) = 0;
+                                   const rpc::RayErrorInfo &error_info) = 0;
 
   virtual void FailPendingTask(const TaskID &task_id,
                                rpc::ErrorType error_type,
@@ -49,10 +49,12 @@ class TaskFinisherInterface {
                                       rpc::ErrorType error_type,
                                       const Status *status,
                                       const rpc::RayErrorInfo *ray_error_info = nullptr,
-                                      bool mark_task_object_failed = true) = 0;
+                                      bool mark_task_object_failed = true,
+                                      bool fail_immediately = false) = 0;
 
   virtual void MarkTaskWaitingForExecution(const TaskID &task_id,
-                                           const NodeID &node_id) = 0;
+                                           const NodeID &node_id,
+                                           const WorkerID &worker_id) = 0;
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
@@ -168,10 +170,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Returns true if task can be retried.
   ///
   /// \param[in] task_id ID of the task to be retried.
-  /// \param[in] task_failed_due_to_oom last task attempt failed due to node running out
-  /// of memory.
   /// \return true if task is scheduled to be retried.
-  bool RetryTaskIfPossible(const TaskID &task_id, bool task_failed_due_to_oom) override;
+  bool RetryTaskIfPossible(const TaskID &task_id,
+                           const rpc::RayErrorInfo &error_info) override;
 
   /// A pending task failed. This will either retry the task or mark the task
   /// as failed if there are no retries left.
@@ -185,12 +186,15 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] mark_task_object_failed whether or not it marks the task
   /// return object as failed. If this is set to false, then the caller is
   /// responsible for later failing or completing the task.
+  /// \param[in] fail_immediately whether to fail the task and ignore
+  /// the retries that are available.
   /// \return Whether the task will be retried or not.
   bool FailOrRetryPendingTask(const TaskID &task_id,
                               rpc::ErrorType error_type,
                               const Status *status = nullptr,
                               const rpc::RayErrorInfo *ray_error_info = nullptr,
-                              bool mark_task_object_failed = true) override;
+                              bool mark_task_object_failed = true,
+                              bool fail_immediately = false) override;
 
   /// A pending task failed. This will mark the task as failed.
   /// This doesn't always mark the return object as failed
@@ -284,7 +288,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] task_id The task that is will be running.
   /// \param[in] node_id The node id that this task wil be running.
-  void MarkTaskWaitingForExecution(const TaskID &task_id, const NodeID &node_id) override;
+  /// \param[in] worker_id The worker id that this task wil be running.
+  void MarkTaskWaitingForExecution(const TaskID &task_id,
+                                   const NodeID &node_id,
+                                   const WorkerID &worker_id) override;
 
   /// Add debug information about the current task status for the ObjectRefs
   /// included in the given stats.
@@ -296,18 +303,26 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
   void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
 
-  /// Make a rpc::TaskInfoEntry based on the TaskSpecification.
-  ///
-  /// \param[in] task_spec TaskSpecification of the task.
-  /// \return TaskInfoEntry based on the spec.
-  rpc::TaskInfoEntry MakeTaskInfoEntry(const TaskSpecification &task_spec) const;
-
   /// Returns the generator ID that contains the dynamically allocated
   /// ObjectRefs, if the task is dynamic. Else, returns Nil.
   ObjectID TaskGeneratorId(const TaskID &task_id) const;
 
   /// Record OCL metrics.
   void RecordMetrics();
+
+  /// Update task status change for the task attempt in TaskEventBuffer.
+  ///
+  /// \param attempt_number Attempt number for the task attempt.
+  /// \param spec corresponding TaskSpecification of the task
+  /// \param status the changed status.
+  /// \param state_update optional task state updates.
+  void RecordTaskStatusEvent(
+      int32_t attempt_number,
+      const TaskSpecification &spec,
+      rpc::TaskStatus status,
+      bool include_task_info = false,
+      absl::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update =
+          absl::nullopt);
 
  private:
   struct TaskEntry {
@@ -467,14 +482,28 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// the TaskEventBuffer if enabled.
   ///
   /// \param task_entry corresponding TaskEntry of a task to record the event.
-  /// \param status the changed status.
-  void SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status);
+  /// \param status new status.
+  /// \param error_info Optional error info for task execution.
+  void SetTaskStatus(
+      TaskEntry &task_entry,
+      rpc::TaskStatus status,
+      const absl::optional<const rpc::RayErrorInfo> &error_info = absl::nullopt);
 
-  /// Update task status change in TaskEventBuffer
+  /// Update the task entry for the task attempt to reflect retry on resubmit.
   ///
-  /// \param task_entry corresponding TaskEntry of a task to record the event.
-  /// \param status the changed status.
-  void RecordTaskStatusEvent(const TaskEntry &task_entry, rpc::TaskStatus status);
+  /// This will set the task status, update the attempt number for the task, and increment
+  /// the retry counter.
+  ///
+  /// \param task_entry Task entry for the corresponding task attempt
+  void MarkTaskRetryOnResubmit(TaskEntry &task_entry);
+
+  /// Update the task entry for the task attempt to reflect retry on failure.
+  ///
+  /// This will set the task status, update the attempt number for the task, and increment
+  /// the retry counter.
+  ///
+  /// \param task_entry Task entry for the corresponding task attempt
+  void MarkTaskRetryOnFailed(TaskEntry &task_entry, const rpc::RayErrorInfo &error_info);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;

@@ -14,6 +14,7 @@ from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_constants import (
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
     KV_NAMESPACE_JOB,
+    DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
 )
 from ray._private.test_utils import (
     SignalActor,
@@ -21,7 +22,11 @@ from ray._private.test_utils import (
     async_wait_for_condition_async_predicate,
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
-from ray.dashboard.modules.job.job_manager import JobManager, generate_job_id
+from ray.dashboard.modules.job.job_manager import (
+    JobManager,
+    JobSupervisor,
+    generate_job_id,
+)
 from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
 from ray.job_submission import JobStatus
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
@@ -109,6 +114,53 @@ assert ray.cluster_resources().get('TestResourceKey') == 123
     await async_wait_for_condition_async_predicate(
         check_job_succeeded, job_manager=job_manager, job_id=job_id
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head"],
+    indirect=True,
+)
+async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
+    """Test that JobInfo is correctly populated in the GCS get_all_job_info API."""
+    address_info = ray.init(address=call_ray_start)
+    gcs_aio_client = GcsAioClient(
+        address=address_info["gcs_address"], nums_reconnect_retry=0
+    )
+    job_manager = JobManager(gcs_aio_client, tmp_path)
+
+    # Submit a job.
+    submission_id = await job_manager.submit_job(
+        entrypoint="python -c 'import ray; ray.init()'",
+    )
+
+    # Wait for the job to be finished.
+    await async_wait_for_condition_async_predicate(
+        check_job_succeeded, job_manager=job_manager, job_id=submission_id
+    )
+
+    found = False
+    for job_table_entry in (await gcs_aio_client.get_all_job_info()).job_info_list:
+        if job_table_entry.config.metadata.get(JOB_ID_METADATA_KEY) == submission_id:
+            found = True
+            # Check that the job info is populated correctly.
+            job_info = job_table_entry.job_info
+            assert job_info.status == "SUCCEEDED"
+            assert job_info.entrypoint == "python -c 'import ray; ray.init()'"
+            assert job_info.message == "Job finished successfully."
+            assert job_info.start_time > 0
+            assert job_info.end_time > job_info.start_time
+            assert job_info.entrypoint_num_cpus == 0
+            assert job_info.entrypoint_num_gpus == 0
+            assert job_info.driver_agent_http_address.startswith(
+                "http://"
+            ) and job_info.driver_agent_http_address.endswith(
+                str(DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
+            )
+            assert job_info.driver_node_id != ""
+
+    assert found
 
 
 @pytest.fixture(scope="module")
@@ -274,10 +326,43 @@ async def test_pass_job_id(job_manager):
     )
 
     # Check that the same job_id is rejected.
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError):
         await job_manager.submit_job(
             entrypoint="echo hello", submission_id=submission_id
         )
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_submit_job(job_manager):
+    """Test that we can submit multiple jobs at once."""
+    job_ids = await asyncio.gather(
+        job_manager.submit_job(entrypoint="echo hello"),
+        job_manager.submit_job(entrypoint="echo hello"),
+        job_manager.submit_job(entrypoint="echo hello"),
+    )
+
+    for job_id in job_ids:
+        await async_wait_for_condition_async_predicate(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id
+        )
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_with_same_id(job_manager):
+    """Test that we can submit multiple jobs at once with the same id.
+
+    The second job should raise a friendly error.
+    """
+    with pytest.raises(ValueError) as excinfo:
+        await asyncio.gather(
+            job_manager.submit_job(entrypoint="echo hello", submission_id="1"),
+            job_manager.submit_job(entrypoint="echo hello", submission_id="1"),
+        )
+    assert "Job with submission_id 1 already exists" in str(excinfo.value)
+    # Check that the (first) job can still succeed.
+    await async_wait_for_condition_async_predicate(
+        check_job_succeeded, job_manager=job_manager, job_id="1"
+    )
 
 
 @pytest.mark.asyncio
@@ -770,12 +855,103 @@ class TestTailLogs:
             job_manager.stop_job(job_id)
 
             async for lines in job_manager.tail_job_logs(job_id):
-                assert all(s == "Waiting..." for s in lines.strip().split("\n"))
+                assert all(
+                    s == "Waiting..." or s == "Terminated"
+                    for s in lines.strip().split("\n")
+                )
                 print(lines, end="")
 
             await async_wait_for_condition_async_predicate(
                 check_job_stopped, job_manager=job_manager, job_id=job_id
             )
+
+
+@pytest.mark.asyncio
+async def test_stop_job_gracefully(job_manager):
+    """
+    Stop job should send SIGTERM to child process (before trying to kill).
+    """
+    entrypoint = """python -c \"
+import sys
+import signal
+import time
+def handler(*args):
+    print('SIGTERM signal handled!');
+    sys.exit()
+signal.signal(signal.SIGTERM, handler)
+
+while True:
+    print('Waiting...')
+    time.sleep(1)\"
+"""
+    job_id = await job_manager.submit_job(entrypoint=entrypoint)
+
+    await async_wait_for_condition(
+        lambda: "Waiting..." in job_manager.get_job_logs(job_id)
+    )
+
+    assert job_manager.stop_job(job_id) is True
+
+    await async_wait_for_condition_async_predicate(
+        check_job_stopped, job_manager=job_manager, job_id=job_id
+    )
+
+    assert "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "use_env_var,stop_timeout",
+    [(True, 10), (False, JobSupervisor.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S)],
+)
+async def test_stop_job_timeout(job_manager, use_env_var, stop_timeout):
+    """
+    Stop job should send SIGTERM first, then if timeout occurs, send SIGKILL.
+    """
+    entrypoint = """python -c \"
+import sys
+import signal
+import time
+def handler(*args):
+    print('SIGTERM signal handled!');
+signal.signal(signal.SIGTERM, handler)
+
+while True:
+    print('Waiting...')
+    time.sleep(1)\"
+"""
+    if use_env_var:
+        job_id = await job_manager.submit_job(
+            entrypoint=entrypoint,
+            runtime_env={"env_vars": {"RAY_JOB_STOP_WAIT_TIME_S": str(stop_timeout)}},
+        )
+    else:
+        job_id = await job_manager.submit_job(entrypoint=entrypoint)
+
+    await async_wait_for_condition(
+        lambda: "Waiting..." in job_manager.get_job_logs(job_id)
+    )
+
+    assert job_manager.stop_job(job_id) is True
+
+    with pytest.raises(RuntimeError):
+        await async_wait_for_condition_async_predicate(
+            check_job_stopped,
+            job_manager=job_manager,
+            job_id=job_id,
+            timeout=stop_timeout - 1,
+        )
+
+    await async_wait_for_condition(
+        lambda: "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
+    )
+
+    await async_wait_for_condition_async_predicate(
+        check_job_stopped,
+        job_manager=job_manager,
+        job_id=job_id,
+        timeout=10,
+    )
 
 
 @pytest.mark.asyncio
@@ -883,6 +1059,21 @@ async def test_failed_job_logs_max_char(job_manager):
     assert len(job_info.message) == 20000 + len(
         "Job failed due to an application error, " "last available logs:\n"
     )
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_drivers(job_manager):
+    """Test that multiple drivers can be used to submit jobs at the same time."""
+
+    cmd = "python -c 'import ray; ray.init(); ray.shutdown();'"
+    job_id = await job_manager.submit_job(
+        entrypoint=f"{cmd} & {cmd} && wait && echo 'done'"
+    )
+
+    await async_wait_for_condition_async_predicate(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+    assert "done" in job_manager.get_job_logs(job_id)
 
 
 if __name__ == "__main__":

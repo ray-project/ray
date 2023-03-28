@@ -160,6 +160,10 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
   Tick();
 }
 
+GcsPlacementGroupManager::GcsPlacementGroupManager(
+    instrumented_io_context &io_context, GcsResourceManager &gcs_resource_manager)
+    : io_context_(io_context), gcs_resource_manager_(gcs_resource_manager) {}
+
 void GcsPlacementGroupManager::RegisterPlacementGroup(
     const std::shared_ptr<GcsPlacementGroup> &placement_group, StatusCallback callback) {
   // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
@@ -343,6 +347,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
           placement_group_to_create_callbacks_.erase(pg_to_create_iter);
         }
       }));
+  lifetime_num_placement_groups_created_++;
   io_context_.post([this] { SchedulePendingPlacementGroups(); },
                    "GcsPlacementGroupManager.SchedulePendingPlacementGroups");
   MarkSchedulingDone();
@@ -930,6 +935,10 @@ void GcsPlacementGroupManager::RecordMetrics() const {
                                                      "Registered");
   ray::stats::STATS_gcs_placement_group_count.Record(infeasible_placement_groups_.size(),
                                                      "Infeasible");
+  if (usage_stats_client_) {
+    usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::PG_NUM_CREATED,
+                                                 lifetime_num_placement_groups_created_);
+  }
   placement_group_state_counter_->FlushOnChangeCallbacks();
 }
 
@@ -963,6 +972,18 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
     }
   }
   return false;
+}
+
+const absl::btree_multimap<
+    int64_t,
+    std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
+    &GcsPlacementGroupManager::GetPendingPlacementGroups() const {
+  return pending_placement_groups_;
+}
+
+const std::deque<std::shared_ptr<GcsPlacementGroup>>
+    &GcsPlacementGroupManager::GetInfeasiblePlacementGroups() const {
+  return infeasible_placement_groups_;
 }
 
 }  // namespace gcs

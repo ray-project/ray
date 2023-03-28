@@ -11,7 +11,8 @@ from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve._private.deployment_state import ReplicaStartupStatus, ReplicaState
+from ray.serve._private.deployment_state import ReplicaStartupStatus
+from ray.serve._private.common import ReplicaState
 
 
 @pytest.fixture
@@ -219,7 +220,7 @@ def test_replica_spread(ray_cluster):
 
     @serve.deployment(num_replicas=2)
     def get_node_id():
-        return os.getpid(), ray.get_runtime_context().node_id.hex()
+        return os.getpid(), ray.get_runtime_context().get_node_id()
 
     h = serve.run(get_node_id.bind())
 

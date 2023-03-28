@@ -388,12 +388,7 @@ class IMapIterator:
         # submitted chunks. Ordering mirrors that in the in the ResultThread.
         self._submitted_chunks = []
         self._ready_objects = collections.deque()
-        try:
-            self._iterator = iter(iterable)
-        except TypeError:
-            # for compatibility with prior releases, encapsulate non-iterable in a list
-            iterable = [iterable]
-            self._iterator = iter(iterable)
+        self._iterator = iter(iterable)
         if isinstance(iterable, collections.abc.Iterator):
             # Got iterator (which has no len() function).
             # Make default chunksize 1 instead of using _calculate_chunksize().

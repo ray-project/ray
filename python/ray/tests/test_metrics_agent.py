@@ -1,3 +1,4 @@
+import signal
 import json
 import os
 import pathlib
@@ -7,6 +8,7 @@ import requests
 from pprint import pformat
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 import ray
@@ -51,7 +53,6 @@ _METRICS = [
     "ray_object_directory_lookups",
     "ray_object_directory_added_locations",
     "ray_object_directory_removed_locations",
-    "ray_process_startup_time_ms_sum",
     "ray_internal_num_processes_started",
     "ray_internal_num_spilled_tasks",
     # "ray_unintentional_worker_failures_total",
@@ -145,16 +146,18 @@ _NODE_METRICS = [
     "ray_node_network_receive_speed",
 ]
 
+
+if sys.platform == "linux" or sys.platform == "linux2":
+    _NODE_METRICS.append("ray_node_mem_shared_bytes")
+
+
 _NODE_COMPONENT_METRICS = [
     "ray_component_cpu_percentage",
     "ray_component_rss_mb",
     "ray_component_uss_mb",
 ]
 
-if ray._raylet.Config.pull_based_healthcheck():
-    _METRICS.append("ray_health_check_rpc_latency_ms_sum")
-else:
-    _METRICS.append("ray_heartbeat_report_ms_sum")
+_METRICS.append("ray_health_check_rpc_latency_ms_sum")
 
 
 @pytest.fixture
@@ -316,13 +319,17 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
                 assert grpc_sample.labels["Component"] != "core_worker"
 
         # Autoscaler metrics
-        _, autoscaler_metric_names, _ = fetch_prometheus([autoscaler_export_addr])
+        _, autoscaler_metric_names, autoscaler_samples = fetch_prometheus(
+            [autoscaler_export_addr]
+        )  # noqa
         for metric in _AUTOSCALER_METRICS:
             # Metric name should appear with some suffix (_count, _total,
             # etc...) in the list of all names
             assert any(
                 name.startswith(metric) for name in autoscaler_metric_names
             ), f"{metric} not in {autoscaler_metric_names}"
+            for sample in autoscaler_samples:
+                assert sample.labels["SessionName"] == session_name
 
         # Dashboard metrics
         _, dashboard_metric_names, _ = fetch_prometheus([dashboard_export_addr])
@@ -368,7 +375,7 @@ def test_metrics_export_node_metrics(shutdown_only):
             samples = avail_metrics[metric]
             for sample in samples:
                 components.add(sample.labels["Component"])
-        assert components == {"raylet", "agent", "workers"}
+        assert components == {"raylet", "agent", "ray::IDLE"}
 
         avail_metrics = set(avail_metrics)
 
@@ -431,6 +438,94 @@ def test_operation_stats(monkeypatch, shutdown_only):
             return True
 
         wait_for_condition(verify, timeout=60)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
+def test_per_func_name_stats(shutdown_only):
+    # Test operation stats are available when flag is on.
+    comp_metrics = [
+        "ray_component_cpu_percentage",
+        "ray_component_rss_mb",
+    ]
+    if sys.platform == "linux" or sys.platform == "linux2":
+        # Uss only available from Linux
+        comp_metrics.append("ray_component_uss_mb")
+        comp_metrics.append("ray_component_mem_shared_bytes")
+    addr = ray.init(num_cpus=2)
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self.arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+            self.shared_arr = ray.put(np.random.rand(5 * 1024 * 1024))
+
+        def pid(self):
+            return os.getpid()
+
+    @ray.remote
+    class ActorB:
+        def __init__(self):
+            self.arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+            self.shared_arr = ray.put(np.random.rand(5 * 1024 * 1024))
+
+    a = Actor.remote()  # noqa
+    b = ActorB.remote()
+
+    def verify_components():
+        metrics = raw_metrics(addr)
+        metric_names = set(metrics.keys())
+        for metric in comp_metrics:
+            assert metric in metric_names
+            samples = metrics[metric]
+            components = set()
+            for sample in samples:
+                components.add(sample.labels["Component"])
+        assert {
+            "raylet",
+            "agent",
+            "ray::Actor",
+            "ray::ActorB",
+            "ray::IDLE",
+        } == components
+        return True
+
+    wait_for_condition(verify_components, timeout=30)
+
+    def verify_mem_usage():
+        metrics = raw_metrics(addr)
+        for metric in comp_metrics:
+            samples = metrics[metric]
+            for sample in samples:
+                if sample.labels["Component"] == "ray::ActorB":
+                    assert sample.value > 0.0
+                    print(sample)
+                    print(sample.value)
+                if sample.labels["Component"] == "ray::Actor":
+                    assert sample.value > 0.0
+                    print(sample)
+                    print(sample.value)
+        return True
+
+    wait_for_condition(verify_mem_usage, timeout=30)
+
+    # Verify ActorB is reported as value 0 because it is killed.
+    ray.kill(b)
+    # Kill Actor by sigkill, which happens upon OOM.
+    pid = ray.get(a.pid.remote())
+    os.kill(pid, signal.SIGKILL)
+
+    def verify_mem_cleaned():
+        metrics = raw_metrics(addr)
+        for metric in comp_metrics:
+            samples = metrics[metric]
+            for sample in samples:
+                if sample.labels["Component"] == "ray::ActorB":
+                    assert sample.value == 0.0
+                if sample.labels["Component"] == "ray::Actor":
+                    assert sample.value == 0.0
+        return True
+
+    wait_for_condition(verify_mem_cleaned, timeout=30)
 
 
 def test_prometheus_file_based_service_discovery(ray_start_cluster):

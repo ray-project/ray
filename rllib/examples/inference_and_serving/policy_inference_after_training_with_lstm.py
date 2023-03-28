@@ -6,7 +6,7 @@ Includes options for LSTM-based models (--use-lstm), attention-net models
 (--use-attention), and plain (non-recurrent) models.
 """
 import argparse
-import gym
+import gymnasium as gym
 import numpy as np
 import os
 
@@ -23,7 +23,7 @@ parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -90,10 +90,13 @@ if __name__ == "__main__":
                 "lstm_cell_size": 256,
                 "lstm_use_prev_action": args.prev_action,
                 "lstm_use_prev_reward": args.prev_reward,
-            }
+            },
+            # TODO (Kourosh): Enable when LSTMs are supported.
+            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {
@@ -125,7 +128,7 @@ if __name__ == "__main__":
 
     # Create the env to do inference in.
     env = gym.make("FrozenLake-v1")
-    obs = env.reset()
+    obs, info = env.reset()
 
     # In case the model needs previous-reward/action inputs, keep track of
     # these via these variables here (we'll have to pass them into the
@@ -156,10 +159,10 @@ if __name__ == "__main__":
             policy_id="default_policy",  # <- default value
         )
         # Send the computed action `a` to the env.
-        obs, reward, done, _ = env.step(a)
+        obs, reward, done, truncated, info = env.step(a)
         # Is the episode `done`? -> Reset.
         if done:
-            obs = env.reset()
+            obs, info = env.reset()
             num_episodes += 1
             state = init_state
             prev_a = init_prev_a

@@ -175,6 +175,7 @@ class DAGNode(DAGNodeBase):
         ):
             if n not in children:
                 children.append(n)
+        scanner.clear()
         return children
 
     def _apply_and_replace_all_child_nodes(
@@ -210,6 +211,7 @@ class DAGNode(DAGNodeBase):
         new_args, new_kwargs, new_other_args_to_resolve = scanner.replace_nodes(
             replace_table
         )
+        scanner.clear()
 
         # Return updated copy of self.
         return self._copy(
@@ -288,6 +290,7 @@ class DAGNode(DAGNodeBase):
                 replace_table[node] = apply_fn(node)
 
         replaced_inputs = scanner.replace_nodes(replace_table)
+        scanner.clear()
 
         return replaced_inputs
 

@@ -44,7 +44,7 @@ class AutoscalingConfig(BaseModel):
     min_replicas: NonNegativeInt = 1
     initial_replicas: Optional[NonNegativeInt] = None
     max_replicas: PositiveInt = 1
-    target_num_ongoing_requests_per_replica: NonNegativeInt = 1
+    target_num_ongoing_requests_per_replica: PositiveFloat = 1.0
 
     # Private options below.
 
@@ -514,6 +514,7 @@ class ReplicaConfig:
         return self.to_proto().SerializeToString()
 
 
+# Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
 @DeveloperAPI
 class DeploymentMode(str, Enum):
     NoServer = "NoServer"

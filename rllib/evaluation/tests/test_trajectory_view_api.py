@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Box, Discrete
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete
 import numpy as np
 import unittest
 
@@ -7,6 +7,9 @@ import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.ppo as ppo
+from ray.rllib.algorithms.ppo.torch.ppo_torch_policy_rlm import (
+    PPOTorchPolicyWithRLModule,
+)
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -24,6 +27,10 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import framework_iterator, check
+
+# The new RLModule / Learner API
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.examples.rl_module.random_rl_module import RandomRLModule
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -68,12 +75,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
             assert len(view_req_model) == 1, view_req_model
-            assert len(view_req_policy) == 11, view_req_policy
+            assert len(view_req_policy) == 12, view_req_policy
             for key in [
                 SampleBatch.OBS,
                 SampleBatch.ACTIONS,
                 SampleBatch.REWARDS,
-                SampleBatch.DONES,
+                SampleBatch.TERMINATEDS,
+                SampleBatch.TRUNCATEDS,
                 SampleBatch.NEXT_OBS,
                 SampleBatch.EPS_ID,
                 SampleBatch.AGENT_INDEX,
@@ -98,6 +106,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
     def test_traj_view_lstm_prev_actions_and_rewards(self):
         """Tests, whether Policy/Model return correct LSTM ViewRequirements."""
+
+        # This test only works on ModelV2 stack. So, we need to disable the RLModule
+        # and Learner API.
         config = (
             ppo.PPOConfig()
             .environment("CartPole-v1")
@@ -107,9 +118,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     "use_lstm": True,
                     "lstm_use_prev_action": True,
                     "lstm_use_prev_reward": True,
-                }
+                },
+                _enable_learner_api=False,
             )
             .rollouts(create_env_on_local_worker=True)
+            .rl_module(_enable_rl_module_api=False)
         )
 
         for _ in framework_iterator(config):
@@ -119,12 +132,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             view_req_policy = policy.view_requirements
             # 7=obs, prev-a + r, 2x state-in, 2x state-out.
             assert len(view_req_model) == 7, view_req_model
-            assert len(view_req_policy) == 21, (len(view_req_policy), view_req_policy)
+            assert len(view_req_policy) == 22, (len(view_req_policy), view_req_policy)
             for key in [
                 SampleBatch.OBS,
                 SampleBatch.ACTIONS,
                 SampleBatch.REWARDS,
-                SampleBatch.DONES,
+                SampleBatch.TERMINATEDS,
+                SampleBatch.TRUNCATEDS,
                 SampleBatch.NEXT_OBS,
                 SampleBatch.VF_PREDS,
                 SampleBatch.PREV_ACTIONS,
@@ -216,12 +230,19 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
     def test_traj_view_next_action(self):
         action_space = Discrete(2)
+        config = (
+            ppo.PPOConfig()
+            .framework("torch")
+            .rollouts(rollout_fragment_length=200, num_rollout_workers=0)
+        )
+        config.validate()
+        enable_rl_module_api = config._enable_rl_module_api
         rollout_worker_w_api = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v1"),
-            default_policy_class=ppo.PPOTorchPolicy,
-            config=ppo.PPOConfig().rollouts(
-                rollout_fragment_length=200, num_rollout_workers=0
-            ),
+            default_policy_class=PPOTorchPolicyWithRLModule
+            if enable_rl_module_api
+            else ppo.PPOTorchPolicy,
+            config=config,
         )
         # Add the next action (a') and 2nd next action (a'') to the view
         # requirements of the policy.
@@ -245,19 +266,19 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             used_for_compute_actions=False,
         )
 
-        # Make sure, we have DONEs as well.
+        # Make sure, we have TERMINATEDSs as well.
         rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
-            "dones"
+            SampleBatch.TERMINATEDS
         ] = ViewRequirement()
         batch = convert_ma_batch_to_sample_batch(rollout_worker_w_api.sample())
         self.assertTrue("next_actions" in batch)
         self.assertTrue("2nd_next_actions" in batch)
         expected_a_ = None  # expected next action
         expected_a__ = None  # expected 2nd next action
-        for i in range(len(batch["actions"])):
+        for i in range(len(batch[SampleBatch.ACTIONS])):
             a, d, a_, a__ = (
-                batch["actions"][i],
-                batch["dones"][i],
+                batch[SampleBatch.ACTIONS][i],
+                batch[SampleBatch.TERMINATEDS][i],
                 batch["next_actions"][i],
                 batch["2nd_next_actions"][i],
             )
@@ -286,12 +307,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, None),
         }
 
-        def policy_fn(agent_id, episode, **kwargs):
+        def policy_fn(agent_id, episode, worker, **kwargs):
             return "pol0"
 
         rw = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
             config=ppo.PPOConfig()
+            .framework("torch")
             .rollouts(
                 rollout_fragment_length=rollout_fragment_length,
                 num_rollout_workers=0,
@@ -306,6 +328,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     "use_lstm": True,
                     "max_seq_len": max_seq_len,
                 }
+            )
+            # The Policy used to be passed in, now we have to pass in the RLModuleSpecs
+            .rl_module(
+                rl_module_spec=SingleAgentRLModuleSpec(module_class=RandomRLModule)
             ),
         )
 
@@ -329,11 +355,12 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "pol0": (EpisodeEnvAwareAttentionPolicy, obs_space, action_space, None),
         }
 
-        def policy_fn(agent_id, episode, **kwargs):
+        def policy_fn(agent_id, episode, worker, **kwargs):
             return "pol0"
 
         config = (
             ppo.PPOConfig()
+            .framework("torch")
             .multi_agent(policies=policies, policy_mapping_fn=policy_fn)
             .training(model={"max_seq_len": max_seq_len}, train_batch_size=2010)
             .rollouts(
@@ -341,6 +368,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 rollout_fragment_length=rollout_fragment_length,
             )
             .environment(normalize_actions=False)
+            # The Policy used to be passed in, now we have to pass in the RLModuleSpecs
+            .rl_module(
+                rl_module_spec=SingleAgentRLModuleSpec(module_class=RandomRLModule)
+            )
         )
 
         rollout_worker_w_api = RolloutWorker(
@@ -360,7 +391,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config.framework("torch")
         config.multi_agent(
             policies={f"p{i}" for i in range(num_agents)},
-            policy_mapping_fn=lambda agent_id, **kwargs: "p{}".format(agent_id),
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                "p{}".format(agent_id)
+            ),
             count_steps_by="agent_steps",
         )
 
@@ -418,7 +451,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             input_dict,
             {
                 "state_in_0": [[0, 0, 0, 0, 1]],  # ts=1
-                "seq_lens": [1],
+                SampleBatch.SEQ_LENS: [1],
             },
         )
 
@@ -441,7 +474,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             input_dict,
             {
                 "state_in_0": [[2, 3, 4, 5, 6]],  # ts=6
-                "seq_lens": [1],
+                SampleBatch.SEQ_LENS: [1],
             },
         )
 
@@ -465,7 +498,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             input_dict,
             {
                 "state_in_0": [[8, 9, 10, 11, 12]],  # ts=12
-                "seq_lens": [1],
+                SampleBatch.SEQ_LENS: [1],
             },
         )
 
@@ -502,7 +535,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             input_dict,
             {
                 "state_in_0": [[0, 0, 0, 0, 1]],  # ts=1
-                "seq_lens": [1],
+                SampleBatch.SEQ_LENS: [1],
             },
         )
 
@@ -529,7 +562,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             input_dict,
             {
                 "state_in_0": [[2, 3, 4, 5, 6]],  # ts=6
-                "seq_lens": [1],
+                SampleBatch.SEQ_LENS: [1],
             },
         )
 
@@ -562,7 +595,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             input_dict,
             {
                 "state_in_0": [[8, 9, 10, 11, 12]],  # ts=12
-                "seq_lens": [1],
+                SampleBatch.SEQ_LENS: [1],
             },
         )
 
@@ -577,10 +610,10 @@ def analyze_rnn_batch(batch, max_seq_len, view_requirements):
             ts = batch["t"][idx]
         # Else, ts
         else:
-            ts = batch["obs"][idx][3]
-        obs_t = batch["obs"][idx]
-        a_t = batch["actions"][idx]
-        r_t = batch["rewards"][idx]
+            ts = batch[SampleBatch.OBS][idx][3]
+        obs_t = batch[SampleBatch.OBS][idx]
+        a_t = batch[SampleBatch.ACTIONS][idx]
+        r_t = batch[SampleBatch.REWARDS][idx]
         state_in_0 = batch["state_in_0"][idx]
         state_in_1 = batch["state_in_1"][idx]
 
@@ -591,7 +624,7 @@ def analyze_rnn_batch(batch, max_seq_len, view_requirements):
 
         # Check state-in/out and next-obs values.
         if idx > 0:
-            next_obs_t_m_1 = batch["new_obs"][idx - 1]
+            next_obs_t_m_1 = batch[SampleBatch.NEXT_OBS][idx - 1]
             state_out_0_t_m_1 = batch["state_out_0"][idx - 1]
             state_out_1_t_m_1 = batch["state_out_1"][idx - 1]
             # Same trajectory as for t-1 -> Should be able to match.
@@ -622,8 +655,8 @@ def analyze_rnn_batch(batch, max_seq_len, view_requirements):
 
         # Check prev. a/r values.
         if idx < count - 1:
-            prev_actions_t_p_1 = batch["prev_actions"][idx + 1]
-            prev_rewards_t_p_1 = batch["prev_rewards"][idx + 1]
+            prev_actions_t_p_1 = batch[SampleBatch.PREV_ACTIONS][idx + 1]
+            prev_rewards_t_p_1 = batch[SampleBatch.PREV_REWARDS][idx + 1]
             # Same trajectory as for t+1 -> Should be able to match.
             if (
                 batch[SampleBatch.AGENT_INDEX][idx]
@@ -653,10 +686,10 @@ def analyze_rnn_batch(batch, max_seq_len, view_requirements):
         state_in_1 = batch["state_in_1"][i]
         for j in range(seq_len):
             k = cursor + j
-            ts = batch["t"][k]
-            obs_t = batch["obs"][k]
-            a_t = batch["actions"][k]
-            r_t = batch["rewards"][k]
+            ts = batch[SampleBatch.T][k]
+            obs_t = batch[SampleBatch.OBS][k]
+            a_t = batch[SampleBatch.ACTIONS][k]
+            r_t = batch[SampleBatch.REWARDS][k]
 
             # Check postprocessing outputs.
             if "2xobs" in batch:
@@ -665,7 +698,7 @@ def analyze_rnn_batch(batch, max_seq_len, view_requirements):
 
             # Check state-in/out and next-obs values.
             if j > 0:
-                next_obs_t_m_1 = batch["new_obs"][k - 1]
+                next_obs_t_m_1 = batch[SampleBatch.NEXT_OBS][k - 1]
                 # state_out_0_t_m_1 = batch["state_out_0"][k - 1]
                 # state_out_1_t_m_1 = batch["state_out_1"][k - 1]
                 # Always same trajectory as for t-1.
@@ -680,9 +713,9 @@ def analyze_rnn_batch(batch, max_seq_len, view_requirements):
 
         for j in range(seq_len, max_seq_len):
             k = cursor + j
-            obs_t = batch["obs"][k]
-            a_t = batch["actions"][k]
-            r_t = batch["rewards"][k]
+            obs_t = batch[SampleBatch.OBS][k]
+            a_t = batch[SampleBatch.ACTIONS][k]
+            r_t = batch[SampleBatch.REWARDS][k]
             assert (obs_t == 0.0).all()
             assert (a_t == 0.0).all()
             assert (r_t == 0.0).all()
