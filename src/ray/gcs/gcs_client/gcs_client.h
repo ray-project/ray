@@ -83,8 +83,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// \return Status
   virtual Status Connect(instrumented_io_context &io_service);
 
-  virtual Status Connect();
-
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect();
 
@@ -184,10 +182,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::shared_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::function<void()> resubscribe_func_;
-
-  // This ideally shouldn't be here, but the current alternative is to expose
-  // instrumented_io_context to Cython, which seems worse.
-  instrumented_io_context io_service_;
 };
 
 class RAY_EXPORT GcsSyncClient {

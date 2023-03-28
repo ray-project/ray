@@ -1694,10 +1694,6 @@ cdef class CoreWorker:
         return CCoreWorkerProcess.GetCoreWorker(
             ).ShouldCaptureChildTasksInPlacementGroup()
 
-    @property
-    def gcs_client(self):
-        return self.gcs_client
-
     def set_webui_display(self, key, message):
         CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)
 
