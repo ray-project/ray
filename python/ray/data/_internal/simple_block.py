@@ -1,10 +1,10 @@
 import random
-import sys
 import heapq
 from typing import Union, Callable, Iterator, List, Tuple, Any, Optional, TYPE_CHECKING
 
 import numpy as np
 
+from ray import cloudpickle
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 
 if TYPE_CHECKING:
@@ -118,7 +118,9 @@ class SimpleBlockAccessor(BlockAccessor):
         return self._items
 
     def size_bytes(self) -> int:
-        return sys.getsizeof(self._items)
+        # NOTE: This is high-ish overhead, but accurate estimation is important for
+        # streaming execution (see https://github.com/ray-project/ray/issues/33627).
+        return len(cloudpickle.dumps(self._items))
 
     def schema(self) -> Any:
         if self._items:

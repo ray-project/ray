@@ -73,6 +73,8 @@ from ray._private.gcs_pubsub import (
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
     global_worker_stdstream_dispatcher,
+    stdout_deduplicator,
+    stderr_deduplicator,
     setup_logger,
 )
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
@@ -1753,8 +1755,23 @@ sys.excepthook = custom_excepthook
 
 
 def print_to_stdstream(data):
-    print_file = sys.stderr if data["is_err"] else sys.stdout
-    print_worker_logs(data, print_file)
+    should_dedup = data.get("pid") not in ["autoscaler", "raylet"]
+
+    if data["is_err"]:
+        if should_dedup:
+            batches = stderr_deduplicator.deduplicate(data)
+        else:
+            batches = [data]
+        sink = sys.stderr
+    else:
+        if should_dedup:
+            batches = stdout_deduplicator.deduplicate(data)
+        else:
+            batches = [data]
+        sink = sys.stdout
+
+    for batch in batches:
+        print_worker_logs(batch, sink)
 
 
 # Start time of this process, used for relative time logs.
@@ -2303,6 +2320,10 @@ def disconnect(exiting_interpreter=False):
 
         worker._session_index += 1
 
+        for leftover in stdout_deduplicator.flush():
+            print_worker_logs(leftover, sys.stdout)
+        for leftover in stderr_deduplicator.flush():
+            print_worker_logs(leftover, sys.stderr)
         global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
 
     worker.node = None  # Disconnect the worker from the node.
