@@ -36,3 +36,47 @@ class TorchMLPHead(TorchModel, nn.Module):
     @override(Model)
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         return self.net(inputs)
+
+
+class TorchFreeLogStdMLPHead(TorchModel, nn.Module):
+    """An MLPHead that implements floating log stds for Gaussian distributions."""
+
+    def __init__(self, config: ModelConfig) -> None:
+        mlp_head_config = config.mlp_head_config
+
+        nn.Module.__init__(self)
+        TorchModel.__init__(self, mlp_head_config)
+
+        assert (
+            mlp_head_config.output_dims[0] % 2 == 0
+        ), "output_dims must be even for free std!"
+        self._half_output_dim = mlp_head_config.output_dims[0] // 2
+
+        self.net = TorchMLP(
+            input_dim=mlp_head_config.input_dims[0],
+            hidden_layer_dims=mlp_head_config.hidden_layer_dims,
+            output_dim=self._half_output_dim,
+            hidden_layer_activation=mlp_head_config.hidden_layer_activation,
+            output_activation=mlp_head_config.output_activation,
+        )
+
+        self.log_std = torch.nn.Parameter(
+            torch.as_tensor([0.0] * self._half_output_dim)
+        )
+
+    @override(Model)
+    def get_input_spec(self) -> Union[Spec, None]:
+        return TorchTensorSpec("b, h", h=self.config.input_dims[0])
+
+    @override(Model)
+    def get_output_spec(self) -> Union[Spec, None]:
+        return TorchTensorSpec("b, h", h=self.config.output_dims[0])
+
+    @override(Model)
+    def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
+        # Compute the mean first, then append the log_std.
+        mean = self.net(inputs)
+
+        return torch.cat(
+            [mean, self.log_std.unsqueeze(0).repeat([len(mean), 1])], axis=1
+        )

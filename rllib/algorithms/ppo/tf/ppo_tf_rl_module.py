@@ -16,7 +16,7 @@ tf1, tf, _ = try_import_tf()
 
 
 class PPOTfRLModule(PPORLModuleBase, TfRLModule):
-    framework = "tf"
+    framework = "tf2"
 
     def __init__(self, *args, **kwargs):
         TfRLModule.__init__(self, *args, **kwargs)

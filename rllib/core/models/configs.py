@@ -27,7 +27,6 @@ def _framework_implemented(torch: bool = True, tf2: bool = True):
     if torch:
         accepted.append("torch")
     if tf2:
-        accepted.append("tf")
         accepted.append("tf2")
 
     def decorator(fn: Callable) -> Callable:
@@ -104,8 +103,8 @@ class MLPHeadConfig(ModelConfig):
     hidden_layer_activation: str = "relu"
     output_activation: str = "linear"
 
-    @_framework_implemented()
-    def build(self, framework: str = "torch") -> Model:
+    def _validate(self, framework: str = "torch"):
+        """Makes sure that framework strings are valid."""
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(
             self.output_activation, framework
@@ -113,6 +112,10 @@ class MLPHeadConfig(ModelConfig):
         self.hidden_layer_activation = _convert_to_lower_case_if_tf(
             self.hidden_layer_activation, framework
         )
+
+    @_framework_implemented()
+    def build(self, framework: str = "torch") -> Model:
+        self._validate(framework=framework)
 
         if framework == "torch":
             from ray.rllib.core.models.torch.mlp import TorchMLPHead
@@ -122,6 +125,58 @@ class MLPHeadConfig(ModelConfig):
             from ray.rllib.core.models.tf.mlp import TfMLPHead
 
             return TfMLPHead(self)
+
+
+@ExperimentalAPI
+@dataclass
+class FreeLogStdMLPHeadConfig(ModelConfig):
+    """Configuration for an MLPHead with a floating second half of outputs.
+
+    This model can be useful together with Gaussian Distributions.
+    This gaussian distribution would be conditioned as follows:
+        - The first half of outputs from this model can be used as
+        state-dependent means when conditioning a gaussian distribution
+        - The second half are floating free biases that can be used as
+        state-independent standard deviations to condition a gaussian distribution.
+    The state-dependent means are produced by an MLPHead, while the standard
+    deviations are added as floating free biases.
+
+    This config does not dictate the output dimensions but instead uses the output
+    dimensions of the configured MLPHHeadConfig. The output dimensions of the
+    configured MLPHeadConfig must be even and are divided by two to gain the output
+    dimensions of the underlying MLPHead.
+
+    Attributes:
+        mlp_head_config: MLPHeadConfig for the MLPHead that produces the first half
+            of the output logits that are the means.
+    """
+
+    mlp_head_config: MLPHeadConfig = None
+
+    @_framework_implemented()
+    def build(self, framework: str = "torch") -> Model:
+        self.mlp_head_config._validate(framework=framework)
+
+        # Sanity check
+        assert self.input_dims is None, (
+            "input_dims must be None for "
+            "FreeLogStdMLPHeadConfig. This is only a "
+            "convenience wrapper around MLPHeadConfig."
+        )
+        assert self.output_dims is None, (
+            "output_dims must be None for "
+            "FreeLogStdMLPHeadConfig. This is only a "
+            "convenience wrapper around MLPHeadConfig."
+        )
+
+        if framework == "torch":
+            from ray.rllib.core.models.torch.mlp import TorchFreeLogStdMLPHead
+
+            return TorchFreeLogStdMLPHead(self)
+        else:
+            from ray.rllib.core.models.tf.mlp import TfFreeLogStdMLPHead
+
+            return TfFreeLogStdMLPHead(self)
 
 
 @ExperimentalAPI
