@@ -184,13 +184,13 @@ class JobFileManager(FileManager):
         else:
             self.s3_client.delete_object(Bucket=self.bucket, Key=key)
 
-    def delete(self, key: str, recursive: bool = False):
+    def delete(self, cloud_key: str, recursive: bool = False):
         def delete_fn():
             if self.cloud_storage_provider == "s3":
-                self._delete_s3_fn(key, recursive)
+                self.delete_s3_fn(cloud_key, recursive)
                 return
             if self.cloud_storage_provider == "gs":
-                self._delete_gs_fn(key, recursive)
+                self.delete_gs_fn(cloud_key, recursive)
                 return
 
         try:
