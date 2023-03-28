@@ -83,18 +83,14 @@ class Backend(metaclass=Singleton):
     def _encode_data(cls, checkpoint: Checkpoint) -> Checkpoint:
         """Temporary method until ``encode_data`` is deprecated."""
         if cls.encode_data != Backend.encode_data:
-            raise DeprecationWarning(
-                _encode_decode_deprecation_message
-            )
+            raise DeprecationWarning(_encode_decode_deprecation_message)
         return checkpoint
 
     @classmethod
     def _decode_data(cls, checkpoint: Checkpoint) -> Checkpoint:
         """Temporary method until ``decode_data`` is deprecated."""
         if cls.decode_data != Backend.decode_data:
-            raise DeprecationWarning(
-                _encode_decode_deprecation_message
-            )
+            raise DeprecationWarning(_encode_decode_deprecation_message)
         return checkpoint
 
     @Deprecated(message=_encode_decode_deprecation_message)
