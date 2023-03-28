@@ -178,11 +178,11 @@ Status GcsSyncClient::InternalKVGet(const std::string &ns, const std::string &ke
   grpc::Status status = kv_stub_->InternalKVGet(&context, request, &reply);
   if (status.ok()) {
     if (reply.status().code() == (int)StatusCode::NotFound) {
-      value = "";
+      return Status::KeyError(key);
     } else {
       value = reply.value();
+      return Status::OK();
     }
-    return Status::OK();
   }
   // TODO: Convert to appropriate error
   return Status::UnknownError(status.error_message());

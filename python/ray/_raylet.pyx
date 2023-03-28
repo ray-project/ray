@@ -1509,16 +1509,21 @@ cdef class GcsClient:
     def connect(self):
         check_status(self.inner.get().Connect())
 
-    def internal_kv_get(self, bytes key, bytes namespace, timeout=None):
+    def internal_kv_get(self, bytes key, namespace=None, timeout=None):
         cdef:
+            c_string ns = namespace or b""
             c_string value
-        check_status(self.inner.get().InternalKVGet(namespace, key, value))
-
-        return value
+            CRayStatus status
+        status = self.inner.get().InternalKVGet(ns, key, value)
+        if status.IsKeyError():
+            return None
+        else:
+            check_status(status)
+            return value
 
     def internal_kv_put(self, bytes key, bytes value, overwrite: bool = False, namespace=None, timeout=None):
         cdef:
-            c_string ns = namespace if namespace else b""
+            c_string ns = namespace or b""
             int num_added
         check_status(self.inner.get().InternalKVPut(ns, key, value, overwrite, num_added))
 
