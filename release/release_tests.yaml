@@ -87,6 +87,7 @@
 #  # After the test finished, this handler (in alerts/) will process the results.
 #  # It can then let the test fail, e.g. if a metric regression is observed.
 #  alert: default
+#
 
 #######################
 # Cluster scaling tests
