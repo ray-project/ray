@@ -1261,6 +1261,29 @@
 
   alert: tune_tests
 
+- name: tune_cloud_gce_no_sync_down
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+
+  stable: true
+
+  frequency: nightly
+  team: ml
+  env: gce
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_gce_4x8.yaml
+    autosuspend_mins: 60
+
+  run:
+    timeout: 600
+    script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
+    wait_for_nodes:
+      num_nodes: 4
+
+  alert: tune_tests
+
 - name: tune_cloud_aws_ssh_sync
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
@@ -1280,6 +1303,29 @@
 
     wait_for_nodes:
       num_nodes: 4
+
+- name: tune_cloud_gce_ssh_sync
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+
+  stable: true
+  frequency: nightly
+  team: ml
+  env: gce
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_gce_4x8.yaml
+    autosuspend_mins: 60
+
+  run:
+    timeout: 600
+    script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
+
+    wait_for_nodes:
+      num_nodes: 4
+
+  alert: tune_tests
 
 
   alert: tune_tests
@@ -1304,6 +1350,27 @@
     wait_for_nodes:
       num_nodes: 4
 
+
+  alert: tune_tests
+
+- name: tune_cloud_gce_durable_upload
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+  stable: true
+  frequency: nightly
+  team: ml
+  env: gce
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_gce_4x8.yaml
+    autosuspend_mins: 60
+
+  run:
+    timeout: 600
+    script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://tune-cloud-tests/durable_upload
+    wait_for_nodes:
+      num_nodes: 4
 
   alert: tune_tests
 
@@ -3972,6 +4039,22 @@
     # Expect the benchmark to finish around 30 minutes.
     timeout: 2400
     script: python iter_tensor_batches_benchmark.py
+
+- name: iter_tensor_batches_benchmark_multi_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: multi_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
+    script: python iter_tensor_batches_benchmark.py --data-size-gb=10
+
 
 
 - name: iter_batches_benchmark_single_node

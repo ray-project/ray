@@ -39,6 +39,8 @@ export type Task = {
   end_time_ms: number | null;
   worker_id: string | null;
   profiling_data: ProfilingData;
+  error_type: string | null;
+  error_message: string | null;
 };
 
 export type ProfilingData = {
