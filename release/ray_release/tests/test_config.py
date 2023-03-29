@@ -43,36 +43,6 @@ VALID_TEST = Test(
     }
 )
 
-VALID_TEST_DEFINITION = TestDefinition(
-    **{
-        "name": "validation_test",
-        "working_dir": "validation_dir",
-        "frequency": "nightly",
-        "team": "release",
-        "cluster": {
-            "cluster_env": "app_config.yaml",
-            "cluster_compute": "tpl_cpu_small.yaml",
-        },
-        "run": {
-            "timeout": 100,
-            "script": "python validate.py",
-        },
-        "flavors": [
-            {
-                "name": "aws",
-            },
-            {
-                "name": "gce",
-                "cluster": {
-                    "cluster_env": "app_config.yaml",
-                    "cluster_compute": "tpl_cpu_small_gce.yaml",
-                },
-            },
-        ],
-    }
-)
-
-
 def test_definition_parser():
     test_definitions = yaml.safe_load('''
         - name: sample_test
