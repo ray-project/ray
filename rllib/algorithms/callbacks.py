@@ -480,7 +480,7 @@ def make_multi_callbacks(callback_class_list: List[Type[DefaultCallbacks]]):
         def __init__(self):
             super().__init__()
             self._callback_list = [
-                callback_class() for callback_class in self.callback_class_list
+                callback_class() for callback_class in callback_class_list
             ]
 
         @override(DefaultCallbacks)
@@ -743,7 +743,7 @@ class RE3UpdateCallbacks(DefaultCallbacks):
 
 @Deprecated(
     new="ray.rllib.algorithms.callbacks.make_multi_callback([list of "
-        "`Callbacks` sub-classes to combine into one])",
+    "`Callbacks` sub-classes to combine into one])",
     error=True,
 )
 class MultiCallbacks(DefaultCallbacks):

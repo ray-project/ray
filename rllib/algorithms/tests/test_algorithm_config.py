@@ -11,7 +11,6 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
     MultiAgentRLModule,
 )
-from ray.rllib.utils.serialization import NOT_SERIALIZABLE
 
 
 class TestAlgorithmConfig(unittest.TestCase):
@@ -39,18 +38,20 @@ class TestAlgorithmConfig(unittest.TestCase):
     def test_update_from_dict_works_for_multi_callbacks(self):
         """Test to make sure callbacks config dict works."""
         config_dict = {"callbacks": make_multi_callbacks([])}
-        config = (
-            AlgorithmConfig(algo_class=PPO)
-            .environment("CartPole-v0")
-            .training(lr=0.12345, train_batch_size=3000)
-        )
+        config = AlgorithmConfig()
         # This should work.
         config.update_from_dict(config_dict)
 
         serialized = config.serialize()
 
         # For now, we don't support serializing make_multi_callbacks.
-        self.assertEqual(serialized["callbacks"], NOT_SERIALIZABLE)
+        # It'll turn into a classpath that's not really usable b/c the class
+        # was created on-the-fly.
+        self.assertEqual(
+            serialized["callbacks"],
+            "ray.rllib.algorithms.callbacks.make_multi_callbacks.<locals>."
+            "_MultiCallbacks",
+        )
 
     def test_freezing_of_algo_config(self):
         """Tests, whether freezing an AlgorithmConfig actually works as expected."""
