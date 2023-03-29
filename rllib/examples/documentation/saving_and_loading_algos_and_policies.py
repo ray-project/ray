@@ -297,9 +297,17 @@ checkpoint_dir = ppo.save()
 
 # Exporting Policies in ONNX format is only supported without RLModules
 # TODO (Artur): Switch this to the RLModule API once it is supported.
+# IF this is removed, test size of `saving_and_loading_algos_and_policies` can be
+# reduced to `medium` again.
 ppo_config = (
-    PPOConfig().environment("Pendulum-v1").checkpointing(export_native_model_files=True)
-).rl_module(_enable_rl_module_api=True).training(_enable_learner_api=True)
+    (
+        PPOConfig()
+        .environment("Pendulum-v1")
+        .checkpointing(export_native_model_files=True)
+    )
+    .rl_module(_enable_rl_module_api=True)
+    .training(_enable_learner_api=True)
+)
 # Create the Algorithm and train one iteration.
 ppo = ppo_config.build()
 ppo.train()
