@@ -1,12 +1,14 @@
 """
 Example of interfacing with an environment that produces 2D observations.
 
-This example how to turn 2D observations with shape (A, B) into a 3D observations with
-shape (C, D, 1).
-This can be useful in order to use RLlib's default CNN filters, even though the
+This example shows how turning 2D observations with shape (A, B) into a 3D
+observations with shape (C, D, 1) can enable a simple usage with RLlib.
+RLlib does not provide default models for 2D observation spaces, but it does so for 3D.
+Therefore, one can either write a custom model or transform the 2D observations into 3D
+observations. This enables RLlib to use one of the default CNN filters, even though the
 original observation space of the environment does not fit them.
 
-This example should reach rewards of 50 within 150k timesteps.
+This simple example should reach rewards of 50 within 150k timesteps.
 """
 
 from numpy import float32
@@ -53,7 +55,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-# The space we downsample and transform the greyscaled pistonball images to.
+# The space we down-sample and transform the greyscale pistonball images to.
 # Other spaces supported by Rllib can be chosen here.
 TRANSFORMED_OBS_SPACE = (42, 42, 1)
 
@@ -61,7 +63,7 @@ TRANSFORMED_OBS_SPACE = (42, 42, 1)
 def env_creator(config):
     env = pistonball_v6.env(n_pistons=5)
     env = dtype_v0(env, dtype=float32)
-    # This gives us greyscale images
+    # This gives us greyscale images for the color red
     env = color_reduction_v0(env, mode="R")
     env = normalize_obs_v0(env)
     # This gives us images that are upsampled to the number of pixels in the
@@ -69,7 +71,7 @@ def env_creator(config):
     env = resize_v1(
         env, x_size=TRANSFORMED_OBS_SPACE[0], y_size=TRANSFORMED_OBS_SPACE[1]
     )
-    # This gives us images that fit the default CNN filters
+    # This gives us 3D images for which we have default filters
     env = reshape_v0(env, shape=TRANSFORMED_OBS_SPACE)
     return env
 
