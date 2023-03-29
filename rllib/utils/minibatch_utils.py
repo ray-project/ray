@@ -54,9 +54,11 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         self._num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
 
     def __iter__(self):
+
         while min(self._num_covered_epochs.values()) < self._num_iters:
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
+
                 if len(module_batch) == 0:
                     raise ValueError(
                         f"The batch for module_id {module_id} is empty. "

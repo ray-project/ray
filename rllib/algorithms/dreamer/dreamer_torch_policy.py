@@ -247,6 +247,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
         return action, logp, state_batches
 
     def make_model(self):
+
         model = ModelCatalog.get_model_v2(
             self.observation_space,
             self.action_space,

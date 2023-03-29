@@ -495,6 +495,7 @@ class TorchPolicyV2(Policy):
         timestep: Optional[int] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+
         with torch.no_grad():
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
@@ -532,6 +533,7 @@ class TorchPolicyV2(Policy):
         timestep: Optional[int] = None,
         **kwargs,
     ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
+
         with torch.no_grad():
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
             input_dict = self._lazy_tensor_dict(
@@ -568,6 +570,7 @@ class TorchPolicyV2(Policy):
         actions_normalized: bool = True,
         in_training: bool = True,
     ) -> TensorType:
+
         if is_overridden(self.action_sampler_fn) and not is_overridden(
             self.action_distribution_fn
         ):
@@ -642,6 +645,7 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def learn_on_batch(self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
+
         # Set Model to train mode.
         if self.model:
             self.model.train()
@@ -840,6 +844,7 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def compute_gradients(self, postprocessed_batch: SampleBatch) -> ModelGradients:
+
         assert len(self.devices) == 1
 
         # If not done yet, see whether we have to zero-pad this batch.

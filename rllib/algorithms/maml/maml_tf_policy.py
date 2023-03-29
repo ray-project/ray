@@ -153,6 +153,7 @@ class MAMLLoss(object):
         vf_loss_coeff=1.0,
         use_gae=True,
     ):
+
         self.config = config
         self.num_tasks = num_tasks
         self.inner_adaptation_steps = inner_adaptation_steps

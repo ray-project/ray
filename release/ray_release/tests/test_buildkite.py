@@ -272,6 +272,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
             "ray_release.buildkite.settings.get_buildkite_prompt_value",
             self.buildkite_mock,
         ):
+
             # With no buildkite variables, default settings shouldn't be updated
             updated_settings = settings.copy()
             update_settings_from_buildkite(updated_settings)

@@ -30,7 +30,6 @@ results = tuner.fit()
 print(results.get_best_result(metric="score", mode="min").config)
 # __quick_start_end__
 
-
 # __ml_quick_start_begin__
 def objective(step, alpha, beta):
     return (0.1 + alpha * step / 100) ** (-1) + beta * 0.1

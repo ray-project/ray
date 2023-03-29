@@ -86,6 +86,7 @@ def get_a3c_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             dist_class: Type[TFActionDistribution],
             train_batch: SampleBatch,
         ) -> Union[TensorType, List[TensorType]]:
+
             model_out, _ = model(train_batch)
             action_dist = dist_class(model_out, model)
             if self.is_recurrent():
