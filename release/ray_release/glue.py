@@ -7,7 +7,6 @@ from ray_release.anyscale_util import get_cluster_name
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
-from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
 from ray_release.command_runner.sdk_runner import SDKRunner
 from ray_release.config import (
@@ -58,7 +57,6 @@ type_str_to_command_runner = {
 
 command_runner_to_cluster_manager = {
     SDKRunner: FullClusterManager,
-    JobRunner: FullClusterManager,
     AnyscaleJobRunner: MinimalClusterManager,
 }
 
