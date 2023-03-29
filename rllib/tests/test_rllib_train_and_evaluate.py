@@ -84,7 +84,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
 
 def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
     for fw in framework_iterator(frameworks=("tf", "torch")):
-        fw_ = ', \\"framework\\": \\"{}\\"'.format(fw)
+        fw_ = '\\"framework\\": \\"{}\\"'.format(fw)
 
         tmp_dir = os.popen("mktemp -d").read()[:-1]
         if not os.path.exists(tmp_dir):
@@ -101,7 +101,6 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
             "python {}/train.py --local-dir={} --run={} "
             "--checkpoint-freq=1 --checkpoint-at-end ".format(rllib_dir, tmp_dir, algo)
             + '--config="{\\"num_gpus\\": 0, \\"num_workers\\": 1, '
-            '\\"evaluation_config\\": {\\"explore\\": false}'
             + fw_
             + '}" '
             + '--stop="{\\"episode_reward_mean\\": 100.0}"'
