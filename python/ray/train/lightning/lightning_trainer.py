@@ -134,6 +134,11 @@ class LightningConfigBuilder:
         LightningTrainer creates a `ModelCheckpoint` callback based on this config.
         The AIR checkpointing and logging methods are triggered in that callback.
 
+        Specifically, `LightningTrainer` reports the latest metrics and checkpoint
+        to the AIR session at the same checkpointing frequency defined here. Please
+        ensure that the target metrics(e.g. metrics defined in `TuneConfig` or
+        `CheckpointConfig`) are ready when a new checkpoint is saved.
+
         Args:
             kwargs: For valid arguments to pass, please refer to:
                 https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.ModelCheckpoint.html

@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Type, Dict, Any
+from typing import Optional, Type
 
 from ray.data.preprocessor import Preprocessor
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
@@ -88,7 +88,7 @@ class LightningPredictor(TorchPredictor):
         *,
         preprocessor: Optional[Preprocessor] = None,
         use_gpu: bool = False,
-        load_from_checkpoint_kwargs: Optional[Dict[str, Any]] = None
+        **load_from_checkpoint_kwargs
     ) -> "LightningPredictor":
         """Instantiate the LightningPredictor from a Checkpoint.
 
@@ -104,14 +104,12 @@ class LightningPredictor(TorchPredictor):
                 to prediction.
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
-            load_from_checkpoint_kwargs: A dictionary of arguments to pass into
+            **load_from_checkpoint_kwargs: Arguments to pass into
                 ``pl.LightningModule.load_from_checkpoint``
         """
-        if not load_from_checkpoint_kwargs:
-            load_from_checkpoint_kwargs = {}
 
         model = checkpoint.get_model(
             model_class=model_class,
-            load_from_checkpoint_kwargs=load_from_checkpoint_kwargs,
+            **load_from_checkpoint_kwargs,
         )
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)

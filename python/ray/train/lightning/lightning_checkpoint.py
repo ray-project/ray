@@ -69,14 +69,14 @@ class LightningCheckpoint(TorchCheckpoint):
     def get_model(
         self,
         model_class: Type[pl.LightningModule],
-        load_from_checkpoint_kwargs: Optional[Dict[str, Any]] = None,
+        **load_from_checkpoint_kwargs: Optional[Dict[str, Any]],
     ) -> pl.LightningModule:
         """Retrieve the model stored in this checkpoint.
 
         Args:
             model_class: A subclass of ``pytorch_lightning.LightningModule`` that
                 defines your model and training logic.
-            load_from_checkpoint_kwargs: A dictionary of arguments to pass into
+            **load_from_checkpoint_kwargs: Arguments to pass into
                 ``pl.LightningModule.load_from_checkpoint``
 
         Returns:
@@ -86,9 +86,6 @@ class LightningCheckpoint(TorchCheckpoint):
             raise ValueError(
                 "'model_class' must be a class, not an instantiated Lightning trainer."
             )
-
-        if not load_from_checkpoint_kwargs:
-            load_from_checkpoint_kwargs = {}
 
         with self.as_directory() as checkpoint_dir:
             ckpt_path = os.path.join(checkpoint_dir, MODEL_KEY)
