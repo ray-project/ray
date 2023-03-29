@@ -913,6 +913,7 @@ TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
 @pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
 def test_build(ray_start_stop, node):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
+
         print(f'Building node "{node}".')
         # Build an app
         subprocess.check_output(

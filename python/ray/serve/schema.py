@@ -351,6 +351,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
     @validator("import_path")
     def import_path_format_valid(cls, v: str):
+
         if v is None:
             return
 
@@ -406,7 +407,9 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         config = self.dict(**kwargs)
         for idx, deployment in enumerate(config["deployments"]):
+
             if isinstance(deployment.get("ray_actor_options"), dict):
+
                 # JSON-serialize ray_actor_options' resources dictionary
                 if isinstance(deployment["ray_actor_options"].get("resources"), dict):
                     deployment["ray_actor_options"]["resources"] = json.dumps(
@@ -771,6 +774,7 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
 
 @DeveloperAPI
 def serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
+
     return ServeStatusSchema(
         name=serve_status.name,
         app_status=serve_status.app_status,

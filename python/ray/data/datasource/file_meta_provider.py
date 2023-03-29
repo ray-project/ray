@@ -497,7 +497,7 @@ def _get_file_infos(
     except OSError as e:
         _handle_read_os_error(e, path)
     if file_info.type == FileType.Directory:
-        for file_path, file_size in _expand_directory(path, filesystem):
+        for (file_path, file_size) in _expand_directory(path, filesystem):
             file_infos.append((file_path, file_size))
     elif file_info.type == FileType.File:
         file_infos.append((path, file_info.size))
