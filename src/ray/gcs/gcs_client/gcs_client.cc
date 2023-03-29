@@ -238,12 +238,13 @@ Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &ke
   return Status::UnknownError(status.error_message());
 }
 
-Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &key, int &deleted_num) {
+Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &key, bool del_by_prefix, int &deleted_num) {
   grpc::ClientContext context;
 
   rpc::InternalKVDelRequest request;
   request.set_namespace_(ns);
   request.set_key(key);
+  request.set_del_by_prefix(del_by_prefix);
 
   rpc::InternalKVDelReply reply;
 

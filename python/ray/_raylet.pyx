@@ -1555,11 +1555,11 @@ cdef class GcsClient:
 
         return num_added
 
-    def internal_kv_del(self, bytes key, namespace=None, timeout=None):
+    def internal_kv_del(self, bytes key, c_bool del_by_prefix, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
             int num_deleted
-        check_status(self.inner.get().InternalKVDel(ns, key, num_deleted))
+        check_status(self.inner.get().InternalKVDel(ns, key, del_by_prefix, num_deleted))
 
         return num_deleted
 
