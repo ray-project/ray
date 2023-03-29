@@ -598,9 +598,11 @@ class Node:
             with open(f"{self._logs_dir}/gcs_server.err") as err:
                 errors = err.readlines()[-10:]
             error_msg = "\n" + "".join(errors) + "\n"
-            logger.fatal(f"Failed to start GCS. Last {len(errors)} lines of error files:"
-                         f"{error_msg}"
-                         f"Please check {self._logs_dir}/gcs_server.out for details")
+            logger.fatal(
+                f"Failed to start GCS. Last {len(errors)} lines of error files:"
+                f"{error_msg}"
+                f"Please check {self._logs_dir}/gcs_server.out for details"
+            )
             raise RuntimeError("Failed to start GCS.")
         ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
 

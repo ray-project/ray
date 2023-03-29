@@ -222,12 +222,12 @@ void RedisCallbackManager::RemoveCallback(int64_t callback_index) {
   callback_items_.erase(callback_index);
 }
 
-#define REDIS_CHECK_ERROR(CONTEXT, REPLY)                 \
-  if (REPLY == nullptr) {                                 \
-    return Status::RedisError(CONTEXT->errstr);           \
-  }                                                       \
-  if (REPLY->type == REDIS_REPLY_ERROR) {                 \
-    return Status::RedisError(REPLY->str);                \
+#define REDIS_CHECK_ERROR(CONTEXT, REPLY)       \
+  if (REPLY == nullptr) {                       \
+    return Status::RedisError(CONTEXT->errstr); \
+  }                                             \
+  if (REPLY->type == REDIS_REPLY_ERROR) {       \
+    return Status::RedisError(REPLY->str);      \
   }
 
 RedisContext::RedisContext(instrumented_io_context &io_service)
@@ -368,8 +368,7 @@ Status ConnectWithRetries(const std::string &address,
     RAY_LOG_EVERY_MS(ERROR, 1000)
         << "Failed to connect to Redis due to: " << status.ToString()
         << ". Will retry in "
-        << RayConfig::instance().redis_db_connect_wait_milliseconds()
-        << "ms.";
+        << RayConfig::instance().redis_db_connect_wait_milliseconds() << "ms.";
 
     // Sleep for a little.
     std::this_thread::sleep_for(std::chrono::milliseconds(
