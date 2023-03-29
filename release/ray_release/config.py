@@ -13,10 +13,16 @@ from ray_release.util import DeferredEnvVar, deep_update
 
 
 class Test(dict):
+    """ A class represents a test to run on buildkite """
     pass
 
 
 class TestDefinition(dict):
+    """ 
+    A class represents a definition of a test, such as test name, group, etc. Comparing
+    to the test class, there are additional field, for example variations, which can be
+    used to define several variations of a test.
+    """
     pass
 
 
@@ -61,14 +67,18 @@ def read_and_validate_release_test_collection(
 def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
     tests = []
     for test_definition in test_definitions:
-        if "flavors" not in test_definition:
+        if "variations" not in test_definition:
             tests.append(test_definition)
             continue
-        flavors = test_definition.pop("flavors")
-        for flavor in flavors:
+        variations = test_definition.pop("variations")
+        if not variations:
+            raise ReleaseTestConfigError(
+                f'Empty variations defined in test {test_definition["name"]}',
+            )
+        for variation in variations:
             test = copy.deepcopy(test_definition)
-            flavor["name"] = test["name"] + "-" + flavor["name"]
-            test.update(flavor)
+            test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
+            test.update(variation)
             tests.append(test)
     return tests
 
