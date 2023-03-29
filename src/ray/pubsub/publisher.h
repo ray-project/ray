@@ -173,12 +173,14 @@ class SubscriberState {
   SubscriberState(SubscriberID subscriber_id,
                   std::function<double()> get_time_ms,
                   uint64_t connection_timeout_ms,
-                  const int publish_batch_size)
+                  const int publish_batch_size,
+                  const std::string publisher_id)
       : subscriber_id_(subscriber_id),
         get_time_ms_(std::move(get_time_ms)),
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
-        last_connection_update_time_ms_(get_time_ms_()) {}
+        last_connection_update_time_ms_(get_time_ms_()),
+        publisher_id_(publisher_id) {}
 
   ~SubscriberState() {
     // Force a push to close the long-polling.
@@ -239,6 +241,8 @@ class SubscriberState {
   const int publish_batch_size_;
   /// The last time long polling was connected in milliseconds.
   double last_connection_update_time_ms_;
+  ///
+  const std::string publisher_id_;
 };
 
 }  // namespace pub_internal
@@ -475,6 +479,10 @@ class Publisher : public PublisherInterface {
   ///    this is due the fact a subscriber can only subscribe a subset
   ///    of a channel.
   int64_t next_sequence_id_ GUARDED_BY(mutex_) = 0;
+
+  /// A unique identifier identifies the publisher_id.
+  /// TODO(scv119) add docs about the semantics.
+  const std::string publisher_id_ = "";
 };
 
 }  // namespace pubsub

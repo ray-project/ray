@@ -493,7 +493,8 @@ class Subscriber : public SubscriberInterface {
       GUARDED_BY(mutex_);
 
   /// Keeps track of last processed sequence_ids by publisher.
-  absl::flat_hash_map<PublisherID, int64_t> processed_sequences_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<PublisherID, std::pair<std::string, int64_t>> processed_sequences_
+      GUARDED_BY(mutex_);
 };
 
 }  // namespace pubsub

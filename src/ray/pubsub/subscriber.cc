@@ -349,7 +349,9 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
   auto subscriber_client = get_client_(publisher_address);
   rpc::PubsubLongPollingRequest long_polling_request;
   long_polling_request.set_subscriber_id(subscriber_id_.Binary());
-  long_polling_request.set_max_processed_sequence_id(processed_sequences_[publisher_id]);
+  auto &processed_state = processed_sequences_[publisher_id];
+  long_polling_request.set_publisher_id(processed_state.first);
+  long_polling_request.set_max_processed_sequence_id(processed_state.second);
   subscriber_client->PubsubLongPolling(
       long_polling_request,
       [this, publisher_address](Status status, const rpc::PubsubLongPollingReply &reply) {
@@ -383,14 +385,20 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       const auto &key_id = msg.key_id();
       RAY_CHECK_GT(msg.sequence_id(), 0)
           << "message's sequence_id is invalid " << msg.sequence_id();
-      if (msg.sequence_id() <= processed_sequences_[publisher_id]) {
+      RAY_CHECK(!msg.publisher_id().empty())
+          << "message's publisher_id is invalid " << msg.publisher_id();
+      if (msg.publisher_id() != processed_sequences_[publisher_id].first) {
+        processed_sequences_[publisher_id].first = msg.publisher_id();
+        processed_sequences_[publisher_id].second = 0;
+      }
+      if (msg.sequence_id() <= processed_sequences_[publisher_id].second) {
         RAY_LOG_EVERY_MS(WARNING, 10000)
             << "Received message out of order, proccessed_sequence_id: "
             << processed_sequences_[publisher_id] << ", received message sequence_id "
             << msg.sequence_id();
         continue;
       }
-      processed_sequences_[publisher_id] = msg.sequence_id();
+      processed_sequences_[publisher_id].second = msg.sequence_id();
       // If the published message is a failure message, the publisher indicates
       // this key id is failed. Invoke the failure callback. At this time, we should not
       // unsubscribe the publisher because there are other entries that subscribe from the
