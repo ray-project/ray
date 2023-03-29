@@ -398,5 +398,5 @@ RAY_ALLOWED_CACHED_PORTS = {
     "metrics_agent_port",
     "metrics_export_port",
     "dashboard_agent_listen_port",
-    "gcs_server_port",
+    "gcs_server_port", # the `port` option for gcs port. 
 }
