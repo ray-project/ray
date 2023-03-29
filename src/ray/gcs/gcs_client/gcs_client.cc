@@ -190,7 +190,7 @@ Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vecto
 
   rpc::InternalKVMultiGetRequest request;
   request.set_namespace_(ns);
-  for (int64_t i = 0; i < keys.size(); ++i) {
+  for (size_t i = 0; i < keys.size(); ++i) {
     request.set_keys(i, keys[i]);
   }
 
