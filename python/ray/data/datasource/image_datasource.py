@@ -48,7 +48,7 @@ class ImageDatasource(BinaryDatasource):
         size: Optional[Tuple[int, int]] = None,
         mode: Optional[str] = None,
         include_paths: bool = False,
-        **kwargs,
+        **reader_args,
     ) -> "Reader[T]":
         if size is not None and len(size) != 2:
             raise ValueError(
@@ -63,7 +63,7 @@ class ImageDatasource(BinaryDatasource):
         _check_import(self, module="PIL", package="Pillow")
 
         return _ImageDatasourceReader(
-            self, size=size, mode=mode, include_paths=include_paths, **kwargs
+            self, size=size, mode=mode, include_paths=include_paths, **reader_args
         )
 
     def _convert_block_to_tabular_block(
@@ -82,10 +82,11 @@ class ImageDatasource(BinaryDatasource):
         size: Optional[Tuple[int, int]],
         mode: Optional[str],
         include_paths: bool,
+        **reader_args,
     ) -> "pyarrow.Table":
         from PIL import Image
 
-        records = super()._read_file(f, path, include_paths=True)
+        records = super()._read_file(f, path, include_paths=True, **reader_args)
         assert len(records) == 1
         path, data = records[0]
 
@@ -145,7 +146,6 @@ class _ImageDatasourceReader(_FileBasedDatasourceReader):
             paths=paths,
             filesystem=filesystem,
             schema=None,
-            open_stream_args=None,
             meta_provider=meta_provider,
             partition_filter=partition_filter,
             partitioning=partitioning,
