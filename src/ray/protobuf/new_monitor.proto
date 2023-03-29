@@ -12,7 +12,6 @@ message AntiAffinityConstraint {
 message ResourceBundle {
   map<string, double> resources = 1;
   repeated AntiAffinityConstraint affinity_constraints = 2;
-  map<string, string> new_dynamic_labels_on_schedule = 3;
 }
 
 // All bundles in the same resource request require gang
@@ -138,39 +137,39 @@ service BatchAutoscalerService {
   rpc ReportAutoscalerDecisions(ReportBatchAutoscalerDecisionsRequest) returns ReportBatchAutoscalerDecisionsReply;
 }
 
-// ================ Streaming approach ================
-// Option 2 (future): This is the streaming/delta update version of
-// Option 1. Semantically it should be identical to option1, just
-// that we allow Autoscaler/GCS to report delta update through 
-// a stream.
+// // ================ Streaming approach ================
+// // Option 2 (future): This is the streaming/delta update version of
+// // Option 1. Semantically it should be identical to option1, just
+// // that we allow Autoscaler/GCS to report delta update through 
+// // a stream.
 
-message ReportBatchAutoscalerDecisionsStreamReply {}
+// message ReportBatchAutoscalerDecisionsStreamReply {}
 
-message ReportAutoscalerDecisionsStreamPacket {
-  bytes scheduling_state_id = 1;
-  AutoscalerDecision decision = 2;
-}
+// message ReportAutoscalerDecisionsStreamPacket {
+//   bytes scheduling_state_id = 1;
+//   AutoscalerDecision decision = 2;
+// }
 
-message GetStreamSchedulingStatusPacket{
-  bytes scheduling_state_id = 1;
-  oneof update_type {
-     NodeStatus node_states = 2;
-     ResourceRequest resource_requests = 3;
-     OnDemandResourceRequest on_demand_resource_requests = 4;
-  }
-}
+// message GetStreamSchedulingStatusPacket{
+//   bytes scheduling_state_id = 1;
+//   oneof update_type {
+//      NodeStatus node_states = 2;
+//      ResourceRequest resource_requests = 3;
+//      OnDemandResourceRequest on_demand_resource_requests = 4;
+//   }
+// }
 
-message GetStreamSchedulingStatusRequest {
-  // The last seen scheduling state id. The default value is reserved for if a
-  // previous scheduling state has never been seen.
-  bytes last_seen_scheduling_state_id = 01;
-}
+// message GetStreamSchedulingStatusRequest {
+//   // The last seen scheduling state id. The default value is reserved for if a
+//   // previous scheduling state has never been seen.
+//   bytes last_seen_scheduling_state_id = 01;
+// }
 
 
-service StreamAutoscalerService {
-  rpc GetBatchSchedulingStatus(GetStreamSchedulingStatusRequest) returns (stream GetStreamSchedulingStatusPacket);
-  rpc ReportAutoscalerDecisionsStream(stream ReportAutoscalerDecisionsStreamPacket) returns ReportBatchAutoscalerDecisionsStreamReply;
-}
+// service StreamAutoscalerService {
+//   rpc GetBatchSchedulingStatus(GetStreamSchedulingStatusRequest) returns (stream GetStreamSchedulingStatusPacket);
+//   rpc ReportAutoscalerDecisionsStream(stream ReportAutoscalerDecisionsStreamPacket) returns ReportBatchAutoscalerDecisionsStreamReply;
+// }
 
 // ============= Metrics =================
 
