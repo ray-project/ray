@@ -6,8 +6,11 @@ import shlex
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.command_runner.job_runner import JobRunner
+from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.exception import (
+    ClusterNodesWaitTimeout,
+    CommandError,
+    CommandTimeout,
     TestCommandTimeout,
     TestCommandError,
     JobOutOfRetriesError,
@@ -18,11 +21,13 @@ from ray_release.exception import (
     JobTerminatedBeforeStartError,
     JobNoLogsError,
     JobTerminatedError,
+    LocalEnvSetupError,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.job_manager import AnyscaleJobManager
 from ray_release.logger import logger
 from ray_release.util import get_anyscale_sdk, generate_tmp_s3_path, join_s3_paths
+from ray_release.wheels import install_matching_ray_locally
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -37,22 +42,23 @@ def _get_env_str(env: Dict[str, str]) -> str:
         env_str = ""
     return env_str
 
+class AnyscaleJobRunner(CommandRunner):
+    """This is a command runner that is executed via an Anyscale job submitter"""
 
-class AnyscaleJobRunner(JobRunner):
     def __init__(
         self,
         cluster_manager: ClusterManager,
         file_manager: JobFileManager,
         working_dir: str,
-        sdk: Optional["AnyscaleSDK"] = None,
         artifact_path: Optional[str] = None,
     ):
         super().__init__(
             cluster_manager=cluster_manager,
             file_manager=file_manager,
             working_dir=working_dir,
+            artifact_path=artifact_path,
         )
-        self.sdk = sdk or get_anyscale_sdk()
+        self.sdk = get_anyscale_sdk()
         self.job_manager = AnyscaleJobManager(cluster_manager)
 
         self.last_command_scd_id = None
@@ -80,6 +86,18 @@ class AnyscaleJobRunner(JobRunner):
         self._artifact_path = artifact_path
         self._artifact_uploaded = artifact_path is not None
 
+    def prepare_local_env(self, ray_wheels_url: Optional[str] = None):
+        if not os.environ.get("BUILDKITE"):
+            return
+
+        # Install matching Ray for job submission
+        try:
+            install_matching_ray_locally(
+                ray_wheels_url or os.environ.get("RAY_WHEELS", None)
+            )
+        except Exception as e:
+            raise LocalEnvSetupError(f"Error setting up local environment: {e}") from e
+
     def prepare_remote_env(self):
         # Copy anyscale job script to working dir
         job_script = os.path.join(os.path.dirname(__file__), "_anyscale_job_wrapper.py")
@@ -87,7 +105,24 @@ class AnyscaleJobRunner(JobRunner):
             os.unlink("anyscale_job_wrapper.py")
         os.link(job_script, "anyscale_job_wrapper.py")
 
-        super().prepare_remote_env()
+        # Copy wait script to working dir
+        wait_script = os.path.join(os.path.dirname(__file__), "_wait_cluster.py")
+        # Copy wait script to working dir
+        if os.path.exists("wait_cluster.py"):
+            os.unlink("wait_cluster.py")
+        os.link(wait_script, "wait_cluster.py")
+
+        # Copy prometheus metrics script to working dir
+        metrics_script = os.path.join(
+            os.path.dirname(__file__), "_prometheus_metrics.py"
+        )
+        # Copy prometheus metrics script to working dir
+        if os.path.exists("prometheus_metrics.py"):
+            os.unlink("prometheus_metrics.py")
+        os.link(metrics_script, "prometheus_metrics.py")
+
+        # Do not upload the files here. Instead, we use the job runtime environment
+        # to automatically upload the local working dir.
 
     def run_prepare_command(
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
@@ -97,7 +132,16 @@ class AnyscaleJobRunner(JobRunner):
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         self._wait_for_nodes_timeout = timeout
         self.job_manager.cluster_startup_timeout += timeout
-        super().wait_for_nodes(num_nodes, timeout)
+        # Wait script should be uploaded already. Kick off command
+        try:
+            # Give 30 seconds more to acount for communication
+            self.run_prepare_command(
+                f"python wait_cluster.py {num_nodes} {timeout}", timeout=timeout + 30
+            )
+        except (CommandError, CommandTimeout) as e:
+            raise ClusterNodesWaitTimeout(
+                f"Not all {num_nodes} nodes came up within {timeout} seconds."
+            ) from e
 
     def save_metrics(self, start_time: float, timeout: float = 900):
         # Handled in run_command
