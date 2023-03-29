@@ -412,6 +412,14 @@ py_test(
 )
 
 py_test(
+    name = "test_metrics",
+    size = "small",
+    srcs = ["tests/test_metrics.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_streaming_executor",
     size = "small",
     srcs = ["tests/test_streaming_executor.py"],

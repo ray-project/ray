@@ -20,6 +20,11 @@ from ray.data._internal.execution.interfaces import (
     MapTransformFn,
 )
 from ray.data._internal.memory_tracing import trace_allocation
+from ray.data._internal.metrics import (
+    Metrics,
+    DataMungingMetrics,
+    ObjectStoreMetrics,
+)
 from ray.data._internal.stats import StatsDict
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.types import ObjectRef
@@ -52,7 +57,10 @@ class MapOperator(PhysicalOperator, ABC):
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
         # Object store allocation stats.
-        self._metrics = _ObjectStoreMetrics(alloc=0, freed=0, cur=0, peak=0)
+        self._metrics = _MapOperatorMetrics(
+            ObjectStoreMetrics(alloc=0, freed=0, cur=0, peak=0),
+            DataMungingMetrics(),
+        )
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: _OutputQueue = None
@@ -166,9 +174,10 @@ class MapOperator(PhysicalOperator, ABC):
     def add_input(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
         # Add ref bundle allocation to operator's object store metrics.
-        self._metrics.cur += refs.size_bytes()
-        if self._metrics.cur > self._metrics.peak:
-            self._metrics.peak = self._metrics.cur
+        metrics = self._metrics.object_store_metrics
+        metrics.cur += refs.size_bytes()
+        if metrics.cur > metrics.peak:
+            metrics.peak = metrics.cur
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
         if self._block_ref_bundler.has_bundle():
@@ -237,13 +246,14 @@ class MapOperator(PhysicalOperator, ABC):
         task.inputs.destroy_if_owned()
         # Update object store metrics.
         allocated = task.output.size_bytes()
-        self._metrics.alloc += allocated
-        self._metrics.cur += allocated
+        metrics = self._metrics.object_store_metrics
+        metrics.alloc += allocated
+        metrics.cur += allocated
         freed = task.inputs.size_bytes()
-        self._metrics.freed += freed
-        self._metrics.cur -= freed
-        if self._metrics.cur > self._metrics.peak:
-            self._metrics.peak = self._metrics.cur
+        metrics.freed += freed
+        metrics.cur -= freed
+        if metrics.cur > metrics.peak:
+            metrics.peak = metrics.cur
 
     def inputs_done(self):
         self._block_ref_bundler.done_adding_bundles()
@@ -260,7 +270,7 @@ class MapOperator(PhysicalOperator, ABC):
     def get_next(self) -> RefBundle:
         assert self._started
         bundle = self._output_queue.get_next()
-        self._metrics.cur -= bundle.size_bytes()
+        self._metrics.object_store_metrics.cur -= bundle.size_bytes()
         for _, meta in bundle.blocks:
             self._output_metadata.append(meta)
         return bundle
@@ -280,7 +290,8 @@ class MapOperator(PhysicalOperator, ABC):
         raise NotImplementedError
 
     def get_metrics(self) -> Dict[str, int]:
-        return self._metrics.to_metrics_dict()
+        # Return a flattened metrics dict.
+        return self._metrics.object_store_metrics.to_metrics_dict()
 
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
@@ -306,8 +317,7 @@ class MapOperator(PhysicalOperator, ABC):
     def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
-    @staticmethod
-    def _map_ref_to_ref_bundle(ref: ObjectRef[ObjectRefGenerator]) -> RefBundle:
+    def _map_ref_to_ref_bundle(self, ref: ObjectRef[ObjectRefGenerator]) -> RefBundle:
         """Utility for converting a generator ref to a RefBundle.
 
         This function blocks on the completion of the underlying generator task via
@@ -337,20 +347,13 @@ class _TaskState:
 
 
 @dataclass
-class _ObjectStoreMetrics:
-    """Metrics for object store memory allocations."""
+class _MapOperatorMetrics(Metrics):
+    """Metrics for the MapOperator, including object store allocation metrics as well as
+    batching metrics.
+    """
 
-    alloc: int
-    freed: int
-    cur: int
-    peak: int
-
-    def to_metrics_dict(self) -> Dict[str, int]:
-        return {
-            "obj_store_mem_alloc": self.alloc,
-            "obj_store_mem_freed": self.freed,
-            "obj_store_mem_peak": self.peak,
-        }
+    object_store_metrics: ObjectStoreMetrics
+    data_munging_metrics: DataMungingMetrics
 
 
 def _map_task(
