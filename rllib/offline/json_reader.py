@@ -175,6 +175,13 @@ def postprocess_actions(batch: SampleBatchType, ioctx: IOContext) -> SampleBatch
 
 @DeveloperAPI
 def from_json_data(json_data: Any, worker: Optional["RolloutWorker"]):
+    # the DatasetWriter writes out batches to json as a dict with the following
+    # structure:
+    # {"value": {"type": ..., "} instead of just {"type": ..., }
+    # this if statement is to provide compatibility with this format
+    if set(json_data.keys()) == {"value"}:
+        json_data = json_data["value"]
+
     # Try to infer the SampleBatchType (SampleBatch or MultiAgentBatch).
     if "type" in json_data:
         data_type = json_data.pop("type")
