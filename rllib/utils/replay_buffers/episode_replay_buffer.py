@@ -6,7 +6,7 @@ import numpy as np
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBufferInterface
+from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
 from ray.rllib.utils.typing import SampleBatchType
 
 
@@ -38,8 +38,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
     well as the first action taken in the episode (action picked after observing
     obs(0)).
     The last index in an episode (e.g. f3 in the example above) contains the final
-    observation of the episode, the final reward received, a dummy 0-action, as well
-    as either terminated=True or truncated=True.
+    observation of the episode, the final reward received, a dummy action
+    (repeat the previous action), as well as either terminated=True or truncated=True.
     """
     def __init__(
         self,
@@ -61,20 +61,23 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self.batch_size_B = batch_size_B
         self.batch_length_T = batch_length_T
 
-        # The actual episode buffer.
+        # The actual episode buffer. We are using a deque here for faster insertion
+        # (left side) and eviction (right side) of data.
         self.episodes = deque()
         # Maps (unique) episode IDs to the index under which to find this episode
-        # within our `self.episodes` deque. Note that after ejection started, the
-        # indices will NOT be changed. We will therefore need to offset these indices
-        # by the number of episodes that have already been ejected.
+        # within our `self.episodes` deque.
+        # Note that even after eviction started, the indices in here will NOT be
+        # changed. We will therefore need to offset all indices in
+        # `self.episode_id_to_index` by the number of episodes that have already been
+        # evicted (self._num_episodes_evicted) in order to get the actual index to use
+        # on `self.episodes`.
         self.episode_id_to_index = {}
-        # The number of episodes that have already been ejected from the buffer
-        # due to reaching capacity. This is the offset, which we have to subtract
-        # from the episode index to get the actual location within `self.episodes`.
-        self._num_episodes_ejected = 0
+        # The number of episodes that have already been evicted from the buffer
+        # due to reaching capacity.
+        self._num_episodes_evicted = 0
 
-        # List storing all index tuples: [eps_idx, ts_in_eps_idx], where ...
-        # `eps_idx - self._num_episodes_ejected' is the index into self.episodes.
+        # List storing all index tuples: (eps_idx, ts_in_eps_idx), where ...
+        # `eps_idx - self._num_episodes_evicted' is the index into self.episodes.
         # `ts_in_eps_idx` is the timestep index within that episode
         #  (0 = 1st timestep, etc..).
         # We sample uniformly from the set of these indices in a `sample()`
@@ -82,9 +85,14 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self._indices = []
 
         # The size of the buffer in timesteps.
-        self.size = 0
+        self._num_timesteps = 0
+        # The number of timesteps added thus far.
+        self._num_timesteps_added = 0
+
         # How many timesteps have been sampled from the buffer in total?
         self.sampled_timesteps = 0
+
+        self.rng = np.random.default_rng(seed=None)
 
     @override(ReplayBufferInterface)
     def __len__(self) -> int:
@@ -109,55 +117,72 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         ]
 
         for eps in episodes:
-            self.size += len(eps)
+            self._num_timesteps += len(eps)
+            self._num_timesteps_added += len(eps)
+
             # Ongoing episode, concat to existing record.
             if eps.id_ in self.episode_id_to_index:
-                buf_idx = self.episode_id_to_index[eps.id_]
-                existing_eps = self.episodes[buf_idx - self._num_episodes_ejected]
+                eps_idx = self.episode_id_to_index[eps.id_]
+                existing_eps = self.episodes[eps_idx - self._num_episodes_evicted]
                 old_len = len(existing_eps)
-                self._indices.extend([(buf_idx, old_len + i) for i in range(len(eps))])
+                self._indices.extend([(eps_idx, old_len + i) for i in range(len(eps))])
                 existing_eps.concat_episode(eps)
             # New episode. Add to end of our episodes deque.
             else:
                 self.episodes.append(eps)
-                buf_idx = len(self.episodes) - 1 + self._num_episodes_ejected
-                self.episode_id_to_index[eps.id_] = buf_idx
-                self._indices.extend([(buf_idx, i) for i in range(len(eps))])
+                eps_idx = len(self.episodes) - 1 + self._num_episodes_evicted
+                self.episode_id_to_index[eps.id_] = eps_idx
+                self._indices.extend([(eps_idx, i) for i in range(len(eps))])
 
             # Eject old records from front of deque.
-            while self.size > self.capacity:
+            while self._num_timesteps > self.capacity:
                 # Eject oldest episode.
-                ejected_eps = self.episodes.popleft()
-                ejected_eps_len = len(ejected_eps)
+                evicted_eps = self.episodes.popleft()
+                evicted_eps_len = len(evicted_eps)
                 # Correct our size.
-                self.size -= len(ejected_eps)
-                # Erase episode from all our indices.
-                # Main episode index.
-                ejected_idx = self.episode_id_to_index[ejected_eps.id_]
-                del self.episode_id_to_index[ejected_eps.id_]
+                self._num_timesteps -= evicted_eps_len
 
-                # All timestep indices that this episode owned.
+                # Erase episode from all our indices:
+                # 1) Main episode index.
+                evicted_idx = self.episode_id_to_index[evicted_eps.id_]
+                del self.episode_id_to_index[evicted_eps.id_]
+                # 2) All timestep indices that this episode owned.
                 new_indices = []  # New indices that will replace self._indices.
                 idx_cursor = 0
+                # Loop through all (eps_idx, ts_in_eps_idx)-tuples.
                 for i, idx_tuple in enumerate(self._indices):
-                    if idx_cursor is not None and idx_tuple[0] == ejected_idx:
+                    # This tuple is part of the evicted episode -> Add everything
+                    # up until here to `new_indices` (excluding this very index, b/c
+                    # it's already part of the evicted episode).
+                    if idx_cursor is not None and idx_tuple[0] == evicted_idx:
                         new_indices.extend(self._indices[idx_cursor:i])
+                        # Set to None to indicate we are in the eviction zone.
                         idx_cursor = None
+                    # We are/have been in the eviction zone (i pointing/pointed to the
+                    # evicted episode) ..
                     elif idx_cursor is None:
-                        if idx_tuple[0] != ejected_idx:
+                        # ... but are now not anymore (i is now an index into a
+                        # non-evicted episode) -> Set cursor to valid int again.
+                        if idx_tuple[0] != evicted_idx:
                             idx_cursor = i
-                        # Early-out: We reached the end of the to-be-ejected episode.
-                        # We can stop searching further here.
-                        elif idx_tuple[1] == ejected_eps_len - 1:
+                        # Early-out: We reached the end of the to-be-evicted episode.
+                        # We can stop searching further here (all following tuples
+                        # will NOT be in the evicted episode).
+                        elif idx_tuple[1] == evicted_eps_len - 1:
                             assert self._indices[i+1][0] != idx_tuple[0]
                             idx_cursor = i + 1
                             break
+
+                # Jump over (splice-out) the evicted episode if we are still in the
+                # eviction zone.
                 if idx_cursor is not None:
                     new_indices.extend(self._indices[idx_cursor:])
+
+                # Reset our `self._indices` to the newly compiled list.
                 self._indices = new_indices
 
-                # Increase episode ejected counter.
-                self._num_episodes_ejected += 1
+                # Increase episode evicted counter.
+                self._num_episodes_evicted += 1
 
     @override(ReplayBufferInterface)
     def sample(
@@ -171,9 +196,9 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
         Each row contains consecutive timesteps from an episode, but might not start
         at the beginning of that episode. Should an episode end within such a
-        trajectory, a random next episode (starting from its t0) will be concatenated
-        to that "row". For more details, see the docstring of the EpisodeReplayBuffer
-        class.
+        row (trajectory), a random next episode (starting from its t0) will be
+        concatenated to that row. For more details, see the docstring of the
+        EpisodeReplayBuffer class.
 
         Args:
             num_items: See `batch_size_B`. For compatibility with the
@@ -192,12 +217,12 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 "provided! Use either one."
             )
             batch_size_B = num_items
+
         # Use our default values if no sizes/lengths provided.
         batch_size_B = batch_size_B or self.batch_size_B
-        batch_size_T = batch_size_T or self.batch_size_T
+        batch_length_T = batch_length_T or self.batch_length_T
 
-        # Uniformly sample n samples from self._indices (all stores timesteps).
-        index_tuples_idx = []
+        # Rows to return.
         observations = [[] for _ in range(batch_size_B)]
         actions = [[] for _ in range(batch_size_B)]
         rewards = [[] for _ in range(batch_size_B)]
@@ -208,17 +233,14 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
         B = 0
         T = 0
-        idx_cursor = 0
         while B < batch_size_B:
-            # Ran out of uniform samples -> Sample new set.
-            if len(index_tuples_idx) <= idx_cursor:
-                index_tuples_idx.extend(list(np.random.randint(
-                    0, len(self._indices), size=batch_size_B * 10
-                )))
+            # Pull a new uniform random index tuple: (eps_idx, ts_in_eps_idx).
+            index_tuple = self._indices[self.rng.integers(len(self._indices))]
 
-            index_tuple = self._indices[index_tuples_idx[idx_cursor]]
+            # Compute the actual episode index (offset by the number of
+            # already evicted episodes).
             episode_idx, episode_ts = (
-                index_tuple[0] - self._num_episodes_ejected, index_tuple[1]
+                index_tuple[0] - self._num_episodes_evicted, index_tuple[1]
             )
             episode = self.episodes[episode_idx]
 
@@ -230,8 +252,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 # And we are at the start of an episode: Set reward to 0.0.
                 if episode_ts == 0:
                     rewards[B].append(0.0)
-                # We are in the middle of an episode: Set reward and h_state to
-                # the previous timestep's values.
+                # We are in the middle of an episode: Set reward to the previous
+                # timestep's values.
                 else:
                     rewards[B].append(episode.rewards[episode_ts - 1])
             # We are in the middle of a batch item (row). Concat next episode to this
@@ -273,9 +295,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 B += 1
                 T = 0
 
-            # Use next sampled episode/ts pair to fill the row.
-            idx_cursor += 1
-
         # Update our sampled counter.
         self.sampled_timesteps += batch_size_B * batch_length_T
 
@@ -311,28 +330,22 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         return {
             "episodes": [eps.get_state() for eps in self.episodes],
             "episode_id_to_index": list(self.episode_id_to_index.items()),
-            "_num_episodes_ejected": self._num_episodes_ejected,
+            "_num_episodes_evicted": self._num_episodes_evicted,
             "_indices": self._indices,
-            "size": self.size,
+            "_num_timesteps": self._num_timesteps,
             "sampled_timesteps": self.sampled_timesteps,
         }
 
     @override(ReplayBufferInterface)
     def set_state(self, state) -> None:
-        assert state[0][0] == "episodes"
         self.episodes = deque([
-            _Episode.from_state(eps_data) for eps_data in state[0][1]
+            _Episode.from_state(eps_data) for eps_data in state["episodes"]
         ])
-        assert state[1][0] == "episode_id_to_index"
-        self.episode_id_to_index = dict(state[1][1])
-        assert state[2][0] == "_num_episodes_ejected"
-        self._num_episodes_ejected = state[2][1]
-        assert state[3][0] == "_indices"
-        self._indices = state[3][1]
-        assert state[4][0] == "size"
-        self.size = state[4][1]
-        assert state[5][0] == "sampled_timesteps"
-        self.sampled_timesteps = state[5][1]
+        self.episode_id_to_index = dict(state["episode_id_to_index"])
+        self._num_episodes_evicted = state["_num_episodes_evicted"]
+        self._indices = state["_indices"]
+        self._num_timesteps = state["_num_timesteps"]
+        self.sampled_timesteps = state["sampled_timesteps"]
 
 
 # TODO (sven): Make this EpisodeV3 - replacing EpisodeV2 - to reduce all the

@@ -2,51 +2,73 @@ import unittest
 
 import numpy as np
 
-from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
-from ray.rllib.utils.replay_buffers.utils import ReplayBufferEpisode
+from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
+    _Episode,
+    EpisodeReplayBuffer,
+)
 
 
 class TestEpisodeReplayBuffer(unittest.TestCase):
 
-    """def _add_data_to_buffer(self, _buffer, batch_size, num_batches=5, **kwargs):
-        def _generate_data():
-            return SampleBatch(
-                {
-                    SampleBatch.EPS_ID: [],
-                    SampleBatch.ACTIONS: [np.random.choice([0, 1])],
-                    SampleBatch.OBS: [np.random.random((4,))],
-                    SampleBatch.REWARDS: [np.random.rand()],
-                    SampleBatch.TERMINATEDS: [np.random.choice([False, True])],
-                    SampleBatch.TRUNCATEDS: [np.random.choice([False, False])],
-                }
+    @staticmethod
+    def _get_episode_sample_batch(episode_len=None, id_=None):
+        eps = _Episode(id_=id_, observations=[0.0])
+        ts = np.random.randint(1, 200) if episode_len is None else episode_len
+        for t in range(ts):
+            eps.add_timestep(
+                observation=float(t + 1),
+                action=int(t),
+                reward=0.1 * (t + 1),
             )
+        eps.is_terminated = np.random.random() > 0.5
+        eps.is_truncated = False if eps.is_terminated else np.random.random() > 0.8
+        sample_batch = eps.to_sample_batch()
+        return sample_batch
 
-        for i in range(num_batches):
-            data = [_generate_data() for _ in range(batch_size)]
-            batch = concat_samples(data)
-            _buffer.add(batch, **kwargs)
-    """
+    def test_eviction_logic(self):
+        # Fill a buffer till capacity (100 ts).
+        buffer = EpisodeReplayBuffer(capacity=100)
 
-    def test_episode_replay_buffer(self):
+        batch = self._get_episode_sample_batch(id_="A", episode_len=50)
+        buffer.add(batch)
+
+        batch = self._get_episode_sample_batch(id_="B", episode_len=25)
+        buffer.add(batch)
+
+        # No eviction yet.
+        batch = self._get_episode_sample_batch(id_="C", episode_len=25)
+        buffer.add(batch)
+
+        self.assertTrue(buffer.get_num_episodes() == 3)
+        self.assertTrue(buffer.get_num_timesteps() == 100)
+
+        # Trigger eviction of first episode.
+        batch = self._get_episode_sample_batch(id_="D", episode_len=1)
+        buffer.add(batch)
+
+        self.assertTrue(buffer.get_num_episodes() == 3)
+        self.assertTrue(buffer.get_num_timesteps() == 51)
+        self.assertTrue(set(eps.id_ for eps in buffer.episodes) == {"B", "C", "D"})
+
+        # Add another big episode and trigger another eviction.
+        batch = self._get_episode_sample_batch(id_="E", episode_len=200)
+        buffer.add(batch)
+        self.assertTrue(buffer.get_num_episodes() == 1)
+        self.assertTrue(buffer.get_num_timesteps() == 200)
+        self.assertTrue(set(eps.id_ for eps in buffer.episodes) == {"E"})
+
+        # Add another small episode and trigger another eviction.
+        #batch = self._get_episode_sample_batch(id_="E", episode_len=200)
+        #buffer.add(batch)
+        #self.assertTrue(buffer.get_num_episodes() == 1)
+        #self.assertTrue(buffer.get_num_timesteps() == 200)
+        #self.assertTrue(set(eps.id_ for eps in buffer.episodes) == {"E"})
+
+    def test_episode_replay_buffer_sample_logic(self):
         buffer = EpisodeReplayBuffer(capacity=10000)
 
-        def _get_episode_sample_batch():
-            eps = ReplayBufferEpisode(observations=[0.0])
-            ts = np.random.randint(1, 200)
-            for t in range(ts):
-                eps.add_timestep(
-                    observation=float(t + 1),
-                    action=int(t),
-                    reward=0.1 * (t + 1),
-                )
-            eps.is_terminated = np.random.random() > 0.5
-            eps.is_truncated = False if eps.is_terminated else np.random.random() > 0.8
-            sample_batch = eps.to_sample_batch()
-            return sample_batch
-
         for _ in range(200):
-            batch = _get_episode_sample_batch()
+            batch = self._get_episode_sample_batch()
             buffer.add(batch)
 
         for _ in range(1000):
@@ -66,8 +88,10 @@ class TestEpisodeReplayBuffer(unittest.TestCase):
             assert np.all(is_first[:, 0])
 
             # All fields have same shape.
-            assert obs.shape[
-                   :2] == rewards.shape == actions.shape == is_first.shape == is_last.shape == is_terminated.shape
+            assert (
+                obs.shape[:2] == rewards.shape == actions.shape
+                == is_first.shape == is_last.shape == is_terminated.shape
+            )
 
             # All rewards match obs.
             assert np.all(np.equal(obs * 0.1, rewards))
@@ -79,5 +103,7 @@ class TestEpisodeReplayBuffer(unittest.TestCase):
             # picked in terminal observation/state)).
             assert np.all(np.where(is_terminated[:, 1:],
                                    np.equal(actions[:, 1:], actions[:, :-1]), True))
-            # Where is_terminated, the next rewards should always be 0.0 (reset rewards).
+            # Where is_terminated, the next rewards should always be 0.0
+            # (reset rewards).
             assert np.all(np.where(is_terminated[:, :-1], rewards[:, 1:] == 0.0, True))
+

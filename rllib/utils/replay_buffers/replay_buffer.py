@@ -1,8 +1,6 @@
-from abc import ABCMeta, abstractmethod
 from enum import Enum
 import logging
 import numpy as np
-import platform
 import random
 from typing import Any, Dict, List, Optional, Union
 
@@ -15,6 +13,7 @@ from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
+from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
 from ray.rllib.utils.typing import SampleBatchType
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -62,100 +61,6 @@ def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
             logger.warning(msg)
         else:
             logger.info(msg)
-
-
-@DeveloperAPI
-class ReplayBufferInterface(metaclass=ABCMeta):
-    """Abstract base class for all of RLlib's replay buffers.
-    
-    Mainly defines the `add()` and `sample()` methods that every buffer class
-    must implement to be usable by an Algorithm.
-    Buffers may determine on all the implementation details themselves, e.g.
-    whether to store single timesteps, episodes, or episode fragments or whether
-    to return fixed batch sizes or per-call defined ones.
-    """
-
-    @abstractmethod
-    @DeveloperAPI
-    def __len__(self) -> int:
-        """Returns the number of items currently stored in this buffer."""
-
-    @abstractmethod
-    @DeveloperAPI
-    def add(self, batch: SampleBatchType, **kwargs) -> None:
-        """Adds a batch of experiences or other data to this buffer.
-
-        Splits batch into chunks of timesteps, sequences or episodes, depending on
-        `self._storage_unit`. Calls `self._add_single_batch` to add resulting slices
-        to the buffer storage.
-
-        Args:
-            batch: Batch to add.
-            ``**kwargs``: Forward compatibility kwargs.
-        """
-
-    @abstractmethod
-    @DeveloperAPI
-    def sample(
-        self, num_items: Optional[int] = None, **kwargs
-    ) -> Optional[SampleBatchType]:
-        """Samples `num_items` items from this buffer.
-
-        The items depend on the buffer's storage_unit.
-        Samples in the results may be repeated.
-
-        Examples for sampling results:
-
-        1) If storage unit 'timesteps' has been chosen and batches of
-        size 5 have been added, sample(5) will yield a concatenated batch of
-        15 timesteps.
-
-        2) If storage unit 'sequences' has been chosen and sequences of
-        different lengths have been added, sample(5) will yield a concatenated
-        batch with a number of timesteps equal to the sum of timesteps in
-        the 5 sampled sequences.
-
-        3) If storage unit 'episodes' has been chosen and episodes of
-        different lengths have been added, sample(5) will yield a concatenated
-        batch with a number of timesteps equal to the sum of timesteps in
-        the 5 sampled episodes.
-
-        Args:
-            num_items: Number of items to sample from this buffer.
-            ``**kwargs``: Forward compatibility kwargs.
-
-        Returns:
-            Concatenated batch of items.
-        """
-
-    @abstractmethod
-    @DeveloperAPI
-    def get_state(self) -> Dict[str, Any]:
-        """Returns all local state in a dict.
-
-        Returns:
-            The serializable local state.
-        """
-
-    @abstractmethod
-    @DeveloperAPI
-    def set_state(self, state: Dict[str, Any]) -> None:
-        """Restores all local state to the provided `state`.
-
-        Args:
-            state: The new state to set this buffer. Can be obtained by calling
-                `self.get_state()`.
-        """
-
-    @DeveloperAPI
-    def get_host(self) -> str:
-        """Returns the computer's network name.
-
-        Returns:
-            The computer's networks name or an empty string, if the network
-            name could not be determined.
-        """
-        return platform.node()
 
 
 @DeveloperAPI
@@ -286,6 +191,16 @@ class ReplayBuffer(ReplayBufferInterface, FaultAwareApply):
 
     @override(ReplayBufferInterface)
     def add(self, batch: SampleBatchType, **kwargs) -> None:
+        """Adds a batch of experiences or other data to this buffer.
+
+        Splits batch into chunks of timesteps, sequences or episodes, depending on
+        `self._storage_unit`. Calls `self._add_single_batch` to add resulting slices
+        to the buffer storage.
+
+        Args:
+            batch: The batch to add.
+            ``**kwargs``: Forward compatibility kwargs.
+        """
         if not batch.count > 0:
             return
 
