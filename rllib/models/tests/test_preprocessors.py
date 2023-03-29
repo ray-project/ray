@@ -36,7 +36,7 @@ class TestPreprocessors(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_preprocessing_disabled(self):
+    def test_rlms_and_preprocessing(self):
         config = (
             ppo.PPOConfig()
             .environment(
