@@ -1011,7 +1011,7 @@ class TorchPolicyV2(Policy):
         os.makedirs(export_dir, exist_ok=True)
 
         enable_rl_module = self.config.get("_enable_rl_module_api", False)
-        if enable_rl_module:
+        if enable_rl_module and onnx:
             raise ValueError("ONNX export not supported for RLModule API.")
 
         if onnx:

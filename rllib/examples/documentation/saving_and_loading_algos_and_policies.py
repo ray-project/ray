@@ -231,6 +231,7 @@ ppo_config = (
 # ppo_config.framework("torch")
 
 # Create the Algorithm and train one iteration.
+# We disable the RLModules and Learner APIs here, since
 ppo = ppo_config.build()
 ppo.train()
 
@@ -245,7 +246,7 @@ ppo_policy = ppo.get_policy()
 # 1) .. using the Policy object:
 
 # __export-models-1-begin__
-ppo_policy.export_model("/tmp/my_nn_model")
+ppo_policy.export_model("/tmp/my_nn_model", onnx=False)
 # .. check /tmp/my_nn_model/ for the model files.
 
 # For Keras You should be able to recover the model via:
@@ -295,9 +296,14 @@ checkpoint_dir = ppo.save()
 
 # __export-models-3-end__
 
+# Exporting Policies in ONNX format is only supported without RLModules
+# TODO (Artur): Switch this to the RLModule API once it is supported.
+ppo_config = (
+    PPOConfig().environment("Pendulum-v1").checkpointing(export_native_model_files=True)
+).rl_module(_enable_rl_module_api=True).training(_enable_learner_api=True)
 
 # __export-models-as-onnx-begin__
 # Using the same Policy object, we can also export our NN Model in the ONNX format:
-ppo_policy.export_model("/tmp/my_nn_model", onnx=False)
+ppo_policy.export_model("/tmp/my_nn_model", onnx=True)
 
 # __export-models-as-onnx-end__
