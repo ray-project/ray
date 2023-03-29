@@ -2119,7 +2119,7 @@
     frequency: nightly
 
     run:
-      timeout: 1200
+      timeout: 600
 
   alert: long_running_tests
 
