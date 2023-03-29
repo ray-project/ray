@@ -315,6 +315,15 @@
 
   alert: default
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gce_gpu_4_g4_12xl.yaml
+
+
 
 - name: air_benchmark_torch_mnist_cpu_4x4
   group: AIR tests
@@ -531,6 +540,14 @@
 
 
   alert: default
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gce_gpu_16.yaml
 
 # Test tiny, medium, and huge input files.
 - name: ray-data-bulk-ingest-file-size-benchmark
@@ -3410,6 +3427,14 @@
     wait_for_nodes:
       num_nodes: 4
 
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        cluster_env: shuffle/shuffle_app_config.yaml
+        cluster_compute: shuffle/shuffle_compute_multi.yaml
+
 
 - name: stress_test_placement_group
   group: core-multi-test
@@ -3469,6 +3494,14 @@
     timeout: 4000
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
       --no-streaming
+
+  flavors:
+    - name: aws
+    - name: gce
+      env: gce
+      cluster:
+        - cluster_env: shuffle/shuffle_app_config.yaml
+        - cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
 
 - name: microbenchmark
