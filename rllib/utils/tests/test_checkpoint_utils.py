@@ -132,10 +132,7 @@ class TestCheckpointUtils(unittest.TestCase):
         ] = AlgorithmConfig._serialize_dict(
             pickle_w["policy_states"]["default_policy"]["policy_spec"]["config"]
         )
-        check(
-            pickle_state["worker"]["policy_states"],
-            msgpack_state["worker"]["policy_states"],
-        )
+        check(pickle_w["policy_states"], msgpack_w["policy_states"])
         check(pickle_state["config"].serialize(), msgpack_state["config"].serialize())
 
         algo1.stop()
@@ -190,20 +187,27 @@ class TestCheckpointUtils(unittest.TestCase):
         self.assertTrue(pickle_cp_info["format"] == "cloudpickle")
         self.assertTrue(msgpack_cp_info["format"] == "msgpack")
 
+        pickle_w = pickle_state["worker"]
+        msgpack_w = msgpack_state["worker"]
+
         # Make sure recovered-from-pickle state is the same as recovered-from-msgpack
         # state.
         self.assertTrue(
             pickle_state["algorithm_class"] == msgpack_state["algorithm_class"]
         )
         check(pickle_state["counters"], msgpack_state["counters"])
-        check(
-            pickle_state["worker"]["policy_ids"], msgpack_state["worker"]["policy_ids"]
-        )
-        check(pickle_state["worker"]["filters"], msgpack_state["worker"]["filters"])
-        check(
-            pickle_state["worker"]["policy_states"],
-            msgpack_state["worker"]["policy_states"],
-        )
+        check(pickle_w["policy_ids"], msgpack_w["policy_ids"])
+        check(pickle_w["filters"], msgpack_w["filters"])
+
+        # Make sure the (serialized) configs match 100%. Our `check` utility
+        # cannot handle comparing types/classes.
+        for p in ["pol0", "pol1", "pol2"]:
+            pickle_w["policy_states"][p]["policy_spec"][
+                "config"
+            ] = AlgorithmConfig._serialize_dict(
+                pickle_w["policy_states"][p]["policy_spec"]["config"]
+            )
+        check(pickle_w["policy_states"], msgpack_w["policy_states"])
         # Make sure the (serialized) configs match 100%. Our `check` utility cannot
         # handle comparing types/classes.
         # The only exception is the `multiagent.policies` field as it might have gotten
