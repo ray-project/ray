@@ -72,8 +72,8 @@ class LightningCheckpoint(TorchCheckpoint):
 
         if os.path.isdir(path):
             raise ValueError(
-                f"from_path() expects a file path, but `{path}` is a directory. "
-                "You can either provide a checkpoint file path, or try to use "
+                f"`from_path()` expects a file path, but `{path}` is a directory. "
+                "Please provide a valid checkpoint file path, or try to use "
                 "`LightningCheckpoint.from_directory()` instead."
             )
 
