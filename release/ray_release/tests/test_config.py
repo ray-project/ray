@@ -64,11 +64,12 @@ VALID_TEST_DEFINITION = TestDefinition(
                 "cluster": {
                     "cluster_env": "app_config.yaml",
                     "cluster_compute": "tpl_cpu_small_gce.yaml",
-                }
-            }
-        ]
+                },
+            },
+        ],
     }
 )
+
 
 def test_definition_parser():
     test_definition = VALID_TEST_DEFINITION.copy()
@@ -78,8 +79,9 @@ def test_definition_parser():
     schema = load_schema_file()
     assert not validate_test(aws_test, schema)
     assert not validate_test(gce_test, schema)
-    assert aws_test['name'] == 'validation_test-aws'
-    assert gce_test['cluster']['cluster_compute'] == 'tpl_cpu_small_gce.yaml'
+    assert aws_test["name"] == "validation_test-aws"
+    assert gce_test["cluster"]["cluster_compute"] == "tpl_cpu_small_gce.yaml"
+
 
 def test_schema_validation():
     test = VALID_TEST.copy()
