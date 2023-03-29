@@ -136,7 +136,13 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
 
 @pytest.mark.parametrize(
     "test_file",
-    ["test.log", "test#1234.log"],
+    [
+        "test.log",
+        "test#1234.log",
+        "test_file_no_suffix",
+        "test_file_not_register_mimetypes.json",
+        "test_file_not_register_mimetypes.yaml",
+    ],
 )
 def test_log_proxy(ray_start_with_dashboard, test_file):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
