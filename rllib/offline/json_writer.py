@@ -113,7 +113,30 @@ def _to_jsonable(v, compress: bool) -> Any:
         return str(pack(v))
     elif isinstance(v, np.ndarray):
         return v.tolist()
+    
     return v
+
+
+def _convert_keys_to_strings_json_dict(d: Dict[Any, Any]) -> Dict[Any, Any]:
+    """Convert all keys in a JSON-serializable dict to strings.
+    
+    Args:
+        d: JSON-serializable dict.
+
+    Returns:
+        JSON-serializable dict with all keys converted to strings.
+    """
+    if isinstance(d, dict):
+        keys = list(d.keys())
+        for key in keys:
+            if not isinstance(key, str):
+                d[str(key)] = d.pop(key)
+            value = d[str(key)]
+            _convert_keys_to_strings_json_dict(value)
+    elif isinstance(d, list):
+        for item in d:
+            _convert_keys_to_strings_json_dict(item)
+    return d
 
 
 def _to_json_dict(batch: SampleBatchType, compress_columns: List[str]) -> Dict:
@@ -133,6 +156,7 @@ def _to_json_dict(batch: SampleBatchType, compress_columns: List[str]) -> Dict:
         out["type"] = "SampleBatch"
         for k, v in batch.items():
             out[k] = _to_jsonable(v, compress=k in compress_columns)
+    out = _convert_keys_to_strings_json_dict(out)
     return out
 
 
