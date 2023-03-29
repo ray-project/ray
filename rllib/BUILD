@@ -3289,6 +3289,14 @@ py_test(
 )
 
 py_test(
+    name = "examples/env/box_2d_env",
+    tags = ["team:rllib", "examples", "no_main"],
+    size = "medium",
+    srcs = ["examples/env/box_2d_env.py"],
+    args = ["--stop-iters=1 --as-test --framework torch"]
+)
+
+py_test(
     name = "examples/export/cartpole_dqn_export",
     main = "examples/export/cartpole_dqn_export.py",
     tags = ["team:rllib", "exclusive", "examples"],
