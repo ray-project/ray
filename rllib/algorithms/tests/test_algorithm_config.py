@@ -3,7 +3,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import MultiCallbacks
+from ray.rllib.algorithms.callbacks import make_multi_callbacks
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -38,7 +38,7 @@ class TestAlgorithmConfig(unittest.TestCase):
 
     def test_update_from_dict_works_for_multi_callbacks(self):
         """Test to make sure callbacks config dict works."""
-        config_dict = {"callbacks": MultiCallbacks([])}
+        config_dict = {"callbacks": make_multi_callbacks([])}
         config = (
             AlgorithmConfig(algo_class=PPO)
             .environment("CartPole-v0")
@@ -49,7 +49,7 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         serialized = config.serialize()
 
-        # For now, we don't support serializing MultiCallbacks.
+        # For now, we don't support serializing make_multi_callbacks.
         self.assertEqual(serialized["callbacks"], NOT_SERIALIZABLE)
 
     def test_freezing_of_algo_config(self):
