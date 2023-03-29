@@ -145,13 +145,9 @@ class PolicySpec:
             "policy_class": cls,
             "observation_space": space_to_dict(self.observation_space),
             "action_space": space_to_dict(self.action_space),
-            # Make the config dict durable by getting rid of all the fields
-            # that are code (not JSON serializable).
-            "config": (
-                AlgorithmConfig._serialize_dict(self.config)
-                if isinstance(self.config, dict)
-                else self.config.serialize()
-            ),
+            # TODO(jungong) : try making the config dict durable by maybe
+            # getting rid of all the fields that are not JSON serializable.
+            "config": self.config,
         }
 
     @classmethod
