@@ -146,7 +146,6 @@ class _ImageDatasourceReader(_FileBasedDatasourceReader):
             paths=paths,
             filesystem=filesystem,
             schema=None,
-            open_stream_args=None,
             meta_provider=meta_provider,
             partition_filter=partition_filter,
             partitioning=partitioning,
