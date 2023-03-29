@@ -350,6 +350,11 @@ print(ray.get([use_gpu.remote(), use_gpu.remote()]))
     wait_for_condition(lambda: check_demands(1))
 
 
+@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
+def test_redis_failure_message(external_redis):
+    pass
+
+
 if __name__ == "__main__":
     import pytest
     import os

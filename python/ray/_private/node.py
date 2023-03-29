@@ -176,7 +176,7 @@ class Node:
 
         if not self.head:
             self.validate_ip_port(self.address)
-            self.get_gcs_client()
+            self._init_gcs_client()
 
         # Register the temp dir.
         if head:
@@ -196,8 +196,6 @@ class Node:
             else:
                 # worker mode
                 self._session_name = ray_params.session_name
-            # setup gcs client
-            self.get_gcs_client()
 
         # Initialize webui url
         if head:
@@ -576,12 +574,18 @@ class Node:
         return self.head
 
     def get_gcs_client(self):
+        if self._gcs_client is None:
+            self._init_gcs_client()
         return self._gcs_client
 
     def _init_gcs_client(self):
-        gcs_process = self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][
-            0
-        ].process
+        if self.head:
+            gcs_process = self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][
+                0
+            ].process
+        else:
+            gcs_process = None
+
         for _ in range(NUM_REDIS_GET_RETRIES):
             gcs_address = None
             last_ex = None
@@ -593,7 +597,7 @@ class Node:
                 self._gcs_client = client
                 break
             except Exception:
-                if gcs_process.poll() is not None:
+                if gcs_process is not None and gcs_process.poll() is not None:
                     # GCS has exited.
                     break
                 last_ex = traceback.format_exc()
