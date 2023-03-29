@@ -558,6 +558,7 @@ def _build_eager_tf_policy(
             prev_action_batch=None,
             prev_reward_batch=None,
             actions_normalized=True,
+            **kwargs,
         ):
             if action_sampler_fn and action_distribution_fn is None:
                 raise ValueError(

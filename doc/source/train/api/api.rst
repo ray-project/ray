@@ -93,7 +93,7 @@ PyTorch Lightning
 
     ~train.lightning.LightningTrainer
     ~train.lightning.LightningConfigBuilder
-
+    ~train.lightning.LightningCheckpoint
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~
@@ -157,7 +157,7 @@ HuggingFace
 
     ~train.huggingface.HuggingFaceTrainer
     ~train.huggingface.HuggingFaceCheckpoint
-
+    ~train.huggingface.accelerate.AccelerateTrainer
 
 Scikit-Learn
 ~~~~~~~~~~~~

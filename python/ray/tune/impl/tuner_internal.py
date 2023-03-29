@@ -83,22 +83,11 @@ class TunerInternal:
         from ray.train.trainer import BaseTrainer
 
         if isinstance(trainable, BaseTrainer):
-            # If no run config was passed to the Tuner directly,
-            # use the one from the Trainer, if available
-            if not run_config:
-                run_config = trainable.run_config
-            if run_config and trainable.run_config != RunConfig():
-                logger.info(
-                    "A `RunConfig` was passed to both the `Tuner` and the "
-                    f"`{trainable.__class__.__name__}`. The run config passed to "
-                    "the `Tuner` is the one that will be used."
-                )
-            if param_space and "run_config" in param_space:
-                raise ValueError(
-                    "`RunConfig` cannot be tuned as part of the `param_space`! "
-                    "Move the run config to be a parameter of the `Tuner`: "
-                    "Tuner(..., run_config=RunConfig(...))"
-                )
+            run_config = self._choose_run_config(
+                tuner_run_config=run_config,
+                trainer=trainable,
+                param_space=param_space,
+            )
 
         self.trainable = trainable
         param_space = param_space or {}
@@ -243,6 +232,7 @@ class TunerInternal:
         (ensuring same type and name as the original trainable).
         """
 
+        # TODO(ml-team): Remove (https://github.com/ray-project/ray/issues/33546)
         # Check if the trainable was wrapped with `tune.with_parameters`,
         # Set the Tuner to fail on fit if the trainable is not re-specified.
         trainable_wrapped_params = getattr(
@@ -260,8 +250,8 @@ class TunerInternal:
                 "trainable_with_params = tune.with_parameters(trainable, ...)\n"
                 "tuner = tune.Tuner.restore(\n"
                 "    ..., trainable=trainable_with_params\n"
-                ")\n\nSee https://docs.ray.io/en/master/tune/api_docs/trainable.html"
-                "#tune-with-parameters for more details."
+                ")\n\nSee https://docs.ray.io/en/latest/tune/api/doc/"
+                "ray.tune.with_parameters.html for more details."
             )
         if not overwrite_trainable:
             return
@@ -296,14 +286,6 @@ class TunerInternal:
                     f"{error_message}\nGot new trainable with identifier "
                     f"{overwrite_name} but expected {original_name}."
                 )
-
-        logger.warning(
-            "The trainable will be overwritten - this should be done with caution: "
-            "it's possible to supply an incompatible trainable, and there are "
-            "no guarantees that the resumed experiment will continue successfully. "
-            "If you encounter errors during training, ensure that you are passing "
-            "in the same trainable that was passed into the initial `Tuner` object."
-        )
 
     def _restore_from_path_or_uri(
         self,
@@ -402,6 +384,49 @@ class TunerInternal:
         )
         download_from_uri(str(restore_uri / _TUNER_PKL), str(tempdir / _TUNER_PKL))
         return True, str(tempdir)
+
+    def _choose_run_config(
+        self,
+        tuner_run_config: Optional[RunConfig],
+        trainer: "BaseTrainer",
+        param_space: Optional[Dict[str, Any]],
+    ) -> RunConfig:
+        """Chooses which `RunConfig` to use when multiple can be passed in
+        through a Trainer or the Tuner itself.
+
+        Args:
+            tuner_run_config: The run config passed into the Tuner constructor.
+            trainer: The AIR Trainer instance to use with Tune, which may have
+                a RunConfig specified by the user.
+            param_space: The param space passed to the Tuner.
+
+        Raises:
+            ValueError: if the `run_config` is specified as a hyperparameter.
+        """
+        if param_space and "run_config" in param_space:
+            raise ValueError(
+                "`RunConfig` cannot be tuned as part of the `param_space`! "
+                "Move the run config to be a parameter of the `Tuner`: "
+                "Tuner(..., run_config=RunConfig(...))"
+            )
+
+        # Both Tuner RunConfig + Trainer RunConfig --> prefer Tuner RunConfig
+        if tuner_run_config and trainer.run_config != RunConfig():
+            logger.info(
+                "A `RunConfig` was passed to both the `Tuner` and the "
+                f"`{trainer.__class__.__name__}`. The run config passed to "
+                "the `Tuner` is the one that will be used."
+            )
+            return tuner_run_config
+
+        # No Tuner RunConfig -> pass the Trainer config through
+        # This returns either a user-specified config, or the default RunConfig
+        # if nothing was provided to both the Trainer or Tuner.
+        if not tuner_run_config:
+            return trainer.run_config
+
+        # Tuner RunConfig + No Trainer RunConfig --> Use the Tuner config
+        return tuner_run_config
 
     def _process_scaling_config(self) -> None:
         """Converts ``self._param_space["scaling_config"]`` to a dict.
@@ -570,6 +595,7 @@ class TunerInternal:
             trial_name_creator=self._tune_config.trial_name_creator,
             trial_dirname_creator=self._tune_config.trial_dirname_creator,
             chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
+            _tuner_api=True,
         )
 
     def _fit_internal(
