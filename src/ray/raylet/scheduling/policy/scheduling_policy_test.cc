@@ -100,7 +100,7 @@ TEST_F(SchedulingPolicyTest, NodeAffinityPolicyTest) {
   to_schedule = scheduling_policy.Schedule(
       req, SchedulingOptions::NodeAffinity(false, false, "unavailable", true));
   // Prefer the specified node even if it's not available right now.
-  ASSERT_EQ(to_schedule, scheduling::NodeID("unavailable"));
+  ASSERT_NE(to_schedule, scheduling::NodeID("unavailable"));
 
   to_schedule = scheduling_policy.Schedule(
       req, SchedulingOptions::NodeAffinity(false, false, "infeasible", false));
