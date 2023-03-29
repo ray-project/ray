@@ -1287,9 +1287,9 @@
     wait_for_nodes:
       num_nodes: 4
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -1313,9 +1313,9 @@
     wait_for_nodes:
       num_nodes: 4
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -1340,9 +1340,9 @@
     wait_for_nodes:
       num_nodes: 4
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml

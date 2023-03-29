@@ -1,5 +1,6 @@
 import os
 import sys
+import yaml
 import pytest
 
 from ray_release.config import (
@@ -72,15 +73,32 @@ VALID_TEST_DEFINITION = TestDefinition(
 
 
 def test_definition_parser():
-    test_definition = VALID_TEST_DEFINITION.copy()
-    tests = parse_test_definition([test_definition])
+    test_definition = yaml.safe_load('''
+        - name: sample_test
+          working_dir: sample_dir
+          frequency: nightly
+          team: sample
+          cluster:
+            cluster_env: env.yaml
+            cluster_compute: compute.yaml
+          run:
+            timeout: 100
+            script: python script.py
+          variations:
+            - __suffix__: aws
+            - __suffix__: gce
+              cluster:
+                cluster_env: env_gce.yaml
+                cluster_compute: compute_gce.yaml
+    ''')
+    tests = parse_test_definition(test_definition)
     aws_test = tests[0]
     gce_test = tests[1]
     schema = load_schema_file()
     assert not validate_test(aws_test, schema)
     assert not validate_test(gce_test, schema)
-    assert aws_test["name"] == "validation_test-aws"
-    assert gce_test["cluster"]["cluster_compute"] == "tpl_cpu_small_gce.yaml"
+    assert aws_test["name"] == "sample_test.aws"
+    assert gce_test["cluster"]["cluster_compute"] == "compute_gce.yaml"
 
 
 def test_schema_validation():
