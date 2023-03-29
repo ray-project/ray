@@ -1938,14 +1938,6 @@ py_test(
     srcs = ["core/learner/tests/test_learner.py"]
 )
 
-# TODO (Kourosh): to be removed in favor of test_learner.py
-py_test(
-    name = "test_torch_learner",
-    tags = ["team:rllib", "core", "ray_data"],
-    size = "medium",
-    srcs = ["core/learner/torch/tests/test_torch_learner.py"]
-)
-
 py_test(
     name = "test_bc_algorithm",
     tags = ["team:rllib", "core"],

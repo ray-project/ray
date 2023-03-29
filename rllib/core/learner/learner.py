@@ -416,9 +416,6 @@ class Learner:
             batch: The batch that was used for the update.
             update_outs: The outputs of the update function. It should include the keys
                 for obtaining loss, forward output, and postprocessed gradients.
-            fwd_out: The output of the forward train pass.
-            postprocessed_loss: The loss after postprocessing.
-            postprocessed_gradients: The gradients after postprocessing.
 
         Returns:
             A dictionary of results.
