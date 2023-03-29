@@ -56,7 +56,7 @@ The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` ``save()`` method crea
 Let's take a look at a simple example on how to create such an
 Algorithm checkpoint:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_rl_modules.py
     :language: python
     :start-after: __create-algo-checkpoint-begin__
     :end-before: __create-algo-checkpoint-end__
@@ -172,7 +172,7 @@ Given our checkpoint path (returned by ``Algorithm.save()``), we can now
 create a completely new Algorithm instance and make it the exact same as the one we
 had stopped (and could thus no longer use) in the example above:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_rl_modules.py
     :language: python
     :start-after: __restore-from-algo-checkpoint-begin__
     :end-before: __restore-from-algo-checkpoint-end__
@@ -182,7 +182,7 @@ Alternatively, you could also first create a new Algorithm instance using the
 same config that you used for the original algo, and only then call the new
 Algorithm's ``restore()`` method, passing it the checkpoint directory:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_rl_modules.py
     :language: python
     :start-after: __restore-from-algo-checkpoint-2-begin__
     :end-before: __restore-from-algo-checkpoint-2-end__
@@ -223,7 +223,7 @@ inside the sub-directory ``policies/``.
 
 For example:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_rl_modules.py
     :language: python
     :start-after: __multi-agent-checkpoints-begin__
     :end-before: __multi-agent-checkpoints-end__
@@ -238,7 +238,7 @@ However, there may be a situation where you have so many policies in your algori
 instance from your checkpoint, but only include some of the original policies in this
 new Algorithm object. In this case, you can also do:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_rl_modules.py
     :language: python
     :start-after: __multi-agent-checkpoints-restore-policy-sub-set-begin__
     :end-before: __multi-agent-checkpoints-restore-policy-sub-set-end__
@@ -284,7 +284,7 @@ described above or - if you need more fine-grained control - by doing the follow
 
 
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_rl_modules.py
     :language: python
     :start-after: __create-policy-checkpoint-begin__
     :end-before: __create-policy-checkpoint-end__
@@ -317,7 +317,7 @@ contains all its Policies' checkpoints.
 
 Here is how you can do this:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_rl_modules.py
     :language: python
     :start-after: __restore-policy-begin__
     :end-before: __restore-policy-end__
@@ -342,7 +342,7 @@ You can use the original checkpoint (with the 100 policies in it) and the
 This example here shows this for five original policies that you would like reduce to
 two policies:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_rl_modules.py
     :language: python
     :start-after: __restore-algorithm-from-checkpoint-with-fewer-policies-begin__
     :end-before: __restore-algorithm-from-checkpoint-with-fewer-policies-end__
@@ -371,7 +371,7 @@ There are several ways of creating Keras- or PyTorch native model "exports".
 
 Here is the example code that illustrates these:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_rl_modules.py
     :language: python
     :start-after: __export-models-begin__
     :end-before: __export-models-end__
@@ -381,35 +381,15 @@ to disk ...
 
 1) Using the Policy object:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_rl_modules.py
     :language: python
-    :start-after: __export-models-1-begin__
-    :end-before: __export-models-1-end__
+    :start-after: __export-rlm-1-begin__
+    :end-before: __export-rlm-1-end__
 
-2) Via the Policy's checkpointing method:
+2) Via the Algorithm (Policy) checkpoint:
 
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
+.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_rl_modules.py
     :language: python
-    :start-after: __export-models-2-begin__
-    :end-before: __export-models-2-end__
+    :start-after: __export-rlm-2-begin__
+    :end-before: __export-rlm-2-end__
 
-3) Via the Algorithm (Policy) checkpoint:
-
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
-    :language: python
-    :start-after: __export-models-3-begin__
-    :end-before: __export-models-3-end__
-
-
-And what about exporting my NN Models in ONNX format?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-RLlib also supports exporting your NN models in the ONNX format. For that, use the
-:py:class:`~ray.rllib.policy.policy.Policy` ``export_model`` method, but provide the
-extra ``onnx`` arg as follows:
-
-
-.. literalinclude:: ../../../rllib/examples/documentation/saving_and_loading_algos_and_policies.py
-    :language: python
-    :start-after: __export-models-as-onnx-begin__
-    :end-before: __export-models-as-onnx-end__

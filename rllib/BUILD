@@ -4122,11 +4122,11 @@ py_test(
 )
 
 py_test(
-    name = "examples/documentation/saving_and_loading_algos_and_policies",
-    main = "examples/documentation/saving_and_loading_algos_and_policies.py",
+    name = "examples/documentation/saving_and_loading_algos_and_rl_modules",
+    main = "examples/documentation/saving_and_loading_algos_and_rl_modules.py",
     tags = ["team:rllib", "documentation", "no_main"],
     size = "medium",
-    srcs = ["examples/documentation/saving_and_loading_algos_and_policies.py"],
+    srcs = ["examples/documentation/saving_and_loading_algos_and_rl_modules.py"],
 )
 
 py_test(

@@ -11,17 +11,9 @@ my_ppo = my_ppo_config.build()
 my_ppo.train()
 # .. and call `save()` to create a checkpoint.
 path_to_checkpoint = my_ppo.save()
-print(
-    "An Algorithm checkpoint has been created inside directory: "
-    f"'{path_to_checkpoint}'."
-)
-
 # Let's terminate the algo for demonstration purposes.
 my_ppo.stop()
-# Doing this will lead to an error.
-# my_ppo.train()
 # __create-algo-checkpoint-end__
-
 
 # __restore-from-algo-checkpoint-begin__
 from ray.rllib.algorithms.algorithm import Algorithm
@@ -53,7 +45,6 @@ my_new_ppo.train()
 my_new_ppo.stop()
 
 # __multi-agent-checkpoints-begin__
-import os
 
 # Use our example multi-agent CartPole environment to train in.
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
@@ -62,7 +53,7 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 my_ma_config = PPOConfig().multi_agent(
     # Which policies should RLlib create and train?
     policies={"pol1", "pol2"},
-    # Let RLlib know, which agents in the environment (we'll have "agent1"
+    # Let RLlib know which agents in the environment (we'll have "agent1"
     # and "agent2") map to which policies.
     policy_mapping_fn=(
         lambda agent_id, episode, worker, **kw: (
@@ -87,13 +78,6 @@ my_ma_config.environment(
 my_ma_algo = my_ma_config.build()
 
 ma_checkpoint_dir = my_ma_algo.save()
-
-print(
-    "An Algorithm checkpoint has been created inside directory: "
-    f"'{ma_checkpoint_dir}'.\n"
-    "Individual Policy checkpoints can be found in "
-    f"'{os.path.join(ma_checkpoint_dir, 'policies')}'."
-)
 
 # Create a new Algorithm instance from the above checkpoint, just as you would for
 # a single-agent setup:
@@ -216,94 +200,52 @@ algo_w_2_policies.stop()
 
 # __restore-algorithm-from-checkpoint-with-fewer-policies-end__
 
-
-# __export-models-begin__
+import torch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.algorithms.ppo import PPOConfig
 
-# Create a new Algorithm (which contains a Policy, which contains a NN Model).
-# Switch on for native models to be included in the Policy checkpoints.
+# __export-models-begin__
+
+# Create a new Algorithm (which contains a Policy, which contains a torch.nn.Model).
 ppo_config = (
     PPOConfig().environment("Pendulum-v1").checkpointing(export_native_model_files=True)
-)
-
-# The default framework is TensorFlow, but if you would like to do this example with
-# PyTorch, uncomment the following line of code:
-# ppo_config.framework("torch")
+).framework("torch")
 
 # Create the Algorithm and train one iteration.
-# We disable the RLModules and Learner APIs here, since
 ppo = ppo_config.build()
 ppo.train()
 
-# Get the underlying PPOTF1Policy (or PPOTorchPolicy) object.
+# Get the underlying PPO Policy object.
 ppo_policy = ppo.get_policy()
 
 # __export-models-end__
 
-# Export the Keras NN model (that our PPOTF1Policy inside the PPO Algorithm uses)
-# to disk ...
+# Export the RLModule to disk ...
 
 # 1) .. using the Policy object:
 
-# __export-models-1-begin__
+# __export-rlm-1-begin__
+# Export the RLModule to disk.
 ppo_policy.export_model("/tmp/my_nn_model", onnx=False)
-# .. check /tmp/my_nn_model/ for the model files.
+# Load the RLModule from disk.
+pytorch_model = torch.load("/tmp/my_nn_model/model.pt")
+# Create a dummy input dict for the RLModule.
+dummy_inputs = {"obs": torch.from_numpy(np.array([[0.0, 0.1, 0.2]], dtype=np.float32))}
+# Sample an action from the model.
+pytorch_model.forward_inference(dummy_inputs)[SampleBatch.ACTION_DIST].sample()
 
-# For Keras You should be able to recover the model via:
-# keras_model = tf.saved_model.load("/tmp/my_nn_model/")
-# And pass in a Pendulum-v1 observation:
-# results = keras_model(tf.convert_to_tensor(
-#     np.array([[0.0, 0.1, 0.2]]), dtype=np.float32)
-# )
+# __export-rlm-1-end__
 
-# For PyTorch, do:
-# pytorch_model = torch.load("/tmp/my_nn_model/model.pt")
-# results = pytorch_model(
-#     input_dict={
-#         "obs": torch.from_numpy(np.array([[0.0, 0.1, 0.2]], dtype=np.float32)),
-#     },
-#     state=[torch.tensor(0)],  # dummy value
-#     seq_lens=torch.tensor(0),  # dummy value
-# )
+# 2) .. via the Algorithm checkpoint:
 
-# __export-models-1-end__
-
-# 2) .. via the Policy's checkpointing method:
-
-# __export-models-2-begin__
-checkpoint_dir = ppo_policy.export_checkpoint("tmp/ppo_policy")
-# .. check /tmp/ppo_policy/model/ for the model files.
-# You should be able to recover the keras model via:
-# keras_model = tf.saved_model.load("/tmp/ppo_policy/model")
-# And pass in a Pendulum-v1 observation:
-# results = keras_model(tf.convert_to_tensor(
-#     np.array([[0.0, 0.1, 0.2]]), dtype=np.float32)
-# )
-
-# __export-models-2-end__
-
-# 3) .. via the Algorithm (Policy) checkpoint:
-
-# __export-models-3-begin__
+# __export-rlm-2-begin__
+# Export the RLModule to disk.
 checkpoint_dir = ppo.save()
-# .. check `checkpoint_dir` for the Algorithm checkpoint files.
-# For keras you should be able to recover the model via:
-# keras_model = tf.saved_model.load(checkpoint_dir + "/policies/default_policy/model/")
-# And pass in a Pendulum-v1 observation
-# results = keras_model(tf.convert_to_tensor(
-#     np.array([[0.0, 0.1, 0.2]]), dtype=np.float32)
-# )
+# Load the RLModule from disk.
+pytorch_model = torch.load(checkpoint_dir + "/policies/default_policy/model/model.pt")
+# Create a dummy input dict for the RLModule.
+dummy_inputs = {"obs": torch.from_numpy(np.array([[0.0, 0.1, 0.2]], dtype=np.float32))}
+# Sample an action from the model.
+pytorch_model.forward_inference(dummy_inputs)[SampleBatch.ACTION_DIST].sample()
 
-# __export-models-3-end__
-
-# Exporting Policies in ONNX format is only supported without RLModules
-# TODO (Artur): Switch this to the RLModule API once it is supported.
-ppo_config = (
-    PPOConfig().environment("Pendulum-v1").checkpointing(export_native_model_files=True)
-).rl_module(_enable_rl_module_api=True).training(_enable_learner_api=True)
-
-# __export-models-as-onnx-begin__
-# Using the same Policy object, we can also export our NN Model in the ONNX format:
-ppo_policy.export_model("/tmp/my_nn_model", onnx=True)
-
-# __export-models-as-onnx-end__
+# __export-rlm-2-end__
