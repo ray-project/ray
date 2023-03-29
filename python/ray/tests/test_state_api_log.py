@@ -664,6 +664,11 @@ def test_log_list(ray_start_cluster):
 
     wait_for_condition(verify)
 
+    with pytest.raises(requests.HTTPError) as e:
+        list_logs(node_id="XXXX")
+
+    assert e.match("Internal Server Error") == False
+
 
 def test_log_get(ray_start_cluster):
     cluster = ray_start_cluster
