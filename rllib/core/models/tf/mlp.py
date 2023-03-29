@@ -5,7 +5,7 @@ from ray.rllib.core.models.configs import FreeLogStdMLPHeadConfig, MLPHeadConfig
 from ray.rllib.core.models.tf.base import TfModel
 from ray.rllib.core.models.tf.primitives import TfMLP
 from ray.rllib.models.specs.specs_base import Spec
-from ray.rllib.models.specs.specs_tf import TFTensorSpecs
+from ray.rllib.models.specs.specs_tf import TfTensorSpec
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import override
 
@@ -27,11 +27,11 @@ class TfMLPHead(TfModel):
 
     @override(Model)
     def get_input_spec(self) -> Union[Spec, None]:
-        return TFTensorSpecs("b, h", h=self.config.input_dims[0])
+        return TfTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
     def get_output_spec(self) -> Union[Spec, None]:
-        return TFTensorSpecs("b, h", h=self.config.output_dims[0])
+        return TfTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)
     def _forward(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
@@ -68,11 +68,11 @@ class TfFreeLogStdMLPHead(TfModel):
 
     @override(Model)
     def get_input_spec(self) -> Union[Spec, None]:
-        return TFTensorSpecs("b, h", h=self.config.input_dims[0])
+        return TfTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
     def get_output_spec(self) -> Union[Spec, None]:
-        return TFTensorSpecs("b, h", h=self.config.output_dims[0])
+        return TfTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)
     def _forward(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:

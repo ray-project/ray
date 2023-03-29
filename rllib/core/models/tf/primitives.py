@@ -1,4 +1,4 @@
-from typing import Callable, List, Union
+from typing import Callable, List, Tuple, Union
 
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.framework import try_import_tf
@@ -35,8 +35,6 @@ class TfMLP(tf.keras.Model):
         """Initialize a TfMLP object."""
         super().__init__()
 
-        assert input_dim is not None, "Input dimension must not be None"
-        assert output_dim is not None, "Output dimension must not be None"
         layers = []
 
         # input = tf.keras.layers.Dense(input_dim, activation=activation)
@@ -78,8 +76,9 @@ class TfCNN(tf.keras.Model):
 
     def __init__(
         self,
+        *,
         input_dims: Union[List[int], Tuple[int]] = None,
-        cnn_filter_specifiers: List[List[Union[int, List]]] = None,
+        cnn_filter_specifiers: List[List[Union[int, List]]],
         cnn_activation: str = "relu",
         cnn_use_layernorm: bool = False,
         output_activation: str = "linear",
@@ -88,23 +87,19 @@ class TfCNN(tf.keras.Model):
 
         Args:
             input_dims: The input dimensions of the network.
-            filter_specifiers: A list of lists, where each element of an inner list
+            cnn_filter_specifiers: A list of lists, where each element of an inner list
                 contains elements of the form
                 `[number of filters, [kernel width, kernel height], stride]` to
                 specify a convolutional layer stacked in order of the outer list.
-            filter_layer_activation: The activation function to use after each layer (
-                except for the output).
+            cnn_activation: The activation function to use after each layer (except for
+                the output).
             output_activation: The activation function to use for the last filter layer.
         """
         super().__init__()
 
         assert len(input_dims) == 3
-        assert filter_specifiers is not None, "Must provide filter specifiers."
 
-        filter_layer_activation = get_activation_fn(
-            filter_layer_activation, framework="torch"
-        )
-
+        filter_layer_activation = get_activation_fn(cnn_activation, framework="torch")
         output_activation = get_activation_fn(output_activation, framework="torch")
 
         layers = []
@@ -114,7 +109,7 @@ class TfCNN(tf.keras.Model):
         # Add user-specified hidden convolutional layers first
         width, height, in_depth = input_dims
         in_size = [width, height]
-        for out_depth, kernel, stride in filter_specifiers:
+        for out_depth, kernel, stride in cnn_filter_specifiers:
             # Pad like in tensorflow's SAME mode.
             padding, out_size = same_padding(in_size, kernel, stride)
             # TODO(Artur): Inline SlimConv2d after old models are deprecated.
@@ -138,7 +133,7 @@ class TfCNN(tf.keras.Model):
 
         # Get info of the last layer of user-specified layers
         [width, height] = in_size
-        _, kernel, stride = filter_specifiers[-1]
+        _, kernel, stride = cnn_filter_specifiers[-1]
 
         in_size = (
             int(np.ceil((width - kernel[0]) / stride)),

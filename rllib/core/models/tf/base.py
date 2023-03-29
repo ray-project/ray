@@ -33,9 +33,9 @@ class TfModel(Model, tf.keras.Model, abc.ABC):
 
         # Raise errors if forward method is not decorated to check specs.
         if not is_input_decorated(self.__call__):
-            _raise_not_decorated_exception(type(self).__name__, "input")
+            _raise_not_decorated_exception(type(self).__name__ + ".__call__()", "input")
         if not is_output_decorated(self.__call__):
-            _raise_not_decorated_exception(type(self).__name__, "output")
+            _raise_not_decorated_exception(type(self).__name__ + ".__call__()", "output")
 
     @check_input_specs("input_spec")
     @check_output_specs("output_spec")

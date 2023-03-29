@@ -27,11 +27,11 @@ class TorchMLPHead(TorchModel, nn.Module):
 
     @override(Model)
     def get_input_spec(self) -> Union[Spec, None]:
-        return TorchTensorSpec("b, h", h=self.config.input_dims[0])
+        return TorchTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
     def get_output_spec(self) -> Union[Spec, None]:
-        return TorchTensorSpec("b, h", h=self.config.output_dims[0])
+        return TorchTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
@@ -66,11 +66,11 @@ class TorchFreeLogStdMLPHead(TorchModel, nn.Module):
 
     @override(Model)
     def get_input_spec(self) -> Union[Spec, None]:
-        return TorchTensorSpec("b, h", h=self.config.input_dims[0])
+        return TorchTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
     def get_output_spec(self) -> Union[Spec, None]:
-        return TorchTensorSpec("b, h", h=self.config.output_dims[0])
+        return TorchTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:

@@ -87,13 +87,13 @@ class TorchCNN(nn.Module):
 
     Attributes:
         input_dims: The input dimensions of the network.
-        cnn_layer_filter_specifiers: A list of lists, where each element of an inner
+        cnn_filter_specifiers: A list of lists, where each element of an inner
             list contains elements of the form
             `[number of filters, [kernel width, kernel height], stride]` to
             specify a convolutional layer stacked in order of the outer list.
-        cnn_layer_activation: The activation function to use after each layer (
-            except for the output).
-        cnn_layer_use_layernorm: Whether to insert a LayerNorm functionality
+        cnn_activation: The activation function to use after each layer (except for
+            the output).
+        cnn_use_layernorm: Whether to insert a LayerNorm functionality
             in between each CNN layer's outputs and its activation.
         output_activation: The activation function to use for the last filter layer.
 
@@ -101,21 +101,19 @@ class TorchCNN(nn.Module):
 
     def __init__(
         self,
-        input_dims: Union[List[int], Tuple[int]] = None,
-        cnn_layer_filter_specifiers: List[List[Union[int, List]]] = None,
-        cnn_layer_activation: str = "relu",
-        cnn_layer_use_layernorm: bool = False,
+        *,
+        input_dims: Union[List[int], Tuple[int]],
+        cnn_filter_specifiers: List[List[Union[int, List]]],
+        cnn_activation: str = "relu",
+        cnn_use_layernorm: bool = False,
         output_activation: str = "linear",
     ):
         """Initializes a TorchCNN object."""
         super().__init__()
 
         assert len(input_dims) == 3
-        assert cnn_layer_filter_specifiers is not None, "Must provide filter specifiers."
 
-        filter_layer_activation = get_activation_fn(
-            cnn_layer_activation, framework="torch"
-        )
+        filter_layer_activation = get_activation_fn(cnn_activation, framework="torch")
 
         output_activation = get_activation_fn(output_activation, framework="torch")
 
@@ -126,7 +124,7 @@ class TorchCNN(nn.Module):
         # Add user-specified hidden convolutional layers first
         width, height, in_depth = input_dims
         in_size = [width, height]
-        for out_depth, kernel, stride in cnn_layer_filter_specifiers:
+        for out_depth, kernel, stride in cnn_filter_specifiers:
             # Pad like in tensorflow's SAME mode.
             padding, out_size = same_padding(in_size, kernel, stride)
             # TODO(Artur): Inline SlimConv2d after old models are deprecated.
@@ -153,7 +151,7 @@ class TorchCNN(nn.Module):
 
         # Get info of the last layer of user-specified layers
         [width, height] = in_size
-        _, kernel, stride = cnn_layer_filter_specifiers[-1]
+        _, kernel, stride = cnn_filter_specifiers[-1]
 
         in_size = (
             int(np.ceil((width - kernel[0]) / stride)),

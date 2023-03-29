@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Callable, Optional, Union
 from ray.rllib.models.specs.specs_base import TensorSpec
 
 from ray.rllib.models.specs.specs_dict import SpecDict
@@ -76,11 +76,14 @@ def input_to_output_spec(
 
 
 @DeveloperAPI
-def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
+def get_activation_fn(
+    name: Optional[Union[Callable, str]] = None,
+    framework: str = "tf",
+):
     """Returns a framework specific activation function, given a name string.
 
     Args:
-        name (Optional[str]): One of "relu" (default), "tanh", "elu",
+        name: One of "relu" (default), "tanh", "elu",
             "swish", or "linear" (same as None).
         framework: One of "jax", "tf|tf2" or "torch".
 
@@ -95,46 +98,55 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     if callable(name):
         return name
 
+    name_lower = name.lower() if isinstance(name, str) else name
+
     # Infer the correct activation function from the string specifier.
     if framework == "torch":
-        if name in ["linear", None]:
+        if name_lower in ["linear", None]:
             return None
-        if name == "swish":
-            from ray.rllib.utils.torch_utils import Swish
 
-            return Swish
         _, nn = try_import_torch()
-
+        # First try getting the correct activation function from nn directly.
+        # Note that torch activation functions are not all lower case.
         fn = getattr(nn, name, None)
         if fn is not None:
             return fn
 
-        if name == "relu":
+        if name_lower in ["swish", "silu"]:
+            from ray.rllib.utils.torch_utils import Swish
+
+            return Swish
+        elif name_lower == "relu":
             return nn.ReLU
-        elif name == "tanh":
+        elif name_lower == "tanh":
             return nn.Tanh
-        elif name == "elu":
+        elif name_lower == "elu":
             return nn.ELU
     elif framework == "jax":
-        if name in ["linear", None]:
+        if name_lower in ["linear", None]:
             return None
         jax, _ = try_import_jax()
-        if name == "swish":
+        if name_lower == "swish":
             return jax.nn.swish
-        if name == "relu":
+        if name_lower == "relu":
             return jax.nn.relu
-        elif name == "tanh":
+        elif name_lower == "tanh":
             return jax.nn.hard_tanh
-        elif name == "elu":
+        elif name_lower == "elu":
             return jax.nn.elu
     else:
         assert framework in ["tf", "tf2"], "Unsupported framework `{}`!".format(
             framework
         )
-        if name in ["linear", None]:
+        if name_lower in ["linear", None]:
             return None
+
         tf1, tf, tfv = try_import_tf()
-        fn = getattr(tf.nn, name, None)
+        # Try getting the correct activation function from tf.nn directly.
+        # Note that tf activation functions are all lower case, so this should always
+        # work.
+        fn = getattr(tf.nn, name_lower, None)
+
         if fn is not None:
             return fn
 

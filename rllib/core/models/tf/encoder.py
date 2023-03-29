@@ -10,19 +10,21 @@ from ray.rllib.core.models.base import (
 from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
+    CNNEncoderConfig,
     MLPEncoderConfig,
 )
 from ray.rllib.core.models.tf.base import TfModel
 from ray.rllib.core.models.tf.primitives import TfMLP, TfCNN
 from ray.rllib.models.specs.specs_base import Spec
 from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.specs_tf import TFTensorSpecs
+from ray.rllib.models.specs.specs_tf import TfTensorSpec
+from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
 
-torch, nn = try_import_torch()
+_, tf, _ = try_import_tf()
 
 
 class TfMLPEncoder(Encoder, TfModel):
@@ -43,7 +45,7 @@ class TfMLPEncoder(Encoder, TfModel):
     def get_input_spec(self) -> Union[Spec, None]:
         return SpecDict(
             {
-                SampleBatch.OBS: TFTensorSpecs("b, h", h=self.config.input_dims[0]),
+                SampleBatch.OBS: TfTensorSpec("b, d", d=self.config.input_dims[0]),
                 STATE_IN: None,
                 SampleBatch.SEQ_LENS: None,
             }
@@ -53,7 +55,7 @@ class TfMLPEncoder(Encoder, TfModel):
     def get_output_spec(self) -> Union[Spec, None]:
         return SpecDict(
             {
-                ENCODER_OUT: TFTensorSpecs("b, h", h=self.config.output_dims[0]),
+                ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),
                 STATE_OUT: None,
             }
         )
@@ -69,7 +71,7 @@ class TfMLPEncoder(Encoder, TfModel):
 
 
 class TfCNNEncoder(TfModel, Encoder):
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(self, config: CNNEncoderConfig) -> None:
         TfModel.__init__(self, config)
         Encoder.__init__(self, config)
 
@@ -80,35 +82,32 @@ class TfCNNEncoder(TfModel, Encoder):
         layers = []
         cnn = TfCNN(
             input_dims=config.input_dims,
-            filter_specifiers=config.filter_specifiers,
-            filter_layer_activation=config.filter_layer_activation,
+            cnn_filter_specifiers=config.cnn_filter_specifiers,
+            cnn_activation=config.cnn_activation,
+            cnn_use_layernorm=config.cnn_use_layernorm,
             output_activation=output_activation,
         )
         layers.append(cnn)
 
-        layers.append(nn.Flatten())
+        layers.append(tf.keras.layers.Flatten())
 
         # Add a final linear layer to make sure that the outputs have the correct
         # dimensionality.
         layers.append(
-            nn.Linear(
-                int(cnn.output_width) * int(cnn.output_height), config.output_dims[0]
-            )
+            tf.keras.layers.Dense(config.output_dims[0], activation=output_activation),
         )
-        if output_activation is not None:
-            layers.append(output_activation())
 
-        self.net = nn.Sequential(*layers)
+        self.net = tf.keras.Sequential(*layers)
 
     @override(Model)
     def get_input_spec(self) -> Union[Spec, None]:
         return SpecDict(
             {
-                SampleBatch.OBS: TorchTensorSpec(
-                    "b, w, h, d",
+                SampleBatch.OBS: TfTensorSpec(
+                    "b, w, h, c",
                     w=self.config.input_dims[0],
                     h=self.config.input_dims[1],
-                    d=self.config.input_dims[2],
+                    c=self.config.input_dims[2],
                 ),
                 STATE_IN: None,
                 SampleBatch.SEQ_LENS: None,
@@ -119,11 +118,12 @@ class TfCNNEncoder(TfModel, Encoder):
     def get_output_spec(self) -> Union[Spec, None]:
         return SpecDict(
             {
-                ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dims[0]),
+                ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),
                 STATE_OUT: None,
             }
         )
 
+    @override(Model)
     def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
         return NestedDict(
             {

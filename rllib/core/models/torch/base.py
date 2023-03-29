@@ -70,9 +70,9 @@ class TorchModel(nn.Module, Model, abc.ABC):
 
         # Raise errors if forward method is not decorated to check specs.
         if not is_input_decorated(self.forward):
-            _raise_not_decorated_exception(type(self).__name__, "input")
+            _raise_not_decorated_exception(type(self).__name__ + ".forward()", "input")
         if not is_output_decorated(self.forward):
-            _raise_not_decorated_exception(type(self).__name__, "output")
+            _raise_not_decorated_exception(type(self).__name__ + ".forward()", "output")
 
     @check_input_specs("input_spec")
     @check_output_specs("output_spec")

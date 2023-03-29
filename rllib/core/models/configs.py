@@ -112,7 +112,7 @@ class MLPHeadConfig(ModelConfig):
         hidden_layer_activation: The activation function to use after each layer (
             except for the output).
         hidden_layer_use_layernorm: Whether to insert a LayerNorm functionality
-            in between each hidden layers' outputs and their activations.
+            in between each hidden layer's output and its activation.
         output_activation: The activation function to use for the output layer.
     """
 
@@ -234,12 +234,14 @@ class CNNEncoderConfig(ModelConfig):
     Attributes:
         input_dims: The input dimension of the network. These must be given in the
             form of `(width, height, channels)`.
-        filter_specifiers: A list of lists, where each element of an inner list
+        cnn_filter_specifiers: A list of lists, where each element of an inner list
             contains elements of the form
             `[number of channels/filters, [kernel width, kernel height], stride]` to
             specify a convolutional layer stacked in order of the outer list.
-        filter_layer_activation: The activation function to use after each layer (
+        cnn__activation: The activation function to use after each layer (
             except for the output).
+        cnn__use_layernorm: Whether to insert a LayerNorm functionality
+            in between each CNN layer's output and its activation.
         output_activation: The activation function to use for the output layer.
     """
 
