@@ -112,6 +112,8 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
             def step(self, action):
                 return obs_space.sample(), 0, False, {}
 
+        # TODO(Artur): Construct a PPO policy here without the algorithm once we are
+        #  able to do that with RLModules.
         policy = (
             PPOConfig().environment(env=NestedObsSpaceDummyEnv).build().get_policy()
         )
