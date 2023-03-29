@@ -11,6 +11,7 @@ def iter_torch_batches(
     ds: Dataset,
     batch_size: Optional[int] = None,
     local_shuffle_buffer_size: Optional[int] = None,
+    prefetch_batches: int = 0,
     use_default_params: bool = False,
 ) -> Dataset:
     num_batches = 0
@@ -21,6 +22,7 @@ def iter_torch_batches(
         for batch in ds.iter_torch_batches(
             batch_size=batch_size,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
+            prefetch_batches=prefetch_batches,
         ):
             num_batches += 1
     print(
@@ -103,7 +105,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
             batch_size=batch_size,
         )
 
-    prefetch_batches = [1, 10]
+    prefetch_batches = [1, 4]
     # Test with varying prefetching for iter_torch_batches()
     for prefetch_batch in prefetch_batches:
         test_name = f"iter-torch-batches-prefetch-{32}-{prefetch_batches}"
