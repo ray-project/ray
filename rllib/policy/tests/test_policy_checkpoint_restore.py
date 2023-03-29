@@ -92,9 +92,7 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
         )
 
     def test_restore_checkpoint_with_nested_obs_space(self):
-
-        from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
-        from ray.rllib.models.catalog import MODEL_DEFAULTS
+        from ray.rllib.algorithms.ppo.ppo import PPOConfig
 
         obs_space = gym.spaces.Box(low=0, high=1, shape=(4,))
         # create 10 levels of nested observation space
@@ -103,7 +101,20 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
             space.original_space = gym.spaces.Discrete(2)
             space = space.original_space
 
-        policy = PPOTorchPolicy(obs_space, gym.spaces.Discrete(2), MODEL_DEFAULTS)
+        class NestedObsSpaceDummyEnv(gym.Env):
+            def __init__(self, _):
+                self.observation_space = obs_space
+                self.action_space = gym.spaces.Discrete(2)
+
+            def reset(self, *, seed=None, options=None):
+                return obs_space.sample()
+
+            def step(self, action):
+                return obs_space.sample(), 0, False, {}
+
+        policy = (
+            PPOConfig().environment(env=NestedObsSpaceDummyEnv).build().get_policy()
+        )
 
         ckpt_dir = "/tmp/test_ckpt"
         policy.export_checkpoint(ckpt_dir)
