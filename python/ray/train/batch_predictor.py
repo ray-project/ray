@@ -7,7 +7,7 @@ import numpy as np
 import ray
 from ray.air import Checkpoint
 from ray.air.data_batch_type import DataBatchType
-from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset, DatasetPipeline, Preprocessor
 from ray.data.context import DatasetContext
 from ray.train.predictor import Predictor
@@ -36,6 +36,7 @@ class BatchPredictor:
         self._predictor_cls = predictor_cls
         self._predictor_kwargs = predictor_kwargs
         self._override_preprocessor: Optional[Preprocessor] = None
+        self._override_preprocessor_set = False
 
     def __repr__(self):
         return (
@@ -98,7 +99,7 @@ class BatchPredictor:
 
     def get_preprocessor(self) -> Preprocessor:
         """Get the preprocessor to use prior to executing predictions."""
-        if self._override_preprocessor:
+        if self._override_preprocessor_set:
             return self._override_preprocessor
 
         return self._checkpoint.get_preprocessor()
@@ -106,6 +107,7 @@ class BatchPredictor:
     def set_preprocessor(self, preprocessor: Preprocessor) -> None:
         """Set the preprocessor to use prior to executing predictions."""
         self._override_preprocessor = preprocessor
+        self._override_preprocessor_set = True
 
     def predict(
         self,
@@ -352,7 +354,6 @@ class BatchPredictor:
             if override_prep is not None
             else predict_stage_batch_format,
             batch_size=batch_size,
-            prefetch_batches=int(num_gpus_per_worker > 0),
             fn_constructor_kwargs={"override_prep": override_prep},
             **ray_remote_args,
         )
@@ -483,16 +484,10 @@ class BatchPredictor:
             BatchFormat: Batch format to use for the preprocessor.
         """
         preprocessor = self.get_preprocessor()
-        dataset_block_format = ds.dataset_format()
-        if dataset_block_format == BlockFormat.SIMPLE:
-            # Naive case that we cast to pandas for compatibility.
-            # TODO: Revisit
-            return BatchFormat.PANDAS
-
         if preprocessor is None:
             # No preprocessor, just use the predictor format.
             return self._predictor_cls._batch_format_to_use()
-        # Code dealing with Chain preprocessor is in Chain._determine_transform_to_use
 
+        # Code dealing with Chain preprocessor is in Chain._determine_transform_to_use
         # Use same batch format as first preprocessor to minimize data copies.
-        return preprocessor._determine_transform_to_use(dataset_block_format)
+        return preprocessor._determine_transform_to_use()

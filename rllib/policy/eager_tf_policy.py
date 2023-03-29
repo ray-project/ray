@@ -6,8 +6,9 @@ import functools
 import logging
 import os
 import threading
-import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Union
+
+import tree  # pip install dm_tree
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
@@ -386,9 +387,6 @@ def _build_eager_tf_policy(
             )
             self._max_seq_len = config["model"]["max_seq_len"]
 
-            if get_default_config:
-                config = dict(get_default_config(), **config)
-
             if validate_spaces:
                 validate_spaces(self, observation_space, action_space, config)
 
@@ -561,6 +559,7 @@ def _build_eager_tf_policy(
             prev_action_batch=None,
             prev_reward_batch=None,
             actions_normalized=True,
+            **kwargs,
         ):
             if action_sampler_fn and action_distribution_fn is None:
                 raise ValueError(

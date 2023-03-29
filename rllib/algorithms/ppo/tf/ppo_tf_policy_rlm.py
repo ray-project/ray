@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, List, Union
 
-import ray
 from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
@@ -59,18 +58,18 @@ class PPOTfPolicyWithRLModule(
     """
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
         # TODO: Move into Policy API, if needed at all here. Why not move this into
         #  `PPOConfig`?.
-        validate_config(config)
+        self.framework = "tf2"
         EagerTFPolicyV2.enable_eager_execution_if_necessary()
-        EagerTFPolicyV2.__init__(self, observation_space, action_space, config)
+        validate_config(config)
         # Initialize MixIns.
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
         )
         KLCoeffMixin.__init__(self, config)
+        EagerTFPolicyV2.__init__(self, observation_space, action_space, config)
 
         self.maybe_initialize_optimizer_and_loss()
 
@@ -88,7 +87,9 @@ class PPOTfPolicyWithRLModule(
         dist_class = curr_action_dist.__class__
         value_fn_out = fwd_out[SampleBatch.VF_PREDS]
 
-        prev_action_dist = dist_class(**train_batch[SampleBatch.ACTION_DIST_INPUTS])
+        prev_action_dist = dist_class.from_logits(
+            train_batch[SampleBatch.ACTION_DIST_INPUTS]
+        )
 
         logp_ratio = tf.exp(
             curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])

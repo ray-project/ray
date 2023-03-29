@@ -74,6 +74,13 @@ py_test(
     deps = [":ml_lib"]
 )
 
+py_test(
+    name = "test_errors",
+    size = "small",
+    srcs = ["tests/test_errors.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
 
 py_test(
     name = "test_integration_comet",
@@ -146,6 +153,15 @@ py_test(
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
+
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["tests/test_utils.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
 
 # --------------------------------------------------------------------
 # Tests from the python/ray/air/tests/execution directory.

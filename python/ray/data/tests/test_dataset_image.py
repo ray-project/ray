@@ -1,5 +1,4 @@
 import os
-import time
 from typing import Dict
 
 import numpy as np
@@ -10,8 +9,10 @@ from fsspec.implementations.local import LocalFileSystem
 
 import ray
 from ray.data.datasource import Partitioning
+from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
 from ray.data.datasource.image_datasource import (
     _ImageDatasourceReader,
+    _ImageFileMetadataProvider,
     ImageDatasource,
 )
 from ray.data.extensions import ArrowTensorType
@@ -37,6 +38,38 @@ class TestReadImages:
             ]
         )
         assert ds.count() == 2
+
+    def test_file_metadata_provider(self, ray_start_regular_shared):
+        ds = ray.data.read_images(
+            paths=[
+                "example://image-datasets/simple/image1.jpg",
+                "example://image-datasets/simple/image2.jpg",
+                "example://image-datasets/simple/image2.jpg",
+            ],
+            meta_provider=FastFileMetadataProvider(),
+        )
+        assert ds.count() == 3
+
+    @pytest.mark.parametrize("ignore_missing_paths", [True, False])
+    def test_ignore_missing_paths(self, ray_start_regular_shared, ignore_missing_paths):
+        paths = [
+            "example://image-datasets/simple/image1.jpg",
+            "example://missing.jpg",
+            "example://image-datasets/missing/",
+        ]
+
+        if ignore_missing_paths:
+            ds = ray.data.read_images(paths, ignore_missing_paths=ignore_missing_paths)
+            # example:// directive redirects to /ray/python/ray/data/examples/data
+            assert ds.input_files() == [
+                "/ray/python/ray/data/examples/data/image-datasets/simple/image1.jpg"
+            ]
+        else:
+            with pytest.raises(FileNotFoundError):
+                ds = ray.data.read_images(
+                    paths, ignore_missing_paths=ignore_missing_paths
+                )
+                ds.fully_executed()
 
     def test_filtering(self, ray_start_regular_shared):
         # "different-extensions" contains three images and two non-images.
@@ -159,7 +192,7 @@ class TestReadImages:
 
         data_size = ds.size_bytes()
         assert data_size >= 0, "estimated data size is out of expected bound"
-        data_size = ds.fully_executed().size_bytes()
+        data_size = ds.cache().size_bytes()
         assert data_size >= 0, "actual data size is out of expected bound"
 
         reader = _ImageDatasourceReader(
@@ -168,6 +201,7 @@ class TestReadImages:
             filesystem=LocalFileSystem(),
             partition_filter=ImageDatasource.file_extension_filter(),
             partitioning=None,
+            meta_provider=_ImageFileMetadataProvider(),
             size=(image_size, image_size),
             mode=image_mode,
         )
@@ -190,20 +224,13 @@ class TestReadImages:
             root = "example://image-datasets/simple"
             ds = ray.data.read_images(root, parallelism=1)
             assert ds.num_blocks() == 1
-            ds.fully_executed()
+            ds.cache()
             # Verify dynamic block splitting taking effect to generate more blocks.
             assert ds.num_blocks() == 3
 
-            # NOTE: Need to wait for 1 second before checking stats, because we report
-            # stats to stats actors asynchronously when returning the blocks metadata.
-            # TODO(chengsu): clean it up after refactoring lazy block list.
-            time.sleep(1)
-            assert "3 blocks executed" in ds.stats()
-
             # Test union of same datasets
-            union_ds = ds.union(ds, ds, ds).fully_executed()
+            union_ds = ds.union(ds, ds, ds).cache()
             assert union_ds.num_blocks() == 12
-            assert "3 blocks executed" in union_ds.stats()
         finally:
             ctx.target_max_block_size = target_max_block_size
             ctx.block_splitting_enabled = block_splitting_enabled

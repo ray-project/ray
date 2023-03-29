@@ -1,5 +1,5 @@
 import logging
-from typing import Mapping
+from typing import Mapping, Any
 
 from ray.rllib.algorithms.ppo.ppo_base_learner import PPOBaseLearner
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
@@ -31,10 +31,14 @@ class PPOTorchLearner(PPOBaseLearner, TorchLearner):
         # learning rate for that agent.
         # TODO (Kourosh): come back to RNNs later
 
+        # make sure all the coefficients are on the same device as the model
+        if self.kl_coeff.device != self._device:
+            self.kl_coeff = self.kl_coeff.to(self._device)
+
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
         action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
-        prev_action_dist = action_dist_class(
-            **batch[SampleBatch.ACTION_DIST_INPUTS].asdict()
+        prev_action_dist = action_dist_class.from_logits(
+            batch[SampleBatch.ACTION_DIST_INPUTS]
         )
 
         logp_ratio = torch.exp(
@@ -82,21 +86,31 @@ class PPOTorchLearner(PPOBaseLearner, TorchLearner):
         total_loss = torch.mean(
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.hps.entropy_coeff * curr_entropy
+            - self.entropy_coeff * curr_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
         if self.hps.kl_coeff > 0.0:
-            total_loss += self.hps.kl_coeff * mean_kl_loss
+            total_loss += self.kl_coeff * mean_kl_loss
 
         return {
             self.TOTAL_LOSS_KEY: total_loss,
-            "mean_policy_loss": -torch.mean(surrogate_loss),
-            "mean_vf_loss": mean_vf_loss,
+            "policy_loss": -torch.mean(surrogate_loss),
+            "vf_loss": mean_vf_loss,
             "vf_explained_var": explained_variance(
                 batch[Postprocessing.VALUE_TARGETS], value_fn_out
             ),
-            "mean_entropy": mean_entropy,
-            "mean_kl_loss": mean_kl_loss,
+            "entropy": mean_entropy,
+            "kl": mean_kl_loss,
+            "entropy_coeff": self.entropy_coeff,
+            "cur_kl_coeff": self.kl_coeff,
         }
+
+    @override(PPOBaseLearner)
+    def _create_kl_variable(self, value: float) -> Any:
+        return torch.tensor(value)
+
+    @override(PPOBaseLearner)
+    def _set_kl_coeff(self, value: float):
+        self.kl_coeff.data = torch.tensor(value, device=self.kl_coeff.device)

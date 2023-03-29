@@ -5,38 +5,7 @@ Ray Use Cases
 
 This page indexes common Ray use cases for scaling ML. It contains highlighted references to blogs, examples, and tutorials also located elsewhere in the Ray documentation.
 
-You can filter our use cases by the framework you are using, the use case category,
-and the type of workload you are running.
-You can select (and deselect) multiple values:
-
-.. raw:: html
-
-    <!--Deselect all-->
-    <div>
-        <div id="allButton" type="button" class="tag btn btn-primary">All</div>
-
-        <!--Frameworks-->
-        <div type="button" class="tag btn btn-outline-primary">PyTorch</div>
-        <div type="button" class="tag btn btn-outline-primary">TensorFlow</div>
-        <div type="button" class="tag btn btn-outline-primary">XGBoost</div>
-        <div type="button" class="tag btn btn-outline-primary">LightGBM</div>
-        <div type="button" class="tag btn btn-outline-primary">Sklearn</div>
-
-        <!--Domains-->
-        <div type="button" class="tag btn btn-outline-primary">Classification</div>
-        <div type="button" class="tag btn btn-outline-primary">Regression</div>
-        <div type="button" class="tag btn btn-outline-primary">Object Detection</div>
-        <div type="button" class="tag btn btn-outline-primary">Image Segmentation</div>
-        <div type="button" class="tag btn btn-outline-primary">Reinforcement Learning</div>
-
-        <!--Components-->
-        <div type="button" class="tag btn btn-outline-primary">Preprocessing</div>
-        <div type="button" class="tag btn btn-outline-primary">Training</div>
-        <div type="button" class="tag btn btn-outline-primary">Tuning</div>
-        <div type="button" class="tag btn btn-outline-primary">Prediction</div>
-        <div type="button" class="tag btn btn-outline-primary">Serving</div>
-    </div>
-
+.. _ref-use-cases-batch-infer:
 
 Batch Inference
 ---------------
@@ -114,7 +83,7 @@ To train multiple independent models, use the Ray Tune (:ref:`Tutorial <mmt-tune
 
 You can use Tune with your current data preprocessing pipeline if your data source fits into the memory of a single machine (node). 
 If you need to scale your data, or you want to plan for future scaling, use the :ref:`Ray Data <datasets>` library.
-Your data must be a :ref:`supported format <data-compatibility>`, to use Ray Data. 
+Your data must be a :ref:`supported format <input-output>`, to use Ray Data. 
 
 Alternative solutions exist for less common cases: 
 
@@ -510,6 +479,14 @@ The following highlights examples utilizing Ray AIR to implement end-to-end ML w
     .. link-button:: /ray-air/examples/torch_image_example
         :type: ref
         :text: [Example] Image classification with Ray
+        :classes: btn-link btn-block stretched-link torchImageExample
+    ---
+    :img-top: /images/detection.jpeg
+
+    +++
+    .. link-button:: /ray-air/examples/torch_detection
+        :type: ref
+        :text: [Example] Object detection with Ray
         :classes: btn-link btn-block stretched-link torchImageExample
     ---
     :img-top: /images/credit.png

@@ -7,7 +7,7 @@ cartpole-ppo:
         time_total_s: 180
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         num_workers: 1
         num_sgd_iter:
             grid_search: [1, 4]

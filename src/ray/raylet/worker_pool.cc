@@ -18,6 +18,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <fstream>
 
+#include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
@@ -322,6 +323,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   if (language == Language::PYTHON) {
     worker_command_args.push_back("--startup-token=" +
                                   std::to_string(worker_startup_token_counter_));
+    worker_command_args.push_back("--worker-launch-time-ms=" +
+                                  std::to_string(current_sys_time_ms()));
   } else if (language == Language::CPP) {
     worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
@@ -383,6 +386,16 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
       }
 #endif
     }
+  }
+
+  if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER &&
+      RayConfig::instance().preload_python_modules().size() > 0) {
+    std::string serialized_preload_python_modules =
+        absl::StrJoin(RayConfig::instance().preload_python_modules(), ",");
+    RAY_LOG(DEBUG) << "Starting worker with preload_python_modules "
+                   << serialized_preload_python_modules;
+    worker_command_args.push_back("--worker-preload-modules=" +
+                                  serialized_preload_python_modules);
   }
 
   // We use setproctitle to change python worker process title,
@@ -462,12 +475,9 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                               serialized_runtime_env_context,
                               state);
 
-  // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
+  // Start a process and measure the startup time.
   Process proc = StartProcess(worker_command_args, env);
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-  stats::ProcessStartupTimeMs.Record(duration.count());
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
                 << worker_startup_token_counter_;
@@ -1233,8 +1243,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
   for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
        it++) {
-    if (task_spec.GetLanguage() != it->first->GetLanguage() ||
-        state.pending_disconnection_workers.count(it->first) > 0 || it->first->IsDead()) {
+    if (task_spec.GetLanguage() != it->first->GetLanguage() || it->first->IsDead()) {
       continue;
     }
 
@@ -1421,8 +1430,6 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     return;
   }
 
-  RAY_UNUSED(RemoveWorker(state.pending_disconnection_workers, worker));
-
   for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();
        it++) {
     if (it->first == worker) {
@@ -1432,23 +1439,6 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     }
   }
   RemoveWorker(state.idle, worker);
-  if (disconnect_type != rpc::WorkerExitType::INTENDED_USER_EXIT) {
-    // A Java worker process may have multiple workers. If one of them disconnects
-    // unintentionally (which means that the worker process has died), we remove the
-    // others from idle pool so that the failed actor will not be rescheduled on the same
-    // process.
-    auto pid = worker->GetProcess().GetId();
-    for (auto worker2 : state.registered_workers) {
-      if (worker2->GetProcess().GetId() == pid) {
-        // NOTE(kfstorm): We have to use a new field to record these workers (instead of
-        // just removing them from idle sets) because they may haven't announced worker
-        // port yet. When they announce worker port, they'll be marked idle again. So
-        // removing them from idle sets here doesn't really prevent them from being popped
-        // later.
-        state.pending_disconnection_workers.insert(worker2);
-      }
-    }
-  }
 }
 
 void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) {

@@ -63,6 +63,7 @@ class TestModels(unittest.TestCase):
         config = (
             ppo.PPOConfig()
             .environment("CartPole-v1")
+            .framework("tf")
             .rollouts(num_rollout_workers=0)
             .training(
                 model={
