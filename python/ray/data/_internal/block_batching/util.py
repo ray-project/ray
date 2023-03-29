@@ -299,7 +299,7 @@ class ActorBlockPrefetcher(BlockPrefetcher):
 
     @staticmethod
     def _get_or_create_actor_prefetcher() -> "ActorHandle":
-        node_id = ray.get_runtime_context().node_id
+        node_id = ray.get_runtime_context().get_node_id()
         actor_name = f"dataset-block-prefetcher-{node_id}"
         return _BlockPretcher.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
