@@ -40,8 +40,7 @@ parser.add_argument(
 parser.add_argument(
     "--as-test",
     action="store_true",
-    help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.",
+    help="Whether this script should be run as a compilation test.",
 )
 parser.add_argument(
     "--stop-iters", type=int, default=150, help="Number of iterations to train."
