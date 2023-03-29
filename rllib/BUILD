@@ -3289,10 +3289,10 @@ py_test(
 )
 
 py_test(
-    name = "examples/env/box_2d_env",
+    name = "examples/env/greyscale_env",
     tags = ["team:rllib", "examples", "no_main"],
     size = "medium",
-    srcs = ["examples/env/box_2d_env.py"],
+    srcs = ["examples/env/greyscale_env.py"],
     args = ["--stop-iters=1 --as-test --framework torch"]
 )
 
