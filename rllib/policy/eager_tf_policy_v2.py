@@ -117,7 +117,8 @@ class EagerTFPolicyV2(Policy):
 
         self._init_view_requirements()
 
-        self.exploration = self._create_exploration()
+        if self.config.get("_enable_rl_module_api", False):
+            self.exploration = self._create_exploration()
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(self._state_inputs) > 0
 
@@ -429,6 +430,7 @@ class EagerTFPolicyV2(Policy):
     def maybe_initialize_optimizer_and_loss(self):
         optimizers = force_list(self.optimizer())
         if getattr(self, "exploration", None):
+            # Policies with RLModules don't have an exploration object.
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
         # The list of local (tf) optimizers (one per loss term).
@@ -470,9 +472,11 @@ class EagerTFPolicyV2(Policy):
         self._is_recurrent = state_batches != []
 
         # Call the exploration before_compute_actions hook.
-        self.exploration.before_compute_actions(
-            timestep=timestep, explore=explore, tf_sess=self.get_session()
-        )
+        if getattr(self, "exploration", None):
+            # Policies with RLModules don't have an exploration object.
+            self.exploration.before_compute_actions(
+                timestep=timestep, explore=explore, tf_sess=self.get_session()
+            )
 
         ret = self._compute_actions_helper(
             input_dict,
@@ -566,7 +570,9 @@ class EagerTFPolicyV2(Policy):
             )
 
         # Exploration hook before each forward pass.
-        self.exploration.before_compute_actions(explore=False)
+        if getattr(self, "exploration", None):
+            # Policies with RLModules don't have an exploration object.
+            self.exploration.before_compute_actions(explore=False)
 
         # Action dist class and inputs are generated via custom function.
         if is_overridden(self.action_distribution_fn):

@@ -869,19 +869,6 @@ class AlgorithmConfig(_Config):
         # will disable the stocalisticity of this method (e.g. by setting the std to 0
         # or setting temprature to 0 for the Categorical distribution).
 
-        if self._enable_rl_module_api and not self.explore:
-            raise ValueError(
-                "When RLModule API is enabled, explore parameter cannot be False. "
-                "Please set explore=None or disable RLModule API via "
-                "`config.rl_module(_enable_rl_module_api=False)`."
-                "If you want to disable the stochasticity during the exploration "
-                "phase, you can customize your RLModule and override the RLModule."
-                "forward_exploration() method "
-                "or setup model parameters such that it will disable the "
-                "stochasticity of this method (e.g. by setting the std to 0 or "
-                "setting temperature to 0 for the Categorical distribution)."
-            )
-
         # TODO: Deprecate self.simple_optimizer!
         # Multi-GPU settings.
         if self.simple_optimizer is True:
@@ -1692,6 +1679,15 @@ class AlgorithmConfig(_Config):
         if explore is not NotProvided:
             self.explore = explore
         if exploration_config is not NotProvided:
+
+            if self._enable_rl_module_api:
+                raise ValueError(
+                    "When RLModule API is enabled, exploration_config can not be set."
+                    "If you want to implement custom exploration behaviour, "
+                    "please modify the `forward_exploration` method of the RLModule "
+                    "at hand."
+                )
+
             # Override entire `exploration_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
             new_exploration_config = deep_update(

@@ -177,7 +177,11 @@ class TorchPolicyV2(Policy):
         # Combine view_requirements for Model and Policy.
         self.view_requirements.update(self.model.view_requirements)
 
-        self.exploration = self._create_exploration()
+        if self.config.get("_enable_rl_module_api", True):
+            # We don't need an exploration object with RLModules
+            self.exploration = None
+        else:
+            self.exploration = self._create_exploration()
         self._optimizers = force_list(self.optimizer())
 
         # Backward compatibility workaround so Policy will call self.loss() directly.
