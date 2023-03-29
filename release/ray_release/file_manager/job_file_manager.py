@@ -13,7 +13,7 @@ from ray_release.file_manager.file_manager import FileManager
 from ray_release.job_manager import JobManager
 from ray_release.logger import logger
 from ray_release.util import (
-    exponential_backoff_retry, 
+    exponential_backoff_retry,
     generate_tmp_cloud_storage_path,
     S3_CLOUD_STORAGE,
     GS_CLOUD_STORAGE,

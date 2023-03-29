@@ -310,7 +310,9 @@ def main(
 
         uploaded_artifact = run_storage_cp(
             artifact_path,
-            os.path.join(upload_cloud_storage_uri, os.environ["USER_GENERATED_ARTIFACT"])
+            os.path.join(
+                upload_cloud_storage_uri, os.environ["USER_GENERATED_ARTIFACT"]
+            )
             if "USER_GENERATED_ARTIFACT" in os.environ
             else None,
         )
@@ -343,7 +345,7 @@ def main(
 
     logger.info("### Finished ###")
     # This will be read by the AnyscaleJobRunner on the buildkite runner
-    # if output.json cannot be obtained from cloud storage 
+    # if output.json cannot be obtained from cloud storage
     logger.info(f"### JSON |{output_json}| ###")
 
     # Flush buffers
