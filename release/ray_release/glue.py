@@ -5,7 +5,7 @@ from typing import Optional, List, Tuple
 from ray_release.alerts.handle import handle_result, require_result
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
-from ray_release.cluster_manager import ClusterManager
+from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.job_runner import JobRunner
