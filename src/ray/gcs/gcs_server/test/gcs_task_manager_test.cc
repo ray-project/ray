@@ -66,13 +66,15 @@ class GcsTaskManagerTest : public ::testing::Test {
       const std::vector<TaskID> &tasks,
       const std::vector<std::pair<rpc::TaskStatus, int64_t>> &status_timestamps,
       const TaskID &parent_task_id = TaskID::Nil(),
-      int job_id = 0) {
+      int job_id = 0,
+      absl::optional<rpc::RayErrorInfo> error_info = absl::nullopt) {
     auto events = GenTaskEvents(tasks,
                                 /* attempt_number */ 0,
                                 /* job_id */ job_id,
                                 /* profile event */ absl::nullopt,
                                 GenStateUpdate(status_timestamps),
-                                GenTaskInfo(JobID::FromInt(job_id), parent_task_id));
+                                GenTaskInfo(JobID::FromInt(job_id), parent_task_id),
+                                error_info);
     auto events_data = Mocker::GenTaskEventsData(events);
     SyncAddTaskEventData(events_data);
   }
@@ -183,7 +185,8 @@ class GcsTaskManagerTest : public ::testing::Test {
       int32_t job_id = 0,
       absl::optional<rpc::ProfileEvents> profile_events = absl::nullopt,
       absl::optional<rpc::TaskStateUpdate> state_update = absl::nullopt,
-      absl::optional<rpc::TaskInfoEntry> task_info = absl::nullopt) {
+      absl::optional<rpc::TaskInfoEntry> task_info = absl::nullopt,
+      absl::optional<rpc::RayErrorInfo> error_info = abls::nullopt) {
     std::vector<rpc::TaskEvents> result;
     for (auto const &task_id : task_ids) {
       rpc::TaskEvents events;
@@ -193,6 +196,10 @@ class GcsTaskManagerTest : public ::testing::Test {
 
       if (state_update.has_value()) {
         events.mutable_state_updates()->CopyFrom(*state_update);
+      }
+
+      if (error_info.has_value()) {
+        events.mutable_error_info()->CopyFrom(*error_info);
       }
 
       if (profile_events.has_value()) {
@@ -485,7 +492,12 @@ TEST_F(GcsTaskManagerTest, TestFailingParentFailChildren) {
   SyncAddTaskEvent({child1, child2}, {{rpc::TaskStatus::RUNNING, 2}}, parent);
 
   // Parent task failed
-  SyncAddTaskEvent({parent}, {{rpc::TaskStatus::FAILED, 3}});
+  SyncAddTaskEvent({parent},
+                   {{rpc::TaskStatus::FAILED, 3}},
+                   /* parent_task_id */ TaskID::Nil(),
+                   /* job_id */ 0,
+                   gcs::GetRayErrorInfo(rpc::ErrorType::WORKER_DIED,
+                                        "task failed due to worker death"));
 
   // Get all children task events should be failed
   {
@@ -497,7 +509,38 @@ TEST_F(GcsTaskManagerTest, TestFailingParentFailChildren) {
   }
 }
 
-TEST_F(GcsTaskManagerTest, TestFailedParentShouldFailGrandChildren) {
+TEST_F(GcsTaskManagerTest, TestFailingParentNotFailChildrenDueToAppError) {
+  // This tests that a failed parent task should automatically fail its children tasks.
+  auto task_ids = GenTaskIDs(3);
+  auto parent = task_ids[0];
+  auto child1 = task_ids[1];
+  auto child2 = task_ids[2];
+
+  // Parent task running
+  SyncAddTaskEvent({parent}, {{rpc::TaskStatus::RUNNING, 1}});
+
+  // Child tasks running
+  SyncAddTaskEvent({child1, child2}, {{rpc::TaskStatus::RUNNING, 2}}, parent);
+
+  // Parent task failed
+  SyncAddTaskEvent({parent},
+                   {{rpc::TaskStatus::FAILED, 3}},
+                   /* parent_task_id */ TaskID::Nil(),
+                   /* job_id */ 0,
+                   gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+                                        "task failed application error"));
+
+  // Get all children task events should be failed
+  {
+    auto reply = SyncGetTaskEvents({child1, child2});
+    EXPECT_EQ(reply.events_by_task_size(), 2);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_EQ(task_event.state_updates().failed_ts(), 0);
+    }
+  }
+}
+
+TEST_F(GcsTaskManagerTest, TestFailedParentShouldFailGrandChildrenIfWorkerDied) {
   // Test that a new task event from child should fail the grand children if it finds out
   // a failed parent.
   auto task_ids = GenTaskIDs(4);
@@ -513,7 +556,11 @@ TEST_F(GcsTaskManagerTest, TestFailedParentShouldFailGrandChildren) {
   SyncAddTaskEvent({grand_child1, grand_child2}, {{rpc::TaskStatus::RUNNING, 3}}, child);
 
   // Parent task failed
-  SyncAddTaskEvent({parent}, {{rpc::TaskStatus::FAILED, 4}});
+  SyncAddTaskEvent({parent},
+                   {{rpc::TaskStatus::FAILED, 4}},
+                   /* parent_task_id */ TaskID::Nil(),
+                   /* job_id */ 0,
+                   gcs::GetRayErrorInfo(rpc::ErrorType::WORKER_DIED, "worker died"));
 
   // Get grand child should still be running since the parent-grand-child relationship is
   // not recorded yet.

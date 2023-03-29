@@ -398,6 +398,10 @@ def verify_tasks_running_or_terminated(task_pids: Dict[str, Tuple[int, Optional[
         )
         task = tasks[0]
         pid, expected_state = pid_and_state
+
+        print(
+            f"p:{psutil.Process(pid).name() if psutil.pid_exists(pid) else task['name']}"
+        )
         if psutil.pid_exists(pid) and task_name in psutil.Process(pid).name():
             assert (
                 "ray::IDLE" not in task["name"]
@@ -408,7 +412,10 @@ def verify_tasks_running_or_terminated(task_pids: Dict[str, Tuple[int, Optional[
         else:
             # Tasks no longer running.
             if expected_state is None:
-                assert task["state"] in ["FAILED", "FINISHED"]
+                assert task["state"] in [
+                    "FAILED",
+                    "FINISHED",
+                ], f"{task_name} = {task['state']}"
             else:
                 assert task["state"] == expected_state, task
 
