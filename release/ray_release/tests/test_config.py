@@ -12,6 +12,7 @@ from ray_release.config import (
     parse_test_definition,
     validate_test,
 )
+from ray_release.exception import ReleaseTestConfigError
 
 TEST_COLLECTION_FILE = os.path.join(
     os.path.dirname(__file__), "..", "..", "release_tests.yaml"
@@ -73,7 +74,7 @@ VALID_TEST_DEFINITION = TestDefinition(
 
 
 def test_definition_parser():
-    test_definition = yaml.safe_load('''
+    test_definitions = yaml.safe_load('''
         - name: sample_test
           working_dir: sample_dir
           frequency: nightly
@@ -91,7 +92,7 @@ def test_definition_parser():
                 cluster_env: env_gce.yaml
                 cluster_compute: compute_gce.yaml
     ''')
-    tests = parse_test_definition(test_definition)
+    tests = parse_test_definition(test_definitions)
     aws_test = tests[0]
     gce_test = tests[1]
     schema = load_schema_file()
@@ -99,6 +100,9 @@ def test_definition_parser():
     assert not validate_test(gce_test, schema)
     assert aws_test["name"] == "sample_test.aws"
     assert gce_test["cluster"]["cluster_compute"] == "compute_gce.yaml"
+    with pytest.raises(ReleaseTestConfigError):
+        test_definitions[0]['variations'] = []
+        parse_test_definition(test_definitions)
 
 
 def test_schema_validation():
