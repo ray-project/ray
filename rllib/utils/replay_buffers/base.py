@@ -33,9 +33,7 @@ class ReplayBufferInterface(metaclass=ABCMeta):
 
     @abstractmethod
     @DeveloperAPI
-    def sample(
-        self, num_items: Optional[int] = None, **kwargs
-    ) -> Any:
+    def sample(self, num_items: Optional[int] = None, **kwargs) -> Any:
         """Samples `num_items` items from this buffer.
 
         The exact shape of the returned data depends on the buffer's implementation.
@@ -76,4 +74,3 @@ class ReplayBufferInterface(metaclass=ABCMeta):
             name could not be determined.
         """
         return platform.node()
-

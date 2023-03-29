@@ -41,6 +41,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
     observation of the episode, the final reward received, a dummy action
     (repeat the previous action), as well as either terminated=True or truncated=True.
     """
+
     def __init__(
         self,
         capacity: int = 10000,
@@ -112,8 +113,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
         episode_slices = batch.split_by_episode()
         episodes = [
-            _Episode.from_sample_batch(eps_slice)
-            for eps_slice in episode_slices
+            _Episode.from_sample_batch(eps_slice) for eps_slice in episode_slices
         ]
 
         for eps in episodes:
@@ -134,8 +134,9 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 self.episode_id_to_index[eps.id_] = eps_idx
                 self._indices.extend([(eps_idx, i) for i in range(len(eps))])
 
-            # Eject old records from front of deque.
-            while self._num_timesteps > self.capacity:
+            # Eject old records from front of deque (only if we have more than 1 episode
+            # in the buffer).
+            while self._num_timesteps > self.capacity and self.get_num_episodes() > 1:
                 # Eject oldest episode.
                 evicted_eps = self.episodes.popleft()
                 evicted_eps_len = len(evicted_eps)
@@ -165,11 +166,15 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                         # non-evicted episode) -> Set cursor to valid int again.
                         if idx_tuple[0] != evicted_idx:
                             idx_cursor = i
+                            # But early-out if evicted episode was only 1 single
+                            # timestep long.
+                            if evicted_eps_len == 1:
+                                break
                         # Early-out: We reached the end of the to-be-evicted episode.
                         # We can stop searching further here (all following tuples
                         # will NOT be in the evicted episode).
                         elif idx_tuple[1] == evicted_eps_len - 1:
-                            assert self._indices[i+1][0] != idx_tuple[0]
+                            assert self._indices[i + 1][0] != idx_tuple[0]
                             idx_cursor = i + 1
                             break
 
@@ -240,7 +245,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             # Compute the actual episode index (offset by the number of
             # already evicted episodes).
             episode_idx, episode_ts = (
-                index_tuple[0] - self._num_episodes_evicted, index_tuple[1]
+                index_tuple[0] - self._num_episodes_evicted,
+                index_tuple[1],
             )
             episode = self.episodes[episode_idx]
 
@@ -275,15 +281,15 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             T = min(len(observations[B]), batch_length_T)
 
             # Set is_last=True.
-            is_last[B][T-1] = True
+            is_last[B][T - 1] = True
             # If episode is terminated and we have reached the end of it, set
             # is_terminated=True.
             if episode.is_terminated and T == len(observations[B]):
-                is_terminated[B][T-1] = True
+                is_terminated[B][T - 1] = True
             # If episode is truncated and we have reached the end of it, set
             # is_truncated=True.
             elif episode.is_truncated and T == len(observations[B]):
-                is_truncated[B][T-1] = True
+                is_truncated[B][T - 1] = True
 
             # We are done with this batch row.
             if T == batch_length_T:
@@ -312,17 +318,15 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         return ret
 
     def get_num_episodes(self) -> int:
-        """Returns the number of episodes (completed or truncated) stored in the buffer.
-        """
+        """Returns number of episodes (completed or truncated) stored in the buffer."""
         return len(self.episodes)
 
     def get_num_timesteps(self) -> int:
-        """Returns the number of individual timesteps stored in the buffer."""
+        """Returns number of individual timesteps stored in the buffer."""
         return len(self._indices)
 
     def get_sampled_timesteps(self) -> int:
-        """Returns the number of timesteps that have been sampled in buffer's lifetime.
-        """
+        """Returns number of timesteps that have been sampled in buffer's lifetime."""
         return self.sampled_timesteps
 
     @override(ReplayBufferInterface)
@@ -338,9 +342,9 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
     @override(ReplayBufferInterface)
     def set_state(self, state) -> None:
-        self.episodes = deque([
-            _Episode.from_state(eps_data) for eps_data in state["episodes"]
-        ])
+        self.episodes = deque(
+            [_Episode.from_state(eps_data) for eps_data in state["episodes"]]
+        )
         self.episode_id_to_index = dict(state["episode_id_to_index"])
         self._num_episodes_evicted = state["_num_episodes_evicted"]
         self._indices = state["_indices"]
@@ -432,7 +436,9 @@ class _Episode:
         self.is_truncated = is_truncated
         self.validate()
 
-    def add_initial_observation(self, *, initial_observation, initial_state=None, initial_render_image=None):
+    def add_initial_observation(
+        self, *, initial_observation, initial_state=None, initial_render_image=None
+    ):
         assert not self.is_done()
         assert len(self.observations) == 0
 
@@ -445,9 +451,7 @@ class _Episode:
     def validate(self):
         # Make sure we always have one more obs stored than rewards (and actions)
         # due to the reset and last-obs logic of an MDP.
-        assert (
-            len(self.observations) == len(self.rewards) + 1 == len(self.actions) + 1
-        )
+        assert len(self.observations) == len(self.rewards) + 1 == len(self.actions) + 1
 
         # Convert all lists to numpy arrays, if we are terminated.
         if self.is_done():
@@ -460,27 +464,29 @@ class _Episode:
         return self.is_terminated or self.is_truncated
 
     def to_sample_batch(self):
-        return SampleBatch({
-            SampleBatch.EPS_ID: np.array([self.id_] * len(self)),
-            SampleBatch.OBS: self.observations[:-1],
-            SampleBatch.NEXT_OBS: self.observations[1:],
-            SampleBatch.ACTIONS: self.actions,
-            SampleBatch.REWARDS: self.rewards,
-            SampleBatch.TERMINATEDS: np.array(
-                [False] * (len(self) - 1) + [self.is_terminated]
-            ),
-            SampleBatch.TRUNCATEDS: np.array(
-                [False] * (len(self) - 1) + [self.is_truncated]
-            ),
-        })
+        return SampleBatch(
+            {
+                SampleBatch.EPS_ID: np.array([self.id_] * len(self)),
+                SampleBatch.OBS: self.observations[:-1],
+                SampleBatch.NEXT_OBS: self.observations[1:],
+                SampleBatch.ACTIONS: self.actions,
+                SampleBatch.REWARDS: self.rewards,
+                SampleBatch.TERMINATEDS: np.array(
+                    [False] * (len(self) - 1) + [self.is_terminated]
+                ),
+                SampleBatch.TRUNCATEDS: np.array(
+                    [False] * (len(self) - 1) + [self.is_truncated]
+                ),
+            }
+        )
 
     @staticmethod
     def from_sample_batch(batch):
         return _Episode(
             id_=batch[SampleBatch.EPS_ID][0],
-            observations=np.concatenate([
-                batch[SampleBatch.OBS], batch[SampleBatch.NEXT_OBS][None, -1]
-            ]),
+            observations=np.concatenate(
+                [batch[SampleBatch.OBS], batch[SampleBatch.NEXT_OBS][None, -1]]
+            ),
             actions=batch[SampleBatch.ACTIONS],
             rewards=batch[SampleBatch.REWARDS],
             is_terminated=batch[SampleBatch.TERMINATEDS][-1],
@@ -491,15 +497,17 @@ class _Episode:
         return sum(self.rewards)
 
     def get_state(self):
-        return list({
-            "id_": self.id_,
-            "observations": self.observations,
-            "actions": self.actions,
-            "rewards": self.rewards,
-            "states": self.states,
-            "is_terminated": self.is_terminated,
-            "is_truncated": self.is_truncated,
-        }.items())
+        return list(
+            {
+                "id_": self.id_,
+                "observations": self.observations,
+                "actions": self.actions,
+                "rewards": self.rewards,
+                "states": self.states,
+                "is_terminated": self.is_terminated,
+                "is_truncated": self.is_truncated,
+            }.items()
+        )
 
     @staticmethod
     def from_state(state):
