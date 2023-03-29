@@ -787,6 +787,7 @@ class RunConfig:
                 "in the future. Set `RunConfig.storage_path` instead or set the"
                 "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
             )
+            self.local_dir = None
 
         if remote_path:
             self.storage_path = remote_path

@@ -119,10 +119,13 @@ STDERR_FILE = "__stderr_file__"
 
 def _get_defaults_results_dir() -> str:
     return (
-        # This is the file system that bazel test uses.
-        os.environ.get("TEST_TMPDIR")
-        or os.environ.get("RAY_AIR_LOCAL_CACHE_DIR")
+        # This can be overwritten by our libraries
+        os.environ.get("RAY_AIR_LOCAL_CACHE_DIR")
+        # This is a directory provided by Bazel automatically
+        or os.environ.get("TEST_TMPDIR")
+        # This is the old way to specify the results dir
         or os.environ.get("TUNE_RESULT_DIR")
+        # Default
         or os.path.expanduser("~/ray_results")
     )
 
