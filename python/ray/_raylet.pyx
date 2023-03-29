@@ -1520,14 +1520,20 @@ cdef class GcsClient:
     """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
     cdef:
         shared_ptr[CGcsSyncClient] inner
+        object address
 
     def __cinit__(self, address):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CGcsSyncClient(dereference(gcs_options.native())))
+        self.address = address
         self.connect()
 
     def connect(self):
         check_status(self.inner.get().Connect())
+
+    @property
+    def address(self):
+        return self.address
 
     def internal_kv_get(self, bytes key, namespace=None, timeout=None):
         cdef:

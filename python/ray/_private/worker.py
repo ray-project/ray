@@ -2048,7 +2048,7 @@ def connect(
     ray._private.state.state._initialize_global_state(
         ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
     )
-    worker.gcs_publisher = GcsPublisher(address=node.address)
+    worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
@@ -2201,13 +2201,13 @@ def connect(
     worker.core_worker.notify_raylet()
     worker_id = worker.worker_id
     worker.gcs_error_subscriber = GcsErrorSubscriber(
-        worker_id=worker_id, address=node.address
+        worker_id=worker_id, address=worker.gcs_client.address
     )
     worker.gcs_log_subscriber = GcsLogSubscriber(
-        worker_id=worker_id, address=node.address
+        worker_id=worker_id, address=worker.gcs_client.address
     )
     worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
-        worker_id=worker_id, address=node.address
+        worker_id=worker_id, address=worker.gcs_client.address
     )
 
     if driver_object_store_memory is not None:
