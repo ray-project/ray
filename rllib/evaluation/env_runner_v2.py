@@ -833,7 +833,11 @@ class EnvRunnerV2:
         while True:
             resetted_obs, resetted_infos = self._base_env.try_reset(env_id)
 
-            if resetted_obs is None or not isinstance(resetted_obs[env_id], Exception):
+            if (
+                resetted_obs is None
+                or resetted_obs == ASYNC_RESET_RETURN
+                or not isinstance(resetted_obs[env_id], Exception)
+            ):
                 break
             else:
                 # Report a faulty episode.
