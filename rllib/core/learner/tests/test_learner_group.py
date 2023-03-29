@@ -72,10 +72,13 @@ class RemoteTrainingHelper:
 
 
 class TestLearnerGroup(unittest.TestCase):
-    def setUpClass(self) -> None:
+
+    @classmethod
+    def setUpClass(cls) -> None:
         ray.init()
 
-    def tearDownClass(self) -> None:
+    @classmethod
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_learner_group_local(self):
