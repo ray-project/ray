@@ -580,7 +580,9 @@ class Node:
         return self._gcs_client
 
     def _init_gcs_client(self):
-        gcs_process = self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0]
+        gcs_process = self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][
+            0
+        ].process
         for _ in range(NUM_REDIS_GET_RETRIES):
             gcs_address = None
             last_ex = None
@@ -601,7 +603,10 @@ class Node:
 
         if self._gcs_client is None:
             with open(f"{self._logs_dir}/gcs_server.err") as err:
-                errors = err.readlines()[-10:]
+                # Use " C " or " E " to exclude the stacktrace.
+                # This should work for most cases, especitally
+                # it's when GCS is starting. Only display last 10 lines of logs.
+                errors = [e for e in err.readlines() if " C " in e or " E " in e][-10:]
             error_msg = "\n" + "".join(errors) + "\n"
             logger.fatal(
                 f"Failed to start GCS. Last {len(errors)} lines of error files:"
