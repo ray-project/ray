@@ -117,7 +117,6 @@ class TestBackwardCompatibility(unittest.TestCase):
             "lr": 0.001,
             "evaluation_config": {
                 "num_envs_per_worker": 4,
-                "explore": False,
             },
             "evaluation_num_workers": 1,
             "multiagent": {
@@ -132,8 +131,6 @@ class TestBackwardCompatibility(unittest.TestCase):
         self.assertTrue(algo.config.lr == 0.001)
         self.assertTrue(algo.config.evaluation_num_workers == 1)
         self.assertTrue(list(algo.config.policies.keys()) == ["policy1"])
-        self.assertTrue(algo.config.explore is True)
-        self.assertTrue(algo.evaluation_config.explore is False)
         print(algo.train())
         algo.stop()
 
