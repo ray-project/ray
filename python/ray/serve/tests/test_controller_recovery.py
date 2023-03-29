@@ -200,5 +200,48 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     make_nonblocking_calls({"2": 2}, num_returns=2)
 
 
+def test_controller_recover_initializing_actor(serve_instance):
+    """Recover the actor which is under PENDING_INITIALIZATION"""
+
+    signal = SignalActor.remote()
+    signal2 = SignalActor.remote()
+    client = serve_instance
+
+    @ray.remote
+    def pending_init_indicator():
+        ray.get(signal2.wait.remote())
+        return True
+
+    @serve.deployment
+    class V1:
+        def __init__(self):
+            signal2.send.remote()
+            ray.get(signal.wait.remote())
+
+        def __call__(self, request):
+            return f"1|{os.getpid()}"
+
+    serve.run(V1.bind(), _blocking=False)
+    ray.get(pending_init_indicator.remote())
+
+    def get_actor_tag(name: str):
+        all_current_actors = ray.util.list_named_actors(all_namespaces=True)
+        for actor in all_current_actors:
+            if name in actor["name"]:
+                return actor["name"]
+        return None
+
+    actor_tag = get_actor_tag(V1.name)
+
+    ray.kill(serve.context._global_client._controller, no_restart=False)
+
+    # Let the actor proceed initialization
+    signal.send.remote()
+    client._wait_for_deployment_healthy(V1.name)
+    # Make sure the actor before controller dead is staying alive.
+    actor_tag2 = get_actor_tag(V1.name)
+    assert actor_tag == actor_tag2
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -170,6 +170,7 @@ def create_replica_wrapper(name: str):
             # or, alternatively, create an async get_replica() method?
             self.replica = None
             self._initialize_replica = initialize_replica
+            self._replica_tag = replica_tag
 
         @ray.method(num_returns=2)
         async def handle_request(
@@ -243,9 +244,15 @@ def create_replica_wrapper(name: str):
             if user_config is not None:
                 await self.replica.reconfigure(user_config)
 
-            return self.get_metadata()
+            return await self.get_metadata()
 
-        def get_metadata(self) -> Tuple[DeploymentConfig, DeploymentVersion]:
+        async def get_metadata(
+            self,
+        ) -> Tuple[Optional[DeploymentConfig], Optional[DeploymentVersion]]:
+            # When the replica is empty, potentially replica is still under initialization.
+            # Relying on DeploymentStateManager to timeout the replica.
+            while self.replica is None:
+                await asyncio.sleep(0.2)
             return self.replica.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
