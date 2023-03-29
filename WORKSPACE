@@ -58,6 +58,9 @@ crates_repository(
         "tracing-subscriber": crate.spec(
             version = "0.3.16",
         ),
+        "wasmtime": crate.spec(
+            version = "7.0.0",
+        ),
     },
     render_config = render_config(
         default_package_name = ""

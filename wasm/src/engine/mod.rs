@@ -19,10 +19,10 @@ mod wasmtime;
 
 use crate::engine::wasmedge::WasmEdgeEngine;
 use crate::engine::wasmtime::WasmtimeEngine;
-use crate::ray::{Hostcalls, Hostcall};
+use crate::ray::{Hostcall, Hostcalls};
 
 pub trait WasmEngine: Sync + Send {
-    fn compile(&self, wasm_bytes: &[u8]) -> Result<Box<dyn WasmModule>>;
+    fn compile(&mut self, wasm_bytes: &[u8]) -> Result<Box<dyn WasmModule>>;
 
     fn create_sandbox(&self) -> Result<Box<dyn WasmSandbox>>;
     fn instantiate(
@@ -44,29 +44,13 @@ pub trait WasmEngine: Sync + Send {
     fn register_hostcalls(&self, hostcalls: &mut Hostcalls) -> Result<()>;
 }
 
-pub trait WasmModule {
-    fn new() -> Self
-    where
-        Self: Sized;
-}
+pub trait WasmModule {}
 
-pub trait WasmSandbox {
-    fn new() -> Self
-    where
-        Self: Sized;
-}
+pub trait WasmSandbox {}
 
-pub trait WasmInstance {
-    fn new() -> Self
-    where
-        Self: Sized;
-}
+pub trait WasmInstance {}
 
-pub trait WasmValue {
-    fn new() -> Self
-    where
-        Self: Sized;
-}
+pub trait WasmValue {}
 
 pub enum WasmEngineType {
     WASMEDGE,

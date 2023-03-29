@@ -11,22 +11,31 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 use crate::engine::{WasmEngine, WasmInstance, WasmModule, WasmSandbox, WasmValue};
-use anyhow::Result;
-use crate::ray::{Hostcalls, Hostcall};
+use crate::ray::{Hostcall, Hostcalls};
+use anyhow::{Error, Result};
+use wasmtime::{Engine, Module, Store};
 
-pub struct WasmtimeEngine {}
+pub struct WasmtimeEngine {
+    engine: Engine,
+    modules: Vec<Module>,
+}
 
 impl WasmtimeEngine {
     pub fn new() -> Self {
-        WasmtimeEngine {}
+        WasmtimeEngine {
+            engine: Engine::default(),
+            modules: Vec::new(),
+        }
     }
 }
 
 impl WasmEngine for WasmtimeEngine {
-    fn compile(&self, wasm_bytes: &[u8]) -> Result<Box<dyn WasmModule>> {
-        Ok(Box::new(WasmtimeModule::new()))
+    fn compile(&mut self, wasm_bytes: &[u8]) -> Result<Box<dyn WasmModule>> {
+        let module = Module::new(&self.engine, wasm_bytes)?;
+        let abs_module = WasmtimeModule::new(module.clone());
+        self.modules.push(module);
+        Ok(Box::new(abs_module))
     }
 
     fn create_sandbox(&self) -> Result<Box<dyn WasmSandbox>> {
@@ -51,50 +60,65 @@ impl WasmEngine for WasmtimeEngine {
     }
 
     fn list_modules(&self) -> Result<Vec<Box<dyn WasmModule>>> {
-        Ok(vec![Box::new(WasmtimeModule::new())])
+        Err(anyhow::anyhow!("Not implemented"))
     }
 
     fn list_sandboxes(&self) -> Result<Vec<Box<dyn WasmSandbox>>> {
-        Ok(vec![Box::new(WasmtimeSandbox::new())])
+        Err(anyhow::anyhow!("Not implemented"))
     }
 
     fn list_instances(&self, sandbox: Box<dyn WasmSandbox>) -> Result<Vec<Box<dyn WasmInstance>>> {
-        Ok(vec![Box::new(WasmtimeInstance::new())])
+        Err(anyhow::anyhow!("Not implemented"))
     }
 
     fn register_hostcalls(&self, hostcalls: &mut Hostcalls) -> Result<()> {
-        Ok(())
+        Err(anyhow::anyhow!("Not implemented"))
     }
 }
 
-struct WasmtimeModule {}
+struct WasmtimeModule {
+    module: Module,
+}
 
-impl WasmModule for WasmtimeModule {
-    fn new() -> Self {
-        WasmtimeModule {}
+impl WasmtimeModule {
+    pub fn new(m: Module) -> Self {
+        WasmtimeModule {
+            module: Module::new(&Engine::default(), &[]).unwrap(),
+        }
     }
 }
+
+impl WasmModule for WasmtimeModule {}
 
 struct WasmtimeSandbox {}
 
-impl WasmSandbox for WasmtimeSandbox {
+impl WasmtimeSandbox {
+    // TODO:
     fn new() -> Self {
         WasmtimeSandbox {}
     }
 }
 
+impl WasmSandbox for WasmtimeSandbox {}
+
 struct WasmtimeInstance {}
 
-impl WasmInstance for WasmtimeInstance {
+impl WasmtimeInstance {
+    // TODO:
     fn new() -> Self {
         WasmtimeInstance {}
     }
 }
 
+impl WasmInstance for WasmtimeInstance {}
+
 struct WasmtimeValue {}
 
-impl WasmValue for WasmtimeValue {
+impl WasmtimeValue {
+    // TODO:
     fn new() -> Self {
         WasmtimeValue {}
     }
 }
+
+impl WasmValue for WasmtimeValue {}

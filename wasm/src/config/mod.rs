@@ -11,14 +11,14 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-use crate::util;
 use crate::ray;
+use crate::util;
 use lazy_static::lazy_static;
 use serde_json::Value;
-use tracing::info;
 use std::sync::Arc;
 use std::sync::RwLock;
 use tracing::debug;
+use tracing::info;
 use uuid::Uuid;
 
 use std::collections::HashMap;
@@ -34,6 +34,7 @@ pub enum RunMode {
     Cluster,
 }
 
+#[derive(Clone, Debug)]
 pub struct ConfigInternal {
     pub worker_type: WorkerType,
     pub run_mode: RunMode,
@@ -57,35 +58,60 @@ pub struct ConfigInternal {
     pub ray_namespace: String,
 }
 
-lazy_static! {
-    static ref CONFIG: Arc<RwLock<ConfigInternal>> = Arc::new(RwLock::new(ConfigInternal {
-        worker_type: WorkerType::Driver,
-        run_mode: RunMode::SingleProcess,
-        bootstrap_ip: String::new(),
-        bootstrap_port: 6379,
-        redis_password: String::from("5241590000000000"),
-        node_manager_port: 0,
-        code_search_path: vec![],
-        plasma_store_socket_name: String::new(),
-        raylet_socket_name: String::new(),
-        session_dir: String::new(),
-        job_id: String::new(),
-        logs_dir: String::new(),
-        node_ip_address: String::new(),
-        startup_token: 0,
-        head_args: vec![],
-        runtime_env: None,
-        runtime_env_hash: 0,
-        default_actor_lifetime: ActorLifetime::NonDetached,
-        job_config_metadata: None,
-        ray_namespace: String::new(),
-    }));
-}
+// lazy_static! {
+//     static ref CONFIG: Arc<RwLock<ConfigInternal>> = Arc::new(RwLock::new(ConfigInternal {
+//         worker_type: WorkerType::Driver,
+//         run_mode: RunMode::SingleProcess,
+//         bootstrap_ip: String::new(),
+//         bootstrap_port: 6379,
+//         redis_password: String::from("5241590000000000"),
+//         node_manager_port: 0,
+//         code_search_path: vec![],
+//         plasma_store_socket_name: String::new(),
+//         raylet_socket_name: String::new(),
+//         session_dir: String::new(),
+//         job_id: String::new(),
+//         logs_dir: String::new(),
+//         node_ip_address: String::new(),
+//         startup_token: 0,
+//         head_args: vec![],
+//         runtime_env: None,
+//         runtime_env_hash: 0,
+//         default_actor_lifetime: ActorLifetime::NonDetached,
+//         job_config_metadata: None,
+//         ray_namespace: String::new(),
+//     }));
+// }
 
 impl ConfigInternal {
-    pub fn instance() -> Arc<RwLock<ConfigInternal>> {
-        CONFIG.clone()
+    pub fn new() -> Self {
+        ConfigInternal {
+            worker_type: WorkerType::Driver,
+            run_mode: RunMode::SingleProcess,
+            bootstrap_ip: String::new(),
+            bootstrap_port: 6379,
+            redis_password: String::from("5241590000000000"),
+            node_manager_port: 0,
+            code_search_path: vec![],
+            plasma_store_socket_name: String::new(),
+            raylet_socket_name: String::new(),
+            session_dir: String::new(),
+            job_id: String::new(),
+            logs_dir: String::new(),
+            node_ip_address: String::new(),
+            startup_token: 0,
+            head_args: vec![],
+            runtime_env: None,
+            runtime_env_hash: 0,
+            default_actor_lifetime: ActorLifetime::NonDetached,
+            job_config_metadata: None,
+            ray_namespace: String::new(),
+        }
     }
+
+    // pub fn instance() -> Arc<RwLock<ConfigInternal>> {
+    //     CONFIG.clone()
+    // }
 
     /// process RayConfig and set the variables
     fn process_config(&mut self, config: &ray::RayConfig) {

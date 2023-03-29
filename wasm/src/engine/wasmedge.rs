@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 use crate::engine::{WasmEngine, WasmInstance, WasmModule, WasmSandbox, WasmValue};
+use crate::ray::{Hostcall, Hostcalls};
 use anyhow::Result;
-use crate::ray::{Hostcalls, Hostcall};
 
 pub struct WasmEdgeEngine {}
 
@@ -24,7 +24,7 @@ impl WasmEdgeEngine {
 }
 
 impl WasmEngine for WasmEdgeEngine {
-    fn compile(&self, wasm_bytes: &[u8]) -> Result<Box<dyn WasmModule>> {
+    fn compile(&mut self, wasm_bytes: &[u8]) -> Result<Box<dyn WasmModule>> {
         Ok(Box::new(WasmEdgeModule::new()))
     }
 
@@ -68,32 +68,48 @@ impl WasmEngine for WasmEdgeEngine {
 
 struct WasmEdgeModule {}
 
-impl WasmModule for WasmEdgeModule {
-    fn new() -> Self {
+impl WasmEdgeModule {
+    pub fn new() -> Self {
         WasmEdgeModule {}
     }
 }
 
+impl WasmModule for WasmEdgeModule {
+    // TODO: implement WasmModule
+}
+
 struct WasmEdgeSandbox {}
 
-impl WasmSandbox for WasmEdgeSandbox {
-    fn new() -> Self {
+impl WasmEdgeSandbox {
+    pub fn new() -> Self {
         WasmEdgeSandbox {}
     }
 }
 
+impl WasmSandbox for WasmEdgeSandbox {
+    // TODO: implement WasmSandbox
+}
+
 struct WasmEdgeInstance {}
 
-impl WasmInstance for WasmEdgeInstance {
-    fn new() -> Self {
+impl WasmEdgeInstance {
+    pub fn new() -> Self {
         WasmEdgeInstance {}
     }
 }
 
+impl WasmInstance for WasmEdgeInstance {
+    // TODO: implement WasmInstance
+}
+
 struct WasmEdgeValue {}
 
-impl WasmValue for WasmEdgeValue {
-    fn new() -> Self {
+impl WasmEdgeValue {
+    pub fn new() -> Self {
         WasmEdgeValue {}
     }
+}
+
+impl WasmValue for WasmEdgeValue {
+    // TODO: implement WasmValue
 }

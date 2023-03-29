@@ -13,92 +13,150 @@
 // limitations under the License.
 use wasm_on_ray::config;
 use wasm_on_ray::engine;
+use wasm_on_ray::engine::WasmInstance;
 use wasm_on_ray::ray;
 use wasm_on_ray::util;
-use wasm_on_ray::engine::WasmInstance;
 
-use tokio::task;
 use std::sync::{Arc, RwLock};
+use tokio::task;
 
 use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber;
 
-lazy_static::lazy_static! {
-    static ref ENGINE_INSTANCE: Arc<RwLock<Option<Box<dyn engine::WasmEngine>>>> = Arc::new(RwLock::new(None));
+struct RayWaContext {
+    // ray runtime
+    runtime: Box<dyn ray::RayRuntime>,
+
+    // wasm engine
+    engine: Box<dyn engine::WasmEngine>,
+
+    // launch parameters
+    params: util::LauncherParameters,
+
+    // ray internal config
+    config: config::ConfigInternal,
 }
 
-async fn init_wasm(args: &util::LauncherParameters) -> Result<Box<dyn WasmInstance>> {
-    let engine_type = match args.engine_type {
-        util::WasmEngineType::Wasmedge => engine::WasmEngineType::WASMEDGE,
-        util::WasmEngineType::Wasmtime => engine::WasmEngineType::WASMTIME,
-        _ => unimplemented!(),
-    };
+struct RayWaContextFactory {}
 
-    {
-        let engine_instance = engine::WasmEngineFactory::create_engine(engine_type);
-        ENGINE_INSTANCE.write().unwrap().replace(engine_instance);
+impl RayWaContextFactory {
+    pub async fn create_context(params: util::LauncherParameters) -> Result<RayWaContext> {
+        let cfg = ray::RayConfig::new();
+        let mut internal_cfg = config::ConfigInternal::new();
+
+        internal_cfg.init(&cfg, &util::WorkerParameters::new_empty());
+
+        let wasm_engine = RayWaContextFactory::create_engine(params.engine_type.clone());
+        let ray_runtime = RayWaContextFactory::create_runtime(internal_cfg.clone());
+        let (wasm_engine, ray_runtime) = tokio::join!(wasm_engine, ray_runtime);
+
+        let mut context = RayWaContext {
+            runtime: ray_runtime.unwrap(),
+            engine: wasm_engine.unwrap(),
+            params,
+            config: internal_cfg,
+        };
+
+        context.runtime.do_init()?;
+        Ok(context)
     }
 
-    let mut hostcalls = ray::Hostcalls::new();
-    ENGINE_INSTANCE
-        .read()
-        .unwrap()
-        .as_ref()
-        .unwrap()
-        .register_hostcalls(&mut hostcalls)?;
-
-    // check if wasm file exists
-    let wasm_file = std::path::Path::new(&args.wasm_file);
-    if !wasm_file.exists() {
-        return Err(anyhow::anyhow!(
-            "wasm file \"{}\" not found",
-            wasm_file.display()
-        ));
+    async fn create_engine(
+        engine_type: util::WasmEngineType,
+    ) -> Result<Box<dyn engine::WasmEngine>> {
+        let engine_type = match engine_type {
+            util::WasmEngineType::Wasmedge => engine::WasmEngineType::WASMEDGE,
+            util::WasmEngineType::Wasmtime => engine::WasmEngineType::WASMTIME,
+            _ => unimplemented!(),
+        };
+        let e = engine::WasmEngineFactory::create_engine(engine_type);
+        Ok(e)
     }
-    // if file found, read it and compile it
-    let data = std::fs::read(wasm_file)?;
 
-    let engine_instance = ENGINE_INSTANCE.read().unwrap();
-    // compile wasm file
-    let wasm_module = engine_instance.as_ref().unwrap().compile(&data)?;
-
-    // crate a new instance
-    let sandbox = engine_instance.as_ref().unwrap().create_sandbox()?;
-    let wasm_instance = engine_instance
-        .as_ref()
-        .unwrap()
-        .instantiate(sandbox, wasm_module)?;
-
-    Ok(wasm_instance)
+    async fn create_runtime(
+        internal_cfg: config::ConfigInternal,
+    ) -> Result<Box<dyn ray::RayRuntime>> {
+        let runtime = ray::RayRuntimeFactory::create_runtime(internal_cfg);
+        Ok(runtime.unwrap())
+    }
 }
 
-async fn init_ray(args: &util::LauncherParameters) -> Result<()> {
-    let cfg = ray::RayConfig::new();
-    config::ConfigInternal::instance()
-        .write()
-        .unwrap()
-        .init(&cfg, &util::WorkerParameters::new_empty());
-    {
-        ray::RayRuntime::instance()
-            .write()
-            .unwrap()
-            .do_init()
-            .await
-            .unwrap();
-    }
-    Ok(())
-}
+// lazy_static::lazy_static! {
+//     static ref ENGINE_INSTANCE: Arc<RwLock<Option<Box<dyn engine::WasmEngine>>>> = Arc::new(RwLock::new(None));
+// }
+
+// async fn init_wasm(args: &util::LauncherParameters) -> Result<Box<dyn WasmInstance>> {
+//     let engine_type = match args.engine_type {
+//         util::WasmEngineType::Wasmedge => engine::WasmEngineType::WASMEDGE,
+//         util::WasmEngineType::Wasmtime => engine::WasmEngineType::WASMTIME,
+//         _ => unimplemented!(),
+//     };
+
+//     {
+//         let engine_instance = engine::WasmEngineFactory::create_engine(engine_type);
+//         ENGINE_INSTANCE.write().unwrap().replace(engine_instance);
+//     }
+
+//     let mut hostcalls = ray::Hostcalls::new();
+//     ENGINE_INSTANCE
+//         .read()
+//         .unwrap()
+//         .as_ref()
+//         .unwrap()
+//         .register_hostcalls(&mut hostcalls)?;
+
+//     // check if wasm file exists
+//     let wasm_file = std::path::Path::new(&args.wasm_file);
+//     if !wasm_file.exists() {
+//         return Err(anyhow::anyhow!(
+//             "wasm file \"{}\" not found",
+//             wasm_file.display()
+//         ));
+//     }
+//     // if file found, read it and compile it
+//     let data = std::fs::read(wasm_file)?;
+
+//     let engine_instance = ENGINE_INSTANCE.read().unwrap();
+//     // compile wasm file
+//     let wasm_module = engine_instance.as_ref().unwrap().compile(&data)?;
+
+//     // crate a new instance
+//     let sandbox = engine_instance.as_ref().unwrap().create_sandbox()?;
+//     let wasm_instance = engine_instance
+//         .as_ref()
+//         .unwrap()
+//         .instantiate(sandbox, wasm_module)?;
+
+//     Ok(wasm_instance)
+// }
+
+// async fn init_ray(args: &util::LauncherParameters) -> Result<()> {
+//     let cfg = ray::RayConfig::new();
+//     let internal_cfg = config::ConfigInternal::new();
+
+//     internal_cfg.init(&cfg, &util::WorkerParameters::new_empty());
+//     {
+//         ray::RayRuntime::instance()
+//             .write()
+//             .unwrap()
+//             .do_init()
+//             .await
+//             .unwrap();
+//     }
+//     Ok(())
+// }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
     let args = util::LauncherParameters::parse();
 
-    let wasm_instance = init_wasm(&args);
-    let ray_instance = init_ray(&args);
+    // let wasm_instance = init_wasm(&args);
+    // let ray_instance = init_ray(&args);
 
-    let (wasm_instance, ray_instance) = tokio::join!(wasm_instance, ray_instance);
+    // let (wasm_instance, ray_instance) = tokio::join!(wasm_instance, ray_instance);
+    let ctx = RayWaContextFactory::create_context(args).await?;
 
     Ok(())
 }
