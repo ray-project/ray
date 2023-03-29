@@ -5,10 +5,10 @@ verification process. The script requires two command-line arguments: the path t
 cluster configuration file and an optional number of retries for the verification step.
 
 Usage:
-    python ray_cluster_launcher.py <cluster_configuration_file_path> [retries]
+    python aws_launch_and_verify_cluster.py <cluster_configuration_file_path> [retries]
 
 Example:
-    python ray_cluster_launcher.py /path/to/cluster_config.yaml 5
+    python aws_launch_and_verify_cluster.py /path/to/cluster_config.yaml 5
 """
 import os
 import subprocess
