@@ -5,6 +5,8 @@ This example how to turn 2D observations with shape (A, B) into a 3D observation
 shape (C, D, 1).
 This can be useful in order to use RLlib's default CNN filters, even though the
 original observation space of the environment does not fit them.
+
+This example should reach rewards of 50 within 150k timesteps.
 """
 
 from numpy import float32
@@ -59,22 +61,21 @@ TRANSFORMED_OBS_SPACE = (42, 42, 1)
 def env_creator(config):
     env = pistonball_v6.env(n_pistons=5)
     env = dtype_v0(env, dtype=float32)
-    # This step gives us a greyscale image
+    # This gives us greyscale images
     env = color_reduction_v0(env, mode="R")
     env = normalize_obs_v0(env)
-    # This step gives us an image that is upsampled to the number of pixels in the
+    # This gives us images that are upsampled to the number of pixels in the
     # default CNN filter
     env = resize_v1(
         env, x_size=TRANSFORMED_OBS_SPACE[0], y_size=TRANSFORMED_OBS_SPACE[1]
     )
-    # This step gives us an image that fits the default CNN filters
+    # This gives us images that fit the default CNN filters
     env = reshape_v0(env, shape=TRANSFORMED_OBS_SPACE)
     return env
 
 
 # Register env
 register_env("pistonball", lambda config: PettingZooEnv(env_creator(config)))
-
 
 config = (
     PPOConfig()
