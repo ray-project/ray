@@ -284,8 +284,8 @@ Serve View
 
 The Serve view lets you monitor the status of your :ref:`Ray Serve <rayserve>` applications. A Serve application can be deployed using the `serve deploy` CLI command.
 
-The initial page showcases your general Serve configurations, a list of all your Serve applications, and, if you have :ref:`metrics <ray-metrics>` configured, some high level
-metrics of all your Serve applications. You can click the name of a Serve applications to enter the Serve Application Detail Page.
+The initial page showcases your general Serve configurations, a list of all your Serve applications, and, if you have :ref:`metrics <ray-metrics>` configured, some high-level
+metrics of all your Serve applications. You can click the name of a Serve application to enter the Serve Application Detail Page.
 
 Serve Application Detail Page
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -309,7 +309,7 @@ Serve Replica Detail Page
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/serve-replica.png
     :align: center
 
-This page shows metadata about the Serve replica, high level metrics about the replica if you have :ref:`metrics <ray-metrics>` configured, and
+This page shows metadata about the Serve replica, high-level metrics about the replica if you have :ref:`metrics <ray-metrics>` configured, and
 a history of :ref:`tasks <core-key-concepts>` that ran on that replica.
 
 
