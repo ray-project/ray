@@ -274,6 +274,8 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailedIfNeeded(
   std::vector<TaskID> parent_tasks_to_check;
   parent_tasks_to_check.push_back(task_id);
   if (!parent_task_id.IsNil()) {
+    parent_tasks_to_check.push_back(parent_task_id);
+  } else {
     parent_tasks_to_check.push_back(task_id);
   }
 

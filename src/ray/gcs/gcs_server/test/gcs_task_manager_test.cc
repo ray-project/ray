@@ -186,7 +186,7 @@ class GcsTaskManagerTest : public ::testing::Test {
       absl::optional<rpc::ProfileEvents> profile_events = absl::nullopt,
       absl::optional<rpc::TaskStateUpdate> state_update = absl::nullopt,
       absl::optional<rpc::TaskInfoEntry> task_info = absl::nullopt,
-      absl::optional<rpc::RayErrorInfo> error_info = abls::nullopt) {
+      absl::optional<rpc::RayErrorInfo> error_info = absl::nullopt) {
     std::vector<rpc::TaskEvents> result;
     for (auto const &task_id : task_ids) {
       rpc::TaskEvents events;
@@ -199,7 +199,7 @@ class GcsTaskManagerTest : public ::testing::Test {
       }
 
       if (error_info.has_value()) {
-        events.mutable_error_info()->CopyFrom(*error_info);
+        events.mutable_state_updates()->mutable_error_info()->CopyFrom(*error_info);
       }
 
       if (profile_events.has_value()) {
