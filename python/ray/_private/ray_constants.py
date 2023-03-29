@@ -409,3 +409,7 @@ ENABLE_RAY_CLUSTER = env_bool(
     ENABLE_RAY_CLUSTERS_ENV_VAR,
     not (sys.platform == "darwin" or sys.platform == "win32"),
 )
+
+SESSION_LATEST = "session_latest"
+NUM_PORT_RETRIES = 40
+NUM_REDIS_GET_RETRIES = int(os.environ.get("RAY_NUM_REDIS_GET_RETRIES", "20"))

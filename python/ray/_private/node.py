@@ -33,10 +33,6 @@ from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
 # using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
 
-SESSION_LATEST = "session_latest"
-NUM_PORT_RETRIES = 40
-NUM_REDIS_GET_RETRIES = 20
-
 
 class Node:
     """An encapsulation of the Ray processes on a single node.
@@ -190,7 +186,7 @@ class Node:
                     self.get_gcs_client(),
                     "session_name",
                     ray_constants.KV_NAMESPACE_SESSION,
-                    num_retries=NUM_REDIS_GET_RETRIES,
+                    num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
                 self._session_name = ray._private.utils.decode(session_name)
             else:
@@ -372,7 +368,7 @@ class Node:
                     self.get_gcs_client(),
                     "temp_dir",
                     ray_constants.KV_NAMESPACE_SESSION,
-                    num_retries=NUM_REDIS_GET_RETRIES,
+                    num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
                 self._temp_dir = ray._private.utils.decode(temp_dir)
             else:
@@ -389,12 +385,12 @@ class Node:
                     self.get_gcs_client(),
                     "session_dir",
                     ray_constants.KV_NAMESPACE_SESSION,
-                    num_retries=NUM_REDIS_GET_RETRIES,
+                    num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
                 self._session_dir = ray._private.utils.decode(session_dir)
             else:
                 self._session_dir = os.path.join(self._temp_dir, self._session_name)
-        session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
+        session_symlink = os.path.join(self._temp_dir, ray_constants.SESSION_LATEST)
 
         # Send a warning message if the session exists.
         try_to_create_directory(self._session_dir)
@@ -586,7 +582,7 @@ class Node:
         else:
             gcs_process = None
 
-        for _ in range(NUM_REDIS_GET_RETRIES):
+        for _ in range(ray_constants.NUM_REDIS_GET_RETRIES):
             gcs_address = None
             last_ex = None
             try:
@@ -605,7 +601,7 @@ class Node:
                 time.sleep(1)
 
         if self._gcs_client is None:
-            with open(f"{self._logs_dir}/gcs_server.err") as err:
+            with open(os.path.join(self._logs_dir, "gcs_server.err")) as err:
                 # Use " C " or " E " to exclude the stacktrace.
                 # This should work for most cases, especitally
                 # it's when GCS is starting. Only display last 10 lines of logs.
@@ -614,7 +610,8 @@ class Node:
             logger.fatal(
                 f"Failed to start GCS. Last {len(errors)} lines of error files:"
                 f"{error_msg}"
-                f"Please check {self._logs_dir}/gcs_server.out for details"
+                f"Please check {os.path.join(self._logs_dir, 'gcs_server.out')}"
+                " for details"
             )
             raise RuntimeError("Failed to start GCS.")
 
@@ -761,7 +758,7 @@ class Node:
         # Try to generate a port that is far above the 'next available' one.
         # This solves issue #8254 where GRPC fails because the port assigned
         # from this method has been used by a different process.
-        for _ in range(NUM_PORT_RETRIES):
+        for _ in range(ray_constants.NUM_PORT_RETRIES):
             new_port = random.randint(port, 65535)
             if new_port in allocated_ports:
                 # This port is allocated for other usage already,
