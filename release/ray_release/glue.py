@@ -177,13 +177,14 @@ def _load_test_configuration(
 
     return cluster_manager, command_runner, artifact_path
 
+
 def _setup_cluster_environment(
     test: Test,
     result: Result,
     cluster_manager: ClusterManager,
     ray_wheels_url: str,
     cluster_env_id: Optional[str],
-) -> Tuple[int, int]:
+) -> Tuple[str, int, int, int, int]:
     setup_signal_handling()
     # Load configs
     cluster_env = load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
@@ -210,9 +211,7 @@ def _setup_cluster_environment(
     # Load some timeouts
     build_timeout = int(test["run"].get("build_timeout", DEFAULT_BUILD_TIMEOUT))
     command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
-    cluster_timeout = int(
-        test["run"].get("session_timeout", DEFAULT_CLUSTER_TIMEOUT)
-    )
+    cluster_timeout = int(test["run"].get("session_timeout", DEFAULT_CLUSTER_TIMEOUT))
 
     # Get prepare command timeout, if any
     prepare_cmd = test["run"].get("prepare", None)
@@ -260,7 +259,8 @@ def _setup_cluster_environment(
         extra_tags=result.extra_tags,
     )
 
-    return build_timeout, cluster_timeout
+    return prepare_cmd, prepare_timeout, build_timeout, cluster_timeout, command_timeout
+
 
 def _setup_local_environment(
     test: Test,
@@ -325,6 +325,7 @@ def _local_environment_information(
         result.cluster_url = cluster_manager.get_cluster_url()
         result.cluster_id = cluster_manager.cluster_id
 
+
 def _prepare_remote_environment(
     test: Test,
     command_runner: CommandRunner,
@@ -351,6 +352,7 @@ def _prepare_remote_environment(
             raise PrepareCommandError(e)
         except CommandTimeout as e:
             raise PrepareCommandTimeout(e)
+
 
 def _running_test_script(
     test: Test,
@@ -387,6 +389,7 @@ def _running_test_script(
         if not is_long_running:
             # Only raise error if command is not long running
             raise TestCommandTimeout(e)
+
 
 def _fetching_results(
     result: Result,
@@ -436,6 +439,7 @@ def _fetching_results(
 
     return metrics, fetch_result_exception
 
+
 def run_release_test(
     test: Test,
     anyscale_project: str,
@@ -458,14 +462,20 @@ def run_release_test(
         ray_wheels_url,
         smoke_test,
         no_terminate,
-    )    
+    )
 
     pipeline_exception = None
     # non critical for some tests. So separate it from the general one.
     fetch_result_exception = None
     try:
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
-        build_timeout, cluster_timeout = _setup_cluster_environment(
+        (
+            prepare_cmd,
+            prepare_timeout,
+            build_timeout,
+            cluster_timeout,
+            command_timeout,
+        ) = _setup_cluster_environment(
             test,
             result,
             cluster_manager,
@@ -487,7 +497,7 @@ def run_release_test(
             no_terminate,
             cluster_id,
             cluster_env_id,
-        ) 
+        )
 
         # Upload files
         buildkite_group(":wrench: Preparing remote environment")
@@ -497,7 +507,7 @@ def run_release_test(
             prepare_cmd,
             prepare_timeout,
         )
-        
+
         buildkite_group(":runner: Running test script")
         start_time_unix = time.time()
         _running_test_script(
