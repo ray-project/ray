@@ -57,6 +57,13 @@ class LightningCheckpoint(TorchCheckpoint):
 
         assert os.path.exists(path), f"Lightning checkpoint {path} doesn't exists!"
 
+        if os.path.isdir(path):
+            raise ValueError(
+                f"from_path() expects a file path, but `{path}` is a directory. "
+                "You can either provide a checkpoint file path, or try to use "
+                "`LightningCheckpoint.from_directory()` instead."
+            )
+
         cache_dir = tempfile.mkdtemp()
         new_checkpoint_path = os.path.join(cache_dir, MODEL_KEY)
         shutil.copy(path, new_checkpoint_path)

@@ -94,6 +94,31 @@ class LightningPredictor(TorchPredictor):
 
         The checkpoint is expected to be a result of ``LightningTrainer``.
 
+        Example:
+            .. code-block:: python
+
+                import pytorch_lightning as pl
+                from ray.train.lightning import LightningCheckpoint, LightningPredictor
+
+                class MyLightningModule(pl.LightningModule):
+                    def __init__(self, input_dim, output_dim) -> None:
+                        super().__init__()
+                        self.linear = nn.Linear(input_dim, output_dim)
+
+                    # ...
+
+                checkpoint = LightningCheckpoint.from_directory(
+                    "path/to/checkpoint_dir"
+                )
+
+                LightningPredictor.from_checkpoint(
+                    checkpoint=checkpoint,
+                    model_class=MyLightningModule,
+                    use_gpu=False,
+                    input_dim=32,
+                    output_dim=10,
+                )
+
         Args:
             checkpoint: The checkpoint to load the model and preprocessor from.
                 It is expected to be from the result of a ``LightningTrainer`` run.
