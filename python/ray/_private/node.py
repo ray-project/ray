@@ -176,7 +176,7 @@ class Node:
 
         if not self.head:
             self.validate_ip_port(self.address)
-            self.gcs_client
+            self.get_gcs_client()
 
         # Register the temp dir.
         if head:
@@ -187,7 +187,7 @@ class Node:
             if ray_params.session_name is None:
                 assert not self._default_worker
                 session_name = ray._private.utils.internal_kv_get_with_retry(
-                    self.gcs_client,
+                    self.get_gcs_client(),
                     "session_name",
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=NUM_REDIS_GET_RETRIES,
@@ -197,7 +197,7 @@ class Node:
                 # worker mode
                 self._session_name = ray_params.session_name
             # setup gcs client
-            self.gcs_client
+            self.get_gcs_client()
 
         # Initialize webui url
         if head:
@@ -336,9 +336,9 @@ class Node:
         """
         import ray._private.usage.usage_lib as ray_usage_lib
 
-        cluster_metadata = ray_usage_lib.get_cluster_metadata(self.gcs_client)
+        cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
         if cluster_metadata is None:
-            cluster_metadata = ray_usage_lib.get_cluster_metadata(self.gcs_client)
+            cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
 
         if not cluster_metadata:
             return
@@ -371,7 +371,7 @@ class Node:
             if self._ray_params.temp_dir is None:
                 assert not self._default_worker
                 temp_dir = ray._private.utils.internal_kv_get_with_retry(
-                    self.gcs_client,
+                    self.get_gcs_client(),
                     "temp_dir",
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=NUM_REDIS_GET_RETRIES,
@@ -388,7 +388,7 @@ class Node:
             if self._temp_dir is None or self._session_name is None:
                 assert not self._default_worker
                 session_dir = ray._private.utils.internal_kv_get_with_retry(
-                    self.gcs_client,
+                    self.get_gcs_client(),
                     "session_dir",
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=NUM_REDIS_GET_RETRIES,
@@ -575,8 +575,7 @@ class Node:
     def is_head(self):
         return self.head
 
-    @property
-    def gcs_client(self):
+    def get_gcs_client(self):
         return self._gcs_client
 
     def _init_gcs_client(self):
@@ -933,7 +932,7 @@ class Node:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
                 process_info,
             ]
-            self.gcs_client.internal_kv_put(
+            self.get_gcs_client().internal_kv_put(
                 b"webui:url",
                 self._webui_url.encode(),
                 True,
@@ -1089,28 +1088,28 @@ class Node:
         # Make sure the cluster metadata wasn't reported before.
         import ray._private.usage.usage_lib as ray_usage_lib
 
-        ray_usage_lib.put_cluster_metadata(self.gcs_client)
+        ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
         # Make sure GCS is up.
-        self.gcs_client.internal_kv_put(
+        self.get_gcs_client().internal_kv_put(
             b"session_name",
             self._session_name.encode(),
             True,
             ray_constants.KV_NAMESPACE_SESSION,
         )
-        self.gcs_client.internal_kv_put(
+        self.get_gcs_client().internal_kv_put(
             b"session_dir",
             self._session_dir.encode(),
             True,
             ray_constants.KV_NAMESPACE_SESSION,
         )
-        self.gcs_client.internal_kv_put(
+        self.get_gcs_client().internal_kv_put(
             b"temp_dir",
             self._temp_dir.encode(),
             True,
             ray_constants.KV_NAMESPACE_SESSION,
         )
         if self._ray_params.storage is not None:
-            self.gcs_client.internal_kv_put(
+            self.get_gcs_client().internal_kv_put(
                 b"storage",
                 self._ray_params.storage.encode(),
                 True,
@@ -1119,7 +1118,7 @@ class Node:
         # Add tracing_startup_hook to redis / internal kv manually
         # since internal kv is not yet initialized.
         if self._ray_params.tracing_startup_hook:
-            self.gcs_client.internal_kv_put(
+            self.get_gcs_client().internal_kv_put(
                 b"tracing_startup_hook",
                 self._ray_params.tracing_startup_hook.encode(),
                 True,
@@ -1139,7 +1138,7 @@ class Node:
             self._redis_address = self._ray_params.external_addresses[0]
 
         self.start_gcs_server()
-        assert self.gcs_client is not None
+        assert self.get_gcs_client() is not None
         self._write_cluster_info_to_kv()
 
         if not self._ray_params.no_monitor:
