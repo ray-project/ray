@@ -111,7 +111,7 @@ class LightningPredictor(TorchPredictor):
                     "path/to/checkpoint_dir"
                 )
 
-                LightningPredictor.from_checkpoint(
+                predictor = LightningPredictor.from_checkpoint(
                     checkpoint=checkpoint,
                     model_class=MyLightningModule,
                     use_gpu=False,

@@ -87,10 +87,6 @@ class LightningConfigBuilder:
     ) -> "LightningConfigBuilder":
         """Set up the Pytorch Lightning module class.
 
-        ``LightningTrainer`` creates a model instance with the provided parameters
-        and feeds it into the ``pl.Trainer.fit()`` method. Therefore, you do not
-        need to provide a model instance again in the ``.fit_param()`` method.
-
         Args:
             cls: A subclass of ``pytorch_lightning.LightningModule``
                 that defines your model and training logic. Note that this is a
@@ -119,9 +115,9 @@ class LightningConfigBuilder:
     def fit_params(self, **kwargs) -> "LightningConfigBuilder":
         """The parameter lists for ``pytorch_lightning.Trainer.fit()``
 
-        Note that you don't need to specify argument `model` here, since
-        LightningTrainer will create a model instance based on the parameters
-        you provide in `.module()`.
+        ``LightningTrainer`` creates a model instance with the parameters provided
+        in `.module()` and feeds it into the ``pl.Trainer.fit()`` method.
+        Therefore, you do not need to provide a model instance here.
 
         Args:
             kwargs: The parameter lists for ``pytorch_lightning.Trainer.fit()``
@@ -153,13 +149,14 @@ class LightningConfigBuilder:
     def checkpointing(self, **kwargs) -> "LightningConfigBuilder":
         """Set up the configurations of ``pytorch_lightning.callbacks.ModelCheckpoint``.
 
-        LightningTrainer creates a `ModelCheckpoint` callback based on this config.
-        The AIR checkpointing and logging methods are triggered in that callback.
+        LightningTrainer creates a subclass of `ModelCheckpoint` callback based on
+        the kwargs. AIR checkpointing and logging are triggered in that callback.
 
-        The callback uses `session.report` to send the latest metrics and checkpoint
-        to the AIR session, so that the report frequency matches the checkpointing
-        frequency. Make sure that the target metrics (e.g. metrics defined in
-        `TuneConfig` or `CheckpointConfig`) are ready when a new checkpoint is saved.
+        Specifically, the callback calls `session.report()` to send the latest metrics
+        and checkpoint to the AIR session, so that the report frequency matches the
+        checkpointing frequency. You have to make sure that the target metrics
+        (e.g. metrics defined in `TuneConfig` or `CheckpointConfig`) are ready when
+        a new checkpoint is being saved.
 
         Note that this method is not a replacement for the
         ``ray.air.configs.CheckpointConfig``. You still need to specify your
@@ -174,7 +171,7 @@ class LightningConfigBuilder:
         return self
 
     def build(self) -> Dict["str", Any]:
-        """Build and return a config dictionary to pass into LightningTrainer"""
+        """Build and return a config dictionary to pass into LightningTrainer."""
         config_dict = self.__dict__.copy()
 
         if self._module_class:

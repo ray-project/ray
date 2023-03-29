@@ -25,6 +25,26 @@ class LightningCheckpoint(TorchCheckpoint):
     ``LightningCheckpoint.from_uri(uri)`` or ``LightningCheckpoint.from_path(path)``
 
     LightningCheckpoint loads file named ``model`` under the specified directory.
+
+    Examples:
+        >>> from ray.train.lightning import LightningCheckpoint
+        >>>
+        >>> # Suppose we saved a checkpoint in "./checkpoint_00000/model":
+        >>> # Option 1: Load from a file
+        >>> checkpoint = LightningCheckpoint.from_path( # doctest: +SKIP
+        ...     path="./checkpoint_00000/model"
+        ... )
+        >>>
+        >>> # Option 2: Load from a directory
+        >>> checkpoint = LightningCheckpoint.from_directory( # doctest: +SKIP
+        ...     path="./checkpoint_00000/"
+        ... )
+        >>>
+        >>> # Suppose we saved a checkpoint in an S3 bucket:
+        >>> # Option 3: Load from URI
+        >>> checkpoint = LightningCheckpoint.from_uri( # doctest: +SKIP
+        ...     path="s3://path/to/checkpoint/directory/"
+        ... )
     """
 
     def __init__(self, *args, **kwargs):
@@ -38,21 +58,14 @@ class LightningCheckpoint(TorchCheckpoint):
         *,
         preprocessor: Optional["Preprocessor"] = None,
     ) -> "LightningCheckpoint":
-        """Create a ``ray.air.lightning.LightningCheckpoint`` from a checkpoint path.
+        """Create a ``ray.air.lightning.LightningCheckpoint`` from a checkpoint file.
 
         Args:
-            path: The file path to the PyTorch Lightning checkpoint.
+            path: The file path to the PyTorch Lightning checkpoint file.
             preprocessor: A fitted preprocessor to be applied before inference.
 
         Returns:
             An :py:class:`LightningCheckpoint` containing the model.
-
-        Examples:
-            >>> from ray.train.lightning import LightningCheckpoint
-            >>>
-            >>> checkpoint = LightningCheckpoint.from_path( # doctest: +SKIP
-            ...     path="/path/to/checkpoint.ckpt"
-            ... )
         """
 
         assert os.path.exists(path), f"Lightning checkpoint {path} doesn't exists!"
@@ -79,6 +92,35 @@ class LightningCheckpoint(TorchCheckpoint):
         **load_from_checkpoint_kwargs: Optional[Dict[str, Any]],
     ) -> pl.LightningModule:
         """Retrieve the model stored in this checkpoint.
+
+        Example:
+            .. code-block:: python
+
+                import pytorch_lightning as pl
+                from ray.train.lightning import LightningCheckpoint, LightningPredictor
+
+                class MyLightningModule(pl.LightningModule):
+                    def __init__(self, input_dim, output_dim) -> None:
+                        super().__init__()
+                        self.linear = nn.Linear(input_dim, output_dim)
+
+                    # ...
+
+                checkpoint = LightningCheckpoint.from_directory(
+                    "path/to/checkpoint_dir"
+                )
+
+                model = checkpoint.get_model(
+                    model_class=MyLightningModule,
+                    input_dim=32,
+                    output_dim=10,
+                )
+
+                # If you have a file contains hyperparameters
+                model = checkpoint.get_model(
+                    model_class=MyLightningModule,
+                    hparams_file="./hparams.yaml"
+                )
 
         Args:
             model_class: A subclass of ``pytorch_lightning.LightningModule`` that
