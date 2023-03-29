@@ -1,5 +1,4 @@
 import logging
-import tree  # pip install dm-tree
 from typing import (
     Any,
     Mapping,
@@ -201,10 +200,10 @@ class TorchLearner(Learner):
         self, gradients_dict: Mapping[str, Any], grad_clip_value: float
     ) -> Mapping[str, Any]:
 
-        gradients_dict = tree.map_structure(
-            lambda grad: torch.clamp(grad, -grad_clip_value, grad_clip_value),
-            gradients_dict,
-        )
+        for key in gradients_dict:
+            gradients_dict[key] = torch.clamp(
+                gradients_dict[key], -grad_clip_value, grad_clip_value
+            )
 
         return gradients_dict
 

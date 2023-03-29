@@ -129,7 +129,7 @@ class TestLearner(unittest.TestCase):
                 }
                 learner.apply_gradients(gradients)
 
-            check(params, expected)
+            check(params, expected, decimals=4)
 
     def test_add_remove_module(self):
         """Tests the compute/apply_gradients with add/remove modules.

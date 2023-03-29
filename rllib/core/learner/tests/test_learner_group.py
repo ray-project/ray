@@ -72,7 +72,6 @@ class RemoteTrainingHelper:
 
 
 class TestLearnerGroup(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
