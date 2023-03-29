@@ -168,7 +168,10 @@ def _auto_reconnect(f):
                     return await f(self, *args, **kwargs)
                 except grpc.RpcError as e:
                     if remaining_retry <= 0:
-                        raise
+                        raise RuntimeError(
+                            "Failed to connect to GCS. Please check"
+                            " `gcs_server.out` for more details."
+                        )
                     if e.code() in (
                         grpc.StatusCode.UNAVAILABLE,
                         grpc.StatusCode.UNKNOWN,
@@ -202,7 +205,10 @@ def _auto_reconnect(f):
                     return f(self, *args, **kwargs)
                 except grpc.RpcError as e:
                     if remaining_retry <= 0:
-                        raise
+                        raise RuntimeError(
+                            "Failed to connect to GCS. Please check"
+                            " `gcs_server.out` for more details."
+                        )
                     if e.code() in (
                         grpc.StatusCode.UNAVAILABLE,
                         grpc.StatusCode.UNKNOWN,
