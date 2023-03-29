@@ -14,7 +14,7 @@ import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
-from ray.rllib.algorithms.appo.tf.appo_tf_learner import AppoHPs, LEARNER_RESULTS_KL_KEY
+from ray.rllib.algorithms.appo.tf.appo_tf_learner import AppoHPs, APPOLearnerMetrics
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.execution.common import _get_shared_metrics, STEPS_SAMPLED_COUNTER
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -28,7 +28,8 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     NUM_AGENT_STEPS_TRAINED,
 )
-from ray.rllib.utils.metrics import ALL_MODULES, LEARNER_STATS_KEY
+from ray.rllib.core.learner.learner import LearnerMetrics
+from ray.rllib.utils.metrics import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
     ResultDict,
 )
@@ -319,9 +320,9 @@ class APPO(Impala):
             if (cur_ts - last_update) >= target_update_steps_freq:
                 kls_to_update = {}
                 for module_id, module_results in train_results.items():
-                    if module_id != ALL_MODULES:
+                    if module_id != LearnerMetrics.ALL_MODULES:
                         kls_to_update[module_id] = module_results[LEARNER_STATS_KEY][
-                            LEARNER_RESULTS_KL_KEY
+                            APPOLearnerMetrics.LEARNER_RESULTS_KL
                         ]
                 self._counters[NUM_TARGET_UPDATES] += 1
                 self._counters[LAST_TARGET_UPDATE_TS] = cur_ts

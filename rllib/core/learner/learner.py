@@ -852,14 +852,15 @@ class Learner:
         minibatch: MultiAgentBatch,
     ) -> Mapping[str, Any]:
         """Perform a single update on the learner given a minibatch.
-        
-        The input to this function is a generic MultiAgentBatch and may not be in the 
+
+        The input to this function is a generic MultiAgentBatch and may not be in the
         framework specific format. This function will convert the batch to the correct
-        format and then call the framework specific update function. The output of this function is expected to be numpy-friendly. 
+        format and then call the framework specific update function. The output of this
+        function is expected to be numpy-friendly.
 
         Args:
             minibatch: A minibatch of data.
-        
+
         Returns:
             A dictionary of results.
         """

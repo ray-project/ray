@@ -3,7 +3,7 @@ from typing import Mapping, Any
 
 import abc
 from ray.rllib.core.rl_module.rl_module import ModuleID
-from ray.rllib.core.learner.learner import Learner, LearnerMetrics
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
 
 
@@ -14,7 +14,6 @@ class PPOMetrics(enum.Enum):
     VF_EXPLAINED_VAR = "vf_explained_var"
     ENTROPY_COEFF = "entropy_coeff"
     KL_COEFF = "cur_kl_coeff"
-
 
 
 class PPOBaseLearner(Learner):

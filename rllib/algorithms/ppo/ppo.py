@@ -33,6 +33,7 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
+from ray.rllib.core.learner.learner import LearnerMetrics
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
@@ -464,7 +465,7 @@ class PPO(Algorithm):
                 # TODO (Kourosh): Train results don't match the old format. The thing
                 # that used to be under `kl` is now under `mean_kl_loss`. Fix this. Do
                 # we need get here?
-                pid: train_results[pid][LEARNER_STATS_KEY].get("kl")
+                pid: train_results[pid][LearnerMetrics.LEARNER_STATS].get("kl")
                 for pid in policies_to_update
             }
             # triggers a special update method on RLOptimizer to update the KL values.
