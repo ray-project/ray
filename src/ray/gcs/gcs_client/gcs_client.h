@@ -193,7 +193,7 @@ public:
   Status InternalKVMultiGet(const std::string &ns, const std::vector<std::string> &keys, std::unordered_map<std::string, std::string> &result);
   Status InternalKVPut(const std::string &ns, const std::string &key, const std::string &value, bool overwrite, int &added_num);
   Status InternalKVDel(const std::string &ns, const std::string &key, int &deleted_num);
-  Status InternalKVKeys(const std::string &ns, const std::string &prefix, std::vector<std::string> &value);
+  Status InternalKVKeys(const std::string &ns, const std::string &prefix, std::vector<std::string> &results);
   Status InternalKVExists(const std::string &ns, const std::string &key, bool &exists);
 
 private:

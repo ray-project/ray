@@ -260,10 +260,23 @@ Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &ke
   return Status::UnknownError(status.error_message());
 }
 
-Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &prefix, std::vector<std::string> &value) {
+Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &prefix, std::vector<std::string> &results) {
   grpc::ClientContext context;
 
-  // TODO: Fill this out
+  rpc::InternalKVKeysRequest request;
+  request.set_namespace_(ns);
+  request.set_prefix(prefix);
+
+  rpc::InternalKVKeysReply reply;
+
+  grpc::Status status = kv_stub_->InternalKVKeys(&context, request, &reply);
+  if (status.ok()) {
+    if (reply.status().code() == (int)StatusCode::OK) {
+      results = std::vector<std::string>(reply.results().begin(), reply.results().end());
+      return Status::OK();
+    }
+    return Status::Invalid(reply.status().message());
+  }
 
   return Status::OK();
 }
