@@ -284,9 +284,9 @@
 
   alert: default
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -315,9 +315,9 @@
 
   alert: default
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -509,9 +509,9 @@
 
   alert: default
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -540,9 +540,9 @@
 
   alert: default
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -1506,9 +1506,9 @@
 
   alert: tune_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -1558,9 +1558,9 @@
 
   alert: tune_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -1586,8 +1586,8 @@
 
   alert: tune_tests
 
-  flavors:
-    - name: aws
+  variations:
+    - __suffix__: aws
     - name: smoke-test
       frequency: nightly
       cluster:
@@ -1599,7 +1599,7 @@
         script: python workloads/test_network_overhead.py
         wait_for_nodes:
           num_nodes: 20
-    - name: gce
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -1625,9 +1625,9 @@
 
   alert: tune_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -1654,9 +1654,9 @@
 
   alert: tune_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -1687,9 +1687,9 @@
 
   alert: tune_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config_data.yaml
@@ -1769,9 +1769,9 @@
 
   alert: long_running_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -1803,9 +1803,9 @@
 
   alert: long_running_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: ../rllib_tests/app_config.yaml
@@ -1834,9 +1834,9 @@
 
   alert: long_running_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: ../rllib_tests/app_config.yaml
@@ -1865,9 +1865,9 @@
 
   alert: long_running_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -1896,9 +1896,9 @@
 
   alert: long_running_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -1932,9 +1932,9 @@
 
   alert: long_running_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: ../rllib_tests/app_config.yaml
@@ -1963,9 +1963,9 @@
 
   alert: long_running_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -1994,9 +1994,9 @@
 
   alert: long_running_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -2025,9 +2025,9 @@
 
   alert: long_running_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -2056,9 +2056,9 @@
 
   alert: long_running_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: ../rllib_tests/app_config.yaml
@@ -2087,9 +2087,9 @@
 
   alert: long_running_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -2123,9 +2123,9 @@
 
   alert: long_running_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -2161,9 +2161,9 @@
 
   alert: long_running_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -2191,9 +2191,9 @@
 
   alert: long_running_tests
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -2223,9 +2223,9 @@
 
   alert: default
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -2251,9 +2251,9 @@
 
   alert: default
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -2273,9 +2273,9 @@
     wait_for_nodes:
       num_nodes: 4
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -2295,9 +2295,9 @@
     wait_for_nodes:
       num_nodes: 2
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -2317,9 +2317,9 @@
     wait_for_nodes:
       num_nodes: 2
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -2348,9 +2348,9 @@
 
   alert: default
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -2376,9 +2376,9 @@
 
   alert: default
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -3310,9 +3310,9 @@
 
   alert: default
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -3336,9 +3336,9 @@
 
   alert: default
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -3362,9 +3362,9 @@
 
   alert: default
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -3398,9 +3398,9 @@
 
   alert: default
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -3426,9 +3426,9 @@
     wait_for_nodes:
       num_nodes: 4
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: shuffle/shuffle_app_config.yaml
@@ -3449,9 +3449,9 @@
     timeout: 7200
     script: python stress_tests/test_placement_group.py
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: stress_tests/stress_tests_app_config.yaml
@@ -3471,9 +3471,9 @@
     timeout: 9600
     script: python decision_tree/cart_with_tree.py --concurrency=20
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: decision_tree/decision_tree_app_config.yaml
@@ -3494,9 +3494,9 @@
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
       --no-streaming
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: shuffle/shuffle_app_config.yaml
@@ -3519,9 +3519,9 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -4205,9 +4205,9 @@
     wait_for_nodes:
       num_nodes: 20
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -4229,9 +4229,9 @@
     wait_for_nodes:
       num_nodes: 20
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: app_config.yaml
@@ -4452,9 +4452,9 @@
     wait_for_nodes:
       num_nodes: 20
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: shuffle/shuffle_app_config.yaml
@@ -4493,9 +4493,9 @@
     wait_for_nodes:
       num_nodes: 100
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: shuffle/100tb_shuffle_app_config.yaml
@@ -4674,9 +4674,9 @@
     wait_for_nodes:
       num_nodes: 20
 
-  flavors:
-    - name: aws
-    - name: gce
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
       env: gce
       cluster:
         cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
