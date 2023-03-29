@@ -117,7 +117,9 @@ class EagerTFPolicyV2(Policy):
 
         self._init_view_requirements()
 
-        if self.config.get("_enable_rl_module_api", False):
+        if self.config.get("_enable_rl_module_api", True):
+            self.exploration = None
+        else:
             self.exploration = self._create_exploration()
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(self._state_inputs) > 0
