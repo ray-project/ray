@@ -787,11 +787,15 @@ class RunConfig:
                 "in the future. Set `RunConfig.storage_path` instead or set the"
                 "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
             )
+            # Set env variable instead of self.local_dir
+            os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
             self.local_dir = None
 
         if remote_path:
             self.storage_path = remote_path
             if local_path:
+                # If storage_path is a remote path set by SyncConfig.upload_dir,
+                # this may not have been set in the previous if clause.
                 os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
         elif local_path:
             self.storage_path = local_path
