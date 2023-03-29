@@ -98,7 +98,7 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
             total_loss += self.kl_coeff * mean_kl_loss
 
         return {
-            LearnerMetrics.TOTAL_LOSS_KEY: total_loss,
+            LearnerMetrics.TOTAL_LOSS: total_loss,
             LearnerMetrics.POLICY_LOSS: -tf.reduce_mean(surrogate_loss),
             LearnerMetrics.VF_LOSS: mean_vf_loss,
             LearnerMetrics.ENTROPY: mean_entropy,

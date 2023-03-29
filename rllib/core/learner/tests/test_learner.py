@@ -6,12 +6,13 @@ import numpy as np
 import ray
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.learner.learner import Learner, FrameworkHPs
+from ray.rllib.core.learner.learner import Learner, FrameworkHPs, LearnerMetrics
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
-from ray.rllib.utils.metrics import ALL_MODULES
+
+# from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 
@@ -54,7 +55,7 @@ class TestLearner(unittest.TestCase):
             batch = reader.next()
             results = learner.update(batch.as_multi_agent())
 
-            loss = results[ALL_MODULES]["total_loss"]
+            loss = results[LearnerMetrics.ALL_MODULES][LearnerMetrics.TOTAL_LOSS]
             min_loss = min(loss, min_loss)
             print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
             # The loss is initially around 0.69 (ln2). When it gets to around
@@ -73,7 +74,11 @@ class TestLearner(unittest.TestCase):
 
         with tf.GradientTape() as tape:
             params = learner.module[DEFAULT_POLICY_ID].trainable_variables
-            loss = {"total_loss": sum([tf.reduce_sum(param) for param in params])}
+            loss = {
+                LearnerMetrics.TOTAL_LOSS: sum(
+                    [tf.reduce_sum(param) for param in params]
+                )
+            }
             gradients = learner.compute_gradients(loss, tape)
 
         # type should be a mapping from ParamRefs to gradients
@@ -144,7 +149,11 @@ class TestLearner(unittest.TestCase):
         expected = [param - n_steps * lr * np.ones(param.shape) for param in params]
         for _ in range(n_steps):
             with tf.GradientTape() as tape:
-                loss = {"total_loss": sum([tf.reduce_sum(param) for param in params])}
+                loss = {
+                    LearnerMetrics.TOTAL_LOSS: sum(
+                        [tf.reduce_sum(param) for param in params]
+                    )
+                }
                 gradients = learner.compute_gradients(loss, tape)
                 learner.apply_gradients(gradients)
 

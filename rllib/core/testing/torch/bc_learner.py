@@ -15,4 +15,4 @@ class BCTorchLearner(TorchLearner, BaseTestingLearner):
 
         action_dist = fwd_out["action_dist"]
         loss = -torch.mean(action_dist.log_prob(batch[SampleBatch.ACTIONS]))
-        return {LearnerMetrics.TOTAL_LOSS_KEY: loss}
+        return {LearnerMetrics.TOTAL_LOSS: loss}

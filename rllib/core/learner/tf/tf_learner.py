@@ -88,7 +88,7 @@ class TfLearner(Learner):
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]], tape: "tf.GradientTape"
     ) -> ParamDictType:
-        grads = tape.gradient(loss[LearnerMetrics.TOTAL_LOSS_KEY], self._params)
+        grads = tape.gradient(loss[LearnerMetrics.TOTAL_LOSS], self._params)
         return grads
 
     @override(Learner)

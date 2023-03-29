@@ -90,7 +90,7 @@ class LearnerHPs:
     pass
 
 
-class LearnerMetrics(enum.Enum):
+class LearnerMetrics(str, enum.Enum):
     # Metrics returned by the learner's update function
     TOTAL_LOSS = "total_loss"
     GRAD_NORM = "grad_norm"
@@ -107,6 +107,11 @@ class LearnerMetrics(enum.Enum):
     POLICY_LOSS = "policy_loss"
     VF_LOSS = "vf_loss"
     ENTROPY = "entropy"
+
+    def __lt__(self, other):
+        if self.__class__ is other.__class__:
+            return self.value < other.value
+        return NotImplemented
 
 
 class Learner:
@@ -213,7 +218,7 @@ class Learner:
                 # compute the loss based on batch and output of the forward pass
                 # to access the learner hyper-parameters use `self.hps`
 
-                return {LearnerMetrics.TOTAL_LOSS_KEY: loss}
+                return {LearnerMetrics.TOTAL_LOSS: loss}
     """
 
     framework: str = None
@@ -299,7 +304,7 @@ class Learner:
 
         Args:
             loss: The computed loss dict. It should include the key
-                `LearnerMetrics.TOTAL_LOSS_KEY` that contains the total loss.
+                `LearnerMetrics.TOTAL_LOSS` that contains the total loss.
         Returns:
             The gradients in teh same format as self._params.
         """
@@ -420,7 +425,7 @@ class Learner:
         """
 
         loss = update_outs[LearnerMetrics.LOSS]
-        postprocessed_gradients = update_outs[LearnerMetrics.POSTPROCESSED_GRADS]
+        postprocessed_gradients = update_outs[LearnerMetrics.PROCESSED_GRADIENTS]
 
         if not isinstance(batch, MultiAgentBatch):
             raise ValueError(

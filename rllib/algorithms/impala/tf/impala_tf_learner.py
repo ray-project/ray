@@ -101,7 +101,7 @@ class ImpalaTfLearner(TfLearner, ImpalaBaseLearner):
             pi_loss + vf_loss * self.vf_loss_coeff + entropy_loss * self.entropy_coeff
         )
         return {
-            LearnerMetrics.TOTAL_LOSS_KEY: total_loss,
+            LearnerMetrics.TOTAL_LOSS: total_loss,
             LearnerMetrics.POLICY_LOSS: mean_pi_loss,
             LearnerMetrics.VF_LOSS: mean_vf_loss,
         }

@@ -189,10 +189,10 @@ class APPOTfLearner(ImpalaTfLearner):
         )
 
         return {
-            LearnerMetrics.TOTAL_LOSS_KEY: total_loss,
-            LearnerMetrics.POLICY_LOSS_KEY: mean_pi_loss,
-            LearnerMetrics.VF_LOSS_KEY: mean_vf_loss,
-            LearnerMetrics.ENTROPY_KEY: mean_entropy_loss,
+            LearnerMetrics.TOTAL_LOSS: total_loss,
+            LearnerMetrics.POLICY_LOSS: mean_pi_loss,
+            LearnerMetrics.VF_LOSS: mean_vf_loss,
+            LearnerMetrics.ENTROPY: mean_entropy_loss,
             APPOLearnerMetrics.LEARNER_RESULTS_KL: mean_kl_loss,
         }
 
