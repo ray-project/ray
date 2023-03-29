@@ -302,28 +302,28 @@ def _local_environment_information(
                 lambda sig, frame: cluster_manager.terminate_cluster(wait=True)
             )
 
-        # Start cluster
-        if cluster_id:
-            buildkite_group(":rocket: Using existing cluster")
-            # Re-use existing cluster ID for development
-            cluster_manager.cluster_id = cluster_id
-            cluster_manager.cluster_name = get_cluster_name(cluster_id)
-        else:
-            buildkite_group(":gear: Building cluster environment")
+    # Start cluster
+    if cluster_id:
+        buildkite_group(":rocket: Using existing cluster")
+        # Re-use existing cluster ID for development
+        cluster_manager.cluster_id = cluster_id
+        cluster_manager.cluster_name = get_cluster_name(cluster_id)
+    else:
+        buildkite_group(":gear: Building cluster environment")
 
-            if cluster_env_id:
-                cluster_manager.cluster_env_id = cluster_env_id
+        if cluster_env_id:
+            cluster_manager.cluster_env_id = cluster_env_id
 
-            cluster_manager.build_configs(timeout=build_timeout)
+        cluster_manager.build_configs(timeout=build_timeout)
 
-            if isinstance(cluster_manager, FullClusterManager):
-                buildkite_group(":rocket: Starting up cluster")
-                cluster_manager.start_cluster(timeout=cluster_timeout)
-            elif isinstance(command_runner, AnyscaleJobRunner):
-                command_runner.job_manager.cluster_startup_timeout = cluster_timeout
+        if isinstance(cluster_manager, FullClusterManager):
+            buildkite_group(":rocket: Starting up cluster")
+            cluster_manager.start_cluster(timeout=cluster_timeout)
+        elif isinstance(command_runner, AnyscaleJobRunner):
+            command_runner.job_manager.cluster_startup_timeout = cluster_timeout
 
-        result.cluster_url = cluster_manager.get_cluster_url()
-        result.cluster_id = cluster_manager.cluster_id
+    result.cluster_url = cluster_manager.get_cluster_url()
+    result.cluster_id = cluster_manager.cluster_id
 
 
 def _prepare_remote_environment(
