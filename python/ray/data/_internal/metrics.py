@@ -82,7 +82,13 @@ class ObjectStoreMetrics(Metrics):
 
 
 class MetricsCollector:
-    """Metrics collector, for recording and returning merged metrics."""
+    """
+    Metrics collector, for recording and returning merged data munging metrics.
+
+    An instance of this MetricsCollector is passed throughout the data layer, with data
+    munging metrics recorded after batching, formatting, output buffering, etc. The
+    merged metrics are then materialized at the end of execution.
+    """
 
     def __init__(self):
         self._metrics = DataMungingMetrics()
