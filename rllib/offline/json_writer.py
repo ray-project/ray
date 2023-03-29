@@ -113,13 +113,13 @@ def _to_jsonable(v, compress: bool) -> Any:
         return str(pack(v))
     elif isinstance(v, np.ndarray):
         return v.tolist()
-    
+
     return v
 
 
 def _convert_keys_to_strings_json_dict(d: Dict[Any, Any]) -> Dict[Any, Any]:
     """Convert all keys in a JSON-serializable dict to strings.
-    
+
     Args:
         d: JSON-serializable dict.
 
