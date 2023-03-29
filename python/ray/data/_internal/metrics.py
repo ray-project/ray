@@ -51,9 +51,9 @@ class DataMungingMetrics(Metrics):
     """
 
     num_rows_copied: int = 0
-    num_format_conversions: int = 0
     num_rows_sliced: int = 0
     num_rows_concatenated: int = 0
+    num_rows_format_converted: int = 0
 
 
 @dataclass

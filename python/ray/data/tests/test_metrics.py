@@ -89,25 +89,25 @@ def test_data_munging_metrics():
     # Test DataMungingMetrics merging and dict view.
     m1 = DataMungingMetrics(
         num_rows_copied=6,
-        num_format_conversions=1,
+        num_rows_format_converted=5,
         num_rows_sliced=2,
         num_rows_concatenated=4,
     )
     m2 = DataMungingMetrics(
         num_rows_copied=8,
-        num_format_conversions=1,
+        num_rows_format_converted=7,
         num_rows_sliced=3,
         num_rows_concatenated=5,
     )
 
     m = m1.merge_with(m2)
     assert m.num_rows_copied == 14
-    assert m.num_format_conversions == 2
+    assert m.num_rows_format_converted == 12
     assert m.num_rows_sliced == 5
     assert m.num_rows_concatenated == 9
     assert m.to_metrics_dict() == {
         "num_rows_copied": 14,
-        "num_format_conversions": 2,
+        "num_rows_format_converted": 12,
         "num_rows_sliced": 5,
         "num_rows_concatenated": 9,
     }
@@ -135,14 +135,14 @@ def test_metrics_collector():
     metrics_collector = MetricsCollector()
     m1 = DataMungingMetrics(
         num_rows_copied=6,
-        num_format_conversions=1,
+        num_rows_format_converted=5,
         num_rows_sliced=2,
         num_rows_concatenated=4,
     )
     metrics_collector.record_metrics(m1)
     m2 = DataMungingMetrics(
         num_rows_copied=8,
-        num_format_conversions=1,
+        num_rows_format_converted=7,
         num_rows_sliced=3,
         num_rows_concatenated=5,
     )
@@ -150,12 +150,12 @@ def test_metrics_collector():
 
     m = metrics_collector.get_metrics()
     assert m.num_rows_copied == 14
-    assert m.num_format_conversions == 2
+    assert m.num_rows_format_converted == 12
     assert m.num_rows_sliced == 5
     assert m.num_rows_concatenated == 9
     assert m.to_metrics_dict() == {
         "num_rows_copied": 14,
-        "num_format_conversions": 2,
+        "num_rows_format_converted": 12,
         "num_rows_sliced": 5,
         "num_rows_concatenated": 9,
     }
