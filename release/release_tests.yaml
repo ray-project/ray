@@ -3500,8 +3500,8 @@
     - name: gce
       env: gce
       cluster:
-        - cluster_env: shuffle/shuffle_app_config.yaml
-        - cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
+        cluster_env: shuffle/shuffle_app_config.yaml
+        cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
 
 - name: microbenchmark
