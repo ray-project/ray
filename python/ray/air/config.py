@@ -787,8 +787,6 @@ class RunConfig:
                 "in the future. Set `RunConfig.storage_path` instead or set the"
                 "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
             )
-            # Set env variable instead of self.local_dir
-            os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
             self.local_dir = None
 
         if remote_path:

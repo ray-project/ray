@@ -451,7 +451,7 @@ class TunerInternal:
         """Sets up experiment checkpoint dir before actually running the experiment."""
         path = Experiment.get_experiment_checkpoint_dir(
             trainable,
-            run_config.local_dir,
+            run_config.storage_path,
             run_config.name,
         )
         if not os.path.exists(path):

@@ -30,7 +30,7 @@ from ray.tune.result import _get_defaults_results_dir
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import date_str
-from ray.tune.utils.util import _resolve_storage_path
+from ray.tune.utils.util import _resolve_storage_path, _split_remote_local_path
 from ray.util import log_once
 
 from ray.util.annotations import DeveloperAPI, Deprecated
@@ -423,7 +423,7 @@ class Experiment:
     def get_experiment_checkpoint_dir(
         cls,
         run_obj: Union[str, Callable, Type],
-        local_dir: Optional[str] = None,
+        storage_path: Optional[str] = None,
         name: Optional[str] = None,
     ):
         """Get experiment checkpoint dir without setting up an experiment.
@@ -432,20 +432,23 @@ class Experiment:
 
         Args:
             run_obj: Trainable to run.
-            local_dir: The local_dir path.
+            storage_path: The path to Ray AIR's result storage.
             name: The name of the experiment specified by user.
 
         Returns:
             Checkpoint directory for experiment.
         """
         assert run_obj
-        local_dir = _get_local_dir_with_expand_user(local_dir)
+
+        local_path, _ = _split_remote_local_path(storage_path, None)
+        local_path = _get_local_dir_with_expand_user(local_path)
+
         run_identifier = cls.get_trainable_name(run_obj)
         combined_name = name or run_identifier
 
         dir_name = _get_dir_name(run_obj, name, combined_name)
 
-        return os.path.join(local_dir, dir_name)
+        return os.path.join(local_path, dir_name)
 
     @property
     def stopper(self):
