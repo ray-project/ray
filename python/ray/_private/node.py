@@ -580,6 +580,7 @@ class Node:
         return self._gcs_client
 
     def _init_gcs_client(self):
+        gcs_process = self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0]
         for _ in range(NUM_REDIS_GET_RETRIES):
             gcs_address = None
             last_ex = None
@@ -591,9 +592,13 @@ class Node:
                 self._gcs_client = client
                 break
             except Exception:
+                if gcs_process.poll() is not None:
+                    # GCS has exited.
+                    break
                 last_ex = traceback.format_exc()
                 logger.debug(f"Connecting to GCS: {last_ex}")
                 time.sleep(1)
+
         if self._gcs_client is None:
             with open(f"{self._logs_dir}/gcs_server.err") as err:
                 errors = err.readlines()[-10:]
@@ -604,6 +609,7 @@ class Node:
                 f"Please check {self._logs_dir}/gcs_server.out for details"
             )
             raise RuntimeError("Failed to start GCS.")
+
         ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
 
     def get_temp_dir_path(self):
