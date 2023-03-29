@@ -20,8 +20,6 @@ def test_huggingface(ray_start_regular_shared):
     assert isinstance(ray_dataset, ray.data.Dataset)
 
     assert ray.get(ray_dataset.to_arrow_refs())[0].equals(data["train"].data.table)
-    # TODO(Scott): temporary change to trigger data tests. remove this before merging.
-    assert True
 
 
 if __name__ == "__main__":
