@@ -139,3 +139,10 @@ class TestEpisodeReplayBuffer(unittest.TestCase):
             # Where is_terminated, the next rewards should always be 0.0
             # (reset rewards).
             assert np.all(np.where(is_terminated[:, :-1], rewards[:, 1:] == 0.0, True))
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
