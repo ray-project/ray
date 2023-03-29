@@ -7,7 +7,18 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.command_runner.job_runner import JobRunner
-from ray_release.exception import *
+from ray_release.exception import (
+    TestCommandTimeout,
+    TestCommandError,
+    JobOutOfRetriesError,
+    PrepareCommandError,
+    PrepareCommandTimeout,
+    JobBrokenError,
+    FetchResultError,
+    JobTerminatedBeforeStartError,
+    JobNoLogsError,
+    JobTerminatedError,
+)
 from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.job_manager import AnyscaleJobManager
 from ray_release.logger import logger
@@ -22,6 +33,7 @@ if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
 TIMEOUT_RETURN_CODE = 124
+
 
 def _get_env_str(env: Dict[str, str]) -> str:
     if env:
@@ -57,7 +69,7 @@ class AnyscaleJobRunner(JobRunner):
         # The root cloud storage bucket path. result, metric, artifact files
         # will be uploaded to under it on cloud storage.
         cloud_storage_provider = os.environ.get(
-            "ANYSCALE_CLOUD_STORAGE_PROVIDER", 
+            "ANYSCALE_CLOUD_STORAGE_PROVIDER",
             S3_CLOUD_STORAGE,
         )
         self.upload_path = join_cloud_storage_paths(
@@ -221,7 +233,8 @@ class AnyscaleJobRunner(JobRunner):
             "--results-cloud-storage-uri "
             f"'{join_cloud_storage_paths(self.upload_path, self._RESULT_OUTPUT_JSON)}' "
             "--metrics-cloud-storage-uri "
-            f"'{join_cloud_storage_paths(self.upload_path, self._METRICS_OUTPUT_JSON)}' "
+            f"'"
+            f"{join_cloud_storage_paths(self.upload_path, self._METRICS_OUTPUT_JSON)}' "
             "--output-cloud-storage-uri "
             f"'{join_cloud_storage_paths(self.upload_path, self.output_json)}' "
             f"--upload-cloud-storage-uri '{self.upload_path}' "
@@ -323,7 +336,9 @@ class AnyscaleJobRunner(JobRunner):
         # and put it under `self._DEFAULT_ARTIFACTS_DIR`.
         artifact_file_name = os.path.basename(self._artifact_path)
         self.file_manager.download_from_cloud(
-            join_cloud_storage_paths(self.path_in_bucket, self._USER_GENERATED_ARTIFACT),
+            join_cloud_storage_paths(
+                self.path_in_bucket, self._USER_GENERATED_ARTIFACT
+            ),
             os.path.join(self._DEFAULT_ARTIFACTS_DIR, artifact_file_name),
         )
 
