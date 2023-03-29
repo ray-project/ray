@@ -109,7 +109,8 @@ def from_items(
         parallelism: The amount of parallelism to use for the dataset.
             Parallelism may be limited by the number of items.
         output_arrow_format: If True, returns data in Arrow format, instead of Python
-            list format. This only works if items contains a list of dicts.
+            list format. This only works if items contains a list of dicts or numpy
+            arrays.
             Defaults to False.
 
     Returns:
