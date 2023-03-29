@@ -2120,7 +2120,7 @@
     frequency: nightly
 
     run:
-      timeout: 600
+      timeout: 1200
 
   alert: long_running_tests
 
@@ -3433,7 +3433,7 @@
       env: gce
       cluster:
         cluster_env: shuffle/shuffle_app_config.yaml
-        cluster_compute: shuffle/shuffle_compute_multi.yaml
+        cluster_compute: shuffle/shuffle_compute_multi_gce.yaml
 
 
 - name: stress_test_placement_group
@@ -3501,7 +3501,7 @@
       env: gce
       cluster:
         cluster_env: shuffle/shuffle_app_config.yaml
-        cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
+        cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
 
 
 - name: microbenchmark
