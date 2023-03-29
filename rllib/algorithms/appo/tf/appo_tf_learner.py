@@ -18,7 +18,7 @@ from ray.rllib.utils.typing import TensorType
 _, tf, _ = try_import_tf()
 
 
-class APPOLearnerMetrics(enum.Enum):
+class APPOLearnerMetrics(str, enum.Enum):
     LEARNER_RESULTS_KL = "mean_kl_loss"
 
 

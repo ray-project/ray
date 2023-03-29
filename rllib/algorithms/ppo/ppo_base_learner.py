@@ -7,7 +7,7 @@ from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
 
 
-class PPOMetrics(enum.Enum):
+class PPOMetrics(str, enum.Enum):
     """Metrics for PPO Learner."""
 
     KL = "kl"
