@@ -3,7 +3,8 @@ Example of interfacing with an environment that produces 2D observations.
 
 This example shows how turning 2D observations with shape (A, B) into a 3D
 observations with shape (C, D, 1) can enable a simple usage with RLlib.
-RLlib does not provide default models for 2D observation spaces, but it does so for 3D.
+RLlib's default Catalog class does not provide default models for 2D observation
+spaces, but it does so for 3D observations.
 Therefore, one can either write a custom model or transform the 2D observations into 3D
 observations. This enables RLlib to use one of the default CNN filters, even though the
 original observation space of the environment does not fit them.
