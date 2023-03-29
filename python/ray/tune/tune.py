@@ -173,8 +173,8 @@ def _report_air_progress(
 ):
     trials = runner.get_trials()
     reporter_args = []
-    executor_debug_str = runner.trial_executor.debug_string()
-    reporter_args.append(executor_debug_str)
+    used_resources_string = runner._used_resources_string()
+    reporter_args.append(used_resources_string)
     reporter.print_heartbeat(trials, *reporter_args, force=force)
 
 
