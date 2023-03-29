@@ -231,7 +231,6 @@ ppo_config = (
 # ppo_config.framework("torch")
 
 # Create the Algorithm and train one iteration.
-# We disable the RLModules and Learner APIs here, since
 ppo = ppo_config.build()
 ppo.train()
 
@@ -301,6 +300,10 @@ checkpoint_dir = ppo.save()
 ppo_config = (
     PPOConfig().environment("Pendulum-v1").checkpointing(export_native_model_files=True)
 ).rl_module(_enable_rl_module_api=True).training(_enable_learner_api=True)
+# Create the Algorithm and train one iteration.
+ppo = ppo_config.build()
+ppo.train()
+ppo_policy = ppo.get_policy()
 
 # __export-models-as-onnx-begin__
 # Using the same Policy object, we can also export our NN Model in the ONNX format:
