@@ -902,6 +902,17 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
     assert "1/1 blocks" in ds.stats()
 
 
+def test_nonserializable_map_batches(shutdown_only):
+    import threading
+
+    lock = threading.Lock()
+
+    x = ray.data.range(10)
+    # Check that the `inspect_serializability` trace was printed
+    with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
+        x.map_batches(lambda _: lock).take(1)
+
+
 if __name__ == "__main__":
     import sys
 

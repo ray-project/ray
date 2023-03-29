@@ -1,4 +1,5 @@
 import copy
+import io
 import os
 import math
 import logging
@@ -143,12 +144,14 @@ class TunerInternal:
             with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
                 pickle.dump(self.trainable, fp)
         except TypeError as e:
-            inspect_serializability(self.trainable)
+            sio = io.StringIO()
+            inspect_serializability(self.trainable, print_file=sio)
             msg = (
                 "The provided trainable is not serializable, which is a requirement "
                 "since the trainable is serialized and deserialized when transferred "
-                "to remote workers. See above for a trace of the non-serializable "
-                "objects that were found in your trainable."
+                "to remote workers. See below for a trace of the non-serializable "
+                "objects that were found in your trainable:\n"
+                f"{sio.getvalue()}"
             )
             raise TypeError(msg) from e
 
