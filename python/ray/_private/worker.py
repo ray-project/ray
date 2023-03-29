@@ -726,7 +726,7 @@ class Worker:
             object_refs, self.current_task_id, timeout_ms
         )
         debugger_breakpoint = b""
-        for data, metadata in data_metadata_pairs:
+        for (data, metadata) in data_metadata_pairs:
             if metadata:
                 metadata_fields = metadata.split(b",")
                 if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
@@ -2684,6 +2684,7 @@ def wait(
     worker.check_connected()
     # TODO(swang): Check main thread.
     with profiling.profile("ray.wait"):
+
         # TODO(rkn): This is a temporary workaround for
         # https://github.com/ray-project/ray/issues/997. However, it should be
         # fixed in Arrow instead of here.
