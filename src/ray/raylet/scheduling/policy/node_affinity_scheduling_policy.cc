@@ -24,7 +24,13 @@ scheduling::NodeID NodeAffinitySchedulingPolicy::Schedule(
   scheduling::NodeID target_node_id = scheduling::NodeID(options.node_affinity_node_id);
   if (nodes_.contains(target_node_id) && is_node_alive_(target_node_id) &&
       nodes_.at(target_node_id).GetLocalView().IsFeasible(resource_request)) {
-    return target_node_id;
+    if (options.node_affinity_soft) {
+      if (nodes_.at(target_node_id).GetLocalView().IsAvailable(resource_request)) {
+        return target_node_id;
+      }
+    } else {
+      return target_node_id;
+    }
   }
 
   if (!options.node_affinity_soft) {
