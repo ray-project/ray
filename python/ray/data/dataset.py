@@ -4133,7 +4133,7 @@ class Dataset(Generic[T]):
 
     @Deprecated(
         message="Dataset is lazy by default, so this conversion call is no longer "
-        "needed and this API will be removed in future release"
+        "needed and this API will be removed in a future release"
     )
     def lazy(self) -> "Dataset[T]":
         """Enable lazy evaluation.
