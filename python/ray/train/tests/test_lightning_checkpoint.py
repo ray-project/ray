@@ -10,9 +10,9 @@ from torch.utils.data import DataLoader
 
 
 class Net(pl.LightningModule):
-    def __init__(self, output_dim) -> None:
+    def __init__(self, input_dim, output_dim) -> None:
         super().__init__()
-        self.linear = nn.Linear(3, output_dim)
+        self.linear = nn.Linear(input_dim, output_dim)
 
     def forward(self, input):
         return self.linear(input)
@@ -30,7 +30,7 @@ class Net(pl.LightningModule):
 
 def test_load_from_path():
     with tempfile.TemporaryDirectory() as tmpdir:
-        model = Net(output_dim=3)
+        model = Net(input_dim=3, output_dim=3)
 
         # Define a simple dataset
         data = torch.randn(10, 3)
@@ -46,7 +46,9 @@ def test_load_from_path():
 
         # Load the checkpoint from directory
         lightning_checkpoint = LightningCheckpoint.from_path(ckpt_path)
-        checkpoint_model = lightning_checkpoint.get_model(Net, output_dim=3)
+        checkpoint_model = lightning_checkpoint.get_model(
+            Net, input_dim=3, output_dim=3
+        )
         assert torch.equal(checkpoint_model.linear.weight, model.linear.weight)
 
         # Ensure the model checkpoint was copied into a tmp dir
@@ -65,7 +67,7 @@ def test_load_from_path():
 def test_from_directory():
     with tempfile.TemporaryDirectory() as tmpdir:
         print("tmpdir", str(tmpdir))
-        model = Net(output_dim=3)
+        model = Net(input_dim=3, output_dim=3)
 
         # Define a simple dataset
         data = torch.randn(10, 3)
@@ -80,7 +82,9 @@ def test_from_directory():
 
         # Load the checkpoint from directory
         lightning_checkpoint = LightningCheckpoint.from_directory(tmpdir)
-        checkpoint_model = lightning_checkpoint.get_model(Net, output_dim=3)
+        checkpoint_model = lightning_checkpoint.get_model(
+            Net, input_dim=3, output_dim=3
+        )
         assert torch.equal(checkpoint_model.linear.weight, model.linear.weight)
 
         # Check the model outputs

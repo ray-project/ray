@@ -127,10 +127,9 @@ class LightningConfigBuilder:
 
         if "model" in kwargs:
             logger.warning(
-                "You don't have provide `model` in "
+                "You don't have to provide `model` argument in "
                 "`LightningConfigBuilder.fit_params()`. LightningTrainer will create "
-                "a model instance based on the parameters you provide in "
-                "`LightningConfigBuilder.module()`."
+                "a model instance based on the parameters you provide in `.module()`."
             )
 
         self._trainer_fit_params.update(**kwargs)
@@ -149,19 +148,19 @@ class LightningConfigBuilder:
     def checkpointing(self, **kwargs) -> "LightningConfigBuilder":
         """Set up the configurations of ``pytorch_lightning.callbacks.ModelCheckpoint``.
 
-        LightningTrainer creates a subclass of `ModelCheckpoint` callback based on
-        the kwargs. AIR checkpointing and logging are triggered in that callback.
+        LightningTrainer creates a subclass instance of the `ModelCheckpoint` callback
+        with the kwargs. It handles checkpointing and metrics logging logics.
 
-        Specifically, the callback calls `session.report()` to send the latest metrics
-        and checkpoint to the AIR session, so that the report frequency matches the
-        checkpointing frequency. You have to make sure that the target metrics
-        (e.g. metrics defined in `TuneConfig` or `CheckpointConfig`) are ready when
-        a new checkpoint is being saved.
+        Specifically, the callback periodically reports the latest metrics and
+        checkpoint to the AIR session via `session.report()`. The report frequency
+        matches the checkpointing frequency here. You have to make sure that the
+        target metrics (e.g. metrics defined in `TuneConfig` or `CheckpointConfig`)
+        are ready when a new checkpoint is being saved.
 
         Note that this method is not a replacement for the
         ``ray.air.configs.CheckpointConfig``. You still need to specify your
-        AIR checkpoint strategy in ``CheckpointConfig``. Otherwise, AIR will store
-        all the checkpoints by default.
+        AIR checkpointing strategy in ``CheckpointConfig``. Otherwise, AIR stores
+        all the reported checkpoints by default.
 
         Args:
             kwargs: For valid arguments to pass, please refer to:
@@ -209,9 +208,9 @@ class LightningTrainer(TorchTrainer):
     datamodule or dataloaders if provided by users.
 
     The trainer also creates a ModelCheckpoint callback based on the configuration
-    provided in ``LightningConfigBuilder.checkpointing()``. In addition to saving
-    checkpoints, this callback also calls ``session.report()`` to report the latest
-    metrics along with the checkpoint to the AIR session.
+    provided in ``LightningConfigBuilder.checkpointing()``. In addition to
+    checkpointing, this callback also calls ``session.report()`` to report the
+    latest metrics along with the checkpoint to the AIR session.
 
     For logging, users can continue to use Lightning's native loggers, such as
     WandbLogger, TensorboardLogger, etc. LightningTrainer will also log the latest
