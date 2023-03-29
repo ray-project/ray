@@ -20,7 +20,7 @@ from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.arrow_block import ArrowBlockBuilder
-from ray.data._internal.simple_block import SimpleBlockBuilder
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
@@ -109,7 +109,8 @@ def from_items(
         parallelism: The amount of parallelism to use for the dataset.
             Parallelism may be limited by the number of items.
         output_arrow_format: If True, returns data in Arrow format, instead of Python
-            list format. This only works if items contains a list of Defaults to False.
+            list format. This only works if items contains a list of dicts.
+            Defaults to False.
 
     Returns:
         Dataset holding the items.
@@ -140,7 +141,7 @@ def from_items(
         if output_arrow_format:
             builder = ArrowBlockBuilder()
         else:
-            builder = SimpleBlockBuilder()
+            builder = DelegatingBlockBuilder()
         # Evenly distribute remainder across block slices while preserving record order.
         block_start = i * block_size + min(i, remainder)
         block_end = (i + 1) * block_size + min(i + 1, remainder)
