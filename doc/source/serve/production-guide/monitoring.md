@@ -207,6 +207,8 @@ You should see something similar to the following:
 
 You can use Loki to filter your Ray Serve logs and gather insights quicker.
 
+(serve-production-monitoring-metrics)=
+
 ## Built-in Ray Serve metrics
 
 You can leverage built-in Ray Serve metrics to get a closer look at your application's performance.
