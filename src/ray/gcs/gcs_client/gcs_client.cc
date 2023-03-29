@@ -185,6 +185,36 @@ Status GcsSyncClient::InternalKVGet(const std::string &ns, const std::string &ke
   return Status::UnknownError(status.error_message());
 }
 
+Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vector<std::string> &keys, std::unordered_map<std::string, std::string> &result) {
+  grpc::ClientContext context;
+
+  rpc::InternalKVMultiGetRequest request;
+  request.set_namespace_(ns);
+  for (int64_t i = 0; i < keys.size(); ++i) {
+    request.set_keys(i, keys[i]);
+  }
+
+  rpc::InternalKVMultiGetReply reply;
+
+  grpc::Status status = kv_stub_->InternalKVMultiGet(&context, request, &reply);
+  if (status.ok()) {
+    result.clear();
+    if (reply.status().code() == (int)StatusCode::OK) {
+      for(auto entry : reply.results()) {
+        result[entry.key()] = entry.value();
+      }
+      return Status::OK();
+    } else if (reply.status().code() == (int)StatusCode::NotFound) {
+      // result has already been cleared above
+      return Status::OK();
+    } else {
+      return Status::Invalid(reply.status().message());
+    }
+  }
+  // TODO: Convert to appropriate error
+  return Status::UnknownError(status.error_message());
+}
+
 Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &key, const std::string &value, bool overwrite, int &added_num) {
   grpc::ClientContext context;
 
@@ -202,8 +232,30 @@ Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &ke
       added_num = reply.added_num();
       return Status::OK();
     }
-    return Status::UnknownError("error");
+    return Status::Invalid(reply.status().message());
   }
+  // TODO: Convert to appropriate error
+  return Status::UnknownError(status.error_message());
+}
+
+Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &key, int &deleted_num) {
+  grpc::ClientContext context;
+
+  rpc::InternalKVDelRequest request;
+  request.set_namespace_(ns);
+  request.set_key(key);
+
+  rpc::InternalKVDelReply reply;
+
+  grpc::Status status = kv_stub_->InternalKVDel(&context, request, &reply);
+  if (status.ok()) {
+    if (reply.status().code() == (int)StatusCode::OK) {
+      deleted_num = reply.deleted_num();
+      return Status::OK();
+    }
+    return Status::Invalid(reply.status().message());
+  }
+
   // TODO: Convert to appropriate error
   return Status::UnknownError(status.error_message());
 }

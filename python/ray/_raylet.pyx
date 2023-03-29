@@ -1555,6 +1555,14 @@ cdef class GcsClient:
 
         return num_added
 
+    def internal_kv_del(self, bytes key, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int num_deleted
+        check_status(self.inner.get().InternalKVDel(ns, key, num_deleted))
+
+        return num_deleted
+
     def internal_kv_keys(self, bytes prefix, bytes namespace, timeout):
         cdef:
             c_vector[c_string] keys
