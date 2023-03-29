@@ -126,7 +126,6 @@ class PolicySpec:
         )
 
     def serialize(self) -> Dict:
-        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
         from ray.rllib.algorithms.registry import get_policy_class_name
 
         # Try to figure out a durable name for this policy.
@@ -145,13 +144,9 @@ class PolicySpec:
             "policy_class": cls,
             "observation_space": space_to_dict(self.observation_space),
             "action_space": space_to_dict(self.action_space),
-            # Make the config dict durable by getting rid of all the fields
-            # that are code (not JSON serializable).
-            "config": (
-                AlgorithmConfig._serialize_dict(self.config)
-                if isinstance(self.config, dict)
-                else self.config.serialize()
-            ),
+            # TODO(jungong) : try making the config dict durable by maybe
+            #  getting rid of all the fields that are not JSON serializable.
+            "config": self.config,
         }
 
     @classmethod
@@ -1173,8 +1168,14 @@ class Policy(metaclass=ABCMeta):
             with open(os.path.join(export_dir, state_file), "w+b") as f:
                 pickle.dump(policy_state, f)
         else:
+            from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
             msgpack = try_import_msgpack(error=True)
             policy_state["checkpoint_version"] = str(CHECKPOINT_VERSION)
+            # Serialize the config for msgpack dump'ing.
+            policy_state["policy_spec"]["config"] = AlgorithmConfig._serialize_dict(
+                policy_state["policy_spec"]["config"]
+            )
             state_file = "policy_state.msgpck"
             with open(os.path.join(export_dir, state_file), "w+b") as f:
                 msgpack.dump(policy_state, f)
