@@ -335,6 +335,8 @@ def test_rest_api(manage_ray, tmp_dir, version):
         assert int(report["extra_usage_tags"]["serve_num_apps"]) == 1
         assert int(report["extra_usage_tags"]["serve_num_deployments"]) == 1
     elif version == "v2":
+        # Assert num of deployments from controller
+        assert len(client.get_all_deployment_statuses()) == 2
         assert int(report["extra_usage_tags"]["serve_num_apps"]) == 2
         assert int(report["extra_usage_tags"]["serve_num_deployments"]) == 2
 
