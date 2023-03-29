@@ -243,6 +243,10 @@ bool GcsTaskManager::GcsTaskManagerStorage::ShouldMarkChildrenFailed(
 
   const auto &parent_task_event = GetLatestTaskEvent(parent_task);
 
+  if (!parent_task_event.has_value()) {
+    return false;
+  }
+
   // Check if parent has failed.
   if (!parent_task_event->has_state_updates()) {
     return false;
