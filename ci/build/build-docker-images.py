@@ -17,7 +17,7 @@ import docker
 
 print = functools.partial(print, file=sys.stderr, flush=True)
 DOCKER_USERNAME = "raytravisbot"
-DOCKER_CLIENT = None
+DOCKER_CLIENT = docker.from_env()
 PYTHON_WHL_VERSION = "cp3"
 ADDITIONAL_PLATFORMS = ["aarch64"]
 
@@ -564,7 +564,7 @@ def push_and_tag_images(
         sha_tag = release_name
 
     for image_name in image_list:
-        full_image_name = f"{DOCKER_HUB_REPO}/{image_name}"
+        full_image_name = f"rayproject/{image_name}"
 
         tag_mapping = create_image_tags(
             image_name=image_name,
@@ -714,6 +714,7 @@ BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
 @click.command()
 @click.option(
     "--py-versions",
+    "-V",
     default=["py37"],
     type=click.Choice(list(PY_MATRIX.keys())),
     multiple=True,
@@ -722,6 +723,7 @@ BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
 )
 @click.option(
     "--device-types",
+    "-T",
     default=[],
     type=click.Choice(list(BASE_IMAGES.keys())),
     multiple=True,
@@ -750,17 +752,21 @@ BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
     help="Whether only to build ray-worker-container",
 )
 def main(
-    py_versions: List[str],
-    device_types: List[str],
+    py_versions: Tuple[str],
+    device_types: Tuple[str],
     build_type: str,
     suffix: Optional[str] = None,
     build_base: bool = True,
     only_build_worker_container: bool = False,
 ):
-    py_versions = py_versions
-    py_versions = py_versions if isinstance(py_versions, list) else [py_versions]
-
-    image_types = device_types if device_types else list(BASE_IMAGES.keys())
+    py_versions = (
+        list(py_versions) if isinstance(py_versions, (list, tuple)) else [py_versions]
+    )
+    image_types = (
+        list(device_types)
+        if isinstance(device_types, (list, tuple))
+        else list(BASE_IMAGES.keys())
+    )
 
     assert set(list(CUDA_FULL.keys()) + ["cpu"]) == set(BASE_IMAGES.keys())
 
@@ -811,7 +817,6 @@ def main(
         or _check_if_docker_files_modified()
         or only_build_worker_container
     ):
-        DOCKER_CLIENT = docker.from_env()
         is_merge = build_type == MERGE
         # Buildkite is authenticated in the background.
         if is_merge and not is_buildkite and not is_local:
