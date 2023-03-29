@@ -93,7 +93,7 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
     break;
   }
   default: {
-    RAY_LOG(WARNING) << "Encountered unexpected redis reply type: " << reply_type_;
+    RAY_LOG(ERROR) << "Encountered unexpected redis reply type: " << reply_type_;
   }
   }
 }
@@ -222,9 +222,12 @@ void RedisCallbackManager::RemoveCallback(int64_t callback_index) {
   callback_items_.erase(callback_index);
 }
 
-#define REDIS_CHECK_ERROR(CONTEXT, REPLY)                     \
-  if (REPLY == nullptr || REPLY->type == REDIS_REPLY_ERROR) { \
-    return Status::RedisError(CONTEXT->errstr);               \
+#define REDIS_CHECK_ERROR(CONTEXT, REPLY)                 \
+  if (REPLY == nullptr) {                                 \
+    return Status::RedisError(CONTEXT->errstr);           \
+  }                                                       \
+  if (REPLY->type == REDIS_REPLY_ERROR) {                 \
+    return Status::RedisError(REPLY->str);                \
   }
 
 RedisContext::RedisContext(instrumented_io_context &io_service)
@@ -323,21 +326,20 @@ template <typename RedisContext, typename RedisConnectFunction>
 Status ConnectWithoutRetries(const std::string &address,
                              int port,
                              const RedisConnectFunction &connect_function,
-                             RedisContext **context,
-                             std::string &errorMessage) {
+                             RedisContext **context) {
   // This currently returns the errorMessage in two different ways,
   // as an output parameter and in the Status::RedisError,
   // because we're not sure whether we'll want to change what this returns.
   RedisContext *newContext = connect_function(address.c_str(), port);
   if (newContext == nullptr || (newContext)->err) {
-    std::ostringstream oss(errorMessage);
+    std::ostringstream oss;
     if (newContext == nullptr) {
       oss << "Could not allocate Redis context.";
     } else if (newContext->err) {
       oss << "Could not establish connection to Redis " << address << ":" << port
           << " (context.err = " << newContext->err << ").";
     }
-    return Status::RedisError(errorMessage);
+    return Status::RedisError(oss.str());
   }
   if (context != nullptr) {
     // Don't crash if the RedisContext** is null.
@@ -354,34 +356,33 @@ Status ConnectWithRetries(const std::string &address,
                           const RedisConnectFunction &connect_function,
                           RedisContext **context) {
   int connection_attempts = 0;
-  std::string errorMessage = "";
-  Status status =
-      ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
+  Status status = ConnectWithoutRetries(address, port, connect_function, context);
   while (!status.ok()) {
     if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
       RAY_LOG(FATAL) << RayConfig::instance().redis_db_connect_retries() << " attempts "
                      << "to connect have all failed. Please check whether the"
                      << " redis storage is alive or not. The last error message was: "
-                     << errorMessage;
+                     << status.ToString();
       break;
     }
-    RAY_LOG(WARNING) << errorMessage << " Will retry in "
-                     << RayConfig::instance().redis_db_connect_wait_milliseconds()
-                     << " milliseconds. Each retry takes about two minutes.";
+    RAY_LOG_EVERY_MS(ERROR, 1000)
+        << "Failed to connect to Redis due to: " << status.ToString()
+        << ". Will retry in "
+        << RayConfig::instance().redis_db_connect_wait_milliseconds()
+        << "ms.";
+
     // Sleep for a little.
     std::this_thread::sleep_for(std::chrono::milliseconds(
         RayConfig::instance().redis_db_connect_wait_milliseconds()));
-    status =
-        ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
+    status = ConnectWithoutRetries(address, port, connect_function, context);
     connection_attempts += 1;
   }
   return Status::OK();
 }
 
 Status RedisContext::PingPort(const std::string &address, int port) {
-  std::string errorMessage;
   return ConnectWithoutRetries(
-      address, port, redisConnect, static_cast<redisContext **>(nullptr), errorMessage);
+      address, port, redisConnect, static_cast<redisContext **>(nullptr));
 }
 
 Status RedisContext::Connect(const std::string &address,
@@ -428,7 +429,7 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
   auto redis_reply = reinterpret_cast<redisReply *>(
       ::redisCommandArgv(context_, args.size(), argv.data(), argc.data()));
   if (redis_reply == nullptr) {
-    RAY_LOG(ERROR) << "Failed to send redis command (sync).";
+    RAY_LOG(ERROR) << "Failed to send redis command (sync): " << context_->errstr;
     return nullptr;
   }
   std::unique_ptr<CallbackReply> callback_reply(new CallbackReply(redis_reply));

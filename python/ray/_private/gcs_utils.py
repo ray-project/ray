@@ -12,7 +12,11 @@ import grpc
 
 import ray
 from ray._private import ray_constants
-from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
+from ray.core.generated import (
+    gcs_service_pb2,
+    gcs_service_pb2_grpc,
+)
+
 from ray.core.generated.common_pb2 import ErrorType, JobConfig
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
@@ -620,15 +624,6 @@ class GcsAioClient:
         )
         reply = await self._actor_info_stub.GetNamedActorInfo(req, timeout=timeout)
         return reply
-
-
-def use_gcs_for_bootstrap():
-    """In the current version of Ray, we always use the GCS to bootstrap.
-    (This was previously controlled by a feature flag.)
-
-    This function is included for the purposes of backwards compatibility.
-    """
-    return True
 
 
 def cleanup_redis_storage(
