@@ -1,7 +1,8 @@
 import logging
 from typing import Mapping, Any
 
-from ray.rllib.algorithms.ppo.ppo_base_learner import PPOBaseLearner
+from ray.rllib.algorithms.ppo.ppo_base_learner import PPOBaseLearner, PPOMetrics
+from ray.rllib.core.learner.learner import LearnerMetrics
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -97,16 +98,16 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
             total_loss += self.kl_coeff * mean_kl_loss
 
         return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            "policy_loss": -tf.reduce_mean(surrogate_loss),
-            "vf_loss": mean_vf_loss,
-            "vf_explained_var": explained_variance(
+            LearnerMetrics.TOTAL_LOSS_KEY: total_loss,
+            LearnerMetrics.POLICY_LOSS: -tf.reduce_mean(surrogate_loss),
+            LearnerMetrics.VF_LOSS: mean_vf_loss,
+            LearnerMetrics.ENTROPY: mean_entropy,
+            PPOMetrics.VF_EXPLAINED_VAR: explained_variance(
                 batch[Postprocessing.VALUE_TARGETS], value_fn_out
             ),
-            "entropy": mean_entropy,
-            "kl": mean_kl_loss,
-            "entropy_coeff": self.entropy_coeff,
-            "cur_kl_coeff": self.kl_coeff,
+            PPOMetrics.KL: mean_kl_loss,
+            PPOMetrics.ENTROPY_COEFF: self.entropy_coeff,
+            PPOMetrics.KL_COEFF: self.kl_coeff,
         }
 
     @override(PPOBaseLearner)

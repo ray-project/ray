@@ -1,6 +1,7 @@
 import abc
 from collections import defaultdict
 from dataclasses import dataclass, field
+import enum
 import logging
 import numpy as np
 from typing import (
@@ -29,7 +30,6 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
 )
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.metrics import LEARNER_STATS_KEY, ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, ResultDict
@@ -55,11 +55,6 @@ ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
 ParamRef = Hashable
 ParamDictType = Dict[ParamRef, ParamType]
 
-# COMMON LEARNER LOSS_KEYS
-POLICY_LOSS_KEY = "policy_loss"
-VF_LOSS_KEY = "vf_loss"
-ENTROPY_KEY = "entropy"
-
 
 @dataclass
 class FrameworkHPs:
@@ -71,9 +66,13 @@ class FrameworkHPs:
             This is useful for speeding up the training loop. However, it is not
             compatible with all tf operations. For example, tf.print is not supported
             in tf.function.
+        torch_compile: Whether to compile the model in torch. torch.compile is the
+            latest method to speed up PyTorch code. It is similar to eager_tracing in
+            Tensorflow.
     """
 
     eager_tracing: bool = False
+    torch_compile: bool = False
 
 
 @dataclass
@@ -89,6 +88,25 @@ class LearnerHPs:
     """
 
     pass
+
+
+class LearnerMetrics(enum.Enum):
+    # Metrics returned by the learner's update function
+    TOTAL_LOSS = "total_loss"
+    GRAD_NORM = "grad_norm"
+    LEARNER_STATS = "learner_stats"
+    ALL_MODULES = "__all__"
+
+    # Metric needed by learner's update function
+    LOSS = "loss"
+    FORWARD_OUTPUT = "fwd_out"
+    PROCESSED_GRADIENTS = "postprocessed_gradients"
+    GRADIENTS = "gradients"
+
+    # Some common loss keys
+    POLICY_LOSS = "policy_loss"
+    VF_LOSS = "vf_loss"
+    ENTROPY = "entropy"
 
 
 class Learner:
@@ -195,11 +213,10 @@ class Learner:
                 # compute the loss based on batch and output of the forward pass
                 # to access the learner hyper-parameters use `self.hps`
 
-                return {self.TOTAL_LOSS_KEY: loss}
+                return {LearnerMetrics.TOTAL_LOSS_KEY: loss}
     """
 
     framework: str = None
-    TOTAL_LOSS_KEY: str = "total_loss"
 
     def __init__(
         self,
@@ -282,7 +299,7 @@ class Learner:
 
         Args:
             loss: The computed loss dict. It should include the key
-                `self.TOTAL_LOSS_KEY` that contains the total loss.
+                `LearnerMetrics.TOTAL_LOSS_KEY` that contains the total loss.
         Returns:
             The gradients in teh same format as self._params.
         """
@@ -295,44 +312,64 @@ class Learner:
             gradients: A dictionary of gradients, in the same format as self._params.
         """
 
-    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
-        """Returns the weights of the underlying MultiAgentRLModule.
+    @OverrideToImplementCustomLogic
+    def postprocess_gradients(
+        self, gradients_dict: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Applies potential postprocessings to the gradients.
 
-        The output should be numpy-friendly for easy serialization, not framework
-        specific tensors.
+        In some algorithms, we may want to perform some postprocessing on the
+        gradients before they are applied. This method is called after gradients
+        have been computed, and modifies them before they are applied.
+
+        Args:
+            gradients_dict: A dictionary of gradients.
+
+        Returns:
+            A dictionary of updated gradients.
+        """
+
+        grad_clip_value = self._optimizer_config.get("grad_clip", None)
+        assert isinstance(
+            grad_clip_value, (int, float, type(None))
+        ), "grad_clip must be a number or None."
+
+        if grad_clip_value is not None:
+            gradients_dict = self._clip_grads_by_value(gradients_dict, grad_clip_value)
+
+        return gradients_dict
+
+    def get_weights(
+        self, module_ids: Optional[Set[str]] = None, return_numpy: bool = True
+    ) -> Mapping[str, Any]:
+        """Returns the weights of the underlying MultiAgentRLModule.
 
         Args:
             module_ids: The ids of the modules to get the weights for. If None, all
                 modules will be returned.
+            return_numpy: Whether to return the weights in a numpy-friendly format.
 
         Returns:
-            A dictionary that holds the weights of the modules in a numpy-friendly
-            format.
+            A dictionary that holds the weights of the modules. If return_numpy is
+            True, the weights will be converted to numpy arrays.
         """
         module_states = self._module.get_state(module_ids)
+        if not return_numpy:
+            return module_states
         return convert_to_numpy({k: v for k, v in module_states.items()})
 
     @abc.abstractmethod
     def set_weights(self, weights: Mapping[str, Any]) -> None:
-        """Sets the weights of the underlying MultiAgentRLModule"""
+        """Sets the weights of the underlying MultiAgentRLModule.
 
-    @abc.abstractmethod
-    def get_param_ref(self, param: ParamType) -> Hashable:
-        """Returns a hashable reference to a trainable parameter.
-
-        This should be overriden in framework specific specialization. For example in
-        torch it will return the parameter itself, while in tf it returns the .ref() of
-        the variable. The purpose is to retrieve a unique reference to the parameters.
+        The input weights can be either in numpy or native tensor format.
 
         Args:
-            param: The parameter to get the reference to.
-
-        Returns:
-            A reference to the parameter.
+            weights: A dictionary that holds the weights of the modules.
         """
 
     @abc.abstractmethod
-    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+    def get_parameters(self, module: RLModule) -> List[ParamType]:
         """Returns the list of parameters of a module.
 
         This should be overriden in framework specific learner. For example in torch it
@@ -362,32 +399,18 @@ class Learner:
             The optimizer object.
         """
 
-    @abc.abstractmethod
-    def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
-        """Converts a MultiAgentBatch to a NestedDict of Tensors.
-
-        This should convert the input batch from a MultiAgentBatch format to framework
-        specific tensor format located on the correct device.
-
-        Args:
-            batch: A MultiAgentBatch.
-
-        Returns:
-            A NestedDict.
-        """
-
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def compile_results(
         self,
         batch: MultiAgentBatch,
-        fwd_out: Mapping[str, Any],
-        postprocessed_loss: Mapping[str, Any],
-        postprocessed_gradients: Mapping[str, Any],
+        update_outs: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         """Compile results from the update in a numpy-friendly format.
 
         Args:
             batch: The batch that was used for the update.
+            update_outs: The outputs of the update function. It should include the keys
+                for obtaining loss, forward output, and postprocessed gradients.
             fwd_out: The output of the forward train pass.
             postprocessed_loss: The loss after postprocessing.
             postprocessed_gradients: The gradients after postprocessing.
@@ -395,30 +418,36 @@ class Learner:
         Returns:
             A dictionary of results.
         """
+
+        loss = update_outs[LearnerMetrics.LOSS]
+        postprocessed_gradients = update_outs[LearnerMetrics.POSTPROCESSED_GRADS]
+
         if not isinstance(batch, MultiAgentBatch):
             raise ValueError(
                 f"batch must be a MultiAgentBatch, but got {type(batch)} instead."
             )
 
-        loss_numpy = convert_to_numpy(postprocessed_loss)
+        loss_numpy = convert_to_numpy(loss)
 
         # We restructure the loss to be module_id -> LEARNER_STATS_KEY -> key-values.
         # This matches what the legacy RLlib policies used to return.
         module_learner_stats = defaultdict(dict)
         for module_id in batch.policy_batches.keys():
-            module_learner_stats[module_id] = {LEARNER_STATS_KEY: loss_numpy[module_id]}
+            module_learner_stats[module_id] = {
+                LearnerMetrics.LEARNER_STATS: loss_numpy[module_id]
+            }
 
-        # We put the stats for all modules under the ALL_MODULES key. e.g. average of
-        # the gradients across all modules will go here.
-        mean_grads = [
-            np.mean(grad)
+        # We put the stats for all modules under the ALL_MODULES key.
+        # compute the norm of the gradients across all module
+        grad_norms = [
+            np.linalg.norm(grad)
             for grad in convert_to_numpy(postprocessed_gradients.values())
             if grad is not None
         ]
 
-        module_learner_stats[ALL_MODULES] = {
-            "mean_gradient": np.mean(mean_grads),
-            self.TOTAL_LOSS_KEY: loss_numpy[self.TOTAL_LOSS_KEY],
+        module_learner_stats[LearnerMetrics.ALL_MODULES] = {
+            LearnerMetrics.GRAD_NORM: np.mean(grad_norms),
+            LearnerMetrics.TOTAL_LOSS: loss_numpy[LearnerMetrics.TOTAL_LOSS],
         }
 
         return dict(module_learner_stats)
@@ -465,7 +494,7 @@ class Learner:
         for param_seq, optimizer in set_optimizer_fn(module):
             self._optim_to_param[optimizer] = []
             for param in param_seq:
-                param_ref = self.get_param_ref(param)
+                param_ref = self._get_param_ref(param)
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
@@ -485,7 +514,7 @@ class Learner:
         if self._is_module_compatible_with_learner(module):
             parameters = self.get_parameters(module)
             for param in parameters:
-                param_ref = self.get_param_ref(param)
+                param_ref = self._get_param_ref(param)
                 if param_ref in self._params:
                     del self._params[param_ref]
                 if param_ref in self._param_to_optim:
@@ -507,7 +536,7 @@ class Learner:
         for param_seq, optimizer in self.configure_optimizers():
             self._optim_to_param[optimizer] = []
             for param in param_seq:
-                param_ref = self.get_param_ref(param)
+                param_ref = self._get_param_ref(param)
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
@@ -551,14 +580,14 @@ class Learner:
                 module_id, module_batch, module_fwd_out
             )
             results_all_modules[module_id] = module_results
-            loss = module_results[self.TOTAL_LOSS_KEY]
+            loss = module_results[LearnerMetrics.TOTAL_LOSS]
 
             if loss_total is None:
                 loss_total = loss
             else:
                 loss_total += loss
 
-        results_all_modules[self.TOTAL_LOSS_KEY] = loss_total
+        results_all_modules[LearnerMetrics.TOTAL_LOSS] = loss_total
 
         return results_all_modules
 
@@ -653,24 +682,6 @@ class Learner:
         """
         raise NotImplementedError
 
-    @OverrideToImplementCustomLogic
-    def postprocess_gradients(
-        self, gradients_dict: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
-        """Applies potential postprocessings to the gradients.
-
-        In some algorithms, we may want to perform some postprocessing on the
-        gradients before they are applied. This method is called after gradients
-        have been computed, and modifies them before they are applied.
-
-        Args:
-            gradients_dict: A dictionary of gradients.
-
-        Returns:
-            A dictionary of updated gradients.
-        """
-        return gradients_dict
-
     def update(
         self,
         batch: MultiAgentBatch,
@@ -729,8 +740,7 @@ class Learner:
 
         results = []
         for minibatch in batch_iter(batch, minibatch_size, num_iters):
-
-            result = self._update(minibatch)
+            result = self._update_per_minibatch(minibatch)
             results.append(result)
 
         # Reduce results across all minibatches, if necessary.
@@ -767,6 +777,49 @@ class Learner:
         return {"module_state": self._module.get_state()}
 
     @abc.abstractmethod
+    def _clip_grads_by_value(
+        self, gradients_dict: Mapping[str, Any], grad_clip_value: float
+    ) -> Mapping[str, Any]:
+        """Clips gradients by value.
+
+        Args:
+            gradients_dict: A dictionary of gradients.
+            grad_clip_value: The maximum value of the gradients.
+
+        Returns:
+            A dictionary of updated gradients.
+        """
+
+    @abc.abstractmethod
+    def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
+        """Converts a MultiAgentBatch to a NestedDict of Tensors.
+
+        This should convert the input batch from a MultiAgentBatch format to framework
+        specific tensor format located on the correct device.
+
+        Args:
+            batch: A MultiAgentBatch.
+
+        Returns:
+            A NestedDict.
+        """
+
+    @abc.abstractmethod
+    def _get_param_ref(self, param: ParamType) -> Hashable:
+        """Returns a hashable reference to a trainable parameter.
+
+        This should be overriden in framework specific specialization. For example in
+        torch it will return the parameter itself, while in tf it returns the .ref() of
+        the variable. The purpose is to retrieve a unique reference to the parameters.
+
+        Args:
+            param: The parameter to get the reference to.
+
+        Returns:
+            A reference to the parameter.
+        """
+
+    @abc.abstractmethod
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
         """Check whether the module is compatible with the learner.
 
@@ -780,6 +833,43 @@ class Learner:
         Returns:
             True if the module is compatible with the learner.
         """
+
+    @abc.abstractmethod
+    def _run_update_per_minibatch(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+        """Runs a framework specific update given a batch of data.
+
+        Args:
+            batch: A batch of data. The values in this batch area already converted to
+                the framework specific tensor format.
+
+        Returns:
+            A dictionary of outputs from the update. This should include the loss,
+            forward outputs and the postprocessed gradients.
+        """
+
+    def _update_per_minibatch(
+        self,
+        minibatch: MultiAgentBatch,
+    ) -> Mapping[str, Any]:
+        """Perform a single update on the learner given a minibatch.
+        
+        The input to this function is a generic MultiAgentBatch and may not be in the 
+        framework specific format. This function will convert the batch to the correct
+        format and then call the framework specific update function. The output of this function is expected to be numpy-friendly. 
+
+        Args:
+            minibatch: A minibatch of data.
+        
+        Returns:
+            A dictionary of results.
+        """
+        # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
+        # NestedDict from the base class.
+        tensorbatch = self._convert_batch_type(minibatch)
+        update_outs = self._run_update_per_minibatch(tensorbatch)
+        result = self.compile_results(minibatch, update_outs)
+        self._check_result(result)
+        return convert_to_numpy(result)
 
     def _make_module(self) -> MultiAgentRLModule:
         """Construct the multi-agent RL module for the learner.
@@ -818,37 +908,20 @@ class Learner:
                 f"The result of the update must be a dictionary. Got: {type(result)}"
             )
 
-        if ALL_MODULES not in result:
+        if LearnerMetrics.ALL_MODULES not in result:
             raise ValueError(
-                f"The result of the update must have a key {ALL_MODULES} "
-                "that holds any extra information that is not specific to a module."
+                "The result of the update must have a key "
+                f"{LearnerMetrics.ALL_MODULES} that holds any extra information "
+                "that is not specific to a module."
             )
 
         for key in result:
-            if key != ALL_MODULES:
+            if key != LearnerMetrics.ALL_MODULES:
                 if key not in self.module.keys():
                     raise ValueError(
                         f"The key {key} in the result of the update is not a valid "
                         f"module id. Valid module ids are: {self.module.keys()}"
                     )
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def _update(
-        self,
-        batch: MultiAgentBatch,
-    ) -> Mapping[str, Any]:
-        """Performs a single update given a batch of data."""
-        # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
-        # NestedDict from the base class.
-        tensorbatch = self._convert_batch_type(batch)
-        fwd_out = self._module.forward_train(tensorbatch)
-        loss = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
-        gradients = self.compute_gradients(loss)
-        postprocessed_gradients = self.postprocess_gradients(gradients)
-        self.apply_gradients(postprocessed_gradients)
-        result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
-        self._check_result(result)
-        return convert_to_numpy(result)
 
     def __check_if_build_called(self):
         if self._module is None:

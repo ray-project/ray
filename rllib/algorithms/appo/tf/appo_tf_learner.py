@@ -1,5 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
+import enum
 from typing import Any, Dict, Mapping
 
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -7,7 +8,7 @@ from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import OLD_ACTION_DIST_KEY
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.algorithms.impala.impala_base_learner import ImpalaHPs
 from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
-from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
+from ray.rllib.core.learner.learner import LearnerMetrics
 from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.utils.annotations import override
@@ -17,7 +18,8 @@ from ray.rllib.utils.typing import TensorType
 _, tf, _ = try_import_tf()
 
 
-LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
+class APPOLearnerMetrics(enum.Enum):
+    LEARNER_RESULTS_KL = "mean_kl_loss"
 
 
 @dataclass
@@ -187,11 +189,11 @@ class APPOTfLearner(ImpalaTfLearner):
         )
 
         return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            POLICY_LOSS_KEY: mean_pi_loss,
-            VF_LOSS_KEY: mean_vf_loss,
-            ENTROPY_KEY: mean_entropy_loss,
-            LEARNER_RESULTS_KL_KEY: mean_kl_loss,
+            LearnerMetrics.TOTAL_LOSS_KEY: total_loss,
+            LearnerMetrics.POLICY_LOSS_KEY: mean_pi_loss,
+            LearnerMetrics.VF_LOSS_KEY: mean_vf_loss,
+            LearnerMetrics.ENTROPY_KEY: mean_entropy_loss,
+            APPOLearnerMetrics.LEARNER_RESULTS_KL: mean_kl_loss,
         }
 
     @override(ImpalaTfLearner)

@@ -75,15 +75,9 @@ class ImpalaBaseLearner(Learner):
 
     @override(Learner)
     def compile_results(
-        self,
-        batch: MultiAgentBatch,
-        fwd_out: Mapping[str, Any],
-        postprocessed_loss: Mapping[str, Any],
-        postprocessed_gradients: Mapping[str, Any],
+        self, batch: MultiAgentBatch, update_outs: Mapping[str, Any]
     ) -> Mapping[str, Any]:
-        results = super().compile_results(
-            batch, fwd_out, postprocessed_loss, postprocessed_gradients
-        )
+        results = super().compile_results(batch, update_outs)
         results[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
         results[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
         return results

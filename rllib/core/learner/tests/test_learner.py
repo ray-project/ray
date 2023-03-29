@@ -99,7 +99,7 @@ class TestLearner(unittest.TestCase):
             for param in params
         ]
         for _ in range(n_steps):
-            gradients = {learner.get_param_ref(p): tf.ones_like(p) for p in params}
+            gradients = {learner._get_param_ref(p): tf.ones_like(p) for p in params}
             learner.apply_gradients(gradients)
 
         check(params, expected)

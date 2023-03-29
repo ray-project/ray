@@ -6,15 +6,16 @@ from typing import (
     Mapping,
     Union,
     Type,
+    List,
     Optional,
     Callable,
-    Sequence,
     Hashable,
 )
 
 from ray.rllib.core.learner.learner import (
     FrameworkHPs,
     Learner,
+    LearnerMetrics,
     ParamOptimizerPairs,
     Optimizer,
     ParamType,
@@ -29,11 +30,7 @@ from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import TensorType, ResultDict
-from ray.rllib.utils.minibatch_utils import (
-    MiniBatchDummyIterator,
-    MiniBatchCyclicIterator,
-)
+from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 
 
@@ -53,9 +50,8 @@ class TfLearner(Learner):
         **kwargs,
     ):
 
-        # by default in rllib we disable tf2 behavior
-        # This call re-enables it as it is needed for using
-        # this class.
+        # by default in rllib we disable tf2 behavior if tf1 was imported already.
+        # This call re-enables it as it is needed for using this class.
         try:
             tf1.enable_v2_behavior()
         except ValueError:
@@ -92,7 +88,7 @@ class TfLearner(Learner):
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]], tape: "tf.GradientTape"
     ) -> ParamDictType:
-        grads = tape.gradient(loss[self.TOTAL_LOSS_KEY], self._params)
+        grads = tape.gradient(loss[LearnerMetrics.TOTAL_LOSS_KEY], self._params)
         return grads
 
     @override(Learner)
@@ -115,29 +111,11 @@ class TfLearner(Learner):
             optim.apply_gradients(zip(gradient_list, variable_list))
 
     @override(Learner)
-    def postprocess_gradients(
-        self, gradients_dict: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
-        grad_clip = self._optimizer_config.get("grad_clip", None)
-        assert isinstance(
-            grad_clip, (int, float, type(None))
-        ), "grad_clip must be a number"
-        if grad_clip is not None:
-            gradients_dict = tf.nest.map_structure(
-                lambda v: tf.clip_by_value(v, -grad_clip, grad_clip), gradients_dict
-            )
-        return gradients_dict
-
-    @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
         self._module.set_state(weights)
 
     @override(Learner)
-    def get_param_ref(self, param: ParamType) -> Hashable:
-        return param.ref()
-
-    @override(Learner)
-    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+    def get_parameters(self, module: RLModule) -> List[ParamType]:
         return list(module.trainable_variables)
 
     @override(Learner)
@@ -146,33 +124,6 @@ class TfLearner(Learner):
     ) -> Optimizer:
         lr = self._optimizer_config["lr"]
         return optimizer_cls(learning_rate=lr)
-
-    def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
-        return isinstance(module, TfRLModule)
-
-    @override(Learner)
-    def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
-        """Convert the arrays of batch to tf.Tensor's.
-
-        Note: This is an in place operation.
-
-        Args:
-            batch: The batch to convert.
-
-        Returns:
-            The converted batch.
-
-        """
-        # TODO(avnishn): This is a hack to get around the fact that
-        # SampleBatch.count becomes 0 after decorating the function with
-        # tf.function. This messes with input spec checking. Other fields of
-        # the sample batch are possibly modified by tf.function which may lead
-        # to unwanted consequences. We'll need to further investigate this.
-        ma_batch = NestedDict(batch.policy_batches)
-        for key, value in ma_batch.items():
-            if isinstance(value, np.ndarray):
-                ma_batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
-        return ma_batch
 
     @override(Learner)
     def add_module(
@@ -199,14 +150,18 @@ class TfLearner(Learner):
                 optimizer_cls=optimizer_cls,
             )
         if self._enable_tf_function:
-            self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
+            self._possibly_traced_update_fn = tf.function(
+                self._untraced_update_fn, reduce_retracing=True
+            )
 
     @override(Learner)
     def remove_module(self, module_id: ModuleID) -> None:
         with self._strategy.scope():
             super().remove_module(module_id)
         if self._enable_tf_function:
-            self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
+            self._possibly_traced_update_fn = tf.function(
+                self._untraced_update_fn, reduce_retracing=True
+            )
 
     @override(Learner)
     def build(self) -> None:
@@ -234,56 +189,59 @@ class TfLearner(Learner):
             super().build()
 
         if self._enable_tf_function:
-            self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
+            self._possibly_traced_update_fn = tf.function(
+                self._untraced_update_fn, reduce_retracing=True
+            )
         else:
-            self._update_fn = self._do_update_fn
+            self._possibly_traced_update_fn = self._untraced_update_fn
 
     @override(Learner)
-    def update(
-        self,
-        batch: MultiAgentBatch,
-        *,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
-        reduce_fn: Callable[[ResultDict], ResultDict] = ...,
+    def _clip_grads_by_value(
+        self, gradients_dict: Mapping[str, Any], grad_clip_value: float
     ) -> Mapping[str, Any]:
-        # TODO (Kourosh): The update of learner is vastly differnet than the base
-        # class. So we need to unify them.
-        missing_module_ids = set(batch.policy_batches.keys()) - set(self._module.keys())
-        if len(missing_module_ids) > 0:
-            raise ValueError(
-                "Batch contains module ids that are not in the learner: "
-                f"{missing_module_ids}"
-            )
 
-        batch_iter = (
-            MiniBatchCyclicIterator
-            if minibatch_size is not None
-            else MiniBatchDummyIterator
+        gradients_dict = tf.nest.map_structure(
+            lambda v: tf.clip_by_value(v, -grad_clip_value, grad_clip_value),
+            gradients_dict,
         )
+        return gradients_dict
 
-        results = []
-        for minibatch in batch_iter(batch, minibatch_size, num_iters):
-            # TODO (Avnish): converting to tf tensor and then from nested dict back to
-            # dict will most likely hit us in perf. But let's go with this for now.
-            tensorbatch = self._convert_batch_type(minibatch)
-            update_outs = self._update_fn(tensorbatch)
-            loss = update_outs["loss"]
-            fwd_out = update_outs["fwd_out"]
-            postprocessed_gradients = update_outs["postprocessed_gradients"]
-            result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
-            self._check_result(result)
-            results.append(result)
+    @override(Learner)
+    def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
+        """Convert the arrays of batch to tf.Tensor's.
 
-        # Reduce results across all minibatches, if necessary.
-        if len(results) == 1:
-            return results[0]
-        else:
-            if reduce_fn is None:
-                return results
-            return reduce_fn(results)
+        Note: This is an in place operation.
 
-    def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+        Args:
+            batch: The batch to convert.
+
+        Returns:
+            The converted batch.
+
+        """
+        # TODO(avnishn): This is a hack to get around the fact that
+        # SampleBatch.count becomes 0 after decorating the function with
+        # tf.function. This messes with input spec checking. Other fields of
+        # the sample batch are possibly modified by tf.function which may lead
+        # to unwanted consequences. We'll need to further investigate this.
+        ma_batch = NestedDict(batch.policy_batches)
+        for key, value in ma_batch.items():
+            if isinstance(value, np.ndarray):
+                ma_batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
+        return ma_batch
+
+    @override(Learner)
+    def _get_param_ref(self, param: ParamType) -> Hashable:
+        return param.ref()
+
+    def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
+        return isinstance(module, TfRLModule)
+
+    @override(Learner)
+    def _run_update_per_minibatch(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+        return self._possibly_traced_update_fn(batch)
+
+    def _untraced_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         # TODO (Avnish): Match this base class's implementation.
         def helper(_batch):
             # TODO (Kourosh): We need to go back to NestedDict because that's the
@@ -294,7 +252,7 @@ class TfLearner(Learner):
                 fwd_out = self._module.forward_train(_batch)
                 loss = self.compute_loss(fwd_out=fwd_out, batch=_batch)
                 if isinstance(loss, tf.Tensor):
-                    loss = {"total_loss": loss}
+                    loss = {LearnerMetrics.TOTAL_LOSS: loss}
             gradients = self.compute_gradients(loss, tape)
             gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(gradients)
@@ -314,9 +272,11 @@ class TfLearner(Learner):
                 return None
 
             return {
-                "loss": loss,
-                "fwd_out": tree.map_structure(filter_fwd_out, fwd_out),
-                "postprocessed_gradients": gradients,
+                LearnerMetrics.LOSS: loss,
+                LearnerMetrics.FORWARD_OUTPUT: tree.map_structure(
+                    filter_fwd_out, fwd_out
+                ),
+                LearnerMetrics.PROCESSED_GRADIENTS: gradients,
             }
 
         return self._strategy.run(helper, args=(batch,))

@@ -5,6 +5,7 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
 )
+from ray.rllib.core.learner.learner import LearnerMetrics
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -117,7 +118,7 @@ class ImpalaTorchLearner(TorchLearner, ImpalaBaseLearner):
             pi_loss + vf_loss * self.vf_loss_coeff + entropy_loss * self.entropy_coeff
         )
         return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            "pi_loss": mean_pi_loss,
-            "vf_loss": mean_vf_loss,
+            LearnerMetrics.TOTAL_LOSS: total_loss,
+            LearnerMetrics.POLICY_LOSS: mean_pi_loss,
+            LearnerMetrics.VF_LOSS: mean_vf_loss,
         }

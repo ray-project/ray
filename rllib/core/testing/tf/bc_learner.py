@@ -1,6 +1,7 @@
 import tensorflow as tf
 from typing import Any, Mapping
 
+from ray.rllib.core.learner.learner import LearnerMetrics
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 
@@ -16,4 +17,4 @@ class BCTfLearner(TfLearner, BaseTestingLearner):
         action_dist = fwd_out["action_dist"]
         loss = -tf.math.reduce_mean(action_dist.log_prob(batch[SampleBatch.ACTIONS]))
 
-        return {self.TOTAL_LOSS_KEY: loss}
+        return {LearnerMetrics.TOTAL_LOSS_KEY: loss}

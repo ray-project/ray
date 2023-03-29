@@ -2,6 +2,7 @@ from typing import Mapping
 
 from ray.rllib.algorithms.impala.impala_base_learner import ImpalaBaseLearner
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
+from ray.rllib.core.learner.learner import LearnerMetrics
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -100,7 +101,7 @@ class ImpalaTfLearner(TfLearner, ImpalaBaseLearner):
             pi_loss + vf_loss * self.vf_loss_coeff + entropy_loss * self.entropy_coeff
         )
         return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            "pi_loss": mean_pi_loss,
-            "vf_loss": mean_vf_loss,
+            LearnerMetrics.TOTAL_LOSS_KEY: total_loss,
+            LearnerMetrics.POLICY_LOSS: mean_pi_loss,
+            LearnerMetrics.VF_LOSS: mean_vf_loss,
         }

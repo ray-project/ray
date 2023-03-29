@@ -1,10 +1,11 @@
 import logging
+import tree  # pip install dm-tree
 from typing import (
     Any,
     Mapping,
     Union,
     Type,
-    Sequence,
+    List,
     Hashable,
     Optional,
     Callable,
@@ -20,6 +21,7 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.learner.learner import (
     FrameworkHPs,
     Learner,
+    LearnerMetrics,
     ParamOptimizerPairs,
     Optimizer,
     ParamType,
@@ -51,8 +53,9 @@ class TorchLearner(Learner):
         framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        super().__init__(framework_hyperparameters=framework_hyperparameters, **kwargs)
 
+        self._torch_compile = framework_hyperparameters.torch_compile
         # will be set during build
         self._device = None
 
@@ -81,7 +84,7 @@ class TorchLearner(Learner):
         for optim in self._optim_to_param:
             # set_to_none is a faster way to zero out the gradients
             optim.zero_grad(set_to_none=True)
-        loss[self.TOTAL_LOSS_KEY].backward()
+        loss[LearnerMetrics.TOTAL_LOSS].backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
 
         return grads
@@ -102,16 +105,11 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
-        """Sets the weights of the underlying MultiAgentRLModule"""
         weights = convert_to_torch_tensor(weights, device=self._device)
         return self._module.set_state(weights)
 
     @override(Learner)
-    def get_param_ref(self, param: ParamType) -> Hashable:
-        return param
-
-    @override(Learner)
-    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+    def get_parameters(self, module: RLModule) -> List[ParamType]:
         return list(module.parameters())
 
     @override(Learner)
@@ -122,12 +120,6 @@ class TorchLearner(Learner):
         # parameter as well.
         lr = self._optimizer_config["lr"]
         return optimizer_cls(module.parameters(), lr=lr)
-
-    @override(Learner)
-    def _convert_batch_type(self, batch: MultiAgentBatch):
-        batch = convert_to_torch_tensor(batch.policy_batches, device=self._device)
-        batch = NestedDict(batch)
-        return batch
 
     @override(Learner)
     def add_module(
@@ -204,8 +196,45 @@ class TorchLearner(Learner):
                             key, TorchDDPRLModule(self._module[key]), override=True
                         )
 
+    @override(Learner)
+    def _clip_grads_by_value(
+        self, gradients_dict: Mapping[str, Any], grad_clip_value: float
+    ) -> Mapping[str, Any]:
+
+        gradients_dict = tree.map_structure(
+            lambda grad: torch.clamp(grad, -grad_clip_value, grad_clip_value),
+            gradients_dict,
+        )
+
+        return gradients_dict
+
+    @override(Learner)
+    def _convert_batch_type(self, batch: MultiAgentBatch):
+        batch = convert_to_torch_tensor(batch.policy_batches, device=self._device)
+        batch = NestedDict(batch)
+        return batch
+
+    @override(Learner)
+    def _get_param_ref(self, param: ParamType) -> Hashable:
+        return param
+
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
         return isinstance(module, nn.Module)
+
+    @override(Learner)
+    def _run_update_per_minibatch(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+
+        fwd_out = self._module.forward_train(batch)
+        loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
+        gradients = self.compute_gradients(loss)
+        postprocessed_gradients = self.postprocess_gradients(gradients)
+        self.apply_gradients(postprocessed_gradients)
+
+        return {
+            LearnerMetrics.LOSS: loss,
+            LearnerMetrics.FORWARD_OUTPUT: fwd_out,
+            LearnerMetrics.PROCESSED_GRADIENTS: postprocessed_gradients,
+        }
 
     @override(Learner)
     def _make_module(self) -> MultiAgentRLModule:
