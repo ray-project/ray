@@ -32,7 +32,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         # serve_start_async is not thread-safe call. This lock
         # will make sure there is only one call that starts the serve instance.
         # If the lock is already acquired by another async task, the async task
-        # will do async waiting for the lock.
+        # will asynchronously wait for the lock.
         self._controller_start_lock = asyncio.Lock()
 
     # TODO: It's better to use `/api/version`.
