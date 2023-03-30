@@ -69,7 +69,8 @@ class _PublisherBase:
 
 
 class _SubscriberBase:
-    def __init__(self):
+    def __init__(self, worker_id: bytes = None):
+        self._worker_id = worker_id
         # self._subscriber_id needs to match the binary format of a random
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
         self._subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
@@ -84,7 +85,7 @@ class _SubscriberBase:
     def _subscribe_request(self, channel):
         cmd = pubsub_pb2.Command(channel_type=channel, subscribe_message={})
         req = gcs_service_pb2.GcsSubscriberCommandBatchRequest(
-            subscriber_id=self._subscriber_id, commands=[cmd]
+            subscriber_id=self._subscriber_id, sender_id=self._worker_id, commands=[cmd]
         )
         return req
 
@@ -95,7 +96,7 @@ class _SubscriberBase:
 
     def _unsubscribe_request(self, channels):
         req = gcs_service_pb2.GcsSubscriberCommandBatchRequest(
-            subscriber_id=self._subscriber_id, commands=[]
+            subscriber_id=self._subscriber_id, sender_id=self._worker_id, commands=[]
         )
         for channel in channels:
             req.commands.append(
@@ -202,10 +203,11 @@ class _SyncSubscriber(_SubscriberBase):
     def __init__(
         self,
         pubsub_channel_type,
+        worker_id: bytes = None,
         address: str = None,
         channel: grpc.Channel = None,
     ):
-        super().__init__()
+        super().__init__(worker_id)
 
         if address:
             assert channel is None, "address and channel cannot both be specified"
@@ -308,10 +310,11 @@ class GcsErrorSubscriber(_SyncSubscriber):
 
     def __init__(
         self,
+        worker_id: bytes = None,
         address: str = None,
         channel: grpc.Channel = None,
     ):
-        super().__init__(pubsub_pb2.RAY_ERROR_INFO_CHANNEL, address, channel)
+        super().__init__(pubsub_pb2.RAY_ERROR_INFO_CHANNEL, worker_id, address, channel)
 
     def poll(self, timeout=None) -> Tuple[bytes, ErrorTableData]:
         """Polls for new error messages.
@@ -342,10 +345,11 @@ class GcsLogSubscriber(_SyncSubscriber):
 
     def __init__(
         self,
+        worker_id: bytes = None,
         address: str = None,
         channel: grpc.Channel = None,
     ):
-        super().__init__(pubsub_pb2.RAY_LOG_CHANNEL, address, channel)
+        super().__init__(pubsub_pb2.RAY_LOG_CHANNEL, worker_id, address, channel)
 
     def poll(self, timeout=None) -> Optional[dict]:
         """Polls for new log messages.
@@ -376,10 +380,13 @@ class GcsFunctionKeySubscriber(_SyncSubscriber):
 
     def __init__(
         self,
+        worker_id: bytes = None,
         address: str = None,
         channel: grpc.Channel = None,
     ):
-        super().__init__(pubsub_pb2.RAY_PYTHON_FUNCTION_CHANNEL, address, channel)
+        super().__init__(
+            pubsub_pb2.RAY_PYTHON_FUNCTION_CHANNEL, worker_id, address, channel
+        )
 
     def poll(self, timeout=None) -> Optional[bytes]:
         """Polls for new function key messages.
@@ -411,10 +418,11 @@ class GcsActorSubscriber(_SyncSubscriber):
 
     def __init__(
         self,
+        worker_id: bytes = None,
         address: str = None,
         channel: grpc.Channel = None,
     ):
-        super().__init__(pubsub_pb2.GCS_ACTOR_CHANNEL, address, channel)
+        super().__init__(pubsub_pb2.GCS_ACTOR_CHANNEL, worker_id, address, channel)
 
     def poll(self, timeout=None) -> List[Tuple[bytes, str]]:
         """Polls for new actor messages.
@@ -475,10 +483,11 @@ class _AioSubscriber(_SubscriberBase):
     def __init__(
         self,
         pubsub_channel_type,
+        worker_id: bytes = None,
         address: str = None,
         channel: aiogrpc.Channel = None,
     ):
-        super().__init__()
+        super().__init__(worker_id)
 
         if address:
             assert channel is None, "address and channel cannot both be specified"
@@ -554,10 +563,11 @@ class _AioSubscriber(_SubscriberBase):
 class GcsAioErrorSubscriber(_AioSubscriber):
     def __init__(
         self,
+        worker_id: bytes = None,
         address: str = None,
         channel: grpc.Channel = None,
     ):
-        super().__init__(pubsub_pb2.RAY_ERROR_INFO_CHANNEL, address, channel)
+        super().__init__(pubsub_pb2.RAY_ERROR_INFO_CHANNEL, worker_id, address, channel)
 
     async def poll(self, timeout=None) -> Tuple[bytes, ErrorTableData]:
         """Polls for new error message.
@@ -573,10 +583,11 @@ class GcsAioErrorSubscriber(_AioSubscriber):
 class GcsAioLogSubscriber(_AioSubscriber):
     def __init__(
         self,
+        worker_id: bytes = None,
         address: str = None,
         channel: grpc.Channel = None,
     ):
-        super().__init__(pubsub_pb2.RAY_LOG_CHANNEL, address, channel)
+        super().__init__(pubsub_pb2.RAY_LOG_CHANNEL, worker_id, address, channel)
 
     async def poll(self, timeout=None) -> dict:
         """Polls for new log message.
@@ -592,10 +603,13 @@ class GcsAioLogSubscriber(_AioSubscriber):
 class GcsAioResourceUsageSubscriber(_AioSubscriber):
     def __init__(
         self,
+        worker_id: bytes = None,
         address: str = None,
         channel: grpc.Channel = None,
     ):
-        super().__init__(pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL, address, channel)
+        super().__init__(
+            pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL, worker_id, address, channel
+        )
 
     async def poll(self, timeout=None) -> Tuple[bytes, str]:
         """Polls for new resource usage message.
@@ -610,10 +624,11 @@ class GcsAioResourceUsageSubscriber(_AioSubscriber):
 class GcsAioActorSubscriber(_AioSubscriber):
     def __init__(
         self,
+        worker_id: bytes = None,
         address: str = None,
         channel: grpc.Channel = None,
     ):
-        super().__init__(pubsub_pb2.GCS_ACTOR_CHANNEL, address, channel)
+        super().__init__(pubsub_pb2.GCS_ACTOR_CHANNEL, worker_id, address, channel)
 
     @property
     def queue_size(self):

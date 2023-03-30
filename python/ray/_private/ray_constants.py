@@ -82,6 +82,9 @@ RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
 # the local working_dir and py_modules to be uploaded, or these files might get
 # garbage collected before the job starts.
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 10 * 60
+# If set to 1, then `.gitignore` files will not be parsed and loaded into "excludes"
+# when using a local working_dir or py_modules.
+RAY_RUNTIME_ENV_IGNORE_GITIGNORE = "RAY_RUNTIME_ENV_IGNORE_GITIGNORE"
 RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 # Hook for running a user-specified runtime-env hook. This hook will be called
 # unconditionally given the runtime_env dict passed for ray.init. It must return
@@ -222,6 +225,22 @@ PROCESS_TYPE_PYTHON_CORE_WORKER = "python-core-worker"
 MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_MONITOR}.log"
 LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 
+# Enable log deduplication.
+RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
+
+# How many seconds of messages to buffer for log deduplication.
+RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
+
+# Regex for log messages to never deduplicate, or None. This takes precedence over
+# the skip regex below. A default pattern is set for testing.
+TESTING_NEVER_DEDUP_TOKEN = "__ray_testing_never_deduplicate__"
+RAY_DEDUP_LOGS_ALLOW_REGEX = os.environ.get(
+    "RAY_DEDUP_LOGS_ALLOW_REGEX", TESTING_NEVER_DEDUP_TOKEN
+)
+
+# Regex for log messages to always skip / suppress, or None.
+RAY_DEDUP_LOGS_SKIP_REGEX = os.environ.get("RAY_DEDUP_LOGS_SKIP_REGEX")
+
 WORKER_PROCESS_TYPE_IDLE_WORKER = "ray::IDLE"
 WORKER_PROCESS_TYPE_SPILL_WORKER_NAME = "SpillWorker"
 WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME = "RestoreWorker"
@@ -298,6 +317,9 @@ NODE_DEFAULT_IP = "127.0.0.1"
 
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
+
+# The max number of bytes for task execution error message.
+MAX_APPLICATION_ERROR_LEN = 500
 
 # Max 64 bit integer value, which is needed to ensure against overflow
 # in C++ when passing integer values cross-language.
@@ -378,7 +400,7 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
-RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
 
 # Whether to enable Ray clusters (in addition to local Ray).
 # Ray clusters are not explicitly supported for Windows and OSX.
