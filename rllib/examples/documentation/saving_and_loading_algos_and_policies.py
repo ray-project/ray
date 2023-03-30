@@ -297,8 +297,7 @@ checkpoint_dir = ppo.save()
 
 
 # __export-models-as-onnx-begin__
-# Using the same Policy object, we can also export our NN Model in the ONNX format.
-
+# Using the same Policy object, we can also export our NN Model in the ONNX format:
 ppo_policy.export_model("/tmp/my_nn_model", onnx=False)
 
 # __export-models-as-onnx-end__
