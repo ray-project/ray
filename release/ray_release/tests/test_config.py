@@ -43,6 +43,37 @@ VALID_TEST = Test(
     }
 )
 
+def test_definition_parser():
+    test_definitions = yaml.safe_load('''
+        - name: sample_test
+          working_dir: sample_dir
+          frequency: nightly
+          team: sample
+          cluster:
+            cluster_env: env.yaml
+            cluster_compute: compute.yaml
+          run:
+            timeout: 100
+            script: python script.py
+          variations:
+            - __suffix__: aws
+            - __suffix__: gce
+              cluster:
+                cluster_env: env_gce.yaml
+                cluster_compute: compute_gce.yaml
+    ''')
+    tests = parse_test_definition(test_definitions)
+    aws_test = tests[0]
+    gce_test = tests[1]
+    schema = load_schema_file()
+    assert not validate_test(aws_test, schema)
+    assert not validate_test(gce_test, schema)
+    assert aws_test["name"] == "sample_test.aws"
+    assert gce_test["cluster"]["cluster_compute"] == "compute_gce.yaml"
+    with pytest.raises(ReleaseTestConfigError):
+        test_definitions[0]['variations'] = []
+        parse_test_definition(test_definitions)
+
 
 def test_parse_test_definition():
     """
