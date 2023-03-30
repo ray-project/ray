@@ -46,7 +46,7 @@ parts:
           - file: ray-air/user-guides
             sections:
               - file: ray-air/preprocessors
-              - file: ray-air/trainer
+              - file: ray-air/trainers
               - file: ray-air/check-ingest
               - file: ray-air/tuner
               - file: ray-air/predictors
@@ -56,6 +56,7 @@ parts:
           - file: ray-air/examples/index
             sections:
               - file: ray-air/examples/torch_image_example
+              - file: ray-air/examples/torch_detection
               - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
               - file: ray-air/examples/convert_existing_tf_code_to_ray_air
               - file: ray-air/examples/tfx_tabular_train_to_serve
@@ -76,7 +77,10 @@ parts:
               - file: ray-air/examples/batch_forecasting
               - file: ray-air/examples/pytorch_resnet_batch_prediction
               - file: ray-air/examples/stablediffusion_batch_prediction
+              - file: ray-air/examples/gptj_deepspeed_fine_tuning
               - file: ray-air/examples/gptj_batch_prediction
+              - file: ray-air/examples/gptj_serving
+              - file: ray-air/examples/dreambooth_finetuning
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
@@ -91,13 +95,11 @@ parts:
               - file: data/examples/nyc_taxi_basic_processing
                 title: Processing the NYC taxi dataset
               - file: data/examples/batch_training
-                title: Batch training on the NYC taxi dataset
-              - file: data/examples/big_data_ingestion
-                title: Large-scale ML Ingest
+                title: Batch Training with Ray Datasets
               - file: data/examples/ocr_example
                 title: Scaling OCR with Ray Datasets
-              - file: data/advanced-pipelines
-              - file: data/random-access
+              - file: data/examples/advanced-pipelines
+              - file: data/examples/random-access
           - file: data/faq
           - file: data/api/api
           - file: data/glossary
@@ -126,6 +128,8 @@ parts:
             sections:
               - file: train/examples/pytorch/torch_fashion_mnist_example
                 title: "PyTorch Fashion MNIST Example"
+              - file: train/examples/lightning/lightning_mnist_example
+                title: "PyTorch Lightning MNIST Example"
               - file: train/examples/transformers/transformers_example
                 title: "HF Transformers Example"
               - file: train/examples/tf/tensorflow_mnist_example
@@ -140,6 +144,8 @@ parts:
                 title: "Tune & PyTorch Example"
               - file: train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example
                 title: "Torch Data Prefetching Benchmark"
+              - file: train/examples/pytorch/pytorch_resnet_finetune
+                title: "PyTorch Finetuning ResNet Example"
           - file: train/faq
           - file: train/api/api
 
@@ -160,8 +166,9 @@ parts:
               - file: tune/tutorials/tune-search-spaces
                 title: "Using Search Spaces"
               - file: tune/tutorials/tune-stopping
-                title: "How to Stop and Resume"
+              - file: tune/tutorials/tune-trial-checkpoints
               - file: tune/tutorials/tune-storage
+              - file: tune/tutorials/tune-fault-tolerance
               - file: tune/tutorials/tune-metrics
                 title: "Using Callbacks and Metrics"
               - file: tune/tutorials/tune_get_data_in_and_out
@@ -201,7 +208,7 @@ parts:
                   - file: tune/examples/horovod_simple
                     title: "Horovod Example"
                   - file: tune/examples/pbt_transformers
-                    title: "Huggingface Example"
+                    title: "Hugging Face Transformers Example"
               - file: tune/examples/experiment-tracking
                 sections:
                   - file: tune/examples/tune-wandb

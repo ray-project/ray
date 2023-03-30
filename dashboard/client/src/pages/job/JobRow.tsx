@@ -1,9 +1,9 @@
 import { TableCell, TableRow, Tooltip } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
-import dayjs from "dayjs";
 import React from "react";
 import { Link } from "react-router-dom";
 import { DurationText } from "../../common/DurationText";
+import { formatDateFromTimeMs } from "../../common/formatUtils";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
@@ -27,10 +27,9 @@ const useStyles = makeStyles((theme) => ({
 
 type JobRowProps = {
   job: UnifiedJob;
-  newIA?: boolean;
 };
 
-export const JobRow = ({ job, newIA = false }: JobRowProps) => {
+export const JobRow = ({ job }: JobRowProps) => {
   const {
     job_id,
     submission_id,
@@ -61,11 +60,7 @@ export const JobRow = ({ job, newIA = false }: JobRowProps) => {
   return (
     <TableRow>
       <TableCell align="center">
-        {job_id ? (
-          <Link to={newIA ? `${job_id}` : `/job/${job_id}`}>{job_id}</Link>
-        ) : (
-          "-"
-        )}
+        {job_id ? <Link to={`${job_id}`}>{job_id}</Link> : "-"}
       </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">
@@ -92,7 +87,7 @@ export const JobRow = ({ job, newIA = false }: JobRowProps) => {
       <TableCell align="center">
         {/* TODO(aguo): Also show logs for the job id instead
       of just the submission's logs */}
-        <JobLogsLink job={job} newIA={newIA} />
+        <JobLogsLink job={job} />
         <br />
         <CpuProfilingLink
           pid={job.driver_info?.pid}
@@ -107,12 +102,10 @@ export const JobRow = ({ job, newIA = false }: JobRowProps) => {
         />
       </TableCell>
       <TableCell align="center">
-        {dayjs(Number(start_time)).format("YYYY/MM/DD HH:mm:ss")}
+        {start_time ? formatDateFromTimeMs(start_time) : "-"}
       </TableCell>
       <TableCell align="center">
-        {end_time && end_time > 0
-          ? dayjs(Number(end_time)).format("YYYY/MM/DD HH:mm:ss")
-          : "-"}
+        {end_time && end_time > 0 ? formatDateFromTimeMs(end_time) : "-"}
       </TableCell>
       <TableCell align="center">{driver_info?.pid ?? "-"}</TableCell>
     </TableRow>

@@ -250,17 +250,31 @@ class Tee(object):
         self.stream1 = stream1
         self.stream2 = stream2
 
+    def _warn(self, op, s, args, kwargs):
+        msg = f"ValueError when calling '{op}' on stream ({s}). "
+        msg += f"args: {args} kwargs: {kwargs}"
+        logger.warning(msg)
+
     def seek(self, *args, **kwargs):
-        self.stream1.seek(*args, **kwargs)
-        self.stream2.seek(*args, **kwargs)
+        for s in [self.stream1, self.stream2]:
+            try:
+                s.seek(*args, **kwargs)
+            except ValueError:
+                self._warn("seek", s, args, kwargs)
 
     def write(self, *args, **kwargs):
-        self.stream1.write(*args, **kwargs)
-        self.stream2.write(*args, **kwargs)
+        for s in [self.stream1, self.stream2]:
+            try:
+                s.write(*args, **kwargs)
+            except ValueError:
+                self._warn("write", s, args, kwargs)
 
     def flush(self, *args, **kwargs):
-        self.stream1.flush(*args, **kwargs)
-        self.stream2.flush(*args, **kwargs)
+        for s in [self.stream1, self.stream2]:
+            try:
+                s.flush(*args, **kwargs)
+            except ValueError:
+                self._warn("flush", s, args, kwargs)
 
     @property
     def encoding(self):
