@@ -164,7 +164,7 @@ You can pass RLModule specs to the algorithm configuration to be used by the alg
 
 
     .. note::
-        Note that for passing RLModule specs, all fields do not have to be filled as they will get filled based on the described environment or other algorithm configuration parameters (i.e. ``observation_space``, ``action_space``, ``model_config_dict`` are not required fields when we pass a custom RLModule spec to the algorithm config.)
+        For passing RLModule specs, all fields do not have to be filled as they are filled based on the described environment or other algorithm configuration parameters (i.e. ,``observation_space``, ``action_space``, ``model_config_dict`` are not required fields when passing a custom RLModule spec to the algorithm config.)
 
 
 .. tabbed:: Multi Agent
