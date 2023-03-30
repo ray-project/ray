@@ -80,24 +80,25 @@ class TfCNNEncoder(TfModel, Encoder):
         )
 
         layers = []
+        # The bare-bones CNN (no flatten, no succeeding dense).
         cnn = TfCNN(
             input_dims=config.input_dims,
             cnn_filter_specifiers=config.cnn_filter_specifiers,
             cnn_activation=config.cnn_activation,
             cnn_use_layernorm=config.cnn_use_layernorm,
-            output_activation=output_activation,
+            use_bias=config.use_bias,
         )
         layers.append(cnn)
-
+        # Flatten output of last CNN layer.
         layers.append(tf.keras.layers.Flatten())
 
         # Add a final linear layer to make sure that the outputs have the correct
-        # dimensionality.
+        # dimensionality (output_dims).
         layers.append(
             tf.keras.layers.Dense(config.output_dims[0], activation=output_activation),
         )
 
-        self.net = tf.keras.Sequential(*layers)
+        self.net = tf.keras.Sequential(layers)
 
     @override(Model)
     def get_input_spec(self) -> Union[Spec, None]:

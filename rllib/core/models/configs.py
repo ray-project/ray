@@ -114,12 +114,14 @@ class MLPHeadConfig(ModelConfig):
         hidden_layer_use_layernorm: Whether to insert a LayerNorm functionality
             in between each hidden layer's output and its activation.
         output_activation: The activation function to use for the output layer.
+        use_bias: Whether to use bias on all dense layers.
     """
 
     hidden_layer_dims: List[int] = field(default_factory=lambda: [256, 256])
     hidden_layer_activation: str = "relu"
     hidden_layer_use_layernorm: bool = False
     output_activation: str = "linear"
+    use_bias: bool = True
 
     def _validate(self, framework: str = "torch"):
         """Makes sure that framework strings are valid."""
@@ -238,11 +240,12 @@ class CNNEncoderConfig(ModelConfig):
             contains elements of the form
             `[number of channels/filters, [kernel width, kernel height], stride]` to
             specify a convolutional layer stacked in order of the outer list.
-        cnn__activation: The activation function to use after each layer (
+        cnn_activation: The activation function to use after each layer (
             except for the output).
-        cnn__use_layernorm: Whether to insert a LayerNorm functionality
+        cnn_use_layernorm: Whether to insert a LayerNorm functionality
             in between each CNN layer's output and its activation.
-        output_activation: The activation function to use for the output layer.
+        output_activation: The activation function to use for the dense output layer.
+        use_bias: Whether to use bias on all Conv2D layers.
     """
 
     input_dims: Union[List[int], Tuple[int]] = None
@@ -252,8 +255,9 @@ class CNNEncoderConfig(ModelConfig):
     cnn_activation: str = "relu"
     cnn_use_layernorm: bool = False
     output_activation: str = "linear"
+    use_bias: bool = True
 
-    @_framework_implemented
+    @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(

@@ -1,4 +1,4 @@
-from typing import Callable, List, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.framework import try_import_tf
@@ -17,9 +17,11 @@ class TfMLP(tf.keras.Model):
             tf.keras.layers.Activation(activation=...), e.g. "relu", "ReLU", "silu",
             or "linear".
         hidden_layer_use_layernorm: Whether to insert a LayerNorm functionality
-            in between each hidden layers' outputs and their activations.
-        output_dim: The output dimension of the network.
-        output_activation: The activation function to use for the output layer.
+            in between each hidden layer's output and its activation.
+        output_dim: The output dimension of the network. If None, no specific output
+            layer will be added.
+        output_activation: The activation function to use for the output layer (if any).
+        use_bias: Whether to use bias on all dense layers.
     """
 
     def __init__(
@@ -27,10 +29,11 @@ class TfMLP(tf.keras.Model):
         *,
         input_dim: int,
         hidden_layer_dims: List[int],
-        hidden_layer_activation: Union[str, Callable] = "linear",
+        hidden_layer_activation: Union[str, Callable] = "relu",
         hidden_layer_use_layernorm: bool = False,
-        output_dim: int,
+        output_dim: Optional[int] = None,
         output_activation: Union[str, Callable] = "linear",
+        use_bias: bool = True,
     ):
         """Initialize a TfMLP object."""
         super().__init__()
@@ -44,10 +47,12 @@ class TfMLP(tf.keras.Model):
             # case the activation is applied after the layer normalization step).
             layers.append(
                 tf.keras.layers.Dense(
-                    hidden_layer_dims[i], activation=(
+                    hidden_layer_dims[i],
+                    activation=(
                         hidden_layer_activation if not hidden_layer_use_layernorm
                         else None
-                    )
+                    ),
+                    use_bias=use_bias,
                 )
             )
             # Add LayerNorm and activation.
@@ -55,24 +60,22 @@ class TfMLP(tf.keras.Model):
                 layers.append(tf.keras.layers.LayerNorm())
                 layers.append(tf.keras.layers.Activation(hidden_layer_activation))
 
-        if output_activation != "linear":
+        if output_dim is not None:
             output_activation = get_activation_fn(output_activation, framework="tf2")
-            final_layer = tf.keras.layers.Dense(
+            layers.append(tf.keras.layers.Dense(
                 output_dim,
                 activation=output_activation,
-            )
-        else:
-            final_layer = tf.keras.layers.Dense(output_dim)
+                use_bias=use_bias,
+            ))
 
-        layers.append(final_layer)
         self.network = tf.keras.Sequential(layers)
 
-    def __call__(self, inputs):
+    def call(self, inputs, **kwargs):
         return self.network(inputs)
 
 
 class TfCNN(tf.keras.Model):
-    """A model containing a CNN and a final linear layer."""
+    """A model containing a CNN with N Conv2D layers."""
 
     def __init__(
         self,
@@ -81,9 +84,9 @@ class TfCNN(tf.keras.Model):
         cnn_filter_specifiers: List[List[Union[int, List]]],
         cnn_activation: str = "relu",
         cnn_use_layernorm: bool = False,
-        output_activation: str = "linear",
+        use_bias: bool = True,
     ):
-        """Initializes a TorchCNN object.
+        """Initializes a TfCNN instance.
 
         Args:
             input_dims: The input dimensions of the network.
@@ -93,73 +96,37 @@ class TfCNN(tf.keras.Model):
                 specify a convolutional layer stacked in order of the outer list.
             cnn_activation: The activation function to use after each layer (except for
                 the output).
-            output_activation: The activation function to use for the last filter layer.
+            cnn_use_layernorm: Whether to insert a LayerNorm functionality
+                in between each Conv2D layer's output and its activation.
+            use_bias: Whether to use bias on all Conv2D layers.
         """
         super().__init__()
 
         assert len(input_dims) == 3
 
-        filter_layer_activation = get_activation_fn(cnn_activation, framework="torch")
-        output_activation = get_activation_fn(output_activation, framework="torch")
+        cnn_activation = get_activation_fn(cnn_activation, framework="tf2")
 
         layers = []
-        # Create some CNN layers
-        core_layers = []
 
-        # Add user-specified hidden convolutional layers first
-        width, height, in_depth = input_dims
-        in_size = [width, height]
-        for out_depth, kernel, stride in cnn_filter_specifiers:
-            # Pad like in tensorflow's SAME mode.
-            padding, out_size = same_padding(in_size, kernel, stride)
-            # TODO(Artur): Inline SlimConv2d after old models are deprecated.
-            core_layers.append(
-                SlimConv2d(
-                    in_depth,
-                    out_depth,
-                    kernel,
-                    stride,
-                    padding,
-                    activation_fn=filter_layer_activation,
+        for num_filters, kernel_size, strides in cnn_filter_specifiers:
+            layers.append(
+                tf.keras.layers.Conv2D(
+                    filters=num_filters,
+                    kernel_size=kernel_size,
+                    strides=strides,
+                    padding="same",
+                    use_bias=use_bias,
+                    activation=None if cnn_use_layernorm else cnn_activation,
                 )
             )
-            in_depth = out_depth
-            in_size = out_size
-
-        core_cnn = nn.Sequential(*core_layers)
-        layers.append(core_cnn)
-
-        # Append a last convolutional layer of depth-only filters to be flattened.
-
-        # Get info of the last layer of user-specified layers
-        [width, height] = in_size
-        _, kernel, stride = cnn_filter_specifiers[-1]
-
-        in_size = (
-            int(np.ceil((width - kernel[0]) / stride)),
-            int(np.ceil((height - kernel[1]) / stride)),
-        )
-        padding, _ = same_padding(in_size, (1, 1), (1, 1))
-        # TODO(Artur): Inline SlimConv2d after old models are deprecated.
-        layers.append(
-            SlimConv2d(
-                in_depth,
-                1,
-                (1, 1),
-                1,
-                padding,
-                activation_fn=output_activation,
-            )
-        )
-        self.output_width = width
-        self.output_height = height
+            if cnn_use_layernorm:
+                layers.append(tf.keras.layers.LayerNorm())
+                layers.append(tf.keras.layers.Activation(cnn_activation))
 
         # Create the cnn that potentially includes a flattened layer
-        self.cnn = nn.Sequential(*layers)
+        self.cnn = tf.keras.Sequential(layers)
 
-        self.expected_input_dtype = torch.float32
+        self.expected_input_dtype = tf.float32
 
-    def forward(self, x):
-        # Permute b/c data comes in as [B, dim, dim, channels]:
-        inputs = x.permute(0, 3, 1, 2)
-        return self.cnn(inputs.type(self.expected_input_dtype))
+    def call(self, inputs, **kwargs):
+        return self.cnn(tf.cast(inputs, self.expected_input_dtype))

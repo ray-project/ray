@@ -9,7 +9,12 @@ from ray.rllib.core.models.base import (
     STATE_OUT,
     ENCODER_OUT,
 )
-from ray.rllib.core.models.base import ModelConfig, Model
+from ray.rllib.core.models.base import Model
+from ray.rllib.core.models.configs import (
+    CNNEncoderConfig,
+    MLPEncoderConfig,
+    ModelConfig,
+)
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
 from ray.rllib.models.specs.specs_base import Spec
@@ -26,7 +31,7 @@ torch, nn = try_import_torch()
 
 
 class TorchMLPEncoder(TorchModel, Encoder):
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(self, config: MLPEncoderConfig) -> None:
         TorchModel.__init__(self, config)
         Encoder.__init__(self, config)
 
@@ -34,8 +39,10 @@ class TorchMLPEncoder(TorchModel, Encoder):
         self.net = TorchMLP(
             input_dim=config.input_dims[0],
             hidden_layer_dims=config.hidden_layer_dims,
-            output_dim=config.output_dims[0],
             hidden_layer_activation=config.hidden_layer_activation,
+            hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
+            output_dim=config.output_dims[0],
+            use_bias=config.use_bias,
         )
 
     @override(Model)
@@ -68,7 +75,7 @@ class TorchMLPEncoder(TorchModel, Encoder):
 
 
 class TorchCNNEncoder(TorchModel, Encoder):
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(self, config: CNNEncoderConfig) -> None:
         TorchModel.__init__(self, config)
         Encoder.__init__(self, config)
 
@@ -79,10 +86,11 @@ class TorchCNNEncoder(TorchModel, Encoder):
         layers = []
         cnn = TorchCNN(
             input_dims=config.input_dims,
-            cnn_filter_specifiers=config.filter_specifiers,
-            cnn_activation=config.filter_layer_activation,
-            cnn_use_layernorm=config.cnn_use_layernorn,
+            cnn_filter_specifiers=config.cnn_filter_specifiers,
+            cnn_activation=config.cnn_activation,
+            cnn_use_layernorm=config.cnn_use_layernorm,
             output_activation=output_activation,
+            use_bias=config.use_bias,
         )
         layers.append(cnn)
 

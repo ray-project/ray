@@ -18,13 +18,13 @@ class TorchMLP(nn.Module):
         hidden_layer_dims: The sizes of the hidden layers.
         hidden_layer_activation: The activation function to use after each layer.
             Currently "linear" (no activation), "relu", "swish", "elu", and "tanh" are
-            supported.
+            supported. Also, "silu" is an alias for "swish".
         hidden_layer_use_layernorm: Whether to insert a LayerNorm functionality
             in between each hidden layer's outputs and its activation.
         output_dim: The output dimension of the network.
         output_activation: The activation function to use for the output layer.
             Currently "linear" (no activation), "relu", "swish", "elu", and "tanh" are
-            supported.
+            supported. Also, "silu" is an alias for "swish".
     """
 
     def __init__(
@@ -107,6 +107,7 @@ class TorchCNN(nn.Module):
         cnn_activation: str = "relu",
         cnn_use_layernorm: bool = False,
         output_activation: str = "linear",
+        use_bias: bool = True,TODO: use this! and rewrite entire class
     ):
         """Initializes a TorchCNN object."""
         super().__init__()
@@ -114,7 +115,6 @@ class TorchCNN(nn.Module):
         assert len(input_dims) == 3
 
         filter_layer_activation = get_activation_fn(cnn_activation, framework="torch")
-
         output_activation = get_activation_fn(output_activation, framework="torch")
 
         layers = []

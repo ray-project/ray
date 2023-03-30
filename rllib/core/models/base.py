@@ -32,11 +32,13 @@ def _raise_not_decorated_exception(class_and_method, input_or_output):
 class ModelConfig(abc.ABC):
     """Base class for model configurations.
 
-    ModelConfigs are framework-agnostic.
-    A ModelConfig is usually built by RLModules after getting it from a Catalog object.
-    It is therefore a means of configuration for RLModules. However, ModelConfigs are
+    ModelConfigs are DL framework-agnostic.
+    A ModelConfig is usually built (via calling its `build()` method) by RLModules
+    after receiving it from a Catalog object. It is therefore a means of configuring
+    individual Model components inside an RLModule. However, ModelConfigs are
     not restricted to be used only with Catalog or RLModules.
-    A usage Example together with a Model can be found in the Model.
+    A usage Example together with a Model can be found in the individual Model classes'
+    docstrings.
 
     Args:
         input_dims: The input dimensions of the network
