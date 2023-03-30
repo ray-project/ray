@@ -106,8 +106,7 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
         policy = (
             PPOConfig()
             .environment(
-                observation_space=obs_space,
-                action_space=gym.spaces.Discrete(2)
+                observation_space=obs_space, action_space=gym.spaces.Discrete(2)
             )
             # Note (Artur): We have to choose num_rollout_workers=0 here, because
             # otherwise RolloutWorker will be health-checked without an env which
