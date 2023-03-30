@@ -73,10 +73,11 @@ class TestImpalaTfLearner(unittest.TestCase):
             policy = trainer.get_policy()
 
             if fw == "tf2":
-                train_batch = tf.nest.map_structure(
-                    lambda x: tf.convert_to_tensor(x), FAKE_BATCH
+                train_batch = SampleBatch(
+                    tf.nest.map_structure(lambda x: tf.convert_to_tensor(x), FAKE_BATCH)
                 )
-            train_batch = SampleBatch(FAKE_BATCH)
+            else:
+                train_batch = SampleBatch(FAKE_BATCH)
             policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
 
             algo_config = config.copy(copy_frozen=False)

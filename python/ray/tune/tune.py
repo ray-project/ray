@@ -4,6 +4,7 @@ import copy
 import datetime
 import logging
 import os
+from pathlib import Path
 import signal
 import sys
 import threading
@@ -170,8 +171,8 @@ def _report_air_progress(
 ):
     trials = runner.get_trials()
     reporter_args = []
-    executor_debug_str = runner.trial_executor.debug_string()
-    reporter_args.append(executor_debug_str)
+    used_resources_string = runner._used_resources_string()
+    reporter_args.append(used_resources_string)
     reporter.print_heartbeat(trials, *reporter_args, force=force)
 
 
@@ -206,6 +207,19 @@ def _setup_signal_catching() -> threading.Event:
             signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
 
     return experiment_interrupted_event
+
+
+def _ray_auto_init(entrypoint: str):
+    """Initialize Ray unless already configured."""
+    if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
+        logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
+    elif not ray.is_initialized():
+        ray.init()
+        logger.info(
+            "Initializing Ray automatically. "
+            "For cluster usage or custom Ray initialization, "
+            f"call `ray.init(...)` before `{entrypoint}`."
+        )
 
 
 class _Config(abc.ABC):
@@ -259,6 +273,7 @@ def run(
     _remote: Optional[bool] = None,
     # Passed by the Tuner.
     _remote_string_queue: Optional[Queue] = None,
+    _tuner_api: bool = False,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -466,6 +481,21 @@ def run(
     remote_run_kwargs = locals().copy()
     remote_run_kwargs.pop("_remote")
 
+    error_message_map = (
+        {
+            "entrypoint": "Tuner(...)",
+            "search_space_arg": "param_space",
+            "restore_entrypoint": 'Tuner.restore(path="{path}", trainable=...)',
+        }
+        if _tuner_api
+        else {
+            "entrypoint": "tune.run(...)",
+            "search_space_arg": "config",
+            "restore_entrypoint": "tune.run(..., resume=True)",
+        }
+    )
+    _ray_auto_init(entrypoint=error_message_map["entrypoint"])
+
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 
@@ -477,9 +507,6 @@ def run(
             "in the future.",
             DeprecationWarning,
         )
-
-    if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
-        _ray_auto_init()
 
     if _remote:
         if get_air_verbosity():
@@ -517,8 +544,8 @@ def run(
 
     if mode and mode not in ["min", "max"]:
         raise ValueError(
-            "The `mode` parameter passed to `tune.run()` has to be one of "
-            "['min', 'max']"
+            f"The `mode` parameter passed to `{error_message_map['entrypoint']}` "
+            "must be one of ['min', 'max']"
         )
 
     air_verbosity = get_air_verbosity()
@@ -536,7 +563,8 @@ def run(
         config = config.to_dict()
     if not isinstance(config, dict):
         raise ValueError(
-            "The `config` passed to `tune.run()` must be a dict. "
+            f"The `{error_message_map['search_space_arg']}` passed to "
+            f"`{error_message_map['entrypoint']}` must be a dict. "
             f"Got '{type(config)}' instead."
         )
 
@@ -669,8 +697,6 @@ def run(
                 max_failures=max_failures,
                 restore=restore,
             )
-    else:
-        logger.debug("Ignoring some parameters passed into tune.run.")
 
     if fail_fast and max_failures != 0:
         raise ValueError("max_failures must be 0 if fail_fast=True.")
@@ -734,7 +760,8 @@ def run(
     ):
         if _has_unresolved_values(config):
             raise ValueError(
-                "You passed a `config` parameter to `tune.run()` with "
+                f"You passed a `{error_message_map['search_space_arg']}` parameter to "
+                f"`{error_message_map['entrypoint']}` with "
                 "unresolved parameters, but the search algorithm was already "
                 "instantiated with a search space. Make sure that `config` "
                 "does not contain any more parameter definitions - include "
@@ -745,10 +772,11 @@ def run(
         scheduler.set_search_properties, metric, mode, **experiments[0].public_spec
     ):
         raise ValueError(
-            "You passed a `metric` or `mode` argument to `tune.run()`, but "
+            "You passed a `metric` or `mode` argument to "
+            f"`{error_message_map['entrypoint']}`, but "
             "the scheduler you are using was already instantiated with their "
             "own `metric` and `mode` parameters. Either remove the arguments "
-            "from your scheduler or from your call to `tune.run()`"
+            f"from your scheduler or from `{error_message_map['entrypoint']}` args."
         )
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
@@ -830,9 +858,10 @@ def run(
         for exp in experiments:
             search_alg.add_configurations([exp])
     else:
-        logger.info(
-            "TrialRunner resumed, ignoring new add_experiment but "
-            "updating trial resources."
+        logger.debug(
+            "You have resumed the Tune run, which means that any newly specified "
+            "`Experiment`s will be ignored. "
+            "Tune will just continue what was previously running."
         )
         if resources_per_trial:
             runner.update_pending_trial_resources(resources_per_trial)
@@ -919,10 +948,12 @@ def run(
         )
 
     if experiment_interrupted_event.is_set():
+        restore_entrypoint = error_message_map["restore_entrypoint"].format(
+            path=Path(experiment_checkpoint).parent,
+        )
         logger.warning(
-            "Experiment has been interrupted, but the most recent state was "
-            "saved. You can continue running this experiment by passing "
-            "`resume=True` to `tune.run()`"
+            "Experiment has been interrupted, but the most recent state was saved.\n"
+            f"Continue running this experiment with: {restore_entrypoint}"
         )
     ea = ExperimentAnalysis(
         experiment_checkpoint,
@@ -972,7 +1003,7 @@ def run_experiments(
         raise ValueError("cannot use custom trial executor")
 
     if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
-        _ray_auto_init()
+        _ray_auto_init(entrypoint="tune.run_experiments(...)")
 
     if _remote:
         if get_air_verbosity():
@@ -1036,16 +1067,3 @@ def run_experiments(
                 callbacks=callbacks,
             ).trials
         return trials
-
-
-def _ray_auto_init():
-    """Initialize Ray unless already configured."""
-    if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
-        logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
-    elif not ray.is_initialized():
-        logger.info(
-            "Initializing Ray automatically."
-            "For cluster usage or custom Ray initialization, "
-            "call `ray.init(...)` before `tune.run`."
-        )
-        ray.init()
