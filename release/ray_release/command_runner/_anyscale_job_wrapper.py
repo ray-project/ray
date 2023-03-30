@@ -105,7 +105,7 @@ def run_storage_cp(source: str, target: str):
         )
         return True
     except subprocess.SubprocessError:
-        logger.exception("Couldn't upload to s3.")
+        logger.exception("Couldn't upload to cloud storage.")
         return False
 
 
@@ -235,10 +235,10 @@ def main(
     test_workload: str,
     test_workload_timeout: float,
     test_no_raise_on_timeout: bool,
-    results_s3_uri: Optional[str],
-    metrics_s3_uri: Optional[str],
-    output_s3_uri: Optional[str],
-    upload_s3_uri: Optional[str],
+    results_cloud_storage_uri: Optional[str],
+    metrics_cloud_storage_uri: Optional[str],
+    output_cloud_storage_uri: Optional[str],
+    upload_cloud_storage_uri: Optional[str],
     artifact_path: Optional[str],
     prepare_commands: List[str],
     prepare_commands_timeouts: List[str],
@@ -297,7 +297,7 @@ def main(
 
         # Upload results.json
         uploaded_results = run_storage_cp(
-            os.environ.get("TEST_OUTPUT_JSON", None), results_s3_uri
+            os.environ.get("TEST_OUTPUT_JSON", None), results_cloud_storage_uri
         )
 
         # Collect prometheus metrics
@@ -305,12 +305,14 @@ def main(
         if collected_metrics:
             # Upload prometheus metrics
             uploaded_metrics = run_storage_cp(
-                os.environ.get("METRICS_OUTPUT_JSON", None), metrics_s3_uri
+                os.environ.get("METRICS_OUTPUT_JSON", None), metrics_cloud_storage_uri
             )
 
         uploaded_artifact = run_storage_cp(
             artifact_path,
-            os.path.join(upload_s3_uri, os.environ["USER_GENERATED_ARTIFACT"])
+            os.path.join(
+                upload_cloud_storage_uri, os.environ["USER_GENERATED_ARTIFACT"]
+            )
             if "USER_GENERATED_ARTIFACT" in os.environ
             else None,
         )
@@ -339,11 +341,11 @@ def main(
         fp.write(output_json)
 
     # Upload output.json
-    run_storage_cp(str(output_json_file), output_s3_uri)
+    run_storage_cp(str(output_json_file), output_cloud_storage_uri)
 
     logger.info("### Finished ###")
     # This will be read by the AnyscaleJobRunner on the buildkite runner
-    # if output.json cannot be obtained from S3
+    # if output.json cannot be obtained from cloud storage
     logger.info(f"### JSON |{output_json}| ###")
 
     # Flush buffers
@@ -377,27 +379,27 @@ if __name__ == "__main__":
         help="don't fail on timeout",
     )
     parser.add_argument(
-        "--results-s3-uri",
+        "--results-cloud-storage-uri",
         type=str,
         help="bucket address to upload results.json to",
         required=False,
     )
     parser.add_argument(
-        "--metrics-s3-uri",
+        "--metrics-cloud-storage-uri",
         type=str,
         help="bucket address to upload metrics.json to",
         required=False,
     )
     parser.add_argument(
-        "--output-s3-uri",
+        "--output-cloud-storage-uri",
         type=str,
         help="bucket address to upload output.json to",
         required=False,
     )
     parser.add_argument(
-        "--upload-s3-uri",
+        "--upload-cloud-storage-uri",
         type=str,
-        help="root s3 bucket address to upload stuff",
+        help="root cloud-storage bucket address to upload stuff",
         required=False,
     )
     parser.add_argument(
