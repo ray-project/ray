@@ -94,6 +94,15 @@ class MARWILConfig(AlgorithmConfig):
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
         self._set_off_policy_estimation_methods = False

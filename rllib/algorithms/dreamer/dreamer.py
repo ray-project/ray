@@ -100,7 +100,8 @@ class DreamerConfig(AlgorithmConfig):
             "action_init_std": 5.0,
         }
 
-        # Override some of AlgorithmConfig's default values with PPO-specific values.
+        # Override some of AlgorithmConfig's default values with Dreamer-specific
+        # values.
         # .rollouts()
         self.num_envs_per_worker = 1
         self.batch_mode = "complete_episodes"
@@ -118,6 +119,11 @@ class DreamerConfig(AlgorithmConfig):
             # Repeats action send by policy for frame_skip times in env
             "frame_skip": 2,
         })
+
+        # .exploration()
+        # This dreamer implementation does not need an exploration config
+        self.exploration_config = None
+
         # __sphinx_doc_end__
         # fmt: on
 

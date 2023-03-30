@@ -334,15 +334,7 @@ class AlgorithmConfig(_Config):
         self.explore = True
         # This is not compatible with RLModules, which have a method
         # `forward_exploration` to specify custom exploration behavior.
-        self.exploration_config = {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-            # EpsilonGreedy").
-            "type": "StochasticSampling",
-            # Add constructor kwargs here (if any).
-        }
+        self.exploration_config = None
 
         # `self.multi_agent()`
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}

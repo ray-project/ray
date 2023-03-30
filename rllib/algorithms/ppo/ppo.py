@@ -127,6 +127,7 @@ class PPOConfig(PGConfig):
         self._enable_learner_api = True
 
         if self._enable_rl_module_api:
+            self.explore = False
             self.exploration_config = None
 
     @override(AlgorithmConfig)
