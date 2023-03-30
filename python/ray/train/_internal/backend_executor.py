@@ -111,7 +111,7 @@ class BackendExecutor:
             actor_cls_kwargs=train_cls_kwargs,
             placement_group=placement_group,
         )
-        print(
+        logger.info(
             f"Starting {self._trial_info.name} on data parallel workers: "
             f"{[w.metadata.node_ip for w in self.worker_group.workers]}."
         )
