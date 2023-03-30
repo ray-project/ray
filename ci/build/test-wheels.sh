@@ -142,19 +142,20 @@ elif [[ "$platform" == "macosx" ]]; then
     # Update pip
     "$PIP_CMD" install -U pip
 
-    # Install the wheel.
-    "$PIP_CMD" uninstall -y ray
-    "$PIP_CMD" install -q "$PYTHON_WHEEL"
-
-    # Install the dependencies to run the tests.
-    "$PIP_CMD" install -q aiohttp aiosignal frozenlist 'pytest==7.0.1' requests proxy.py
-
+    # Install grpcio
     if [ "$(uname -m)" = "arm64" ]; then
       "$PIP_CMD" uninstall -y grpcio || true
       conda install -y --force-reinstall grpcio || true
     else
       "$PIP_CMD" install -q grpcio
     fi
+
+    # Install the wheel.
+    "$PIP_CMD" uninstall -y ray
+    "$PIP_CMD" install -q "$PYTHON_WHEEL"
+
+    # Install the dependencies to run the tests.
+    "$PIP_CMD" install -q aiohttp aiosignal frozenlist 'pytest==7.0.1' requests proxy.py
 
     # Run a simple test script to make sure that the wheel works.
     # We set the python path to prefer the directory of the wheel content: https://github.com/ray-project/ray/pull/30090
