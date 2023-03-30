@@ -160,6 +160,7 @@ Status GcsSyncClient::Connect() {
                    << " seconds.";
   }
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
+  runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   return Status::OK();
 }
 
@@ -183,8 +184,7 @@ Status GcsSyncClient::InternalKVGet(const std::string &ns, const std::string &ke
       return Status::Invalid(reply.status().message());
     }
   }
-  // TODO: Convert to appropriate error
-  return Status::UnknownError(status.error_message());
+  return Status::GrpcUnknown(status.error_message());
 }
 
 Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vector<std::string> &keys, std::unordered_map<std::string, std::string> &result) {
@@ -213,8 +213,7 @@ Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vecto
       return Status::Invalid(reply.status().message());
     }
   }
-  // TODO: Convert to appropriate error
-  return Status::UnknownError(status.error_message());
+  return Status::GrpcUnknown(status.error_message());
 }
 
 Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &key, const std::string &value, bool overwrite, int &added_num) {
@@ -236,8 +235,7 @@ Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &ke
     }
     return Status::Invalid(reply.status().message());
   }
-  // TODO: Convert to appropriate error
-  return Status::UnknownError(status.error_message());
+  return Status::GrpcUnknown(status.error_message());
 }
 
 Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &key, bool del_by_prefix, int &deleted_num) {
@@ -258,9 +256,7 @@ Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &ke
     }
     return Status::Invalid(reply.status().message());
   }
-
-  // TODO: Convert to appropriate error
-  return Status::UnknownError(status.error_message());
+  return Status::GrpcUnknown(status.error_message());
 }
 
 Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &prefix, std::vector<std::string> &results) {
@@ -280,8 +276,7 @@ Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &p
     }
     return Status::Invalid(reply.status().message());
   }
-
-  return Status::OK();
+  return Status::GrpcUnknown(status.error_message());
 }
 
 Status GcsSyncClient::InternalKVExists(const std::string &ns, const std::string &key, bool &exists) {
@@ -297,10 +292,8 @@ Status GcsSyncClient::InternalKVExists(const std::string &ns, const std::string 
   if (status.ok()) {
     exists = reply.exists();
     return Status::OK();
-  } else {
-    // TODO: Convert to appropriate error
-    return Status::UnknownError(status.error_message());
   }
+  return Status::GrpcUnknown(status.error_message());
 }
 
 Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri, int expiration_s) {
@@ -325,8 +318,7 @@ Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri, int expiration_s)
         " due to unexpected error " + reply.status().message() + ".";
     return Status::GrpcUnknown(msg);
   }
-  // TODO: Convert to appropriate error
-  return Status::UnknownError(status.error_message());
+  return Status::GrpcUnknown(status.error_message());
 }
 
 }  // namespace gcs
