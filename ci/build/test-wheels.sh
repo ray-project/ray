@@ -132,10 +132,10 @@ elif [[ "$platform" == "macosx" ]]; then
       # See https://github.com/grpc/grpc/issues/25082
       brew install openssl || true
 
-      GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
-      GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1
-      CFLAGS="-I/opt/homebrew/opt/openssl/include"
-      LDFLAGS="-L/opt/homebrew/opt/openssl/lib"
+      export GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
+      export GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1
+      export CFLAGS="-I/opt/homebrew/opt/openssl/include"
+      export LDFLAGS="-L/opt/homebrew/opt/openssl/lib"
     else
       PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
       PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
