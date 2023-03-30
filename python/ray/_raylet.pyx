@@ -1531,6 +1531,12 @@ cdef class GcsClient:
     def connect(self):
         check_status(self.inner.get().Connect())
 
+    cdef _check_error(self, CRayStatus status):
+        try:
+            check_status(status)
+        except RaySystemError as e:
+            raise RuntimeError(str(e))
+
     @property
     def address(self):
         return self.address
@@ -1544,14 +1550,14 @@ cdef class GcsClient:
         if status.IsKeyError():
             return None
         else:
-            check_status(status)
+            self._check_error(status)
             return value
 
     def internal_kv_put(self, bytes key, bytes value, overwrite: bool = False, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
             int num_added
-        check_status(self.inner.get().InternalKVPut(ns, key, value, overwrite, num_added))
+        self._check_error(self.inner.get().InternalKVPut(ns, key, value, overwrite, num_added))
 
         return num_added
 
@@ -1559,7 +1565,7 @@ cdef class GcsClient:
         cdef:
             c_string ns = namespace or b""
             int num_deleted
-        check_status(self.inner.get().InternalKVDel(ns, key, del_by_prefix, num_deleted))
+        self._check_error(self.inner.get().InternalKVDel(ns, key, del_by_prefix, num_deleted))
 
         return num_deleted
 
@@ -1569,7 +1575,7 @@ cdef class GcsClient:
             c_vector[c_string] keys
             c_string key
 
-        check_status(self.inner.get().InternalKVKeys(ns, prefix, keys))
+        self._check_error(self.inner.get().InternalKVKeys(ns, prefix, keys))
 
         result = []
 
@@ -1582,7 +1588,7 @@ cdef class GcsClient:
         cdef:
             c_string ns = namespace or b""
             c_bool exists
-        check_status(self.inner.get().InternalKVExists(ns, key, exists))
+        self._check_error(self.inner.get().InternalKVExists(ns, key, exists))
         return exists
 
 
