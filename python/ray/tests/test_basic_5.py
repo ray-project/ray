@@ -234,7 +234,7 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
         from time import sleep
 
         sleep(2)
-        return ray._private.gcs_utils._called_freq
+        return ray._private.utils._CALLED_FREQ
 
     freqs = ray.get(get_kv_metrics.remote())
     # So far we have the following gets

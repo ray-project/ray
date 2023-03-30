@@ -7,6 +7,7 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import asyncio
+from functools import wraps
 import gc
 import inspect
 import logging
@@ -1515,6 +1516,13 @@ cdef class EmptyProfileEvent:
     def __exit__(self, *args):
         pass
 
+def _auto_reconnect(f):
+    @wraps(f)
+    def wrapper(self, *args, **kwargs):
+        if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+            ray._private.utils._CALLED_FREQ[f.__name__] += 1
+        return f(self, *args, **kwargs)
+    return wrapper
 
 cdef class GcsClient:
     """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
@@ -1541,6 +1549,7 @@ cdef class GcsClient:
     def address(self):
         return self.address
 
+    @_auto_reconnect
     def internal_kv_get(self, bytes key, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
@@ -1553,6 +1562,7 @@ cdef class GcsClient:
             self._check_error(status)
             return value
 
+    @_auto_reconnect
     def internal_kv_put(self, bytes key, bytes value, overwrite: bool = False, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
@@ -1561,6 +1571,7 @@ cdef class GcsClient:
 
         return num_added
 
+    @_auto_reconnect
     def internal_kv_del(self, bytes key, c_bool del_by_prefix, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
@@ -1569,6 +1580,7 @@ cdef class GcsClient:
 
         return num_deleted
 
+    @_auto_reconnect
     def internal_kv_keys(self, bytes prefix, bytes namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
@@ -1584,6 +1596,7 @@ cdef class GcsClient:
 
         return result
 
+    @_auto_reconnect
     def internal_kv_exists(self, bytes key, namespace=None):
         cdef:
             c_string ns = namespace or b""
@@ -1591,6 +1604,7 @@ cdef class GcsClient:
         self._check_error(self.inner.get().InternalKVExists(ns, key, exists))
         return exists
 
+    @_auto_reconnect
     def pin_runtime_env_uri(self, bytes uri, int expiration_s):
         self._check_error(self.inner.get().PinRuntimeEnvUri(uri, expiration_s))
 

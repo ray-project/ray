@@ -1,5 +1,6 @@
 import asyncio
 import binascii
+from collections import defaultdict
 import contextlib
 import errno
 import functools
@@ -72,6 +73,9 @@ win32_AssignProcessToJobObject = None
 
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
 _PYARROW_VERSION = None
+
+# This global variable is used for testing only
+_CALLED_FREQ = defaultdict(lambda: 0)
 
 
 def get_user_temp_dir():
