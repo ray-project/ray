@@ -72,6 +72,7 @@ file_manager_str_to_file_manager = {
 
 command_runner_to_file_manager = {
     SDKRunner: JobFileManager,  # Use job file manager per default
+    JobRunner: JobFileManager,
     AnyscaleJobRunner: JobFileManager,
 }
 
