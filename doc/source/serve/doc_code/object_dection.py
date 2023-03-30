@@ -67,14 +67,6 @@ if __name__ == "__main__":
     import requests
     import os
 
-    # req_txt = (
-    #    "https://raw.githubusercontent.com/ultralytics/yolov5/master/requirements.txt"
-    # )
-
-    # r = requests.get(req_txt)
-    # with open("requirements.txt" , 'wb') as f:
-    #    f.write(r.content)
-
     ray.init(runtime_env={"pip": ["seaborn"]})
 
     with serve_session(entrypoint):
@@ -84,4 +76,4 @@ if __name__ == "__main__":
         with open("output.jpeg", "wb") as f:
             f.write(resp.content)
 
-        assert os.path.exists("output.png")
+        assert os.path.exists("output.jpeg")
