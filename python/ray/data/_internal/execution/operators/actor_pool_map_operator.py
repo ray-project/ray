@@ -292,12 +292,12 @@ class ActorPoolMapOperator(MapOperator):
             else:
                 ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
         # Enable actor fault tolerance by default, with infinite actor recreations and
-        # up to three retries per task. The user can customize this in map_batches via
+        # up to N retries per task. The user can customize this in map_batches via
         # extra kwargs (e.g., map_batches(..., max_restarts=0) to disable).
         if "max_restarts" not in ray_remote_args:
             ray_remote_args["max_restarts"] = -1
         if (
-            "max_retries" not in ray_remote_args
+            "max_task_retries" not in ray_remote_args
             and ray_remote_args.get("max_restarts") != 0
         ):
             ray_remote_args["max_task_retries"] = 5
