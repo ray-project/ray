@@ -8,6 +8,7 @@
 /* Make the book theme secondary nav stick below the new main top nav */
 .header-article {
     top: 58px;
+    z-index: 900 !important;
 }
 
 .toctree-l1.has-children {
