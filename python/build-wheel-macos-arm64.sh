@@ -50,9 +50,8 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   # and the -e flag ensures that we don't remove the .whl directory.
   git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR -e python/ray/dashboard/client -e dashboard/client
 
-
   # Install python using conda. This should be easier to produce consistent results in buildkite and locally.
-  [ -f "~/.bash_profile" ] && source ~/.bash_profile
+  [ -f "~/.bash_profile" ] && source ~/.bash_profile || conda init bash
   conda create -y -n "$CONDA_ENV_NAME"
   conda activate "$CONDA_ENV_NAME"
   conda remove -y python || true
