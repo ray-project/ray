@@ -102,7 +102,7 @@ class LightningConfigBuilder:
 
         Note that you don't have to specify the `strategy` argument here since the
         ``LightningTrainer`` creates a DDPStrategy by default. You can set up
-        advanced configurations for DDPStrategy via the ``.ddp_strategy()`` method.
+        advanced configurations for DDPStrategy via the `.ddp_strategy()` method.
 
         Args:
             kwargs: The initialization arguments for ``pytorch_lightning.Trainer``
@@ -151,10 +151,13 @@ class LightningConfigBuilder:
         LightningTrainer creates a subclass instance of the `ModelCheckpoint` callback
         with the kwargs. It handles checkpointing and metrics logging logics.
 
-        Specifically, the callback periodically reports the latest metrics and
-        checkpoint to the AIR session via `session.report()`. The report frequency
-        matches the checkpointing frequency here. You have to make sure that the
-        target metrics (e.g. metrics defined in `TuneConfig` or `CheckpointConfig`)
+        Specifically, the callback periodically reports the latest metrics
+        and checkpoint to the AIR session via
+        :meth:`session.report() <ray.air.session.report>`.
+        The report frequency matches the checkpointing frequency here.
+        You have to make sure that the target metrics (e.g. metrics defined in
+        :class:`TuneConfig <ray.tune.TuneConfig>` or
+        :class:`CheckpointConfig <ray.air.config.CheckpointConfig>`)
         are ready when a new checkpoint is being saved.
 
         Note that this method is not a replacement for the
