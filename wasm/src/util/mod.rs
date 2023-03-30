@@ -29,7 +29,7 @@ pub fn get_node_ip_address(address: &str) -> String {
     local_addr.ip().to_string()
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct WorkerParameters {
     /// The address of the Ray cluster to connect to.
@@ -134,15 +134,25 @@ pub enum WasmEngineType {
     WAMR,
 }
 
-#[derive(Parser, Debug)]
+#[derive(ValueEnum, Debug, Clone)]
+pub enum WasmFileFormat {
+    WASM,
+    WAT,
+}
+
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct LauncherParameters {
     /// the path to the wasm file
     #[arg(short = 'f', long, verbatim_doc_comment)]
-    pub wasm_file: String,
+    pub file: String,
+
+    /// the type of the input file
+    #[arg(short = 't', long, value_enum, verbatim_doc_comment, default_value_t = WasmFileFormat::WASM)]
+    pub file_format: WasmFileFormat,
 
     /// type of the wasm engine to use
-    #[arg(short = 'e', long, value_enum, verbatim_doc_comment, default_value_t = WasmEngineType::Wasmedge)]
+    #[arg(short = 'e', long, value_enum, verbatim_doc_comment, default_value_t = WasmEngineType::Wasmtime)]
     pub engine_type: WasmEngineType,
 
     /// the entry point function name

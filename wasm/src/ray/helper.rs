@@ -12,12 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use lazy_static::lazy_static;
 use prost::Message;
 use std::ffi::CStr;
 use std::process::Command;
-use std::sync::Arc;
-use std::sync::RwLock;
 use tracing::{debug, error, info};
 
 use crate::config::ConfigInternal;
@@ -29,20 +26,7 @@ use crate::util::get_node_ip_address;
 
 pub struct ClusterHelper {}
 
-// lazy_static! {
-//     /// Cluster helper implementation instance.
-//     static ref CLUSTER_HELPER: Arc<RwLock<ClusterHelper>> = {
-//         let helper = ClusterHelper {};
-//         Arc::new(RwLock::new(helper))
-//     };
-// }
-
 impl ClusterHelper {
-    // /// Return a mutex protected instance of the cluster helper.
-    // pub fn instance() -> Arc<RwLock<ClusterHelper>> {
-    //     CLUSTER_HELPER.clone()
-    // }
-
     pub fn do_init() {
         // TODO: nothing to do for now
     }

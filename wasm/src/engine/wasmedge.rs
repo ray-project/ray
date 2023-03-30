@@ -24,48 +24,70 @@ impl WasmEdgeEngine {
 }
 
 impl WasmEngine for WasmEdgeEngine {
-    fn compile(&mut self, wasm_bytes: &[u8]) -> Result<Box<dyn WasmModule>> {
-        Ok(Box::new(WasmEdgeModule::new()))
+    fn init(&self) -> Result<()> {
+        Err(anyhow::anyhow!("WasmEdgeEngine::init is not implemented"))
     }
 
-    fn create_sandbox(&self) -> Result<Box<dyn WasmSandbox>> {
-        Ok(Box::new(WasmEdgeSandbox::new()))
+    fn compile(&mut self, name: &str, wasm_bytes: &[u8]) -> Result<Box<&dyn WasmModule>> {
+        Err(anyhow::anyhow!(
+            "WasmEdgeEngine::compile is not implemented"
+        ))
+    }
+
+    fn create_sandbox(&mut self, name: &str) -> Result<Box<&dyn WasmSandbox>> {
+        Err(anyhow::anyhow!(
+            "WasmEdgeEngine::create_sandbox is not implemented"
+        ))
     }
 
     fn instantiate(
-        &self,
-        sandbox: Box<dyn WasmSandbox>,
-        wasm_module: Box<dyn WasmModule>,
-    ) -> Result<Box<dyn WasmInstance>> {
-        Ok(Box::new(WasmEdgeInstance::new()))
+        &mut self,
+        sandbox_name: &str,
+        module_name: &str,
+        instance_name: &str,
+    ) -> Result<Box<&dyn WasmInstance>> {
+        Err(anyhow::anyhow!(
+            "WasmEdgeEngine::instantiate is not implemented"
+        ))
     }
 
     fn execute(
-        &self,
-        wasm_instance: Box<dyn WasmInstance>,
+        &mut self,
+        instance_name: &str,
         func_name: &str,
         args: Vec<Box<dyn WasmValue>>,
     ) -> Result<Vec<Box<dyn WasmValue>>> {
-        Ok(vec![Box::new(WasmEdgeValue::new())])
+        Err(anyhow::anyhow!(
+            "WasmEdgeEngine::execute is not implemented"
+        ))
     }
 
-    fn list_modules(&self) -> Result<Vec<Box<dyn WasmModule>>> {
-        Ok(vec![Box::new(WasmEdgeModule::new())])
+    fn list_modules(&self) -> Result<Vec<Box<&dyn WasmModule>>> {
+        Err(anyhow::anyhow!(
+            "WasmEdgeEngine::list_modules is not implemented"
+        ))
     }
 
-    fn list_sandboxes(&self) -> Result<Vec<Box<dyn WasmSandbox>>> {
-        Ok(vec![Box::new(WasmEdgeSandbox::new())])
+    fn list_sandboxes(&self) -> Result<Vec<Box<&dyn WasmSandbox>>> {
+        Err(anyhow::anyhow!(
+            "WasmEdgeEngine::list_sandboxes is not implemented"
+        ))
     }
 
-    fn list_instances(&self, sandbox: Box<dyn WasmSandbox>) -> Result<Vec<Box<dyn WasmInstance>>> {
-        Ok(vec![Box::new(WasmEdgeInstance::new())])
+    fn list_instances(&self, sandbox_name: &str) -> Result<Vec<Box<&dyn WasmInstance>>> {
+        Err(anyhow::anyhow!(
+            "WasmEdgeEngine::list_instances is not implemented"
+        ))
     }
 
     fn register_hostcalls(&self, hostcalls: &mut Hostcalls) -> Result<()> {
-        Ok(())
+        Err(anyhow::anyhow!(
+            "WasmEdgeEngine::register_hostcalls is not implemented"
+        ))
     }
 }
 
+#[derive(Clone)]
 struct WasmEdgeModule {}
 
 impl WasmEdgeModule {
@@ -74,10 +96,9 @@ impl WasmEdgeModule {
     }
 }
 
-impl WasmModule for WasmEdgeModule {
-    // TODO: implement WasmModule
-}
+impl WasmModule for WasmEdgeModule {}
 
+#[derive(Clone)]
 struct WasmEdgeSandbox {}
 
 impl WasmEdgeSandbox {
@@ -90,6 +111,7 @@ impl WasmSandbox for WasmEdgeSandbox {
     // TODO: implement WasmSandbox
 }
 
+#[derive(Clone)]
 struct WasmEdgeInstance {}
 
 impl WasmEdgeInstance {

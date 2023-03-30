@@ -21,32 +21,37 @@ use crate::engine::wasmedge::WasmEdgeEngine;
 use crate::engine::wasmtime::WasmtimeEngine;
 use crate::ray::{Hostcall, Hostcalls};
 
-pub trait WasmEngine: Sync + Send {
-    fn compile(&mut self, wasm_bytes: &[u8]) -> Result<Box<dyn WasmModule>>;
+pub trait WasmEngine {
+    fn init(&self) -> Result<()>;
 
-    fn create_sandbox(&self) -> Result<Box<dyn WasmSandbox>>;
+    fn compile(&mut self, name: &str, wasm_bytes: &[u8]) -> Result<Box<&dyn WasmModule>>;
+
+    fn create_sandbox(&mut self, name: &str) -> Result<Box<&dyn WasmSandbox>>;
     fn instantiate(
-        &self,
-        sandbox: Box<dyn WasmSandbox>,
-        wasm_module: Box<dyn WasmModule>,
-    ) -> Result<Box<dyn WasmInstance>>;
+        &mut self,
+        sandbox_name: &str,
+        module_name: &str,
+        instance_name: &str,
+    ) -> Result<Box<&dyn WasmInstance>>;
     fn execute(
-        &self,
-        wasm_instance: Box<dyn WasmInstance>,
+        &mut self,
+        instance_name: &str,
         func_name: &str,
         args: Vec<Box<dyn WasmValue>>,
     ) -> Result<Vec<Box<dyn WasmValue>>>;
 
-    fn list_modules(&self) -> Result<Vec<Box<dyn WasmModule>>>;
-    fn list_sandboxes(&self) -> Result<Vec<Box<dyn WasmSandbox>>>;
-    fn list_instances(&self, sandbox: Box<dyn WasmSandbox>) -> Result<Vec<Box<dyn WasmInstance>>>;
+    fn list_modules(&self) -> Result<Vec<Box<&dyn WasmModule>>>;
+    fn list_sandboxes(&self) -> Result<Vec<Box<&dyn WasmSandbox>>>;
+    fn list_instances(&self, sandbox_name: &str) -> Result<Vec<Box<&dyn WasmInstance>>>;
 
     fn register_hostcalls(&self, hostcalls: &mut Hostcalls) -> Result<()>;
 }
 
 pub trait WasmModule {}
 
-pub trait WasmSandbox {}
+pub trait WasmSandbox {
+    // convert to original type
+}
 
 pub trait WasmInstance {}
 
