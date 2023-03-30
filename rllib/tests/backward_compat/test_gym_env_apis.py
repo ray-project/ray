@@ -94,7 +94,7 @@ class MultiAgentGymnasiumOldAPI(MultiAgentEnv):
             {"agent0": gym.spaces.Box(-1.0, 1.0, (1,))}
         )
         self.action_space = gym.spaces.Dict({"agent0": gym.spaces.Discrete(2)})
-        self._observation_space_in_preferred_format = True
+        self._obs_space_in_preferred_format = True
         self._action_space_in_preferred_format = True
 
     def reset(self):
