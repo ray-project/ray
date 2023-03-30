@@ -316,6 +316,16 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gce_gpu_4_g4_12xl.yaml
+
+
+
 - name: air_benchmark_torch_mnist_cpu_4x4
   group: AIR tests
   working_dir: air_tests/air_benchmarks
@@ -531,6 +541,14 @@
       num_nodes: 4
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gce_gpu_16.yaml
 
 # Test tiny, medium, and huge input files.
 - name: ray-data-bulk-ingest-file-size-benchmark
@@ -2083,6 +2101,19 @@
 
   alert: long_running_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_c5_gce.yaml
+      run:
+        timeout: 86400
+        script: python workloads/serve_failure.py
+        long_running: true
+        type: anyscale_job
+
 - name: long_running_many_jobs
   group: Long running tests
   working_dir: long_running_tests
@@ -3287,6 +3318,14 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml 
+
 - name: rllib_multi_gpu_with_lstm_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
@@ -3331,6 +3370,14 @@
 
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml 
 
 - name: rllib_stress_tests
   group: RLlib tests
@@ -4199,6 +4246,14 @@
     wait_for_nodes:
       num_nodes: 20
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: data_ingest_benchmark_compute_gce.yaml
+
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -4475,6 +4530,14 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 100
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: shuffle/100tb_shuffle_app_config.yaml
+        cluster_compute: shuffle/100tb_shuffle_compute_gce.yaml
 
 ##################
 # Core Chaos tests
