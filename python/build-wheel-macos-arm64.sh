@@ -34,6 +34,7 @@ fi
 
 # Build the dashboard so its static assets can be included in the wheel.
 pushd python/ray/dashboard/client
+  source "$HOME"/.nvm/nvm.sh
   npm ci
   npm run build
 popd
