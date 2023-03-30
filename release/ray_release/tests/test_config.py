@@ -82,7 +82,6 @@ def test_definition_parser():
     with pytest.raises(ReleaseTestConfigError):
         parse_test_definition([invalid_test_definition])
 
-
 def test_schema_validation():
     test = VALID_TEST.copy()
 

@@ -74,7 +74,6 @@ def test_definition_invariant(
         f'{test_definition["name"]} has invalid definition: {message}',
     )
     
-
 def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
     tests = []
     for test_definition in test_definitions:
