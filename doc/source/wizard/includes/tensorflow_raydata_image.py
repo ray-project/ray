@@ -1,3 +1,4 @@
+# flake8: noqa E402
 import ray
 import tensorflow as tf
 from typing import Dict
@@ -78,6 +79,7 @@ def build_model():
 
 from ray.air import session
 from ray.air.integrations.keras import ReportCheckpointCallback
+
 
 # 1. Pass in the hyperparameter config
 def train_func(config: dict):

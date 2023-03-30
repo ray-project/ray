@@ -1,7 +1,7 @@
 import tensorflow as tf
 import transformers
 from datasets import load_dataset
-from transformers import TFAutoModelForSequenceClassification, AutoTokenizer
+from transformers import AutoTokenizer
 from ray import air
 from ray.air import session
 from ray.train.tensorflow import TensorflowTrainer
@@ -102,7 +102,8 @@ def train_loop_per_worker(config):
 
         if session.get_world_rank() == 0:
             print(
-                f'Epoch {epoch+1}/{config["epochs"]} - val_loss: {val_loss:.4f} - val_acc: {val_acc:.4f}'
+                f'Epoch {epoch+1}/{config["epochs"]} - '
+                f"val_loss: {val_loss:.4f} - val_acc: {val_acc:.4f}"
             )
 
 

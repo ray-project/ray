@@ -3,15 +3,17 @@ from keras import layers
 from keras.applications import EfficientNetB0
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import TensorflowCheckpoint, TensorflowPredictor
-from torchvision import models
-from torch import nn
+
+import tensorflow as tf
+
+NUM_CLASSES = 10
 
 # checkpoint = result.checkpoint
 checkpoint = TensorflowCheckpoint.from_directory("/tmp/tensorflow-text.checkpoint")
 
 # Read some
 inference_data = ray.data.read_images(
-    f"s3://anonymous@air-example-data/food-101-tiny/valid", size=(256, 256), mode="RGB"
+    "s3://anonymous@air-example-data/food-101-tiny/valid", size=(256, 256), mode="RGB"
 )
 
 

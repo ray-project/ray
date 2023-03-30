@@ -9,7 +9,7 @@ checkpoint = TorchCheckpoint.from_directory("/tmp/pytorch-image.checkpoint")
 
 # Read some
 inference_data = ray.data.read_images(
-    f"s3://anonymous@air-example-data/food-101-tiny/valid", size=(256, 256), mode="RGB"
+    "s3://anonymous@air-example-data/food-101-tiny/valid", size=(256, 256), mode="RGB"
 )
 
 

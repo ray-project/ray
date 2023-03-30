@@ -155,7 +155,8 @@ BLACK_EXCLUDES=(
     `'python/ray/core/src/ray/gcs/*|'`
     `'python/ray/thirdparty_files/*|'`
     `'python/ray/_private/thirdparty/*|'`
-    `'python/ray/serve/tests/test_config_files/syntax_error\.py'
+    `'python/ray/serve/tests/test_config_files/syntax_error\.py|'`
+    `'doc/source/wizard/includes/modules/*'
 )
 
 GIT_LS_EXCLUDES=(

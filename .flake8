@@ -2,6 +2,7 @@
 exclude =
   python/ray/core/generated/
   doc/source/conf.py
+  doc/source/wizard/includes/modules/*
   python/ray/cloudpickle/
   python/ray/thirdparty_files/
   python/build/

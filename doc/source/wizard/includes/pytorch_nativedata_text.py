@@ -24,6 +24,7 @@ with open("eval.text", "r") as fin:
 with open("eval.labels", "r") as fin:
     eval_labels = [line.strip() for line in fin.readlines()]
 
+
 # Define dataset
 class SentimentDataset(Dataset):
     def __init__(self, texts, labels, tokenizer):

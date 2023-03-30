@@ -1,5 +1,4 @@
-import tensorflow as tf
-
+# flake8: noqa E402
 import boto3
 from pathlib import Path
 import os
@@ -85,6 +84,7 @@ def build_model():
 
 from ray.air import session
 from ray.air.integrations.keras import ReportCheckpointCallback
+
 
 # 1. Pass in the hyperparameter config
 def train_func(config: dict):

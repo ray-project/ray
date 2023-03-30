@@ -227,6 +227,18 @@ py_test_run_all_subdirectory(
     tags = ["exclusive", "team:core"],
 )
 
+# --------------------------------------------------------------------
+# Test all doc/source/wizard/includes/*.py wizard examples.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/wizard/includes/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml", "ray_air"],
+)
+
 # --------------
 # Run GPU tests
 # --------------
