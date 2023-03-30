@@ -237,7 +237,7 @@ def test_omp_threads_set(ray_start_cluster, monkeypatch):
     @ray.remote(num_cpus=2)
     def f():
         # Assert numpy using 2 threads for it's parallelism backend.
-        import numpy # noqa: F401
+        import numpy  # noqa: F401
         from threadpoolctl import threadpool_info
 
         for pool_info in threadpool_info():
