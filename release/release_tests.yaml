@@ -3251,6 +3251,8 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
+  env: staging_v1
+
 
 - name: microbenchmark_staging
   group: core-daily-test
