@@ -41,6 +41,7 @@ Tensor Column Extension API
 
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    extensions.tensor_extension.create_ragged_ndarray
    extensions.tensor_extension.TensorDtype
