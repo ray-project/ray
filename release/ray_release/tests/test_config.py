@@ -1,7 +1,6 @@
 import os
 import sys
 import yaml
-import copy
 import pytest
 
 from ray_release.config import (
