@@ -20,7 +20,6 @@ Trainer Base Classes
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     ~train.trainer.BaseTrainer
     ~train.data_parallel_trainer.DataParallelTrainer
@@ -47,6 +46,7 @@ Train Backend Base Classes
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     ~train.backend.Backend
     ~train.backend.BackendConfig
