@@ -379,14 +379,12 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
 
 void Publisher::Publish(rpc::PubMessage pub_message) {
   RAY_CHECK_EQ(pub_message.sequence_id(), 0) << "sequence_id should not be set;";
-  RAY_CHECK(pub_message.publisher_id().empty()) << "publihser_id should not be set;";
   const auto channel_type = pub_message.channel_type();
   absl::MutexLock lock(&mutex_);
   auto &subscription_index = subscription_index_map_.at(channel_type);
   // TODO(sang): Currently messages are lost if publish happens
   // before there's any subscriber for the object.
   pub_message.set_sequence_id(++next_sequence_id_);
-  pub_message.set_publisher_id(publisher_id_);
   subscription_index.Publish(std::make_shared<rpc::PubMessage>(std::move(pub_message)));
   cum_pub_message_cnt_[channel_type]++;
 }

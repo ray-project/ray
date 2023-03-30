@@ -379,18 +379,21 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     // Empty the command queue because we cannot send commands anymore.
     commands_.erase(publisher_id);
   } else {
+    RAY_CHECK(!reply.publisher_id().empty())
+        << "publisher_id is invalid " << reply.publisher_id();
+
+    if (reply.publisher_id() != processed_sequences_[publisher_id].first) {
+      processed_sequences_[publisher_id].first = reply.publisher_id();
+      processed_sequences_[publisher_id].second = 0;
+    }
+
     for (int i = 0; i < reply.pub_messages_size(); i++) {
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
       const auto &key_id = msg.key_id();
       RAY_CHECK_GT(msg.sequence_id(), 0)
           << "message's sequence_id is invalid " << msg.sequence_id();
-      RAY_CHECK(!msg.publisher_id().empty())
-          << "message's publisher_id is invalid " << msg.publisher_id();
-      if (msg.publisher_id() != processed_sequences_[publisher_id].first) {
-        processed_sequences_[publisher_id].first = msg.publisher_id();
-        processed_sequences_[publisher_id].second = 0;
-      }
+
       if (msg.sequence_id() <= processed_sequences_[publisher_id].second) {
         RAY_LOG_EVERY_MS(WARNING, 10000)
             << "Received message out of order, publisher_id: "

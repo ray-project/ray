@@ -78,7 +78,9 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
       int64_t sequence_id =
           sequence_ids.empty() ? GetNextSequenceId() : sequence_ids.at(i);
       new_pub_message->set_sequence_id(sequence_id);
+      new_pub_message->set_publisher_id(publisher_id_);
     }
+    reply.set_publisher_id(publisher_id_);
     callback(status, reply);
     long_polling_callbacks.pop_front();
     return true;
@@ -92,6 +94,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
 
     auto callback = long_polling_callbacks.front();
     auto reply = rpc::PubsubLongPollingReply();
+    reply.set_publisher_id(publisher_id_);
 
     for (const auto &object_id : object_ids) {
       auto new_pub_message = reply.add_pub_messages();
@@ -114,6 +117,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
   std::queue<rpc::PubsubCommandBatchRequest> requests_;
   int64_t sequence_id_ = 0;
   int64_t max_processed_sequence_id_ = 0;
+  std::string publisher_id_ = "publisher";
 };
 
 namespace pubsub {

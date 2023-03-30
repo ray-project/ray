@@ -320,11 +320,13 @@ class Publisher : public PublisherInterface {
             PeriodicalRunner *const periodical_runner,
             std::function<double()> get_time_ms,
             const uint64_t subscriber_timeout_ms,
-            const int publish_batch_size)
+            const int publish_batch_size,
+            std::string publisher_id = NodeID::UniqueID().Hex())
       : periodical_runner_(periodical_runner),
         get_time_ms_(std::move(get_time_ms)),
         subscriber_timeout_ms_(subscriber_timeout_ms),
-        publish_batch_size_(publish_batch_size) {
+        publish_batch_size_(publish_batch_size),
+        publisher_id_(publisher_id) {
     // Insert index map for each channel.
     for (auto type : channels) {
       subscription_index_map_.emplace(type, type);
@@ -482,7 +484,7 @@ class Publisher : public PublisherInterface {
 
   /// A unique identifier identifies the publisher_id.
   /// TODO(scv119) add docs about the semantics.
-  const std::string publisher_id_ = "";
+  const std::string publisher_id_ = "test";
 };
 
 }  // namespace pubsub
