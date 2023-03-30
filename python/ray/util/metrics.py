@@ -52,11 +52,11 @@ class Metric:
         Example:
             >>> from ray.util.metrics import Counter
             >>> # Note that set_default_tags returns the instance itself.
-            >>> counter = Counter("name")
+            >>> counter = Counter("name", tag_keys=("a",))
             >>> counter2 = counter.set_default_tags({"a": "b"})
             >>> assert counter is counter2
             >>> # this means you can instantiate it in this way.
-            >>> counter = Counter("name").set_default_tags({"a": "b"})
+            >>> counter = Counter("name", tag_keys=("a",)).set_default_tags({"a": "b"})
 
         Args:
             default_tags: Default tags that are
@@ -135,16 +135,11 @@ class Metric:
         Example:
             >>> from ray.util.metrics import Counter
             >>> counter = Counter("name", description="desc")
-                print(counter.info)
+            >>> print(counter.info)
                 \"""
-                {
-                    "name": "name",
-                    "description": "desc"
-                    "tag_keys": ("ray.key")
-                    "default_tags": {"ray.key": "abc"}
-                }
+                {'name': 'name', 'description': 'desc', 'tag_keys': (), 'default_tags': {}}
                 \"""
-        """
+        """  # noqa
         return {
             "name": self._name,
             "description": self._description,
