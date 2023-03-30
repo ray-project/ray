@@ -304,15 +304,17 @@ ppo_config = (
         .checkpointing(export_native_model_files=True)
     )
     .rollouts(num_rollout_workers=0)
-    .rl_module(_enable_rl_module_api=True)
-    .training(_enable_learner_api=True)
+    .rl_module(_enable_rl_module_api=False)
+    .training(_enable_learner_api=False)
 )
 # Create the Algorithm and train one iteration.
 ppo = ppo_config.build()
 ppo_policy = ppo.get_policy()
 
 # __export-models-as-onnx-begin__
-# Using the same Policy object, we can also export our NN Model in the ONNX format:
+
+# Using the same Policy object, we can also export our NN Model in the ONNX format.
+# This only works without RLModules.
 ppo_policy.export_model("/tmp/my_nn_model", onnx=True)
 
 # __export-models-as-onnx-end__
