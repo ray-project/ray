@@ -95,10 +95,15 @@ install_miniconda() {
       msys*) miniconda_platform=Windows; exe_suffix=".exe";;
     esac
 
-    case "${OSTYPE}" in
-      # The hosttype variable is deprecated.
-      darwin*) HOSTTYPE="x86_64";;
-    esac
+    if [ "${OSTYPE}" = darwin ]; then
+      if [ $(uname -m) = "arm64" ]; then
+        HOSTTYPE="arm64"
+        miniconda_version="Miniconda3-py38_23.1.0-1-"
+        miniconda_dir="/opt/homebrew/opt/miniconda"
+      else
+        HOSTTYPE="x86_64"
+      fi
+    fi
 
     local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
     local miniconda_target="${HOME}/${miniconda_url##*/}"

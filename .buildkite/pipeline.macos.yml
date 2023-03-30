@@ -73,6 +73,7 @@ steps:
     - rm -rf /tmp/bazel_event_logs
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - (which bazel && bazel clean) || true
+    - brew install pkg-config nvm || true
     # TODO(simon): make sure to change both PR and wheel builds
     # Special setup for jar builds (will be installed to the machine instead)
     # - brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
@@ -95,7 +96,7 @@ steps:
     # Upload the wheels and jars
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
-    - pip install -q docker aws_requests_auth boto3
+    - python -m pip install -q docker aws_requests_auth boto3
     # Upload to branch directory.
     - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
     - python .buildkite/copy_files.py --destination branch_jars --path ./.jar/darwin
