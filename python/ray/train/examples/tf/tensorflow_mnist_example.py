@@ -11,7 +11,7 @@ from ray.air.result import Result
 import tensorflow as tf
 
 from ray.train.tensorflow import TensorflowTrainer
-from ray.air.integrations.keras import Callback as TrainCheckpointReportCallback
+from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.air.config import ScalingConfig
 
 
@@ -72,7 +72,7 @@ def train_func(config: dict):
         multi_worker_dataset,
         epochs=epochs,
         steps_per_epoch=steps_per_epoch,
-        callbacks=[TrainCheckpointReportCallback()],
+        callbacks=[ReportCheckpointCallback()],
     )
     results = history.history
     return results
