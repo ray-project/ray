@@ -332,6 +332,8 @@ class AlgorithmConfig(_Config):
 
         # `self.explore()`
         self.explore = True
+        # This is not compatible with RLModules, which have a method
+        # `forward_exploration` to specify custom exploration behavior.
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.

@@ -126,6 +126,9 @@ class PPOConfig(PGConfig):
         self._enable_rl_module_api = True
         self._enable_learner_api = True
 
+        if self._enable_rl_module_api:
+            self.exploration_config = None
+
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "torch":
