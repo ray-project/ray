@@ -111,10 +111,13 @@ class LightningPredictor(TorchPredictor):
                     "path/to/checkpoint_dir"
                 )
 
+                # `from_checkpoint()` takes the argument list of
+                # `LightningModule.load_from_checkpoint()` as additional kwargs.
+
                 predictor = LightningPredictor.from_checkpoint(
                     checkpoint=checkpoint,
-                    model_class=MyLightningModule,
                     use_gpu=False,
+                    model_class=MyLightningModule,
                     input_dim=32,
                     output_dim=10,
                 )
@@ -130,7 +133,7 @@ class LightningPredictor(TorchPredictor):
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
             **load_from_checkpoint_kwargs: Arguments to pass into
-                ``pl.LightningModule.load_from_checkpoint``
+                ``pl.LightningModule.load_from_checkpoint``.
         """
 
         model = checkpoint.get_model(

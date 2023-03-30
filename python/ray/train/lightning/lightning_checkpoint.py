@@ -45,6 +45,8 @@ class LightningCheckpoint(TorchCheckpoint):
         >>> checkpoint = LightningCheckpoint.from_uri( # doctest: +SKIP
         ...     path="s3://path/to/checkpoint/directory/"
         ... )
+        >>>
+        >>>
     """
 
     def __init__(self, *args, **kwargs):
@@ -73,7 +75,8 @@ class LightningCheckpoint(TorchCheckpoint):
         if os.path.isdir(path):
             raise ValueError(
                 f"`from_path()` expects a file path, but `{path}` is a directory. "
-                "Please provide a valid checkpoint file path, or try to use "
+                "A valid checkpoint file name is normally with .ckpt extension."
+                "If you have an AIR checkpoint folder, you can also try to use "
                 "`LightningCheckpoint.from_directory()` instead."
             )
 
@@ -110,13 +113,18 @@ class LightningCheckpoint(TorchCheckpoint):
                     "path/to/checkpoint_dir"
                 )
 
+                # `get_model()` takes the argument list of
+                # `LightningModule.load_from_checkpoint()` as additional kwargs.
+                # Please refer to PyTorch Lightning API for more details.
+
+                # You can manually provide init arguments of your model
                 model = checkpoint.get_model(
                     model_class=MyLightningModule,
                     input_dim=32,
                     output_dim=10,
                 )
 
-                # If you have a file contains hyperparameters
+                # Or you can provide a file with hyperparameters
                 model = checkpoint.get_model(
                     model_class=MyLightningModule,
                     hparams_file="./hparams.yaml"
@@ -126,7 +134,7 @@ class LightningCheckpoint(TorchCheckpoint):
             model_class: A subclass of ``pytorch_lightning.LightningModule`` that
                 defines your model and training logic.
             **load_from_checkpoint_kwargs: Arguments to pass into
-                ``pl.LightningModule.load_from_checkpoint``
+                ``pl.LightningModule.load_from_checkpoint``.
 
         Returns:
             pl.LightningModule: An instance of the loaded model.
