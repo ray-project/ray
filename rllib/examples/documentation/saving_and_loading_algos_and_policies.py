@@ -230,8 +230,10 @@ ppo_config = (
 # PyTorch, uncomment the following line of code:
 # ppo_config.framework("torch")
 
-# Create the Algorithm.
+# Create the Algorithm and train one iteration.
 ppo = ppo_config.build()
+ppo.train()
+
 # Get the underlying PPOTF1Policy (or PPOTorchPolicy) object.
 ppo_policy = ppo.get_policy()
 
@@ -293,28 +295,9 @@ checkpoint_dir = ppo.save()
 
 # __export-models-3-end__
 
-# Exporting Policies in ONNX format is only supported without RLModules
-# TODO (Artur): Switch this to the RLModule API once it is supported.
-# IF this is removed, test size of `saving_and_loading_algos_and_policies` can be
-# reduced to `medium` again.
-ppo_config = (
-    (
-        PPOConfig()
-        .environment("Pendulum-v1")
-        .checkpointing(export_native_model_files=True)
-    )
-    .rollouts(num_rollout_workers=0)
-    .rl_module(_enable_rl_module_api=False)
-    .training(_enable_learner_api=False)
-)
-# Create the Algorithm and train one iteration.
-ppo = ppo_config.build()
-ppo_policy = ppo.get_policy()
-
 # __export-models-as-onnx-begin__
 
 # Using the same Policy object, we can also export our NN Model in the ONNX format.
-# This only works without RLModules.
-ppo_policy.export_model("/tmp/my_nn_model", onnx=True)
+ppo_policy.export_model("/tmp/my_nn_model", onnx=False)
 
 # __export-models-as-onnx-end__
