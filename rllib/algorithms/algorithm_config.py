@@ -1682,7 +1682,16 @@ class AlgorithmConfig(_Config):
             self.explore = explore
         if exploration_config is not NotProvided:
 
-            if self._enable_rl_module_api and exploration_config is not None:
+            if (
+                self._enable_rl_module_api
+                and exploration_config is not None
+                and self.explore
+            ):
+                # RLModules don't support exploration_configs anymore.
+                # AlgorithmConfig has a default exploration config. This makes it so
+                # that most configs have an exploration config and we want to error
+                # out only if the user explicitly wants to use this config through
+                # setting `explore=True`.
                 raise ValueError(
                     "When RLModule API is enabled, exploration_config can not be set."
                     "If you want to implement custom exploration behaviour, "
