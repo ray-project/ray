@@ -6,6 +6,7 @@ import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.util.LoggingUtil;
+import io.ray.runtime.util.SystemConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,6 +17,7 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
   public RayRuntime createRayRuntime() {
     RayConfig rayConfig = RayConfig.create();
     LoggingUtil.setupLogging(rayConfig);
+    SystemConfig.setup(rayConfig);
     Logger logger = LoggerFactory.getLogger(DefaultRayRuntimeFactory.class);
 
     if (rayConfig.workerMode == WorkerType.WORKER) {

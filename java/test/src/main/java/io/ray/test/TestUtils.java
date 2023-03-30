@@ -6,7 +6,7 @@ import io.ray.api.Ray;
 import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.config.RunMode;
-import io.ray.runtime.task.ArgumentsBuilder;
+import io.ray.runtime.util.SystemConfig;
 import java.io.Serializable;
 import java.time.Duration;
 import java.time.Instant;
@@ -27,7 +27,7 @@ public class TestUtils {
     }
 
     public LargeObject(int size) {
-      Preconditions.checkState(size > ArgumentsBuilder.LARGEST_SIZE_PASS_BY_VALUE);
+      Preconditions.checkState(size > SystemConfig.getLargestSizePassedByValue());
       data = new byte[size];
     }
   }

@@ -20,13 +20,6 @@ import java.util.List;
 /** Helper methods to convert arguments from/to objects. */
 public class ArgumentsBuilder {
 
-  /**
-   * If the the size of an argument's serialized data is smaller than this number, the argument will
-   * be passed by value. Otherwise it'll be passed by reference.
-   */
-  public static final long LARGEST_SIZE_PASS_BY_VALUE =
-      ((Double) SystemConfig.get("max_direct_call_object_size")).longValue();
-
   /** This dummy type is also defined in signature.py. Please keep it synced. */
   private static final NativeRayObject PYTHON_DUMMY_TYPE =
       ObjectSerializer.serialize("__RAY_DUMMY__".getBytes());
@@ -59,7 +52,7 @@ public class ArgumentsBuilder {
                     Arrays.toString(value.metadata), language.getValueDescriptor().getName()));
           }
         }
-        if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
+        if (value.data.length > SystemConfig.getLargestSizePassedByValue()) {
           id = ((AbstractRayRuntime) Ray.internal()).getObjectStore().putRaw(value);
           address = ((AbstractRayRuntime) Ray.internal()).getWorkerContext().getRpcAddress();
           value = null;
