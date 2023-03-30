@@ -245,8 +245,11 @@ class ActorPoolStrategy(ComputeStrategy):
             max_size = size
         if min_size is not None and min_size < 1:
             raise ValueError("min_size must be >= 1", min_size)
-        if max_size is not None and min_size > max_size:
-            raise ValueError("min_size must be <= max_size", min_size, max_size)
+        if max_size is not None:
+            if min_size is None:
+                min_size = 1  # Legacy default.
+            if min_size > max_size:
+                raise ValueError("min_size must be <= max_size", min_size, max_size)
         if (
             max_tasks_in_flight_per_actor is not None
             and max_tasks_in_flight_per_actor < 1
