@@ -63,6 +63,17 @@ def read_and_validate_release_test_collection(
     validate_release_test_collection(tests, schema_file=schema_file)
     return tests
 
+def test_definition_invariant(
+    test_definition: TestDefinition,
+    invariant: bool,
+    message: str
+) -> None:
+    if invariant:
+        return
+    raise ReleaseTestConfigError(
+        f'{test_definition["name"]} has invalid definition: {message}',
+    )
+    
 
 def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
     tests = []
@@ -71,11 +82,17 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
             tests.append(test_definition)
             continue
         variations = test_definition.pop("variations")
-        if not variations:
-            raise ReleaseTestConfigError(
-                f'Empty variations defined in test {test_definition["name"]}',
-            )
+        test_definition_invariant(
+            test_definition, 
+            variations,
+            'empty variations cannot be empty',
+        )
         for variation in variations:
+            test_definition_invariant(
+                test_definition,
+                '__suffix__' in variation,
+                'missing __suffix__ in variation'
+            )
             test = copy.deepcopy(test_definition)
             test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
             test.update(variation)
