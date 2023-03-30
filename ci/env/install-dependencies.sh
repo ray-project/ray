@@ -249,7 +249,11 @@ install_node() {
 
   if [ -n "${BUILDKITE-}" ] ; then
     if [[ "${OSTYPE}" = darwin* ]]; then
-      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+      if [ $(uname -m) = "arm64" ]; then
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+      else
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+      fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
       curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
