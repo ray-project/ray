@@ -65,7 +65,7 @@ void CoreWorkerDirectTaskReceiver::Init(
 }
 
 void CoreWorkerDirectTaskReceiver::HandleTask(
-    rpc::PushTaskRequest request,
+    const rpc::PushTaskRequest &request,
     rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";

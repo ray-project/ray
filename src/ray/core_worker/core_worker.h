@@ -1123,6 +1123,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
 
+  /// Mark this worker is exiting.
+  void SetIsExiting();
+
   /// Retrieve the current statistics about tasks being received and executing.
   /// \return an unordered_map mapping function name to list of (num_received,
   /// num_executing, num_executed). It is a std map instead of absl due to its
@@ -1196,6 +1199,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// (WORKER mode only) Gracefully exit the worker. `Graceful` means the worker will
   /// exit when it drains all tasks and cleans all owned objects.
+  /// After this method is called, all the tasks in the queue will not be
+  /// executed.
   ///
   /// \param exit_type The reason why this worker process is disconnected.
   /// \param exit_detail The detailed reason for a given exit.
@@ -1593,8 +1598,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       void *py_future);
 
   /// we are shutting down and not running further tasks.
-  /// when exiting_ is set to true HandlePushTask becomes no-op.
+  /// when exiting_ is set to true HandlePushTask and ExecuteTask becomes no-op.
   std::atomic<bool> exiting_ = false;
+
+  /// The detail reason why the core worker has exited.
+  /// This must be set only when `exiting_` is true.
+  std::string exiting_detail_ GUARDED_BY(mutex_);
 
   std::atomic<bool> is_shutdown_ = false;
 

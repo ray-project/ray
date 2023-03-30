@@ -349,6 +349,8 @@ def test_asyncio_actor_with_large_concurrency(ray_start_regular_shared):
 
 
 def test_asyncio_actor_shutdown_when_non_async_method_mixed(shutdown_only):
+    ray.init(num_cpus=1)
+
     # It is a regression test.
     # https://github.com/ray-project/ray/issues/32376
     # Make sure the core worker doesn't crash when
@@ -365,11 +367,65 @@ def test_asyncio_actor_shutdown_when_non_async_method_mixed(shutdown_only):
 
     a = A.remote()
     a.f.remote()
+
     with pytest.raises(
         ray.exceptions.RayActorError,
-        match=("Worker exits by an user request. " "exit_actor() is called."),
+        match=("exit_actor"),
     ):
         ray.get([a.ping.remote() for _ in range(10000)])
+
+
+# Test regular case
+# Test async case
+
+# Behavior
+# exit_actor should exit immediately without executing the next method.
+# exit_actor should have a proper error message.
+# at exit handler has to be invoked.
+# Make sure no queued tasks are running.
+
+# import ray
+# import asyncio
+# @ray.remote
+# class Async:
+#     def __init__(self):
+#         def f():
+#             print("handler!")
+#         atexit.register(f)
+
+#     async def f(self):
+#         await asyncio.sleep(1)
+#         ray.actor.exit_actor()
+
+# @ray.remote
+# class A:
+#     def __init__(self):
+#         def f():
+#             print("handler!")
+#         atexit.register(f)
+
+#     def f(self):
+#         import time
+#         time.sleep(1)
+#         ray.actor.exit_actor()
+
+# @ray.remote
+# class Regression:
+#     async def f(self):
+#         await asyncio.sleep(1)
+#         ray.actor.exit_actor()
+
+#     def ping(self):
+#         pass
+
+# a = Regression.remote()
+
+# a.f.remote()
+# # with pytest.raises(
+# #     ray.exceptions.RayActorError,
+# #     match=("Worker exits by an user request. " "exit_actor() is called."),
+# # ):
+# ray.get([a.ping.remote() for _ in range(10000)])
 
 
 if __name__ == "__main__":

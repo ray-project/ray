@@ -868,10 +868,6 @@ cdef void execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
-                    is_exiting = core_worker.is_exiting()
-                    if is_exiting:
-                        title = f"{title}::Exiting"
-                        next_title = f"{next_title}::Exiting"
                     with ray._private.worker._changeproctitle(title, next_title):
                         if debugger_breakpoint != b"":
                             ray.util.pdb.set_trace(
@@ -1181,7 +1177,6 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute,
         c_bool is_reattempt) nogil:
-
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
@@ -2718,9 +2713,6 @@ cdef class CoreWorker:
             self.current_runtime_env = serialized_env
 
         return self.current_runtime_env
-
-    def is_exiting(self):
-        return CCoreWorkerProcess.GetCoreWorker().IsExiting()
 
     cdef yield_current_fiber(self, CFiberEvent &fiber_event):
         with nogil:

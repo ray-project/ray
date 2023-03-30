@@ -253,8 +253,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobConfig GetJobConfig()
 
-        c_bool IsExiting() const
-
         int64_t GetNumTasksSubmitted() const
 
         int64_t GetNumLeasesRequested() const
