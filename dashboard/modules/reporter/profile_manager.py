@@ -57,12 +57,12 @@ class CpuProfilingManager:
         self.profile_dir_path.mkdir(exist_ok=True)
 
     async def trace_dump(self, pid: int, native: bool = False) -> (bool, str):
-        cmd = f"$(which py-spy) dump -p {pid}"
+        cmd = f"py-spy dump -p {pid}"
         # We
         if sys.platform == "linux" and native:
             cmd += " --native"
         if await _can_passwordless_sudo():
-            cmd = "sudo -n " + cmd
+            cmd = "sudo -n " + cmd.replace("py-spy", "$(which py-spy)")
         process = await asyncio.create_subprocess_shell(
             cmd,
             stdout=subprocess.PIPE,
@@ -86,13 +86,13 @@ class CpuProfilingManager:
             self.profile_dir_path / f"{format}_{pid}_cpu_profiling.{extension}"
         )
         cmd = (
-            f"$(which py-spy) record "
+            f"py-spy record "
             f"-o {profile_file_path} -p {pid} -d {duration} -f {format}"
         )
         if sys.platform == "linux" and native:
             cmd += " --native"
         if await _can_passwordless_sudo():
-            cmd = "sudo -n " + cmd
+            cmd = "sudo -n " + cmd.replace("py-spy", "$(which py-spy)")
         process = await asyncio.create_subprocess_shell(
             cmd,
             stdout=subprocess.PIPE,
