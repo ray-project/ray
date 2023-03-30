@@ -1,0 +1,30 @@
+# All requirements in one place to run our AIR examples on e.g. a laptop or Colab.
+
+ray[air, rllib, tune, serve]
+
+accelerate>=0.16.0
+boto3==1.26.102
+botocore==1.29.102
+comet-ml==3.32.5
+datasets>=2.11.0
+deepspeed>=0.8.3
+diffusers==0.14.0
+evaluate>=0.4.0
+feast==0.20.1
+gymnasium==0.28.1
+lightgbm_ray==0.1.8
+mlflow==1.30.0
+scikit-learn==1.0.2
+statsforecast==1.5.0
+torch==1.13.0
+torchmetrics==0.11.4
+torchvision==0.14.0
+tensorflow==2.11.0; sys_platform != 'darwin' or platform_machine != 'arm64'
+tensorflow-macos==2.11.0; sys_platform == 'darwin' and platform_machine == 'arm64'
+tensorflow-probability==0.19.0
+transformers>=4.26.0
+xformers==0.0.17
+xgboost==1.3.3
+xgboost_ray==0.1.15
+xmltodict==0.13.0
+wandb==0.14.0
