@@ -489,7 +489,7 @@ build_wheels() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      if [ $(uname -m) = "arm64" ]; then
+      if [ "$(uname -m)" = "arm64" ]; then
         "${WORKSPACE_DIR}"/python/build-wheel-macos-arm64.sh
       else
         "${WORKSPACE_DIR}"/python/build-wheel-macos.sh

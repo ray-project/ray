@@ -96,7 +96,7 @@ install_miniconda() {
     esac
 
     if [[ "${OSTYPE}" = darwin* ]]; then
-      if [ $(uname -m) = "arm64" ]; then
+      if [ "$(uname -m)" = "arm64" ]; then
         HOSTTYPE="arm64"
         miniconda_version="Miniconda3-py38_23.1.0-1"
         miniconda_dir="/opt/homebrew/opt/miniconda"
@@ -249,7 +249,7 @@ install_node() {
 
   if [ -n "${BUILDKITE-}" ] ; then
     if [[ "${OSTYPE}" = darwin* ]]; then
-      if [ $(uname -m) = "arm64" ]; then
+      if [ "$(uname -m)" = "arm64" ]; then
         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
       else
         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
