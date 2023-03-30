@@ -43,7 +43,7 @@ schema = {
         "min_workers": {"type": ["null", "integer"]},
         "max_workers": {"type": ["null", "integer"]},
         "head_node_instance_type": {"type": ["null", "string"]},
-        "glibc": {"type": ["null", "string"]},
+        "glibc_version": {"type": ["null", "string"]},
         "worker_node_instance_types": {
             "type": ["null", "array"],
             "items": {"type": "string"},
@@ -1167,11 +1167,11 @@ provider:
         assert payload["schema_version"] == "0.1"
         assert payload["os"] == sys.platform
         if sys.platform != "linux":
-            assert "glibc" not in payload
+            payload["glibc_version"] is None
         else:
             import platform
 
-            assert payload["glibc"] == platform.libc_ver()[1]
+            assert payload["glibc_version"] == platform.libc_ver()[1]
 
         assert payload["source"] == "OSS"
         assert payload["cloud_provider"] == "aws"
