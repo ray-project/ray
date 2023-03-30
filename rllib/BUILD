@@ -4125,7 +4125,7 @@ py_test(
     name = "examples/documentation/saving_and_loading_algos_and_policies",
     main = "examples/documentation/saving_and_loading_algos_and_policies.py",
     tags = ["team:rllib", "documentation", "no_main"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/documentation/saving_and_loading_algos_and_policies.py"],
 )
 
