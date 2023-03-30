@@ -27,7 +27,7 @@ build:
       # in that case exit the command with 183 to cancel the build
       - (git --no-pager log --pretty="tformat:%s -- %b" -1 | grep -viq "skip ci") || exit 183
 
-# Build documentation in the docs/ directory with Sphinx
+# Build documentation in the "docs/" directory with Sphinx
 sphinx:
    configuration: doc/source/conf.py
 
