@@ -164,6 +164,17 @@ Status GcsSyncClient::Connect() {
   return Status::OK();
 }
 
+Status HandleGrpcError(rpc::GcsStatus status) {
+  RAY_CHECK(status.code() != (int)StatusCode::OK);
+  if (status.code() == (int)StatusCode::GrpcUnavailable) {
+    return Status::GrpcUnavailable(status.message());
+  }
+  if (status.code() == (int)StatusCode::GrpcUnknown) {
+    return Status::GrpcUnknown(status.message());
+  }
+  return Status::Invalid(status.message());
+}
+
 Status GcsSyncClient::InternalKVGet(const std::string &ns, const std::string &key, std::string &value) {
   grpc::ClientContext context;
 
@@ -180,9 +191,8 @@ Status GcsSyncClient::InternalKVGet(const std::string &ns, const std::string &ke
       return Status::OK();
     } else if (reply.status().code() == (int)StatusCode::NotFound) {
       return Status::KeyError(key);
-    } else {
-      return Status::Invalid(reply.status().message());
     }
+    return HandleGrpcError(reply.status());
   }
   return Status::GrpcUnknown(status.error_message());
 }
@@ -209,9 +219,8 @@ Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vecto
     } else if (reply.status().code() == (int)StatusCode::NotFound) {
       // result has already been cleared above
       return Status::OK();
-    } else {
-      return Status::Invalid(reply.status().message());
     }
+    return HandleGrpcError(reply.status());
   }
   return Status::GrpcUnknown(status.error_message());
 }
@@ -233,7 +242,7 @@ Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &ke
       added_num = reply.added_num();
       return Status::OK();
     }
-    return Status::Invalid(reply.status().message());
+    return HandleGrpcError(reply.status());
   }
   return Status::GrpcUnknown(status.error_message());
 }
@@ -254,7 +263,7 @@ Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &ke
       deleted_num = reply.deleted_num();
       return Status::OK();
     }
-    return Status::Invalid(reply.status().message());
+    return HandleGrpcError(reply.status());
   }
   return Status::GrpcUnknown(status.error_message());
 }
@@ -274,7 +283,7 @@ Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &p
       results = std::vector<std::string>(reply.results().begin(), reply.results().end());
       return Status::OK();
     }
-    return Status::Invalid(reply.status().message());
+    return HandleGrpcError(reply.status());
   }
   return Status::GrpcUnknown(status.error_message());
 }
@@ -290,8 +299,11 @@ Status GcsSyncClient::InternalKVExists(const std::string &ns, const std::string 
 
   grpc::Status status = kv_stub_->InternalKVExists(&context, request, &reply);
   if (status.ok()) {
-    exists = reply.exists();
-    return Status::OK();
+    if (reply.status().code() == (int)StatusCode::OK) {
+      exists = reply.exists();
+      return Status::OK();
+    }
+    return HandleGrpcError(reply.status());
   }
   return Status::GrpcUnknown(status.error_message());
 }
