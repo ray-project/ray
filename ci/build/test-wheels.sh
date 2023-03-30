@@ -127,6 +127,15 @@ elif [[ "$platform" == "macosx" ]]; then
       conda install -y python="${PY_MM}"
       PYTHON_EXE="/opt/homebrew/opt/miniconda/bin/python"
       PIP_CMD="/opt/homebrew/opt/miniconda/bin/pip"
+
+      # Openssl + env var needed for grpcio build
+      # See https://github.com/grpc/grpc/issues/25082
+      brew install openssl || true
+
+      GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
+      GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1
+      CFLAGS="-I/opt/homebrew/opt/openssl/include"
+      LDFLAGS="-L/opt/homebrew/opt/openssl/lib"
     else
       PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
       PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
