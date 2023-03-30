@@ -298,7 +298,7 @@ def upload_to_uri(
         )
 
     if not exclude:
-        _ensure_directory(bucket_path)
+        _ensure_directory(bucket_path, fs=fs)
         _pyarrow_fs_copy_files(local_path, bucket_path, destination_filesystem=fs)
     else:
         # Walk the filetree and upload
@@ -327,7 +327,7 @@ def _upload_to_uri_with_exclude(
             full_source_path = os.path.normpath(os.path.join(local_path, candidate))
             full_target_path = os.path.normpath(os.path.join(bucket_path, candidate))
 
-            _ensure_directory(str(Path(full_target_path).parent))
+            _ensure_directory(str(Path(full_target_path).parent), fs=fs)
             _pyarrow_fs_copy_files(
                 full_source_path, full_target_path, destination_filesystem=fs
             )
@@ -377,7 +377,7 @@ def is_directory(uri: str) -> bool:
     return not file_info.is_file
 
 
-def _ensure_directory(uri: str):
+def _ensure_directory(uri: str, fs: Optional["pyarrow.fs.FileSystem"] = None):
     """Create directory at remote URI.
 
     Some external filesystems require directories to already exist, or at least
@@ -385,8 +385,14 @@ def _ensure_directory(uri: str):
 
     Generally this should be done before and outside of Ray applications. This
     utility is thus primarily used in testing, e.g. of ``mock://` URIs.
+
+    If a ``fs`` is passed, the ``uri`` is expected to be a path on this filesystem.
+    Otherwise, the fs and the uri are automatically detected.
     """
-    fs, path = get_fs_and_path(uri)
+    if fs:
+        path = uri
+    else:
+        fs, path = get_fs_and_path(uri)
     try:
         fs.create_dir(path)
     except Exception:

@@ -94,8 +94,8 @@ class TfCategorical(TfDistribution):
     @override(TfDistribution)
     def __init__(
         self,
-        probs: tf.Tensor = None,
-        logits: tf.Tensor = None,
+        probs: "tf.Tensor" = None,
+        logits: "tf.Tensor" = None,
         temperature: float = 1.0,
     ) -> None:
         # We assert this here because to_deterministic makes this assumption.
@@ -124,8 +124,8 @@ class TfCategorical(TfDistribution):
     @override(TfDistribution)
     def _get_tf_distribution(
         self,
-        probs: tf.Tensor = None,
-        logits: tf.Tensor = None,
+        probs: "tf.Tensor" = None,
+        logits: "tf.Tensor" = None,
         temperature: float = 1.0,
     ) -> "tfp.distributions.Distribution":
         if logits is not None:
@@ -189,8 +189,8 @@ class TfDiagGaussian(TfDistribution):
     @override(TfDistribution)
     def __init__(
         self,
-        loc: Union[float, tf.Tensor],
-        scale: Optional[Union[float, tf.Tensor]],
+        loc: Union[float, TensorType],
+        scale: Optional[Union[float, TensorType]] = None,
     ):
         self.loc = loc
         super().__init__(loc=loc, scale=scale)
@@ -253,7 +253,7 @@ class TfDeterministic(Distribution):
     """
 
     @override(Distribution)
-    def __init__(self, loc: tf.Tensor) -> None:
+    def __init__(self, loc: "tf.Tensor") -> None:
         super().__init__()
         self.loc = loc
 
@@ -454,7 +454,11 @@ class TfMultiDistribution(Distribution):
 
         def map_(val, dist):
             # Remove extra dimension if present.
-            if len(val.shape) > 1 and val.shape[-1] == 1:
+            if (
+                isinstance(dist, TfCategorical)
+                and len(val.shape) > 1
+                and val.shape[-1] == 1
+            ):
                 val = tf.squeeze(val, axis=-1)
 
             return dist.logp(val)
