@@ -50,6 +50,7 @@ class Metric:
         """Set default tags of metrics.
 
         Example:
+            >>> from ray.util.metrics import Counter
             >>> # Note that set_default_tags returns the instance itself.
             >>> counter = Counter("name")
             >>> counter2 = counter.set_default_tags({"a": "b"})
@@ -132,6 +133,7 @@ class Metric:
         """Return the information of this metric.
 
         Example:
+            >>> from ray.util.metrics import Counter
             >>> counter = Counter("name", description="desc")
                 print(counter.info)
                 \"""
