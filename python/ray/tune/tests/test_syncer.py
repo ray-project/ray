@@ -912,7 +912,7 @@ def test_final_experiment_checkpoint_sync(ray_start_2_cpus, tmpdir):
     # Check the contents of the upload_dir immediately after the experiment
     # This won't be up to date if we don't wait on the last sync
     download_from_uri("memory:///test_upload_dir/exp_name", tmpdir)
-    cloud_results = tune.Tuner.restore(str(tmpdir)).get_results()
+    cloud_results = tune.Tuner.restore(str(tmpdir), trainable=train_func).get_results()
     last_reported_iter = cloud_results[0].metrics.get("training_iteration", None)
     assert last_reported_iter == 8, (
         "Experiment did not wait to finish the final experiment sync before exiting. "
@@ -986,7 +986,7 @@ def test_e2e_sync_to_s3(ray_start_4_cpus, mock_s3_bucket_uri, tmp_path):
 
     shutil.rmtree(local_dir)  # Rely on sync-down from cloud
     tuner = tune.Tuner.restore(
-        str(URI(mock_s3_bucket_uri) / exp_name), resume_errored=True
+        str(URI(mock_s3_bucket_uri) / exp_name), trainable=train_fn, resume_errored=True
     )
     result_grid = tuner.fit()
 

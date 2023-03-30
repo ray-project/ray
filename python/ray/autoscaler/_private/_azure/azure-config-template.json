@@ -2,7 +2,7 @@
     "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
     "contentVersion": "1.0.0.0",
     "parameters": {
-        "uniqueId": {
+        "clusterId": {
             "type": "string",
             "metadata": {
                 "description": "Unique string appended to resource names to isolate resources from different ray clusters."
@@ -18,12 +18,12 @@
     "variables": {
         "contributor": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
         "location": "[resourceGroup().location]",
-        "msiName": "[concat('ray-msi-', parameters('uniqueId'))]",
-        "roleAssignmentName": "[concat('ray-ra-', parameters('uniqueId'))]",
-        "nsgName": "[concat('ray-nsg-', parameters('uniqueId'))]",
+        "msiName": "[concat('ray-', parameters('clusterId'), '-msi')]",
+        "roleAssignmentName": "[concat('ray-', parameters('clusterId'), '-ra')]",
+        "nsgName": "[concat('ray-', parameters('clusterId'), '-nsg')]",
         "nsg": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]",
-        "vnetName": "[concat('ray-vnet-', parameters('uniqueId'))]",
-        "subnetName": "[concat('ray-subnet-', parameters('uniqueId'))]"
+        "vnetName": "[concat('ray-', parameters('clusterId'), '-vnet')]",
+        "subnetName": "[concat('ray-', parameters('clusterId'), '-subnet')]"
     },
     "resources": [
        {

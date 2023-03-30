@@ -1,3 +1,5 @@
+import collections
+import random
 import pytest
 import numpy as np
 from typing import List, Iterable, Any
@@ -16,6 +18,7 @@ from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _BlockRefBundler,
 )
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -60,12 +63,22 @@ def test_input_data_buffer(ray_start_regular_shared):
 
 def test_all_to_all_operator():
     def dummy_all_transform(bundles: List[RefBundle], ctx):
+        assert len(ctx.sub_progress_bar_dict) == 2
+        assert list(ctx.sub_progress_bar_dict.keys()) == ["Test1", "Test2"]
         return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
 
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     op = AllToAllOperator(
-        dummy_all_transform, input_op=input_op, num_outputs=2, name="TestAll"
+        dummy_all_transform,
+        input_op=input_op,
+        num_outputs=2,
+        sub_progress_bar_names=["Test1", "Test2"],
+        name="TestAll",
     )
+
+    # Initialize progress bar.
+    num_bars = op.initialize_sub_progress_bars(0)
+    assert num_bars == 2, num_bars
 
     # Feed data.
     op.start(ExecutionOptions())
@@ -79,6 +92,7 @@ def test_all_to_all_operator():
     stats = op.get_stats()
     assert "FooStats" in stats
     assert op.completed()
+    op.close_sub_progress_bars()
 
 
 def test_num_outputs_total():
@@ -100,7 +114,9 @@ def test_num_outputs_total():
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     # Create with inputs.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        make_ref_bundles([[np.ones(1024) * i] for i in range(100)])
+    )
     compute_strategy = (
         ActorPoolStrategy(max_size=1) if use_actors else TaskPoolStrategy()
     )
@@ -145,7 +161,9 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
 
     # Check we return transformed bundles in order.
     assert not op.completed()
-    assert _take_outputs(op) == [[i * 2] for i in range(100)]
+    assert np.array_equal(
+        _take_outputs(op), [[np.ones(1024) * i * 2] for i in range(100)]
+    )
     assert op.completed()
 
     # Check dataset stats.
@@ -155,15 +173,17 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
 
     # Check memory stats.
     metrics = op.get_metrics()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
-    assert metrics["obj_store_mem_peak"] == pytest.approx(8800, 0.5), metrics
-    assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
+    assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
+    assert metrics["obj_store_mem_peak"] == pytest.approx(832200, 0.5), metrics
+    assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     # Create with inputs.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        make_ref_bundles([[np.ones(1024) * i] for i in range(100)])
+    )
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         _mul2_transform,
@@ -187,11 +207,11 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
             _get_blocks(ref, output)
 
     # Check equivalent to bulk execution in order.
-    assert output == [[i * 2] for i in range(100)]
+    assert np.array_equal(output, [[np.ones(1024) * i * 2] for i in range(100)])
     metrics = op.get_metrics()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
-    assert metrics["obj_store_mem_peak"] == pytest.approx(88, 0.5), metrics
-    assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
+    assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
+    assert metrics["obj_store_mem_peak"] == pytest.approx(8320, 0.5), metrics
+    assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
     if use_actors:
         assert "locality_hits" in metrics, metrics
         assert "locality_misses" in metrics, metrics
@@ -201,9 +221,110 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     assert not op.completed()
 
 
+@pytest.mark.parametrize("equal", [False, True])
+@pytest.mark.parametrize("chunk_size", [1, 10])
+def test_split_operator(ray_start_regular_shared, equal, chunk_size):
+    input_op = InputDataBuffer(make_ref_bundles([[i] * chunk_size for i in range(100)]))
+    op = OutputSplitter(input_op, 3, equal=equal)
+
+    # Feed data and implement streaming exec.
+    output_splits = collections.defaultdict(list)
+    op.start(ExecutionOptions())
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+        while op.has_next():
+            ref = op.get_next()
+            assert ref.owns_blocks, ref
+            for block, _ in ref.blocks:
+                output_splits[ref.output_split_idx].extend(ray.get(block))
+    op.inputs_done()
+    if equal:
+        for i in range(3):
+            assert len(output_splits[i]) == 33 * chunk_size, output_splits
+    else:
+        assert sum(len(output_splits[i]) for i in range(3)) == (100 * chunk_size)
+        for i in range(3):
+            assert len(output_splits[i]) in [
+                33 * chunk_size,
+                34 * chunk_size,
+            ], output_splits
+
+
+@pytest.mark.parametrize("equal", [False, True])
+@pytest.mark.parametrize("random_seed", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
+    random.seed(random_seed)
+    inputs = make_ref_bundles([[i] * random.randint(0, 10) for i in range(100)])
+    num_inputs = sum(x.num_rows() for x in inputs)
+    input_op = InputDataBuffer(inputs)
+    op = OutputSplitter(input_op, 3, equal=equal)
+
+    # Feed data and implement streaming exec.
+    output_splits = collections.defaultdict(list)
+    op.start(ExecutionOptions())
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+    op.inputs_done()
+    while op.has_next():
+        ref = op.get_next()
+        assert ref.owns_blocks, ref
+        for block, _ in ref.blocks:
+            output_splits[ref.output_split_idx].extend(ray.get(block))
+    if equal:
+        actual = [len(output_splits[i]) for i in range(3)]
+        expected = [num_inputs // 3] * 3
+        assert actual == expected
+    else:
+        assert sum(len(output_splits[i]) for i in range(3)) == num_inputs, output_splits
+
+
+def test_split_operator_locality_hints(ray_start_regular_shared):
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
+    op = OutputSplitter(input_op, 2, equal=False, locality_hints=["node1", "node2"])
+
+    def get_fake_loc(item):
+        if item in [0, 1, 4, 5, 8]:
+            return "node1"
+        else:
+            return "node2"
+
+    def get_bundle_loc(bundle):
+        return get_fake_loc(ray.get(bundle.blocks[0][0])[0])
+
+    op._get_location = get_bundle_loc
+
+    # Feed data and implement streaming exec.
+    output_splits = collections.defaultdict(list)
+    op.start(ExecutionOptions())
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+    op.inputs_done()
+    while op.has_next():
+        ref = op.get_next()
+        assert ref.owns_blocks, ref
+        for block, _ in ref.blocks:
+            output_splits[ref.output_split_idx].extend(ray.get(block))
+
+    total = 0
+    for i in range(2):
+        if i == 0:
+            node = "node1"
+        else:
+            node = "node2"
+        split = output_splits[i]
+        for item in split:
+            assert get_fake_loc(item) == node
+            total += 1
+
+    assert total == 10, total
+    assert "all objects local" in op.progress_str()
+
+
 def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     # Create with inputs.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        make_ref_bundles([[np.ones(100) * i] for i in range(100)])
+    )
     compute_strategy = ActorPoolStrategy()
     op = MapOperator.create(
         _mul2_transform,
@@ -230,11 +351,11 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
             _get_blocks(ref, output)
 
     # Check equivalent to bulk execution in order.
-    assert output == [[i * 2] for i in range(100)]
+    assert np.array_equal(output, [[np.ones(100) * i * 2] for i in range(100)])
     metrics = op.get_metrics()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
-    assert metrics["obj_store_mem_peak"] == pytest.approx(88, 0.5), metrics
-    assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
+    assert metrics["obj_store_mem_alloc"] == pytest.approx(92900, 0.5), metrics
+    assert metrics["obj_store_mem_peak"] == pytest.approx(929, 0.5), metrics
+    assert metrics["obj_store_mem_freed"] == pytest.approx(92900, 0.5), metrics
     # Check e2e locality manager working.
     assert metrics["locality_hits"] == 100, metrics
     assert metrics["locality_misses"] == 0, metrics

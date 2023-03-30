@@ -13,6 +13,7 @@ from ray.train.constants import DISABLE_LAZY_CHECKPOINTING_ENV
 from ray.train.torch import TorchPredictor, TorchTrainer
 from ray.air.config import ScalingConfig
 from ray.train.torch import TorchConfig
+from ray.train.trainer import TrainingFailedError
 import ray.train as train
 from unittest.mock import patch
 from ray.cluster_utils import Cluster
@@ -198,7 +199,7 @@ def test_single_worker_failure(ray_start_4_cpus):
 
     def single_worker_fail():
         if session.get_world_rank() == 0:
-            raise ValueError
+            raise RuntimeError
         else:
             time.sleep(1000000)
 
@@ -207,8 +208,9 @@ def test_single_worker_failure(ray_start_4_cpus):
         train_loop_per_worker=single_worker_fail,
         scaling_config=scaling_config,
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(TrainingFailedError) as exc_info:
         trainer.fit()
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 
 # See comment in backend.py::_warn_about_bad_checkpoint_type
@@ -247,10 +249,8 @@ def test_single_worker_failure(ray_start_4_cpus):
 #     assert "You have reported a checkpoint" in output
 
 
-@pytest.mark.parametrize(
-    "num_gpus_per_worker,expected_devices", [(0.5, [0]), (1, [0]), (2, [0, 1])]
-)
-def test_tune_torch_get_device_gpu(num_gpus_per_worker, expected_devices):
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
+def test_tune_torch_get_device_gpu(num_gpus_per_worker):
     """Tests if GPU ids are set correctly when running train concurrently in nested actors
     (for example when used with Tune).
     """
@@ -278,7 +278,11 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker, expected_devices):
             # the other is taken by the other sample) so device index should be 0.
             # For the multiple GPU case, each worker has 2 visible devices so device
             # index should be either 0 or 1. It doesn't matter which.
-            assert train.torch.get_device().index in expected_devices
+            devices = train.torch.get_device()
+            if isinstance(devices, list):
+                assert sorted([device.index for device in devices]) == [0, 1]
+            else:
+                assert train.torch.get_device().index == 0
 
         @ray.remote(num_cpus=0)
         class TrialActor:
@@ -397,6 +401,20 @@ def test_torch_env_vars(ray_start_4_cpus):
         scaling_config=scaling_config,
     )
     trainer.fit()
+
+
+def test_nonserializable_train_function(ray_start_4_cpus):
+    import threading
+
+    lock = threading.Lock()
+
+    def train_func():
+        print(lock)
+
+    trainer = TorchTrainer(train_func)
+    # Check that the `inspect_serializability` trace was printed
+    with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
+        trainer.fit()
 
 
 if __name__ == "__main__":

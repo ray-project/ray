@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Callable
 import pytest
 import sys
 import time
@@ -34,14 +35,6 @@ def ray_start_4_cpus_extra():
     address_info = ray.init(num_cpus=4, resources={"extra": 4})
     yield address_info
     ray.shutdown()
-
-
-@pytest.fixture
-def propagate_logs():
-    logger = logging.getLogger("ray")
-    logger.propagate = True
-    yield
-    logger.propagate = False
 
 
 class FrequentPausesScheduler(FIFOScheduler):
@@ -248,15 +241,15 @@ def test_trial_reuse_log_to_file(ray_start_1_cpu):
 
     # Check trial 1
     assert trial1.last_result["num_resets"] == 2
-    assert os.path.exists(os.path.join(trial1.logdir, "stdout"))
-    assert os.path.exists(os.path.join(trial1.logdir, "stderr"))
+    assert os.path.exists(os.path.join(trial1.local_path, "stdout"))
+    assert os.path.exists(os.path.join(trial1.local_path, "stderr"))
 
     # We expect that only "First" output is found in the first trial output
-    with open(os.path.join(trial1.logdir, "stdout"), "rt") as fp:
+    with open(os.path.join(trial1.local_path, "stdout"), "rt") as fp:
         content = fp.read()
         assert "PRINT_STDOUT: First" in content
         assert "PRINT_STDOUT: Second" not in content
-    with open(os.path.join(trial1.logdir, "stderr"), "rt") as fp:
+    with open(os.path.join(trial1.local_path, "stderr"), "rt") as fp:
         content = fp.read()
         assert "PRINT_STDERR: First" in content
         assert "LOG_STDERR: First" in content
@@ -265,15 +258,15 @@ def test_trial_reuse_log_to_file(ray_start_1_cpu):
 
     # Check trial 2
     assert trial2.last_result["num_resets"] == 3
-    assert os.path.exists(os.path.join(trial2.logdir, "stdout"))
-    assert os.path.exists(os.path.join(trial2.logdir, "stderr"))
+    assert os.path.exists(os.path.join(trial2.local_path, "stdout"))
+    assert os.path.exists(os.path.join(trial2.local_path, "stderr"))
 
     # We expect that only "Second" output is found in the first trial output
-    with open(os.path.join(trial2.logdir, "stdout"), "rt") as fp:
+    with open(os.path.join(trial2.local_path, "stdout"), "rt") as fp:
         content = fp.read()
         assert "PRINT_STDOUT: Second" in content
         assert "PRINT_STDOUT: First" not in content
-    with open(os.path.join(trial2.logdir, "stderr"), "rt") as fp:
+    with open(os.path.join(trial2.local_path, "stderr"), "rt") as fp:
         content = fp.read()
         assert "PRINT_STDERR: Second" in content
         assert "LOG_STDERR: Second" in content
@@ -402,7 +395,12 @@ def test_multi_trial_reuse_heterogeneous(ray_start_4_cpus_extra):
 
 
 def test_detect_reuse_mixins():
-    from ray.tune.integration.mlflow import mlflow_mixin
+    class DummyMixin:
+        pass
+
+    def dummy_mixin(func: Callable):
+        func.__mixins__ = (DummyMixin,)
+        return func
 
     assert not _check_mixin("PPO")
 
@@ -410,13 +408,13 @@ def test_detect_reuse_mixins():
         pass
 
     assert not _check_mixin(train)
-    assert _check_mixin(mlflow_mixin(train))
+    assert _check_mixin(dummy_mixin(train))
 
     class MyTrainable(Trainable):
         pass
 
     assert not _check_mixin(MyTrainable)
-    assert _check_mixin(mlflow_mixin(MyTrainable))
+    assert _check_mixin(dummy_mixin(MyTrainable))
 
 
 def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
@@ -442,16 +440,22 @@ def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
             # Make sure that `remote_checkpoint_dir` gets updated correctly
             trial_id = self.config.get("id")
             remote_trial_dir = get_remote_trial_dir(trial_id)
+
             if self.remote_checkpoint_dir != "file://" + remote_trial_dir:
                 # Delay raising the exception, since raising here would cause
                 # an unhandled exception that doesn't fail the test.
                 self._should_raise = True
 
         def step(self):
+            trial_id = self.config.get("id")
+            remote_trial_dir = get_remote_trial_dir(trial_id)
+
             if self._should_raise:
                 raise RuntimeError(
-                    f"Failing! {self.remote_checkpoint_dir} not updated properly "
-                    f"for trial {self.config.get('id')}"
+                    f"Failing! Remote path not updated properly "
+                    f"for trial {self.config.get('id')}. "
+                    f"\nExpected: file://{remote_trial_dir}"
+                    f"\nGot: {self.remote_checkpoint_dir}"
                 )
             return super().step()
 

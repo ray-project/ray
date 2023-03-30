@@ -118,7 +118,7 @@ class TestTorchVisionPreprocessor:
         preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
 
         with pytest.raises(ValueError):
-            preprocessor.transform(dataset)
+            preprocessor.transform(dataset).cache()
 
 
 if __name__ == "__main__":

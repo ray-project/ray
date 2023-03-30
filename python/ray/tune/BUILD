@@ -1,5 +1,10 @@
 load("//bazel:python.bzl", "py_test_module_list")
 
+py_library(
+    name = "conftest",
+    srcs = ["tests/conftest.py"]
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all tests starting with `test_`.
@@ -20,7 +25,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_actor_reuse.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":tune_lib"],
+    deps = [":tune_lib", ":conftest"],
 )
 
 py_test(
@@ -292,6 +297,14 @@ py_test(
 )
 
 py_test(
+    name = "test_util_object_cache",
+    size = "small",
+    srcs = ["tests/test_util_object_cache.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
     name = "test_syncer",
     size = "medium",
     srcs = ["tests/test_syncer.py"],
@@ -459,6 +472,7 @@ py_test(
     tags = ["team:ml", "exclusive"],
 )
 
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all remaining tests that do not start with `test_`.
@@ -487,6 +501,21 @@ py_test(
     srcs = ["tests/tutorial.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "no_main"],
+)
+
+
+# --------------------------------------------------------------------
+# Tests from the python/ray/tune/tests/execution directory.
+# Covers all remaining tests that do not start with `test_`.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_actor_caching",
+    size = "small",
+    srcs = ["tests/execution/test_actor_caching.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
 )
 
 # --------------------------------------------------------------------
@@ -534,7 +563,7 @@ py_test(
     size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"]
+    tags = ["team:ml", "exclusive", "example", "exclude_new_execution"]
 )
 
 py_test(
@@ -966,6 +995,7 @@ py_test(
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
+
 
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.

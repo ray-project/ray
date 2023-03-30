@@ -327,7 +327,7 @@ if __name__ == "__main__":
         ray.get(tasks)
     else:
         print("Create Ray executor")
-        settings = RayExecutor.create_settings(timeout_s=30)
+        settings = RayExecutor.create_settings(timeout_s=120)
         executor = RayExecutor(settings, num_workers=args.num_workers, use_gpu=True)
         executor.start()
         executor.run(train_main, args=[args, splits])

@@ -477,23 +477,6 @@ class DQN(SimpleQ):
         return train_results
 
 
-# Deprecated: Use ray.rllib.algorithms.dqn.DQNConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(DQNConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.dqn.dqn.DQNConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
-
-
 @Deprecated(new="Sub-class directly from `DQN` and override its methods", error=True)
 class GenericOffPolicyTrainer(SimpleQ):
     pass

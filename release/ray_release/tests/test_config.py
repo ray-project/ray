@@ -20,10 +20,6 @@ VALID_TEST = Test(
         "name": "validation_test",
         "group": "validation_group",
         "working_dir": "validation_dir",
-        "legacy": {
-            "test_name": "validation_test",
-            "test_suite": "validation_suite",
-        },
         "python": "3.7",
         "frequency": "nightly",
         "team": "release",

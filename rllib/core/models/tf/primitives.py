@@ -24,7 +24,7 @@ def _raise_not_decorated_exception(input_or_output):
     )
 
 
-class TfModel(Model, tf.Module, abc.ABC):
+class TfModel(Model, tf.keras.Model, abc.ABC):
     """Base class for RLlib's TensorFlow models.
 
     This class defines the interface for RLlib's TensorFlow models and checks
@@ -33,7 +33,7 @@ class TfModel(Model, tf.Module, abc.ABC):
     """
 
     def __init__(self, config: ModelConfig):
-        tf.Module.__init__(self)
+        tf.keras.Model.__init__(self)
         Model.__init__(self, config)
 
         # automatically apply spec checking
@@ -42,8 +42,8 @@ class TfModel(Model, tf.Module, abc.ABC):
         if not is_output_decorated(self.__call__):
             _raise_not_decorated_exception("output")
 
-    @check_input_specs("input_spec", cache=True)
-    @check_output_specs("output_spec", cache=True)
+    @check_input_specs("input_spec")
+    @check_output_specs("output_spec")
     def __call__(self, input_dict: NestedDict, **kwargs) -> NestedDict:
         """Returns the output of this model for the given input.
 
@@ -59,7 +59,7 @@ class TfModel(Model, tf.Module, abc.ABC):
         return self._forward(input_dict, **kwargs)
 
 
-class TfMLP(tf.Module):
+class TfMLP(tf.keras.Model):
     """A multi-layer perceptron.
 
     Attributes:
@@ -94,7 +94,7 @@ class TfMLP(tf.Module):
                 )
             )
         if output_activation != "linear":
-            output_activation = get_activation_fn(output_activation, framework="tf")
+            output_activation = get_activation_fn(output_activation, framework="tf2")
             final_layer = tf.keras.layers.Dense(
                 output_dim,
                 activation=output_activation,

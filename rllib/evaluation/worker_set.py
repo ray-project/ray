@@ -19,6 +19,7 @@ from typing import (
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.rllib.core.learner import LearnerGroup
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
@@ -146,6 +147,7 @@ class WorkerSet:
             "num_cpus": self._remote_config.num_cpus_per_worker,
             "num_gpus": self._remote_config.num_gpus_per_worker,
             "resources": self._remote_config.custom_resources_per_worker,
+            "max_num_worker_restarts": config.max_num_worker_restarts,
         }
 
         # See if we should use a custom RolloutWorker class for testing purpose.
@@ -468,6 +470,7 @@ class WorkerSet:
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
+        module_spec: Optional[SingleAgentRLModuleSpec] = None,
         # Deprecated.
         workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> None:
@@ -499,6 +502,9 @@ class WorkerSet:
                 If None, will keep the existing setup in place. Policies,
                 whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
+            module_spec: In the new RLModule API we need to pass in the module_spec for
+                the new module that is supposed to be added. Knowing the policy spec is
+                not sufficient.
             workers: A list of RolloutWorker/ActorHandles (remote
                 RolloutWorkers) to add this policy to. If defined, will only
                 add the given policy to these workers.
@@ -516,12 +522,12 @@ class WorkerSet:
 
         if workers is not DEPRECATED_VALUE:
             deprecation_warning(
-                old="workers",
+                old="WorkerSet.add_policy(.., workers=..)",
                 help=(
-                    "The `workers` argument to `WorkerSet.add_policy()` is deprecated "
-                    "and a no-op now. Please do not use it anymore."
+                    "The `workers` argument to `WorkerSet.add_policy()` is deprecated! "
+                    "Please do not use it anymore."
                 ),
-                error=False,
+                error=True,
             )
 
         if (policy_cls is None) == (policy is None):
@@ -544,6 +550,7 @@ class WorkerSet:
                 policies_to_train=list(policies_to_train)
                 if policies_to_train
                 else None,
+                module_spec=module_spec,
             )
         # Policy instance provided: Create clones of this very policy on the different
         # workers (copy all its properties here for the calls to add_policy on the
@@ -560,6 +567,7 @@ class WorkerSet:
                 policies_to_train=list(policies_to_train)
                 if policies_to_train
                 else None,
+                module_spec=module_spec,
             )
 
         def _create_new_policy_fn(worker: RolloutWorker):
@@ -568,13 +576,16 @@ class WorkerSet:
             worker.add_policy(**new_policy_instance_kwargs)
 
         if self.local_worker() is not None:
+            # Add policy directly by (already instantiated) object.
             if policy is not None:
                 self.local_worker().add_policy(
                     policy_id=policy_id,
                     policy=policy,
                     policy_mapping_fn=policy_mapping_fn,
                     policies_to_train=policies_to_train,
+                    module_spec=module_spec,
                 )
+            # Add policy by constructor kwargs.
             else:
                 self.local_worker().add_policy(**new_policy_instance_kwargs)
 

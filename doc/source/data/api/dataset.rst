@@ -50,6 +50,7 @@ Splitting and Merging Datasets
    Dataset.split
    Dataset.split_at_indices
    Dataset.split_proportionately
+   Dataset.streaming_split
    Dataset.train_test_split
    Dataset.union
    Dataset.zip
@@ -138,9 +139,8 @@ Execution
 .. autosummary::
    :toctree: doc/
 
-   Dataset.fully_executed
-   Dataset.is_fully_executed
-   Dataset.lazy
+   Dataset.cache
+   Dataset.is_cached
 
 Serialization
 -------------

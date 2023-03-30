@@ -52,6 +52,20 @@ def test_track_future_success(ray_start_4_cpus):
     assert not event_manager._tracked_futures
 
 
+def test_track_future_success_no_callback(ray_start_4_cpus):
+    """Schedule a future that return successfully.
+
+    Check that passing no callback still succeeds.
+    """
+    event_manager = RayEventManager()
+
+    event_manager.track_future(succeeding.remote("a"))
+
+    event_manager.wait()
+
+    assert not event_manager._tracked_futures
+
+
 def test_track_future_error(ray_start_4_cpus):
     """Schedule a future that fails.
 
@@ -71,6 +85,21 @@ def test_track_future_error(ray_start_4_cpus):
 
     event_manager.wait()
     assert isinstance(seen.pop(), CustomError)
+
+    assert not event_manager._tracked_futures
+
+
+def test_track_future_error_no_callback(ray_start_4_cpus):
+    """Schedule a future that fails.
+
+    Check that passing no callback raises the original error.
+    """
+    event_manager = RayEventManager()
+
+    event_manager.track_future(failing.remote(RuntimeError))
+
+    with pytest.raises(RuntimeError):
+        event_manager.wait()
 
     assert not event_manager._tracked_futures
 

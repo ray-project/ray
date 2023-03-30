@@ -221,6 +221,7 @@ This training function can be executed with:
 :language: python
 :start-after: __torch_single_run_begin__
 :end-before: __torch_single_run_end__
+:dedent: 0
 ```
 
 Now let's convert this to a distributed multi-worker training function!
@@ -237,13 +238,14 @@ and place it on the right device, and add ``DistributedSampler`` to your DataLoa
 :end-before: __torch_distributed_end__
 ```
 
-Then, instantiate a ``Trainer`` that uses a ``"torch"`` backend
+Then, instantiate a ``TorchTrainer``
 with 4 workers, and use it to run the new training function!
 
 ```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
 :start-after: __torch_trainer_begin__
 :end-before: __torch_trainer_end__
+:dedent: 0
 ```
 ````
 
@@ -274,6 +276,7 @@ This training function can be executed with:
 :language: python
 :start-after: __tf_single_run_begin__
 :end-before: __tf_single_run_end__
+:dedent: 0
 ```
 
 Now let's convert this to a distributed multi-worker training function!
@@ -290,13 +293,14 @@ All you need to do is:
 :end-before: __tf_distributed_end__
 ```
 
-Then, instantiate a ``Trainer`` that uses a ``"tensorflow"`` backend
+Then, instantiate a ``TensorflowTrainer``
 with 4 workers, and use it to run the new training function!
 
 ```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
 :start-after: __tf_trainer_begin__
 :end-before: __tf_trainer_end__
+:dedent: 0
 ```
 ````
 
