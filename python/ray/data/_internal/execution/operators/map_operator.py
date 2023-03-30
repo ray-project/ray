@@ -129,6 +129,7 @@ class MapOperator(PhysicalOperator, ABC):
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
 
     def start(self, options: "ExecutionOptions"):
+        super().start(options)
         # Create output queue with desired ordering semantics.
         if options.preserve_order:
             self._output_queue = _OrderedOutputQueue()
@@ -161,7 +162,6 @@ class MapOperator(PhysicalOperator, ABC):
         # Put the function def in the object store to avoid repeated serialization
         # in case it's large (i.e., closure captures large objects).
         self._transform_fn_ref = ray.put(self._transform_fn)
-        super().start(options)
 
     def add_input(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
