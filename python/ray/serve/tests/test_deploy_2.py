@@ -342,5 +342,40 @@ def test_http_proxy_request_cancellation(serve_instance):
     assert requests.get(url).text == "2"
 
 
+def test_nonserializable_deployment(serve_instance):
+    import threading
+
+    lock = threading.Lock()
+
+    @serve.deployment
+    class D:
+        def hello(self, _):
+            return lock
+
+    # Check that the `inspect_serializability` trace was printed
+    with pytest.raises(
+        TypeError,
+        match=r"Could not serialize the deployment[\s\S]*was found to be non-serializable.*",  # noqa
+    ):
+        serve.run(D.bind())
+
+    @serve.deployment
+    class E:
+        def __init__(self, arg):
+            self.arg = arg
+
+    with pytest.raises(
+        TypeError,
+        match=r"Could not serialize the deployment init args:[\s\S]*was found to be non-serializable.*",  # noqa
+    ):
+        serve.run(E.bind(lock))
+
+    with pytest.raises(
+        TypeError,
+        match=r"Could not serialize the deployment init kwargs:[\s\S]*was found to be non-serializable.*",  # noqa
+    ):
+        serve.run(E.bind(arg=lock))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
