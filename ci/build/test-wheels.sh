@@ -127,15 +127,6 @@ elif [[ "$platform" == "macosx" ]]; then
       conda install -y python="${PY_MM}"
       PYTHON_EXE="/opt/homebrew/opt/miniconda/bin/python"
       PIP_CMD="/opt/homebrew/opt/miniconda/bin/pip"
-
-      # Openssl + env var needed for grpcio build
-      # See https://github.com/grpc/grpc/issues/25082
-      brew install openssl || true
-
-      export GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
-      export GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1
-      export CFLAGS="-I/opt/homebrew/opt/openssl/include"
-      export LDFLAGS="-L/opt/homebrew/opt/openssl/lib"
     else
       PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
       PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
@@ -156,7 +147,14 @@ elif [[ "$platform" == "macosx" ]]; then
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
     # Install the dependencies to run the tests.
-    "$PIP_CMD" install -q aiohttp aiosignal frozenlist grpcio 'pytest==7.0.1' requests proxy.py
+    "$PIP_CMD" install -q aiohttp aiosignal frozenlist 'pytest==7.0.1' requests proxy.py
+
+    if [ "$(uname -m)" = "arm64" ]; then
+      "$PIP_CMD" uninstall -y grpcio || true
+      conda install -y grpcio || true
+    else
+      "$PIP_CMD" install -q grpcio
+    fi
 
     # Run a simple test script to make sure that the wheel works.
     # We set the python path to prefer the directory of the wheel content: https://github.com/ray-project/ray/pull/30090
