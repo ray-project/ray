@@ -101,21 +101,20 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
             space.original_space = gym.spaces.Discrete(2)
             space = space.original_space
 
-        class NestedObsSpaceDummyEnv(gym.Env):
-            def __init__(self, _):
-                self.observation_space = obs_space
-                self.action_space = gym.spaces.Discrete(2)
-
-            def reset(self, *, seed=None, options=None):
-                return obs_space.sample()
-
-            def step(self, action):
-                return obs_space.sample(), 0, False, {}
-
         # TODO(Artur): Construct a PPO policy here without the algorithm once we are
         #  able to do that with RLModules.
         policy = (
-            PPOConfig().environment(env=NestedObsSpaceDummyEnv).build().get_policy()
+            PPOConfig()
+            .environment(
+                observation_space=obs_space,
+                action_space=gym.spaces.Discrete(2)
+            )
+            # Note (Artur): We have to choose num_rollout_workers=0 here, because
+            # otherwise RolloutWorker will be health-checked without an env which
+            # raises an error. You could also disable the health-check here.
+            .rollouts(num_rollout_workers=0)
+            .build()
+            .get_policy()
         )
 
         ckpt_dir = "/tmp/test_ckpt"
