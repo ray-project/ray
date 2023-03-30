@@ -85,7 +85,7 @@ Enable RLModules by setting the ``_enable_rl_module_api`` flag to ``True`` in th
 
 Constructing RL Modules
 -----------------------
-RLModule API provides a unified way to define custom reinforcement learning models in RLlib. This API enables users to design and implement their own models to suit their specific needs.
+RLModule API provides a unified way to define custom reinforcement learning models in RLlib. This API enables you to design and implement your own models to suit specific needs.
 
 To maintain consistency and usability, RLlib offers a standardized approach for defining module objects for both single-agent and multi-agent reinforcement learning environments. This is achieved through the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec` and :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` classes. The built-in RLModules in RLlib follow this consistent design pattern, making it easier for you to understand and utilize these modules.
 
