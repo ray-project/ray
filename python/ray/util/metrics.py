@@ -136,8 +136,8 @@ class Metric:
             >>> from ray.util.metrics import Counter
             >>> counter = Counter("name", description="desc")
             >>> print(counter.info)
-                {'name': 'name', 'description': 'desc', 'tag_keys': (), 'default_tags': {}}
-        """  # noqa
+            {'name': 'name', 'description': 'desc', 'tag_keys': (), 'default_tags': {}}
+        """
         return {
             "name": self._name,
             "description": self._description,
