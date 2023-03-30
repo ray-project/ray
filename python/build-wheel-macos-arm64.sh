@@ -52,7 +52,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
 
 
   # Install python using conda. This should be easier to produce consistent results in buildkite and locally.
-  source ~/.bash_profile
+  [ -f "~/.bash_profile" ] && source ~/.bash_profile
   conda create -y -n "$CONDA_ENV_NAME"
   conda activate "$CONDA_ENV_NAME"
   conda remove -y python || true
