@@ -82,28 +82,32 @@ install_miniconda() {
 
   if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    case "${OSTYPE}" in
-      linux*) miniconda_dir="/opt/miniconda";;
-      darwin*) miniconda_dir="/usr/local/opt/miniconda";;
-      msys) miniconda_dir="${ALLUSERSPROFILE}\Miniconda3";;  # Avoid spaces; prefer the default path
-    esac
+    local miniconda_version="Miniconda3-py37_4.9.2"
+    local miniconda_platform=""
+    local exe_suffix=".sh"
 
-    local miniconda_version="Miniconda3-py37_4.9.2" miniconda_platform="" exe_suffix=".sh"
     case "${OSTYPE}" in
-      linux*) miniconda_platform=Linux;;
-      darwin*) miniconda_platform=MacOSX;;
-      msys*) miniconda_platform=Windows; exe_suffix=".exe";;
+      linux*)
+        miniconda_dir="/opt/miniconda"
+        miniconda_platform=Linux
+        ;;
+      darwin*)
+        if [ "$(uname -m)" = "arm64" ]; then
+          HOSTTYPE="arm64"
+          miniconda_version="Miniconda3-py38_23.1.0-1"
+          miniconda_dir="/opt/homebrew/opt/miniconda"
+        else
+          HOSTTYPE="x86_64"
+          miniconda_dir="/usr/local/opt/miniconda"
+        fi
+        miniconda_platform=MacOSX
+        ;;
+      msys*)
+        miniconda_dir="${ALLUSERSPROFILE}\Miniconda3" # Avoid spaces; prefer the default path
+        miniconda_platform=Windows
+        exe_suffix=".exe"
+        ;;
     esac
-
-    if [[ "${OSTYPE}" = darwin* ]]; then
-      if [ "$(uname -m)" = "arm64" ]; then
-        HOSTTYPE="arm64"
-        miniconda_version="Miniconda3-py38_23.1.0-1"
-        miniconda_dir="/opt/homebrew/opt/miniconda"
-      else
-        HOSTTYPE="x86_64"
-      fi
-    fi
 
     local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
     local miniconda_target="${HOME}/${miniconda_url##*/}"
