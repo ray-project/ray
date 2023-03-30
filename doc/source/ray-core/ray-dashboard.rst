@@ -277,7 +277,7 @@ You can expand the table to see a list of each task, actor, and placement group.
 .. _dash-serve-view:
 
 Serve View
----------
+----------
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/serve.png
     :align: center
