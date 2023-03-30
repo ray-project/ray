@@ -10,7 +10,6 @@ from typing import (
     TypeVar,
     Union,
 )
-import warnings
 
 
 import numpy as np
@@ -1325,11 +1324,10 @@ def read_binary_files(
         Dataset holding records read from the specified paths.
     """
     if not output_arrow_format:
-        warnings.warn(
+        logger.warning(
             "read_binary_files() returns Dataset in Python list format as of Ray "
             "v2.4. Use read_binary_files(output_arrow_format=True) to return Dataset "
             "in Arrow format.",
-            DeprecationWarning,
         )
 
     return read_datasource(
