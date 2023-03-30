@@ -12,7 +12,7 @@ except ImportError:
     smart_open = None
 
 from ray.air._internal.json import SafeFallbackEncoder
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override, PublicAPI
@@ -117,28 +117,6 @@ def _to_jsonable(v, compress: bool) -> Any:
     return v
 
 
-def _convert_keys_to_strings_json_dict(d: Dict[Any, Any]) -> Dict[Any, Any]:
-    """Convert all keys in a JSON-serializable dict to strings.
-
-    Args:
-        d: JSON-serializable dict.
-
-    Returns:
-        JSON-serializable dict with all keys converted to strings.
-    """
-    if isinstance(d, dict):
-        keys = list(d.keys())
-        for key in keys:
-            if not isinstance(key, str):
-                d[str(key)] = d.pop(key)
-            value = d[str(key)]
-            _convert_keys_to_strings_json_dict(value)
-    elif isinstance(d, list):
-        for item in d:
-            _convert_keys_to_strings_json_dict(item)
-    return d
-
-
 def _to_json_dict(batch: SampleBatchType, compress_columns: List[str]) -> Dict:
     out = {}
     if isinstance(batch, MultiAgentBatch):
@@ -151,12 +129,14 @@ def _to_json_dict(batch: SampleBatchType, compress_columns: List[str]) -> Dict:
                 policy_batches[policy_id][k] = _to_jsonable(
                     v, compress=k in compress_columns
                 )
+            # INFOS aren't compatible with Arrow since they are dicts with non-string
+            # keys.
+            del policy_batches[policy_id][SampleBatch.INFOS]
         out["policy_batches"] = policy_batches
     else:
         out["type"] = "SampleBatch"
         for k, v in batch.items():
             out[k] = _to_jsonable(v, compress=k in compress_columns)
-    out = _convert_keys_to_strings_json_dict(out)
     return out
 
 
