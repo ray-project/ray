@@ -284,6 +284,14 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gce_gpu_1_g4_8xl.yaml
+
 
 - name: air_benchmark_torch_batch_prediction_gpu_4x4_100gb
   group: AIR tests
@@ -306,6 +314,15 @@
         num_nodes: 4
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gce_gpu_4_g4_12xl.yaml
+
 
 
 - name: air_benchmark_torch_mnist_cpu_4x4
@@ -492,6 +509,14 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gce_gpu_1.yaml
+
 
 - name: air_benchmark_pytorch_training_e2e_gpu_4x4_100gb
   group: AIR tests
@@ -513,8 +538,15 @@
     wait_for_nodes:
       num_nodes: 4
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gce_gpu_16.yaml
 
 # Test tiny, medium, and huge input files.
 - name: ray-data-bulk-ingest-file-size-benchmark
@@ -1474,6 +1506,14 @@
 
   alert: tune_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_1x16.yaml
+
 - name: tune_scalability_durable_trainable
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
@@ -1518,6 +1558,14 @@
 
   alert: tune_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_1x32_hd.yaml
+
 - name: tune_scalability_network_overhead
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
@@ -1536,19 +1584,26 @@
     wait_for_nodes:
       num_nodes: 100
 
-  smoke_test:
-    frequency: nightly
-
-    cluster:
-      cluster_compute: tpl_20x2.yaml
-
-    run:
-      timeout: 500
-      prepare_timeout: 600
-      wait_for_nodes:
-        num_nodes: 20
-
   alert: tune_tests
+
+  variations:
+    - __suffix__: aws
+    - name: smoke-test
+      frequency: nightly
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_20x2.yaml
+      run:
+        timeout: 500
+        prepare_timeout: 600
+        script: python workloads/test_network_overhead.py
+        wait_for_nodes:
+          num_nodes: 20
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_100x2.yaml
 
 - name: tune_scalability_result_throughput_cluster
   group: Tune scalability tests
@@ -1570,6 +1625,14 @@
 
   alert: tune_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_16x64.yaml
+
 - name: tune_scalability_result_throughput_single_node
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
@@ -1586,6 +1649,18 @@
     script: python workloads/test_result_throughput_single_node.py
 
   alert: tune_tests
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_1x96.yaml
+      run:
+        timeout: 600
+        script: python workloads/test_result_throughput_single_node.py
+        type: anyscale_job
 
 - name: tune_scalability_xgboost_sweep
   group: Tune scalability tests
@@ -1607,6 +1682,14 @@
 
 
   alert: tune_tests
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config_data.yaml
+        cluster_compute: tpl_gce_16x64.yaml
 
 
 ############################
@@ -1682,6 +1765,14 @@
 
   alert: long_running_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
+
 - name: long_running_apex
   group: Long running tests
   working_dir: long_running_tests
@@ -1708,6 +1799,14 @@
 
   alert: long_running_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: ../rllib_tests/app_config.yaml
+        cluster_compute: tpl_cpu_3_gce.yaml
+
 - name: long_running_impala
   group: Long running tests
   working_dir: long_running_tests
@@ -1730,6 +1829,14 @@
       timeout: 3600
 
   alert: long_running_tests
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: ../rllib_tests/app_config.yaml
+        cluster_compute: tpl_cpu_1_large_gce.yaml
 
 - name: long_running_many_actor_tasks
   group: Long running tests
@@ -1754,6 +1861,14 @@
 
   alert: long_running_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
+
 - name: long_running_many_drivers
   group: Long running tests
   working_dir: long_running_tests
@@ -1776,6 +1891,14 @@
       timeout: 3600
 
   alert: long_running_tests
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_ppo
   group: Long running tests
@@ -1805,6 +1928,14 @@
 
   alert: long_running_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: ../rllib_tests/app_config.yaml
+        cluster_compute: many_ppo_gce.yaml
+
 - name: long_running_many_tasks
   group: Long running tests
   working_dir: long_running_tests
@@ -1827,6 +1958,14 @@
       timeout: 3600
 
   alert: long_running_tests
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_tasks_serialized_ids
   group: Long running tests
@@ -1851,6 +1990,14 @@
 
   alert: long_running_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
+
 - name: long_running_node_failures
   group: Long running tests
   working_dir: long_running_tests
@@ -1873,6 +2020,14 @@
       timeout: 3600
 
   alert: long_running_tests
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_pbt
   group: Long running tests
@@ -1897,6 +2052,14 @@
 
   alert: long_running_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: ../rllib_tests/app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
+
 - name: long_running_serve
   group: Long running tests
   working_dir: long_running_tests
@@ -1919,6 +2082,14 @@
       timeout: 3600
 
   alert: long_running_tests
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve_failure
   group: Long running tests
@@ -1948,6 +2119,19 @@
 
   alert: long_running_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_c5_gce.yaml
+      run:
+        timeout: 86400
+        script: python workloads/serve_failure.py
+        long_running: true
+        type: anyscale_job
+
 - name: long_running_many_jobs
   group: Long running tests
   working_dir: long_running_tests
@@ -1973,6 +2157,14 @@
 
   alert: long_running_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_gce.yaml
+
 - name: long_running_distributed_pytorch_pbt_failure
   group: Long running tests
   working_dir: long_running_distributed_tests
@@ -1994,6 +2186,14 @@
       timeout: 3600
 
   alert: long_running_tests
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce.yaml
 
 ########################
 # Jobs tests
@@ -2019,6 +2219,14 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_4_xlarge.yaml
+
 - name: jobs_basic_remote_working_dir
   group: Jobs tests
   working_dir: jobs_tests
@@ -2039,6 +2247,14 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_4_xlarge.yaml
+
 - name: jobs_remote_multi_node
   group: Jobs tests
   team: serve
@@ -2052,6 +2268,14 @@
     script: python workloads/jobs_remote_multi_node.py
     wait_for_nodes:
       num_nodes: 4
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_check_cuda_available
   group: Jobs tests
@@ -2067,6 +2291,14 @@
     wait_for_nodes:
       num_nodes: 2
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_gpu_node.yaml
+
 - name: jobs_specify_num_gpus
   group: Jobs tests
   team: serve
@@ -2081,6 +2313,13 @@
     wait_for_nodes:
       num_nodes: 2
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce_gpu_worker.yaml
 
 ########################
 # Runtime env tests
@@ -2105,6 +2344,14 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: rte_gce_small.yaml
+
 - name: runtime_env_wheel_urls
   group: Runtime env tests
   working_dir: runtime_env_tests
@@ -2124,6 +2371,14 @@
 
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: rte_gce_minimal.yaml
 
 # It seems like the consensus is that this should be tested in CI, and not in a nightly test.
 
@@ -3046,6 +3301,14 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml 
+
 - name: rllib_multi_gpu_with_lstm_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
@@ -3064,6 +3327,14 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml 
+
 - name: rllib_multi_gpu_with_attention_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
@@ -3081,6 +3352,14 @@
 
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml 
 
 - name: rllib_stress_tests
   group: RLlib tests
@@ -3110,6 +3389,14 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 4gpus_544_cpus_gce.yaml 
+
 ########################
 # Core Nightly Tests
 ########################
@@ -3130,6 +3417,14 @@
     wait_for_nodes:
       num_nodes: 4
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: shuffle/shuffle_app_config.yaml
+        cluster_compute: shuffle/shuffle_compute_multi_gce.yaml
+
 
 - name: stress_test_placement_group
   group: core-multi-test
@@ -3145,6 +3440,14 @@
     timeout: 7200
     script: python stress_tests/test_placement_group.py
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: stress_tests/stress_tests_app_config.yaml
+        cluster_compute: stress_tests/placement_group_tests_compute_gce.yaml
+
 - name: decision_tree_autoscaling_20_runs
   group: core-multi-test
   working_dir: nightly_tests
@@ -3158,6 +3461,14 @@
   run:
     timeout: 9600
     script: python decision_tree/cart_with_tree.py --concurrency=20
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: decision_tree/decision_tree_app_config.yaml
+        cluster_compute: decision_tree/autoscaling_compute_gce.yaml
 
 - name: autoscaling_shuffle_1tb_1000_partitions
   group: core-multi-test
@@ -3173,6 +3484,14 @@
     timeout: 4000
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
       --no-streaming
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: shuffle/shuffle_app_config.yaml
+        cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
 
 
 - name: microbenchmark
@@ -3190,6 +3509,14 @@
   run:
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_64_gce.yaml
 
 
 - name: microbenchmark_staging
@@ -3866,6 +4193,13 @@
     wait_for_nodes:
       num_nodes: 20
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: data_ingest_benchmark_compute_gce.yaml
 
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
@@ -3883,6 +4217,13 @@
     wait_for_nodes:
       num_nodes: 20
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: data_ingest_benchmark_compute_gce.yaml
 
 - name: aggregate_benchmark
   group: data-tests
@@ -4094,6 +4435,15 @@
     wait_for_nodes:
       num_nodes: 20
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: shuffle/shuffle_app_config.yaml
+        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
+
+
 - name: dataset_shuffle_push_based_sort_1tb
   group: data-tests
   working_dir: nightly_tests
@@ -4125,6 +4475,14 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 100
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: shuffle/100tb_shuffle_app_config.yaml
+        cluster_compute: shuffle/100tb_shuffle_compute_gce.yaml
 
 ##################
 # Core Chaos tests
@@ -4298,6 +4656,14 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
+        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 #####################
 # Observability tests
