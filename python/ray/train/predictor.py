@@ -8,7 +8,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import (
     BatchFormat,
-    convert_batch_type_to_pandas,
+    _convert_batch_type_to_pandas,
     _convert_batch_type_to_numpy,
 )
 from ray.data import Preprocessor
@@ -199,16 +199,16 @@ class Predictor(abc.ABC):
         if batch_format == BatchFormat.PANDAS:
             if batch_format_to_use == BatchFormat.PANDAS:
                 return self._predict_pandas(
-                    convert_batch_type_to_pandas(data), **kwargs
+                    _convert_batch_type_to_pandas(data), **kwargs
                 )
             elif batch_format_to_use == BatchFormat.NUMPY:
-                return convert_batch_type_to_pandas(
+                return _convert_batch_type_to_pandas(
                     self._predict_numpy(_convert_batch_type_to_numpy(data), **kwargs)
                 )
         elif batch_format == BatchFormat.NUMPY:
             if batch_format_to_use == BatchFormat.PANDAS:
                 return _convert_batch_type_to_numpy(
-                    self._predict_pandas(convert_batch_type_to_pandas(data), **kwargs)
+                    self._predict_pandas(_convert_batch_type_to_pandas(data), **kwargs)
                 )
             elif batch_format_to_use == BatchFormat.NUMPY:
                 return self._predict_numpy(_convert_batch_type_to_numpy(data), **kwargs)

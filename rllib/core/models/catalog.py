@@ -9,11 +9,13 @@ from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
 from ray.rllib.core.models.base import Encoder
 from ray.rllib.core.models.base import ModelConfig
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.core.models.configs import (
     MLPEncoderConfig,
     LSTMEncoderConfig,
     CNNEncoderConfig,
 )
+from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.models.utils import get_filter_config
@@ -61,7 +63,7 @@ def _multi_action_dist_partial_helper(
         )
 
         multi_action_dist_cls = TorchMultiDistribution
-    elif framework == "tf":
+    elif framework == "tf2":
         from ray.rllib.models.tf.tf_distributions import TfMultiDistribution
 
         multi_action_dist_cls = TfMultiDistribution
@@ -96,7 +98,7 @@ def _multi_categorical_dist_partial_helper(
         from ray.rllib.models.torch.torch_distributions import TorchMultiCategorical
 
         multi_categorical_dist_cls = TorchMultiCategorical
-    elif framework == "tf":
+    elif framework == "tf2":
         from ray.rllib.models.tf.tf_distributions import TfMultiCategorical
 
         multi_categorical_dist_cls = TfMultiCategorical
@@ -236,7 +238,7 @@ class Catalog:
         By default this method builds an encoder instance from Catalog.encoder_config.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The encoder.
@@ -253,11 +255,11 @@ class Catalog:
 
         The default behavior is to get the action distribution from the
         `Catalog.action_dist_class_fn`. This can be overridden to build a custom action
-        distribution as a means of configuring the behavior of a PPORLModuleBase
+        distribution as a means of configuring the behavior of a RLModule
         implementation.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The action distribution.
@@ -366,15 +368,23 @@ class Catalog:
                     output_activation=output_activation,
                     output_dims=[encoder_latent_dim],
                 )
+            # input_space is a 2D Box
+            elif (
+                isinstance(observation_space, Box) and len(observation_space.shape) == 2
+            ):
+                # RLlib used to support 2D Box spaces by silently flattening them
+                raise ValueError(
+                    f"No default encoder config for obs space={observation_space},"
+                    f" lstm={use_lstm} and attention={use_attention} found. 2D Box "
+                    f"spaces are not supported. They should be either flattened to a "
+                    f"1D Box space or enhanced to be a 3D box space."
+                )
             # input_space is a possibly nested structure of spaces.
             else:
                 # NestedModelConfig
                 raise ValueError(
-                    f"No default encoder config for "
-                    f"obs space={observation_space},"
-                    f" lstm={use_lstm} and "
-                    f"attention={use_attention} "
-                    f"found."
+                    f"No default encoder config for obs space={observation_space},"
+                    f" lstm={use_lstm} and attention={use_attention} found."
                 )
 
         return encoder_config
@@ -445,7 +455,7 @@ class Catalog:
                 DistEnum.DiagGaussian: TorchDiagGaussian,
                 DistEnum.Categorical: TorchCategorical,
             }
-        elif framework == "tf":
+        elif framework == "tf2":
             from ray.rllib.models.tf.tf_distributions import (
                 TfCategorical,
                 TfDeterministic,
@@ -529,3 +539,45 @@ class Catalog:
         # Unknown type -> Error.
         else:
             raise NotImplementedError(f"Unsupported action space: `{action_space}`")
+
+    @staticmethod
+    def get_preprocessor(observation_space: gym.Space, **kwargs) -> Preprocessor:
+        """Returns a suitable preprocessor for the given observation space.
+
+        Args:
+            observation_space: The input observation space.
+            **kwargs: Forward-compatible kwargs.
+
+        Returns:
+            preprocessor: Preprocessor for the observations.
+        """
+        # TODO(Artur): Since preprocessors have long been @PublicAPI with the options
+        #  kwarg as part of their constructor, we fade out support for this,
+        #  beginning with this entrypoint.
+        # Next, we should deprecate the `options` kwarg from the Preprocessor itself,
+        # after deprecating the old catalog and other components that still pass this.
+        options = kwargs.get("options", {})
+        if options:
+            deprecation_warning(
+                old="get_preprocessor_for_space(..., options={...})",
+                help="Override `Catalog.get_preprocessor()` "
+                "in order to implement custom behaviour.",
+                error=False,
+            )
+
+        if options.get("custom_preprocessor"):
+            deprecation_warning(
+                old="model_config['custom_preprocessor']",
+                help="Custom preprocessors are deprecated, "
+                "since they sometimes conflict with the built-in "
+                "preprocessors for handling complex observation spaces. "
+                "Please use wrapper classes around your environment "
+                "instead.",
+                error=True,
+            )
+        else:
+            # TODO(Artur): Inline the get_preprocessor() call here once we have
+            #  deprecated the old model catalog.
+            cls = get_preprocessor(observation_space)
+            prep = cls(observation_space, options)
+            return prep

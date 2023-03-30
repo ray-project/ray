@@ -599,9 +599,11 @@ class AlgorithmConfig(_Config):
             # Some keys specify config sub-dicts and therefore should go through the
             # correct methods to properly `.update()` those from given config dict
             # (to not lose any sub-keys).
-            elif key == "callbacks_class":
-                # Resolve possible classpath.
-                value = deserialize_type(value, error=True)
+            elif key == "callbacks_class" and value != NOT_SERIALIZABLE:
+                # For backward compatibility reasons, only resolve possible
+                # classpath if value is a str type.
+                if isinstance(value, str):
+                    value = deserialize_type(value, error=True)
                 self.callbacks(callbacks_class=value)
             elif key == "env_config":
                 self.environment(env_config=value)
@@ -827,6 +829,16 @@ class AlgorithmConfig(_Config):
         # not).
         if self._disable_action_flattening is True:
             self.model["_disable_action_flattening"] = True
+        if self.model.get("custom_preprocessor"):
+            deprecation_warning(
+                old="model_config['custom_preprocessor']",
+                help="Custom preprocessors are deprecated, "
+                "since they sometimes conflict with the built-in "
+                "preprocessors for handling complex observation spaces. "
+                "Please use wrapper classes around your environment "
+                "instead.",
+                error=True,
+            )
 
         # RLModule API only works with connectors.
         if not self.enable_connectors and self._enable_rl_module_api:
