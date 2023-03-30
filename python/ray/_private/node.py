@@ -588,8 +588,10 @@ class Node:
             try:
                 gcs_address = self.gcs_address
                 client = GcsClient(address=gcs_address)
-                # Send a simple request to make sure GCS is alive.
-                client.internal_kv_get(b"dummy", None, timeout=0.01)
+                if self.head:
+                    # Send a simple request to make sure GCS is alive
+                    # if it's a head node.
+                    client.internal_kv_get(b"dummy", None, timeout=0.01)
                 self._gcs_client = client
                 break
             except Exception:
