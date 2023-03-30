@@ -40,13 +40,13 @@
 #
 #  # Run configuration for the test
 #  run:
-#    # Type of test. Can be [anyscale_job, sdk_command, client, job].
-#    # Uses either Ray jobs, anyscale jobs, anyscale SDK commands
-#    # or the Ray client to run the actual release test.
+#    # Type of test. Can be [anyscale_job, sdk_command].
+#    # Uses either Ray jobs, anyscale jobs or anyscale SDK commands
+#    # run the actual release test.
 #    type: anyscale_job
 #
 #    # File manager to use to transfer files to and from the cluster.
-#    # Can be any of [sdk, client, job].
+#    # Can be any of [sdk, job].
 #    file_manager: job
 #
 #    # If you want to wait for nodes to be ready, you can specify this here:
@@ -1371,87 +1371,6 @@
 
 
   alert: tune_tests
-
-- name: tune_cloud_gcp_k8s_no_sync_down
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-
-  stable: true
-
-  frequency: nightly
-  team: ml
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_gcp_k8s_4x8.yaml
-    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
-    autosuspend_mins: 60
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
-    type: client
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  alert: tune_tests
-
-- name: tune_cloud_gcp_k8s_ssh_sync
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-
-  stable: true
-
-  frequency: nightly
-  team: ml
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: staging_v1
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_gcp_k8s_4x8.yaml
-    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
-    autosuspend_mins: 60
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
-    type: client
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  alert: tune_tests
-
-- name: tune_cloud_gcp_k8s_durable_upload
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-
-  stable: true
-
-  frequency: nightly
-  team: ml
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: staging_v1
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_gcp_k8s_4x8.yaml
-    autosuspend_mins: 60
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://tune-cloud-tests/durable_upload
-    type: client
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  alert: tune_tests
-
 
 ########################
 # Tune scalability tests
