@@ -310,7 +310,7 @@ build_sphinx_docs() {
     else
       FAST=True make html
       pip install datasets==2.0.0
-      RAY_MOCK_MODULES=0 make doctest
+      RAY_MOCK_MODULES=0 RAY_DEDUP_LOGS=0 make doctest
     fi
   )
 }
