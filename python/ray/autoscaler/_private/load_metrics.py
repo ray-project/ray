@@ -4,8 +4,6 @@ from collections import Counter
 from functools import reduce
 from typing import Dict, List
 
-import numpy as np
-
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
@@ -354,6 +352,8 @@ class LoadMetrics:
         )
 
     def _info(self):
+        import numpy as np
+
         resources_used, resources_total = self._get_resource_usage()
 
         now = time.time()

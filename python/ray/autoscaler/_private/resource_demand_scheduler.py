@@ -13,9 +13,8 @@ import logging
 import os
 from abc import abstractmethod
 from functools import partial
+from statistics import mean
 from typing import Callable, Dict, List, Optional, Tuple
-
-import numpy as np
 
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
@@ -854,7 +853,7 @@ def _resource_based_utilization_scorer(
         gpu_ok,
         num_matching_resource_types,
         min(util_by_resources),
-        np.mean(util_by_resources),
+        mean(util_by_resources),
     )
 
 

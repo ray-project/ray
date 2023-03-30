@@ -119,6 +119,34 @@ def test_grpc_message_size(shutdown_only):
     ray.get(bar.remote(*[f() for _ in range(200)]))
 
 
+def test_default_worker_import_dependency():
+    """
+    Test ray's python worker import doesn't import the not-allowed dependencies.
+    """
+    # We don't allow numpy to be imported in the worker script to avoid slow
+    # worker startup time, as well as interfering with OMP_NUM_THREADS which
+    # is used by numpy when imported.
+    # See https://github.com/ray-project/ray/issues/33891
+    blocked_deps = ["numpy"]
+
+    # Remove the ray module and the blocked deps from sys.modules.
+    sys.modules.pop("ray", None)
+    assert "ray" not in sys.modules
+    for dep in blocked_deps:
+        sys.modules.pop(dep, None)
+        assert dep not in sys.modules
+
+    # This imports the python worker.
+    import ray._private.workers.default_worker  # noqa: F401
+
+    # Check that the ray module is imported.
+    assert "ray" in sys.modules
+
+    # Check that the blocked deps are not imported.
+    for dep in blocked_deps:
+        assert dep not in sys.modules
+
+
 # https://github.com/ray-project/ray/issues/7287
 def test_omp_threads_set(ray_start_cluster, monkeypatch):
     import os
@@ -200,6 +228,27 @@ def test_omp_threads_set(ray_start_cluster, monkeypatch):
         m.setenv("OMP_NUM_THREADS", "1")
         cluster.add_node(num_cpus=4)
     assert ray.get(f.options(num_cpus=4).remote()) == "1"
+
+    ###########################
+    # Test the OMP_NUM_THREADS are picked up by 3rd party libraries
+    # e.g. numpy, numexpr
+    ###########################
+
+    @ray.remote(num_cpus=2)
+    def f():
+        # Assert numpy using 2 threads for it's parallelism backend.
+        import numpy # noqa: F401
+        from threadpoolctl import threadpool_info
+
+        for pool_info in threadpool_info():
+            assert pool_info["num_threads"] == 2
+
+        import numexpr
+
+        assert numexpr.nthreads == 2
+        return True
+
+    assert ray.get(f.remote())
 
 
 def test_submit_api(shutdown_only):

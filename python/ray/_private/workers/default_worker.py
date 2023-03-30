@@ -12,6 +12,11 @@ import ray.actor
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
 
+
+assert (
+    "numpy" not in sys.modules
+), "We should not have a ray worker import numpy by default "
+
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
 )
