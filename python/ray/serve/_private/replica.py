@@ -249,8 +249,9 @@ def create_replica_wrapper(name: str):
         async def get_metadata(
             self,
         ) -> Tuple[Optional[DeploymentConfig], Optional[DeploymentVersion]]:
-            # When the replica is empty, potentially replica is still under initialization.
-            # Relying on DeploymentStateManager to timeout the replica.
+            # When the self.replica variable is None, potentially replica is still
+            # under initialization. Relying on DeploymentStateManager to
+            # timeout the replica.
             while self.replica is None:
                 await asyncio.sleep(0.2)
             return self.replica.deployment_config, self.replica.version
