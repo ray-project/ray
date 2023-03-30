@@ -170,7 +170,6 @@ def create_replica_wrapper(name: str):
             # or, alternatively, create an async get_replica() method?
             self.replica = None
             self._initialize_replica = initialize_replica
-            self._replica_tag = replica_tag
 
         @ray.method(num_returns=2)
         async def handle_request(
