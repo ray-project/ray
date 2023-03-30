@@ -321,7 +321,7 @@ class Publisher : public PublisherInterface {
             std::function<double()> get_time_ms,
             const uint64_t subscriber_timeout_ms,
             const int publish_batch_size,
-            std::string publisher_id = NodeID::UniqueID().Hex())
+            std::string publisher_id = NodeID::FromRandom().Hex())
       : periodical_runner_(periodical_runner),
         get_time_ms_(std::move(get_time_ms)),
         subscriber_timeout_ms_(subscriber_timeout_ms),

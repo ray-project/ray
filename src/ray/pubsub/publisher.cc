@@ -304,6 +304,8 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
     }
   }
 
+  RAY_LOG(DEBUG) << "sending reply back"
+                << long_polling_connection_->reply->SerializeAsString();
   long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
 
   // Clean up & update metadata.
@@ -335,7 +337,8 @@ void Publisher::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request
   RAY_CHECK(send_reply_callback != nullptr);
 
   const auto subscriber_id = SubscriberID::FromBinary(request.subscriber_id());
-  RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id.Hex();
+  RAY_LOG(INFO) << "Long polling connection initiated by " << subscriber_id.Hex();
+  RAY_LOG(INFO) << "publisher_id " << publisher_id_;
   absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {

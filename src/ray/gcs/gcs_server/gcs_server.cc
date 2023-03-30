@@ -100,7 +100,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
-      /*publisher_id=*/NodeID::UniqueID().Hex());
+      /*publisher_id=*/NodeID::FromRandom().Hex());
 
   gcs_publisher_ = std::make_shared<GcsPublisher>(std::move(inner_publisher));
 }

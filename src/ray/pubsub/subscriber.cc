@@ -364,7 +364,7 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
                                            const Status &status,
                                            const rpc::PubsubLongPollingReply &reply) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  RAY_LOG(DEBUG) << "Long polling request has replied from " << publisher_id;
+  RAY_LOG(DEBUG) << "Long polling request has been replied from " << publisher_id;
   RAY_CHECK(publishers_connected_.count(publisher_id));
 
   if (!status.ok()) {
@@ -379,6 +379,9 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     // Empty the command queue because we cannot send commands anymore.
     commands_.erase(publisher_id);
   } else {
+    RAY_LOG(INFO) << "received reply" << reply.SerializeAsString();
+    RAY_LOG(INFO) << "sending reply back" << reply.pub_messages().size();
+    RAY_LOG(INFO) << "sending reply back" << reply.pub_messages().at(0).sequence_id();
     RAY_CHECK(!reply.publisher_id().empty())
         << "publisher_id is invalid " << reply.publisher_id();
 

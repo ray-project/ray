@@ -208,14 +208,14 @@ message PubsubLongPollingRequest {
   /// will drop queued messages with smaller sequence_id for this subscriber.
   int64 max_processed_sequence_id = 2;
   /// The expected publisher_id.
-  bytes publisher_id = 3;
+  string publisher_id = 3;
 }
 
 message PubsubLongPollingReply {
   /// The messages that are published.
   repeated PubMessage pub_messages = 1;
   /// The publisher_id.
-  bytes publisher_id = 3;
+  string publisher_id = 2;
 }
 
 message PubsubCommandBatchRequest {
