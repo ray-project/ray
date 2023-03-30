@@ -151,7 +151,7 @@ elif [[ "$platform" == "macosx" ]]; then
 
     if [ "$(uname -m)" = "arm64" ]; then
       "$PIP_CMD" uninstall -y grpcio || true
-      conda install -y grpcio || true
+      conda install -y --force-reinstall grpcio || true
     else
       "$PIP_CMD" install -q grpcio
     fi
