@@ -303,5 +303,31 @@ Status GcsSyncClient::InternalKVExists(const std::string &ns, const std::string 
   }
 }
 
+Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri, int expiration_s) {
+  grpc::ClientContext context;
+
+  rpc::PinRuntimeEnvURIRequest request;
+  request.set_uri(uri);
+  request.set_expiration_s(expiration_s);
+
+  rpc::PinRuntimeEnvURIReply reply;
+
+  grpc::Status status = runtime_env_stub_->PinRuntimeEnvURI(&context, request, &reply);
+  if (status.ok()) {
+    if (reply.status().code() == (int)StatusCode::OK) {
+      return Status::OK();
+    } else if (reply.status().code() == (int)StatusCode::GrpcUnavailable) {
+      std::string msg = "Failed to pin URI reference for " + uri + " due to the GCS being " +
+          "unavailable, most likely it has crashed: " + reply.status().message() + ".";
+      return Status::GrpcUnavailable(msg);
+    }
+    std::string msg = "Failed to pin URI reference for " + uri +
+        " due to unexpected error " + reply.status().message() + ".";
+    return Status::GrpcUnknown(msg);
+  }
+  // TODO: Convert to appropriate error
+  return Status::UnknownError(status.error_message());
+}
+
 }  // namespace gcs
 }  // namespace ray

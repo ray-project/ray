@@ -318,6 +318,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus InternalKVKeys(const c_string &ns, const c_string &prefix, c_vector[c_string] &value);
         CRayStatus InternalKVExists(const c_string &ns, const c_string &key, c_bool &exists);
 
+        CRayStatus PinRuntimeEnvUri(const c_string &uri, int expiration_s);
+
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         const c_string &SerializeAsString()

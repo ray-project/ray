@@ -1591,6 +1591,9 @@ cdef class GcsClient:
         self._check_error(self.inner.get().InternalKVExists(ns, key, exists))
         return exists
 
+    def pin_runtime_env_uri(self, bytes uri, int expiration_s):
+        self._check_error(self.inner.get().PinRuntimeEnvUri(uri, expiration_s))
+
 
 cdef class CoreWorker:
 

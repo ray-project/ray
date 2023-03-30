@@ -196,9 +196,12 @@ public:
   Status InternalKVKeys(const std::string &ns, const std::string &prefix, std::vector<std::string> &results);
   Status InternalKVExists(const std::string &ns, const std::string &key, bool &exists);
 
+  Status PinRuntimeEnvUri(const std::string &uri, int expiration_s);
+
 private:
   GcsClientOptions options_;
   std::unique_ptr<rpc::InternalKVGcsService::Stub> kv_stub_;
+  std::unique_ptr<rpc::RuntimeEnvGcsService::Stub> runtime_env_stub_;
   std::shared_ptr<grpc::Channel> channel_;
 };
 
