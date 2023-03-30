@@ -51,7 +51,8 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR -e python/ray/dashboard/client -e dashboard/client
 
   # Install python using conda. This should be easier to produce consistent results in buildkite and locally.
-  [ -f "~/.bash_profile" ] && source ~/.bash_profile || conda init bash
+  [ -f "~/.bash_profile" ] && conda init bash
+  source ~/.bash_profile
   conda create -y -n "$CONDA_ENV_NAME"
   conda activate "$CONDA_ENV_NAME"
   conda remove -y python || true
