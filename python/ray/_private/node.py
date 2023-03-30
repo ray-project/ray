@@ -591,7 +591,7 @@ class Node:
                 if self.head:
                     # Send a simple request to make sure GCS is alive
                     # if it's a head node.
-                    client.internal_kv_get(b"dummy", None, timeout=0.01)
+                    client.internal_kv_get(b"dummy", None)
                 self._gcs_client = client
                 break
             except Exception:
