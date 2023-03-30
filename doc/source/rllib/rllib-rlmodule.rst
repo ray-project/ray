@@ -230,6 +230,14 @@ The minimum requirement is for sub-classes of :py:class:`~ray.rllib.core.rl_modu
 
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`: Forward pass for exploration.
 
+Also the class's constrcutor requires a dataclass config object called `~ray.rllib.core.rl_module.rl_module.RLModuleConfig` which contains the following fields:
+
+- :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.observation_space`: The observation space of the environment (either processed or raw).
+- :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.action_space`: The action space of the environment.
+- :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.model_config_dict`: The model config dictionary of the algorithm. Model hyper-parameters such as number of layers, type of activation, etc. are defined here.
+- :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.catalog_class`: The `Catalog` object of the algorithm.
+
+When writing RLModules, you need to use these fields to construct your model. 
 
 .. tabbed:: Single Agent (torch)
 
@@ -400,7 +408,7 @@ To learn more about this see the documentation of `SpecType`.
 Writing Custom Multi Agent RL Modules (Advanced)
 ------------------------------------------------
 
-For multi-agent modules, RLlib implements :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule`. It is dictionary of :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`s, one for each policy, plus possibly some shared modules. The base-class implementation works for most of use-cases where we need to defined independent neural for sub-groups of agents. For more complex, multi-agent use-cases, where the agents share some part of their neural network, one should inherit from this class and override the default implementation.
+For multi-agent modules, RLlib implements :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule`. It is a dictionary of :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` objects, one for each policy, plus possibly some shared modules. The base-class implementation works for most of use-cases where we need to defined independent neural for sub-groups of agents. For more complex, multi-agent use-cases, where the agents share some part of their neural network, one should inherit from this class and override the default implementation.
 
 
 The :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule` offers an API for constructing custom models tailored to specific needs. The key method for this customization is :py:meth:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule`.build.
