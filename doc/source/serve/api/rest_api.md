@@ -6,7 +6,7 @@
 
 ### `PUT "/api/serve/deployments/"`
 
-Declaratively deploys the Serve application. Starts Serve on the Ray cluster if it's not already running. See the [single-app config schema](serve-rest-api-config-schema) for the request's JSON schema.
+Declaratively deploys the Serve application. Starts Serve on the Ray cluster if it's not already running. See [single-app config schema](serve-rest-api-config-schema) for the request's JSON schema.
 
 **Example Request**:
 
@@ -39,7 +39,7 @@ Content-Type: application/json
 
 ### `GET "/api/serve/deployments/"`
 
-Gets the config for the application currently deployed on the Ray cluster. This config represents the current goal state for the Serve application. See the [single-app config schema](serve-rest-api-config-schema) for the response's JSON schema.
+Gets the config for the application currently deployed on the Ray cluster. This config represents the current goal state for the Serve application. See [single-app config schema](serve-rest-api-config-schema) for the response's JSON schema.
 
 **Example Request**:
 ```http
@@ -70,7 +70,7 @@ Content-Type: application/json
 
 ### `GET "/api/serve/deployments/status"`
 
-Gets the Serve application's current status, including all the deployment statuses. See the [status schema](serve-rest-api-response-schema) for the response's JSON schema.
+Gets the Serve application's current status, including all the deployment statuses. See [status schema](serve-rest-api-response-schema) for the response's JSON schema.
 
 **Example Request**:
 
@@ -145,7 +145,7 @@ Content-Type: application/json
 
 ### `PUT "/api/serve/applications/"`
 
-Declaratively deploys a list of Serve applications. Starts Serve on the Ray cluster if it's not already running. See the [multi-app config schema](serve-rest-api-config-schema) for the request's JSON schema.
+Declaratively deploys a list of Serve applications. If Serve is already running on the Ray cluster, removes all applications not listed in the new config. If Serve is not running on the Ray cluster, starts Serve. See [multi-app config schema](serve-rest-api-config-schema) for the request's JSON schema.
 
 **Example Request**:
 
@@ -201,7 +201,7 @@ Content-Type: application/json
 
 ### `GET "/api/serve/applications/"`
 
-Gets cluster-level info and comprehensive details on all Serve applications deployed on the Ray cluster. See the [metadata schema](serve-rest-api-response-schema) for the response's JSON schema.
+Gets cluster-level info and comprehensive details on all Serve applications deployed on the Ray cluster. See [metadata schema](serve-rest-api-response-schema) for the response's JSON schema.
 
 ```http
 GET /api/serve/applications/ HTTP/1.1
@@ -209,7 +209,7 @@ Host: http://localhost:52365/
 Accept: application/json
 ```
 
-**Example Response (not showing the full JSON)**:
+**Example Response (abridged JSON)**:
 
 ```http
 HTTP/1.1 200 OK
@@ -295,7 +295,7 @@ Content-Type: application/json
 ```
 
 (serve-rest-api-response-schema)=
-## Serve response schemas
+## Serve Response Schemas
 
 ### V1 REST API
 ```{eval-rst}

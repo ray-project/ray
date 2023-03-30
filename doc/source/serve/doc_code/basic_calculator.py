@@ -1,3 +1,6 @@
+import requests
+
+# __serve_example_begin__
 from ray import serve
 from ray.serve.handle import RayServeDeploymentHandle
 from ray.serve.drivers import DAGDriver
@@ -39,9 +42,15 @@ with InputNode() as inp:
 
     multiplier = Multiplier.bind()
     adder = Adder.bind()
-    router = Router.bind(multiplier, adder)
+    router = Router.bind(adder, multiplier)
     amount = router.route.bind(operation, amount_input)
 
 app = DAGDriver.options(route_prefix="/calculator").bind(
     amount, http_adapter=json_request
 )
+# __serve_example_end__
+
+# Test
+serve.run(app)
+resp = requests.post("http://localhost:8000/calculator", json=["ADD", 5]).json()
+assert resp == 7

@@ -1,3 +1,6 @@
+import requests
+
+# __serve_example_begin__
 from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.serve.deployment_graph import InputNode
@@ -13,3 +16,9 @@ with InputNode() as name:
     greeter = greet.bind(name)
 
 app = DAGDriver.options(route_prefix="/greet").bind(greeter, http_adapter=json_request)
+# __serve_example_end__
+
+# Test
+serve.run(app)
+resp = requests.post("http://localhost:8000/greet", json="Bob").json()
+assert resp == "Good morning Bob!"
