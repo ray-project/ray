@@ -155,6 +155,7 @@ if __name__ == "__main__":
         "--data-size-gb",
         choices=[1, 10],
         type=int,
+        default=1,
         help="The data size to use for the dataset.",
     )
 
