@@ -123,6 +123,13 @@ elif [[ "$platform" == "macosx" ]]; then
     # Find the appropriate wheel by grepping for the Python version.
     PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"$PY_WHEEL_VERSION"* | head -n 1)"
 
+    # Print some env info
+    "$PYTHON_EXE" --version
+    "$PYTHON_EXE" -c "from distutils import util; print(util.get_platform())" || true
+
+    # Update pip
+    "$PIP_CMD" install -U pip
+
     # Install the wheel.
     "$PIP_CMD" uninstall -y ray
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
