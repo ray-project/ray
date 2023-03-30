@@ -86,7 +86,7 @@ PyTorch Training Loop Utilities
     ~train.torch.enable_reproducibility
 
 PyTorch Lightning
-*****************
+~~~~~~~~~~~~~~~~~
 
 .. autosummary::
     :toctree: doc/
