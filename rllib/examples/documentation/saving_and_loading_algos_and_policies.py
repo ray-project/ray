@@ -245,7 +245,7 @@ ppo_policy = ppo.get_policy()
 # 1) .. using the Policy object:
 
 # __export-models-1-begin__
-ppo_policy.export_model("/tmp/my_nn_model", onnx=False)
+ppo_policy.export_model("/tmp/my_nn_model")
 # .. check /tmp/my_nn_model/ for the model files.
 
 # For Keras You should be able to recover the model via:
