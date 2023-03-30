@@ -78,12 +78,12 @@ class TuneReportCallback(TuneCallback):
     Reports metrics to Ray Tune.
 
     .. note::
-        This API is being deprecated since version 2.4. We introduced 
-        :class:`LightningTrainer <ray.train.lightning.LightningTrainer>`, 
-        which provides better integration with PyTorch Lightning. Here is 
-        :ref:`a simple example <lightning_mnist_example>` of how to use 
+        This API will be deprecated in the future. In Ray 2.4, we introduced
+        :class:`LightningTrainer <ray.train.lightning.LightningTrainer>`,
+        which provides better integration with PyTorch Lightning. Here is
+        :ref:`a simple example <lightning_mnist_example>` of how to use
         ``LightningTrainer``.
-    
+
 
     Args:
         metrics: Metrics to report to Tune. If this is a list,
@@ -158,10 +158,10 @@ class _TuneCheckpointCallback(TuneCallback):
     Saves checkpoints after each validation step.
 
     .. note::
-        This API is being deprecated since version 2.4. We introduced 
-        :class:`LightningTrainer <ray.train.lightning.LightningTrainer>`, 
-        which provides better integration with PyTorch Lightning. Here is 
-        :ref:`a simple example <lightning_mnist_example>` of how to use 
+        This API will be deprecated in the future. In Ray 2.4, we introduced
+        :class:`LightningTrainer <ray.train.lightning.LightningTrainer>`,
+        which provides better integration with PyTorch Lightning. Here is
+        :ref:`a simple example <lightning_mnist_example>` of how to use
         ``LightningTrainer``.
 
     Checkpoint are currently not registered if no ``tune.report()`` call
