@@ -289,7 +289,7 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
 
   // No message should have been added to the reply.
   RAY_CHECK(long_polling_connection_->reply->pub_messages().empty());
-  long_polling_connection_->reply->publisher_id() = publisher_id_;
+  *long_polling_connection_->reply->mutable_publisher_id() = publisher_id_;
   if (!force_noop) {
     for (auto it = mailbox_.begin(); it != mailbox_.end(); it++) {
       if (long_polling_connection_->reply->pub_messages().size() >= publish_batch_size_) {
@@ -379,7 +379,7 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
 
 void Publisher::Publish(rpc::PubMessage pub_message) {
   RAY_CHECK_EQ(pub_message.sequence_id(), 0) << "sequence_id should not be set;";
-  RAY_CHECK(pub_message.publisher_id.empty()) << "publihser_id should not be set;";
+  RAY_CHECK(pub_message.publisher_id().empty()) << "publihser_id should not be set;";
   const auto channel_type = pub_message.channel_type();
   absl::MutexLock lock(&mutex_);
   auto &subscription_index = subscription_index_map_.at(channel_type);

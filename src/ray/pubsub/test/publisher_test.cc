@@ -23,6 +23,9 @@
 namespace ray {
 
 namespace pubsub {
+namespace {
+const std::string kDefaultPublisherId;
+}
 
 using namespace pub_internal;
 
@@ -88,7 +91,8 @@ class PublisherTest : public ::testing::Test {
         NodeID::FromRandom(),
         /*get_time_ms=*/[]() { return 1.0; },
         /*subscriber_timeout_ms=*/1000,
-        /*publish_batch_size=*/1000));
+        /*publish_batch_size=*/1000,
+        kDefaultPublisherId));
     return subscribers_.back().get();
   }
 
@@ -335,7 +339,11 @@ TEST_F(PublisherTest, TestSubscriber) {
   };
 
   auto subscriber = std::make_shared<SubscriberState>(
-      subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
+      subscriber_id_,
+      [this]() { return current_time_; },
+      subscriber_timeout_ms_,
+      10,
+      kDefaultPublisherId);
   // If there's no connection, it will return false.
   ASSERT_FALSE(subscriber->PublishIfPossible());
   // Try connecting.
@@ -408,7 +416,8 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
       subscriber_id_,
       [this]() { return current_time_; },
       subscriber_timeout_ms_,
-      max_publish_size);
+      max_publish_size,
+      kDefaultPublisherId);
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
 
   absl::flat_hash_set<ObjectID> published_objects;
@@ -452,7 +461,11 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
                                      std::function<void()> failure) { reply_cnt++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
-      subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
+      subscriber_id_,
+      [this]() { return current_time_; },
+      subscriber_timeout_ms_,
+      10,
+      kDefaultPublisherId);
 
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
 
@@ -520,7 +533,11 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
                                      std::function<void()> failure) { reply_cnt++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
-      subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
+      subscriber_id_,
+      [this]() { return current_time_; },
+      subscriber_timeout_ms_,
+      10,
+      kDefaultPublisherId);
 
   // Suppose the new connection is removed.
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
@@ -578,7 +595,11 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
                                      std::function<void()> failure) { reply_cnt++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
-      subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
+      subscriber_id_,
+      [this]() { return current_time_; },
+      subscriber_timeout_ms_,
+      10,
+      kDefaultPublisherId);
 
   // Suppose the new connection is removed.
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);

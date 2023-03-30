@@ -393,9 +393,11 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
       }
       if (msg.sequence_id() <= processed_sequences_[publisher_id].second) {
         RAY_LOG_EVERY_MS(WARNING, 10000)
-            << "Received message out of order, proccessed_sequence_id: "
-            << processed_sequences_[publisher_id] << ", received message sequence_id "
-            << msg.sequence_id();
+            << "Received message out of order, publisher_id: "
+            << processed_sequences_[publisher_id].first
+            << ", received message sequence_id "
+            << processed_sequences_[publisher_id].second
+            << ", received message sequence_id " << msg.sequence_id();
         continue;
       }
       processed_sequences_[publisher_id].second = msg.sequence_id();
