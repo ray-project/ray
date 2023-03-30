@@ -117,8 +117,20 @@ elif [[ "$platform" == "macosx" ]]; then
 
     PY_WHEEL_VERSION="${PY_WHEEL_VERSIONS[i]}"
 
-    PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
-    PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
+    # Todo: The main difference between arm64 and x86_64 is
+    # the Mac OS version. We should move everything to a
+    # single path when it's acceptable to move up our lower
+    # Python + MacOS compatibility bound.
+    if [ "$(uname -m)" = "arm64" ]; then
+      [ -f "$HOME/.bash_profile" ] && conda init bash
+      source ~/.bash_profile
+      conda install -y python="${PY_MM}"
+      PYTHON_EXE="/opt/homebrew/opt/miniconda/bin/python"
+      PIP_CMD="/opt/homebrew/opt/miniconda/bin/pip"
+    else
+      PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
+      PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
+    fi
 
     # Find the appropriate wheel by grepping for the Python version.
     PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"$PY_WHEEL_VERSION"* | head -n 1)"
