@@ -247,7 +247,7 @@ def create_replica_wrapper(name: str):
 
         async def get_metadata(
             self,
-        ) -> Tuple[Optional[DeploymentConfig], Optional[DeploymentVersion]]:
+        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             # When the self.replica variable is None, potentially replica is still
             # under initialization. Relying on DeploymentStateManager to
             # timeout the replica.
