@@ -1,4 +1,5 @@
 import argparse
+import numpy as np
 from typing import Optional, Union, List
 
 import ray
@@ -61,12 +62,15 @@ def to_tf(
 def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
     ds = ray.data.read_images(
         f"s3://anonymous@air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
-    ).cache()
+    )
 
-    # Repartition both to align the block sizes so we can zip them.
-    ds = ds.repartition(ds.num_blocks())
-    label = ray.data.range_tensor(ds.count()).repartition(ds.num_blocks())
-    ds = ds.zip(label)
+    # Add a label column.
+    def add_label(batch):
+        label = np.ones(shape=(len(batch), 1))
+        batch["__value__"] = label
+        return batch
+
+    ds = ds.map_batches(add_label).cache()
 
     # Test iter_torch_batches() with default args.
     benchmark.run(
@@ -105,17 +109,18 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
             batch_size=batch_size,
         )
 
-    prefetch_batches = [1, 4]
+    prefetch_batches = [0, 1, 4]
     # Test with varying prefetching for iter_torch_batches()
     for prefetch_batch in prefetch_batches:
-        test_name = f"iter-torch-batches-prefetch-{32}-{prefetch_batches}"
-        benchmark.run(
-            test_name,
-            iter_torch_batches,
-            ds=ds,
-            batch_size=32,
-            prefetch_batches=prefetch_batch,
-        )
+        for shuffle_buffer_size in [None, 64]:
+            test_name = f"iter-torch-batches-bs-{32}-prefetch-{prefetch_batch}-shuffle{shuffle_buffer_size}"  # noqa: E501
+            benchmark.run(
+                test_name,
+                iter_torch_batches,
+                ds=ds,
+                batch_size=32,
+                prefetch_batches=prefetch_batch,
+            )
 
     # Test with varying batch sizes and shuffle for iter_torch_batches() and to_tf().
     for batch_size in batch_sizes:
