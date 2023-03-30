@@ -153,7 +153,7 @@ class _Bar:
     def update(self, state: ProgressBarState) -> None:
         """Apply the updated worker progress bar state."""
         if state["desc"] != self.state["desc"]:
-            self.bar.set_description(state["desc"] + " " + str(state["pos"]))
+            self.bar.set_description(state["desc"])
         delta = state["x"] - self.state["x"]
         if delta:
             self.bar.update(delta)
@@ -329,6 +329,7 @@ def instance() -> _BarManager:
         _manager = _BarManager()
         if env_bool("RAY_TQDM_PATCH_PRINT", True):
             import builtins
+
             builtins.print = safe_print
     return _manager
 
