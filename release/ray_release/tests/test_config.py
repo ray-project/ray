@@ -1,6 +1,7 @@
 import os
 import sys
 import yaml
+import copy
 import pytest
 
 from ray_release.config import (
@@ -70,10 +71,16 @@ def test_definition_parser():
     assert not validate_test(gce_test, schema)
     assert aws_test["name"] == "sample_test.aws"
     assert gce_test["cluster"]["cluster_compute"] == "compute_gce.yaml"
+    invalid_test_definition = test_definitions[0]
+    invalid_test_definition['variations'] = []
     with pytest.raises(ReleaseTestConfigError):
-        test_definitions[0]['variations'] = []
-        parse_test_definition(test_definitions)
-
+        parse_test_definition([invalid_test_definition])
+    invalid_test_definition['variations'] = [
+        {'__suffix__': 'aws'},
+        {}
+    ]
+    with pytest.raises(ReleaseTestConfigError):
+        parse_test_definition([invalid_test_definition])
 
 def test_parse_test_definition():
     """
