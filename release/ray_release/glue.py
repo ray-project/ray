@@ -52,7 +52,6 @@ from ray_release.util import (
 type_str_to_command_runner = {
     "command": SDKRunner,
     "sdk_command": SDKRunner,
-    "job": JobRunner,
     "anyscale_job": AnyscaleJobRunner,
 }
 
