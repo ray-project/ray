@@ -485,6 +485,7 @@ class ActorReplicaWrapper:
                 # TODO(simon): fully implement reconfigure for Java replicas.
                 if self._is_cross_language:
                     return ReplicaStartupStatus.SUCCEEDED, None
+
                 deployment_config, version = ray.get(self._ready_obj_ref)
                 self._max_concurrent_queries = deployment_config.max_concurrent_queries
                 self._graceful_shutdown_timeout_s = (
