@@ -60,7 +60,7 @@ RLModule is a neural network container that implements three public methods: :py
 Enabling RL Modules in the Configuration
 -----------------------------------------
 
-You can enable RLModules by setting the ``_enable_rl_module_api`` flag to ``True`` in the configuration object. 
+Enable RLModules by setting the ``_enable_rl_module_api`` flag to ``True`` in the configuration object. 
 
 .. code-block:: python
 
