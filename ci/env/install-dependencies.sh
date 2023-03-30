@@ -95,7 +95,7 @@ install_miniconda() {
       msys*) miniconda_platform=Windows; exe_suffix=".exe";;
     esac
 
-    if [ "${OSTYPE}" = darwin ]; then
+    if [[ "${OSTYPE}" = darwin* ]]; then
       if [ $(uname -m) = "arm64" ]; then
         HOSTTYPE="arm64"
         miniconda_version="Miniconda3-py38_23.1.0-1-"
