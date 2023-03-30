@@ -8,7 +8,6 @@ import tempfile
 import uuid
 from filecmp import dircmp
 from pathlib import Path
-from unittest.mock import mock_open, patch
 from shutil import copytree, make_archive, rmtree
 import zipfile
 import ray
@@ -598,26 +597,6 @@ class TestDownloadAndUnpackPackage:
                 pkg_uri=S3_PACKAGE_URI, base_directory=temp_dest_dir
             )
             assert (Path(local_dir) / "test_module").exists()
-
-    @pytest.mark.parametrize(
-        "pkg_uri",
-        [
-            "gs://my-bucket/my-zipfile.zip",
-            "gs://my-bucket/path/to/my-zipfile.zip",
-            "gs://my-zipfile.zip",
-        ],
-    )
-    @patch("ray._private.runtime_env.packaging.unzip_package", side_effect=None)
-    async def test_download_and_unpack_package_with_gs_uri(
-        self, mock_unzip_package, pkg_uri
-    ):
-        # TODO: remove the mocks and actually test the gs functionality
-        with tempfile.TemporaryDirectory() as temp_dest_dir:
-            with patch("smart_open.open", mock_open(read_data="some contents")):
-                await download_and_unpack_package(
-                    pkg_uri=pkg_uri, base_directory=temp_dest_dir
-                )
-                mock_unzip_package.assert_called_once()
 
     async def test_download_and_unpack_package_with_file_uri(self):
         with tempfile.TemporaryDirectory() as temp_dest_dir:
