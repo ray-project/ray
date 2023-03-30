@@ -3,6 +3,7 @@ import os
 import warnings
 from collections import defaultdict
 from dataclasses import _MISSING_TYPE, dataclass, fields
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -764,6 +765,13 @@ class RunConfig:
 
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
+
+        # Convert Paths to strings
+        if isinstance(self.local_dir, Path):
+            self.local_dir = str(self.local_dir)
+
+        if isinstance(self.storage_path, Path):
+            self.storage_path = str(self.storage_path)
 
         local_path, remote_path = _resolve_storage_path(
             self.storage_path, self.local_dir, self.sync_config.upload_dir

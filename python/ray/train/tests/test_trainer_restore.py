@@ -306,7 +306,7 @@ def test_preprocessor_restore(ray_start_4_cpus, tmpdir, new_preprocessor):
         datasets=datasets,
         preprocessor=MyPreprocessor(id=1),
         scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="preprocessor_restore_test", local_dir=tmpdir),
+        run_config=RunConfig(name="preprocessor_restore_test", local_dir=str(tmpdir)),
     )
     with pytest.raises(TrainingFailedError) as exc_info:
         result = trainer.fit()
