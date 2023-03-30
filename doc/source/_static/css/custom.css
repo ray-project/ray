@@ -6,11 +6,11 @@
 }
 
 .topnav {
-  background-color: white;
-  border-bottom: 1px solid rgba(0, 0, 0, .1);
-  overflow: hidden;
-  display: flex;
-  align-items: center;
+    background-color: white;
+    border-bottom: 1px solid rgba(0, 0, 0, .1);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
 }
 
 /* Hide all elements relative to the Algolia search popup */
@@ -20,19 +20,19 @@
 
 /* Content wrapper for the unified nav link / menus */
 .top-nav-content {
-  max-width: 1400px;
-  width: 100%;
-  margin-left: auto;
-  margin-right: auto;
-  padding: 0 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+    max-width: 1400px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 0 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 @media (max-width: 900px) {
   .top-nav-content {
     display: none;
-  }
+}
 
 /* Make the book theme secondary nav stick below the new main top nav */
 .header-article {
