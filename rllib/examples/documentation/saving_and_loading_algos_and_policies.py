@@ -230,10 +230,8 @@ ppo_config = (
 # PyTorch, uncomment the following line of code:
 # ppo_config.framework("torch")
 
-# Create the Algorithm and train one iteration.
+# Create the Algorithm.
 ppo = ppo_config.build()
-ppo.train()
-
 # Get the underlying PPOTF1Policy (or PPOTorchPolicy) object.
 ppo_policy = ppo.get_policy()
 
@@ -305,12 +303,12 @@ ppo_config = (
         .environment("Pendulum-v1")
         .checkpointing(export_native_model_files=True)
     )
+    .rollouts(num_rollout_workers=0)
     .rl_module(_enable_rl_module_api=True)
     .training(_enable_learner_api=True)
 )
 # Create the Algorithm and train one iteration.
 ppo = ppo_config.build()
-ppo.train()
 ppo_policy = ppo.get_policy()
 
 # __export-models-as-onnx-begin__
