@@ -66,6 +66,8 @@ Execution
 
 This section covers the Datasets execution model and performance considerations.
 
+.. _datasets_lazy_execution:
+
 Lazy Execution
 ~~~~~~~~~~~~~~
 

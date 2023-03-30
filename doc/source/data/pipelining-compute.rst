@@ -1,5 +1,13 @@
 .. _pipelining_datasets:
 
+.. note::
+
+  The DatasetPipeline is expected to be deprecated Ray 2.5. If your use case doesn't
+  need per-window shuffle, we recommend using the streaming execution of Dataset. By
+  setting the resource limits, you can cap the resource usage to run the operations
+  as the DatasetPipeline window, and achieve even better performance and stability.
+  Please see :ref:`Dataset streaming execution <executing_datasets>`.
+
 ==================
 Pipelining Compute 
 ==================
