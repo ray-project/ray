@@ -3249,7 +3249,7 @@
 
   run:
     timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
+    script: RAY_ADDRESS=local python run_microbenchmark.py
 
 
 - name: microbenchmark_staging
@@ -3266,7 +3266,7 @@
 
   run:
     timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
+    script: RAY_ADDRESS=local python run_microbenchmark.py
 
 
 - name: microbenchmark_38
@@ -3283,7 +3283,7 @@
 
   run:
     timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
+    script: RAY_ADDRESS=local python run_microbenchmark.py
 
 - name: benchmark_worker_startup
   group: core-daily-test
