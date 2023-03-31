@@ -646,6 +646,31 @@ def test_deploy_application_with_route_prefix_conflict(serve_instance):
     assert requests.get("http://127.0.0.1:8000/").text == "got model"
 
 
+@pytest.mark.parametrize(
+    "ingress_route,app_route",
+    [("/hello", "/"), ("/hello", "/override"), ("/", "/override")],
+)
+def test_application_route_prefix_override(serve_instance, ingress_route, app_route):
+    @serve.deployment
+    def f():
+        return "hello"
+
+    node = f.options(route_prefix=ingress_route).bind()
+    serve.run(node, route_prefix=app_route)
+    assert requests.get(f"http://localhost:8000{app_route}").text == "hello"
+
+
+@pytest.mark.parametrize("ingress_route", ["/hello", "/"])
+def test_application_route_prefix_override2(serve_instance, ingress_route):
+    @serve.deployment
+    def f():
+        return "hello"
+
+    node = f.options(route_prefix=ingress_route).bind()
+    serve.run(node)
+    assert requests.get(f"http://localhost:8000{ingress_route}").text == "hello"
+
+
 if __name__ == "__main__":
     import sys
 

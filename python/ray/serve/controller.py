@@ -52,6 +52,7 @@ from ray.serve.schema import (
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
+    DEFAULT,
     override_runtime_envs_except_env_vars,
     get_random_letters,
 )
@@ -589,8 +590,8 @@ class ServeController:
                 app_config.runtime_env,
                 deployment_override_options,
                 updated_versions,
+                app_config_dict.get("route_prefix", DEFAULT.VALUE),
                 app_config.name,
-                app_config_dict.get("route_prefix", "/"),
             )
 
             self.application_state_manager.create_application_state(
@@ -905,8 +906,8 @@ def deploy_serve_application(
     runtime_env: Dict,
     deployment_override_options: List[Dict],
     deployment_versions: Dict,
-    name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: str = "/",
+    route_prefix: str,
+    name: str,
 ):
     """Deploy Serve application from a user-provided config.
 
