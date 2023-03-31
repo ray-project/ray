@@ -495,8 +495,8 @@ TEST_P(GcsClientTest, TestJobInfo) {
   ASSERT_TRUE(SubscribeToAllJobs(on_subscribe));
 
   ASSERT_TRUE(AddJob(job_table_data));
-  // ASSERT_TRUE(MarkJobFinished(add_job_id));
-  // WaitForExpectedCount(job_updates, 2);
+  ASSERT_TRUE(MarkJobFinished(add_job_id));
+  WaitForExpectedCount(job_updates, 2);
 }
 
 TEST_P(GcsClientTest, TestGetNextJobID) {
