@@ -37,13 +37,13 @@ class TfModel(Model, tf.keras.Model, abc.ABC):
 
         # Raise errors if forward method is not decorated to check specs.
         if not is_input_decorated(self.__call__):
-            _raise_not_decorated_exception(type(self).__name__ + ".__call__()", "input")
+            _raise_not_decorated_exception(type(self).__name__ + ".call()", "input")
         if not is_output_decorated(self.__call__):
-            _raise_not_decorated_exception(type(self).__name__ + ".__call__()", "output")
+            _raise_not_decorated_exception(type(self).__name__ + ".call()", "output")
 
     @check_input_specs("input_spec")
     @check_output_specs("output_spec")
-    def __call__(self, input_dict: NestedDict, **kwargs) -> NestedDict:
+    def call(self, input_dict: NestedDict, **kwargs) -> NestedDict:
         """Returns the output of this model for the given input.
 
         This method only makes sure that we have a spec-checked _forward() method.
