@@ -160,7 +160,6 @@ Torch utilities
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_without_autosummary.rst
 
    ~apply_grad_clipping
    ~concat_multi_gpu_td_errors
@@ -178,6 +177,11 @@ Torch utilities
    ~warn_if_infinite_kl_divergence
    ~set_torch_seed
    ~softmax_cross_entropy_with_logits
+
+.. autosummary::
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
+
    ~Swish
 
 
