@@ -1558,9 +1558,10 @@ cdef class GcsClient:
     def internal_kv_get(self, bytes key, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_string value
             CRayStatus status
-        status = self.inner.get().InternalKVGet(ns, key, value)
+        status = self.inner.get().InternalKVGet(ns, key, timeout_ms, value)
         if status.IsKeyError():
             return None
         else:
@@ -1571,8 +1572,9 @@ cdef class GcsClient:
     def internal_kv_put(self, bytes key, bytes value, overwrite: bool = False, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             int num_added
-        self._check_error(self.inner.get().InternalKVPut(ns, key, value, overwrite, num_added))
+        self._check_error(self.inner.get().InternalKVPut(ns, key, value, overwrite, timeout_ms, num_added))
 
         return num_added
 
@@ -1580,8 +1582,9 @@ cdef class GcsClient:
     def internal_kv_del(self, bytes key, c_bool del_by_prefix, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             int num_deleted
-        self._check_error(self.inner.get().InternalKVDel(ns, key, del_by_prefix, num_deleted))
+        self._check_error(self.inner.get().InternalKVDel(ns, key, del_by_prefix, timeout_ms, num_deleted))
 
         return num_deleted
 
@@ -1589,10 +1592,11 @@ cdef class GcsClient:
     def internal_kv_keys(self, bytes prefix, bytes namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] keys
             c_string key
 
-        self._check_error(self.inner.get().InternalKVKeys(ns, prefix, keys))
+        self._check_error(self.inner.get().InternalKVKeys(ns, prefix, timeout_ms, keys))
 
         result = []
 
@@ -1602,23 +1606,26 @@ cdef class GcsClient:
         return result
 
     @_auto_reconnect
-    def internal_kv_exists(self, bytes key, namespace=None):
+    def internal_kv_exists(self, bytes key, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_bool exists
-        self._check_error(self.inner.get().InternalKVExists(ns, key, exists))
+        self._check_error(self.inner.get().InternalKVExists(ns, key, timeout_ms, exists))
         return exists
 
     @_auto_reconnect
-    def pin_runtime_env_uri(self, str uri, int expiration_s):
-        self._check_error(self.inner.get().PinRuntimeEnvUri(uri.encode(), expiration_s))
+    def pin_runtime_env_uri(self, str uri, int expiration_s, timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        self._check_error(self.inner.get().PinRuntimeEnvUri(uri.encode(), expiration_s, timeout_ms))
 
     @_auto_reconnect
     def get_all_node_info(self, timeout=None):
         cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             CGcsNodeInfo node_info
             c_vector[CGcsNodeInfo] node_infos
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         self._check_error(self.inner.get().GetAllNodeInfo(timeout_ms, node_infos))
 
         result = {}
@@ -1631,9 +1638,9 @@ cdef class GcsClient:
     @_auto_reconnect
     def get_all_job_info(self, timeout=None):
         cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             CJobTableData job_info
             c_vector[CJobTableData] job_infos
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         self._check_error(self.inner.get().GetAllJobInfo(timeout_ms, job_infos))
 
         result = {}

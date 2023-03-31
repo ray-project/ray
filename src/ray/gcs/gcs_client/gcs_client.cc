@@ -191,8 +191,9 @@ void GrpcClientContextWithTimeoutMs(grpc::ClientContext &context, int64_t timeou
   }
 }
 
-Status GcsSyncClient::InternalKVGet(const std::string &ns, const std::string &key, std::string &value) {
+Status GcsSyncClient::InternalKVGet(const std::string &ns, const std::string &key, int64_t timeout_ms, std::string &value) {
   grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
   rpc::InternalKVGetRequest request;
   request.set_namespace_(ns);
@@ -213,8 +214,9 @@ Status GcsSyncClient::InternalKVGet(const std::string &ns, const std::string &ke
   return ConvertGrpcStatus(status);
 }
 
-Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vector<std::string> &keys, std::unordered_map<std::string, std::string> &result) {
+Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vector<std::string> &keys, int64_t timeout_ms, std::unordered_map<std::string, std::string> &result) {
   grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
   rpc::InternalKVMultiGetRequest request;
   request.set_namespace_(ns);
@@ -241,8 +243,9 @@ Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vecto
   return ConvertGrpcStatus(status);
 }
 
-Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &key, const std::string &value, bool overwrite, int &added_num) {
+Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &key, const std::string &value, bool overwrite, int64_t timeout_ms, int &added_num) {
   grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
   rpc::InternalKVPutRequest request;
   request.set_namespace_(ns);
@@ -263,8 +266,9 @@ Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &ke
   return ConvertGrpcStatus(status);
 }
 
-Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &key, bool del_by_prefix, int &deleted_num) {
+Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &key, bool del_by_prefix, int64_t timeout_ms, int &deleted_num) {
   grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
   rpc::InternalKVDelRequest request;
   request.set_namespace_(ns);
@@ -284,8 +288,9 @@ Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &ke
   return ConvertGrpcStatus(status);
 }
 
-Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &prefix, std::vector<std::string> &results) {
+Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &prefix, int64_t timeout_ms, std::vector<std::string> &results) {
   grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
   rpc::InternalKVKeysRequest request;
   request.set_namespace_(ns);
@@ -304,8 +309,9 @@ Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &p
   return ConvertGrpcStatus(status);
 }
 
-Status GcsSyncClient::InternalKVExists(const std::string &ns, const std::string &key, bool &exists) {
+Status GcsSyncClient::InternalKVExists(const std::string &ns, const std::string &key, int64_t timeout_ms, bool &exists) {
   grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
   rpc::InternalKVExistsRequest request;
   request.set_namespace_(ns);
@@ -324,8 +330,9 @@ Status GcsSyncClient::InternalKVExists(const std::string &ns, const std::string 
   return ConvertGrpcStatus(status);
 }
 
-Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri, int expiration_s) {
+Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri, int expiration_s, int64_t timeout_ms) {
   grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
   rpc::PinRuntimeEnvURIRequest request;
   request.set_uri(uri);
