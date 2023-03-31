@@ -94,6 +94,7 @@ PyTorch Lightning
     ~train.lightning.LightningTrainer
     ~train.lightning.LightningConfigBuilder
     ~train.lightning.LightningCheckpoint
+    ~train.lightning.LightningPredictor
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~
