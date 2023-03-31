@@ -16,6 +16,5 @@ This user guide will help you navigate the Ray Datasets project and show you how
     dataset-tensor-support
     custom-datasource
     pipelining-compute
-    executing-datasets
     dataset-internals
     performance-tips
