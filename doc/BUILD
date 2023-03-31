@@ -142,7 +142,7 @@ py_test_run_all_subdirectory(
     include = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
-        "source/serve/doc_code/object_dection.py",
+        "source/serve/doc_code/object_detection.py",
     ],
     exclude = [],
     extra_srcs = [],
