@@ -16,7 +16,6 @@ Single Agent
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     SingleAgentRLModuleSpec
     SingleAgentRLModuleSpec.build
@@ -27,7 +26,6 @@ RLModule Configuration
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     RLModuleConfig
     RLModuleConfig.to_dict
@@ -41,7 +39,6 @@ Multi Agent
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     MultiAgentRLModuleSpec
     MultiAgentRLModuleSpec.build
@@ -60,7 +57,6 @@ Constructor
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     RLModule
     RLModule.as_multi_agent
@@ -116,7 +112,6 @@ Constructor
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     MultiAgentRLModule
     MultiAgentRLModule.build

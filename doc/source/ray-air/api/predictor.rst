@@ -16,7 +16,6 @@ Constructor Options
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     predictor.Predictor
 
@@ -63,7 +62,6 @@ Constructor Options
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     batch_predictor.BatchPredictor
 
