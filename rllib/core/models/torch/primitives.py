@@ -150,3 +150,87 @@ class TorchCNN(nn.Module):
         # Permute b/c data comes in as [B, dim, dim, channels]:
         inputs = inputs.permute(0, 3, 1, 2)
         return self.cnn(inputs.type(self.expected_input_dtype))
+
+
+class TorchCNNTranspose(nn.Module):
+    """A model containing a CNNTranspose with N Conv2DTranspose layers."""
+
+    def __init__(
+        self,
+        *,
+        input_dims: Union[List[int], Tuple[int]],
+        cnn_transpose_filter_specifiers: List[List[Union[int, List]]],
+        cnn_transpose_activation: str = "relu",
+        cnn_transpose_use_layernorm: bool = False,
+        use_bias: bool = True,
+    ):
+        """Initializes a TorchCNNTranspose instance.
+
+        Args:
+            input_dims: The input dimensions of the network. This is a 3D tensor.
+            cnn_transpose_filter_specifiers: A list of lists, where each element of an
+                inner list contains elements of the form
+                `[number of filters, [kernel width, kernel height], stride]` to
+                specify a convolutional transpose layer stacked in order of the outer
+                list.
+            cnn_transpose_activation: The activation function to use after each layer
+                (except for the last Conv2DTranspose layer, which is always
+                non-activated).
+            cnn_transpose_use_layernorm: Whether to insert a LayerNorm functionality
+                in between each Conv2DTranspose layer's output and its activation.
+                The last Conv2DTranspose layer will not be normed, regardless.
+            use_bias: Whether to use bias on all Conv2DTranspose layers.
+        """
+        super().__init__()
+
+        assert len(input_dims) == 3
+
+        cnn_transpose_activation = get_activation_fn(
+            cnn_transpose_activation, framework="torch"
+        )
+
+        layers = []
+
+        # Add user-specified hidden convolutional layers first
+        width, height, in_depth = input_dims
+        in_size = [width, height]
+        for i, (out_depth, kernel, stride) in enumerate(
+            cnn_transpose_filter_specifiers
+        ):
+            is_final_layer = i == len(cnn_transpose_filter_specifiers) - 1
+            # Pad like in tensorflow's SAME mode.
+            padding, out_size = same_padding(in_size, kernel, stride)
+            layers.extend([
+                nn.ZeroPad2d(padding),
+                nn.ConvTranspose2d(
+                    in_depth,
+                    out_depth,
+                    kernel,
+                    stride,
+                    # Last layer always uses bias (b/c has no LayerNorm, regardless of
+                    # config).
+                    bias=use_bias or is_final_layer,
+                ),
+            ])
+            # Layernorm (never for final layer).
+            if cnn_transpose_use_layernorm and not is_final_layer:
+                layers.append(nn.LayerNorm((out_depth, out_size[0], out_size[1])))
+            # Last layer is never activated (regardless of config).
+            if cnn_transpose_activation is not None and not is_final_layer:
+                layers.append(cnn_transpose_activation())
+
+            in_size = out_size
+            in_depth = out_depth
+
+        self.output_width, self.output_height = out_size
+        self.output_depth = out_depth
+
+        self.cnn_transpose = nn.Sequential(*layers)
+
+        self.expected_input_dtype = torch.float32
+
+    def forward(self, inputs):
+        # Permute b/c data comes in as [B, dim, dim, channels]:
+        out = inputs.permute(0, 3, 1, 2)
+        out = self.cnn_transpose(out.type(self.expected_input_dtype))
+        return out.permute(0, 2, 3, 1)

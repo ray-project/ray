@@ -1,5 +1,5 @@
-import unittest
 import itertools
+import unittest
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.core.models.configs import MLPEncoderConfig

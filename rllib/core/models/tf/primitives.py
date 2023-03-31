@@ -1,5 +1,7 @@
 from typing import Callable, List, Optional, Tuple, Union
 
+import numpy as np
+
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.framework import try_import_tf
 
@@ -84,7 +86,7 @@ class TfCNN(tf.keras.Model):
     def __init__(
         self,
         *,
-        input_dims: Union[List[int], Tuple[int]] = None,
+        input_dims: Union[List[int], Tuple[int]],
         cnn_filter_specifiers: List[List[Union[int, List]]],
         cnn_activation: str = "relu",
         cnn_use_layernorm: bool = False,
@@ -134,3 +136,74 @@ class TfCNN(tf.keras.Model):
 
     def call(self, inputs, **kwargs):
         return self.cnn(tf.cast(inputs, self.expected_input_dtype))
+
+
+class TfCNNTranspose(tf.keras.Model):
+    """A model containing a CNNTranspose with N Conv2DTranspose layers."""
+
+    def __init__(
+        self,
+        *,
+        input_dims: Union[List[int], Tuple[int]],
+        cnn_transpose_filter_specifiers: List[List[Union[int, List]]],
+        cnn_transpose_activation: str = "relu",
+        cnn_transpose_use_layernorm: bool = False,
+        use_bias: bool = True,
+    ):
+        """Initializes a TfCNNTranspose instance.
+
+        Args:
+            input_dims: The input dimensions of the network. This is a 3D tensor.
+            cnn_transpose_filter_specifiers: A list of lists, where each element of an
+                inner list contains elements of the form
+                `[number of filters, [kernel width, kernel height], stride]` to
+                specify a convolutional transpose layer stacked in order of the outer
+                list.
+            cnn_transpose_activation: The activation function to use after each layer
+                (except for the last Conv2DTranspose layer, which is always
+                non-activated).
+            cnn_transpose_use_layernorm: Whether to insert a LayerNorm functionality
+                in between each Conv2DTranspose layer's output and its activation.
+                The last Conv2DTranspose layer will not be normed, regardless.
+            use_bias: Whether to use bias on all Conv2DTranspose layers.
+        """
+        super().__init__()
+
+        assert len(input_dims) == 3
+
+        cnn_transpose_activation = get_activation_fn(
+            cnn_transpose_activation, framework="tf2"
+        )
+
+        layers = []
+
+        for i, (num_filters, kernel_size, strides) in enumerate(
+            cnn_transpose_filter_specifiers
+        ):
+            is_final_layer = i == len(cnn_transpose_filter_specifiers) - 1
+            layers.append(
+                tf.keras.layers.Conv2DTranspose(
+                    filters=num_filters,
+                    kernel_size=kernel_size,
+                    strides=strides,
+                    padding="same",
+                    # Last layer is never activated (regardless of config).
+                    activation=(
+                        None if cnn_transpose_use_layernorm or is_final_layer
+                        else cnn_transpose_activation
+                    ),
+                    # Last layer always uses bias (b/c has no LayerNorm, regardless of
+                    # config).
+                    use_bias=use_bias or is_final_layer,
+                )
+            )
+            if cnn_transpose_use_layernorm and not is_final_layer:
+                layers.append(tf.keras.layers.LayerNormalization(axis=[-3, -2, -1]))
+                layers.append(tf.keras.layers.Activation(cnn_transpose_activation))
+
+        self.cnn_transpose = tf.keras.Sequential(layers)
+
+        self.expected_input_dtype = tf.float32
+
+    def call(self, inputs, **kwargs):
+        return self.cnn_transpose(tf.cast(inputs, self.expected_input_dtype))

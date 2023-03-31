@@ -1,12 +1,12 @@
+from collections import namedtuple
+import functools
 import itertools
 import unittest
-import functools
-from collections import namedtuple
 
 import gymnasium as gym
+from gymnasium.spaces import Box, Discrete, Dict, Tuple, MultiDiscrete
 import numpy as np
 import tree
-from gymnasium.spaces import Box, Discrete, Dict, Tuple, MultiDiscrete
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog

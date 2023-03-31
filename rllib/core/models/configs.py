@@ -138,11 +138,11 @@ class MLPHeadConfig(ModelConfig):
         self._validate(framework=framework)
 
         if framework == "torch":
-            from ray.rllib.core.models.torch.mlp import TorchMLPHead
+            from ray.rllib.core.models.torch.heads import TorchMLPHead
 
             return TorchMLPHead(self)
         else:
-            from ray.rllib.core.models.tf.mlp import TfMLPHead
+            from ray.rllib.core.models.tf.heads import TfMLPHead
 
             return TfMLPHead(self)
 
@@ -150,7 +150,7 @@ class MLPHeadConfig(ModelConfig):
 @ExperimentalAPI
 @dataclass
 class FreeLogStdMLPHeadConfig(ModelConfig):
-    """Configuration for an MLPHead with a floating second half of outputs.
+    """Configuration for an MLPHead with a "floating" second half of outputs.
 
     This model can be useful together with Gaussian Distributions.
     This gaussian distribution would be conditioned as follows:
@@ -159,7 +159,7 @@ class FreeLogStdMLPHeadConfig(ModelConfig):
         - The second half are floating free biases that can be used as
         state-independent standard deviations to condition a gaussian distribution.
     The state-dependent means are produced by an MLPHead, while the standard
-    deviations are added as floating free biases.
+    deviations are added as a simple, independent 1D tensor variable of biases.
 
     This config does not dictate the output dimensions but instead uses the output
     dimensions of the configured MLPHHeadConfig. The output dimensions of the
@@ -190,13 +190,98 @@ class FreeLogStdMLPHeadConfig(ModelConfig):
         )
 
         if framework == "torch":
-            from ray.rllib.core.models.torch.mlp import TorchFreeLogStdMLPHead
+            from ray.rllib.core.models.torch.heads import TorchFreeLogStdMLPHead
 
             return TorchFreeLogStdMLPHead(self)
         else:
-            from ray.rllib.core.models.tf.mlp import TfFreeLogStdMLPHead
+            from ray.rllib.core.models.tf.heads import TfFreeLogStdMLPHead
 
             return TfFreeLogStdMLPHead(self)
+
+
+@ExperimentalAPI
+@dataclass
+class CNNTransposeHeadConfig(ModelConfig):
+    """Configuration for a convolutional transpose head (decoder) network.
+
+    The configured CNNTranspose transforms 1D-observations into an image space.
+    The stack of layers is composed of a sequence of Conv2DTranspose layers.
+    `input_dims` describes the shape of the (1D) input tensor,
+    `initial_dense_layer_output_dims` describes the input into the first Conv2DTranspose
+    layer. Translation from `input_dim` to `initial_dense_layer_output_dims` is done
+    via an initial Dense layer (w/o activation, w/o layer-norm, and w/ bias).
+    Beyond that, each layer specified by `cnn_transpose_filter_specifiers`
+    is followed by an activation function according
+    to `cnn_transpose_activation`. `output_dims` is reached after the final
+    Conv2DTranspose layer with `output_activation`.
+    See ModelConfig for usage details.
+
+    Example:
+
+        Configuration:
+        input_dims = [10]  # input z-vector
+        initial_dense_layer_output_dims = [4, 4, 96]  # first input to deconv stack
+        cnn_transpose_filter_specifiers = [
+            [48, [4, 4], 2],
+            [24, [4, 4], 2],
+            [3, [4, 4], 2],
+        ]
+        cnn_transpose_activation = "silu"
+        cnn_transpose_use_layernorm = False
+        use_bias = True|False
+
+        Resulting stack in pseudocode:
+        Linear(10, 4*4*24)
+        Conv2DTranspose(in_channels=96, out_channels=48, kernel_size=[4, 4], stride=2)
+        Swish()
+        Conv2DTranspose(in_channels=48, out_channels=24, kernel_size=[4, 4], stride=2)
+        Swish()
+        Conv2DTranspose(in_channels=24, out_channels=3, kernel_size=[4, 4], stride=2)
+
+    Attributes:
+        input_dims: The input dimensions of the network. This must be a 1D tensor.
+        initial_dense_layer_output_dims: The shape of the input to the first
+            Conv2DTranspose layer. We will make sure the input is transformed to
+            these dims via a preceding initial Dense layer, followed by a reshape,
+            before entering the Conv2DTranspose stack.
+        cnn_transpose_filter_specifiers: A list of lists, where each element of an inner
+            list contains elements of the form
+            `[number of channels/filters, [kernel width, kernel height], stride]` to
+            specify a convolutional layer stacked in order of the outer list.
+        cnn_transpose_activation: The activation function to use after each layer
+            (except for the output).
+        cnn_transpose_use_layernorm: Whether to insert a LayerNorm functionality
+            in between each Conv2DTranspose layer's output and its activation.
+        use_bias: Whether to use bias on all Conv2D layers.
+    """
+
+    input_dims: Union[List[int], Tuple[int]] = None
+    initial_dense_layer_output_dims: Union[List[int], Tuple[int]] = field(
+        default_factory=lambda: [4, 4, 96]
+    )
+    cnn_transpose_filter_specifiers: List[List[Union[int, List[int]]]] = field(
+        default_factory=lambda: [[48, [4, 4], 2], [24, [4, 4], 2], [3, [4, 4], 2]]
+    )
+    cnn_transpose_activation: str = "relu"
+    cnn_transpose_use_layernorm: bool = False
+    use_bias: bool = True
+
+    @_framework_implemented()
+    def build(self, framework: str = "torch") -> Model:
+        # Activation functions in TF are lower case
+        self.cnn_transpose_activation = _convert_to_lower_case_if_tf(
+            self.cnn_transpose_activation, framework
+        )
+
+        if framework == "torch":
+            from ray.rllib.core.models.torch.heads import TorchCNNTransposeHead
+
+            return TorchCNNTransposeHead(self)
+
+        elif framework == "tf2":
+            from ray.rllib.core.models.tf.heads import TfCNNTransposeHead
+
+            return TfCNNTransposeHead(self)
 
 
 @ExperimentalAPI
@@ -263,7 +348,7 @@ class CNNEncoderConfig(ModelConfig):
         self.output_activation = _convert_to_lower_case_if_tf(
             self.output_activation, framework
         )
-        self.filter_layer_activation = _convert_to_lower_case_if_tf(
+        self.cnn_activation = _convert_to_lower_case_if_tf(
             self.cnn_activation, framework
         )
 

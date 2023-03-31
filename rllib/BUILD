@@ -1869,6 +1869,13 @@ py_test(
 )
 
 py_test(
+    name = "test_cnn_transpose_heads",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_cnn_transpose_heads.py"]
+)
+
+py_test(
     name = "test_mlp_encoders",
     tags = ["team:rllib", "core", "models"],
     size = "medium",
