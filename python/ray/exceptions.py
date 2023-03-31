@@ -320,9 +320,10 @@ class RaySystemError(RayError):
     This exception can be thrown when the raylet is killed.
     """
 
-    def __init__(self, client_exc, traceback_str=None):
+    def __init__(self, client_exc, traceback_str=None, _status_code=None):
         self.client_exc = client_exc
         self.traceback_str = traceback_str
+        self._status_code = _status_code
 
     def __str__(self):
         error_msg = f"System error: {self.client_exc}"

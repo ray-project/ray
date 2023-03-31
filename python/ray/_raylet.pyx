@@ -91,6 +91,8 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
     PLACEMENT_STRATEGY_STRICT_SPREAD,
+    StatusCode_GrpcUnavailable,
+    StatusCode_GrpcUnknown,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -212,7 +214,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsGrpcResourceExhausted():
         raise RpcMessageTooLargeError(message)
     else:
-        raise RaySystemError(message)
+        raise RaySystemError(message, _status_code=<int>status.code())
 
 cdef RayObjectsToDataMetadataPairs(
         const c_vector[shared_ptr[CRayObject]] objects):
@@ -1526,7 +1528,28 @@ def _auto_reconnect(f):
     def wrapper(self, *args, **kwargs):
         if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
             ray._private.utils._CALLED_FREQ[f.__name__] += 1
-        return f(self, *args, **kwargs)
+        remaining_retry = self._nums_reconnect_retry
+        while True:
+            try:
+                return f(self, *args, **kwargs)
+            except RaySystemError as e:
+                if remaining_retry <= 0:
+                    raise
+                if e._status_code in (
+                    <int>StatusCode_GrpcUnavailable,
+                    <int>StatusCode_GrpcUnknown,
+                ):
+                    logger.debug(
+                        "Failed to send request to gcs, reconnecting. " f"Error {e}"
+                    )
+                    try:
+                        self._connect()
+                    except Exception:
+                        logger.error(f"Connecting to gcs failed. Error {e}")
+                    time.sleep(1)
+                    remaining_retry -= 1
+                    continue
+                raise
     return wrapper
 
 cdef class GcsClient:
@@ -1534,11 +1557,13 @@ cdef class GcsClient:
     cdef:
         shared_ptr[CGcsSyncClient] inner
         object address
+        object _nums_reconnect_retry
 
     def __cinit__(self, address, nums_reconnect_retry=5):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CGcsSyncClient(dereference(gcs_options.native())))
         self.address = address
+        self._nums_reconnect_retry = nums_reconnect_retry
         self.connect()
 
     def connect(self):
@@ -1553,6 +1578,10 @@ cdef class GcsClient:
     @property
     def address(self):
         return self.address
+
+    @property
+    def _nums_reconnect_retry(self):
+        return self._nums_reconnect_retry
 
     @_auto_reconnect
     def internal_kv_get(self, bytes key, namespace=None, timeout=None):
