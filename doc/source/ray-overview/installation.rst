@@ -77,8 +77,8 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. tabbed:: Windows (beta)
 
-    .. list-table:: Title
-        :header-rows: 1
+    .. list-table::
+       :header-rows: 1
 
        * - Windows (beta)
        * - `Windows Python 3.10`_
