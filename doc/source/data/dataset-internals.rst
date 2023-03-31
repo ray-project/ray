@@ -97,7 +97,7 @@ Check the API docs for Datasets methods to see if they
 trigger execution. Those that do trigger execution will have a ``Note`` indicating as
 much.
 
-.. _datasets_streaming_execution
+.. _datasets_streaming_execution:
 
 Streaming Execution
 ~~~~~~~~~~~~~~~~~~~
