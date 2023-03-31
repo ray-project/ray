@@ -7,11 +7,7 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
-from ray.rllib.models.torch.torch_distributions import (
-    TorchCategorical,
-    TorchDeterministic,
-    TorchDiagGaussian,
-)
+from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -40,18 +36,13 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
         TorchRLModule.__init__(self, *args, **kwargs)
         PPORLModuleBase.__init__(self, *args, **kwargs)
 
-        if self._is_discrete:
-            self.action_dist_cls = TorchCategorical
-        else:
-            self.action_dist_cls = TorchDiagGaussian
-
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:
         return self.input_specs_exploration()
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecDict:
-        return SpecDict({SampleBatch.ACTION_DIST: TorchDeterministic})
+        return SpecDict({SampleBatch.ACTION_DIST: Distribution})
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -73,12 +64,9 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
 
         # Actions
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        if self._is_discrete:
-            action = torch.argmax(action_logits, dim=-1)
-        else:
-            action, _ = action_logits.chunk(2, dim=-1)
-        action_dist = TorchDeterministic(action)
-        output[SampleBatch.ACTION_DIST] = action_dist
+        action_dist = self.action_dist_cls.from_logits(action_logits)
+        output[SampleBatch.ACTION_DIST] = action_dist.to_deterministic()
+
         return output
 
     @override(RLModule)
@@ -123,6 +111,7 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
 
         # Policy head
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
+
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
         output[SampleBatch.ACTION_DIST] = self.action_dist_cls.from_logits(
             logits=action_logits
@@ -141,9 +130,7 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
     def output_specs_train(self) -> SpecDict:
         spec = SpecDict(
             {
-                SampleBatch.ACTION_DIST: TorchCategorical
-                if self._is_discrete
-                else TorchDiagGaussian,
+                SampleBatch.ACTION_DIST: Distribution,
                 SampleBatch.ACTION_LOGP: TorchTensorSpec("b", dtype=torch.float32),
                 SampleBatch.VF_PREDS: TorchTensorSpec("b", dtype=torch.float32),
                 "entropy": TorchTensorSpec("b", dtype=torch.float32),

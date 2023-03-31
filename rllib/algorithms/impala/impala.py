@@ -10,7 +10,7 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.impala.tf.impala_tf_learner import (
+from ray.rllib.algorithms.impala.impala_base_learner import (
     ImpalaHPs,
     _reduce_impala_results,
 )
@@ -141,6 +141,7 @@ class ImpalaConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with ARS-specific values.
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
+        self.minibatch_size = self.train_batch_size
         self.num_rollout_workers = 2
         self.num_gpus = 1
         self.lr = 0.0005
@@ -163,6 +164,7 @@ class ImpalaConfig(AlgorithmConfig):
         gamma: Optional[float] = NotProvided,
         num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
         minibatch_buffer_size: Optional[int] = NotProvided,
+        minibatch_size: Optional[int] = NotProvided,
         num_sgd_iter: Optional[int] = NotProvided,
         replay_proportion: Optional[float] = NotProvided,
         replay_buffer_num_slots: Optional[int] = NotProvided,
@@ -215,6 +217,11 @@ class ImpalaConfig(AlgorithmConfig):
                 is performing gradient calculations.
             minibatch_buffer_size: How many train batches should be retained for
                 minibatching. This conf only has an effect if `num_sgd_iter > 1`.
+            minibatch_size: The size of minibatches that are trained over during
+                each SGD iteration. Note this only has an effect if
+                `_enable_learner_api` == True.
+                Note: minibatch_size must be a multiple of rollout_fragment_length or
+                sequence_length and smaller than or equal to train_batch_size.
             num_sgd_iter: Number of passes to make over each train batch.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
                 be replayed with a p:1 proportion to new data samples.
@@ -329,6 +336,8 @@ class ImpalaConfig(AlgorithmConfig):
             self.after_train_step = after_train_step
         if gamma is not NotProvided:
             self.gamma = gamma
+        if minibatch_size is not NotProvided:
+            self.minibatch_size = minibatch_size
 
         return self
 
@@ -377,6 +386,18 @@ class ImpalaConfig(AlgorithmConfig):
                     "term/optimizer! Try setting config.training("
                     "_tf_policy_handles_more_than_one_loss=True)."
                 )
+        if self._enable_learner_api:
+            if not (
+                (self.minibatch_size % self.rollout_fragment_length == 0)
+                and self.minibatch_size <= self.train_batch_size
+            ):
+                raise ValueError(
+                    "minibatch_size must be a multiple of rollout_fragment_length and "
+                    "must be smaller than or equal to train_batch_size. Got"
+                    f" minibatch_size={self.minibatch_size}, train_batch_size="
+                    f"{self.train_batch_size}, and rollout_fragment_length="
+                    f"{self.get_rollout_fragment_length()}"
+                )
         # learner hps need to be updated inside of config.validate in order to have
         # the correct values for when a user starts an experiment from a dict. This is
         # as oppposed to assigning the values inthe builder functions such as `training`
@@ -397,7 +418,7 @@ class ImpalaConfig(AlgorithmConfig):
         lg_config = super().get_learner_group_config(module_spec)
         optim_config = lg_config.optimizer_config
         # TODO(avnishn): Make grad_clip a default parameter in algorithm_config's base
-        # class
+        #  class
         optim_config.update({"grad_clip": self.grad_clip})
         lg_config = lg_config.learner(optimizer_config=optim_config)
         return lg_config
@@ -415,6 +436,12 @@ class ImpalaConfig(AlgorithmConfig):
             from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
 
             return ImpalaTfLearner
+        elif self.framework_str == "torch":
+            from ray.rllib.algorithms.impala.torch.impala_torch_learner import (
+                ImpalaTorchLearner,
+            )
+
+            return ImpalaTorchLearner
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
@@ -425,6 +452,14 @@ class ImpalaConfig(AlgorithmConfig):
 
             return SingleAgentRLModuleSpec(
                 module_class=PPOTfRLModule, catalog_class=PPOCatalog
+            )
+        elif self.framework_str == "torch":
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+                PPOTorchRLModule,
+            )
+
+            return SingleAgentRLModuleSpec(
+                module_class=PPOTorchRLModule, catalog_class=PPOCatalog
             )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
@@ -495,21 +530,26 @@ class Impala(Algorithm):
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
+        if not config["vtrace"]:
+            raise ValueError("IMPALA with the learner API does not support non-VTrace ")
+
         if config._enable_rl_module_api:
             if config["framework"] == "tf2":
-                if config["vtrace"]:
-                    from ray.rllib.algorithms.impala.tf.impala_tf_policy_rlm import (
-                        ImpalaTfPolicyWithRLModule,
-                    )
+                from ray.rllib.algorithms.impala.tf.impala_tf_policy_rlm import (
+                    ImpalaTfPolicyWithRLModule,
+                )
 
-                    return ImpalaTfPolicyWithRLModule
-                else:
-                    raise ValueError(
-                        "IMPALA with the learner API does not support non-VTrace "
-                    )
+                return ImpalaTfPolicyWithRLModule
+            if config["framework"] == "torch":
+                from ray.rllib.algorithms.impala.torch.impala_torch_policy_rlm import (
+                    ImpalaTorchPolicyWithRLModule,
+                )
+
+                return ImpalaTorchPolicyWithRLModule
             else:
                 raise ValueError(
-                    "IMPALA with the learner API does not support non-TF2 "
+                    f"IMPALA with the learner API does not support framework "
+                    f"{config['framework']} "
                 )
         else:
             if config["framework"] == "torch":
@@ -603,6 +643,9 @@ class Impala(Algorithm):
             )
             self._aggregator_actor_manager = None
 
+        # This variable is used to keep track of the statistics from the most recent
+        # update of the learner group
+        self._results = {}
         self._timeout_s_sampler_manager = self.config.timeout_s_sampler_manager
 
         if not self.config._enable_learner_api:
@@ -684,7 +727,17 @@ class Impala(Algorithm):
                 timeout_seconds=self.config.worker_health_probe_timeout_s,
                 mark_healthy=True,
             )
-        return train_results
+
+        if self.config._enable_learner_api:
+            if train_results:
+                # store the most recent result and return it if no new result is
+                # available. This keeps backwards compatibility with the old
+                # training stack / results reporting stack. This is necessary
+                # any time we develop an asynchronous algorithm.
+                self._results = train_results
+            return self._results
+        else:
+            return train_results
 
     @classmethod
     @override(Algorithm)
@@ -860,6 +913,7 @@ class Impala(Algorithm):
                 reduce_fn=_reduce_impala_results,
                 block=blocking,
                 num_iters=self.config.num_sgd_iter,
+                minibatch_size=self.config.minibatch_size,
             )
         else:
             lg_results = None
@@ -1043,7 +1097,6 @@ class Impala(Algorithm):
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
             weights = self.learner_group.get_weights(policy_ids)
-
             if self.config.num_rollout_workers == 0:
                 worker = self.workers.local_worker()
                 worker.set_weights(weights)
