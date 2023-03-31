@@ -601,7 +601,7 @@ class TestDownloadAndUnpackPackage:
                 # Add a file to the zip file so we can verify the file was extracted.
                 zip.writestr("file.txt", "Hello, world!")
 
-            pkg_uri = f"file://{zipfile_path}"
+            pkg_uri = f"file://{os.path.normpath(zipfile_path)}"
 
             local_dir = await download_and_unpack_package(
                 pkg_uri=pkg_uri, base_directory=temp_dir
