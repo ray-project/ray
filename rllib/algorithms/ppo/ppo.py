@@ -128,7 +128,7 @@ class PPOConfig(PGConfig):
 
         if self._enable_rl_module_api:
             # RLModules don't support exploration_configs anymore.
-            self.exploration_config = None
+            self.exploration_config = {}
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:

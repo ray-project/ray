@@ -334,7 +334,7 @@ class AlgorithmConfig(_Config):
         self.explore = True
         # This is not compatible with RLModules, which have a method
         # `forward_exploration` to specify custom exploration behavior.
-        self.exploration_config = None
+        self.exploration_config = {}
 
         # `self.multi_agent()`
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
