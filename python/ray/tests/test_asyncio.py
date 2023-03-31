@@ -348,9 +348,7 @@ def test_asyncio_actor_with_large_concurrency(ray_start_regular_shared):
     assert sync_id == async_id
 
 
-def test_asyncio_actor_shutdown_when_non_async_method_mixed(shutdown_only):
-    ray.init(num_cpus=1)
-
+def test_asyncio_actor_shutdown_when_non_async_method_mixed(ray_start_regular_shared):
     # It is a regression test.
     # https://github.com/ray-project/ray/issues/32376
     # Make sure the core worker doesn't crash when
