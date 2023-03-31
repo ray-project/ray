@@ -3,7 +3,6 @@ import binascii
 import contextlib
 import errno
 import functools
-import hashlib
 import importlib
 import inspect
 import json
@@ -19,7 +18,6 @@ import tempfile
 import threading
 import time
 from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
-import uuid
 import warnings
 from inspect import signature
 from pathlib import Path
@@ -37,7 +35,6 @@ from typing import (
 )
 
 import grpc
-import numpy as np
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -140,14 +137,6 @@ def read_ray_address(temp_dir: Optional[str] = None) -> str:
         return f.read().strip()
 
 
-def _random_string():
-    id_hash = hashlib.shake_128()
-    id_hash.update(uuid.uuid4().bytes)
-    id_bytes = id_hash.digest(ray_constants.ID_SIZE)
-    assert len(id_bytes) == ray_constants.ID_SIZE
-    return id_bytes
-
-
 def format_error_message(exception_message: str, task_exception: bool = False):
     """Improve the formatting of an exception thrown by a remote function.
 
@@ -240,32 +229,6 @@ def publish_error_to_driver(
         gcs_publisher.publish_error(job_id.hex().encode(), error_data, num_retries)
     except Exception:
         logger.exception(f"Failed to publish error {error_data}")
-
-
-def random_string():
-    """Generate a random string to use as an ID.
-
-    Note that users may seed numpy, which could cause this function to generate
-    duplicate IDs. Therefore, we need to seed numpy ourselves, but we can't
-    interfere with the state of the user's random number generator, so we
-    extract the state of the random number generator and reset it after we are
-    done.
-
-    TODO(rkn): If we want to later guarantee that these are generated in a
-    deterministic manner, then we will need to make some changes here.
-
-    Returns:
-        A random byte string of length ray_constants.ID_SIZE.
-    """
-    # Get the state of the numpy random number generator.
-    numpy_state = np.random.get_state()
-    # Try to use true randomness.
-    np.random.seed(None)
-    # Generate the random ID.
-    random_id = np.random.bytes(ray_constants.ID_SIZE)
-    # Reset the state of the numpy random number generator.
-    np.random.set_state(numpy_state)
-    return random_id
 
 
 def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
