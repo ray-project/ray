@@ -136,7 +136,8 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
             subscriber_id,
             /*get_time_ms=*/[]() { return 1.0; },
             /*subscriber_timeout_ms=*/1000,
-            /*publish_batch_size=*/1000)),
+            /*publish_batch_size=*/1000,
+            UniqueID::FromRandom())),
         client_factory_(client_factory) {}
 
   ~MockDistributedSubscriber() = default;
