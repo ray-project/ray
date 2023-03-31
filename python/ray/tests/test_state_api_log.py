@@ -664,10 +664,11 @@ def test_log_list(ray_start_cluster):
 
     wait_for_condition(verify)
 
+    node_id = "XXXX"
     with pytest.raises(requests.HTTPError) as e:
-        list_logs(node_id="XXXX")
+        list_logs(node_id=node_id)
 
-    assert e.match("Internal Server Error") == False
+    e.match(f"Given node id {node_id} is not available")
 
 
 def test_log_get(ray_start_cluster):
