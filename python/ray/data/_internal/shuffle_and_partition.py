@@ -39,7 +39,7 @@ class _ShufflePartitionOp(ShuffleOp):
         if block_udf:
             ctx = TaskContext(task_idx=idx)
             # TODO(ekl) note that this effectively disables block splitting.
-            blocks = list(block_udf([block], ctx))
+            blocks = list(block_udf([block], ctx, None))
             if len(blocks) > 1:
                 builder = BlockAccessor.for_block(blocks[0]).builder()
                 for b in blocks:

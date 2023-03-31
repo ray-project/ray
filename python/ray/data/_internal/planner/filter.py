@@ -1,6 +1,7 @@
 from typing import Callable, Iterator
 
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.metrics import MetricsCollector
 from ray.data.block import Block, BlockAccessor, RowUDF
 from ray.data.context import DatasetContext
 
@@ -15,7 +16,10 @@ def generate_filter_fn() -> Callable[
     context = DatasetContext.get_current()
 
     def fn(
-        blocks: Iterator[Block], ctx: TaskContext, row_fn: RowUDF
+        blocks: Iterator[Block],
+        ctx: TaskContext,
+        metrics_collector: MetricsCollector,
+        row_fn: RowUDF,
     ) -> Iterator[Block]:
         DatasetContext._set_current(context)
         for block in blocks:
@@ -28,5 +32,7 @@ def generate_filter_fn() -> Callable[
             # This causes different behavior between filter and other map-like
             # functions. We should revisit and try to get rid of this logic.
             yield builder.build()
+            if metrics_collector is not None:
+                metrics_collector.record_metrics(builder.get_metrics())
 
     return fn

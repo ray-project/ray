@@ -156,6 +156,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             view = view.copy(deep=True)
         return view
 
+    def does_slice_always_copy(self) -> bool:
+        return False
+
     def take(self, indices: List[int]) -> "pandas.DataFrame":
         table = self._table.take(indices)
         table.reset_index(drop=True, inplace=True)

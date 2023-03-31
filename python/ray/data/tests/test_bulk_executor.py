@@ -16,7 +16,7 @@ from ray.data.tests.conftest import *  # noqa
 
 
 def make_transform(block_fn):
-    def map_fn(block_iter, ctx):
+    def map_fn(block_iter, *_):
         for block in block_iter:
             yield block_fn(block)
 
@@ -58,7 +58,7 @@ def test_multi_stage_execution(ray_start_10_cpus_shared, preserve_order):
     o2 = MapOperator.create(make_transform(delay_first), o1)
     o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
 
-    def reverse_sort(inputs: List[RefBundle], ctx):
+    def reverse_sort(inputs: List[RefBundle], *_):
         reversed_list = inputs[::-1]
         return reversed_list, {}
 

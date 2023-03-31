@@ -17,6 +17,7 @@ from ray.data._internal.stats import StatsDict, DatasetStats
 from ray.data._internal.stage_impl import RandomizeBlocksStage
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.metrics import MetricsCollector
 from ray.data._internal.compute import (
     get_compute,
     CallableClass,
@@ -214,7 +215,11 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
             for b in i.blocks:
                 trace_allocation(b[0], "legacy_compat.blocks_to_input_buf[0]")
 
-        def do_read(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
+        def do_read(
+            blocks: Iterator[Block],
+            ctx: TaskContext,
+            metrics_collector: MetricsCollector,
+        ) -> Iterator[Block]:
             for read_task in blocks:
                 yield from read_task()
 
@@ -283,8 +288,12 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             fn_args += stage.fn_args
         fn_kwargs = stage.fn_kwargs or {}
 
-        def do_map(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
-            yield from block_fn(blocks, ctx, *fn_args, **fn_kwargs)
+        def do_map(
+            blocks: Iterator[Block],
+            ctx: TaskContext,
+            metrics_collector: MetricsCollector,
+        ) -> Iterator[Block]:
+            yield from block_fn(blocks, ctx, metrics_collector, *fn_args, **fn_kwargs)
 
         return MapOperator.create(
             do_map,

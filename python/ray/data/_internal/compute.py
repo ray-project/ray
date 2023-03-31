@@ -7,6 +7,7 @@ import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.metrics import MetricsCollector
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
@@ -37,8 +38,11 @@ BlockTransform = Union[
     # transform type.
     # Callable[[Block, ...], Iterable[Block]]
     # Callable[[Block, BatchUDF, ...], Iterable[Block]],
-    Callable[[Iterable[Block], TaskContext], Iterable[Block]],
-    Callable[[Iterable[Block], TaskContext, Union[BatchUDF, RowUDF]], Iterable[Block]],
+    Callable[[Iterable[Block], TaskContext, MetricsCollector], Iterable[Block]],
+    Callable[
+        [Iterable[Block], TaskContext, MetricsCollector, Union[BatchUDF, RowUDF]],
+        Iterable[Block],
+    ],
     Callable[..., Iterable[Block]],
 ]
 

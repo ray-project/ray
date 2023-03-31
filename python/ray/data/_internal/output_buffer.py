@@ -2,6 +2,7 @@ from typing import Callable, Any, Optional
 
 from ray.data.block import Block, DataBatch, BlockAccessor
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.metrics import DataMungingMetrics
 
 
 class BlockOutputBuffer(object):
@@ -38,6 +39,7 @@ class BlockOutputBuffer(object):
         self._buffer = DelegatingBlockBuilder()
         self._returned_at_least_one_block = False
         self._finalized = False
+        self._metrics = DataMungingMetrics()
 
     def add(self, item: Any) -> None:
         """Add a single item to this output buffer."""
@@ -72,9 +74,13 @@ class BlockOutputBuffer(object):
         """Returns the next complete output block."""
         assert self.has_next()
         block = self._buffer.build()
+        self._metrics = self._metrics.merge_with(self._buffer.get_metrics())
         accessor = BlockAccessor.for_block(block)
         if self._block_udf and accessor.num_rows() > 0:
             block = self._block_udf(block)
         self._buffer = DelegatingBlockBuilder()
         self._returned_at_least_one_block = True
         return block
+
+    def get_metrics(self) -> DataMungingMetrics:
+        return self._metrics

@@ -36,7 +36,7 @@ def _get_blocks(bundle: RefBundle, output_list: List[Block]):
         output_list.append(ray.get(block))
 
 
-def _mul2_transform(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+def _mul2_transform(block_iter: Iterable[Block], *_) -> Iterable[Block]:
     for block in block_iter:
         yield [b * 2 for b in block]
 
@@ -62,7 +62,7 @@ def test_input_data_buffer(ray_start_regular_shared):
 
 
 def test_all_to_all_operator():
-    def dummy_all_transform(bundles: List[RefBundle], ctx):
+    def dummy_all_transform(bundles: List[RefBundle], ctx, *_):
         assert len(ctx.sub_progress_bar_dict) == 2
         assert list(ctx.sub_progress_bar_dict.keys()) == ["Test1", "Test2"]
         return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
@@ -172,7 +172,7 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     assert len(stats["TestMapper"]) == 100, stats
 
     # Check memory stats.
-    metrics = op.get_metrics()
+    metrics = op.get_metrics()["object_store_metrics"]
     assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(832200, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
@@ -209,9 +209,10 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     # Check equivalent to bulk execution in order.
     assert np.array_equal(output, [[np.ones(1024) * i * 2] for i in range(100)])
     metrics = op.get_metrics()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
-    assert metrics["obj_store_mem_peak"] == pytest.approx(8320, 0.5), metrics
-    assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
+    obj_store_metrics = metrics["object_store_metrics"]
+    assert obj_store_metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5)
+    assert obj_store_metrics["obj_store_mem_peak"] == pytest.approx(8320, 0.5)
+    assert obj_store_metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5)
     if use_actors:
         assert "locality_hits" in metrics, metrics
         assert "locality_misses" in metrics, metrics
@@ -353,9 +354,10 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     # Check equivalent to bulk execution in order.
     assert np.array_equal(output, [[np.ones(100) * i * 2] for i in range(100)])
     metrics = op.get_metrics()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(92900, 0.5), metrics
-    assert metrics["obj_store_mem_peak"] == pytest.approx(929, 0.5), metrics
-    assert metrics["obj_store_mem_freed"] == pytest.approx(92900, 0.5), metrics
+    obj_store_metrics = metrics["object_store_metrics"]
+    assert obj_store_metrics["obj_store_mem_alloc"] == pytest.approx(92900, 0.5)
+    assert obj_store_metrics["obj_store_mem_peak"] == pytest.approx(929, 0.5)
+    assert obj_store_metrics["obj_store_mem_freed"] == pytest.approx(92900, 0.5)
     # Check e2e locality manager working.
     assert metrics["locality_hits"] == 100, metrics
     assert metrics["locality_misses"] == 0, metrics
@@ -365,7 +367,7 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
     # Simple sanity check of batching behavior.
-    def _check_batch(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+    def _check_batch(block_iter: Iterable[Block], *_) -> Iterable[Block]:
         block_iter = list(block_iter)
         assert len(block_iter) == 5, block_iter
         for block in block_iter:
@@ -406,7 +408,7 @@ def test_map_operator_output_unbundling(
 ):
     # Tests that the MapOperator's output queue unbundles the bundles returned from
     # tasks; this facilitates features such as dynamic block splitting.
-    def noop(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+    def noop(block_iter: Iterable[Block], *_) -> Iterable[Block]:
         for block in block_iter:
             yield block
 

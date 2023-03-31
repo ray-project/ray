@@ -2884,8 +2884,10 @@ class Dataset(Generic[T]):
         if type(datasource).write != Datasource.write:
             write_fn = generate_write_fn(datasource, **write_args)
 
-            def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
-                return write_fn(blocks, ctx)
+            def write_fn_wrapper(
+                blocks: Iterator[Block], ctx, metrics_collector, fn
+            ) -> Iterator[Block]:
+                return write_fn(blocks, ctx, metrics_collector)
 
             plan = self._plan.with_stage(
                 OneToOneStage(
