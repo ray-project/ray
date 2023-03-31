@@ -82,7 +82,7 @@ parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument("--no-custom-eval", action="store_true")
@@ -118,23 +118,19 @@ def custom_eval_function(algorithm, eval_workers):
     Returns:
         metrics: Evaluation metrics dict.
     """
-
-    # We configured 2 eval workers in the training config.
-    funcs = [
-        lambda w: w.foreach_env(lambda env: env.set_corridor_length(4)),
-        lambda w: w.foreach_env(lambda env: env.set_corridor_length(7)),
-    ]
-
-    # Set different env settings for each worker. Here we use a fixed config,
-    # which also could have been computed in each worker by looking at
-    # env_config.worker_index (printed in SimpleCorridor class above).
-    eval_workers.foreach_worker(func=funcs)
+    # Set different env settings for each worker. Here we use the worker's
+    # `worker_index` property.
+    eval_workers.foreach_worker(
+        func=lambda w: w.foreach_env(
+            lambda env: env.set_corridor_length(4 if w.worker_index == 1 else 7)
+        )
+    )
 
     for i in range(5):
         print("Custom evaluation round", i)
         # Calling .sample() runs exactly one episode per worker due to how the
         # eval workers are configured.
-        eval_workers.foreach_worker(func=lambda w: w.sample())
+        eval_workers.foreach_worker(func=lambda w: w.sample(), local_worker=False)
 
     # Collect the accumulated episodes on the workers, and then summarize the
     # episode stats into a metrics dict.

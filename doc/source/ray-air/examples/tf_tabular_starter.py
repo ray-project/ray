@@ -34,7 +34,7 @@ from tensorflow.keras import layers
 
 from ray.air import session
 from ray.air.config import ScalingConfig
-from ray.air.integrations.keras import Callback as KerasCallback
+from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.train.tensorflow import TensorflowTrainer
 
 
@@ -79,7 +79,7 @@ def train_loop_per_worker(config):
         )
         multi_worker_model.fit(
             tf_dataset,
-            callbacks=[KerasCallback()],
+            callbacks=[ReportCheckpointCallback()],
             verbose=0,
         )
 

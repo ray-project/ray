@@ -17,7 +17,7 @@ class Test(dict):
 
 DEFAULT_WHEEL_WAIT_TIMEOUT = 7200  # Two hours
 DEFAULT_COMMAND_TIMEOUT = 1800
-DEFAULT_BUILD_TIMEOUT = 1800
+DEFAULT_BUILD_TIMEOUT = 3600
 DEFAULT_CLUSTER_TIMEOUT = 1800
 DEFAULT_AUTOSUSPEND_MINS = 120
 DEFAULT_MAXIMUM_UPTIME_MINS = 3200
@@ -40,9 +40,6 @@ RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".
 RELEASE_TEST_SCHEMA_FILE = os.path.join(
     RELEASE_PACKAGE_DIR, "ray_release", "schema.json"
 )
-
-DEFAULT_CORE_RUN_TYPE = "sdk_command"
-DEFAULT_CORE_ENV_TYPE = "staging_v1"
 
 
 def read_and_validate_release_test_collection(

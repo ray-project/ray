@@ -12,7 +12,6 @@ from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
 )
-from ray.serve._private.constants import MULTI_APP_MIGRATION_MESSAGE
 from ray.exceptions import RayTaskError
 
 logger = logging.getLogger(__name__)
@@ -59,6 +58,8 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         else:
             try:
                 config = await controller.get_app_config.remote()
+                if config is None:
+                    config = ServeApplicationSchema.get_empty_schema_dict()
             except ray.exceptions.RayTaskError as e:
                 # Task failure sometimes are due to GCS
                 # failure. When GCS failed, we expect a longer time
@@ -158,6 +159,8 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         from ray.serve._private.api import serve_start
         from ray.serve.schema import ServeApplicationSchema
         from pydantic import ValidationError
+        from ray.serve._private.constants import MULTI_APP_MIGRATION_MESSAGE
+        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
         try:
             config = ServeApplicationSchema.parse_obj(await req.json())
@@ -223,6 +226,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         try:
             client.deploy_apps(config)
+            record_extra_usage_tag(TagKey.SERVE_REST_API_VERSION, "v1")
         except RayTaskError as e:
             return Response(
                 status=400,
@@ -237,6 +241,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         from ray.serve._private.api import serve_start
         from ray.serve.schema import ServeDeploySchema
         from pydantic import ValidationError
+        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
         try:
             config = ServeDeploySchema.parse_obj(await req.json())
@@ -286,6 +291,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         try:
             client.deploy_apps(config)
+            record_extra_usage_tag(TagKey.SERVE_REST_API_VERSION, "v2")
         except RayTaskError as e:
             return Response(
                 status=400,

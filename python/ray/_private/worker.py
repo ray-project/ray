@@ -73,6 +73,8 @@ from ray._private.gcs_pubsub import (
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
     global_worker_stdstream_dispatcher,
+    stdout_deduplicator,
+    stderr_deduplicator,
     setup_logger,
 )
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
@@ -663,7 +665,17 @@ class Worker:
                 object_ref is None
             ), "Local Mode does not support inserting with an ObjectRef"
 
-        serialized_value = self.get_serialization_context().serialize(value)
+        try:
+            serialized_value = self.get_serialization_context().serialize(value)
+        except TypeError as e:
+            sio = io.StringIO()
+            ray.util.inspect_serializability(value, print_file=sio)
+            msg = (
+                "Could not serialize the put value "
+                f"{repr(value)}:\n"
+                f"{sio.getvalue()}"
+            )
+            raise TypeError(msg) from e
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
@@ -1743,8 +1755,23 @@ sys.excepthook = custom_excepthook
 
 
 def print_to_stdstream(data):
-    print_file = sys.stderr if data["is_err"] else sys.stdout
-    print_worker_logs(data, print_file)
+    should_dedup = data.get("pid") not in ["autoscaler", "raylet"]
+
+    if data["is_err"]:
+        if should_dedup:
+            batches = stderr_deduplicator.deduplicate(data)
+        else:
+            batches = [data]
+        sink = sys.stderr
+    else:
+        if should_dedup:
+            batches = stdout_deduplicator.deduplicate(data)
+        else:
+            batches = [data]
+        sink = sys.stdout
+
+    for batch in batches:
+        print_worker_logs(batch, sink)
 
 
 # Start time of this process, used for relative time logs.
@@ -1983,6 +2010,8 @@ def connect(
     startup_token: int = 0,
     ray_debugger_external: bool = False,
     entrypoint: str = "",
+    worker_launch_time_ms: int = -1,
+    worker_launched_time_ms: int = -1,
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -2004,6 +2033,12 @@ def connect(
             node this worker is running on.
         entrypoint: The name of the entrypoint script. Ignored if the
             mode != SCRIPT_MODE
+        worker_launch_time_ms: The time when the worker process for this worker
+            is launched. If the worker is not launched by raylet (e.g.,
+            driver), this must be -1 (default value).
+        worker_launched_time_ms: The time when the worker process for this worker
+            finshes launching. If the worker is not launched by raylet (e.g.,
+            driver), this must be -1 (default value).
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2168,6 +2203,8 @@ def connect(
         startup_token,
         session_name,
         "" if mode != SCRIPT_MODE else entrypoint,
+        worker_launch_time_ms,
+        worker_launched_time_ms,
     )
 
     # Notify raylet that the core worker is ready.
@@ -2283,6 +2320,10 @@ def disconnect(exiting_interpreter=False):
 
         worker._session_index += 1
 
+        for leftover in stdout_deduplicator.flush():
+            print_worker_logs(leftover, sys.stdout)
+        for leftover in stderr_deduplicator.flush():
+            print_worker_logs(leftover, sys.stderr)
         global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
 
     worker.node = None  # Disconnect the worker from the node.
