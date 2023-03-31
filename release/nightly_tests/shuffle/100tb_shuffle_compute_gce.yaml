@@ -2,17 +2,17 @@ cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west1
 allowed_azs: 
     - us-west1-c
+
 gcp:
-  InstanceProperties:
-    - Disks:
-      - Boot: true
-        AutoDelete: true
-        InitializeParams:
-          - DiskSizeGb: 2000
-      - Boot: false
-        AutoDelete: true
-        InitializeParams:
-          - DiskSizeGb: 2000
+  disks:
+    - boot: true
+      autoDelete: true
+      initializeParams:
+        diskSizeGb: 2000
+    - boot: false
+      autoDelete: true
+      initializeParams:
+        diskSizeGb: 2000
 
 head_node_type:
     name: head_node
