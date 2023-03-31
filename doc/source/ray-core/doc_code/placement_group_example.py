@@ -1,14 +1,18 @@
 # __create_pg_start__
+from pprint import pprint
+import time
+
 # Import placement group APIs.
 from ray.util.placement_group import (
     placement_group,
     placement_group_table,
-    remove_placement_group
+    remove_placement_group,
 )
-from pprint import pprint
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 # Initialize Ray.
 import ray
+
 # Create a single node Ray cluster with 2 CPUs and 2 GPUs
 ray.init(num_cpus=2, num_gpus=2)
 
@@ -37,13 +41,13 @@ try:
 except Exception as e:
     print(
         "Cannot create a placement group because "
-        "{'GPU': 2} bundle cannot be created.")
+        "{'GPU': 2} bundle cannot be created."
+    )
     print(e)
 # __create_pg_failed_end__
 
-# __schedule_pg_start__
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
+# __schedule_pg_start__
 @ray.remote
 class Actor:
     def __init__(self):
@@ -52,15 +56,18 @@ class Actor:
     def ready(self):
         pass
 
+
 # Create an actor to a placement group.
 actor = Actor.options(
     scheduling_strategy=PlacementGroupSchedulingStrategy(
         placement_group=pg,
-)).remote()
+    )
+).remote()
 
 # Verify the actor is scheduled.
 ray.get(actor.ready.remote(), timeout=10)
 # __schedule_pg_end__
+
 
 # __schedule_pg_2_start__
 @ray.remote(num_cpus=1)
@@ -71,15 +78,18 @@ class Actor:
     def ready(self):
         pass
 
+
 # Create an actor with 1 CPU to a placement group.
 actor2 = Actor.options(
-scheduling_strategy=PlacementGroupSchedulingStrategy(
-    placement_group=pg,
-)).remote()
+    scheduling_strategy=PlacementGroupSchedulingStrategy(
+        placement_group=pg,
+    )
+).remote()
 
 # Verify the actor is scheduled.
 ray.get(actor2.ready.remote(), timeout=10)
 # __schedule_pg_2_end__
+
 
 # __schedule_pg_3_start__
 @ray.remote(num_cpus=0, num_gpus=1)
@@ -90,12 +100,13 @@ class Actor:
     def ready(self):
         pass
 
+
 # Create a GPU actor on the first bundle of index 0.
 actor = Actor.options(
-scheduling_strategy=PlacementGroupSchedulingStrategy(
-    placement_group=pg,
-    placement_group_bundle_index=0,
-)
+    scheduling_strategy=PlacementGroupSchedulingStrategy(
+        placement_group=pg,
+        placement_group_bundle_index=0,
+    )
 ).remote()
 
 # Verify gpu actor is scheduled.
@@ -107,7 +118,6 @@ ray.get(actor.ready.remote(), timeout=10)
 remove_placement_group(pg)
 
 # Wait until placement group is killed.
-import time
 time.sleep(1)
 # Check the placement group has died.
 pprint(placement_group_table(pg))
