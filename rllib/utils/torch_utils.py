@@ -582,9 +582,9 @@ def softmax_cross_entropy_with_logits(
 
 @PublicAPI
 class Swish(nn.Module):
-    def __init__(self):
+    def __init__(self, beta: float = 1.0):
         super().__init__()
-        self._beta = nn.Parameter(torch.tensor(1.0))
+        self._beta = beta
 
     def forward(self, input_tensor):
         return input_tensor * torch.sigmoid(self._beta * input_tensor)

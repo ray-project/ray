@@ -202,6 +202,11 @@ class Model(abc.ABC):
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def get_num_parameters(self) -> Tuple[int, int]:
+        """Returns a tuple of (num trainable params, num non-trainable params)."""
+        raise NotImplementedError
+
 
 class Encoder(Model, abc.ABC):
     """The framework-agnostic base class for all encoders RLlib produces.

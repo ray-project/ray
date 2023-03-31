@@ -79,17 +79,12 @@ class TorchCNNEncoder(TorchModel, Encoder):
         TorchModel.__init__(self, config)
         Encoder.__init__(self, config)
 
-        output_activation = get_activation_fn(
-            config.output_activation, framework="torch"
-        )
-
         layers = []
         cnn = TorchCNN(
             input_dims=config.input_dims,
             cnn_filter_specifiers=config.cnn_filter_specifiers,
             cnn_activation=config.cnn_activation,
             cnn_use_layernorm=config.cnn_use_layernorm,
-            output_activation=output_activation,
             use_bias=config.use_bias,
         )
         layers.append(cnn)
@@ -101,10 +96,13 @@ class TorchCNNEncoder(TorchModel, Encoder):
         # dimensionality.
         layers.append(
             nn.Linear(
-                int(cnn.output_width) * int(cnn.output_height), config.output_dims[0]
+                int(cnn.output_width) * int(cnn.output_height) * int(cnn.output_depth),
+                config.output_dims[0],
             )
         )
-
+        output_activation = get_activation_fn(
+            config.output_activation, framework="torch"
+        )
         if output_activation is not None:
             layers.append(output_activation())
 

@@ -1862,6 +1862,27 @@ py_test(
 )
 
 py_test(
+    name = "test_cnn_encoders",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_cnn_encoders.py"]
+)
+
+py_test(
+    name = "test_mlp_encoders",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_mlp_encoders.py"]
+)
+
+py_test(
+    name = "test_mlp_heads",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_mlp_heads.py"]
+)
+
+py_test(
     name = "test_torch_rl_module",
     tags = ["team:rllib", "core"],
     size = "medium",
@@ -1887,34 +1908,6 @@ py_test(
     tags = ["team:rllib", "core"],
     size = "medium",
     srcs = ["core/rl_module/tests/test_rl_module_specs.py"]
-)
-
-py_test(
-    name = "test_tf_mlp_head",
-    tags = ["team:rllib", "core", "models"],
-    size = "medium",
-    srcs = ["core/models/tf/tests/test_tf_mlp_head.py"]
-)
-
-py_test(
-    name = "test_torch_cnn_encoder",
-    tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_cnn_encoder.py"]
-)
-
-py_test(
-    name = "test_torch_mlp_encoder",
-    tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_mlp_encoder.py"]
-)
-
-py_test(
-    name = "test_torch_mlp_head",
-    tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_mlp_head.py"]
 )
 
 py_test(

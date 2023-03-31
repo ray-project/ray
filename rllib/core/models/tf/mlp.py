@@ -23,6 +23,7 @@ class TfMLPHead(TfModel):
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             output_dim=config.output_dims[0],
             output_activation=config.output_activation,
+            use_bias=config.use_bias,
         )
 
     @override(Model)
@@ -55,9 +56,10 @@ class TfFreeLogStdMLPHead(TfModel):
             input_dim=mlp_head_config.input_dims[0],
             hidden_layer_dims=mlp_head_config.hidden_layer_dims,
             hidden_layer_activation=mlp_head_config.hidden_layer_activation,
-            hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
+            hidden_layer_use_layernorm=mlp_head_config.hidden_layer_use_layernorm,
             output_dim=self._half_output_dim,
             output_activation=mlp_head_config.output_activation,
+            use_bias=mlp_head_config.use_bias,
         )
 
         self.log_std = tf.Variable(

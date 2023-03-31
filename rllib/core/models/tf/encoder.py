@@ -39,6 +39,7 @@ class TfMLPEncoder(Encoder, TfModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             output_dim=config.output_dims[0],
+            use_bias=config.use_bias,
         )
 
     @override(Model)
@@ -75,10 +76,6 @@ class TfCNNEncoder(TfModel, Encoder):
         TfModel.__init__(self, config)
         Encoder.__init__(self, config)
 
-        output_activation = get_activation_fn(
-            config.output_activation, framework="tf2"
-        )
-
         layers = []
         # The bare-bones CNN (no flatten, no succeeding dense).
         cnn = TfCNN(
@@ -94,6 +91,9 @@ class TfCNNEncoder(TfModel, Encoder):
 
         # Add a final linear layer to make sure that the outputs have the correct
         # dimensionality (output_dims).
+        output_activation = get_activation_fn(
+            config.output_activation, framework="tf2"
+        )
         layers.append(
             tf.keras.layers.Dense(config.output_dims[0], activation=output_activation),
         )

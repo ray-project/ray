@@ -21,6 +21,9 @@ class TfMLP(tf.keras.Model):
         output_dim: The output dimension of the network. If None, no specific output
             layer will be added.
         output_activation: The activation function to use for the output layer (if any).
+            Either a tf.nn.[activation fn] callable or a string that's supported by
+            tf.keras.layers.Activation(activation=...), e.g. "relu", "ReLU", "silu",
+            or "linear".
         use_bias: Whether to use bias on all dense layers.
     """
 
@@ -37,6 +40,7 @@ class TfMLP(tf.keras.Model):
     ):
         """Initialize a TfMLP object."""
         super().__init__()
+        assert input_dim > 0
 
         layers = []
 
@@ -57,7 +61,7 @@ class TfMLP(tf.keras.Model):
             )
             # Add LayerNorm and activation.
             if hidden_layer_use_layernorm:
-                layers.append(tf.keras.layers.LayerNorm())
+                layers.append(tf.keras.layers.LayerNormalization())
                 layers.append(tf.keras.layers.Activation(hidden_layer_activation))
 
         if output_dim is not None:
@@ -120,7 +124,7 @@ class TfCNN(tf.keras.Model):
                 )
             )
             if cnn_use_layernorm:
-                layers.append(tf.keras.layers.LayerNorm())
+                layers.append(tf.keras.layers.LayerNormalization(axis=[-3, -2, -1]))
                 layers.append(tf.keras.layers.Activation(cnn_activation))
 
         # Create the cnn that potentially includes a flattened layer

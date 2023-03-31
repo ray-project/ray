@@ -1,4 +1,7 @@
 import abc
+from typing import Tuple
+
+import numpy as np
 
 from ray.rllib.core.models.base import (
     Model,
@@ -13,6 +16,7 @@ from ray.rllib.models.specs.checker import (
     is_input_decorated,
     is_output_decorated,
 )
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
 
@@ -53,3 +57,9 @@ class TfModel(Model, tf.keras.Model, abc.ABC):
         """
         return self._forward(input_dict, **kwargs)
 
+    @override(Model)
+    def get_num_parameters(self) -> Tuple[int, int]:
+        return (
+            sum([int(np.prod(w.shape)) for w in self.trainable_weights]),
+            sum([int(np.prod(w.shape)) for w in self.non_trainable_weights])
+        )

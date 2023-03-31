@@ -48,13 +48,11 @@ def same_padding(
     else:
         stride_height, stride_width = int(stride_size[0]), int(stride_size[1])
 
-    out_height = np.ceil(float(in_height) / float(stride_height))
-    out_width = np.ceil(float(in_width) / float(stride_width))
+    out_height = int(np.ceil(float(in_height) / float(stride_height)))
+    out_width = int(np.ceil(float(in_width) / float(stride_width)))
 
-    pad_along_height = int(
-        ((out_height - 1) * stride_height + filter_height - in_height)
-    )
-    pad_along_width = int(((out_width - 1) * stride_width + filter_width - in_width))
+    pad_along_height = ((out_height - 1) * stride_height + filter_height - in_height)
+    pad_along_width = ((out_width - 1) * stride_width + filter_width - in_width)
     pad_top = pad_along_height // 2
     pad_bottom = pad_along_height - pad_top
     pad_left = pad_along_width // 2

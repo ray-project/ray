@@ -9,13 +9,15 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
 
 _, tf, _ = try_import_tf()
-torch, nn = try_import_torch()
+torch, _ = try_import_torch()
 
 
-class TestTorchCNNEncoder(unittest.TestCase):
-    def test_torch_cnn_encoder(self):
+class TestCNNEncoders(unittest.TestCase):
 
-        # Input dims supported by RLlib via get_filter_config()
+    def test_cnn_encoders(self):
+        """Tests building CNN encoders properly and checks for correct architecture."""
+
+        # Input dims supported by RLlib via get_filter_config().
         inputs_dimss = [
             [480, 640, 3],
             [480, 640, 1],
@@ -34,42 +36,58 @@ class TestTorchCNNEncoder(unittest.TestCase):
 
         cnn_activations = [None, "linear", "relu"]
 
-        output_dims_configs = [[1], [100]]
+        cnn_use_layernorms = [False, True]
+
+        output_dimss = [[1], [100]]
 
         output_activations = cnn_activations
+
+        use_biases = [False, True]
 
         for permutation in itertools.product(
             inputs_dimss,
             cnn_activations,
+            cnn_use_layernorms,
             output_activations,
-            output_dims_configs,
+            output_dimss,
+            use_biases,
         ):
             (
                 inputs_dims,
                 cnn_activation,
+                cnn_use_layernorm,
                 output_activation,
                 output_dims,
+                use_bias,
             ) = permutation
 
             filter_specifiers = get_filter_config(inputs_dims)
+
+            print(
+                f"Testing ...\n"
+                f"inputs_dims: {inputs_dims}\n"
+                f"cnn_filter_specifiers: {filter_specifiers}\n"
+                f"cnn_activation: {cnn_activation}\n"
+                f"cnn_use_layernorm: {cnn_use_layernorm}\n"
+                f"output_activation: {output_activation}\n"
+                f"output_dims: {output_dims}\n"
+                f"use_bias: {use_bias}\n"
+            )
 
             config = CNNEncoderConfig(
                 input_dims=inputs_dims,
                 cnn_filter_specifiers=filter_specifiers,
                 cnn_activation=cnn_activation,
+                cnn_use_layernorm=cnn_use_layernorm,
                 output_dims=output_dims,
                 output_activation=output_activation,
+                use_bias=use_bias,
             )
 
+            # To compare number of params between frameworks.
+            tf_counts = None
+
             for fw in framework_iterator(frameworks=("tf2", "torch")):
-                print(
-                    f"Testing ...\n"
-                    f"inputs_dims: {inputs_dims}\n"
-                    f"filter_specifiers: {filter_specifiers}\n"
-                    f"filter_layer_activation: {cnn_activation}\n"
-                    f"output_activation: {output_activation}\n"
-                    f"output_dims: {output_dims}\n"
-                )
                 model = config.build(framework=fw)
                 print(model)
 
@@ -88,7 +106,19 @@ class TestTorchCNNEncoder(unittest.TestCase):
                     STATE_IN: state,
                 })
 
-                self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims[0]))
+                if fw == "tf2":
+                    tf_counts = model.get_num_parameters()
+                else:
+                    torch_counts = model.get_num_parameters()
+                    # Compare number of trainable and non-trainable params between
+                    # tf and torch.
+                    self.assertEqual(torch_counts[0], tf_counts[0])
+                    self.assertEqual(torch_counts[1], tf_counts[1])
+
+                self.assertEqual(
+                    outputs[ENCODER_OUT].shape,
+                    (1, output_dims[0]),
+                )
                 self.assertEqual(outputs[STATE_OUT], None)
 
 

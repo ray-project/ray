@@ -1,7 +1,7 @@
 from typing import Union
 
 from ray.rllib.core.models.base import Model
-from ray.rllib.core.models.base import ModelConfig
+from ray.rllib.core.models.configs import FreeLogStdMLPHeadConfig, MLPHeadConfig
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchMLP
 from ray.rllib.models.specs.specs_base import Spec
@@ -13,16 +13,18 @@ torch, nn = try_import_torch()
 
 
 class TorchMLPHead(TorchModel, nn.Module):
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(self, config: MLPHeadConfig) -> None:
         nn.Module.__init__(self)
         TorchModel.__init__(self, config)
 
         self.net = TorchMLP(
             input_dim=config.input_dims[0],
             hidden_layer_dims=config.hidden_layer_dims,
-            output_dim=config.output_dims[0],
             hidden_layer_activation=config.hidden_layer_activation,
+            hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
+            output_dim=config.output_dims[0],
             output_activation=config.output_activation,
+            use_bias=config.use_bias,
         )
 
     @override(Model)
@@ -41,7 +43,7 @@ class TorchMLPHead(TorchModel, nn.Module):
 class TorchFreeLogStdMLPHead(TorchModel, nn.Module):
     """An MLPHead that implements floating log stds for Gaussian distributions."""
 
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(self, config: FreeLogStdMLPHeadConfig) -> None:
         mlp_head_config = config.mlp_head_config
 
         nn.Module.__init__(self)
@@ -55,9 +57,11 @@ class TorchFreeLogStdMLPHead(TorchModel, nn.Module):
         self.net = TorchMLP(
             input_dim=mlp_head_config.input_dims[0],
             hidden_layer_dims=mlp_head_config.hidden_layer_dims,
-            output_dim=self._half_output_dim,
             hidden_layer_activation=mlp_head_config.hidden_layer_activation,
+            hidden_layer_use_layernorm=mlp_head_config.hidden_layer_use_layernorm,
+            output_dim=self._half_output_dim,
             output_activation=mlp_head_config.output_activation,
+            use_bias=mlp_head_config.use_bias,
         )
 
         self.log_std = torch.nn.Parameter(
