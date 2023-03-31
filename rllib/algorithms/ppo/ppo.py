@@ -282,7 +282,7 @@ class PPOConfig(PGConfig):
 
         # Turn RLModule and Learner API on by default (only for torch and tf2)
         if self.framework_str == "tf":
-            self._enable_rl_module_api = False
+            self.rl_module(_enable_rl_module_api=False)
             self._enable_learner_api = False
 
         # Call super's validation method.
