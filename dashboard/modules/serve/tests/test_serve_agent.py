@@ -10,8 +10,10 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
 from ray.experimental.state.api import list_actors
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_MESSAGE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
+from ray.serve.schema import ServeInstanceDetails
+from ray.serve._private.common import ApplicationStatus, DeploymentStatus, ReplicaState
 
 GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
@@ -110,8 +112,10 @@ def test_put_get_multi_app(ray_start_stop):
     )
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     config1 = {
-        "host": "127.0.0.1",
-        "port": 8000,
+        "http_options": {
+            "host": "127.0.0.1",
+            "port": 8000,
+        },
         "applications": [
             {
                 "name": "app1",
@@ -213,8 +217,6 @@ def test_put_duplicate_apps(ray_start_stop):
     """
 
     config = {
-        "host": "127.0.0.1",
-        "port": 8000,
         "applications": [
             {
                 "name": "app1",
@@ -239,8 +241,6 @@ def test_put_duplicate_routes(ray_start_stop):
     """
 
     config = {
-        "host": "127.0.0.1",
-        "port": 8000,
         "applications": [
             {
                 "name": "app1",
@@ -331,8 +331,6 @@ def test_delete_multi_app(ray_start_stop):
         "aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
     )
     config = {
-        "host": "127.0.0.1",
-        "port": 8000,
         "applications": [
             {
                 "name": "app1",
@@ -462,6 +460,214 @@ def test_get_status(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_get_serve_instance_details(ray_start_stop):
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
+    config1 = {
+        "proxy_location": "HeadOnly",
+        "http_options": {
+            "host": "127.0.0.1",
+            "port": 8005,
+        },
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": world_import_path,
+                "deployments": [
+                    {
+                        "name": "f",
+                        "ray_actor_options": {"num_cpus": 0.2},
+                    },
+                ],
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": fastapi_import_path,
+            },
+        ],
+    }
+
+    deploy_config_multi_app(config1)
+
+    def applications_running():
+        response = requests.get(GET_OR_PUT_URL_V2, timeout=15)
+        assert response.status_code == 200
+
+        serve_details = ServeInstanceDetails(**response.json())
+        return (
+            serve_details.applications["app1"].status == ApplicationStatus.RUNNING
+            and serve_details.applications["app2"].status == ApplicationStatus.RUNNING
+        )
+
+    wait_for_condition(applications_running, timeout=15)
+    print("All applications are in a RUNNING state.")
+
+    serve_details = ServeInstanceDetails(**requests.get(GET_OR_PUT_URL_V2).json())
+    # CHECK: location, host, and port
+    assert serve_details.proxy_location == "HeadOnly"
+    assert serve_details.http_options.host == "127.0.0.1"
+    assert serve_details.http_options.port == 8005
+    print("Confirmed fetched proxy location, host and port metadata correct.")
+
+    app_details = serve_details.applications
+
+    # CHECK: app configs are equal
+    assert (
+        app_details["app1"].deployed_app_config.dict(exclude_unset=True)
+        == config1["applications"][0]
+    )
+    assert (
+        app_details["app2"].deployed_app_config.dict(exclude_unset=True)
+        == config1["applications"][1]
+    )
+    print("Confirmed the deployed app configs from the fetched metadata is correct.")
+
+    # CHECK: deployment timestamp
+    assert app_details["app1"].last_deployed_time_s > 0
+    assert app_details["app2"].last_deployed_time_s > 0
+    print("Confirmed deployment timestamps are nonzero.")
+
+    # CHECK: docs path
+    assert app_details["app1"].docs_path is None
+    assert app_details["app2"].docs_path == "/my_docs"
+    print("Confirmed docs paths are correct.")
+
+    # CHECK: all deployments are present
+    assert app_details["app1"].deployments.keys() == {
+        "app1_f",
+        "app1_BasicDriver",
+    }
+    assert app_details["app2"].deployments.keys() == {
+        "app2_FastAPIDeployment",
+    }
+    print("Metadata for all deployed deployments are present.")
+
+    # CHECK: application details
+    for app in ["app1", "app2"]:
+        assert app_details[app].route_prefix == f"/{app}"
+        for deployment in app_details[app].deployments.values():
+            assert deployment.status == DeploymentStatus.HEALTHY
+            # Route prefix should be app level options eventually
+            assert "route_prefix" not in deployment.deployment_config.dict(
+                exclude_unset=True
+            )
+            assert len(deployment.replicas) == deployment.deployment_config.num_replicas
+
+            for replica in deployment.replicas:
+                assert replica.state == ReplicaState.RUNNING
+                assert (
+                    deployment.name in replica.replica_id
+                    and deployment.name in replica.actor_name
+                )
+                assert replica.actor_id and replica.node_id and replica.node_ip
+                assert replica.start_time_s > app_details[app].last_deployed_time_s
+
+    print("Finished checking application details.")
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_put_single_then_multi(ray_start_stop):
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+    multi_app_config = {
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": world_import_path,
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": pizza_import_path,
+            },
+        ],
+    }
+    single_app_config = {"import_path": world_import_path}
+
+    def check_app():
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/").text == "wonderful world",
+            timeout=15,
+        )
+
+    # Deploy single app config
+    deploy_and_check_config(single_app_config)
+    check_app()
+
+    # Deploying multi app config afterwards should fail
+    put_response = requests.put(GET_OR_PUT_URL_V2, json=multi_app_config, timeout=5)
+    assert put_response.status_code == 400
+    print(put_response.text)
+
+    # The original application should still be up and running
+    check_app()
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_put_multi_then_single(ray_start_stop):
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+    multi_app_config = {
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": world_import_path,
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": pizza_import_path,
+            },
+        ],
+    }
+    single_app_config = {"import_path": world_import_path}
+
+    def check_apps():
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").text
+            == "wonderful world",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "4 pizzas please!",
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+            == "6 pizzas please!",
+            timeout=15,
+        )
+
+    # Deploy multi app config
+    deploy_config_multi_app(multi_app_config)
+    check_apps()
+
+    # Deploying single app config afterwards should fail
+    put_response = requests.put(GET_OR_PUT_URL, json=single_app_config, timeout=5)
+    assert put_response.status_code == 400
+
+    # The original applications should still be up and running
+    check_apps()
+
+
+@pytest.mark.parametrize("name", ["", "my_app"])
+def test_put_single_with_name(ray_start_stop, name):
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    single_app_config = {"name": name, "import_path": world_import_path}
+
+    resp = requests.put(GET_OR_PUT_URL, json=single_app_config, timeout=30)
+    assert resp.status_code == 400
+    # Error should tell user specifying the name is not allowed
+    assert "name" in resp.text
+    assert MULTI_APP_MIGRATION_MESSAGE in resp.text
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_serve_namespace(ray_start_stop):
     """
     Check that the Dashboard's Serve can interact with the Python API
@@ -491,6 +697,76 @@ def test_serve_namespace(ray_start_stop):
     print("Successfully retrieved deployment statuses with Python API.")
     print("Shutting down Python API.")
     serve.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.parametrize(
+    "option,override",
+    [
+        ("proxy_location", "HeadOnly"),
+        ("http_options", {"host": "127.0.0.2"}),
+        ("http_options", {"port": 8000}),
+        ("http_options", {"root_path": "/serve_updated"}),
+    ],
+)
+def test_put_with_http_options(ray_start_stop, option, override):
+    """Submits a config with HTTP options specified.
+
+    Trying to submit a config to the serve agent with the HTTP options modified should
+    fail, since users are required to shutdown Serve and restart it if they want to
+    change HTTP options.
+    """
+
+    pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    original_config = {
+        "proxy_location": "EveryNode",
+        "http_options": {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "root_path": "/serve",
+        },
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": pizza_import_path,
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": world_import_path,
+            },
+        ],
+    }
+    deploy_config_multi_app(original_config)
+
+    # Wait for deployments to be up
+    wait_for_condition(
+        lambda: requests.post(
+            "http://localhost:8000/serve/app1", json=["ADD", 2]
+        ).json()
+        == "4 pizzas please!",
+        timeout=15,
+    )
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/serve/app2").text
+        == "wonderful world",
+        timeout=15,
+    )
+
+    modified_config = copy.deepcopy(original_config)
+    modified_config[option] = override
+
+    put_response = requests.put(GET_OR_PUT_URL_V2, json=modified_config, timeout=5)
+    assert put_response.status_code == 400
+
+    # Deployments should still be up
+    assert (
+        requests.post("http://localhost:8000/serve/app1", json=["ADD", 2]).json()
+        == "4 pizzas please!"
+    )
+    assert requests.post("http://localhost:8000/serve/app2").text == "wonderful world"
 
 
 def test_default_dashboard_agent_listen_port():

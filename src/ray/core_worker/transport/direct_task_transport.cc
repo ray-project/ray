@@ -44,16 +44,27 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
           task_spec,
           [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
-            if (status.ok()) {
-              RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
-              // Copy the actor's reply to the GCS for ref counting purposes.
+            if (status.ok() || status.IsCreationTaskError()) {
               rpc::PushTaskReply push_task_reply;
               push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
-              task_finisher_->CompletePendingTask(task_id,
-                                                  push_task_reply,
-                                                  reply.actor_address(),
-                                                  /*is_application_error=*/false);
+              if (status.IsCreationTaskError()) {
+                RAY_LOG(INFO) << "Actor creation failed and we will not be retrying the "
+                                 "creation task, actor id = "
+                              << actor_id << ", task id = " << task_id;
+                // Update the task execution error to be CreationTaskError.
+                push_task_reply.set_task_execution_error(status.ToString());
+              } else {
+                RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
+              }
+              // NOTE: When actor creation task failed we will not retry the creation
+              // task so just marking the task fails.
+              task_finisher_->CompletePendingTask(
+                  task_id,
+                  push_task_reply,
+                  reply.actor_address(),
+                  /*is_application_error=*/status.IsCreationTaskError());
             } else {
+              // Either fails the rpc call or actor scheduling cancelled.
               rpc::RayErrorInfo ray_error_info;
               if (status.IsSchedulingCancelled()) {
                 RAY_LOG(DEBUG) << "Actor creation cancelled, actor id = " << actor_id;
@@ -430,11 +441,11 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                            rpc::RequestWorkerLeaseReply::
                                SCHEDULING_CANCELLED_UNSCHEDULABLE) {
                   error_type = rpc::ErrorType::TASK_UNSCHEDULABLE_ERROR;
-                  *(error_info.mutable_error_message()) =
-                      reply.scheduling_failure_message();
                 } else {
                   error_type = rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED;
                 }
+                error_info.set_error_message(reply.scheduling_failure_message());
+
                 tasks_to_fail = std::move(scheduling_key_entry.task_queue);
                 scheduling_key_entry.task_queue.clear();
                 if (scheduling_key_entry.CanDelete()) {
@@ -508,6 +519,14 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               RAY_CHECK(worker_type_ == WorkerType::DRIVER);
               error_type = rpc::ErrorType::LOCAL_RAYLET_DIED;
               error_status = status;
+              // Grpc errors are not helpful at all. So we are overwriting it.
+              std::stringstream ss;
+              ss << "The worker failed to receive a response from the local raylet"
+                 << "(id: " << NodeID::FromBinary(raylet_address.raylet_id()).Hex()
+                 << " ,ip: " << raylet_address.ip_address() << ") "
+                 << "because the raylet is "
+                    "unavailable (crashed).";
+              error_info.set_error_message(ss.str());
               tasks_to_fail = std::move(scheduling_key_entry.task_queue);
               scheduling_key_entry.task_queue.clear();
               if (scheduling_key_entry.CanDelete()) {
@@ -641,8 +660,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
                      !reply.is_retryable_error() ||
                      !task_finisher_->RetryTaskIfPossible(
                          task_id,
-                         gcs::GetRayErrorInfo(
-                             rpc::ErrorType::TASK_EXECUTION_EXCEPTION))) {
+                         gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+                                              reply.task_execution_error()))) {
             task_finisher_->CompletePendingTask(
                 task_id, reply, addr.ToProto(), reply.is_application_error());
           }

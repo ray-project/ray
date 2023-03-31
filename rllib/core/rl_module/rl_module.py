@@ -7,7 +7,10 @@ import pathlib
 from typing import Any, Dict, Mapping, Optional, Type, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+    from ray.rllib.core.rl_module.marl_module import (
+        MultiAgentRLModule,
+        MultiAgentRLModuleSpec,
+    )
     from ray.rllib.core.models.catalog import Catalog
 
 import ray
@@ -35,7 +38,13 @@ from ray.rllib.utils.serialization import (
 
 
 ModuleID = str
-METADATA_FILE_NAME = "rl_module_metadata.json"
+RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
+RLMODULE_METADATA_SPEC_CLASS_KEY = "module_spec_class"
+RLMODULE_METADATA_SPEC_KEY = "module_spec_dict"
+RLMODULE_STATE_DIR_NAME = "module_state_path"
+RLMODULE_METADATA_RAY_VERSION_KEY = "ray_version"
+RLMODULE_METADATA_RAY_COMMIT_HASH_KEY = "ray_commit_hash"
+RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY = "checkpoint_date_time"
 
 
 @ExperimentalAPI
@@ -45,7 +54,10 @@ class SingleAgentRLModuleSpec:
 
     Args:
         module_class: The RLModule class to use.
-        observation_space: The observation space of the RLModule.
+        observation_space: The observation space of the RLModule. This may differ
+            from the observation space of the environment. For example, a discrete
+            observation space of an environment, would usually correspond to a
+            one-hot encoded observation space of the RLModule because of preprocessing.
         action_space: The action space of the RLModule.
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
@@ -67,6 +79,7 @@ class SingleAgentRLModuleSpec:
         )
 
     def build(self) -> "RLModule":
+        """Builds the RLModule from this spec."""
         if self.module_class is None:
             raise ValueError("RLModule class is not set.")
         if self.observation_space is None:
@@ -193,57 +206,57 @@ class RLModule(abc.ABC):
 
     Here is the pseudocode for how the forward methods are called:
 
-    # During Training (acting in env from each rollout worker)
-    ----------------------------------------------------------
+    During Training (acting in env from each rollout worker):
+
     .. code-block:: python
 
-        module: RLModule = ...
+        module = RLModule(...)
         obs, info = env.reset()
-        while not terminated and not truncated:
-            fwd_outputs = module.forward_exploration({"obs": obs})
-            # this can be deterministic or stochastic exploration
-            action = fwd_outputs["action_dist"].sample()
-            next_obs, reward, terminated, truncated, info = env.step(action)
-            buffer.add(obs, action, next_obs, reward, terminated, truncated, info)
-            next_obs = obs
 
-    # During Training (learning the policy)
-    ----------------------------------------------------------
+        while not env.terminated:
+            fwd_outputs = module.forward_exploration({"obs": obs})
+            # this can be either deterministic or stochastic distribution
+            action = fwd_outputs["action_dist"].sample()
+            obs, reward, terminated, truncated, info = env.step(action)
+
+
+
+    During Training (learning the policy)
+
     .. code-block:: python
-        module: RLModule = ...
-        fwd_ins = buffer.sample()
+
+        module = RLModule(...)
+        fwd_ins = {"obs": obs, "action": action, "reward": reward, "next_obs": next_obs}
         fwd_outputs = module.forward_train(fwd_ins)
         loss = compute_loss(fwd_outputs, fwd_ins)
         update_params(module, loss)
 
-    # During Inference (acting in env during evaluation)
-    ----------------------------------------------------------
+    During Inference (acting in env during evaluation)
+
     .. code-block:: python
-        module: RLModule = ...
+
+        module = RLModule(...)
         obs, info = env.reset()
-        while not terminated and not truncated:
+
+        while not env.terminated:
             fwd_outputs = module.forward_inference({"obs": obs})
-            # this can be deterministic or stochastic evaluation
             action = fwd_outputs["action_dist"].sample()
-            next_obs, reward, terminated, truncated, info = env.step(action)
-            next_obs = obs
+            obs, reward, terminated, truncated, info = env.step(action)
 
     Args:
         *args: Arguments for constructing the RLModule.
         **kwargs: Keyword args for constructing the RLModule.
 
     Abstract Methods:
-        forward_train: Forward pass during training.
-        forward_exploration: Forward pass during training for exploration.
-        forward_inference: Forward pass during inference.
+        :py:meth:`~forward_train`: Forward pass during training.
 
-    Error:
-        The args and kwargs that are passed to the constructor are saved for
-        serialization and deserialization purposes. The RLModule checks if they
-        are serializable/deserializable using ray and if they are not, a
-        ValueError is thrown.
+        :py:meth:`~forward_exploration`: Forward pass during training for exploration.
 
-    Note: There is a reason that the specs are not written as abstract properties.
+        :py:meth:`~forward_inference`: Forward pass during inference.
+
+
+    Note:
+        There is a reason that the specs are not written as abstract properties.
         The reason is that torch overrides `__getattr__` and `__setattr__`. This means
         that if we define the specs as properties, then any error in the property will
         be interpreted as a failure to retrieve the attribute and will invoke
@@ -416,70 +429,11 @@ class RLModule(abc.ABC):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
 
-    def _save_module_metadata(
-        self,
-        checkpoint_dir: Union[str, pathlib.Path],
-        module_state_path: Union[str, pathlib.Path],
-    ):
-        """Saves the metadata of the module to checkpoint_dir.
-
-        Includes:
-            - module class path
-            - module state path
-            - the module config
-            - the ray version used
-            - the ray commit hash used
-            - the date and time of the checkpoint was created
-
-        """
-        if isinstance(checkpoint_dir, str):
-            checkpoint_dir = pathlib.Path(checkpoint_dir)
-        if isinstance(module_state_path, str):
-            module_state_path = pathlib.Path(module_state_path)
-        gmt_time = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S GMT")
-        metadata = {}
-        # TODO (Avnishn): Find a way to incorporate the tune registry here.
-        metadata["module_class"] = serialize_type(self.__class__)
-        metadata["module_config"] = self.config.to_dict()
-        metadata["ray_version"] = ray.__version__
-        metadata["ray_commit_hash"] = ray.__commit__
-        metadata["checkpoint_date_time"] = gmt_time
-        metadata["module_state_path"] = str(module_state_path)
-        metadata_path = checkpoint_dir / METADATA_FILE_NAME
-        with open(metadata_path, "w") as f:
-            json.dump(metadata, f)
-
-    @classmethod
-    def _from_metadata_file(cls, metadata_path: Union[str, pathlib.Path]) -> "RLModule":
-        """Constructs a module from the metadata.
-
-        Args:
-            metadata_path: The path to the metadata json file for a module.
-
-        Returns:
-            The module.
-        """
-        if isinstance(metadata_path, str):
-            metadata_path = pathlib.Path(metadata_path)
-        if not metadata_path.exists():
-            raise ValueError("The metadata path was not found.")
-        if not metadata_path.exists():
-            raise ValueError(
-                "While constructing the module from the metadata, the "
-                f"metadata file was not found at {str(metadata_path)}"
-            )
-        with open(metadata_path, "r") as f:
-            metadata = json.load(f)
-        module_class = deserialize_type(metadata["module_class"])
-        module_config = RLModuleConfig.from_dict(metadata["module_config"])
-        module = module_class(module_config)
-        return module
-
     def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
         """Saves the weights of this RLmodule to path.
 
         Args:
-            path: The directory to save the checkpoint to.
+            path: The file path to save the checkpoint to.
 
         Returns:
             The path to the saved checkpoint.
@@ -494,28 +448,121 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
-    def save_to_checkpoint(self, checkpoint_dir_path: str) -> None:
+    def _module_metadata(
+        self,
+        module_spec_class: Union[
+            Type[SingleAgentRLModuleSpec], Type["MultiAgentRLModuleSpec"]
+        ],
+        additional_metadata: Optional[Mapping[str, Any]] = None,
+    ) -> Mapping[str, Any]:
+        """Returns the metadata of the module.
+
+        This method is used to save the metadata of the module to the checkpoint.
+
+        Includes:
+            - module spec class (e.g SingleAgentRLModuleSpec or MultiAgentRLModuleSpec)
+            - module spec serialized to a dict
+            - module state path (if provided)
+            - the ray version used
+            - the ray commit hash used
+            - the date and time of the checkpoint was created
+
+        Args:
+            module_spec_class: The module spec class that can be used to construct this
+                module.
+            additional_metadata: Any additional metadata to be added to metadata.
+
+        Returns:
+            A dict of json serializable the metadata.
+        """
+        metadata = {}
+        gmt_time = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S GMT")
+
+        # TODO (Avnishn): Find a way to incorporate the tune registry here.
+        metadata[RLMODULE_METADATA_SPEC_CLASS_KEY] = serialize_type(module_spec_class)
+        metadata[RLMODULE_METADATA_SPEC_KEY] = module_spec_class.from_module(
+            self
+        ).to_dict()
+        metadata[RLMODULE_METADATA_RAY_VERSION_KEY] = ray.__version__
+        metadata[RLMODULE_METADATA_RAY_COMMIT_HASH_KEY] = ray.__commit__
+        metadata[RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY] = gmt_time
+        if not additional_metadata:
+            additional_metadata = {}
+        metadata.update(**additional_metadata)
+        return metadata
+
+    def _save_module_metadata(
+        self,
+        checkpoint_dir: Union[str, pathlib.Path],
+        module_spec_class: Union[
+            Type[SingleAgentRLModuleSpec], Type["MultiAgentRLModuleSpec"]
+        ],
+        additional_metadata: Mapping[str, Any] = None,
+    ):
+        """Saves the metadata of the module to checkpoint_dir.
+
+        Args:
+            checkpoint_dir: The directory to save the metadata to.
+            additional_metadata: Additional metadata to save.
+
+        """
+        if not additional_metadata:
+            additional_metadata = {}
+        checkpoint_dir = pathlib.Path(checkpoint_dir)
+        metadata = self._module_metadata(module_spec_class, additional_metadata)
+        metadata_path = checkpoint_dir / RLMODULE_METADATA_FILE_NAME
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f)
+
+    @classmethod
+    def _from_metadata_file(cls, metadata_path: Union[str, pathlib.Path]) -> "RLModule":
+        """Constructs a module from the metadata.
+
+        Args:
+            metadata_path: The path to the metadata json file for a module.
+
+        Returns:
+            The module.
+        """
+        metadata_path = pathlib.Path(metadata_path)
+        if not metadata_path.exists():
+            raise ValueError(
+                "While constructing the module from the metadata, the "
+                f"metadata file was not found at {str(metadata_path)}"
+            )
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+        module_spec_class = deserialize_type(metadata[RLMODULE_METADATA_SPEC_CLASS_KEY])
+        module_spec = module_spec_class.from_dict(metadata[RLMODULE_METADATA_SPEC_KEY])
+        module = module_spec.build()
+        return module
+
+    def _module_state_file_name(self) -> pathlib.Path:
+        """The name of the file to save the module state to while checkpointing."""
+        raise NotImplementedError
+
+    def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
         """Saves the module to a checkpoint directory.
 
         Args:
-            dir_path: The directory to save the checkpoint to.
+            checkpoint_dir_path: The directory to save the checkpoint to.
 
         Raises:
             ValueError: If dir_path is not an absolute path.
         """
         path = pathlib.Path(checkpoint_dir_path)
-        if not path.is_absolute():
-            raise ValueError("dir_path must be an absolute path.")
         path.mkdir(parents=True, exist_ok=True)
-        module_state_path = self.save_state_to_file(path)
-        self._save_module_metadata(path, module_state_path)
+        module_state_dir = path / RLMODULE_STATE_DIR_NAME
+        module_state_dir.mkdir(parents=True, exist_ok=True)
+        self.save_state_to_file(module_state_dir / self._module_state_file_name())
+        self._save_module_metadata(path, SingleAgentRLModuleSpec)
 
     @classmethod
-    def from_checkpoint(cls, checkpoint_dir_path: str) -> None:
+    def from_checkpoint(cls, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
         """Loads the module from a checkpoint directory.
 
         Args:
-            dir_path: The directory to load the checkpoint from.
+            checkpoint_dir_path: The directory to load the checkpoint from.
         """
         path = pathlib.Path(checkpoint_dir_path)
         if not path.exists():
@@ -523,28 +570,17 @@ class RLModule(abc.ABC):
                 "While loading from checkpoint there was no directory"
                 " found at {}".format(checkpoint_dir_path)
             )
-        if not path.is_absolute():
-            raise ValueError("dir_path must be an absolute path.")
         if not path.is_dir():
             raise ValueError(
                 "While loading from checkpoint the checkpoint_dir_path "
                 "provided was not a directory."
             )
-        metadata_path = path / METADATA_FILE_NAME
-        with open(metadata_path, "r") as f:
-            metadata = json.load(f)
-        state_path = metadata["module_state_path"]
+        metadata_path = path / RLMODULE_METADATA_FILE_NAME
         module = cls._from_metadata_file(metadata_path)
+        module_state_dir = path / RLMODULE_STATE_DIR_NAME
+        state_path = module_state_dir / module._module_state_file_name()
         module.load_state_from_file(state_path)
         return module
-
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        """Reserved API, Makes the module distributed."""
-        raise NotImplementedError
-
-    def is_distributed(self) -> bool:
-        """Reserved API, Returns True if the module is distributed."""
-        raise NotImplementedError
 
     def as_multi_agent(self) -> "MultiAgentRLModule":
         """Returns a multi-agent wrapper around this module."""

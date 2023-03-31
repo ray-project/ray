@@ -85,6 +85,15 @@ PyTorch Training Loop Utilities
     ~train.torch.backward
     ~train.torch.enable_reproducibility
 
+PyTorch Lightning
+*****************
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.lightning.LightningTrainer
+    ~train.lightning.LightningConfigBuilder
+    ~train.lightning.LightningCheckpoint
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~
@@ -148,7 +157,7 @@ HuggingFace
 
     ~train.huggingface.HuggingFaceTrainer
     ~train.huggingface.HuggingFaceCheckpoint
-
+    ~train.huggingface.accelerate.AccelerateTrainer
 
 Scikit-Learn
 ~~~~~~~~~~~~

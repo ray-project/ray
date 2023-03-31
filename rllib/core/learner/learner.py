@@ -55,6 +55,11 @@ ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
 ParamRef = Hashable
 ParamDictType = Dict[ParamRef, ParamType]
 
+# COMMON LEARNER LOSS_KEYS
+POLICY_LOSS_KEY = "policy_loss"
+VF_LOSS_KEY = "vf_loss"
+ENTROPY_KEY = "entropy"
+
 
 @dataclass
 class FrameworkHPs:
@@ -704,11 +709,23 @@ class Learner:
                 f"{missing_module_ids}"
             )
 
-        batch_iter = (
-            MiniBatchCyclicIterator
-            if minibatch_size is not None
-            else MiniBatchDummyIterator
-        )
+        if num_iters < 1:
+            # we must do at least one pass on the batch for training
+            raise ValueError("num_iters must be >= 1")
+
+        if minibatch_size:
+            batch_iter = MiniBatchCyclicIterator
+        elif num_iters > 1:
+            # minibatch size was not set but num_iters > 1
+            # Under the old training stack, users could do multiple sgd passes
+            # over a batch without specifying a minibatch size. We enable
+            # this behavior here by setting the minibatch size to be the size
+            # of the batch (e.g. 1 minibatch of size batch.count)
+            minibatch_size = batch.count
+            batch_iter = MiniBatchCyclicIterator
+        else:
+            # minibatch_size and num_iters are not set by the user
+            batch_iter = MiniBatchDummyIterator
 
         results = []
         for minibatch in batch_iter(batch, minibatch_size, num_iters):

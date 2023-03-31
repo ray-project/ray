@@ -86,7 +86,7 @@ Current Datasets will read all Parquet columns into memory.
 If you only need a subset of the columns, make sure to specify the list of columns
 explicitly when calling :meth:`ray.data.read_parquet() <ray.data.read_parquet>` to
 avoid loading unnecessary data (projection pushdown).
-For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"]`` to read
+For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"])`` to read
 just two of the five columns of Iris dataset.
 
 Parquet Row Pruning
@@ -95,7 +95,8 @@ Parquet Row Pruning
 Similarly, you can pass in a filter to :meth:`ray.data.read_parquet() <ray.data.Dataset.read_parquet>` (filter pushdown)
 which will be applied at the file scan so only rows that match the filter predicate
 will be returned.
-For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pa.dataset.field("sepal.length") > 5.0``
+For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pyarrow.dataset.field("sepal.length") > 5.0)``
+(where ``pyarrow`` has to be imported)
 to read rows with sepal.length greater than 5.0.
 This can be used in conjunction with column pruning when appropriate to get the benefits of both.
 
@@ -148,7 +149,7 @@ setting the ``DatasetContext.use_push_based_shuffle`` flag:
 
     import ray.data
 
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.DatasetContext.get_current()
     ctx.use_push_based_shuffle = True
 
     n = 1000

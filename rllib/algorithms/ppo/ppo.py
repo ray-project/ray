@@ -30,7 +30,6 @@ from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
-    Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
 )
@@ -215,7 +214,7 @@ class PPOConfig(PGConfig):
         """
         if vf_share_layers != DEPRECATED_VALUE:
             deprecation_warning(
-                old="ppo.DEFAULT_CONFIG['vf_share_layers']",
+                old="PPOConfig().vf_share_layers",
                 new="PPOConfig().training(model={'vf_share_layers': ...})",
                 error=True,
             )
@@ -229,14 +228,12 @@ class PPOConfig(PGConfig):
             self.use_critic = use_critic
             # TODO (Kourosh) This is experimental. Set learner_hps parameters as
             # well. Don't forget to remove .use_critic from algorithm config.
-            self._learner_hps.use_critic = use_critic
         if use_gae is not NotProvided:
             self.use_gae = use_gae
         if lambda_ is not NotProvided:
             self.lambda_ = lambda_
         if kl_coeff is not NotProvided:
             self.kl_coeff = kl_coeff
-            self._learner_hps.kl_coeff = kl_coeff
         if sgd_minibatch_size is not NotProvided:
             self.sgd_minibatch_size = sgd_minibatch_size
         if num_sgd_iter is not NotProvided:
@@ -245,24 +242,18 @@ class PPOConfig(PGConfig):
             self.shuffle_sequences = shuffle_sequences
         if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
-            self._learner_hps.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
             self.entropy_coeff = entropy_coeff
-            self._learner_hps.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
-            self._learner_hps.entropy_coeff_schedule = entropy_coeff_schedule
         if clip_param is not NotProvided:
             self.clip_param = clip_param
-            self._learner_hps.clip_param = clip_param
         if vf_clip_param is not NotProvided:
             self.vf_clip_param = vf_clip_param
-            self._learner_hps.vf_clip_param = vf_clip_param
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
         if kl_target is not NotProvided:
             self.kl_target = kl_target
-            self._learner_hps.kl_target = kl_target
 
         return self
 
@@ -305,6 +296,17 @@ class PPOConfig(PGConfig):
         # Check `entropy_coeff` for correctness.
         if self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
+        # learner hps need to be updated inside of config.validate in order to have
+        # the correct values for when a user starts an experiment from a dict. This is
+        # as oppposed to assigning the values inthe builder functions such as `training`
+        self._learner_hps.use_critic = self.use_critic
+        self._learner_hps.kl_coeff = self.kl_coeff
+        self._learner_hps.vf_loss_coeff = self.vf_loss_coeff
+        self._learner_hps.entropy_coeff = self.entropy_coeff
+        self._learner_hps.entropy_coeff_schedule = self.entropy_coeff_schedule
+        self._learner_hps.clip_param = self.clip_param
+        self._learner_hps.vf_clip_param = self.vf_clip_param
+        self._learner_hps.kl_target = self.kl_target
 
 
 class UpdateKL:
@@ -462,7 +464,7 @@ class PPO(Algorithm):
                 # TODO (Kourosh): Train results don't match the old format. The thing
                 # that used to be under `kl` is now under `mean_kl_loss`. Fix this. Do
                 # we need get here?
-                pid: train_results[pid][LEARNER_STATS_KEY].get("mean_kl_loss")
+                pid: train_results[pid][LEARNER_STATS_KEY].get("kl")
                 for pid in policies_to_update
             }
             # triggers a special update method on RLOptimizer to update the KL values.
@@ -517,20 +519,3 @@ class PPO(Algorithm):
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.ppo.PPOConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(PPOConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.ppo.ppo::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.ppo.ppo::PPOConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

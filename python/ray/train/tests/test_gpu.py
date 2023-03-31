@@ -21,6 +21,7 @@ from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train.examples.pytorch.torch_linear_example import LinearDataset
 from ray.train.torch.config import TorchConfig, _TorchBackend
 from ray.train.torch.torch_trainer import TorchTrainer
+from ray.train.trainer import TrainingFailedError
 from ray.train._internal.worker_group import WorkerGroup
 
 
@@ -62,10 +63,7 @@ def test_torch_get_device(
         # Make sure environment variable is being set correctly.
         if cuda_visible_devices:
             visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
-            # Sort the cuda visible devices to have exact match with
-            # expected result.
-            sorted_devices = ",".join(sorted(visible_devices.split(",")))
-            assert sorted_devices == "1,2"
+            assert visible_devices == "1,2"
         if num_gpus_per_worker > 1:
             session.report(
                 dict(
@@ -358,8 +356,9 @@ def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_gpus):
     )
 
     # Training should fail and not hang.
-    with pytest.raises(RayTaskError):
+    with pytest.raises(TrainingFailedError) as exc_info:
         trainer.fit()
+    assert isinstance(exc_info.value.__cause__, RayTaskError)
 
 
 @pytest.mark.parametrize("use_gpu", (True, False))

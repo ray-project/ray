@@ -232,9 +232,6 @@ def build_tf_policy(
             existing_model=None,
             existing_inputs=None,
         ):
-            if get_default_config:
-                config = dict(get_default_config(), **config)
-
             if validate_spaces:
                 validate_spaces(self, obs_space, action_space, config)
 

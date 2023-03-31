@@ -75,9 +75,6 @@ integrations with these use cases in mind, and have captured these use cases in
 large-scale nightly tests to ensure that we're hitting our scalability, performance,
 and efficiency marks for these use cases.
 
-See our :ref:`ML preprocessing feature guide <datasets-ml-preprocessing>` for more
-information on this positioning.
-
 What should I not use Ray Datasets for?
 =======================================
 
@@ -91,9 +88,7 @@ more about these integrations.
 
 Datasets is specifically targeting
 the ML ingest and batch inference use cases, with focus on data loading and last-mile
-preprocessing for ML pipelines. For more information on this distinction, what we
-mean by last-mile preprocessing, and how Ray Datasets fits into a larger ML pipeline
-picture, please see our :ref:`ML preprocessing feature guide <datasets-ml-preprocessing>`.
+preprocessing for ML pipelines.
 
 For data loading for training, how does Ray Datasets compare to other solutions?
 ================================================================================

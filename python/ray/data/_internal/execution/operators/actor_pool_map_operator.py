@@ -6,6 +6,7 @@ import ray
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
@@ -14,6 +15,7 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
     NodeIdStr,
 )
+from ray.data._internal.execution.util import locality_string
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _map_task,
@@ -21,6 +23,8 @@ from ray.data._internal.execution.operators.map_operator import (
 )
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
+
+logger = DatasetLogger(__name__)
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
@@ -86,6 +90,16 @@ class ActorPoolMapOperator(MapOperator):
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
         for _ in range(self._autoscaling_policy.min_workers):
             self._start_actor()
+        refs = self._actor_pool.get_pending_actor_refs()
+
+        # We synchronously wait for the initial number of actors to start. This avoids
+        # situations where the scheduler is unable to schedule downstream operators
+        # due to lack of available actors, causing an initial "pileup" of objects on
+        # upstream operators, leading to a spike in memory usage prior to steady state.
+        logger.get_logger().info(
+            f"{self._name}: Waiting for {len(refs)} pool actors to start..."
+        )
+        ray.get(refs)
 
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
@@ -219,8 +233,9 @@ class ActorPoolMapOperator(MapOperator):
         if pending:
             base += f" ({pending} pending)"
         if self._actor_locality_enabled:
-            base += f" [{self._actor_pool._locality_hits} locality hits,"
-            base += f" {self._actor_pool._locality_misses} misses]"
+            base += " " + locality_string(
+                self._actor_pool._locality_hits, self._actor_pool._locality_misses
+            )
         else:
             base += " [locality off]"
         return base

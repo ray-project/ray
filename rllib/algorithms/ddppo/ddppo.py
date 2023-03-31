@@ -25,7 +25,6 @@ from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     LEARN_ON_BATCH_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -120,6 +119,9 @@ class DDPPOConfig(PPOConfig):
         # DDPPO
         self.kl_coeff = 0.0
         self.kl_target = 0.0
+        # TODO (Kourosh) RLModule and Learner API is not supported yet
+        self._enable_learner_api = False
+        self._enable_rl_module_api = False
         # __sphinx_doc_end__
         # fmt: on
 
@@ -358,20 +360,3 @@ class DDPPO(PPO):
             "sample_time": sample_time,
             "learn_on_batch_time": learn_on_batch_time,
         }
-
-
-# Deprecated: Use ray.rllib.algorithms.ddppo.DDPPOConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(DDPPOConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.ppo.ddppo::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.ddppo.ddppo::DDPPOConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

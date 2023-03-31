@@ -171,7 +171,7 @@ def test_ray_server_basic(docker_cluster):
     head, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0
-    assert b"Adding 1 replica to deployment 'Counter'." in output.output
+    assert b"Adding 1 replica to deployment Counter." in output.output
     # somehow this is not working and the port is not exposed to the host.
     # worker_cli = worker.client()
     # print(worker_cli.request("GET", "/api/incr"))

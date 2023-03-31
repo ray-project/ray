@@ -29,35 +29,16 @@ class TorchRLModule(nn.Module, RLModule):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         self.load_state_dict(state_dict)
 
+    def _module_state_file_name(self) -> pathlib.Path:
+        return pathlib.Path("module_state.pt")
+
     @override(RLModule)
-    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
-        if isinstance(path, str):
-            path = pathlib.Path(path)
-        module_state_path = path / "module_state.pt"
-        torch.save(self.state_dict(), str(module_state_path))
-        return str(module_state_path)
+    def save_state_to_file(self, path: Union[str, pathlib.Path]):
+        torch.save(self.state_dict(), str(path))
 
     @override(RLModule)
     def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
-        if isinstance(path, str):
-            path = pathlib.Path(path)
-        if not path.exists():
-            raise ValueError(
-                f"While loading state from path, the path does not exist: {path}"
-            )
         self.set_state(torch.load(str(path)))
-
-    @override(RLModule)
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        """Makes the module distributed."""
-        # TODO (Avnish): Implement this.
-        pass
-
-    @override(RLModule)
-    def is_distributed(self) -> bool:
-        """Returns True if the module is distributed."""
-        # TODO (Avnish): Implement this.
-        return False
 
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
@@ -87,13 +68,9 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         self.module.set_state(*args, **kwargs)
 
     @override(RLModule)
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        # TODO (Kourosh): Not to sure about this make_distributed api belonging to
-        # RLModule or the Learner? For now the logic is kept in Learner.
-        # We should see if we can use this api end-point for both tf
-        # and torch instead of doing it in the learner.
-        pass
+    def save_state_to_file(self, *args, **kwargs) -> str:
+        return self.module.save_state_to_file(*args, **kwargs)
 
     @override(RLModule)
-    def is_distributed(self) -> bool:
-        return True
+    def load_state_from_file(self, *args, **kwargs):
+        self.module.load_state_from_file(*args, **kwargs)
