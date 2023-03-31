@@ -318,6 +318,7 @@
   variations:
     - __suffix__: aws
     - __suffix__: gce
+      env: gce
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: compute_gce_gpu_4_g4_12xl.yaml
@@ -3276,6 +3277,14 @@
     script: python multi_gpu_learning_tests/run.py
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_multi_gpu_with_lstm_learning_tests
   group: RLlib tests
