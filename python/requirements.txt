@@ -45,7 +45,7 @@ aiohttp>=3.7
 fastapi
 gymnasium==0.26.3
 opencensus
-fsspec
+fsspec==2023.1.0
 dm_tree
 matplotlib!=3.4.3; platform_system != "Windows"
 tensorboardX>=1.9

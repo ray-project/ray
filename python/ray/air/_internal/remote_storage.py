@@ -260,15 +260,20 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
     try:
         if filelock:
             with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
+                if isinstance(fs, fsspec.implementations.ftp.FTPFileSystem):
+                    fs.get(bucket_path, local_path, recursive=True)
+                    return
                 _pyarrow_fs_copy_files(bucket_path, local_path, source_filesystem=fs)
         else:
+            if isinstance(fs, fsspec.implementations.ftp.FTPFileSystem):
+                fs.get(bucket_path, local_path, recursive=True)
+                return
             _pyarrow_fs_copy_files(bucket_path, local_path, source_filesystem=fs)
     except Exception as e:
         # Clean up the directory if downloading was unsuccessful.
         if not exists_before:
             shutil.rmtree(local_path, ignore_errors=True)
         raise e
-
 
 def upload_to_uri(
     local_path: str, uri: str, exclude: Optional[List[str]] = None
@@ -299,6 +304,9 @@ def upload_to_uri(
 
     if not exclude:
         _ensure_directory(bucket_path, fs=fs)
+        if isinstance(fs, fsspec.implementations.ftp.FTPFileSystem):
+            fs.put(local_path, bucket_path, recursive=True)
+            return
         _pyarrow_fs_copy_files(local_path, bucket_path, destination_filesystem=fs)
     else:
         # Walk the filetree and upload
@@ -328,6 +336,9 @@ def _upload_to_uri_with_exclude(
             full_target_path = os.path.normpath(os.path.join(bucket_path, candidate))
 
             _ensure_directory(str(Path(full_target_path).parent), fs=fs)
+            if isinstance(fs, fsspec.implementations.ftp.FTPFileSystem):
+                fs.put(local_path, bucket_path, recursive=True)
+                return
             _pyarrow_fs_copy_files(
                 full_source_path, full_target_path, destination_filesystem=fs
             )
