@@ -352,8 +352,6 @@ class LoadMetrics:
         )
 
     def _info(self):
-        import numpy as np
-
         resources_used, resources_total = self._get_resource_usage()
 
         now = time.time()
@@ -383,14 +381,16 @@ class LoadMetrics:
                 ]
             ),
             "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
-                int(np.min(idle_times)) if idle_times else -1,
-                int(np.mean(idle_times)) if idle_times else -1,
-                int(np.max(idle_times)) if idle_times else -1,
+                int(min(idle_times)) if idle_times else -1,
+                int(float(sum(idle_times)) / len(idle_times)) if idle_times else -1,
+                int(max(idle_times)) if idle_times else -1,
             ),
             "TimeSinceLastHeartbeat": "Min={} Mean={} Max={}".format(
-                int(np.min(heartbeat_times)) if heartbeat_times else -1,
-                int(np.mean(heartbeat_times)) if heartbeat_times else -1,
-                int(np.max(heartbeat_times)) if heartbeat_times else -1,
+                int(min(heartbeat_times)) if heartbeat_times else -1,
+                int(float(sum(heartbeat_times)) / len(heartbeat_times))
+                if heartbeat_times
+                else -1,
+                int(max(heartbeat_times)) if heartbeat_times else -1,
             ),
             "MostDelayedHeartbeats": most_delayed_heartbeats,
         }
