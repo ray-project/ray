@@ -980,6 +980,16 @@ class AlgorithmConfig(_Config):
             else:
                 self.rl_module_spec = default_rl_module_spec
 
+            if self.exploration_config:
+                # This is not compatible with RLModules, which have a method
+                # `forward_exploration` to specify custom exploration behavior.
+                raise ValueError(
+                    "When RLModule API are enabled, exploration_config can not be set."
+                    "If you want to implement custom exploration behaviour, "
+                    "please modify the `forward_exploration` method of the RLModule "
+                    "at hand."
+                )
+
         # make sure the resource requirements for learner_group is valid
         if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
             raise ValueError(
