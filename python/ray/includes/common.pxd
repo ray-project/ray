@@ -116,6 +116,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsObjectNotFound()
         c_bool IsNotFound()
         c_bool IsObjectUnknownOwner()
+        c_bool IsGrpcResourceExhausted()
 
         c_string ToString()
         c_string CodeAsString()

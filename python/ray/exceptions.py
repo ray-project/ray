@@ -458,6 +458,18 @@ class ObjectFetchTimedOutError(ObjectLostError):
 
 
 @DeveloperAPI
+class RpcMessageTooLargeError(RayError):
+    """Indicates that a message that was sent was too large to fit into
+    the underlying RPC implementation.
+    """
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return self.message
+
+
+@DeveloperAPI
 class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
     """Indicates that an object has been deleted while there was still a
     reference to it.

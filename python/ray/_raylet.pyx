@@ -129,6 +129,7 @@ from ray.exceptions import (
     TaskCancelledError,
     AsyncioActorExit,
     PendingCallsLimitExceeded,
+    RpcMessageTooLargeError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -208,6 +209,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ValueError(message)
     elif status.IsObjectUnknownOwner():
         raise ValueError(message)
+    elif status.IsGrpcResourceExhausted():
+        raise RpcMessageTooLargeError(message)
     else:
         raise RaySystemError(message)
 

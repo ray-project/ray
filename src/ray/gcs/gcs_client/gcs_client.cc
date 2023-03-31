@@ -166,6 +166,14 @@ Status GcsSyncClient::Connect() {
   return Status::OK();
 }
 
+Status ConvertGrpcStatus(grpc::Status status) {
+  if (status.error_code() ==  grpc::StatusCode::RESOURCE_EXHAUSTED) {
+    return Status::GrpcResourceExhausted(status.error_message());
+  } else {
+    return Status::GrpcUnknown(status.error_message());
+  }
+}
+
 Status HandleGrpcError(rpc::GcsStatus status) {
   RAY_CHECK(status.code() != (int)StatusCode::OK);
   if (status.code() == (int)StatusCode::GrpcUnavailable) {
@@ -202,7 +210,7 @@ Status GcsSyncClient::InternalKVGet(const std::string &ns, const std::string &ke
     }
     return HandleGrpcError(reply.status());
   }
-  return Status::GrpcUnknown(status.error_message());
+  return ConvertGrpcStatus(status);
 }
 
 Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vector<std::string> &keys, std::unordered_map<std::string, std::string> &result) {
@@ -230,7 +238,7 @@ Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vecto
     }
     return HandleGrpcError(reply.status());
   }
-  return Status::GrpcUnknown(status.error_message());
+  return ConvertGrpcStatus(status);
 }
 
 Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &key, const std::string &value, bool overwrite, int &added_num) {
@@ -252,7 +260,7 @@ Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &ke
     }
     return HandleGrpcError(reply.status());
   }
-  return Status::GrpcUnknown(status.error_message());
+  return ConvertGrpcStatus(status);
 }
 
 Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &key, bool del_by_prefix, int &deleted_num) {
@@ -273,7 +281,7 @@ Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &ke
     }
     return HandleGrpcError(reply.status());
   }
-  return Status::GrpcUnknown(status.error_message());
+  return ConvertGrpcStatus(status);
 }
 
 Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &prefix, std::vector<std::string> &results) {
@@ -293,7 +301,7 @@ Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &p
     }
     return HandleGrpcError(reply.status());
   }
-  return Status::GrpcUnknown(status.error_message());
+  return ConvertGrpcStatus(status);
 }
 
 Status GcsSyncClient::InternalKVExists(const std::string &ns, const std::string &key, bool &exists) {
@@ -313,7 +321,7 @@ Status GcsSyncClient::InternalKVExists(const std::string &ns, const std::string 
     }
     return HandleGrpcError(reply.status());
   }
-  return Status::GrpcUnknown(status.error_message());
+  return ConvertGrpcStatus(status);
 }
 
 Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri, int expiration_s) {
@@ -338,7 +346,7 @@ Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri, int expiration_s)
         " due to unexpected error " + reply.status().message() + ".";
     return Status::GrpcUnknown(msg);
   }
-  return Status::GrpcUnknown(status.error_message());
+  return ConvertGrpcStatus(status);
 }
 
 Status GcsSyncClient::GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo>& result) {
@@ -356,7 +364,7 @@ Status GcsSyncClient::GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNod
     }
     return HandleGrpcError(reply.status());
   }
-  return Status::GrpcUnknown(status.error_message());
+  return ConvertGrpcStatus(status);
 }
 
 Status GcsSyncClient::GetAllJobInfo(int64_t timeout_ms, std::vector<rpc::JobTableData>& result) {
@@ -374,7 +382,7 @@ Status GcsSyncClient::GetAllJobInfo(int64_t timeout_ms, std::vector<rpc::JobTabl
     }
     return HandleGrpcError(reply.status());
   }
-  return Status::GrpcUnknown(status.error_message());
+  return ConvertGrpcStatus(status);
 }
 
 }  // namespace gcs
