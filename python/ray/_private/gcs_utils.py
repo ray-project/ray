@@ -172,10 +172,11 @@ def _auto_reconnect(f):
                         grpc.StatusCode.UNKNOWN,
                     ):
                         if remaining_retry <= 0:
-                            raise RuntimeError(
+                            logger.critical(
                                 "Failed to connect to GCS. Please check"
                                 " `gcs_server.out` for more details."
-                            ) from e
+                            )
+                            raise
                         logger.debug(
                             "Failed to send request to gcs, reconnecting. " f"Error {e}"
                         )
@@ -209,10 +210,11 @@ def _auto_reconnect(f):
                         grpc.StatusCode.UNKNOWN,
                     ):
                         if remaining_retry <= 0:
-                            raise RuntimeError(
+                            logger.critical(
                                 "Failed to connect to GCS. Please check"
                                 " `gcs_server.out` for more details."
                             )
+                            raise
                         logger.debug(
                             "Failed to send request to gcs, reconnecting. " f"Error {e}"
                         )
