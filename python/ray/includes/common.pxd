@@ -319,10 +319,15 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus InternalKVExists(const c_string &ns, const c_string &key, c_bool &exists);
 
         CRayStatus PinRuntimeEnvUri(const c_string &uri, int expiration_s);
+        CRayStatus GetAllNodeInfo(c_vector[CGcsNodeInfo]& result);
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         const c_string &SerializeAsString()
+
+    cdef cppclass CGcsNodeInfo "ray::rpc::GcsNodeInfo":
+        c_string node_id() const
+        int state() const
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":

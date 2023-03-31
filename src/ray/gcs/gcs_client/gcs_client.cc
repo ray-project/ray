@@ -161,6 +161,7 @@ Status GcsSyncClient::Connect() {
   }
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
+  node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
   return Status::OK();
 }
 
@@ -329,6 +330,23 @@ Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri, int expiration_s)
     std::string msg = "Failed to pin URI reference for " + uri +
         " due to unexpected error " + reply.status().message() + ".";
     return Status::GrpcUnknown(msg);
+  }
+  return Status::GrpcUnknown(status.error_message());
+}
+
+Status GcsSyncClient::GetAllNodeInfo(std::vector<rpc::GcsNodeInfo>& result) {
+  grpc::ClientContext context;
+
+  rpc::GetAllNodeInfoRequest request;
+  rpc::GetAllNodeInfoReply reply;
+
+  grpc::Status status = node_info_stub_->GetAllNodeInfo(&context, request, &reply);
+  if (status.ok()) {
+    if (reply.status().code() == (int)StatusCode::OK) {
+      result = std::vector<rpc::GcsNodeInfo>(reply.node_info_list().begin(), reply.node_info_list().end());
+      return Status::OK();
+    }
+    return HandleGrpcError(reply.status());
   }
   return Status::GrpcUnknown(status.error_message());
 }

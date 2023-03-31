@@ -61,6 +61,7 @@ from ray.includes.common cimport (
     CRayObject,
     CRayStatus,
     CGcsClientOptions,
+    CGcsNodeInfo,
     CTaskArg,
     CTaskArgByReference,
     CTaskArgByValue,
@@ -1607,6 +1608,20 @@ cdef class GcsClient:
     @_auto_reconnect
     def pin_runtime_env_uri(self, str uri, int expiration_s):
         self._check_error(self.inner.get().PinRuntimeEnvUri(uri.encode(), expiration_s))
+
+    @_auto_reconnect
+    def get_all_node_info(self, timeout=None):
+        cdef:
+            CGcsNodeInfo node_info
+            c_vector[CGcsNodeInfo] node_infos
+        self._check_error(self.inner.get().GetAllNodeInfo(node_infos))
+
+        result = {}
+        for node_info in  node_infos:
+            result[node_info.node_id()] = {
+                "state": node_info.state()
+            }
+        return result
 
 
 cdef class CoreWorker:
