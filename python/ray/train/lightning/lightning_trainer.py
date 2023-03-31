@@ -129,7 +129,8 @@ class LightningConfigBuilder:
             logger.warning(
                 "You don't have to provide `model` argument in "
                 "`LightningConfigBuilder.fit_params()`. LightningTrainer will create "
-                "a model instance based on the parameters you provide in `.module()`."
+                "a model instance based on the parameters you provide in "
+                "`LightningConfigBuilder..module()`."
             )
 
         self._trainer_fit_params.update(**kwargs)
