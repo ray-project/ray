@@ -707,25 +707,28 @@ void CoreWorker::Disconnect(
 void CoreWorker::KillLeakedProcs() {
   RAY_LOG(DEBUG) << "Killing leaked procs";
   auto maybe_child_procs = GetAllProcsWithPpid(GetPID());
-    
-   // Enumerating child procs is not supported on this platform.
+
+  // Enumerating child procs is not supported on this platform.
   if (!maybe_child_procs) {
     RAY_LOG(DEBUG) << "Killing leaked procs not supported on this platform.";
     return;
   }
 
-  const auto& child_procs = *maybe_child_procs;
-  const auto child_procs_str  = absl::StrJoin(child_procs, ",");
+  const auto &child_procs = *maybe_child_procs;
+  const auto child_procs_str = absl::StrJoin(child_procs, ",");
   RAY_LOG(DEBUG) << "Procs to kill: " << child_procs_str;
 
-  for (const auto& child_pid : child_procs) {
+  for (const auto &child_pid : child_procs) {
     auto maybe_error_code = KillProc(child_pid);
-    RAY_CHECK(maybe_error_code && "Expected this path to only be called when KillProc is supported.");
+    RAY_CHECK(maybe_error_code &&
+              "Expected this path to only be called when KillProc is supported.");
     auto error_code = *maybe_error_code;
 
-    RAY_LOG(DEBUG) << "Kill result for " << child_pid << ": " << error_code.message() << ", bool " << (bool) error_code;
+    RAY_LOG(DEBUG) << "Kill result for " << child_pid << ": " << error_code.message()
+                   << ", bool " << (bool)error_code;
     if (error_code) {
-        RAY_LOG(WARNING) << "Unable to kill process " << child_pid << ": " << error_code.message();
+      RAY_LOG(WARNING) << "Unable to kill process " << child_pid << ": "
+                       << error_code.message();
     }
   }
 }

@@ -23,11 +23,11 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <utility>
 #include <vector>
-#include <optional>
 
 #ifndef PID_MAX_LIMIT
 // This is defined by Linux to be the maximum allowable number of processes
@@ -123,7 +123,7 @@ bool IsProcessAlive(pid_t pid);
 
 std::optional<std::error_code> KillProc(pid_t pid);
 std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid);
-//std::vector<pid_t> GetAllProcsWithPpidLinux(pid_t parent_pid);
+// std::vector<pid_t> GetAllProcsWithPpidLinux(pid_t parent_pid);
 
 }  // namespace ray
 
