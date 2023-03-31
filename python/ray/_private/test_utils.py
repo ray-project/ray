@@ -67,6 +67,7 @@ try:
 except (ImportError, ModuleNotFoundError):
 
     Sample = None
+
     def text_string_to_metric_families(*args, **kwargs):
         raise ModuleNotFoundError("`prometheus_client` not found")
 
@@ -592,11 +593,11 @@ async def async_wait_for_condition_async_predicate(
 
 @dataclass
 class MetricSamplePattern:
-    name : Optional[str] = None
+    name: Optional[str] = None
     value: Optional[str] = None
     partial_label_match: Optional[Dict[str, str]] = None
 
-    def matches(self, sample : Sample):
+    def matches(self, sample: Sample):
         if self.name is not None:
             if self.name != sample.name:
                 return False
@@ -615,8 +616,7 @@ class MetricSamplePattern:
 
 
 def get_metric_check_condition(
-        metrics_to_check: List[MetricSamplePattern],
-        export_addr: Optional[str] = None
+    metrics_to_check: List[MetricSamplePattern], export_addr: Optional[str] = None
 ):
     """A condition to check if a prometheus metrics reach a certain value.
     This is a blocking check that can be passed into a `wait_for_condition`
@@ -655,6 +655,7 @@ def get_metric_check_condition(
         return True
 
     return f
+
 
 # def get_metric_check_condition(
 #     metrics_to_check: Dict[str, Optional[float]], export_addr: Optional[str] = None

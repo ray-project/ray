@@ -6,7 +6,7 @@ import sys
 from ray._private.test_utils import (
     wait_for_condition,
     get_metric_check_condition,
-    MetricSamplePattern
+    MetricSamplePattern,
 )
 from ray.cluster_utils import AutoscalingCluster
 from ray.autoscaler.node_launch_exception import NodeLaunchException
@@ -91,15 +91,30 @@ def test_metrics(shutdown_only):
             def ping(self):
                 return True
 
-
         zero_reported_condition = get_metric_check_condition(
             [
-                MetricSamplePattern(name="autoscaler_cluster_resources", value=0, partial_label_match={"resource": "CPU"}),
+                MetricSamplePattern(
+                    name="autoscaler_cluster_resources",
+                    value=0,
+                    partial_label_match={"resource": "CPU"},
+                ),
                 MetricSamplePattern(name="autoscaler_pending_resources", value=0),
                 MetricSamplePattern(name="autoscaler_pending_nodes", value=0),
-                MetricSamplePattern(name="autoscaler_active_nodes", value=0, partial_label_match={"NodeType": "type-i"}),
-                MetricSamplePattern(name="autoscaler_active_nodes", value=0, partial_label_match={"NodeType": "type-ii"}),
-                MetricSamplePattern(name="autoscaler_active_nodes", value=1, partial_label_match={"NodeType": "ray.head.default"}),
+                MetricSamplePattern(
+                    name="autoscaler_active_nodes",
+                    value=0,
+                    partial_label_match={"NodeType": "type-i"},
+                ),
+                MetricSamplePattern(
+                    name="autoscaler_active_nodes",
+                    value=0,
+                    partial_label_match={"NodeType": "type-ii"},
+                ),
+                MetricSamplePattern(
+                    name="autoscaler_active_nodes",
+                    value=1,
+                    partial_label_match={"NodeType": "ray.head.default"},
+                ),
             ],
             export_addr=autoscaler_export_addr,
         )
@@ -110,12 +125,28 @@ def test_metrics(shutdown_only):
 
         two_cpu_no_pending_condition = get_metric_check_condition(
             [
-                MetricSamplePattern(name="autoscaler_cluster_resources", value=2, partial_label_match={"resource": "CPU"}),
+                MetricSamplePattern(
+                    name="autoscaler_cluster_resources",
+                    value=2,
+                    partial_label_match={"resource": "CPU"},
+                ),
                 MetricSamplePattern(name="autoscaler_pending_resources", value=0),
                 MetricSamplePattern(name="autoscaler_pending_nodes", value=0),
-                MetricSamplePattern(name="autoscaler_active_nodes", value=1, partial_label_match={"NodeType": "type-i"}),
-                MetricSamplePattern(name="autoscaler_active_nodes", value=1, partial_label_match={"NodeType": "type-ii"}),
-                MetricSamplePattern(name="autoscaler_active_nodes", value=1, partial_label_match={"NodeType": "ray.head.default"}),
+                MetricSamplePattern(
+                    name="autoscaler_active_nodes",
+                    value=1,
+                    partial_label_match={"NodeType": "type-i"},
+                ),
+                MetricSamplePattern(
+                    name="autoscaler_active_nodes",
+                    value=1,
+                    partial_label_match={"NodeType": "type-ii"},
+                ),
+                MetricSamplePattern(
+                    name="autoscaler_active_nodes",
+                    value=1,
+                    partial_label_match={"NodeType": "ray.head.default"},
+                ),
             ],
             export_addr=autoscaler_export_addr,
         )
