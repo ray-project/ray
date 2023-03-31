@@ -19,7 +19,6 @@ from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo.ppo_learner_config import PPOLearnerHPs
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.learner.learner_group_config import ModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
 )
@@ -123,24 +122,20 @@ class PPOConfig(PGConfig):
         # Deprecated keys.
         self.vf_share_layers = DEPRECATED_VALUE
 
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
+
         # enable the rl module api by default
         self._enable_rl_module_api = True
         self._enable_learner_api = True
-
-        if not self._enable_rl_module_api:
-            self.exploration_config = {
-                # The Exploration class to use. In the simplest case, this is the name
-                # (str) of any class present in the `rllib.utils.exploration` package.
-                # You can also provide the python class directly or the full location
-                # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-                # EpsilonGreedy").
-                "type": "StochasticSampling",
-                # Add constructor kwargs here (if any).
-            }
-        else:
-            # This is not compatible with RLModules, which have a method
-            # `forward_exploration` to specify custom exploration behavior.
-            self.exploration_config = {}
+        self._validate_exploration_conf_and_rl_modules = False
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:

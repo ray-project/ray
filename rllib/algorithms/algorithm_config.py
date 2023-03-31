@@ -419,6 +419,8 @@ class AlgorithmConfig(_Config):
         # `self.rl_module()`
         self.rl_module_spec = None
         self._enable_rl_module_api = False
+        # Whether to error out if exploration config is set when using RLModules.
+        self._validate_exploration_conf_and_rl_modules = True
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -833,7 +835,11 @@ class AlgorithmConfig(_Config):
             )
 
         # RLModule API only works with connectors.
-        if not self.enable_connectors and self._enable_rl_module_api:
+        if (
+            not self.enable_connectors
+            and self._enable_rl_module_api
+            and self._validate_exploration_conf_and_rl_modules
+        ):
             raise ValueError(
                 "RLModule API only works with connectors. "
                 "Please enable connectors via "
