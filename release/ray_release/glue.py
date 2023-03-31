@@ -53,6 +53,7 @@ from ray_release.util import (
 type_str_to_command_runner = {
     "command": SDKRunner,
     "sdk_command": SDKRunner,
+    "job": JobRunner,
     "anyscale_job": AnyscaleJobRunner,
 }
 
@@ -64,7 +65,7 @@ command_runner_to_cluster_manager = {
 
 file_manager_str_to_file_manager = {
     "sdk": SessionControllerFileManager,
-    "client": RemoteTaskFileManager,
+    "job": JobFileManager,
     "anyscale_job": JobFileManager,
 }
 
