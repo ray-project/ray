@@ -7,10 +7,12 @@ gcp_advanced_configurations_json:
   instance_properties:
     disks:
       - boot: true
+        type: pd-standard
         auto_delete: true
         initialize_params:
           disk_size_gb: 2000
       - boot: false
+        type: pd-standard
         auto_delete: true
         initialize_params:
           disk_size_gb: 2000
