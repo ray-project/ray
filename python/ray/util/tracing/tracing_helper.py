@@ -84,11 +84,22 @@ class _OpenTelemetryProxy:
                 )
 
 
-_opentelemetry = _OpenTelemetryProxy()
-_opentelemetry.try_all()
-
 _nameable = Union[str, Callable[..., Any]]
 _global_is_tracing_enabled = False
+_opentelemetry = None
+
+
+def _is_tracing_enabled() -> bool:
+    """Checks environment variable feature flag to see if tracing is turned on.
+    Tracing is off by default."""
+    return _global_is_tracing_enabled
+
+
+def _enbale_tracing():
+    global _global_is_tracing_enabled
+    _global_is_tracing_enabled = True
+    _opentelemetry = _OpenTelemetryProxy()
+    _opentelemetry.try_all()
 
 
 def _sort_params_list(params_list: List[Parameter]):
@@ -111,12 +122,6 @@ def _add_param_to_signature(function: Callable, new_param: Parameter):
     new_params = _sort_params_list(old_sig_list_repr + [new_param])
     new_sig = old_sig.replace(parameters=new_params)
     return new_sig
-
-
-def _is_tracing_enabled() -> bool:
-    """Checks environment variable feature flag to see if tracing is turned on.
-    Tracing is off by default."""
-    return _global_is_tracing_enabled
 
 
 class _ImportFromStringError(Exception):

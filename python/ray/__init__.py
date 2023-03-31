@@ -160,7 +160,6 @@ from ray.actor import method  # noqa: E402,F401
 # TODO(qwang): We should remove this exporting in Ray2.0.
 from ray.cross_language import java_function, java_actor_class  # noqa: E402,F401
 from ray.runtime_context import get_runtime_context  # noqa: E402,F401
-from ray import autoscaler  # noqa: E402,F401
 from ray import internal  # noqa: E402,F401
 from ray import util  # noqa: E402,F401
 from ray import _private  # noqa: E402,F401
@@ -256,12 +255,13 @@ if sys.version_info < (3, 7):
     # TODO(Clark): Remove this one we drop Python 3.6 support.
     from ray import data  # noqa: F401
     from ray import workflow  # noqa: F401
+    from ray import autoscaler  # noqa: E402,F401
 else:
     # Delay importing of expensive, isolated subpackages.
     def __getattr__(name: str):
         import importlib
 
-        if name in ["data", "workflow"]:
+        if name in ["data", "workflow", "autoscaler"]:
             return importlib.import_module("." + name, __name__)
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
