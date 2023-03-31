@@ -12,8 +12,6 @@ from shutil import copytree, make_archive, rmtree
 import zipfile
 import ray
 
-from contextlib import ExitStack
-
 import pytest
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.gcs_utils import GcsClient
@@ -534,27 +532,21 @@ class TestDownloadAndUnpackPackage:
         self, ray_start_regular
     ):
         # Test the guard clause for giving GCS URIs without a GCS client.
-
-        with ExitStack() as stack:
-            temp_dest_dir = stack.enter_context(tempfile.TemporaryDirectory())
-            temp_src_dir = stack.enter_context(tempfile.TemporaryDirectory())
-            zip_file = stack.enter_context(
-                tempfile.NamedTemporaryFile(dir=temp_src_dir, suffix=".zip")
-            )
-
-            with zipfile.ZipFile(zip_file.name, "w") as zip:
-                # Add a file to the zip file
+        with tempfile.TemporaryDirectory() as temp_dir:
+            zipfile_path = Path(temp_dir) / "test-zip-file.zip"
+            with zipfile.ZipFile(zipfile_path, "x") as zip:
+                # Add a file to the zip file so we can verify the file was extracted.
                 zip.writestr("file.txt", "Hello, world!")
 
             # upload the zip file to GCS pkg_uri
             pkg_uri = "gcs://my-zipfile.zip"
-            upload_package_to_gcs(pkg_uri, zip_file.read())
+            upload_package_to_gcs(pkg_uri, zipfile_path.read_bytes())
 
             with pytest.raises(ValueError):
                 # Download the zip file from GCS pkg_uri
                 await download_and_unpack_package(
                     pkg_uri=pkg_uri,
-                    base_directory=temp_dest_dir,
+                    base_directory=temp_dir,
                     gcs_aio_client=None,
                 )
 
@@ -565,25 +557,20 @@ class TestDownloadAndUnpackPackage:
             address=ray._private.worker.global_worker.gcs_client.address
         )
 
-        with ExitStack() as stack:
-            temp_dest_dir = stack.enter_context(tempfile.TemporaryDirectory())
-            temp_src_dir = stack.enter_context(tempfile.TemporaryDirectory())
-            zip_file = stack.enter_context(
-                tempfile.NamedTemporaryFile(dir=temp_src_dir, suffix=".zip")
-            )
-
-            with zipfile.ZipFile(zip_file.name, "w") as zip:
-                # Add a file to the zip file
+        with tempfile.TemporaryDirectory() as temp_dir:
+            zipfile_path = Path(temp_dir) / "test-zip-file.zip"
+            with zipfile.ZipFile(zipfile_path, "x") as zip:
+                # Add a file to the zip file so we can verify the file was extracted.
                 zip.writestr("file.txt", "Hello, world!")
 
             # upload the zip file to GCS pkg_uri
             pkg_uri = "gcs://my-zipfile.zip"
-            upload_package_to_gcs(pkg_uri, zip_file.read())
+            upload_package_to_gcs(pkg_uri, zipfile_path.read_bytes())
 
             # Download the zip file from GCS pkg_uri
             local_dir = await download_and_unpack_package(
                 pkg_uri=pkg_uri,
-                base_directory=temp_dest_dir,
+                base_directory=temp_dir,
                 gcs_aio_client=gcs_aio_client,
             )
 
@@ -608,21 +595,16 @@ class TestDownloadAndUnpackPackage:
             assert (Path(local_dir) / "test_module").exists()
 
     async def test_download_and_unpack_package_with_file_uri(self):
-        with ExitStack() as stack:
-            temp_dest_dir = stack.enter_context(tempfile.TemporaryDirectory())
-            temp_src_dir = stack.enter_context(tempfile.TemporaryDirectory())
-            zip_file = stack.enter_context(
-                tempfile.NamedTemporaryFile(dir=temp_src_dir, suffix=".zip")
-            )
-
-            with zipfile.ZipFile(zip_file.name, "w") as zip:
-                # Add a file to the zip file
+        with tempfile.TemporaryDirectory() as temp_dir:
+            zipfile_path = Path(temp_dir) / "test-zip-file.zip"
+            with zipfile.ZipFile(zipfile_path, "x") as zip:
+                # Add a file to the zip file so we can verify the file was extracted.
                 zip.writestr("file.txt", "Hello, world!")
 
-            pkg_uri = f"file://{zip_file.name}"
+            pkg_uri = f"file://{zipfile_path}"
 
             local_dir = await download_and_unpack_package(
-                pkg_uri=pkg_uri, base_directory=temp_dest_dir
+                pkg_uri=pkg_uri, base_directory=temp_dir
             )
 
             # Check that the file was extracted to the destination directory
