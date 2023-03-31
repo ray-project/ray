@@ -1821,3 +1821,24 @@ def safe_write_to_results_json(
     os.replace(test_output_json_tmp, test_output_json)
     logger.info(f"Wrote results to {test_output_json}")
     logger.info(json.dumps(result))
+
+
+def get_current_unused_port():
+    """
+    Returns a port number that is not currently in use.
+
+    This is useful for testing when we need to bind to a port but don't
+    care which one.
+
+    Returns:
+        A port number that is not currently in use. (Note that this port
+        might become used by the time you try to bind to it.)
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    # Bind the socket to a local address with a random port number
+    sock.bind(("localhost", 0))
+
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
