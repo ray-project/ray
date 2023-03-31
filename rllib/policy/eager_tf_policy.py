@@ -731,7 +731,7 @@ def _build_eager_tf_policy(
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
             # Add exploration state.
-            if not self.config.get("_enable_rl_modules"):
+            if not self.config.get("_enable_rl_module_api"):
                 # This is not compatible with RLModules, which have a method
                 # `forward_exploration` to specify custom exploration behavior.
                 state["_exploration_state"] = self.exploration.get_state()
