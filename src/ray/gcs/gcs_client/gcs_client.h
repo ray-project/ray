@@ -197,7 +197,7 @@ public:
   Status InternalKVExists(const std::string &ns, const std::string &key, bool &exists);
 
   Status PinRuntimeEnvUri(const std::string &uri, int expiration_s);
-  Status GetAllNodeInfo(std::vector<rpc::GcsNodeInfo>& result);
+  Status GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo>& result);
 
 private:
   GcsClientOptions options_;

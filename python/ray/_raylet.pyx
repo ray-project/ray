@@ -1614,7 +1614,8 @@ cdef class GcsClient:
         cdef:
             CGcsNodeInfo node_info
             c_vector[CGcsNodeInfo] node_infos
-        self._check_error(self.inner.get().GetAllNodeInfo(node_infos))
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        self._check_error(self.inner.get().GetAllNodeInfo(timeout_ms, node_infos))
 
         result = {}
         for node_info in  node_infos:

@@ -334,8 +334,11 @@ Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri, int expiration_s)
   return Status::GrpcUnknown(status.error_message());
 }
 
-Status GcsSyncClient::GetAllNodeInfo(std::vector<rpc::GcsNodeInfo>& result) {
+Status GcsSyncClient::GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo>& result) {
   grpc::ClientContext context;
+  if (timeout_ms != -1) {
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(timeout_ms));
+  }
 
   rpc::GetAllNodeInfoRequest request;
   rpc::GetAllNodeInfoReply reply;
