@@ -609,7 +609,6 @@ class MetricSamplePattern:
         if self.partial_label_match is not None:
             for label, value in self.partial_label_match.items():
                 if sample.labels.get(label) != value:
-                    print("========= Didn't match ", label, value, sample)
                     return False
 
         return True
@@ -639,12 +638,8 @@ def get_metric_check_condition(
         for metric_pattern in metrics_to_check:
             _, metric_names, metric_samples = fetch_prometheus([prom_addr])
             for metric_sample in metric_samples:
-                print("checking", metric_sample)
                 if metric_pattern.matches(metric_sample):
-                    print("match")
                     break
-                else:
-                    print("didnt match")
             else:
                 print(
                     f"Didn't find {metric_pattern}",
