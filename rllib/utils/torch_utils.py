@@ -578,13 +578,3 @@ def softmax_cross_entropy_with_logits(
         The resulting softmax cross-entropy given predictions and labels.
     """
     return torch.sum(-labels * nn.functional.log_softmax(logits, -1), -1)
-
-
-@PublicAPI
-class Swish(nn.Module):
-    def __init__(self, beta: float = 1.0):
-        super().__init__()
-        self._beta = beta
-
-    def forward(self, input_tensor):
-        return input_tensor * torch.sigmoid(self._beta * input_tensor)
