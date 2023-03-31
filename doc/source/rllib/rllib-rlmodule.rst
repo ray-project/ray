@@ -571,6 +571,162 @@ There are two ways possible to extend existing RLModules:
         )
 
 
+Migrating from Custom Policies and Models to RLModules
+------------------------------------------------------
+
+This document is for those who have implemented custom policies and models in RLlib and want to migrate to the new RLModule API. If you have implemented custom policies that extended the `~ray.rllib.policy.eager_tf_policy_v2.EagerTFPolicyV2` or `~ray.rllib.policy.torch_policy_v2.TorchPolicyV2` classes, you likely did so that you could either modify the behavior of constructing models and distributions (via overriding `~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.make_model`, `~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.make_model_and_action_dist`), control the action sampling logic (via overriding `~ray.rllib.policy.eager_tf_policy_v2.EagerTFPolicyV2.action_distribution_fn` or `~ray.rllib.policy.eager_tf_policy_v2.EagerTFPolicyV2.action_sampler_fn`), or control the logic for infernce (via overriding `~ray.rllib.policy.policy.Policy.compute_actions_from_input_dict`, `~ray.rllib.policy.policy.Policy.compute_actions`, or `~ray.rllib.policy.policy.Policy.compute_log_likelihoods`). These APIs were built with `ray.rllib.models.modelv2.ModelV2` models in mind to enable you to customize the behavior of those functions. However `~ray.rllib.core.rl_module.rl_module.RLModule` is a more general abstraction that will reduce the amount of functions that you need to override.  
+
+In the new `~ray.rllib.core.rl_module.rl_module.RLModule` API the construction of the models and the action distribution class that should be used are best defined in the constructor. That RLModule is constructed automatically if users follow the instructions outlined in the sections `Enabling RL Modules in the Configuration`_ and `Constructing RL Modules`_. `~ray.rllib.policy.policy.Policy.compute_actions` and `~ray.rllib.policy.policy.Policy.compute_actions_from_input_dict` can still be used for sampling actions for inference or exploration by using the ``explore=True|False`` parameter. If called with ``explore=True`` these functions will invoke `~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and if ``explore=False`` then they will call `~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`. 
+
+
+What your customization could have looked like before:
+
+.. tabbed:: ModelV2
+
+    .. code-block:: python
+        
+        from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+        from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+
+
+        class MyCustomModel(TorchModelV2):
+            """Code for your previous custom model"""
+            ...
+
+
+        class CustomPolicy(TorchPolicyV2):
+
+            @DeveloperAPI
+            @OverrideToImplementCustomLogic
+            def make_model(self) -> ModelV2:
+                """Create model.
+
+                Note: only one of make_model or make_model_and_action_dist
+                can be overridden.
+
+                Returns:
+                ModelV2 model.
+                """
+                return MyCustomModel(...)
+
+
+.. tabbed:: ModelV2 + Distribution
+
+
+    .. code-block:: python
+    
+        from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+        from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+
+
+        class MyCustomModel(TorchModelV2):
+            """Code for your previous custom model"""
+            ...
+
+
+        class CustomPolicy(TorchPolicyV2):
+
+            @DeveloperAPI
+            @OverrideToImplementCustomLogic
+            def make_model_and_action_dist(self):
+                """Create model and action distribution function.
+
+                Returns:
+                    ModelV2 model.
+                    ActionDistribution class.
+                """
+                my_model = MyCustomModel(...) # construct some ModelV2 instance here
+                dist_class = ... # Action distribution cls 
+
+                return my_model, dist_class
+
+
+.. tabbed:: Sampler functions
+
+    .. code-block:: python
+
+        from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+        from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+
+        class CustomPolicy(TorchPolicyV2):
+
+            @DeveloperAPI
+            @OverrideToImplementCustomLogic
+            def action_sampler_fn(
+                self,
+                model: ModelV2,
+                *,
+                obs_batch: TensorType,
+                state_batches: TensorType,
+                **kwargs,
+            ) -> Tuple[TensorType, TensorType, TensorType, List[TensorType]]:
+                """Custom function for sampling new actions given policy.
+
+                Args:
+                    model: Underlying model.
+                    obs_batch: Observation tensor batch.
+                    state_batches: Action sampling state batch.
+
+                Returns:
+                    Sampled action
+                    Log-likelihood
+                    Action distribution inputs
+                    Updated state
+                """
+                return None, None, None, None
+
+
+            @DeveloperAPI
+            @OverrideToImplementCustomLogic
+            def action_distribution_fn(
+                self,
+                model: ModelV2,
+                *,
+                obs_batch: TensorType,
+                state_batches: TensorType,
+                **kwargs,
+            ) -> Tuple[TensorType, type, List[TensorType]]:
+                """Action distribution function for this Policy.
+
+                Args:
+                    model: Underlying model.
+                    obs_batch: Observation tensor batch.
+                    state_batches: Action sampling state batch.
+
+                Returns:
+                    Distribution input.
+                    ActionDistribution class.
+                    State outs.
+                """
+                return None, None, None
+
+
+All of the ``Policy.compute_***`` functions expect that `~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and `~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` return a dictionary that contains the key "action_dist" mapping to a ``ray.rllib.models.distributions.Distribution`` instance. Commonly used distribution implementations can be found under ``ray.rllib.models.tf.tf_distributions`` for tensorflow and ``ray.rllib.models.torch.torch_distributions`` for torch. You can choose to return determinstic actions, by creating a determinstic distribution instance. See `Writing Custom Single Agent RL Modules`_ for more details on how to implement your own custom RLModule.
+
+.. tabbed:: The Equivalent RLModule
+
+    .. code-block:: python
+
+        """
+        No need to override any policy functions. Simply instead implement any custom logic in your custom RLModule
+        """
+        from ray.rllib.models.torch.torch_distributions import YOUR_DIST_CLASS
+
+
+        class MyRLModule(TorchRLModule):
+
+            def __init__(self, config: RLConfig):
+                # construct any custom networks here using config
+                # specify an action distribution class here
+                ...
+
+            def _forward_inference(self, batch):
+                ...
+
+            def _forward_exploration(self, batch):
+                ...
+
+
 Notable TODOs
 -------------
 
