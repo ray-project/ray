@@ -275,6 +275,7 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
             shutil.rmtree(local_path, ignore_errors=True)
         raise e
 
+
 def upload_to_uri(
     local_path: str, uri: str, exclude: Optional[List[str]] = None
 ) -> None:
