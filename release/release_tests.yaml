@@ -2101,19 +2101,6 @@
 
   alert: long_running_tests
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_1_c5_gce.yaml
-      run:
-        timeout: 86400
-        script: python workloads/serve_failure.py
-        long_running: true
-        type: anyscale_job
-
 - name: long_running_many_jobs
   group: Long running tests
   working_dir: long_running_tests
@@ -4150,14 +4137,6 @@
     script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --streaming
     wait_for_nodes:
       num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: data_ingest_benchmark_compute_gce.yaml
 
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
