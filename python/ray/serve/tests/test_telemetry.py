@@ -15,6 +15,9 @@ from ray.dag.input_node import InputNode
 from ray.serve.drivers import DefaultgRPCDriver, DAGDriver
 from ray.serve.http_adapters import json_request
 from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve.context import get_global_client
+from ray.serve._private.common import ApplicationStatus
+from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
@@ -131,6 +134,13 @@ def test_fastapi_detected(manage_ray):
 
     storage_handle = start_telemetry_app()
 
+    client = get_global_client()
+    wait_for_condition(
+        lambda: client.get_serve_status("fastapi_app").app_status.status
+        == ApplicationStatus.RUNNING,
+        timeout=15,
+    )
+
     wait_for_condition(
         lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
     )
@@ -169,6 +179,13 @@ def test_grpc_detected(manage_ray):
     serve.run(grpc_app, name="grpc_app", route_prefix="/grpc")
 
     storage_handle = start_telemetry_app()
+
+    client = get_global_client()
+    wait_for_condition(
+        lambda: client.get_serve_status("grpc_app").app_status.status
+        == ApplicationStatus.RUNNING,
+        timeout=15,
+    )
 
     wait_for_condition(
         lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
@@ -211,6 +228,13 @@ def test_graph_detected(manage_ray, use_adapter):
         graph_app = DAGDriver.bind(greeter_node)
 
     serve.run(graph_app, name="graph_app", route_prefix="/graph")
+
+    client = get_global_client()
+    wait_for_condition(
+        lambda: client.get_serve_status("graph_app").app_status.status
+        == ApplicationStatus.RUNNING,
+        timeout=15,
+    )
 
     storage_handle = start_telemetry_app()
 
@@ -279,8 +303,28 @@ def test_rest_api(manage_ray, tmp_dir, version):
 
     subprocess.check_output(["serve", "deploy", config_file_path])
 
+    client = get_global_client()
+    if version == "v2":
+        # Make sure the applications are RUNNING.
+        wait_for_condition(
+            lambda: client.get_serve_status("receiver_app").app_status.status
+            == ApplicationStatus.RUNNING,
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: client.get_serve_status("stub_app").app_status.status
+            == ApplicationStatus.RUNNING,
+            timeout=15,
+        )
+    else:
+        wait_for_condition(
+            lambda: client.get_serve_status().app_status.status
+            == ApplicationStatus.RUNNING,
+            timeout=15,
+        )
+
     wait_for_condition(
-        lambda: ray.get(storage.get_reports_received.remote()) > 0, timeout=15
+        lambda: ray.get(storage.get_reports_received.remote()) > 10, timeout=15
     )
     report = ray.get(storage.get_report.remote())
 
@@ -292,6 +336,12 @@ def test_rest_api(manage_ray, tmp_dir, version):
         assert int(report["extra_usage_tags"]["serve_num_apps"]) == 1
         assert int(report["extra_usage_tags"]["serve_num_deployments"]) == 1
     elif version == "v2":
+        # Assert num of deployments from controller
+        assert len(client.get_all_deployment_statuses()) == 2
+        result = get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        assert int(result["serve_num_deployments"]) == 2
         assert int(report["extra_usage_tags"]["serve_num_apps"]) == 2
         assert int(report["extra_usage_tags"]["serve_num_deployments"]) == 2
 
