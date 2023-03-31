@@ -609,13 +609,13 @@ class Node:
                 # it's when GCS is starting. Only display last 10 lines of logs.
                 errors = [e for e in err.readlines() if " C " in e or " E " in e][-10:]
             error_msg = "\n" + "".join(errors) + "\n"
-            logger.fatal(
-                f"Failed to start GCS. Last {len(errors)} lines of error files:"
-                f"{error_msg}"
+            raise RuntimeError(
+                f"Failed to start GCS. "
+                " Last {len(errors)} lines of error files:"
+                f"{error_msg}."
                 f"Please check {os.path.join(self._logs_dir, 'gcs_server.out')}"
                 " for details"
             )
-            raise RuntimeError("Failed to start GCS.")
 
         ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
 
