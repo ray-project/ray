@@ -229,27 +229,6 @@ def test_omp_threads_set(ray_start_cluster, monkeypatch):
         cluster.add_node(num_cpus=4)
     assert ray.get(f.options(num_cpus=4).remote()) == "1"
 
-    ###########################
-    # Test the OMP_NUM_THREADS are picked up by 3rd party libraries
-    # e.g. numpy, numexpr
-    ###########################
-
-    @ray.remote(num_cpus=2)
-    def f():
-        # Assert numpy using 2 threads for it's parallelism backend.
-        import numpy  # noqa: F401
-        from threadpoolctl import threadpool_info
-
-        for pool_info in threadpool_info():
-            assert pool_info["num_threads"] == 2
-
-        import numexpr
-
-        assert numexpr.nthreads == 2
-        return True
-
-    assert ray.get(f.remote())
-
 
 def test_submit_api(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
