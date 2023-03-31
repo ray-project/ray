@@ -244,7 +244,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
 
         policy.global_timestep += policy.config["env_config"]["frame_skip"]
 
-        return action, logp, state_batches
+        return action, logp, None, state_batches
 
     def make_model(self):
 
