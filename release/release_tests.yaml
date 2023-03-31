@@ -4413,14 +4413,6 @@
     wait_for_nodes:
       num_nodes: 100
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      cluster:
-        cluster_env: shuffle/100tb_shuffle_app_config.yaml
-        cluster_compute: shuffle/100tb_shuffle_compute_gce.yaml
-
 ##################
 # Core Chaos tests
 ##################
