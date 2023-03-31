@@ -334,7 +334,7 @@ print(ray.get([use_gpu.remote(), use_gpu.remote()]))
 """
 
     proc = run_string_as_driver_nonblocking(script)
-    gcs_cli = ray._private.gcs_utils.GcsClient(address=f"{call_ray_start}")
+    gcs_cli = ray._raylet.GcsClient(address=f"{call_ray_start}")
 
     def check_demands(n):
         status = gcs_cli.internal_kv_get(

@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 
 def make_gcs_client(address_info):
     address = address_info["gcs_address"]
-    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+    gcs_client = ray._raylet.GcsClient(address=address)
     return gcs_client
 
 

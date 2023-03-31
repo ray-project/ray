@@ -239,7 +239,7 @@ def test_worker_crash_increment_stats():
         with pytest.raises(ray.exceptions.OutOfMemoryError):
             ray.get(oomer.options(max_retries=0).remote())
 
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
         wait_for_condition(
             lambda: "worker_crash_system_error"
             in ray_usage_lib.get_extra_usage_tags_to_report(gcs_client),
@@ -264,7 +264,7 @@ def test_actor_stats(reset_usage_stats):
     with ray.init(
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         actor = Actor.remote()
         wait_for_condition(
@@ -319,7 +319,7 @@ def test_pg_stats(reset_usage_stats):
         num_cpus=3,
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         pg = placement_group([{"CPU": 1}], strategy="STRICT_PACK")
         ray.get(pg.ready())
@@ -349,7 +349,7 @@ def test_task_stats(reset_usage_stats):
     with ray.init(
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         wait_for_condition(
             lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
@@ -798,7 +798,7 @@ def test_usage_lib_get_total_num_running_jobs_to_report(
 ):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
-    gcs_client = gcs_utils.GcsClient(address=cluster.gcs_address)
+    gcs_client = ray._raylet.GcsClient(address=cluster.gcs_address)
     assert ray_usage_lib.get_total_num_running_jobs_to_report(gcs_client) == 0
 
     ray.init(address=cluster.address)

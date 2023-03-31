@@ -33,7 +33,7 @@ def stop_gcs_server():
 def test_kv_basic(ray_start_regular, monkeypatch):
     monkeypatch.setenv("TEST_RAY_COLLECT_KV_FREQUENCY", "1")
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=0)
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=0)
     # Wait until all other calls finished
     time.sleep(2)
     # reset the counter
@@ -79,7 +79,7 @@ def test_kv_basic(ray_start_regular, monkeypatch):
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")
 def test_kv_timeout(ray_start_regular):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=0)
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=0)
 
     assert gcs_client.internal_kv_put(b"A", b"", False, b"") == 1
 
