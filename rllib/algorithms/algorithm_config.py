@@ -1674,11 +1674,7 @@ class AlgorithmConfig(_Config):
             self.explore = explore
         if exploration_config is not NotProvided:
 
-            if (
-                self._enable_rl_module_api
-                and exploration_config
-                and self.explore
-            ):
+            if self._enable_rl_module_api and exploration_config and self.explore:
                 # RLModules don't support exploration_configs anymore.
                 # AlgorithmConfig has a default exploration config. This makes it so
                 # that most configs have an exploration config and we want to error
@@ -2385,6 +2381,15 @@ class AlgorithmConfig(_Config):
 
         if _enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api
+            if self.exploration_config:
+                # This is not compatible with RLModules, which have a method
+                # `forward_exploration` to specify custom exploration behavior.
+                raise ValueError(
+                    "When RLModule API is enabled, exploration_config can not be set."
+                    "If you want to implement custom exploration behaviour, "
+                    "please modify the `forward_exploration` method of the RLModule "
+                    "at hand."
+                )
         else:
             # throw a warning if the user has used this API but not enabled it.
             logger.warning(
