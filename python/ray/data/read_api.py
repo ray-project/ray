@@ -62,6 +62,7 @@ from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
     _wrap_arrow_serialization_workaround,
 )
+from ray.data.datasource.image_datasource import _ImageFileMetadataProvider
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
@@ -572,6 +573,9 @@ def read_images(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
+    meta_provider: BaseFileMetadataProvider = _ImageFileMetadataProvider(),
+    ray_remote_args: Dict[str, Any] = None,
+    arrow_open_file_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[
         PathPartitionFilter
     ] = ImageDatasource.file_extension_filter(),
@@ -627,6 +631,9 @@ def read_images(
             limited by the number of files of the dataset.
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        arrow_open_file_args: kwargs passed to
+            ``pyarrow.fs.FileSystem.open_input_file``.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
@@ -658,6 +665,9 @@ def read_images(
         paths=paths,
         filesystem=filesystem,
         parallelism=parallelism,
+        meta_provider=meta_provider,
+        ray_remote_args=ray_remote_args,
+        open_stream_args=arrow_open_file_args,
         partition_filter=partition_filter,
         partitioning=partitioning,
         size=size,
@@ -1257,6 +1267,7 @@ def read_binary_files(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
+    output_arrow_format: bool = False,
 ) -> Datastream[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -1289,10 +1300,19 @@ def read_binary_files(
             that describes how paths are organized. Defaults to ``None``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        output_arrow_format: If True, returns data in Arrow format, instead of Python
+            list format. Defaults to False.
 
     Returns:
-        Dataset holding Arrow records read from the specified paths.
+        Dataset holding records read from the specified paths.
     """
+    if not output_arrow_format:
+        logger.warning(
+            "read_binary_files() returns Dataset in Python list format as of Ray "
+            "v2.4. Use read_binary_files(output_arrow_format=True) to return Dataset "
+            "in Arrow format.",
+        )
+
     return read_datasource(
         BinaryDatasource(),
         parallelism=parallelism,
@@ -1305,6 +1325,7 @@ def read_binary_files(
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
+        output_arrow_format=output_arrow_format,
     )
 
 

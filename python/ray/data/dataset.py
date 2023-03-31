@@ -19,7 +19,6 @@ from typing import (
     Union,
 )
 from uuid import uuid4
-import warnings
 
 import numpy as np
 
@@ -596,10 +595,7 @@ class Datastream(Generic[T]):
         """  # noqa: E501
 
         if batch_format == "native":
-            warnings.warn(
-                "The 'native' batch format has been renamed 'default'.",
-                DeprecationWarning,
-            )
+            logger.warning("The 'native' batch format has been renamed 'default'.")
 
         target_block_size = None
         if batch_size == "default":
@@ -3054,10 +3050,7 @@ class Datastream(Generic[T]):
             An iterator over record batches.
         """
         if batch_format == "native":
-            warnings.warn(
-                "The 'native' batch format has been renamed 'default'.",
-                DeprecationWarning,
-            )
+            logger.warning("The 'native' batch format has been renamed 'default'.")
 
         return self.iterator().iter_batches(
             prefetch_batches=prefetch_batches,
@@ -4071,17 +4064,15 @@ class Datastream(Generic[T]):
 
     @Deprecated(message="Use `Dataset.cache()` instead.")
     def fully_executed(self) -> "InMemoryData[T]":
-        warnings.warn(
+        logger.warning(
             "The 'fully_executed' call has been renamed to 'cache'.",
-            DeprecationWarning,
         )
         return self.cache()
 
     @Deprecated(message="Use `Dataset.is_cached()` instead.")
     def is_fully_executed(self) -> bool:
-        warnings.warn(
+        logger.warning(
             "The 'is_fully_executed' call has been renamed to 'is_cached'.",
-            DeprecationWarning,
         )
         return self.is_cached()
 
@@ -4136,6 +4127,10 @@ class Datastream(Generic[T]):
         self._synchronize_progress_bar()
         return blocks
 
+    @Deprecated(
+        message="Dataset is lazy by default, so this conversion call is no longer "
+        "needed and this API will be removed in a future release"
+    )
     def lazy(self) -> "Datastream[T]":
         """Enable lazy evaluation.
 
