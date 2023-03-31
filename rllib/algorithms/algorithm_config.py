@@ -1676,7 +1676,7 @@ class AlgorithmConfig(_Config):
 
             if (
                 self._enable_rl_module_api
-                and exploration_config is not None
+                and exploration_config
                 and self.explore
             ):
                 # RLModules don't support exploration_configs anymore.
