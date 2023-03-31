@@ -1238,12 +1238,9 @@
 #######################
 # Tune cloud  tests
 #######################
-- name: tune_cloud_aws_no_sync_down
+- name: tune_cloud_no_sync_down
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
-
-  stable: true
-
   frequency: nightly
   team: ml
 
@@ -1258,38 +1255,19 @@
     wait_for_nodes:
       num_nodes: 4
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_4x8.yaml
 
   alert: tune_tests
 
-- name: tune_cloud_gce_no_sync_down
+- name: tune_cloud_ssh_sync
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
-
-  stable: true
-
-  frequency: nightly
-  team: ml
-  env: gce
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_gce_4x8.yaml
-    autosuspend_mins: 60
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
-    wait_for_nodes:
-      num_nodes: 4
-
-  alert: tune_tests
-
-- name: tune_cloud_aws_ssh_sync
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-
-  stable: true
-
   frequency: nightly
   team: ml
 
@@ -1300,42 +1278,22 @@
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py ssh_sync
-
     wait_for_nodes:
       num_nodes: 4
 
-- name: tune_cloud_gce_ssh_sync
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-
-  stable: true
-  frequency: nightly
-  team: ml
-  env: gce
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_gce_4x8.yaml
-    autosuspend_mins: 60
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
-
-    wait_for_nodes:
-      num_nodes: 4
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_4x8.yaml
 
   alert: tune_tests
 
-
-  alert: tune_tests
-
-- name: tune_cloud_aws_durable_upload
+- name: tune_cloud_durable_upload
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
-
-  stable: true
-
   frequency: nightly
   team: ml
 
@@ -1350,27 +1308,18 @@
     wait_for_nodes:
       num_nodes: 4
 
-
-  alert: tune_tests
-
-- name: tune_cloud_gce_durable_upload
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-  stable: true
-  frequency: nightly
-  team: ml
-  env: gce
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_gce_4x8.yaml
-    autosuspend_mins: 60
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://tune-cloud-tests/durable_upload
-    wait_for_nodes:
-      num_nodes: 4
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_4x8.yaml
+      run:
+        timeout: 600
+        script: python workloads/run_cloud_test.py durable_upload --bucket gs://tune-cloud-tests/durable_upload
+        wait_for_nodes:
+          num_nodes: 4
 
   alert: tune_tests
 
@@ -1627,8 +1576,6 @@
 
   frequency: nightly
   team: ml
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: staging_v1
 
   cluster:
     cluster_env: app_config.yaml
@@ -1637,8 +1584,6 @@
   run:
     timeout: 600
     script: python workloads/test_result_throughput_single_node.py
-    # Not an anyscale_job as it fails due to extra overhead
-    type: job
 
   alert: tune_tests
 
