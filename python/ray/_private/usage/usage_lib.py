@@ -728,7 +728,7 @@ def generate_report_data(
     Returns:
         UsageStats
     """
-    gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=20)
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=20)
 
     cluster_metadata = get_cluster_metadata(gcs_client)
     cluster_status_to_report = get_cluster_status_to_report(gcs_client)

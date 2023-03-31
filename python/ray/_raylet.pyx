@@ -1531,7 +1531,7 @@ cdef class GcsClient:
         shared_ptr[CGcsSyncClient] inner
         object address
 
-    def __cinit__(self, address):
+    def __cinit__(self, address, nums_reconnect_retry=5):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CGcsSyncClient(dereference(gcs_options.native())))
         self.address = address
