@@ -42,6 +42,7 @@ class _MLflowLoggerUtil:
         experiment_id: Optional[str] = None,
         experiment_name: Optional[str] = None,
         tracking_token: Optional[str] = None,
+        artifact_location: Optional[str] = None,
         create_experiment_if_not_exists: bool = True,
     ):
         """
@@ -68,6 +69,9 @@ class _MLflowLoggerUtil:
                 it will be reused. If not, a new experiment will be created
                 with the provided name if
                 ``create_experiment_if_not_exists`` is set to True.
+            artifact_location: The location to store run artifacts.
+                If not provided, MLFlow picks an appropriate default.
+                Ignored if experiment already exists.
             tracking_token: Tracking token used to authenticate with MLflow.
             create_experiment_if_not_exists: Whether to create an
                 experiment with the provided name if it does not already
@@ -127,7 +131,9 @@ class _MLflowLoggerUtil:
                 "Existing experiment not found. Creating new "
                 f"experiment with name: {experiment_name}"
             )
-            self.experiment_id = self._mlflow.create_experiment(name=experiment_name)
+            self.experiment_id = self._mlflow.create_experiment(
+                name=experiment_name, artifact_location=artifact_location
+            )
             return
 
         if create_experiment_if_not_exists:
