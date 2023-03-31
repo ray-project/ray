@@ -286,8 +286,8 @@ class AnyscaleJobManager:
         ret = exponential_backoff_retry(
             _get_logs,
             retry_exceptions=Exception,
-            initial_retry_delay_s=30,
-            max_retries=5,
+            initial_retry_delay_s=10,
+            max_retries=3,
         )
         if ret and not self.in_progress:
             self._last_logs = ret
