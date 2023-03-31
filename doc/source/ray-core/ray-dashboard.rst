@@ -6,8 +6,11 @@ Ray provides a web-based dashboard for monitoring and debugging Ray applications
 The dashboard provides a visual representation of the system state, allowing users to track the performance 
 of their applications and troubleshoot issues.
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/overview_gif.gif
-    :align: center
+.. raw:: html
+
+    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+        <iframe src="https://www.youtube.com/embed/VPksEcjACOM" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
+    </div>
 
 Common Workflows
 ----------------
