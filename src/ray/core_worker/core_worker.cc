@@ -752,9 +752,6 @@ void CoreWorker::Exit(
   /// leaked. See https://github.com/ray-project/ray/issues/19639.
   reference_counter_->ReleaseAllLocalReferences();
 
-  // Kill child procs.
-  KillLeakedProcs();
-
   // Callback to shutdown.
   auto shutdown = [this, exit_type, detail, creation_task_exception_pb_bytes]() {
     // To avoid problems, make sure shutdown is always called from the same
