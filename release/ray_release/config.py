@@ -63,10 +63,10 @@ def read_and_validate_release_test_collection(
     validate_release_test_collection(tests, schema_file=schema_file)
     return tests
 
-def test_definition_invariant(
+def _test_definition_invariant(
     test_definition: TestDefinition,
     invariant: bool,
-    message: str
+    message: str,
 ) -> None:
     if invariant:
         return
@@ -81,16 +81,16 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
             tests.append(test_definition)
             continue
         variations = test_definition.pop("variations")
-        test_definition_invariant(
+        _test_definition_invariant(
             test_definition, 
             variations,
-            'empty variations cannot be empty',
+            'variations field cannot be empty in a test definition',
         )
         for variation in variations:
-            test_definition_invariant(
+            _test_definition_invariant(
                 test_definition,
                 '__suffix__' in variation,
-                'missing __suffix__ in variation'
+                'missing __suffix__ field in a variation'
             )
             test = copy.deepcopy(test_definition)
             test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
