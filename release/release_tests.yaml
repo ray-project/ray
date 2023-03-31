@@ -1576,8 +1576,6 @@
 
   frequency: nightly
   team: ml
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: staging_v1
 
   cluster:
     cluster_env: app_config.yaml
@@ -1586,8 +1584,6 @@
   run:
     timeout: 600
     script: python workloads/test_result_throughput_single_node.py
-    # Not an anyscale_job as it fails due to extra overhead
-    type: job
 
   alert: tune_tests
 
