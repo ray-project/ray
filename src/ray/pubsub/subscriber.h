@@ -492,7 +492,8 @@ class Subscriber : public SubscriberInterface {
   absl::flat_hash_map<rpc::ChannelType, std::unique_ptr<SubscriberChannel>> channels_
       GUARDED_BY(mutex_);
 
-  /// Keeps track of last processed sequence_ids by publisher.
+  /// Keeps track of last processed <publisher_id, sequence_id> by publisher.
+  /// Note the publisher_id only change if gcs failover.
   absl::flat_hash_map<PublisherID, std::pair<std::string, int64_t>> processed_sequences_
       GUARDED_BY(mutex_);
 };

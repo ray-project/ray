@@ -379,12 +379,17 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     // Empty the command queue because we cannot send commands anymore.
     commands_.erase(publisher_id);
   } else {
-    RAY_LOG(INFO) << "sending reply back" << reply.pub_messages().size();
-    RAY_LOG(INFO) << "sending reply back" << reply.pub_messages().at(0).sequence_id();
-    RAY_CHECK(!reply.publisher_id().empty())
-        << "publisher_id is invalid " << reply.publisher_id();
+    RAY_CHECK(!reply.publisher_id().empty()) << "publisher_id is empty.";
 
     if (reply.publisher_id() != processed_sequences_[publisher_id].first) {
+      if (!processed_sequences_[publisher_id].first.empty()) {
+        RAY_LOG(INFO) << "Received publisher_id " << reply.publisher_id()
+                      << " is different from last seen publisher_id "
+                      << processed_sequences_[publisher_id].first
+                      << ", this can only happen when gcs failsover."
+      }
+      // reset publisher_id and processed_sequence
+      // if the publisher_id changes.
       processed_sequences_[publisher_id].first = reply.publisher_id();
       processed_sequences_[publisher_id].second = 0;
     }
