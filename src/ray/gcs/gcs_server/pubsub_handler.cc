@@ -63,6 +63,7 @@ void InternalPubSubHandler::HandleGcsSubscriberPoll(
   }
   rpc::PubsubLongPollingRequest pubsub_req;
   pubsub_req.set_subscriber_id(request.subscriber_id());
+  pubsub_req.set_publisher_id(request.publisher_id());
   pubsub_req.set_max_processed_sequence_id(request.max_processed_sequence_id());
   auto pubsub_reply = std::make_shared<rpc::PubsubLongPollingReply>();
   auto pubsub_reply_ptr = pubsub_reply.get();
@@ -75,6 +76,7 @@ void InternalPubSubHandler::HandleGcsSubscriberPoll(
                                                std::function<void()> success_cb,
                                                std::function<void()> failure_cb) {
         reply->mutable_pub_messages()->Swap(pubsub_reply->mutable_pub_messages());
+        reply->set_publisher_id(std::move(*pubsub_reply->mutable_publisher_id()));
         reply_cb(std::move(status), std::move(success_cb), std::move(failure_cb));
       });
 }

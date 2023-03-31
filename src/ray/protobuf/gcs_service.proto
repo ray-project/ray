@@ -528,11 +528,13 @@ message GcsSubscriberPollRequest {
   /// Tha max squence_id that has been processed by the subscriber. The Publisher
   /// will drop queued messages with smaller sequence_id for this subscriber.
   int64 max_processed_sequence_id = 2;
+  bytes publisher_id = 3;
 }
 
 message GcsSubscriberPollReply {
   /// The messages that are published.
   repeated PubMessage pub_messages = 1;
+  bytes publisher_id = 2;
   // Not populated.
   GcsStatus status = 100;
 }

@@ -379,7 +379,6 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     // Empty the command queue because we cannot send commands anymore.
     commands_.erase(publisher_id);
   } else {
-    RAY_LOG(INFO) << "received reply" << reply.SerializeAsString();
     RAY_LOG(INFO) << "sending reply back" << reply.pub_messages().size();
     RAY_LOG(INFO) << "sending reply back" << reply.pub_messages().at(0).sequence_id();
     RAY_CHECK(!reply.publisher_id().empty())

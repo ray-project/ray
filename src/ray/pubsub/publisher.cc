@@ -305,7 +305,7 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
   }
 
   RAY_LOG(DEBUG) << "sending reply back"
-                << long_polling_connection_->reply->SerializeAsString();
+                 << long_polling_connection_->reply->DebugString();
   long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
 
   // Clean up & update metadata.
