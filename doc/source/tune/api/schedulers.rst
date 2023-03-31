@@ -73,6 +73,7 @@ This is the default used if no value is provided for the ``brackets`` argument.
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     AsyncHyperBandScheduler
     ASHAScheduler
@@ -335,7 +336,6 @@ TrialScheduler Interface
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     TrialScheduler
 
