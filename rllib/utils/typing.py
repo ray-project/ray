@@ -38,6 +38,9 @@ TensorStructType = Union[TensorType, dict, tuple]
 # A shape of a tensor.
 TensorShape = Union[Tuple[int], List[int]]
 
+# A neural network
+NetworkType = Union["torch.nn.Module", "tf.keras.Module"]
+
 # Represents a fully filled out config of a Algorithm class.
 # Note: Policy config dicts are usually the same as AlgorithmConfigDict, but
 # parts of it may sometimes be altered in e.g. a multi-agent setup,
