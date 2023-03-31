@@ -201,3 +201,14 @@ For more details on the multi-application config format, see the documentation f
 :::{note} 
 You must remove `host` and `port` from the application entry. In a multi-application config, specifying cluster-level options within an individual application isn't applicable, and is not supported.
 :::
+
+## One application vs Multiple Applications
+It can be useful to deploy multiple independent applications on one Ray cluster. However, it is also important to keep in mind the downsides of doing so.
+
+We suggest you deploy multiple applications per cluster if:
+* You want to save cost by sharing resources between applications.
+* You have many small independent models, and you want to be able to easily add and delete models often.
+
+However, we suggest you limit to one application per cluster if:
+* Your applications are large and require a lot of resources. Deploying multiple applications per cluster can cause competition of resources in this case.
+* You want better isolation between applications. Although applications are independent of one another, isolation can't be guaranteed. Also, if you need to change the configuration of the cluster for one application, all other applications will also be affected. 
