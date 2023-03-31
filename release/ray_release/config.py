@@ -13,16 +13,18 @@ from ray_release.util import DeferredEnvVar, deep_update
 
 
 class Test(dict):
-    """ A class represents a test to run on buildkite """
+    """A class represents a test to run on buildkite"""
+
     pass
 
 
 class TestDefinition(dict):
-    """ 
+    """
     A class represents a definition of a test, such as test name, group, etc. Comparing
     to the test class, there are additional field, for example variations, which can be
     used to define several variations of a test.
     """
+
     pass
 
 
@@ -63,6 +65,7 @@ def read_and_validate_release_test_collection(
     validate_release_test_collection(tests, schema_file=schema_file)
     return tests
 
+
 def _test_definition_invariant(
     test_definition: TestDefinition,
     invariant: bool,
@@ -73,7 +76,8 @@ def _test_definition_invariant(
     raise ReleaseTestConfigError(
         f'{test_definition["name"]} has invalid definition: {message}',
     )
-    
+
+
 def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
     tests = []
     for test_definition in test_definitions:
@@ -82,15 +86,15 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
             continue
         variations = test_definition.pop("variations")
         _test_definition_invariant(
-            test_definition, 
+            test_definition,
             variations,
-            'variations field cannot be empty in a test definition',
+            "variations field cannot be empty in a test definition",
         )
         for variation in variations:
             _test_definition_invariant(
                 test_definition,
-                '__suffix__' in variation,
-                'missing __suffix__ field in a variation'
+                "__suffix__" in variation,
+                "missing __suffix__ field in a variation",
             )
             test = copy.deepcopy(test_definition)
             test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
