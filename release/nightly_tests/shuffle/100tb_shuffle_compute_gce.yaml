@@ -5,14 +5,14 @@ allowed_azs:
 gcp:
   InstanceProperties:
     - Disks:
-    - Boot: true
-      AutoDelete: true
-      InitializeParams:
-        - DiskSizeGb: 2000
-    - Boot: false
-      AutoDelete: true
-      InitializeParams:
-        - DiskSizeGb: 2000
+      - Boot: true
+        AutoDelete: true
+        InitializeParams:
+          - DiskSizeGb: 2000
+      - Boot: false
+        AutoDelete: true
+        InitializeParams:
+          - DiskSizeGb: 2000
 
 head_node_type:
     name: head_node
