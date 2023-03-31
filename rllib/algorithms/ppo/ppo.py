@@ -368,7 +368,7 @@ class PPOConfig(PGConfig):
                 # This is not compatible with RLModules, which have a method
                 # `forward_exploration` to specify custom exploration behavior.
                 raise ValueError(
-                    "When RLModule API is enabled, exploration_config can not be set."
+                    "When RLModule API are enabled, exploration_config can not be set."
                     "If you want to implement custom exploration behaviour, "
                     "please modify the `forward_exploration` method of the RLModule "
                     "at hand."
