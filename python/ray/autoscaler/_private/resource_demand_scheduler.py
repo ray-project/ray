@@ -13,7 +13,6 @@ import logging
 import os
 from abc import abstractmethod
 from functools import partial
-from statistics import mean
 from typing import Callable, Dict, List, Optional, Tuple
 
 from ray._private.gcs_utils import PlacementGroupTableData
@@ -853,7 +852,8 @@ def _resource_based_utilization_scorer(
         gpu_ok,
         num_matching_resource_types,
         min(util_by_resources),
-        mean(util_by_resources),
+        # util_by_resources should be non empty
+        float(sum(util_by_resources)) / len(util_by_resources),
     )
 
 
