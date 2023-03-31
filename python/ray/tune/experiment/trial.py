@@ -799,13 +799,15 @@ class Trial:
             self.relative_logdir = _create_unique_logdir_name(
                 str(self.local_experiment_path), self._generate_dirname()
             )
-        assert self.logdir
-        logdir_path = Path(self.logdir)
-        if _is_path_too_long(logdir_path):
+        assert self.local_path
+        logdir_path = Path(self.local_path)
+        max_path_length = os.pathconf("/", "PC_PATH_MAX")
+        if len(str(logdir_path)) >= max_path_length:
             logger.warning(
-                "The path to the trial log directory is too long. "
-                "Consider using trial_dirname_creator to shorten the path. Path: "
-                + str(logdir_path)
+                f"The path to the trial log directory is too long "
+                f"(max length: {max_path_length}. "
+                f"Consider using `trial_dirname_creator` to shorten the path. "
+                f"Path: {logdir_path}"
             )
         logdir_path.mkdir(parents=True, exist_ok=True)
 
@@ -1151,23 +1153,3 @@ class Trial:
             validate_trainable(self.trainable_name)
 
         assert self.placement_group_factory
-
-
-def _is_path_too_long(logdir_path: Path) -> bool:
-    """Check if the path to the trial log directory is too long for this OS.
-
-    If too long, can cause issues with creating new processes. [issues-#31926]
-    Args:
-        logdir_path: Path to the trial log directory.
-
-    Returns:
-        True if the path is too long, False otherwise.
-    """
-    safety_buffer = 15  # arbitrary size to account for other path components.
-    if platform.system() == "Windows":
-        # Windows has a 260-character limit:
-        return len(str(logdir_path)) + safety_buffer > 260
-    elif platform.system() == "Linux":
-        # Linux has a 4096-character limit:
-        return len(str(logdir_path)) + safety_buffer > 4096
-    return False
