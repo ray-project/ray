@@ -68,13 +68,14 @@ The Datasets execution by default is:
 
 - **Lazy**: This means that transformations on Dataset are not executed until a
   consumption operation (e.g. :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`)
-  is invoked. This creates opportunities for optimizing the execution plan (e.g.
-  :ref:`stage fusion <datasets_stage_fusion>`).
+  or :meth:`Dataset.cache() <ray.data.Dataset.cache>` is called. This creates
+  opportunities for optimizing the execution plan (e.g. :ref:`stage fusion <datasets_stage_fusion>`).
 - **Pipelined**: This means that Dataset transformations will be executed in a
   streaming way, incrementally on the base data, instead of on all of the data
-  at once. This can be used for streaming data loading into ML training to overlap
-  the data preprocessing and model training, or to execute batch transformations on
-  large datasets without needing to load the entire dataset into cluster memory.
+  at once, and overlapping the execution of operations. This can be used for streaming
+  data loading into ML training to overlap the data preprocessing and model training,
+  or to execute batch transformations on large datasets without needing to load the
+  entire dataset into cluster memory.
 
 .. _datasets_lazy_execution:
 
@@ -179,7 +180,8 @@ Deterministic Execution
 
    ctx.execution_options.preserve_order = True
 
-To enable deterministic execution, set the above to True. This may decrease performance, but will ensure block ordering is preserved through execution. This flag defaults to True in Ray 2.3 but False in the nightly builds
+To enable deterministic execution, set the above to True. This may decrease performance, but will ensure block ordering is preserved through execution. This flag defaults to True in Ray 2.3 but False in
+releases later.
 
 Actor Locality Optimization (ML inference use case)
 ---------------------------------------------------
