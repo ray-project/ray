@@ -76,7 +76,7 @@ class _SubscriberBase:
         self._subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
         self._last_batch_size = 0
         self._max_processed_sequence_id = 0
-        self._publisher_id = ""
+        self._publisher_id = b""
 
     # Batch size of the result from last poll. Used to indicate whether the
     # subscriber can keep up.
