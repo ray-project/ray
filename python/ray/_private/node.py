@@ -263,10 +263,15 @@ class Node:
         self._metrics_export_port = self._get_cached_port(
             "metrics_export_port", default_port=ray_params.metrics_export_port
         )
+        self._dashboard_agent_listen_port = self._get_cached_port(
+            "dashboard_agent_listen_port",
+            default_port=ray_params.dashboard_agent_listen_port,
+        )
 
         ray_params.update_if_absent(
             metrics_agent_port=self.metrics_agent_port,
             metrics_export_port=self._metrics_export_port,
+            dashboard_agent_listen_port=self._dashboard_agent_listen_port,
         )
 
         # Pick a GCS server port.
@@ -806,6 +811,9 @@ class Node:
             port: the port number.
         """
         file_path = os.path.join(self.get_session_dir_path(), "ports_by_node.json")
+
+        # Make sure only the ports in RAY_CACHED_PORTS are cached.
+        assert port_name in ray_constants.RAY_ALLOWED_CACHED_PORTS
 
         # Maps a Node.unique_id to a dict that maps port names to port numbers.
         ports_by_node: Dict[str, Dict[str, int]] = defaultdict(dict)
