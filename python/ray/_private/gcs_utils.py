@@ -172,7 +172,7 @@ def _auto_reconnect(f):
                         grpc.StatusCode.UNKNOWN,
                     ):
                         if remaining_retry <= 0:
-                            logger.critical(
+                            logger.error(
                                 "Failed to connect to GCS. Please check"
                                 " `gcs_server.out` for more details."
                             )
@@ -210,7 +210,7 @@ def _auto_reconnect(f):
                         grpc.StatusCode.UNKNOWN,
                     ):
                         if remaining_retry <= 0:
-                            logger.critical(
+                            logger.error(
                                 "Failed to connect to GCS. Please check"
                                 " `gcs_server.out` for more details."
                             )
