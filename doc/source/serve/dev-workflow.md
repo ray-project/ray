@@ -110,4 +110,5 @@ You can also specify the `runtime_env` via a YAML file; see [serve run](serve_cl
 
 ## What's Next?
 
+View details about your Serve application in the [Ray dashboard](dash-serve-view).
 Once you are ready to deploy to production, see the [Production Guide](serve-in-production).
