@@ -36,6 +36,7 @@ namespace ray {
 namespace pubsub {
 
 using SubscriberID = UniqueID;
+using PublisherID = UniqueID;
 
 namespace pub_internal {
 
@@ -174,7 +175,7 @@ class SubscriberState {
                   std::function<double()> get_time_ms,
                   uint64_t connection_timeout_ms,
                   const int publish_batch_size,
-                  const std::string publisher_id)
+                  PublisherID publisher_id)
       : subscriber_id_(subscriber_id),
         get_time_ms_(std::move(get_time_ms)),
         connection_timeout_ms_(connection_timeout_ms),
@@ -241,8 +242,7 @@ class SubscriberState {
   const int publish_batch_size_;
   /// The last time long polling was connected in milliseconds.
   double last_connection_update_time_ms_;
-  ///
-  const std::string publisher_id_;
+  PublisherID publisher_id_;
 };
 
 }  // namespace pub_internal
@@ -321,7 +321,7 @@ class Publisher : public PublisherInterface {
             std::function<double()> get_time_ms,
             const uint64_t subscriber_timeout_ms,
             const int publish_batch_size,
-            std::string publisher_id = NodeID::FromRandom().Hex())
+            PublisherID publisher_id = NodeID::FromRandom())
       : periodical_runner_(periodical_runner),
         get_time_ms_(std::move(get_time_ms)),
         subscriber_timeout_ms_(subscriber_timeout_ms),
@@ -484,7 +484,7 @@ class Publisher : public PublisherInterface {
 
   /// A unique identifier identifies the publisher_id.
   /// TODO(scv119) add docs about the semantics.
-  const std::string publisher_id_ = "test";
+  const PublisherID publisher_id_;
 };
 
 }  // namespace pubsub

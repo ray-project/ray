@@ -244,7 +244,10 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
                                           rpc::PubsubLongPollingReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   auto max_processed_sequence_id = request.max_processed_sequence_id();
-  if (publisher_id_ != request.publisher_id()) {
+  if (request.publisher_id().empty() ||
+      publisher_id_ != PublisherID::FromBinary(request.publisher_id())) {
+    // in case the publisher_id mismatches, we should ignore the
+    // max_processed_sequence_id.
     max_processed_sequence_id = 0;
   }
 
@@ -289,7 +292,7 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
 
   // No message should have been added to the reply.
   RAY_CHECK(long_polling_connection_->reply->pub_messages().empty());
-  *long_polling_connection_->reply->mutable_publisher_id() = publisher_id_;
+  *long_polling_connection_->reply->mutable_publisher_id() = publisher_id_.Binary();
   if (!force_noop) {
     for (auto it = mailbox_.begin(); it != mailbox_.end(); it++) {
       if (long_polling_connection_->reply->pub_messages().size() >= publish_batch_size_) {
@@ -338,7 +341,7 @@ void Publisher::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request
 
   const auto subscriber_id = SubscriberID::FromBinary(request.subscriber_id());
   RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id.Hex()
-                 << ", publisher_id " << publisher_id_;
+                 << ", publisher_id " << publisher_id_.Hex();
   absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {

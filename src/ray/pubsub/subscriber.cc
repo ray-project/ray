@@ -17,6 +17,9 @@
 namespace ray {
 
 namespace pubsub {
+namespace {
+const PublisherID kDefaultPublisherID{};
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 /// SubscriberChannel
@@ -350,7 +353,7 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
   rpc::PubsubLongPollingRequest long_polling_request;
   long_polling_request.set_subscriber_id(subscriber_id_.Binary());
   auto &processed_state = processed_sequences_[publisher_id];
-  long_polling_request.set_publisher_id(processed_state.first);
+  long_polling_request.set_publisher_id(processed_state.first.Binary());
   long_polling_request.set_max_processed_sequence_id(processed_state.second);
   subscriber_client->PubsubLongPolling(
       long_polling_request,
@@ -380,17 +383,17 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     commands_.erase(publisher_id);
   } else {
     RAY_CHECK(!reply.publisher_id().empty()) << "publisher_id is empty.";
-
-    if (reply.publisher_id() != processed_sequences_[publisher_id].first) {
-      if (!processed_sequences_[publisher_id].first.empty()) {
-        RAY_LOG(INFO) << "Received publisher_id " << reply.publisher_id()
+    auto reply_publisher_id = PublisherID::FromBinary(reply.publisher_id());
+    if (reply_publisher_id != processed_sequences_[publisher_id].first) {
+      if (processed_sequences_[publisher_id].first != kDefaultPublisherID) {
+        RAY_LOG(INFO) << "Received publisher_id " << reply_publisher_id.Hex()
                       << " is different from last seen publisher_id "
                       << processed_sequences_[publisher_id].first
-                      << ", this can only happen when gcs failsover."
+                      << ", this can only happen when gcs failsover.";
       }
       // reset publisher_id and processed_sequence
       // if the publisher_id changes.
-      processed_sequences_[publisher_id].first = reply.publisher_id();
+      processed_sequences_[publisher_id].first = reply_publisher_id;
       processed_sequences_[publisher_id].second = 0;
     }
 

@@ -494,7 +494,7 @@ class Subscriber : public SubscriberInterface {
 
   /// Keeps track of last processed <publisher_id, sequence_id> by publisher.
   /// Note the publisher_id only change if gcs failover.
-  absl::flat_hash_map<PublisherID, std::pair<std::string, int64_t>> processed_sequences_
+  absl::flat_hash_map<PublisherID, std::pair<PublisherID, int64_t>> processed_sequences_
       GUARDED_BY(mutex_);
 };
 

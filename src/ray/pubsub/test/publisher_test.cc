@@ -24,7 +24,7 @@ namespace ray {
 
 namespace pubsub {
 namespace {
-const std::string kDefaultPublisherId;
+const NodeID kDefaultPublisherId = NodeID::FromRandom();
 }
 
 using namespace pub_internal;
@@ -47,9 +47,11 @@ class PublisherTest : public ::testing::Test {
         /*periodic_runner=*/periodic_runner_.get(),
         /*get_time_ms=*/[this]() { return current_time_; },
         /*subscriber_timeout_ms=*/subscriber_timeout_ms_,
-        /*batch_size*/ 100);
+        /*batch_size*/ 100,
+        kDefaultPublisherId);
     current_time_ = 0;
     request_.set_subscriber_id(subscriber_id_.Binary());
+    request_.set_publisher_id(kDefaultPublisherId.Binary());
   }
 
   void TearDown() {}
