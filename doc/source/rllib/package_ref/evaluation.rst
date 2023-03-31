@@ -40,7 +40,6 @@ Constructor
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    RolloutWorker
    RolloutWorker.as_remote
@@ -143,7 +142,6 @@ Constructor
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     WorkerSet
     WorkerSet.stop
@@ -198,7 +196,6 @@ Input Reader API
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     InputReader
     InputReader.next
@@ -211,7 +208,6 @@ Input Sampler API
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     SamplerInput
     SamplerInput.get_data
@@ -225,7 +221,6 @@ Synchronous Sampler API
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     SyncSampler
 
@@ -237,7 +232,6 @@ Asynchronous Sampler API
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     AsyncSampler
 
@@ -260,7 +254,6 @@ JSON reader API
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     JsonReader
     JsonReader.read_all_files
@@ -271,7 +264,6 @@ Mixed input reader
 ++++++++++++++++++
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     MixedInput
 
@@ -281,7 +273,6 @@ D4RL reader
 +++++++++++
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     D4RLReader
 
@@ -291,7 +282,6 @@ IOContext
 ~~~~~~~~~
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     IOContext
     IOContext.default_sampler_input
@@ -305,7 +295,6 @@ Policy Map API
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     PolicyMap
     PolicyMap.items
@@ -319,7 +308,6 @@ Sample batch API
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     SampleBatch
     SampleBatch.set_get_interceptor
@@ -348,11 +336,9 @@ MultiAgent batch API
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     MultiAgentBatch
     MultiAgentBatch.env_steps
     MultiAgentBatch.agent_steps
 
 
-    
