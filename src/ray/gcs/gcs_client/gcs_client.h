@@ -198,12 +198,14 @@ public:
 
   Status PinRuntimeEnvUri(const std::string &uri, int expiration_s);
   Status GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo>& result);
+  Status GetAllJobInfo(int64_t timeout_ms, std::vector<rpc::JobTableData>& result);
 
 private:
   GcsClientOptions options_;
   std::unique_ptr<rpc::InternalKVGcsService::Stub> kv_stub_;
   std::unique_ptr<rpc::RuntimeEnvGcsService::Stub> runtime_env_stub_;
   std::unique_ptr<rpc::NodeInfoGcsService::Stub> node_info_stub_;
+  std::unique_ptr<rpc::JobInfoGcsService::Stub> job_info_stub_;
   std::shared_ptr<grpc::Channel> channel_;
 };
 

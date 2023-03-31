@@ -1201,7 +1201,7 @@ provider:
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
             "_test2": "extra_v3",
-            "dashboard_metrics_grafana_enabled": "False",
+            "dashboard_metrics_grafana_enabled": "True",
             "dashboard_metrics_prometheus_enabled": "False",
             "serve_num_deployments": "1",
             "serve_num_gpu_deployments": "0",
@@ -1492,7 +1492,7 @@ def test_usage_stats_tags(
             assert tags == {
                 "key": "val",
                 "key2": "val2",
-                "dashboard_metrics_grafana_enabled": "False",
+                "dashboard_metrics_grafana_enabled": "True",
                 "dashboard_metrics_prometheus_enabled": "False",
                 "gcs_storage": gcs_storage_type,
                 "dashboard_used": "False",

@@ -62,6 +62,7 @@ from ray.includes.common cimport (
     CRayStatus,
     CGcsClientOptions,
     CGcsNodeInfo,
+    CJobTableData,
     CTaskArg,
     CTaskArgByReference,
     CTaskArgByValue,
@@ -1618,12 +1619,29 @@ cdef class GcsClient:
         self._check_error(self.inner.get().GetAllNodeInfo(timeout_ms, node_infos))
 
         result = {}
-        for node_info in  node_infos:
+        for node_info in node_infos:
             result[node_info.node_id()] = {
                 "state": node_info.state()
             }
         return result
 
+    @_auto_reconnect
+    def get_all_job_info(self, timeout=None):
+        cdef:
+            CJobTableData job_info
+            c_vector[CJobTableData] job_infos
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        self._check_error(self.inner.get().GetAllJobInfo(timeout_ms, job_infos))
+
+        result = {}
+        for job_info in job_infos:
+            result[job_info.job_id()] = {
+                "is_dead": job_info.is_dead(),
+                "config": {
+                    "ray_namespace" : job_info.config().ray_namespace().decode()
+                }
+            }
+        return result
 
 cdef class CoreWorker:
 

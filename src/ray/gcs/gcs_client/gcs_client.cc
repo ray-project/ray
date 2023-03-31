@@ -162,6 +162,7 @@ Status GcsSyncClient::Connect() {
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
+  job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
   return Status::OK();
 }
 
@@ -174,6 +175,12 @@ Status HandleGrpcError(rpc::GcsStatus status) {
     return Status::GrpcUnknown(status.message());
   }
   return Status::Invalid(status.message());
+}
+
+void GrpcClientContextWithTimeoutMs(grpc::ClientContext &context, int64_t timeout_ms) {
+  if (timeout_ms != -1) {
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(timeout_ms));
+  }
 }
 
 Status GcsSyncClient::InternalKVGet(const std::string &ns, const std::string &key, std::string &value) {
@@ -336,9 +343,7 @@ Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri, int expiration_s)
 
 Status GcsSyncClient::GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo>& result) {
   grpc::ClientContext context;
-  if (timeout_ms != -1) {
-    context.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(timeout_ms));
-  }
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
   rpc::GetAllNodeInfoRequest request;
   rpc::GetAllNodeInfoReply reply;
@@ -347,6 +352,24 @@ Status GcsSyncClient::GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNod
   if (status.ok()) {
     if (reply.status().code() == (int)StatusCode::OK) {
       result = std::vector<rpc::GcsNodeInfo>(reply.node_info_list().begin(), reply.node_info_list().end());
+      return Status::OK();
+    }
+    return HandleGrpcError(reply.status());
+  }
+  return Status::GrpcUnknown(status.error_message());
+}
+
+Status GcsSyncClient::GetAllJobInfo(int64_t timeout_ms, std::vector<rpc::JobTableData>& result) {
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  rpc::GetAllJobInfoRequest request;
+  rpc::GetAllJobInfoReply reply;
+
+  grpc::Status status = job_info_stub_->GetAllJobInfo(&context, request, &reply);
+  if (status.ok()) {
+    if (reply.status().code() == (int)StatusCode::OK) {
+      result = std::vector<rpc::JobTableData>(reply.job_info_list().begin(), reply.job_info_list().end());
       return Status::OK();
     }
     return HandleGrpcError(reply.status());
