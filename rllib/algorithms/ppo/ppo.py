@@ -19,6 +19,7 @@ from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo.ppo_learner_config import PPOLearnerHPs
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.learner.learner_group_config import ModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
 )
@@ -332,6 +333,68 @@ class PPOConfig(PGConfig):
         self._learner_hps.vf_clip_param = self.vf_clip_param
         self._learner_hps.kl_target = self.kl_target
 
+    @override(AlgorithmConfig)
+    def rl_module(
+        self,
+        *,
+        rl_module_spec: Optional[ModuleSpec] = NotProvided,
+        _enable_rl_module_api: Optional[bool] = NotProvided,
+    ) -> "AlgorithmConfig":
+        """Sets the config's RLModule settings.
+
+        Args:
+            rl_module_spec: The RLModule spec to use for this config. It can be either
+                a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the
+                observation_space, action_space, catalog_class, or the model_config is
+                not specified it will be inferred from the env and other parts of the
+                algorithm config object.
+            _enable_rl_module_api: Whether to enable the RLModule API for this config.
+                By default if you call `config.rl_module(...)`, the
+                RLModule API will NOT be enabled. If you want to enable it, you can call
+                `config.rl_module(_enable_rl_module_api=True)`.
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+        # Note (Artur): This overrides the AlgorithmConfig method to make sure that
+        #  we can safely enable and disable the RLModule API for PPO while migrating.
+        #  We should remove this once we have migrated PPO to the RLModule API.
+        # TODO(Artur): Remove this once we have fully migrated PPO to the RLModule API.
+        if rl_module_spec is not NotProvided:
+            self.rl_module_spec = rl_module_spec
+
+        if _enable_rl_module_api is not NotProvided:
+            self._enable_rl_module_api = _enable_rl_module_api
+            if _enable_rl_module_api and self.exploration_config:
+                # This is not compatible with RLModules, which have a method
+                # `forward_exploration` to specify custom exploration behavior.
+                raise ValueError(
+                    "When RLModule API is enabled, exploration_config can not be set."
+                    "If you want to implement custom exploration behaviour, "
+                    "please modify the `forward_exploration` method of the RLModule "
+                    "at hand."
+                )
+            if not _enable_rl_module_api and not self.exploration_config:
+                # This is the case if the default for this config is
+                # `_enable_rl_module=False`, but we want to enable it later.
+                # In this case, the exploration config will be empty at first.
+                self.exploration_config = {
+                    # The Exploration class to use. In the simplest case, this is the name
+                    # (str) of any class present in the `rllib.utils.exploration` package.
+                    # You can also provide the python class directly or the full location
+                    # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+                    # EpsilonGreedy").
+                    "type": "StochasticSampling",
+                    # Add constructor kwargs here (if any).
+                }
+        else:
+            # throw a warning if the user has used this API but not enabled it.
+            logger.warning(
+                "You have called `config.rl_module(...)` but "
+                "have not enabled the RLModule API. To enable it, call "
+                "`config.rl_module(_enable_rl_module_api=True)`."
+            )
+
+        return self
 
 class UpdateKL:
     """Callback to update the KL based on optimization info.

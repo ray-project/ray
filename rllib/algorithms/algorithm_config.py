@@ -2381,7 +2381,7 @@ class AlgorithmConfig(_Config):
 
         if _enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api
-            if self.exploration_config:
+            if _enable_rl_module_api and self.exploration_config:
                 # This is not compatible with RLModules, which have a method
                 # `forward_exploration` to specify custom exploration behavior.
                 raise ValueError(
