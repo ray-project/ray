@@ -357,7 +357,7 @@ def test_omp_threads_set_third_party(ray_start_cluster, monkeypatch):
     # e.g. numpy, numexpr
     ###########################
     with monkeypatch.context() as m:
-        m.pop("OMP_NUM_THREADS", None)
+        m.delenv("OMP_NUM_THREADS", raising=False)
 
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=4)
