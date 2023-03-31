@@ -996,6 +996,19 @@ py_test(
     args = ["--smoke-test"]
 )
 
+# --------------------------------------------------------------------
+# Tests from the python/ray/tune/tests/output directory.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_output",
+    size = "small",
+    srcs = ["tests/output/test_output.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
 
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.

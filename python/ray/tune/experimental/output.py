@@ -137,7 +137,11 @@ def _get_trials_by_state(trials: List[Trial]) -> Dict[str, List[Trial]]:
 
 
 def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
-    """Try to infer the metrics to print out."""
+    """Try to infer the metrics to print out.
+
+    By default, only the first 4 meaningful metrics in `last_result` will be
+    inferred as user implied metrics.
+    """
     # Using OrderedDict for OrderedSet.
     result = collections.OrderedDict()
     for t in trials:
@@ -156,12 +160,21 @@ def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
 
 def _current_best_trial(
     trials: List[Trial], metric: Optional[str], mode: Optional[str]
-):
-    if not trials:
-        return None, None
+) -> Tuple[Optional[Trial], Optional[str]]:
+    """
+    Returns the best trial and the metric key. If anything is empty or None,
+    returns a trivial result of None, None.
 
-    if not metric or not mode:
-        return None, metric
+    Args:
+        trials: List of trials.
+        metric: Metric that trials are being ranked.
+        mode: One of "min" or "max".
+
+    Returns:
+         Best trial and the metric key.
+    """
+    if not trials or not metric or not mode:
+        return None, None
 
     metric_op = 1.0 if mode == "max" else -1.0
     best_metric = float("-inf")
@@ -220,7 +233,7 @@ def _max_len(value: Any, max_len: int = 20, wrap: bool = False) -> Any:
     return result
 
 
-def _get_trial_info(trial: Trial, metric_keys: List[str]):
+def _get_trial_info(trial: Trial, metric_keys: List[str]) -> List[str]:
     """Returns the following information about a trial:
 
     name | status | metrics...
@@ -253,7 +266,7 @@ def _get_trial_table_data_per_status(
     Args:
         status: The trial status of interest.
         trials: all the trials of that status.
-        metric_keys: Ordered list of metrics to be displayed in the table.
+        metric_keys: *Ordered* list of metrics to be displayed in the table.
             Including both default and user defined.
         force_max_rows: Whether or not to enforce a max row number for this status.
             If True, only a max of `5` rows will be shown.
@@ -335,7 +348,7 @@ def _best_trial_str(
 ):
     """Returns a readable message stating the current best trial."""
     # returns something like
-    # Current best trial: 18ae7_00005 with loss=0.5918508041056858 and parameters={'train_loop_config': {'lr': 0.059253447253394785}}. # noqa
+    # Current best trial: 18ae7_00005 with loss=0.5918508041056858 and params={'train_loop_config': {'lr': 0.059253447253394785}}. # noqa
     val = unflattened_lookup(metric, trial.last_result, default=None)
     config = trial.last_result.get("config", {})
     parameter_columns = list(config.keys())
@@ -472,14 +485,14 @@ class TuneTerminalReporter(TuneReporterBase):
             all_infos.extend(table.trial_infos)
             if table.more_info:
                 all_infos.append(table.more_info)
-            print(
-                tabulate(
-                    all_infos,
-                    headers=header,
-                    tablefmt="simple",
-                    showindex=False,
-                )
+        print(
+            tabulate(
+                all_infos,
+                headers=header,
+                tablefmt="simple",
+                showindex=False,
             )
+        )
         print()
 
 
@@ -550,7 +563,7 @@ class TuneRichReporter(TuneReporterBase):
         if not self._live:
             logger.warning(
                 "`print_heartbeat` is not supposed to "
-                "be called within `with_live` context manager."
+                "be called without `with_live` context manager."
             )
             return
         heartbeat_strs, table_data = self._get_heartbeat(trials, *args)
@@ -699,6 +712,7 @@ class AirResultProgressCallback(Callback):
     ):
         if self._verbosity < self._intermediate_result_verbosity:
             return
+        # don't think this is supposed to happen but just to be save.
         saved_iter = "?"
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             saved_iter = trial.last_result[TRAINING_ITERATION]
