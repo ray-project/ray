@@ -10,6 +10,7 @@ import time
 import traceback
 from dataclasses import asdict
 from typing import Any, Callable, Dict, Optional, Union
+from collections import Counter
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -399,9 +400,11 @@ class Monitor:
                     self.autoscaler.update()
                     status["autoscaler_update_time"] = time.time() - update_start_time
                     autoscaler_summary = self.autoscaler.summary()
-                    self.emit_metrics(load_metrics_summary,
-                                      autoscaler_summary,
-                                      self.autoscaler.node_types)
+                    self.emit_metrics(
+                        load_metrics_summary,
+                        autoscaler_summary,
+                        self.autoscaler.node_types,
+                    )
                     if autoscaler_summary:
                         status["autoscaler_report"] = asdict(autoscaler_summary)
                         status[
@@ -446,12 +449,8 @@ class Monitor:
             return None
 
         for resource_name in ["CPU", "GPU"]:
-            _, total = load_metrics_summary.usage.get(
-                resource_name, (0, 0)
-            )
-            pending = autoscaler_summary.pending_resources.get(
-                resource_name, 0
-            )
+            _, total = load_metrics_summary.usage.get(resource_name, (0, 0))
+            pending = autoscaler_summary.pending_resources.get(resource_name, 0)
             self.prom_metrics.cluster_resources.labels(
                 resource=resource_name,
                 SessionName=self.prom_metrics.session_name,
@@ -460,7 +459,6 @@ class Monitor:
                 resource=resource_name,
                 SessionName=self.prom_metrics.session_name,
             ).set(pending)
-
 
         pending_node_count = Counter()
         for _, node_type, _ in autoscaler_summary.pending_nodes:
@@ -482,7 +480,6 @@ class Monitor:
                 SessionName=self.prom_metrics.session_name,
                 NodeType=node_type,
             ).set(count)
-
 
         failed_node_counts = Counter()
         for _, node_type in autoscaler_summary.failed_nodes:

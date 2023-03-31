@@ -117,7 +117,6 @@ try:
             )
             self.recently_failed_nodes = Gauge(
                 "recently_failed_nodes",
-                # An implementation note (not a api guarantee), practically, this will reset whenever the autoscaler restarts.
                 "The number of recently failed nodes. This count could reset "
                 "at undefined times.",
                 labelnames=("SessionName", "NodeType"),
