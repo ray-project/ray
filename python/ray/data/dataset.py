@@ -511,7 +511,10 @@ class Datastream(Generic[T]):
             ...     num_gpus=1,
             ... ) # doctest: +SKIP
 
-            ``fn`` can also be a generator, yielding multiple batches in a single invocation. This is useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks.
+            ``fn`` can also be a generator, yielding multiple batches in a single
+            invocation. This is useful when returning large objects. Instead of
+            returning a very large output batch, ``fn`` can instead yield the output
+            batch in chunks.
 
             >>> from typing import Iterator
             >>> def map_fn_with_large_output(batch: List[int]) -> Iterator[List[int]]:
@@ -4596,9 +4599,9 @@ Dataset = Datastream
 class MaterializedData(Datastream, Generic[T]):
     """A Datastream that has been materialized into Ray memory, e.g., via `.cache()`.
 
-    The blocks of a MaterializedData object are materialized into Ray object store memory,
-    which means that this class can be shared or iterated over by multiple Ray tasks
-    without re-executing the underlying computations for producing the stream.
+    The blocks of a MaterializedData object are materialized into Ray object store
+    memory, which means that this class can be shared or iterated over by multiple Ray
+    tasks without re-executing the underlying computations for producing the stream.
     """
 
     pass

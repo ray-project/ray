@@ -1562,7 +1562,9 @@ def from_pandas_refs(
 
 
 @PublicAPI
-def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedData[ArrowRow]:
+def from_numpy(
+    ndarrays: Union[np.ndarray, List[np.ndarray]]
+) -> MaterializedData[ArrowRow]:
     """Create a dataset from a list of NumPy ndarrays.
 
     Args:
