@@ -163,7 +163,7 @@ class DMCEnv(core.Env):
                 obs = obs / 255.0 - 0.5
         else:
             obs = _flatten_obs(time_step.observation)
-        return obs
+        return obs.astype(np.float32)
 
     def _convert_action(self, action):
         action = action.astype(np.float64)

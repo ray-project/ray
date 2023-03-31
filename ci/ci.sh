@@ -310,7 +310,7 @@ build_sphinx_docs() {
     else
       FAST=True make html
       pip install datasets==2.0.0
-      RAY_MOCK_MODULES=0 make doctest
+      RAY_MOCK_MODULES=0 RAY_DEDUP_LOGS=0 make doctest
     fi
   )
 }
@@ -489,7 +489,11 @@ build_wheels() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      if [ "$(uname -m)" = "arm64" ]; then
+        "${WORKSPACE_DIR}"/python/build-wheel-macos-arm64.sh
+      else
+        "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      fi
       mkdir -p /tmp/artifacts/.whl
       rm -rf /tmp/artifacts/.whl || true
 
