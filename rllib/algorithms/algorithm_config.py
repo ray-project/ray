@@ -835,11 +835,7 @@ class AlgorithmConfig(_Config):
             )
 
         # RLModule API only works with connectors.
-        if (
-            not self.enable_connectors
-            and self._enable_rl_module_api
-            and self._validate_exploration_conf_and_rl_modules
-        ):
+        if not self.enable_connectors and self._enable_rl_module_api:
             raise ValueError(
                 "RLModule API only works with connectors. "
                 "Please enable connectors via "
@@ -986,7 +982,10 @@ class AlgorithmConfig(_Config):
             else:
                 self.rl_module_spec = default_rl_module_spec
 
-            if self.exploration_config:
+            if (
+                self.exploration_config
+                and self._validate_exploration_conf_and_rl_modules
+            ):
                 # This is not compatible with RLModules, which have a method
                 # `forward_exploration` to specify custom exploration behavior.
                 raise ValueError(
