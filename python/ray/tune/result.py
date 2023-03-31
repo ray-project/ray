@@ -124,6 +124,7 @@ def _get_defaults_results_dir() -> str:
         # This is a directory provided by Bazel automatically
         or os.environ.get("TEST_TMPDIR")
         # This is the old way to specify the results dir
+        # Deprecate: Remove in 2.6
         or os.environ.get("TUNE_RESULT_DIR")
         # Default
         or os.path.expanduser("~/ray_results")

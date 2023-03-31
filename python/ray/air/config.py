@@ -792,8 +792,10 @@ class RunConfig:
             assert local_path == self.local_dir
             warnings.warn(
                 "Setting a `RunConfig.local_dir` is deprecated and will be removed "
-                "in the future. Set `RunConfig.storage_path` instead or set the"
-                "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
+                "in the future. If you are not using remote storage,"
+                "set the `RunConfig.storage_path` instead. Otherwise, set the"
+                "`RAY_AIR_LOCAL_CACHE_DIR` environment variable to control "
+                "the local cache location."
             )
             self.local_dir = None
 

@@ -167,6 +167,20 @@ def retry_fn(
 def _split_remote_local_path(
     path: str, default_local_path: Optional[str]
 ) -> Tuple[Optional[str], Optional[str]]:
+    """Return a local and remote location from a path.
+
+    Our storage configuration allows to specify paths on
+    remote storage or local disk. This utility function detects the
+    location of a path and returns a tuple of (local path, remote path)
+    for further processing.
+
+    For instance, if ``path="s3://some/location"``, then
+    ``local_path=default_local_path`` and ``remote_path="s3://some/location``.
+
+    If ``path="/local/dir"``, then ``local_path="/local/dir"`` and
+    ``remote_path=None``.
+
+    """
     parsed = urllib.parse.urlparse(path)
     if parsed.scheme:
         # If a scheme is set, this means it's not a local path.
@@ -186,6 +200,14 @@ def _resolve_storage_path(
     legacy_upload_dir: Optional[str],
     error_location: str = "air.RunConfig",
 ) -> Tuple[Optional[str], Optional[str]]:
+    """Resolve a path (using ``_split_remote_local_path``) with backwards compatibility.
+
+    As we changed the input API to specify persistent storage locations, we still
+    have the old ways to define local and remote storage paths. Until these are
+    fully deprecated, this utility helps resolving all options currently available
+    to users to configure storage locations.
+    """
+
     local_path, remote_path = _split_remote_local_path(
         path=path, default_local_path=None
     )

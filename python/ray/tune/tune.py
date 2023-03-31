@@ -360,8 +360,7 @@ def run(
             `num_samples` of times. If this is -1, (virtually) infinite
             samples are generated until a stopping condition is met.
         storage_path: Path to store results at. Can be a local directory or
-            a destination on cloud storage. If Ray storage is set up,
-            defaults to the storage location. Otherwise, this defaults to
+            a destination on cloud storage. Defaults to
             the local ``~/ray_results`` directory.
         search_alg: Search algorithm for
             optimization. You can also use the name of the algorithm.
@@ -542,6 +541,17 @@ def run(
         return ray.get(remote_future)
 
     del remote_run_kwargs
+
+    if os.environ.get("TUNE_RESULT_DIR"):
+        # Deprecate: Raise in 2.6, remove in 2.7
+        warnings.warn(
+            "The TUNE_RESULT_DIR environment variable is deprecated and will be "
+            "removed in the future. If you want to set persistent storage to "
+            "a local directory, pass `storage_path` instead. If you are using "
+            "remote storage and want to control the local cache directory, "
+            "set the RAY_AIR_LOCAL_CACHE_DIR environment variable instead.",
+            DeprecationWarning,
+        )
 
     ray._private.usage.usage_lib.record_library_usage("tune")
 
