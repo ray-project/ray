@@ -206,8 +206,7 @@ def group_texts(block_size, examples):
 
 
 def preprocess(tokenizer, dataset, data_args):
-    """Tokenize a single dataset.
-    """
+    """Tokenize a single dataset."""
     text_column_name = (
         "text" if "text" in dataset.column_names else dataset.column_names[0]
     )
@@ -224,7 +223,7 @@ def preprocess(tokenizer, dataset, data_args):
         load_from_cache_file=False,
     )
 
-    print ("Build dataset ...")
+    print("Build dataset ...")
     block_size = min(data_args.block_size, tokenizer.model_max_length)
     lm_dataset = tokenized_dataset.map(
         functools.partial(group_texts, block_size),
@@ -310,15 +309,8 @@ def save_checkpoint(state, model, tokenizer, training_args):
 
 
 def log_metrics(
-        config,
-        epochs,
-        metrics_to_report,
-        batch,
-        latency,
-        epoch,
-        step,
-        train_metric
-    ):
+    config, epochs, metrics_to_report, batch, latency, epoch, step, train_metric
+):
     """Log metrics to stdout."""
     throughput_tokens = np.prod(batch["input_ids"].shape) / latency
     throughput_tflops = alpa.util.compute_gpt_tflops(
@@ -496,8 +488,14 @@ def main():
                 latency = (time.time() - last_time) / step_ct
 
                 log_metrics(
-                    config, epochs, metrics_to_report, batch,
-                    latency, epoch, cur_step, train_metric
+                    config,
+                    epochs,
+                    metrics_to_report,
+                    batch,
+                    latency,
+                    epoch,
+                    cur_step,
+                    train_metric,
                 )
 
                 step_ct = 0
