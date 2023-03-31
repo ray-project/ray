@@ -530,20 +530,21 @@ async def test_non_default_dashboard_agent_http_port(tmp_path):
     import subprocess
 
     cmd = (
-        "ray start --head --block "
-        f"--dashboard-agent-listen-port {get_current_unused_port()}"
+        "ray start --head " f"--dashboard-agent-listen-port {get_current_unused_port()}"
     )
-    proc = subprocess.Popen(cmd.split(" "))
+    subprocess.check_output(cmd, shell=True)
 
-    async def verify():
+    try:
+        # We will need to wait for the ray to be started in the subprocess.
         address_info = ray.init("auto", ignore_reinit_error=True).address_info
 
         ip, _ = address_info["webui_url"].split(":")
         dashboard_agent_listen_port = address_info["dashboard_agent_listen_port"]
         agent_address = f"{ip}:{dashboard_agent_listen_port}"
-        print(agent_address)
+        print("agent address = ", agent_address)
 
         agent_client = JobAgentSubmissionClient(format_web_url(agent_address))
+        head_client = JobSubmissionClient(format_web_url(address_info["webui_url"]))
 
         assert wait_until_server_available(agent_address)
 
@@ -556,21 +557,28 @@ async def test_non_default_dashboard_agent_http_port(tmp_path):
             },
             JobSubmitRequest,
         )
-
         submit_result = await agent_client.submit_job_internal(request)
-
         job_id = submit_result.submission_id
-        print(job_id)
-        resp = await agent_client.get_job_logs_internal(job_id)
-        assert "hello" in resp.logs, resp.logs
 
-        return True
+        async def verify():
+            # Wait for job finished.
+            wait_for_condition(
+                partial(
+                    _check_job,
+                    client=head_client,
+                    job_id=job_id,
+                    status=JobStatus.SUCCEEDED,
+                ),
+                timeout=10,
+            )
 
-    try:
+            resp = await agent_client.get_job_logs_internal(job_id)
+            assert "hello" in resp.logs, resp.logs
+
+            return True
+
         await async_wait_for_condition_async_predicate(verify, retry_interval_ms=2000)
     finally:
-        proc.terminate()
-        proc.wait()
         subprocess.check_output("ray stop --force", shell=True)
 
 
