@@ -626,11 +626,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     return env
 
             # Atari type env and "deepmind" preprocessor pref.
-            elif (
-                is_atari(self.env)
-                and not self.config.model.get("custom_preprocessor")
-                and self.config.preprocessor_pref == "deepmind"
-            ):
+            elif is_atari(self.env) and self.config.preprocessor_pref == "deepmind":
                 # Deepmind wrappers already handle all preprocessing.
                 self.preprocessing_enabled = False
 
@@ -651,10 +647,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     )
                     return env
 
-            elif (
-                not self.config.model.get("custom_preprocessor")
-                and self.config.preprocessor_pref is None
-            ):
+            elif self.config.preprocessor_pref is None:
                 # Only turn off preprocessing
                 self.preprocessing_enabled = False
 
@@ -1998,8 +1991,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         # Initialize the filter dict
         self._update_filter_dict(updated_policy_dict)
 
-        # Call callback policy init hooks
-        self._call_callbacks_on_create_policy()
+        # Call callback policy init hooks (only if the added policy did not exist
+        # before).
+        if policy is None:
+            self._call_callbacks_on_create_policy()
 
         if self.worker_index == 0:
             logger.info(f"Built policy map: {self.policy_map}")
@@ -2043,7 +2038,11 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 # Policies should deal with preprocessed (automatically flattened)
                 # observations if preprocessing is enabled.
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
-                    obs_space, merged_conf.model
+                    obs_space,
+                    merged_conf.model,
+                    include_multi_binary=self.config.get(
+                        "_enable_rl_module_api", False
+                    ),
                 )
                 # Original observation space should be accessible at
                 # obs_space.original_space after this step.

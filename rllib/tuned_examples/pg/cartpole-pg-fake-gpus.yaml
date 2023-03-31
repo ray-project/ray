@@ -6,7 +6,7 @@ cartpole-pg-fake-gpus:
         training_iteration: 600
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         num_workers: 0
 
         model:

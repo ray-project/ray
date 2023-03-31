@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
+import { generateNodeLink } from "../../common/links";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
@@ -93,6 +94,14 @@ const ActorDetailPage = () => {
                 : { value: "-" },
             },
             {
+              label: "Repr",
+              content: actorDetail.reprName
+                ? {
+                    value: actorDetail.reprName,
+                  }
+                : { value: "-" },
+            },
+            {
               label: "Job ID",
               content: actorDetail.jobId
                 ? {
@@ -107,6 +116,9 @@ const ActorDetailPage = () => {
                 ? {
                     value: actorDetail.address?.rayletId,
                     copyableValue: actorDetail.address?.rayletId,
+                    link: actorDetail.address.rayletId
+                      ? generateNodeLink(actorDetail.address.rayletId)
+                      : undefined,
                   }
                 : { value: "-" },
             },
@@ -164,7 +176,7 @@ const ActorDetailPage = () => {
                 <div>
                   <Link
                     target="_blank"
-                    to={`/log/${encodeURIComponent(
+                    to={`/logs/${encodeURIComponent(
                       ipLogMap[actorDetail.address?.ipAddress],
                     )}?fileName=${actorDetail.jobId}-${actorDetail.pid}`}
                   >
