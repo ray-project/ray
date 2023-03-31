@@ -2,6 +2,7 @@ import time
 from collections import Counter
 import logging
 import os
+import pandas as pd
 import pickle
 import shutil
 import sys
@@ -1154,6 +1155,71 @@ class TrialRunnerTest3(unittest.TestCase):
                 runner.checkpoint()
             assert any("did not finish running within the timeout" in x for x in buffer)
             assert syncer.sync_up_counter == 2
+
+    def testExperimentCheckpointWithDatasets(self):
+        """Test trial runner checkpointing where trials contain Ray Datasets.
+        When possible, a dataset plan should be saved (for read_* APIs).
+        See `Dataset.serialize_lineage` for more information.
+
+        If a dataset cannot be serialized, an experiment checkpoint
+        should still be created. Users can pass in the dataset again by
+        re-specifying the `param_space`.
+        """
+        ray.init(num_cpus=2)
+        # Save some test data to load
+        data_filepath = os.path.join(self.tmpdir, "test.csv")
+        pd.DataFrame({"x": list(range(10))}).to_csv(data_filepath)
+
+        def create_trial_config():
+            return {
+                "datasets": {
+                    "with_lineage": ray.data.read_csv(data_filepath),
+                    "no_lineage": ray.data.from_items([{"x": i} for i in range(10)]),
+                }
+            }
+
+        resolvers = create_resolvers_map()
+        config_with_placeholders = inject_placeholders(create_trial_config(), resolvers)
+        trial = Trial(
+            "__fake",
+            experiment_path=self.tmpdir,
+            config=config_with_placeholders,
+        )
+        trial.init_local_path()
+        runner = TrialRunner(
+            experiment_path=self.tmpdir, placeholder_resolvers=resolvers
+        )
+        runner.add_trial(trial)
+        # Req: TrialRunner checkpointing shouldn't error
+        runner.checkpoint(force=True)
+
+        # Manually clear all block refs that may have been created
+        ray.shutdown()
+        ray.init(num_cpus=2)
+
+        new_runner = TrialRunner(experiment_path=self.tmpdir)
+        new_runner.resume()
+        [loaded_trial] = new_runner.get_trials()
+        loaded_datasets = loaded_trial.config["datasets"]
+
+        # Req: The deserialized dataset (w/ lineage) should be usable.
+        assert [el["x"] for el in loaded_datasets["with_lineage"].take()] == list(
+            range(10)
+        )
+
+        replaced_resolvers = create_resolvers_map()
+        inject_placeholders(create_trial_config(), replaced_resolvers)
+
+        respecified_config_runner = TrialRunner(
+            placeholder_resolvers=replaced_resolvers,
+            local_checkpoint_dir=self.tmpdir,
+        )
+        respecified_config_runner.resume()
+        [loaded_trial] = respecified_config_runner.get_trials()
+        ray_ds_no_lineage = loaded_trial.config["datasets"]["no_lineage"]
+
+        # Req: The dataset (w/o lineage) can be re-specified and is usable after.
+        assert [el["x"] for el in ray_ds_no_lineage.take()] == list(range(10))
 
 
 class FixedResourceTrialRunnerTest3(TrialRunnerTest3):

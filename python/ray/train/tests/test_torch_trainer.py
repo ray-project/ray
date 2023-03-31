@@ -13,6 +13,7 @@ from ray.train.constants import DISABLE_LAZY_CHECKPOINTING_ENV
 from ray.train.torch import TorchPredictor, TorchTrainer
 from ray.air.config import ScalingConfig
 from ray.train.torch import TorchConfig
+from ray.train.trainer import TrainingFailedError
 import ray.train as train
 from unittest.mock import patch
 from ray.cluster_utils import Cluster
@@ -198,7 +199,7 @@ def test_single_worker_failure(ray_start_4_cpus):
 
     def single_worker_fail():
         if session.get_world_rank() == 0:
-            raise ValueError
+            raise RuntimeError
         else:
             time.sleep(1000000)
 
@@ -207,8 +208,9 @@ def test_single_worker_failure(ray_start_4_cpus):
         train_loop_per_worker=single_worker_fail,
         scaling_config=scaling_config,
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(TrainingFailedError) as exc_info:
         trainer.fit()
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 
 # See comment in backend.py::_warn_about_bad_checkpoint_type
@@ -399,6 +401,20 @@ def test_torch_env_vars(ray_start_4_cpus):
         scaling_config=scaling_config,
     )
     trainer.fit()
+
+
+def test_nonserializable_train_function(ray_start_4_cpus):
+    import threading
+
+    lock = threading.Lock()
+
+    def train_func():
+        print(lock)
+
+    trainer = TorchTrainer(train_func)
+    # Check that the `inspect_serializability` trace was printed
+    with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
+        trainer.fit()
 
 
 if __name__ == "__main__":

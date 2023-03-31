@@ -66,7 +66,19 @@ static int DoGetNextJobID(redisContext *context) {
   redisReply *reply = nullptr;
   bool under_retry_limit = RunRedisCommandWithRetries(
       context, cmd.c_str(), &reply, [](const redisReply *reply) {
-        return reply != nullptr && reply->type != REDIS_REPLY_NIL;
+        if (reply == nullptr) {
+          RAY_LOG(WARNING) << "Didn't get reply for " << cmd;
+          return false;
+        }
+        if (reply->type == REDIS_REPLY_NIL) {
+          RAY_LOG(WARNING) << "Got nil reply for " << cmd;
+          return false;
+        }
+        if (reply->type == REDIS_REPLY_ERROR) {
+          RAY_LOG(WARNING) << "Got error reply for " << cmd << " Error is " << reply->str;
+          return false;
+        }
+        return true;
       });
   RAY_CHECK(reply);
   RAY_CHECK(under_retry_limit) << "No entry found for JobCounter";
