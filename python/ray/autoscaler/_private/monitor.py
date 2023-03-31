@@ -403,7 +403,7 @@ class Monitor:
                     self.emit_metrics(
                         load_metrics_summary,
                         autoscaler_summary,
-                        self.autoscaler.node_types,
+                        self.autoscaler.all_node_types,
                     )
                     if autoscaler_summary:
                         status["autoscaler_report"] = asdict(autoscaler_summary)
@@ -474,7 +474,7 @@ class Monitor:
                 NodeType=node_type,
             ).set(count)
 
-        for node_type, count in node_types:
+        for node_type in node_types:
             count = autoscaler_summary.active_nodes.get(node_type, 0)
             self.prom_metrics.active_nodes.labels(
                 SessionName=self.prom_metrics.session_name,

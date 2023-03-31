@@ -369,7 +369,7 @@ class StandardAutoscaler:
 
     @property
     def all_node_types(self) -> Set[str]:
-        return set(self.config["available_node_types"].values())
+        return self.config["available_node_types"].keys()
 
     def update(self):
         try:

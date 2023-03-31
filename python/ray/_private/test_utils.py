@@ -19,6 +19,7 @@ from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any, Callable, Dict, List, Optional
 import uuid
+from dataclasses import dataclass
 
 import requests
 from ray._raylet import Config
@@ -62,9 +63,10 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 try:
-    from prometheus_client.parser import text_string_to_metric_families
+    from prometheus_client.parser import text_string_to_metric_families, Sample
 except (ImportError, ModuleNotFoundError):
 
+    Sample = None
     def text_string_to_metric_families(*args, **kwargs):
         raise ModuleNotFoundError("`prometheus_client` not found")
 
@@ -588,20 +590,45 @@ async def async_wait_for_condition_async_predicate(
     raise RuntimeError(message)
 
 
+@dataclass
+class MetricSamplePattern:
+    name : Optional[str] = None
+    value: Optional[str] = None
+    partial_label_match: Optional[Dict[str, str]] = None
+
+    def matches(self, sample : Sample):
+        if self.name is not None:
+            if self.name != sample.name:
+                return False
+
+        if self.value is not None:
+            if self.value != sample.value:
+                return False
+
+        if self.partial_label_match is not None:
+            for label, value in self.partial_label_match.items():
+                if sample.labels.get(label) != value:
+                    print("========= Didn't match ", label, value, sample)
+                    return False
+
+        return True
+
+
 def get_metric_check_condition(
-    metrics_to_check: Dict[str, Optional[float]], export_addr: Optional[str] = None
-) -> Callable[[], bool]:
+        metrics_to_check: List[MetricSamplePattern],
+        export_addr: Optional[str] = None
+):
     """A condition to check if a prometheus metrics reach a certain value.
     This is a blocking check that can be passed into a `wait_for_condition`
     style function.
 
     Args:
-      metrics_to_check: A map of metric lable to values to check, to ensure
-        that certain conditions have been reached. If a value is None, just check
-        that the metric was emitted with any value.
+      metrics_to_check: A list of MetricSamplePattern. The fields that
+      aren't `None` will be matched.
 
     Returns:
       A function that returns True if all the metrics are emitted.
+
     """
     node_info = ray.nodes()[0]
     metrics_export_port = node_info["MetricsExportPort"]
@@ -609,29 +636,70 @@ def get_metric_check_condition(
     prom_addr = export_addr or f"{addr}:{metrics_export_port}"
 
     def f():
-        for metric_name, metric_value in metrics_to_check.items():
+        for metric_pattern in metrics_to_check:
             _, metric_names, metric_samples = fetch_prometheus([prom_addr])
-            found_metric = False
-            if metric_name in metric_names:
-                for sample in metric_samples:
-                    if sample.name != metric_name:
-                        continue
-
-                    if metric_value is None:
-                        found_metric = True
-                    elif metric_value == sample.value:
-                        found_metric = True
-            if not found_metric:
+            for metric_sample in metric_samples:
+                print("checking", metric_sample)
+                if metric_pattern.matches(metric_sample):
+                    print("match")
+                    break
+                else:
+                    print("didnt match")
+            else:
                 print(
-                    "Didn't find metric, all metric names: ",
-                    metric_names,
-                    "all values",
+                    f"Didn't find {metric_pattern}",
+                    "all samples",
                     metric_samples,
                 )
                 return False
         return True
 
     return f
+
+# def get_metric_check_condition(
+#     metrics_to_check: Dict[str, Optional[float]], export_addr: Optional[str] = None
+# ) -> Callable[[], bool]:
+#     """A condition to check if a prometheus metrics reach a certain value.
+#     This is a blocking check that can be passed into a `wait_for_condition`
+#     style function.
+
+#     Args:
+#       metrics_to_check: A map of metric lable to values to check, to ensure
+#         that certain conditions have been reached. If a value is None, just check
+#         that the metric was emitted with any value.
+
+#     Returns:
+#       A function that returns True if all the metrics are emitted.
+#     """
+#     node_info = ray.nodes()[0]
+#     metrics_export_port = node_info["MetricsExportPort"]
+#     addr = node_info["NodeManagerAddress"]
+#     prom_addr = export_addr or f"{addr}:{metrics_export_port}"
+
+#     def f():
+#         for metric_name, metric_value in metrics_to_check.items():
+#             _, metric_names, metric_samples = fetch_prometheus([prom_addr])
+#             found_metric = False
+#             if metric_name in metric_names:
+#                 for sample in metric_samples:
+#                     if sample.name != metric_name:
+#                         continue
+
+#                     if metric_value is None:
+#                         found_metric = True
+#                     elif metric_value == sample.value:
+#                         found_metric = True
+#             if not found_metric:
+#                 print(
+#                     "Didn't find metric, all metric names: ",
+#                     metric_names,
+#                     "all values",
+#                     metric_samples,
+#                 )
+#                 return False
+#         return True
+
+#     return f
 
 
 def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
