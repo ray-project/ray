@@ -91,9 +91,7 @@ class TfCNNEncoder(TfModel, Encoder):
 
         # Add a final linear layer to make sure that the outputs have the correct
         # dimensionality (output_dims).
-        output_activation = get_activation_fn(
-            config.output_activation, framework="tf2"
-        )
+        output_activation = get_activation_fn(config.output_activation, framework="tf2")
         layers.append(
             tf.keras.layers.Dense(config.output_dims[0], activation=output_activation),
         )

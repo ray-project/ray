@@ -60,6 +60,6 @@ class TfModel(Model, tf.keras.Model, abc.ABC):
     @override(Model)
     def get_num_parameters(self) -> Tuple[int, int]:
         return (
-            sum([int(np.prod(w.shape)) for w in self.trainable_weights]),
-            sum([int(np.prod(w.shape)) for w in self.non_trainable_weights])
+            sum(int(np.prod(w.shape)) for w in self.trainable_weights),
+            sum(int(np.prod(w.shape)) for w in self.non_trainable_weights),
         )

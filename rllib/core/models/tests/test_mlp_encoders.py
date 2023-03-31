@@ -12,7 +12,6 @@ torch, _ = try_import_torch()
 
 
 class TestMLPEncoders(unittest.TestCase):
-
     def test_mlp_encoders(self):
         """Tests building MLP encoders properly and checks for correct architecture."""
 
@@ -87,11 +86,13 @@ class TestMLPEncoders(unittest.TestCase):
                     seq_lens = torch.tensor([1])
                 state = None
 
-                outputs = model({
-                    SampleBatch.OBS: obs,
-                    SampleBatch.SEQ_LENS: seq_lens,
-                    STATE_IN: state,
-                })
+                outputs = model(
+                    {
+                        SampleBatch.OBS: obs,
+                        SampleBatch.SEQ_LENS: seq_lens,
+                        STATE_IN: state,
+                    }
+                )
 
                 if fw == "tf2":
                     tf_counts = model.get_num_parameters()
@@ -99,10 +100,7 @@ class TestMLPEncoders(unittest.TestCase):
                     torch_counts = model.get_num_parameters()
                     # Compare number of trainable and non-trainable params between
                     # tf and torch.
-                    try:
-                        self.assertEqual(torch_counts[0], tf_counts[0])
-                    except Exception as e:
-                        print()
+                    self.assertEqual(torch_counts[0], tf_counts[0])
                     self.assertEqual(torch_counts[1], tf_counts[1])
 
                 self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims[0]))

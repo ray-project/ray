@@ -97,7 +97,11 @@ class TensorSpec(Spec):
     """
 
     def __init__(
-        self, shape: str, *, dtype: Optional[Any] = None, **shape_vals: int,
+        self,
+        shape: str,
+        *,
+        dtype: Optional[Any] = None,
+        **shape_vals: int,
     ) -> None:
         self._expected_shape = self._parse_expected_shape(shape, shape_vals)
         self._full_shape = self._get_full_shape()

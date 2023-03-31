@@ -1,8 +1,5 @@
 from typing import Callable, List, Optional, Union, Tuple
 
-import numpy as np
-
-from ray.rllib.models.torch.misc import SlimConv2d
 from ray.rllib.models.torch.misc import same_padding
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.framework import try_import_torch
@@ -69,9 +66,7 @@ class TorchMLP(nn.Module):
                     layers.append(hidden_activation())
 
         # Add output layer's (if any) activation.
-        output_activation = get_activation_fn(
-            output_activation, framework="torch"
-        )
+        output_activation = get_activation_fn(output_activation, framework="torch")
         if output_dim is not None and output_activation is not None:
             layers.append(output_activation())
 
@@ -124,10 +119,12 @@ class TorchCNN(nn.Module):
         for out_depth, kernel, stride in cnn_filter_specifiers:
             # Pad like in tensorflow's SAME mode.
             padding, out_size = same_padding(in_size, kernel, stride)
-            layers.extend([
-                nn.ZeroPad2d(padding),
-                nn.Conv2d(in_depth, out_depth, kernel, stride, bias=use_bias)
-            ])
+            layers.extend(
+                [
+                    nn.ZeroPad2d(padding),
+                    nn.Conv2d(in_depth, out_depth, kernel, stride, bias=use_bias),
+                ]
+            )
             # Layernorm.
             if cnn_use_layernorm:
                 layers.append(nn.LayerNorm((out_depth, out_size[0], out_size[1])))

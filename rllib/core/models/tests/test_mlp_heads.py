@@ -10,7 +10,6 @@ torch, nn = try_import_torch()
 
 
 class TestMLPHeads(unittest.TestCase):
-
     def test_mlp_heads(self):
         """Tests building MLP heads properly and checks for correct architecture."""
 

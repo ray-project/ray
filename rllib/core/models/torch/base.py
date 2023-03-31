@@ -97,9 +97,9 @@ class TorchModel(nn.Module, Model, abc.ABC):
 
     @override(Model)
     def get_num_parameters(self) -> Tuple[int, int]:
-        num_all_params = sum([int(np.prod(p.size())) for p in self.parameters()])
+        num_all_params = sum(int(np.prod(p.size())) for p in self.parameters())
         trainable_params = filter(lambda p: p.requires_grad, self.parameters())
-        num_trainable_params = sum([int(np.prod(p.size())) for p in trainable_params])
+        num_trainable_params = sum(int(np.prod(p.size())) for p in trainable_params)
         return (
             num_trainable_params,
             num_all_params - num_trainable_params,

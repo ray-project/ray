@@ -13,7 +13,6 @@ torch, _ = try_import_torch()
 
 
 class TestCNNEncoders(unittest.TestCase):
-
     def test_cnn_encoders(self):
         """Tests building CNN encoders properly and checks for correct architecture."""
 
@@ -100,11 +99,13 @@ class TestCNNEncoders(unittest.TestCase):
                     seq_lens = torch.tensor([1])
                 state = None
 
-                outputs = model({
-                    SampleBatch.OBS: obs,
-                    SampleBatch.SEQ_LENS: seq_lens,
-                    STATE_IN: state,
-                })
+                outputs = model(
+                    {
+                        SampleBatch.OBS: obs,
+                        SampleBatch.SEQ_LENS: seq_lens,
+                        STATE_IN: state,
+                    }
+                )
 
                 if fw == "tf2":
                     tf_counts = model.get_num_parameters()

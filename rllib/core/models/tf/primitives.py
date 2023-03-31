@@ -53,7 +53,8 @@ class TfMLP(tf.keras.Model):
                 tf.keras.layers.Dense(
                     hidden_layer_dims[i],
                     activation=(
-                        hidden_layer_activation if not hidden_layer_use_layernorm
+                        hidden_layer_activation
+                        if not hidden_layer_use_layernorm
                         else None
                     ),
                     use_bias=use_bias,
@@ -66,11 +67,13 @@ class TfMLP(tf.keras.Model):
 
         if output_dim is not None:
             output_activation = get_activation_fn(output_activation, framework="tf2")
-            layers.append(tf.keras.layers.Dense(
-                output_dim,
-                activation=output_activation,
-                use_bias=use_bias,
-            ))
+            layers.append(
+                tf.keras.layers.Dense(
+                    output_dim,
+                    activation=output_activation,
+                    use_bias=use_bias,
+                )
+            )
 
         self.network = tf.keras.Sequential(layers)
 
