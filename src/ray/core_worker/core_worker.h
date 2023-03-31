@@ -1212,6 +1212,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param exit_detail The detailed reason for a given exit.
   void ForceExit(const rpc::WorkerExitType exit_type, const std::string &detail);
 
+  void KillLeakedProcs();
+
   /// Register this worker or driver to GCS.
   void RegisterToGcs(int64_t worker_launch_time_ms, int64_t worker_launched_time_ms);
 

@@ -4,6 +4,9 @@ import ray
 import time
 from multiprocessing import Process
 import subprocess
+import psutil
+
+ray.init()
 
 def target():
     import os
@@ -17,15 +20,30 @@ class MyActor:
         print("Starting proc")
         p = Process(target=target, daemon=True)
         p.start()
-        print("Done")
+        print(f"Done, p: {p}")
 
 print('Before')
-subprocess.run("ps aux | grep ray:: | grep 'ray::MyActor.run' | grep -v 'bash'", shell=True)
-subprocess.run("ps aux | grep ray:: | grep 'ray::MyActor.run' | grep -v 'bash' | awk '{print $2}' | xargs kill -9", shell=True)
+subprocess.run("ps aux | grep ray:: | grep 'ray::MyActor.run' | grep -v 'grep'", shell=True)
 
 actor = MyActor.remote()
 ray.get(actor.run.remote())
 
+procs = [x for x in psutil.process_iter(['name']) if x.name().startswith('ray::MyActor.run')]
+if procs:
+    print(procs[0].ppid())
+
+del actor
+
+while True:
+    procs = [x for x in psutil.process_iter(['name']) if x.name().startswith('ray::MyActor.run')]
+    if procs:
+        print(procs[0].ppid())
+    else:
+        break
+    time.sleep(1)
+
 print('After')
 subprocess.run("ps aux | grep ray:: | grep 'ray::MyActor.run' | grep -v 'grep'", shell=True)
-subprocess.run("ps aux | grep ray:: | grep 'ray::MyActor.run' | grep -v 'grep' | awk '{print $2}' | xargs kill -9", shell=True)
+
+#cat /proc/2611/status | grep -i ppid
+#subprocess.run("ps aux | grep ray:: | grep 'ray::MyActor.run' | grep -v 'grep' | awk '{print $2}' | xargs kill -9", shell=True)

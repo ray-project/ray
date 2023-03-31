@@ -636,6 +636,82 @@ bool IsProcessAlive(pid_t pid) {
 #endif
 }
 
+
+#if defined(__linux__)
+static inline std::error_code KillProcLinux(pid_t pid) {
+    std::error_code error;
+    if (kill(pid, SIGKILL) != 0) {
+        error = std::error_code(errno, std::system_category());
+    }
+    return error;
+}
+#endif
+
+std::optional<std::error_code> KillProc(pid_t pid) {
+#if defined(__linux__)
+    return {KillProcLinux(pid)};
+#else
+    return std::nullopt;
+#endif
+}
+
+#if defined(__linux__)
+static inline std::vector<pid_t> GetAllProcsWithPpidLinux(pid_t parent_pid) {
+    std::vector<pid_t> child_pids;
+
+    // Open the /proc directory
+    std::filesystem::directory_iterator dir("/proc");
+
+    // Iterate over all files in the /proc directory
+    for (const auto& file : dir) {
+        // Check if this is a directory and its name is a number (which is the PID)
+	if (!file.is_directory()) {
+            continue;
+        }
+        
+        const auto filename = file.path().filename().string();
+        bool file_name_is_only_digit = std::all_of(filename.begin(), filename.end(), ::isdigit);
+        if (!file_name_is_only_digit) {
+            continue;
+        }
+
+        pid_t pid = std::stoi(filename);
+
+        // Open the status file for this process
+        std::ifstream status_file(file.path() / "status");
+        if (!status_file.is_open()) {
+            continue;
+        }
+
+        // Read the PPID from the status file
+        std::string line;
+        const std::string key = "PPid:";
+        while (std::getline(status_file, line)) {
+            const auto substr = line.substr(0, key.size());
+            if (substr != key) {
+                continue;
+            }
+
+            pid_t ppid = std::stoi(line.substr(substr.size()));
+            if (ppid == parent_pid) {
+                child_pids.push_back(pid);
+            }
+            break;
+        }
+    }
+
+    return child_pids;
+}
+#endif
+
+std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid) {
+#if defined(__linux__)
+    return {GetAllProcsWithPpidLinux(parent_pid)};
+#else
+    return std::nullopt;
+#endif
+}
+
 }  // namespace ray
 
 namespace std {

@@ -704,6 +704,32 @@ void CoreWorker::Disconnect(
   }
 }
 
+void CoreWorker::KillLeakedProcs() {
+  RAY_LOG(DEBUG) << "Killing leaked procs";
+  auto maybe_child_procs = GetAllProcsWithPpid(GetPID());
+    
+   // Enumerating child procs is not supported on this platform.
+  if (!maybe_child_procs) {
+    RAY_LOG(DEBUG) << "Killing leaked procs not supported on this platform.";
+    return;
+  }
+
+  const auto& child_procs = *maybe_child_procs;
+  const auto child_procs_str  = absl::StrJoin(child_procs, ",");
+  RAY_LOG(DEBUG) << "Procs to kill: " << child_procs_str;
+
+  for (const auto& child_pid : child_procs) {
+    auto maybe_error_code = KillProc(child_pid);
+    RAY_CHECK(maybe_error_code && "Expected this path to only be called when KillProc is supported.");
+    auto error_code = *maybe_error_code;
+
+    RAY_LOG(DEBUG) << "Kill result for " << child_pid << ": " << error_code.message() << ", bool " << (bool) error_code;
+    if (error_code) {
+        RAY_LOG(WARNING) << "Unable to kill process " << child_pid << ": " << error_code.message();
+    }
+  }
+}
+
 void CoreWorker::Exit(
     const rpc::WorkerExitType exit_type,
     const std::string &detail,
@@ -722,6 +748,9 @@ void CoreWorker::Exit(
   /// otherwise the frontend code may not release its references and this worker will be
   /// leaked. See https://github.com/ray-project/ray/issues/19639.
   reference_counter_->ReleaseAllLocalReferences();
+
+  // Kill child procs.
+  KillLeakedProcs();
 
   // Callback to shutdown.
   auto shutdown = [this, exit_type, detail, creation_task_exception_pb_bytes]() {
@@ -778,6 +807,9 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
   RAY_LOG(WARNING) << "Force exit the process. "
                    << " Details: " << detail;
   Disconnect(exit_type, detail);
+
+  KillLeakedProcs();
+
   // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
   // `exit()` will destruct static objects in an incorrect order, which will lead to
   // core dumps.
