@@ -22,6 +22,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.metrics import (
     Metrics,
+    MetricsCollector,
     DataMungingMetrics,
     ObjectStoreMetrics,
 )
@@ -291,7 +292,7 @@ class MapOperator(PhysicalOperator, ABC):
 
     def get_metrics(self) -> Dict[str, int]:
         # Return a flattened metrics dict.
-        return self._metrics.object_store_metrics.to_metrics_dict()
+        return self._metrics.to_metrics_dict()
 
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
@@ -326,7 +327,9 @@ class MapOperator(PhysicalOperator, ABC):
         all_refs = list(ray.get(ref))
         del ref
         block_refs = all_refs[:-1]
-        block_metas = ray.get(all_refs[-1])
+        block_metas, metrics = ray.get(all_refs[-1])
+        metrics = self._metrics.data_munging_metrics.merge_with(metrics)
+        self._metrics.data_munging_metrics = metrics
         assert len(block_metas) == len(block_refs), (block_refs, block_metas)
         for ref in block_refs:
             trace_allocation(ref, "map_operator_work_completed")
@@ -374,14 +377,15 @@ def _map_task(
     """
     output_metadata = []
     stats = BlockExecStats.builder()
-    for b_out in fn(iter(blocks), ctx):
+    metrics_collector = MetricsCollector()
+    for b_out in fn(iter(blocks), ctx, metrics_collector):
         # TODO(Clark): Add input file propagation from input blocks.
         m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
         m_out.exec_stats = stats.build()
         output_metadata.append(m_out)
         yield b_out
         stats = BlockExecStats.builder()
-    yield output_metadata
+    yield output_metadata, metrics_collector.get_metrics()
 
 
 class _BlockRefBundler:
