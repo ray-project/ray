@@ -2386,6 +2386,17 @@ class AlgorithmConfig(_Config):
 
         if _enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api
+            if _enable_rl_module_api and self.exploration_config:
+                self.exploration_config = {}
+                logger.warning(
+                    "You have enable the RLModule API while an exploration_config was"
+                    "set. When RLModule API are enabled, exploration_config can not "
+                    "be set. If you want to implement custom exploration behaviour, "
+                    "please modify the `forward_exploration` method of the RLModule "
+                    "at hand. On configs that have a default exploration config, "
+                    "this must be done with `config._exploration_config={}`. The "
+                    "exploration_config with be ignored."
+                )
         else:
             # throw a warning if the user has used this API but not enabled it.
             logger.warning(

@@ -124,7 +124,7 @@ class PPOConfig(PGConfig):
 
         # enable the rl module api by default
         self._enable_rl_module_api = True
-        self._enable_learner_api = True
+        self.rl_module(_enable_rl_module_api=True)
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
