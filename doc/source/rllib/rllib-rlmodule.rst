@@ -405,7 +405,7 @@ To learn more, see the `SpecType` documentation.
 
 
 
-Writing Custom Multi Agent RL Modules (Advanced)
+Writing Custom Multi-Agent RL Modules (Advanced)
 ------------------------------------------------
 
 For multi-agent modules, RLlib implements :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule`. It is a dictionary of :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` objects, one for each policy, plus possibly some shared modules. The base-class implementation works for most of use-cases where we need to defined independent neural for sub-groups of agents. For more complex, multi-agent use-cases, where the agents share some part of their neural network, one should inherit from this class and override the default implementation.
