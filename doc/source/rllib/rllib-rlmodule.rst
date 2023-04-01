@@ -325,7 +325,7 @@ When writing RLModules, you need to use these fields to construct your model.
 In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the checking for the existence of certain input or output keys in the data that is communicated into and out of RLModules. This serves multiple purposes: 
 
 - For the I/O requirement of each method to be self-documenting.
-- It fails fast. i.e. if users extend the modules and implement something that does not match the assumptions regarding the IO specs, it will inform them about missing keys and their expected format. For example, we always expect this RLModule to have a ``obs`` key on the input batch and also output ``action_dist`` key as the output. 
+- For failures to happen quickly. If users extend the modules and implement something that does not match the assumptions of the I/O specs, the check reports missing keys and their expected format. For example, we always RLModule should have an ``obs`` key on the input batch and an output ``action_dist`` key as the output. 
 
 .. tabbed:: Single Level Keys
 
