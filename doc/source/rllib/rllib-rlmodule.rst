@@ -401,7 +401,7 @@ In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the 
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.input_specs_train`
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.output_specs_train`
 
-To learn more about this see the documentation of `SpecType`.
+To learn more, see the `SpecType` documentation.
 
 
 
