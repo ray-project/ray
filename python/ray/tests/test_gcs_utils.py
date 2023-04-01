@@ -37,7 +37,7 @@ def test_kv_basic(ray_start_regular, monkeypatch):
     # Wait until all other calls finished
     time.sleep(2)
     # reset the counter
-    gcs_utils._called_freq = {}
+    ray._private.utils._CALLED_FREQ = {}
     assert gcs_client.internal_kv_get(b"A", b"NS") is None
     assert gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
     assert gcs_client.internal_kv_get(b"A", b"NS") == b"B"
@@ -54,8 +54,8 @@ def test_kv_basic(ray_start_regular, monkeypatch):
     assert gcs_client.internal_kv_del(b"A", True, b"NS") == 2
     assert gcs_client.internal_kv_keys(b"A", b"NS") == []
     assert gcs_client.internal_kv_del(b"A", False, b"NSS") == 0
-    assert gcs_utils._called_freq["internal_kv_get"] == 4
-    assert gcs_utils._called_freq["internal_kv_put"] == 5
+    assert ray._private.utils._CALLED_FREQ["internal_kv_get"] == 4
+    assert ray._private.utils._CALLED_FREQ["internal_kv_put"] == 5
 
     # Test internal_kv_multi_get
     assert gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {}
@@ -73,7 +73,7 @@ def test_kv_basic(ray_start_regular, monkeypatch):
         b"B": b"C",
     }
 
-    assert gcs_utils._called_freq["internal_kv_multi_get"] == 4
+    assert ray._private.utils._CALLED_FREQ["internal_kv_multi_get"] == 4
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")
