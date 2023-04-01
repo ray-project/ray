@@ -196,7 +196,7 @@ You can pass RLModule specs to the algorithm configuration to be used by the alg
 Writing Custom Single Agent RL Modules 
 --------------------------------------
 
-If your algorithm is single agent algorithm (e.g. PPO, DQN) or it is an independent multi-agent algorithm (e.g. PPO-MultiAgent), you should :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`. However, in more advanced multi-agent use-cases where there is a shared communication between agents, you should extend the :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule` class. 
+For single-agent algorithms (e.g., PPO, DQN) or independent multi-agent algorithms (e.g., PPO-MultiAgent), use :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`. For more advanced multi-agent use cases with a shared communication between agents, extend the :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule` class. 
 
 From RLlib’s point of view even single agent modules will be treated as a special case of :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule` with only one module. We can create the multi-agent representation of all RLModules by calling :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.as_multi_agent`. For example:
 
