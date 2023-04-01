@@ -15,7 +15,7 @@ from typing import Optional
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 from ray._private.utils import split_address
 
 import aiosignal  # noqa: F401

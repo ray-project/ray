@@ -22,7 +22,7 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray import cloudpickle
 from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address_or_die

@@ -16,7 +16,8 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
-from ray._private.gcs_utils import GcsAioClient, GcsClient
+from ray._raylet import GcsClient
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_logging import setup_component_logger
 from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
 from ray.experimental.internal_kv import (
