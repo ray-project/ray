@@ -78,6 +78,7 @@ def parse_condition(cond: int, limit: float = float("inf")) -> float:
 
 
 def get_concurrency_group(test: Test) -> Tuple[str, int]:
+    return "gce", 100
     try:
         test_cpus, test_gpus = get_test_resources(test)
     except Exception as e:
