@@ -9,7 +9,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.algorithms.dqn import DQN
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils.checkpoints import get_checkpoint_info
@@ -128,7 +128,7 @@ class TestBackwardCompatibility(unittest.TestCase):
                 "policies_to_train": ["policy1"],
             },
         }
-        algo = PPO(config=config, env="test")
+        algo = DQN(config=config, env="test")
         self.assertTrue(algo.config.lr == 0.001)
         self.assertTrue(algo.config.evaluation_num_workers == 1)
         self.assertTrue(list(algo.config.policies.keys()) == ["policy1"])
