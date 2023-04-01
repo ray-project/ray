@@ -597,7 +597,7 @@ class TorchPolicyV2(Policy):
                 convert_to_torch_tensor(s, self.device) for s in (state_batches or [])
             ]
 
-            if not self.config.get("_enable_rl_module_api", False):
+            if getattr(self, "exploration", None):
                 # Exploration hook before each forward pass.
                 self.exploration.before_compute_actions(explore=False)
 

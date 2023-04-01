@@ -582,7 +582,7 @@ def _build_eager_tf_policy(
                     prev_reward_batch
                 )
 
-            if not self.config.get("_enable_rl_module_api", False):
+            if getattr(self, "exploration", None):
                 # Exploration hook before each forward pass.
                 self.exploration.before_compute_actions(explore=False)
 

@@ -87,6 +87,7 @@ class DTConfig(AlgorithmConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
+        # __sphinx_doc_end__
         # fmt: on
 
         # Overwriting the trainer config default
@@ -97,8 +98,6 @@ class DTConfig(AlgorithmConfig):
         self.offline_sampling = True
         self.postprocess_inputs = True
         self.discount = None
-
-        # __sphinx_doc_end__
 
     def training(
         self,
