@@ -455,7 +455,9 @@ def ray_start_object_store_memory(request, maybe_external_redis):
 
 
 @pytest.fixture
-def call_ray_start(request):
+def call_ray_start(monkeypatch, request):
+    # To make test run faster
+    monkeypatch.setenv("RAY_NUM_REDIS_GET_RETRIES", "5")
     with call_ray_start_context(request) as address:
         yield address
 
