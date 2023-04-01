@@ -582,8 +582,9 @@ def _build_eager_tf_policy(
                     prev_reward_batch
                 )
 
-            # Exploration hook before each forward pass.
-            self.exploration.before_compute_actions(explore=False)
+            if not self.config.get("_enable_rl_module_api", False):
+                # Exploration hook before each forward pass.
+                self.exploration.before_compute_actions(explore=False)
 
             # Action dist class and inputs are generated via custom function.
             if action_distribution_fn:

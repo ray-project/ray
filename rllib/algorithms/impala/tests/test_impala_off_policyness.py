@@ -47,6 +47,10 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
                     continue
                 config.training(_enable_learner_api=enable_learner_api)
                 config.rl_module(_enable_rl_module_api=enable_learner_api)
+                if enable_learner_api:
+                    # We have to set exploration_config here manually because setting it through
+                    # config.exploration() only deepupdates it
+                    config.exploration_config = {}
                 config.num_aggregation_workers = num_aggregation_workers
                 print("aggregation-workers={}".format(config.num_aggregation_workers))
                 algo = config.build()

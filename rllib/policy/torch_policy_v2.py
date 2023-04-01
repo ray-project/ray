@@ -597,8 +597,9 @@ class TorchPolicyV2(Policy):
                 convert_to_torch_tensor(s, self.device) for s in (state_batches or [])
             ]
 
-            # Exploration hook before each forward pass.
-            self.exploration.before_compute_actions(explore=False)
+            if not self.config.get("_enable_rl_module_api", False):
+                # Exploration hook before each forward pass.
+                self.exploration.before_compute_actions(explore=False)
 
             # Action dist class and inputs are generated via custom function.
             if is_overridden(self.action_distribution_fn):
