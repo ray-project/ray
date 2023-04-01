@@ -1523,6 +1523,11 @@ cdef class EmptyProfileEvent:
     def __exit__(self, *args):
         pass
 
+class RetryGcsConnectionError(Exception):
+    "If this error is raised, we should try to reconnect to GCS."
+    def __init__(self, exception):
+        self.exception = exception
+
 def _auto_reconnect(f):
     @wraps(f)
     def wrapper(self, *args, **kwargs):
@@ -1532,24 +1537,19 @@ def _auto_reconnect(f):
         while True:
             try:
                 return f(self, *args, **kwargs)
-            except RaySystemError as e:
+            except RetryGcsConnectionError as e:
                 if remaining_retry <= 0:
-                    raise
-                if e._status_code in (
-                    <int>StatusCode_GrpcUnavailable,
-                    <int>StatusCode_GrpcUnknown,
-                ):
-                    logger.debug(
-                        "Failed to send request to gcs, reconnecting. " f"Error {e}"
-                    )
-                    try:
-                        self._connect()
-                    except Exception:
-                        logger.error(f"Connecting to gcs failed. Error {e}")
-                    time.sleep(1)
-                    remaining_retry -= 1
-                    continue
-                raise
+                    raise e.exception
+                logger.debug(
+                    f"Failed to send request to gcs, reconnecting. Error {e.exception}"
+                )
+                try:
+                    self._connect()
+                except Exception:
+                    logger.error(f"Connecting to gcs failed. Error {e.exception}")
+                time.sleep(1)
+                remaining_retry -= 1
+                continue
     return wrapper
 
 cdef class GcsClient:
@@ -1564,16 +1564,19 @@ cdef class GcsClient:
         self.inner.reset(new CGcsSyncClient(dereference(gcs_options.native())))
         self.address = address
         self._nums_reconnect_retry = nums_reconnect_retry
-        self.connect()
+        self._connect()
 
-    def connect(self):
+    def _connect(self):
         check_status(self.inner.get().Connect())
 
     cdef _check_error(self, CRayStatus status):
         try:
             check_status(status)
         except RaySystemError as e:
-            raise RuntimeError(str(e))
+            if status.IsGrpcUnavailable() or status.IsGrpcUnknown():
+                raise RetryGcsConnectionError(e)
+            else:
+                raise RuntimeError(str(e))
 
     @property
     def address(self):
