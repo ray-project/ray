@@ -563,6 +563,15 @@
     timeout: 3600
     script: bash file_size_benchmark.sh
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      stable: false
+      cluster:
+        cluster_env: app_config_oom.yaml
+        cluster_compute: compute_gce_cpu_16.yaml
+
 # Test dataset larger than object store memory.
 - name: ray-data-bulk-ingest-out-of-core-benchmark
   group: AIR tests
@@ -579,6 +588,15 @@
   run:
     timeout: 3600
     script: bash out_of_core_benchmark.sh
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      stable: false
+      cluster:
+        cluster_env: app_config_oom.yaml
+        cluster_compute: compute_gce_cpu_16.yaml
 
 # Test additional CPU nodes for preprocessing.
 - name: ray-data-bulk-ingest-heterogeneity-benchmark
@@ -599,6 +617,15 @@
 
     timeout: 1800
     script: bash heterogeneity_benchmark.sh 2
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      stable: false
+      cluster:
+        cluster_env: app_config_oom.yaml
+        cluster_compute: compute_gce_cpu_16_worker_nodes_2.yam
 
 
 #######################
@@ -4162,6 +4189,15 @@
     wait_for_nodes:
       num_nodes: 20
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      stable: false
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: data_ingest_benchmark_compute_gce.yaml
+
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -4441,6 +4477,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      stable: false
       cluster:
         cluster_env: shuffle/100tb_shuffle_app_config.yaml
         cluster_compute: shuffle/100tb_shuffle_compute_gce.yaml
