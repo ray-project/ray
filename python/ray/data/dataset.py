@@ -167,29 +167,30 @@ TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
 
 @PublicAPI
 class Datastream(Generic[T]):
-    """A Dataset is a distributed data collection for data loading and processing.
+    """A Datastream is a distributed data collection for data loading and processing.
 
-    Datasets are implemented as a list of ``ObjectRef[Block]``, where each block
-    holds an ordered collection of items, representing a shard of the overall
-    data collection. The block can be either a ``pyarrow.Table``, or Python list.
-    The block also determines the unit of parallelism.
+    Datastreams are distributed streams that produce ``ObjectRef[Block]`` outputs,
+    where each block holds an ordered collection of items, representing a shard of the
+    overall data collection. The block can be either a ``pyarrow.Table``, or Python
+    list. The block also determines the unit of parallelism.
 
-    Datasets can be created in multiple ways: from synthetic data via ``range_*()``
-    APIs, from existing memory data via ``from_*()`` APIs, or from external storage
+    Datastreams can be created in multiple ways: from synthetic data via ``range_*()``
+    APIs, from existing memory data via ``from_*()`` APIs (this creates a subclass
+    of Datastream called ``MaterializedDatastream``), or from external storage
     systems such as local disk, S3, HDFS etc. via the ``read_*()`` APIs. The
-    (potentially processed) Dataset can be saved back to external storage systems via
-    the ``write_*()`` APIs.
+    (potentially processed) Datastream can be saved back to external storage systems
+    via the ``write_*()`` APIs.
 
     Examples:
         >>> import ray
-        >>> # Create dataset from synthetic data.
+        >>> # Create datastream from synthetic data.
         >>> ds = ray.data.range(1000)
-        >>> # Create dataset from in-memory data.
+        >>> # Create datastream from in-memory data.
         >>> ds = ray.data.from_items(
         ...     [{"col1": i, "col2": i * 2} for i in range(1000)])
-        >>> # Create dataset from external storage system.
+        >>> # Create datastream from external storage system.
         >>> ds = ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP
-        >>> # Save dataset back to external storage system.
+        >>> # Save datastream back to external storage system.
         >>> ds.write_csv("s3://bucket/output") # doctest: +SKIP
 
     Datasets has two kinds of operations: tranformation, which takes in Datasets and
@@ -1215,7 +1216,7 @@ class Datastream(Generic[T]):
     @ConsumptionAPI
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
-    ) -> List["MaterializedDataset[T]"]:
+    ) -> List["MaterializedDatastream[T]"]:
         """Split the dataset into ``n`` disjoint pieces.
 
         This returns a list of sub-datasets that can be passed to Ray tasks
@@ -1283,7 +1284,7 @@ class Datastream(Generic[T]):
             blocks = np.array_split(block_refs, n)
             meta = np.array_split(metadata, n)
             return [
-                MaterializedDataset(
+                MaterializedDatastream(
                     ExecutionPlan(
                         BlockList(
                             b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
@@ -1405,7 +1406,7 @@ class Datastream(Generic[T]):
             per_split_block_lists = _equalize(per_split_block_lists, owned_by_consumer)
 
         return [
-            MaterializedDataset(
+            MaterializedDatastream(
                 ExecutionPlan(
                     block_split,
                     stats,
@@ -1418,7 +1419,7 @@ class Datastream(Generic[T]):
         ]
 
     @ConsumptionAPI
-    def split_at_indices(self, indices: List[int]) -> List["MaterializedDataset[T]"]:
+    def split_at_indices(self, indices: List[int]) -> List["MaterializedDatastream[T]"]:
         """Split the dataset at the given indices (like np.split).
 
         Examples:
@@ -1466,7 +1467,7 @@ class Datastream(Generic[T]):
             stats = DatasetStats(stages={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
             splits.append(
-                MaterializedDataset(
+                MaterializedDatastream(
                     ExecutionPlan(
                         BlockList(
                             bs, ms, owned_by_consumer=block_list._owned_by_consumer
@@ -1483,7 +1484,7 @@ class Datastream(Generic[T]):
     @ConsumptionAPI
     def split_proportionately(
         self, proportions: List[float]
-    ) -> List["MaterializedDataset[T]"]:
+    ) -> List["MaterializedDatastream[T]"]:
         """Split the dataset using proportions.
 
         A common use case for this would be splitting the dataset into train
@@ -1556,7 +1557,7 @@ class Datastream(Generic[T]):
         *,
         shuffle: bool = False,
         seed: Optional[int] = None,
-    ) -> Tuple["MaterializedDataset[T]", "MaterializedDataset[T]"]:
+    ) -> Tuple["MaterializedDatastream[T]", "MaterializedDatastream[T]"]:
         """Split the dataset into train and test subsets.
 
         Examples:
@@ -1608,7 +1609,7 @@ class Datastream(Generic[T]):
             return dataset.split_at_indices([dataset_length - test_size])
 
     @ConsumptionAPI(pattern="Args:")
-    def union(self, *other: List["Datastream[T]"]) -> "MaterializedDataset[T]":
+    def union(self, *other: List["Datastream[T]"]) -> "MaterializedDatastream[T]":
         """Combine this dataset with others of the same type.
 
         The order of the blocks in the datasets is preserved, as is the
@@ -2135,7 +2136,7 @@ class Datastream(Generic[T]):
             logical_plan = LogicalPlan(op)
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
-    def zip(self, other: "Datastream[U]") -> "MaterializedDataset[(T, U)]":
+    def zip(self, other: "Datastream[U]") -> "MaterializedDatastream[(T, U)]":
         """Zip this dataset with the elements of another.
 
         The datasets must have the same number of rows. For tabular datasets, the
@@ -2182,7 +2183,7 @@ class Datastream(Generic[T]):
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
     @ConsumptionAPI
-    def limit(self, limit: int) -> "MaterializedDataset[T]":
+    def limit(self, limit: int) -> "MaterializedDatastream[T]":
         """Truncate the dataset to the first ``limit`` records.
 
         Contrary to :meth`.take`, this will not move any data to the caller's
@@ -4066,7 +4067,7 @@ class Datastream(Generic[T]):
         return pipe
 
     @Deprecated(message="Use `Dataset.cache()` instead.")
-    def fully_executed(self) -> "MaterializedDataset[T]":
+    def fully_executed(self) -> "MaterializedDatastream[T]":
         logger.warning(
             "The 'fully_executed' call has been renamed to 'cache'.",
         )
@@ -4088,7 +4089,7 @@ class Datastream(Generic[T]):
         return self._plan.has_computed_output()
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
-    def cache(self) -> "MaterializedDataset[T]":
+    def cache(self) -> "MaterializedDatastream[T]":
         """Evaluate and cache the blocks of this Dataset in object store memory.
 
         This can be used to read all blocks into memory. By default, Datasets
@@ -4097,7 +4098,7 @@ class Datastream(Generic[T]):
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        copy = Datastream.copy(self, _as=MaterializedDataset)
+        copy = Datastream.copy(self, _as=MaterializedDatastream)
         copy._plan.execute(force_read=True)
         return copy
 
@@ -4596,10 +4597,10 @@ class Datastream(Generic[T]):
 Dataset = Datastream
 
 
-class MaterializedDataset(Datastream, Generic[T]):
+class MaterializedDatastream(Datastream, Generic[T]):
     """A Datastream that has been materialized into Ray memory, e.g., via `.cache()`.
 
-    The blocks of a MaterializedDataset object are materialized into Ray object store
+    The blocks of a MaterializedDatastream object are materialized into Ray object store
     memory, which means that this class can be shared or iterated over by multiple Ray
     tasks without re-executing the underlying computations for producing the stream.
     """

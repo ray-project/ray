@@ -33,7 +33,7 @@ from ray.data._internal.util import (
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
-from ray.data.dataset import Datastream, MaterializedDataset
+from ray.data.dataset import Datastream, MaterializedDatastream
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     BinaryDatasource,
@@ -89,14 +89,16 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-def from_items(items: List[Any], *, parallelism: int = -1) -> MaterializedDataset[Any]:
+def from_items(
+    items: List[Any], *, parallelism: int = -1
+) -> MaterializedDatastream[Any]:
     """Create a dataset from a list of local Python objects.
 
     Examples:
         >>> import ray
         >>> ds = ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        MaterializedDataset(num_blocks=5, num_rows=5, schema=<class 'int'>)
+        MaterializedDatastream(num_blocks=5, num_rows=5, schema=<class 'int'>)
         >>> ds.take(2) # doctest: +SKIP
         [1, 2]
 
@@ -106,7 +108,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> MaterializedDatase
             Parallelism may be limited by the number of items.
 
     Returns:
-        MaterializedDataset holding the items.
+        MaterializedDatastream holding the items.
     """
     import builtins
 
@@ -145,7 +147,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> MaterializedDatase
             )
         )
 
-    return MaterializedDataset(
+    return MaterializedDatastream(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromItems": metadata}, parent=None),
@@ -1413,14 +1415,14 @@ def read_sql(
 
 
 @PublicAPI
-def from_dask(df: "dask.DataFrame") -> MaterializedDataset[ArrowRow]:
+def from_dask(df: "dask.DataFrame") -> MaterializedDatastream[ArrowRow]:
     """Create a dataset from a Dask DataFrame.
 
     Args:
         df: A Dask DataFrame.
 
     Returns:
-        MaterializedDataset holding Arrow records read from the DataFrame.
+        MaterializedDatastream holding Arrow records read from the DataFrame.
     """
     import dask
 
@@ -1447,14 +1449,14 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset[ArrowRow]:
 
 
 @PublicAPI
-def from_mars(df: "mars.DataFrame") -> MaterializedDataset[ArrowRow]:
+def from_mars(df: "mars.DataFrame") -> MaterializedDatastream[ArrowRow]:
     """Create a dataset from a MARS dataframe.
 
     Args:
         df: A MARS dataframe, which must be executed by MARS-on-Ray.
 
     Returns:
-        MaterializedDataset holding Arrow records read from the dataframe.
+        MaterializedDatastream holding Arrow records read from the dataframe.
     """
     import mars.dataframe as md
 
@@ -1462,14 +1464,14 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDataset[ArrowRow]:
 
 
 @PublicAPI
-def from_modin(df: "modin.DataFrame") -> MaterializedDataset[ArrowRow]:
+def from_modin(df: "modin.DataFrame") -> MaterializedDatastream[ArrowRow]:
     """Create a dataset from a Modin dataframe.
 
     Args:
         df: A Modin dataframe, which must be using the Ray backend.
 
     Returns:
-        MaterializedDataset holding Arrow records read from the dataframe.
+        MaterializedDatastream holding Arrow records read from the dataframe.
     """
     from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
@@ -1480,14 +1482,14 @@ def from_modin(df: "modin.DataFrame") -> MaterializedDataset[ArrowRow]:
 @PublicAPI
 def from_pandas(
     dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
-) -> MaterializedDataset[ArrowRow]:
+) -> MaterializedDatastream[ArrowRow]:
     """Create a dataset from a list of Pandas dataframes.
 
     Args:
         dfs: A Pandas dataframe or a list of Pandas dataframes.
 
     Returns:
-        MaterializedDataset holding Arrow records read from the dataframes.
+        MaterializedDatastream holding Arrow records read from the dataframes.
     """
     import pandas as pd
 
@@ -1507,7 +1509,7 @@ def from_pandas(
 @DeveloperAPI
 def from_pandas_refs(
     dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]]
-) -> MaterializedDataset[ArrowRow]:
+) -> MaterializedDatastream[ArrowRow]:
     """Create a dataset from a list of Ray object references to Pandas
     dataframes.
 
@@ -1516,7 +1518,7 @@ def from_pandas_refs(
              Ray object references to pandas dataframes.
 
     Returns:
-        MaterializedDataset holding Arrow records read from the dataframes.
+        MaterializedDatastream holding Arrow records read from the dataframes.
     """
     if isinstance(dfs, ray.ObjectRef):
         dfs = [dfs]
@@ -1536,7 +1538,7 @@ def from_pandas_refs(
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(_get_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
-        return MaterializedDataset(
+        return MaterializedDatastream(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
                 DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
@@ -1551,7 +1553,7 @@ def from_pandas_refs(
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
-    return MaterializedDataset(
+    return MaterializedDatastream(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
@@ -1565,14 +1567,14 @@ def from_pandas_refs(
 @PublicAPI
 def from_numpy(
     ndarrays: Union[np.ndarray, List[np.ndarray]]
-) -> MaterializedDataset[ArrowRow]:
+) -> MaterializedDatastream[ArrowRow]:
     """Create a dataset from a list of NumPy ndarrays.
 
     Args:
         ndarrays: A NumPy ndarray or a list of NumPy ndarrays.
 
     Returns:
-        MaterializedDataset holding the given ndarrays.
+        MaterializedDatastream holding the given ndarrays.
     """
     if isinstance(ndarrays, np.ndarray):
         ndarrays = [ndarrays]
@@ -1583,7 +1585,7 @@ def from_numpy(
 @DeveloperAPI
 def from_numpy_refs(
     ndarrays: Union[ObjectRef[np.ndarray], List[ObjectRef[np.ndarray]]],
-) -> MaterializedDataset[ArrowRow]:
+) -> MaterializedDatastream[ArrowRow]:
     """Create a dataset from a list of NumPy ndarray futures.
 
     Args:
@@ -1591,7 +1593,7 @@ def from_numpy_refs(
             references to NumPy ndarrays.
 
     Returns:
-        MaterializedDataset holding the given ndarrays.
+        MaterializedDatastream holding the given ndarrays.
     """
     if isinstance(ndarrays, ray.ObjectRef):
         ndarrays = [ndarrays]
@@ -1612,7 +1614,7 @@ def from_numpy_refs(
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
-    return MaterializedDataset(
+    return MaterializedDatastream(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromNumpyRefs": metadata}, parent=None),
@@ -1626,7 +1628,7 @@ def from_numpy_refs(
 @PublicAPI
 def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]]
-) -> MaterializedDataset[ArrowRow]:
+) -> MaterializedDatastream[ArrowRow]:
     """Create a dataset from a list of Arrow tables.
 
     Args:
@@ -1634,7 +1636,7 @@ def from_arrow(
                 or its streaming format in bytes.
 
     Returns:
-        MaterializedDataset holding Arrow records from the tables.
+        MaterializedDatastream holding Arrow records from the tables.
     """
     import pyarrow as pa
 
@@ -1649,7 +1651,7 @@ def from_arrow_refs(
         ObjectRef[Union["pyarrow.Table", bytes]],
         List[ObjectRef[Union["pyarrow.Table", bytes]]],
     ]
-) -> MaterializedDataset[ArrowRow]:
+) -> MaterializedDatastream[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
 
     Args:
@@ -1657,14 +1659,14 @@ def from_arrow_refs(
                 references to Arrow tables, or its streaming format in bytes.
 
     Returns:
-        MaterializedDataset holding Arrow records from the tables.
+        MaterializedDatastream holding Arrow records from the tables.
     """
     if isinstance(tables, ray.ObjectRef):
         tables = [tables]
 
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
-    return MaterializedDataset(
+    return MaterializedDatastream(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromArrowRefs": metadata}, parent=None),
@@ -1678,7 +1680,7 @@ def from_arrow_refs(
 @PublicAPI
 def from_spark(
     df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None
-) -> MaterializedDataset[ArrowRow]:
+) -> MaterializedDatastream[ArrowRow]:
     """Create a dataset from a Spark dataframe.
 
     Args:
@@ -1689,7 +1691,7 @@ def from_spark(
             the original Spark dataframe.
 
     Returns:
-        MaterializedDataset holding Arrow records read from the dataframe.
+        MaterializedDatastream holding Arrow records read from the dataframe.
     """
     import raydp
 
@@ -1699,7 +1701,9 @@ def from_spark(
 @PublicAPI
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
-) -> Union[MaterializedDataset[ArrowRow], Dict[str, MaterializedDataset[ArrowRow]]]:
+) -> Union[
+    MaterializedDatastream[ArrowRow], Dict[str, MaterializedDatastream[ArrowRow]]
+]:
     """Create a dataset from a Hugging Face Datasets Dataset.
 
     This function is not parallelized, and is intended to be used
@@ -1711,7 +1715,7 @@ def from_huggingface(
             ``IterableDataset`` is not supported.
 
     Returns:
-        MaterializedDataset holding Arrow records from the Hugging Face Dataset, or a
+        MaterializedDatastream holding Arrow records from the Hugging Face Dataset, or a
         dict of datasets in case ``dataset`` is a ``DatasetDict``.
     """
     import datasets
@@ -1733,7 +1737,7 @@ def from_huggingface(
 @PublicAPI
 def from_tf(
     dataset: "tf.data.Dataset",
-) -> MaterializedDataset:
+) -> MaterializedDatastream:
     """Create a dataset from a TensorFlow dataset.
 
     This function is inefficient. Use it to read small datasets or prototype.
@@ -1777,7 +1781,7 @@ def from_tf(
         dataset: A TensorFlow dataset.
 
     Returns:
-        A :class:`MaterializedDataset` that contains the samples stored in the
+        A :class:`MaterializedDatastream` that contains the samples stored in the
         TensorFlow dataset.
     """  # noqa: E501
     # FIXME: `as_numpy_iterator` errors if `dataset` contains ragged tensors.
@@ -1787,7 +1791,7 @@ def from_tf(
 @PublicAPI
 def from_torch(
     dataset: "torch.utils.data.Dataset",
-) -> MaterializedDataset:
+) -> MaterializedDatastream:
     """Create a dataset from a Torch dataset.
 
     This function is inefficient. Use it to read small datasets or prototype.
@@ -1815,7 +1819,7 @@ def from_torch(
         dataset: A Torch dataset.
 
     Returns:
-        A :class:`MaterializedDataset` that contains the samples of the Torch dataset.
+        A :class:`MaterializedDatastream` containing the Torch dataset samples.
     """
     return from_items(list(dataset))
 
