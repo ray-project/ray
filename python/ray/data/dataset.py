@@ -1215,7 +1215,7 @@ class Datastream(Generic[T]):
     @ConsumptionAPI
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
-    ) -> List["MaterializedData[T]"]:
+    ) -> List["MaterializedDataset[T]"]:
         """Split the dataset into ``n`` disjoint pieces.
 
         This returns a list of sub-datasets that can be passed to Ray tasks
@@ -1283,7 +1283,7 @@ class Datastream(Generic[T]):
             blocks = np.array_split(block_refs, n)
             meta = np.array_split(metadata, n)
             return [
-                MaterializedData(
+                MaterializedDataset(
                     ExecutionPlan(
                         BlockList(
                             b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
@@ -1405,7 +1405,7 @@ class Datastream(Generic[T]):
             per_split_block_lists = _equalize(per_split_block_lists, owned_by_consumer)
 
         return [
-            MaterializedData(
+            MaterializedDataset(
                 ExecutionPlan(
                     block_split,
                     stats,
@@ -1418,7 +1418,7 @@ class Datastream(Generic[T]):
         ]
 
     @ConsumptionAPI
-    def split_at_indices(self, indices: List[int]) -> List["MaterializedData[T]"]:
+    def split_at_indices(self, indices: List[int]) -> List["MaterializedDataset[T]"]:
         """Split the dataset at the given indices (like np.split).
 
         Examples:
@@ -1466,7 +1466,7 @@ class Datastream(Generic[T]):
             stats = DatasetStats(stages={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
             splits.append(
-                MaterializedData(
+                MaterializedDataset(
                     ExecutionPlan(
                         BlockList(
                             bs, ms, owned_by_consumer=block_list._owned_by_consumer
@@ -1483,7 +1483,7 @@ class Datastream(Generic[T]):
     @ConsumptionAPI
     def split_proportionately(
         self, proportions: List[float]
-    ) -> List["MaterializedData[T]"]:
+    ) -> List["MaterializedDataset[T]"]:
         """Split the dataset using proportions.
 
         A common use case for this would be splitting the dataset into train
@@ -1556,7 +1556,7 @@ class Datastream(Generic[T]):
         *,
         shuffle: bool = False,
         seed: Optional[int] = None,
-    ) -> Tuple["MaterializedData[T]", "MaterializedData[T]"]:
+    ) -> Tuple["MaterializedDataset[T]", "MaterializedDataset[T]"]:
         """Split the dataset into train and test subsets.
 
         Examples:
@@ -1608,7 +1608,7 @@ class Datastream(Generic[T]):
             return dataset.split_at_indices([dataset_length - test_size])
 
     @ConsumptionAPI(pattern="Args:")
-    def union(self, *other: List["Datastream[T]"]) -> "MaterializedData[T]":
+    def union(self, *other: List["Datastream[T]"]) -> "MaterializedDataset[T]":
         """Combine this dataset with others of the same type.
 
         The order of the blocks in the datasets is preserved, as is the
@@ -2135,7 +2135,7 @@ class Datastream(Generic[T]):
             logical_plan = LogicalPlan(op)
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
-    def zip(self, other: "Datastream[U]") -> "MaterializedData[(T, U)]":
+    def zip(self, other: "Datastream[U]") -> "MaterializedDataset[(T, U)]":
         """Zip this dataset with the elements of another.
 
         The datasets must have the same number of rows. For tabular datasets, the
@@ -2182,7 +2182,7 @@ class Datastream(Generic[T]):
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
     @ConsumptionAPI
-    def limit(self, limit: int) -> "MaterializedData[T]":
+    def limit(self, limit: int) -> "MaterializedDataset[T]":
         """Truncate the dataset to the first ``limit`` records.
 
         Contrary to :meth`.take`, this will not move any data to the caller's
@@ -4066,7 +4066,7 @@ class Datastream(Generic[T]):
         return pipe
 
     @Deprecated(message="Use `Dataset.cache()` instead.")
-    def fully_executed(self) -> "MaterializedData[T]":
+    def fully_executed(self) -> "MaterializedDataset[T]":
         logger.warning(
             "The 'fully_executed' call has been renamed to 'cache'.",
         )
@@ -4088,7 +4088,7 @@ class Datastream(Generic[T]):
         return self._plan.has_computed_output()
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
-    def cache(self) -> "MaterializedData[T]":
+    def cache(self) -> "MaterializedDataset[T]":
         """Evaluate and cache the blocks of this Dataset in object store memory.
 
         This can be used to read all blocks into memory. By default, Datasets
@@ -4097,7 +4097,7 @@ class Datastream(Generic[T]):
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        copy = Datastream.copy(self, _as=MaterializedData)
+        copy = Datastream.copy(self, _as=MaterializedDataset)
         copy._plan.execute(force_read=True)
         return copy
 
@@ -4596,10 +4596,10 @@ class Datastream(Generic[T]):
 Dataset = Datastream
 
 
-class MaterializedData(Datastream, Generic[T]):
+class MaterializedDataset(Datastream, Generic[T]):
     """A Datastream that has been materialized into Ray memory, e.g., via `.cache()`.
 
-    The blocks of a MaterializedData object are materialized into Ray object store
+    The blocks of a MaterializedDataset object are materialized into Ray object store
     memory, which means that this class can be shared or iterated over by multiple Ray
     tasks without re-executing the underlying computations for producing the stream.
     """

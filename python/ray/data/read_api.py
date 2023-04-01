@@ -33,7 +33,7 @@ from ray.data._internal.util import (
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
-from ray.data.dataset import Datastream, MaterializedData
+from ray.data.dataset import Datastream, MaterializedDataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     BinaryDatasource,
@@ -89,14 +89,14 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-def from_items(items: List[Any], *, parallelism: int = -1) -> MaterializedData[Any]:
+def from_items(items: List[Any], *, parallelism: int = -1) -> MaterializedDataset[Any]:
     """Create a dataset from a list of local Python objects.
 
     Examples:
         >>> import ray
         >>> ds = ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        Dataset(num_blocks=5, num_rows=5, schema=<class 'int'>)
+        MaterializedDataset(num_blocks=5, num_rows=5, schema=<class 'int'>)
         >>> ds.take(2) # doctest: +SKIP
         [1, 2]
 
@@ -106,7 +106,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> MaterializedData[A
             Parallelism may be limited by the number of items.
 
     Returns:
-        Dataset holding the items.
+        MaterializedDataset holding the items.
     """
     import builtins
 
@@ -145,7 +145,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> MaterializedData[A
             )
         )
 
-    return MaterializedData(
+    return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromItems": metadata}, parent=None),
@@ -158,13 +158,13 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> MaterializedData[A
 
 @PublicAPI
 def range(n: int, *, parallelism: int = -1) -> Datastream[int]:
-    """Create a dataset from a range of integers [0..n).
+    """Create a stream from a range of integers [0..n).
 
     Examples:
         >>> import ray
         >>> ds = ray.data.range(10000) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
+        Datastream(num_blocks=200, num_rows=10000, schema=<class 'int'>)
         >>> ds.map(lambda x: x * 2).take(4) # doctest: +SKIP
         [0, 2, 4, 6]
 
@@ -174,7 +174,7 @@ def range(n: int, *, parallelism: int = -1) -> Datastream[int]:
             Parallelism may be limited by the number of items.
 
     Returns:
-        Dataset holding the integers.
+        Datastream producing the integers.
     """
     return read_datasource(
         RangeDatasource(), parallelism=parallelism, n=n, block_format="list"
@@ -183,13 +183,13 @@ def range(n: int, *, parallelism: int = -1) -> Datastream[int]:
 
 @PublicAPI
 def range_table(n: int, *, parallelism: int = -1) -> Datastream[ArrowRow]:
-    """Create a tabular dataset from a range of integers [0..n).
+    """Create a tabular stream from a range of integers [0..n).
 
     Examples:
         >>> import ray
         >>> ds = ray.data.range_table(1000) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
+        Datastream(num_blocks=200, num_rows=1000, schema={value: int64})
         >>> ds.map(lambda r: {"v2": r["value"] * 2}).take(2) # doctest: +SKIP
         [ArrowRow({'v2': 0}), ArrowRow({'v2': 2})]
 
@@ -202,7 +202,7 @@ def range_table(n: int, *, parallelism: int = -1) -> Datastream[ArrowRow]:
             Parallelism may be limited by the number of items.
 
     Returns:
-        Dataset holding the integers as Arrow records.
+        Datastream producing the integers as Arrow records.
     """
     return read_datasource(
         RangeDatasource(), parallelism=parallelism, n=n, block_format="arrow"
@@ -218,13 +218,13 @@ def range_arrow(*args, **kwargs):
 def range_tensor(
     n: int, *, shape: Tuple = (1,), parallelism: int = -1
 ) -> Datastream[ArrowRow]:
-    """Create a Tensor dataset from a range of integers [0..n).
+    """Create a Tensor stream from a range of integers [0..n).
 
     Examples:
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(2, 2)) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        Dataset(
+        Datastream(
             num_blocks=200,
             num_rows=1000,
             schema={__value__: <ArrowTensorType: shape=(2, 2), dtype=int64>},
@@ -236,17 +236,17 @@ def range_tensor(
                 [2, 2]])]
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
-    type. The dataset elements take the form
+    type. The datastream elements take the form
     {"__value__": array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
         shape: The shape of each record.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The amount of parallelism to use for the datastream.
             Parallelism may be limited by the number of items.
 
     Returns:
-        Dataset holding the integers as Arrow tensor records.
+        Datastream producing the integers as Arrow tensor records.
     """
     return read_datasource(
         RangeDatasource(),
@@ -265,7 +265,7 @@ def read_datasource(
     ray_remote_args: Dict[str, Any] = None,
     **read_args,
 ) -> Datastream[T]:
-    """Read a dataset from a custom data source.
+    """Read a stream from a custom data source.
 
     Args:
         datasource: The datasource to read data from.
@@ -277,7 +277,7 @@ def read_datasource(
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
 
     Returns:
-        Dataset holding the data read from the datasource.
+        Datastream that reads data from the datasource.
     """
     ctx = DatasetContext.get_current()
 
@@ -345,23 +345,24 @@ def read_datasource(
     if read_tasks and len(read_tasks) < min_safe_parallelism * 0.7:
         perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
         logger.warning(
-            f"{WARN_PREFIX} The blocks of this dataset are estimated to be {perc}x "
+            f"{WARN_PREFIX} The blocks of this datastream are estimated to be {perc}x "
             "larger than the target block size "
             f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may lead to "
             "out-of-memory errors during processing. Consider reducing the size of "
             "input files or using `.repartition(n)` to increase the number of "
-            "dataset blocks."
+            "datastream blocks."
         )
     elif len(read_tasks) < requested_parallelism and (
         len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
     ):
         logger.warning(
-            f"{WARN_PREFIX} The number of blocks in this dataset ({len(read_tasks)}) "
+            f"{WARN_PREFIX} The number of blocks in this datastream "
+            f"({len(read_tasks)}) "
             f"limits its parallelism to {len(read_tasks)} concurrent tasks. "
             "This is much less than the number "
             "of available CPU slots in the cluster. Use `.repartition(n)` to "
             "increase the number of "
-            "dataset blocks."
+            "datastream blocks."
         )
 
     read_stage_name = f"Read{datasource.get_name()}"
@@ -414,12 +415,12 @@ def read_mongo(
     ray_remote_args: Dict[str, Any] = None,
     **mongo_args,
 ) -> Datastream[ArrowRow]:
-    """Create an Arrow dataset from MongoDB.
+    """Create an Arrow datastream from MongoDB.
 
     The data to read from is specified via the ``uri``, ``database`` and ``collection``
-    of the MongoDB. The dataset is created from the results of executing ``pipeline``
-    against the ``collection``. If ``pipeline`` is None, the entire ``collection`` will
-    be read.
+    of the MongoDB. The datastream is created from the results of executing
+    ``pipeline`` against the ``collection``. If ``pipeline`` is None, the entire
+    ``collection`` will be read.
 
     You can check out more details here about these MongoDB concepts:
     - URI: https://www.mongodb.com/docs/manual/reference/connection-string/
@@ -454,7 +455,7 @@ def read_mongo(
         collection: The name of the collection in the database. This collection
             must exist otherwise ValueError will be raised.
         pipeline: A MongoDB pipeline, which will be executed on the given collection
-            with results used to create Dataset. If None, the entire collection will
+            with results used to create Datastream. If None, the entire collection will
             be read.
         schema: The schema used to read the collection. If None, it'll be inferred from
             the results of pipeline.
@@ -462,12 +463,12 @@ def read_mongo(
             automatically chosen based on the available cluster resources and estimated
             in-memory data size.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
-        mong_args: kwargs passed to aggregate_arrow_all() in pymongoarrow in producing
+        mongo_args: kwargs passed to aggregate_arrow_all() in pymongoarrow in producing
             Arrow-formatted results.
 
     Returns:
-        Dataset holding Arrow records from the results of executing the pipeline on the
-        specified MongoDB collection.
+        Datastream producing Arrow records from the results of executing the pipeline
+        on the specified MongoDB collection.
     """
     return read_datasource(
         MongoDatasource(),
@@ -494,7 +495,7 @@ def read_parquet(
     meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
     **arrow_parquet_args,
 ) -> Datastream[ArrowRow]:
-    """Create an Arrow dataset from parquet files.
+    """Create an Arrow datastream from parquet files.
 
     Examples:
         >>> import ray
@@ -513,7 +514,7 @@ def read_parquet(
         ...           ("variety", pa.string())]
         >>> ray.data.read_parquet("example://iris.parquet",
         ...     schema=pa.schema(fields))
-        Dataset(
+        Datastream(
            num_blocks=1,
            num_rows=150,
            schema={
@@ -535,7 +536,7 @@ def read_parquet(
             https://arrow.apache.org/docs/python/api/filesystems.html#filesystem-implementations.
         columns: A list of column names to read.
         parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files of the dataset.
+            limited by the number of files of the datastream.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         tensor_column_schema: A dict of column name --> tensor dtype and shape
             mappings for converting a Parquet column containing serialized
@@ -549,7 +550,7 @@ def read_parquet(
             https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
 
     Returns:
-        Dataset holding Arrow records read from the specified paths.
+        Datastream producing Arrow records read from the specified paths.
     """
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
@@ -584,7 +585,7 @@ def read_images(
     mode: Optional[str] = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
-):
+) -> Datastream[ArrowRow]:
     """Read images from the specified paths.
 
     Examples:
@@ -592,13 +593,13 @@ def read_images(
         >>> path = "s3://air-example-data-2/movie-image-small-filesize-1GB"
         >>> ds = ray.data.read_images(path)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3)})
+        Datastream(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3)})
 
         If you need image file paths, set ``include_paths=True``.
 
         >>> ds = ray.data.read_images(path, include_paths=True)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3), path: string})
+        Datastream(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3), path: string})
         >>> ds.take(1)[0]["path"]  # doctest: +SKIP
         'air-example-data-2/movie-image-small-filesize-1GB/0.jpg'
 
@@ -621,21 +622,21 @@ def read_images(
         >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
         >>> ds = ray.data.read_images(root, size=(224, 224), partitioning=partitioning)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=176, num_rows=94946, schema={image: TensorDtype(shape=(224, 224, 3), dtype=uint8), class: object})
+        Datastream(num_blocks=176, num_rows=94946, schema={image: TensorDtype(shape=(224, 224, 3), dtype=uint8), class: object})
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files of the dataset.
+            limited by the number of files of the datastream.
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_file_args: kwargs passed to
             ``pyarrow.fs.FileSystem.open_input_file``.
         partition_filter: Path-based partition filter, if any. Can be used
-            with a custom callback to read only selected partitions of a dataset.
+            with a custom callback to read only selected partitions of a datastream.
             By default, this filters out any file paths whose file extension does not
             match ``*.png``, ``*.jpg``, ``*.jpeg``, ``*.tiff``, ``*.bmp``, or ``*.gif``.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
@@ -652,7 +653,7 @@ def read_images(
             that are not found. Defaults to False.
 
     Returns:
-        A :class:`~ray.data.Dataset` containing tensors that represent the images at
+        A :class:`~ray.data.Datastream` producing tensors that represent the images at
         the specified paths. For information on working with tensors, read the
         :ref:`tensor data guide <datasets_tensor_support>`.
 
@@ -693,7 +694,7 @@ def read_parquet_bulk(
     ),
     **arrow_parquet_args,
 ) -> Datastream[ArrowRow]:
-    """Create an Arrow dataset from a large number (such as >1K) of parquet files
+    """Create an Arrow datastream from a large number (such as >1K) of parquet files
     quickly.
 
     By default, ONLY file paths should be provided as input (i.e. no directory paths),
@@ -733,7 +734,7 @@ def read_parquet_bulk(
         filesystem: The filesystem implementation to read from.
         columns: A list of column names to read.
         parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files of the dataset.
+            limited by the number of files of the datastream.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_file_args: kwargs passed to
             ``pyarrow.fs.FileSystem.open_input_file``.
@@ -748,13 +749,13 @@ def read_parquet_bulk(
             files. Change to ``DefaultFileMetadataProvider`` or a custom metadata
             provider if directory expansion and/or file metadata resolution is required.
         partition_filter: Path-based partition filter, if any. Can be used
-            with a custom callback to read only selected partitions of a dataset.
+            with a custom callback to read only selected partitions of a datastream.
             By default, this filters out any file paths whose file extension does not
             match "*.parquet*".
         arrow_parquet_args: Other parquet read options to pass to pyarrow.
 
     Returns:
-        Dataset holding Arrow records read from the specified paths.
+        Datastream producing Arrow records read from the specified paths.
     """
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
@@ -818,14 +819,14 @@ def read_json(
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files of the dataset.
+            limited by the number of files of the datastream.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
-            with a custom callback to read only selected partitions of a dataset.
+            with a custom callback to read only selected partitions of a datastream.
             By default, this filters out any file paths whose file extension does not
             match "*.json*".
         arrow_json_args: Other json read options to pass to pyarrow.
@@ -836,7 +837,7 @@ def read_json(
             found. Defaults to False.
 
     Returns:
-        Dataset holding Arrow records read from the specified paths.
+        Datastream producing Arrow records read from the specified paths.
     """  # noqa: E501
     return read_datasource(
         JSONDatasource(),
@@ -867,7 +868,7 @@ def read_csv(
     ignore_missing_paths: bool = False,
     **arrow_csv_args,
 ) -> Datastream[ArrowRow]:
-    r"""Create an Arrow dataset from csv files.
+    r"""Create an Arrow datastream from csv files.
 
     Examples:
         >>> import ray
@@ -922,14 +923,14 @@ def read_csv(
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files of the dataset.
+            limited by the number of files of the datastream.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
-            with a custom callback to read only selected partitions of a dataset.
+            with a custom callback to read only selected partitions of a datastream.
             By default, this does not filter out any files.
             If wishing to filter out all file paths except those whose file extension
             matches e.g. "*.csv*", a ``FileExtensionFilter("csv")`` can be provided.
@@ -941,7 +942,7 @@ def read_csv(
             found. Defaults to False.
 
     Returns:
-        Dataset holding Arrow records read from the specified paths.
+        Datastream producing Arrow records read from the specified paths.
     """  # noqa: E501
     return read_datasource(
         CSVDatasource(),
@@ -974,7 +975,7 @@ def read_text(
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
 ) -> Datastream[str]:
-    """Create a dataset from lines stored in text files.
+    """Create a stream from lines stored in text files.
 
     Examples:
         >>> import ray
@@ -991,7 +992,7 @@ def read_text(
             "ignore", or "replace". Defaults to "ignore".
         filesystem: The filesystem implementation to read from.
         parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files of the dataset.
+            limited by the number of files of the stream.
         ray_remote_args: Kwargs passed to ray.remote in the read tasks and
             in the subsequent text decoding map task.
         arrow_open_stream_args: kwargs passed to
@@ -999,7 +1000,7 @@ def read_text(
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
-            with a custom callback to read only selected partitions of a dataset.
+            with a custom callback to read only selected partitions of a stream.
             By default, this does not filter out any files.
             If wishing to filter out all file paths except those whose file extension
             matches e.g. "*.txt*", a ``FileXtensionFilter("txt")`` can be provided.
@@ -1009,7 +1010,7 @@ def read_text(
             found. Defaults to False.
 
     Returns:
-        Dataset holding lines of text read from the specified paths.
+        Datastream producing lines of text read from the specified paths.
     """
     return read_datasource(
         TextDatasource(),
@@ -1042,7 +1043,7 @@ def read_numpy(
     ignore_missing_paths: bool = False,
     **numpy_load_args,
 ) -> Datastream[ArrowRow]:
-    """Create an Arrow dataset from numpy files.
+    """Create an Arrow datastream from numpy files.
 
     Examples:
         >>> import ray
@@ -1061,14 +1062,14 @@ def read_numpy(
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files of the dataset.
+            limited by the number of files of the datastream.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
         numpy_load_args: Other options to pass to np.load.
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
-            with a custom callback to read only selected partitions of a dataset.
+            with a custom callback to read only selected partitions of a datastream.
             By default, this filters out any file paths whose file extension does not
             match "*.npy*".
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
@@ -1077,7 +1078,7 @@ def read_numpy(
             found. Defaults to False.
 
     Returns:
-        Dataset holding Tensor records read from the specified paths.
+        Datastream holding Tensor records read from the specified paths.
     """
     return read_datasource(
         NumpyDatasource(),
@@ -1105,7 +1106,7 @@ def read_tfrecords(
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
 ) -> Datastream[PandasRow]:
-    """Create a dataset from TFRecord files that contain
+    """Create a stream from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
     messages.
 
@@ -1131,7 +1132,7 @@ def read_tfrecords(
         ...     writer.write(example.SerializeToString())
 
         This function reads ``tf.train.Example`` messages into a tabular
-        :class:`~ray.data.Dataset`.
+        :class:`~ray.data.Datastream`.
 
         >>> import ray
         >>> ds = ray.data.read_tfrecords(path)
@@ -1160,7 +1161,7 @@ def read_tfrecords(
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files in the dataset.
+            limited by the number of files in the datastream.
         arrow_open_stream_args: Key-word arguments passed to
             ``pyarrow.fs.FileSystem.open_input_stream``. To read a compressed TFRecord file,
             pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``, use
@@ -1168,16 +1169,16 @@ def read_tfrecords(
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
-            with a custom callback to read only selected partitions of a dataset.
+            with a custom callback to read only selected partitions of a datastream.
             By default, this filters out any file paths whose file extension does not
             match ``"*.tfrecords*"``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         tf_schema: Optional TensorFlow Schema which is used to explicitly set the schema
-            of the underlying Dataset.
+            of the underlying Datastream.
 
     Returns:
-        A :class:`~ray.data.Dataset` that contains the example features.
+        A :class:`~ray.data.Datastream` that contains the example features.
 
     Raises:
         ValueError: If a file contains a message that isn't a ``tf.train.Example``.
@@ -1210,14 +1211,14 @@ def read_webdataset(
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
 ) -> Datastream[PandasRow]:
-    """Create a dataset from WebDataset files.
+    """Create a stream from WebDataset files.
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files in the dataset.
+            limited by the number of files in the datastream.
         arrow_open_stream_args: Key-word arguments passed to
             ``pyarrow.fs.FileSystem.open_input_stream``. To read a compressed TFRecord file,
             pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``, use
@@ -1225,7 +1226,7 @@ def read_webdataset(
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
-            with a custom callback to read only selected partitions of a dataset.
+            with a custom callback to read only selected partitions of a datastream.
         decoder: A function or list of functions to decode the data.
         fileselect: A callable or list of glob patterns to select files.
         filerename: A function or list of tuples to rename files prior to grouping.
@@ -1233,7 +1234,7 @@ def read_webdataset(
         verbose_open: Whether to print the file names as they are opened.
 
     Returns:
-        A :class:`~ray.data.Dataset` that contains the example features.
+        A :class:`~ray.data.Datastream` that contains the example features.
 
     Raises:
         ValueError: If a file contains a message that isn't a ``tf.train.Example``.
@@ -1269,7 +1270,7 @@ def read_binary_files(
     ignore_missing_paths: bool = False,
     output_arrow_format: bool = False,
 ) -> Datastream[Union[Tuple[str, bytes], bytes]]:
-    """Create a dataset from binary files of arbitrary contents.
+    """Create a datastream from binary files of arbitrary contents.
 
     Examples:
         >>> import ray
@@ -1283,18 +1284,18 @@ def read_binary_files(
     Args:
         paths: A single file path or a list of file paths (or directories).
         include_paths: Whether to include the full path of the file in the
-            dataset records. When specified, the dataset records will be a
+            datastream records. When specified, the stream records will be a
             tuple of the file path and the file contents.
         filesystem: The filesystem implementation to read from.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files of the dataset.
+            limited by the number of files of the stream.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
-            with a custom callback to read only selected partitions of a dataset.
+            with a custom callback to read only selected partitions of a datastream.
             By default, this does not filter out any files.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to ``None``.
@@ -1304,13 +1305,13 @@ def read_binary_files(
             list format. Defaults to False.
 
     Returns:
-        Dataset holding records read from the specified paths.
+        Datastream producing records read from the specified paths.
     """
     if not output_arrow_format:
         logger.warning(
-            "read_binary_files() returns Dataset in Python list format as of Ray "
-            "v2.4. Use read_binary_files(output_arrow_format=True) to return Dataset "
-            "in Arrow format.",
+            "read_binary_files() returns Datastream in Python list format as of Ray "
+            "v2.4. Use read_binary_files(output_arrow_format=True) to return "
+            "Datastream in Arrow format.",
         )
 
     return read_datasource(
@@ -1381,13 +1382,13 @@ def read_sql(
                 return sqlite3.connect("example.db")
 
             # Get all movies
-            dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+            ds = ray.data.read_sql("SELECT * FROM movie", create_connection)
             # Get movies after the year 1980
-            dataset = ray.data.read_sql(
+            ds = ray.data.read_sql(
                 "SELECT title, score FROM movie WHERE year >= 1980", create_connection
             )
             # Get the number of movies per year
-            dataset = ray.data.read_sql(
+            ds = ray.data.read_sql(
                 "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
             )
 
@@ -1400,7 +1401,7 @@ def read_sql(
         ray_remote_args: Keyword arguments passed to :func:`ray.remote` in read tasks.
 
     Returns:
-        A :class:`Dataset` containing the queried data.
+        A :class:`Datastream` containing the queried data.
     """
     datasource = SQLDatasource(connection_factory)
     return read_datasource(
@@ -1412,14 +1413,14 @@ def read_sql(
 
 
 @PublicAPI
-def from_dask(df: "dask.DataFrame") -> MaterializedData[ArrowRow]:
+def from_dask(df: "dask.DataFrame") -> MaterializedDataset[ArrowRow]:
     """Create a dataset from a Dask DataFrame.
 
     Args:
         df: A Dask DataFrame.
 
     Returns:
-        Dataset holding Arrow records read from the DataFrame.
+        MaterializedDataset holding Arrow records read from the DataFrame.
     """
     import dask
 
@@ -1446,14 +1447,14 @@ def from_dask(df: "dask.DataFrame") -> MaterializedData[ArrowRow]:
 
 
 @PublicAPI
-def from_mars(df: "mars.DataFrame") -> MaterializedData[ArrowRow]:
+def from_mars(df: "mars.DataFrame") -> MaterializedDataset[ArrowRow]:
     """Create a dataset from a MARS dataframe.
 
     Args:
         df: A MARS dataframe, which must be executed by MARS-on-Ray.
 
     Returns:
-        Dataset holding Arrow records read from the dataframe.
+        MaterializedDataset holding Arrow records read from the dataframe.
     """
     import mars.dataframe as md
 
@@ -1461,14 +1462,14 @@ def from_mars(df: "mars.DataFrame") -> MaterializedData[ArrowRow]:
 
 
 @PublicAPI
-def from_modin(df: "modin.DataFrame") -> MaterializedData[ArrowRow]:
+def from_modin(df: "modin.DataFrame") -> MaterializedDataset[ArrowRow]:
     """Create a dataset from a Modin dataframe.
 
     Args:
         df: A Modin dataframe, which must be using the Ray backend.
 
     Returns:
-        Dataset holding Arrow records read from the dataframe.
+        MaterializedDataset holding Arrow records read from the dataframe.
     """
     from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
@@ -1479,14 +1480,14 @@ def from_modin(df: "modin.DataFrame") -> MaterializedData[ArrowRow]:
 @PublicAPI
 def from_pandas(
     dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
-) -> MaterializedData[ArrowRow]:
+) -> MaterializedDataset[ArrowRow]:
     """Create a dataset from a list of Pandas dataframes.
 
     Args:
         dfs: A Pandas dataframe or a list of Pandas dataframes.
 
     Returns:
-        Dataset holding Arrow records read from the dataframes.
+        MaterializedDataset holding Arrow records read from the dataframes.
     """
     import pandas as pd
 
@@ -1506,7 +1507,7 @@ def from_pandas(
 @DeveloperAPI
 def from_pandas_refs(
     dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]]
-) -> MaterializedData[ArrowRow]:
+) -> MaterializedDataset[ArrowRow]:
     """Create a dataset from a list of Ray object references to Pandas
     dataframes.
 
@@ -1515,7 +1516,7 @@ def from_pandas_refs(
              Ray object references to pandas dataframes.
 
     Returns:
-        Dataset holding Arrow records read from the dataframes.
+        MaterializedDataset holding Arrow records read from the dataframes.
     """
     if isinstance(dfs, ray.ObjectRef):
         dfs = [dfs]
@@ -1535,7 +1536,7 @@ def from_pandas_refs(
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(_get_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
-        return MaterializedData(
+        return MaterializedDataset(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
                 DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
@@ -1550,7 +1551,7 @@ def from_pandas_refs(
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
-    return MaterializedData(
+    return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
@@ -1564,14 +1565,14 @@ def from_pandas_refs(
 @PublicAPI
 def from_numpy(
     ndarrays: Union[np.ndarray, List[np.ndarray]]
-) -> MaterializedData[ArrowRow]:
+) -> MaterializedDataset[ArrowRow]:
     """Create a dataset from a list of NumPy ndarrays.
 
     Args:
         ndarrays: A NumPy ndarray or a list of NumPy ndarrays.
 
     Returns:
-        Dataset holding the given ndarrays.
+        MaterializedDataset holding the given ndarrays.
     """
     if isinstance(ndarrays, np.ndarray):
         ndarrays = [ndarrays]
@@ -1582,7 +1583,7 @@ def from_numpy(
 @DeveloperAPI
 def from_numpy_refs(
     ndarrays: Union[ObjectRef[np.ndarray], List[ObjectRef[np.ndarray]]],
-) -> MaterializedData[ArrowRow]:
+) -> MaterializedDataset[ArrowRow]:
     """Create a dataset from a list of NumPy ndarray futures.
 
     Args:
@@ -1590,7 +1591,7 @@ def from_numpy_refs(
             references to NumPy ndarrays.
 
     Returns:
-        Dataset holding the given ndarrays.
+        MaterializedDataset holding the given ndarrays.
     """
     if isinstance(ndarrays, ray.ObjectRef):
         ndarrays = [ndarrays]
@@ -1611,7 +1612,7 @@ def from_numpy_refs(
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
-    return MaterializedData(
+    return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromNumpyRefs": metadata}, parent=None),
@@ -1625,7 +1626,7 @@ def from_numpy_refs(
 @PublicAPI
 def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]]
-) -> MaterializedData[ArrowRow]:
+) -> MaterializedDataset[ArrowRow]:
     """Create a dataset from a list of Arrow tables.
 
     Args:
@@ -1633,7 +1634,7 @@ def from_arrow(
                 or its streaming format in bytes.
 
     Returns:
-        Dataset holding Arrow records from the tables.
+        MaterializedDataset holding Arrow records from the tables.
     """
     import pyarrow as pa
 
@@ -1648,7 +1649,7 @@ def from_arrow_refs(
         ObjectRef[Union["pyarrow.Table", bytes]],
         List[ObjectRef[Union["pyarrow.Table", bytes]]],
     ]
-) -> MaterializedData[ArrowRow]:
+) -> MaterializedDataset[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
 
     Args:
@@ -1656,14 +1657,14 @@ def from_arrow_refs(
                 references to Arrow tables, or its streaming format in bytes.
 
     Returns:
-        Dataset holding Arrow records from the tables.
+        MaterializedDataset holding Arrow records from the tables.
     """
     if isinstance(tables, ray.ObjectRef):
         tables = [tables]
 
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
-    return MaterializedData(
+    return MaterializedDataset(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
             DatasetStats(stages={"FromArrowRefs": metadata}, parent=None),
@@ -1677,7 +1678,7 @@ def from_arrow_refs(
 @PublicAPI
 def from_spark(
     df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None
-) -> MaterializedData[ArrowRow]:
+) -> MaterializedDataset[ArrowRow]:
     """Create a dataset from a Spark dataframe.
 
     Args:
@@ -1688,7 +1689,7 @@ def from_spark(
             the original Spark dataframe.
 
     Returns:
-        Dataset holding Arrow records read from the dataframe.
+        MaterializedDataset holding Arrow records read from the dataframe.
     """
     import raydp
 
@@ -1698,7 +1699,7 @@ def from_spark(
 @PublicAPI
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
-) -> Union[MaterializedData[ArrowRow], Dict[str, MaterializedData[ArrowRow]]]:
+) -> Union[MaterializedDataset[ArrowRow], Dict[str, MaterializedDataset[ArrowRow]]]:
     """Create a dataset from a Hugging Face Datasets Dataset.
 
     This function is not parallelized, and is intended to be used
@@ -1710,7 +1711,7 @@ def from_huggingface(
             ``IterableDataset`` is not supported.
 
     Returns:
-        Dataset holding Arrow records from the Hugging Face Dataset, or a
+        MaterializedDataset holding Arrow records from the Hugging Face Dataset, or a
         dict of datasets in case ``dataset`` is a ``DatasetDict``.
     """
     import datasets
@@ -1732,7 +1733,7 @@ def from_huggingface(
 @PublicAPI
 def from_tf(
     dataset: "tf.data.Dataset",
-) -> MaterializedData:
+) -> MaterializedDataset:
     """Create a dataset from a TensorFlow dataset.
 
     This function is inefficient. Use it to read small datasets or prototype.
@@ -1776,7 +1777,8 @@ def from_tf(
         dataset: A TensorFlow dataset.
 
     Returns:
-        A :class:`Dataset` that contains the samples stored in the TensorFlow dataset.
+        A :class:`MaterializedDataset` that contains the samples stored in the
+        TensorFlow dataset.
     """  # noqa: E501
     # FIXME: `as_numpy_iterator` errors if `dataset` contains ragged tensors.
     return from_items(list(dataset.as_numpy_iterator()))
@@ -1785,7 +1787,7 @@ def from_tf(
 @PublicAPI
 def from_torch(
     dataset: "torch.utils.data.Dataset",
-) -> MaterializedData:
+) -> MaterializedDataset:
     """Create a dataset from a Torch dataset.
 
     This function is inefficient. Use it to read small datasets or prototype.
@@ -1813,7 +1815,7 @@ def from_torch(
         dataset: A Torch dataset.
 
     Returns:
-        A :class:`Dataset` that contains the samples stored in the Torch dataset.
+        A :class:`MaterializedDataset` that contains the samples of the Torch dataset.
     """
     return from_items(list(dataset))
 
