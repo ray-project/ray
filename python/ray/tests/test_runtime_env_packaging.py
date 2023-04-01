@@ -601,7 +601,10 @@ class TestDownloadAndUnpackPackage:
                 # Add a file to the zip file so we can verify the file was extracted.
                 zip.writestr("file.txt", "Hello, world!")
 
-            pkg_uri = f"file://{os.path.normpath(zipfile_path)}"
+            from urllib.request import pathname2url
+            from urllib.parse import urljoin
+
+            pkg_uri = urljoin("file:", pathname2url(str(zipfile_path)))
 
             local_dir = await download_and_unpack_package(
                 pkg_uri=pkg_uri, base_directory=temp_dir
