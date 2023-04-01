@@ -210,7 +210,6 @@
     wait_for_nodes:
       num_nodes: 4
 
-
   alert: default
 
 - name: air_benchmark_torch_mnist_gpu_4x4
