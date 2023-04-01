@@ -1,7 +1,7 @@
 import sys
 
 # Short term workaround for https://github.com/ray-project/ray/issues/32435
-# Datasets currently has a hard dependency on pandas, so it doesn't need to be delayed.
+# Datastream has a hard dependency on pandas, so it doesn't need to be delayed.
 # ray.data import is still eager for all ray imports for Python 3.6:
 if sys.version_info >= (3, 7):
     import pandas  # noqa

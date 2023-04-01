@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 _default_context: "Optional[DatasetContext]" = None
 _context_lock = threading.Lock()
 
-# An estimate of what fraction of the object store a Dataset can use without too high
+# An estimate of what fraction of the object store a Datastream can use without too high
 # a risk of triggering spilling. This is used to generate user warnings only.
 ESTIMATED_SAFE_MEMORY_FRACTION = 0.25
 
@@ -20,7 +20,7 @@ ESTIMATED_SAFE_MEMORY_FRACTION = 0.25
 # We choose 512MiB as 8x less than the typical memory:core ratio of 4:1.
 DEFAULT_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
 
-# Datasets will avoid creating blocks smaller than this size in bytes on read.
+# Datastream will avoid creating blocks smaller than this size in bytes on read.
 # This takes precedence over DEFAULT_MIN_PARALLELISM.
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
@@ -44,13 +44,13 @@ DEFAULT_OPTIMIZE_FUSE_STAGES = True
 DEFAULT_OPTIMIZE_REORDER_STAGES = True
 
 # Whether to furthermore fuse read stages. When this is enabled, data will also be
-# re-read from the base dataset in each repetition of a DatasetPipeline.
+# re-read from the base datastream in each repetition of a DatasetPipeline.
 DEFAULT_OPTIMIZE_FUSE_READ_STAGES = True
 
 # Whether to furthermore fuse prior map tasks with shuffle stages.
 DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True
 
-# Minimum amount of parallelism to auto-detect for a dataset. Note that the min
+# Minimum amount of parallelism to auto-detect for a datastream. Note that the min
 # block size config takes precedence over this.
 DEFAULT_MIN_PARALLELISM = 200
 
@@ -65,7 +65,7 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
 # The default global scheduling strategy.
 DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
 
-# Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
+# Whether to use Polars for tabular datastream sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
 
 # Whether to use the new executor backend.
@@ -95,8 +95,8 @@ DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 # extension columns.
 DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 
-# Whether to automatically print Dataset stats after execution.
-# If disabled, users can still manually print stats with Dataset.stats().
+# Whether to automatically print Datastream stats after execution.
+# If disabled, users can still manually print stats with Datastream.stats().
 DEFAULT_AUTO_LOG_STATS = False
 
 # Whether to enable optimizer.
@@ -122,7 +122,7 @@ DEFAULT_BATCH_SIZE = 4096
 
 @DeveloperAPI
 class DatasetContext:
-    """Singleton for shared Dataset resources and configurations.
+    """Singleton for shared Datastream resources and configurations.
 
     This object is automatically propagated to workers and can be retrieved
     from the driver and remote workers via DatasetContext.get_current().
@@ -183,7 +183,7 @@ class DatasetContext:
         self.enable_auto_log_stats = enable_auto_log_stats
         self.trace_allocations = trace_allocations
         self.optimizer_enabled = optimizer_enabled
-        # TODO: expose execution options in Dataset public APIs.
+        # TODO: expose execution options in Datastream public APIs.
         self.execution_options = execution_options
         self.use_ray_tqdm = use_ray_tqdm
         self.use_legacy_iter_batches = use_legacy_iter_batches
@@ -242,7 +242,7 @@ class DatasetContext:
     def _set_current(context: "DatasetContext") -> None:
         """Set the current context in a remote worker.
 
-        This is used internally by Dataset to propagate the driver context to
+        This is used internally by Datastream to propagate the driver context to
         remote workers used for parallelization.
         """
         global _default_context

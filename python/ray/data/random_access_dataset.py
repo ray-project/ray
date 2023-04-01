@@ -19,36 +19,36 @@ except ImportError:
     pa = None
 
 if TYPE_CHECKING:
-    from ray.data import Dataset
+    from ray.data import Datastream
 
 logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
 class RandomAccessDataset(Generic[T]):
-    """A class that provides distributed, random access to a Dataset.
+    """A class that provides distributed, random access to a Datastream.
 
-    See: ``Dataset.to_random_access_dataset()``.
+    See: ``Datastream.to_random_access_dataset()``.
     """
 
     def __init__(
         self,
-        dataset: "Dataset[T]",
+        ds: "Datastream[T]",
         key: str,
         num_workers: int,
     ):
         """Construct a RandomAccessDataset (internal API).
 
-        The constructor is a private API. Use ``dataset.to_random_access_dataset()``
+        The constructor is a private API. Use ``ds.to_random_access_dataset()``
         to construct a RandomAccessDataset.
         """
-        schema = dataset.schema(fetch_if_missing=True)
+        schema = ds.schema(fetch_if_missing=True)
         if schema is None or isinstance(schema, type):
-            raise ValueError("RandomAccessDataset only supports Arrow-format datasets.")
+            raise ValueError("RandomAccessDataset only supports Arrow-format blocks.")
 
         start = time.perf_counter()
-        logger.info("[setup] Indexing dataset by sort key.")
-        sorted_ds = dataset.sort(key)
+        logger.info("[setup] Indexing datastream by sort key.")
+        sorted_ds = ds.sort(key)
         get_bounds = cached_remote_fn(_get_bounds)
         blocks = sorted_ds.get_internal_block_refs()
 
