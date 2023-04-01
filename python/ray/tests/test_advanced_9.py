@@ -398,6 +398,8 @@ def test_redis_full(ray_start_cluster_head):
 
     gcs_cli = ray._private.gcs_utils.GcsClient(address=gcs_address)
     # GCS should fail
+    import grpc
+
     with pytest.raises(grpc.RpcError) as execinfo:
         gcs_cli.internal_kv_put(b"A", b"A" * 6 * 1024 * 1024, True, None)
     assert (
