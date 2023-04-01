@@ -1660,6 +1660,7 @@ cdef class GcsClient:
         result = {}
         for node_info in node_infos:
             result[node_info.node_id()] = {
+                "node_name": node_info.node_name(),
                 "state": node_info.state()
             }
         return result

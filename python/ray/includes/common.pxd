@@ -332,6 +332,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
 
     cdef cppclass CGcsNodeInfo "ray::rpc::GcsNodeInfo":
         c_string node_id() const
+        c_string node_name() const
         int state() const
 
     cdef cppclass CJobTableData "ray::rpc::JobTableData":
