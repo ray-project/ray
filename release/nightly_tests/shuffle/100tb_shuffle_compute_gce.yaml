@@ -10,7 +10,6 @@ gcp_advanced_configurations_json:
         auto_delete: true
         initialize_params:
           disk_size_gb: 2000
-          source_image: family/debian-9
       - boot: false
         auto_delete: true
         initialize_params:
