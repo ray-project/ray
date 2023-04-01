@@ -625,7 +625,7 @@
       stable: false
       cluster:
         cluster_env: app_config_oom.yaml
-        cluster_compute: compute_gce_cpu_16_worker_nodes_2.yam
+        cluster_compute: compute_gce_cpu_16_worker_nodes_2.yaml
 
 
 #######################
