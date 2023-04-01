@@ -92,7 +92,7 @@ logger = logging.getLogger(__name__)
 def from_items(
     items: List[Any], *, parallelism: int = -1
 ) -> MaterializedDatastream[Any]:
-    """Create a dataset from a list of local Python objects.
+    """Create a datastream from a list of local Python objects.
 
     Examples:
         >>> import ray
@@ -104,7 +104,7 @@ def from_items(
 
     Args:
         items: List of local Python objects.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The amount of parallelism to use for the datastream.
             Parallelism may be limited by the number of items.
 
     Returns:
@@ -160,7 +160,7 @@ def from_items(
 
 @PublicAPI
 def range(n: int, *, parallelism: int = -1) -> Datastream[int]:
-    """Create a stream from a range of integers [0..n).
+    """Create a datastream from a range of integers [0..n).
 
     Examples:
         >>> import ray
@@ -172,7 +172,7 @@ def range(n: int, *, parallelism: int = -1) -> Datastream[int]:
 
     Args:
         n: The upper bound of the range of integers.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The amount of parallelism to use for the datastream.
             Parallelism may be limited by the number of items.
 
     Returns:
@@ -196,11 +196,11 @@ def range_table(n: int, *, parallelism: int = -1) -> Datastream[ArrowRow]:
         [ArrowRow({'v2': 0}), ArrowRow({'v2': 2})]
 
     This is similar to range(), but uses Arrow tables to hold the integers
-    in Arrow records. The dataset elements take the form {"value": N}.
+    in Arrow records. The datastream elements take the form {"value": N}.
 
     Args:
         n: The upper bound of the range of integer records.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The amount of parallelism to use for the datastream.
             Parallelism may be limited by the number of items.
 
     Returns:
@@ -713,7 +713,7 @@ def read_parquet_bulk(
 
     However, unlike :func:`read_parquet`, this does not offer file metadata resolution
     by default, so a custom metadata provider should be provided if your use-case
-    requires a unified dataset schema, block sizes, row counts, etc.
+    requires a unified schema, block sizes, row counts, etc.
 
     Examples:
         >>> # Read multiple local files. You should always provide only input file
@@ -793,7 +793,7 @@ def read_json(
     ignore_missing_paths: bool = False,
     **arrow_json_args,
 ) -> Datastream[ArrowRow]:
-    """Create an Arrow dataset from json files.
+    """Create an Arrow datastream from json files.
 
     Examples:
         >>> import ray
@@ -977,7 +977,7 @@ def read_text(
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
 ) -> Datastream[str]:
-    """Create a stream from lines stored in text files.
+    """Create a datastream from lines stored in text files.
 
     Examples:
         >>> import ray
@@ -1108,7 +1108,7 @@ def read_tfrecords(
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
 ) -> Datastream[PandasRow]:
-    """Create a stream from TFRecord files that contain
+    """Create a datastream from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
     messages.
 
@@ -1213,7 +1213,7 @@ def read_webdataset(
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
 ) -> Datastream[PandasRow]:
-    """Create a stream from WebDataset files.
+    """Create a datastream from WebDataset files.
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -1416,7 +1416,7 @@ def read_sql(
 
 @PublicAPI
 def from_dask(df: "dask.DataFrame") -> MaterializedDatastream[ArrowRow]:
-    """Create a dataset from a Dask DataFrame.
+    """Create a datastream from a Dask DataFrame.
 
     Args:
         df: A Dask DataFrame.
@@ -1450,7 +1450,7 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDatastream[ArrowRow]:
 
 @PublicAPI
 def from_mars(df: "mars.DataFrame") -> MaterializedDatastream[ArrowRow]:
-    """Create a dataset from a MARS dataframe.
+    """Create a datastream from a MARS dataframe.
 
     Args:
         df: A MARS dataframe, which must be executed by MARS-on-Ray.
@@ -1465,7 +1465,7 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDatastream[ArrowRow]:
 
 @PublicAPI
 def from_modin(df: "modin.DataFrame") -> MaterializedDatastream[ArrowRow]:
-    """Create a dataset from a Modin dataframe.
+    """Create a datastream from a Modin dataframe.
 
     Args:
         df: A Modin dataframe, which must be using the Ray backend.
@@ -1483,7 +1483,7 @@ def from_modin(df: "modin.DataFrame") -> MaterializedDatastream[ArrowRow]:
 def from_pandas(
     dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
 ) -> MaterializedDatastream[ArrowRow]:
-    """Create a dataset from a list of Pandas dataframes.
+    """Create a datastream from a list of Pandas dataframes.
 
     Args:
         dfs: A Pandas dataframe or a list of Pandas dataframes.
@@ -1510,7 +1510,7 @@ def from_pandas(
 def from_pandas_refs(
     dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]]
 ) -> MaterializedDatastream[ArrowRow]:
-    """Create a dataset from a list of Ray object references to Pandas
+    """Create a datastream from a list of Ray object references to Pandas
     dataframes.
 
     Args:
@@ -1568,7 +1568,7 @@ def from_pandas_refs(
 def from_numpy(
     ndarrays: Union[np.ndarray, List[np.ndarray]]
 ) -> MaterializedDatastream[ArrowRow]:
-    """Create a dataset from a list of NumPy ndarrays.
+    """Create a datastream from a list of NumPy ndarrays.
 
     Args:
         ndarrays: A NumPy ndarray or a list of NumPy ndarrays.
@@ -1586,7 +1586,7 @@ def from_numpy(
 def from_numpy_refs(
     ndarrays: Union[ObjectRef[np.ndarray], List[ObjectRef[np.ndarray]]],
 ) -> MaterializedDatastream[ArrowRow]:
-    """Create a dataset from a list of NumPy ndarray futures.
+    """Create a datastream from a list of NumPy ndarray futures.
 
     Args:
         ndarrays: A Ray object reference to a NumPy ndarray or a list of Ray object
@@ -1629,7 +1629,7 @@ def from_numpy_refs(
 def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]]
 ) -> MaterializedDatastream[ArrowRow]:
-    """Create a dataset from a list of Arrow tables.
+    """Create a datastream from a list of Arrow tables.
 
     Args:
         tables: An Arrow table, or a list of Arrow tables,
@@ -1652,7 +1652,7 @@ def from_arrow_refs(
         List[ObjectRef[Union["pyarrow.Table", bytes]]],
     ]
 ) -> MaterializedDatastream[ArrowRow]:
-    """Create a dataset from a set of Arrow tables.
+    """Create a datastream from a set of Arrow tables.
 
     Args:
         tables: A Ray object reference to Arrow table, or list of Ray object
@@ -1681,12 +1681,12 @@ def from_arrow_refs(
 def from_spark(
     df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None
 ) -> MaterializedDatastream[ArrowRow]:
-    """Create a dataset from a Spark dataframe.
+    """Create a datastream from a Spark dataframe.
 
     Args:
         spark: A SparkSession, which must be created by RayDP (Spark-on-Ray).
         df: A Spark dataframe, which must be created by RayDP (Spark-on-Ray).
-            parallelism: The amount of parallelism to use for the dataset.
+            parallelism: The amount of parallelism to use for the datastream.
             If not provided, it will be equal to the number of partitions of
             the original Spark dataframe.
 
@@ -1704,7 +1704,7 @@ def from_huggingface(
 ) -> Union[
     MaterializedDatastream[ArrowRow], Dict[str, MaterializedDatastream[ArrowRow]]
 ]:
-    """Create a dataset from a Hugging Face Datasets Dataset.
+    """Create a datastream from a Hugging Face Datasets Dataset.
 
     This function is not parallelized, and is intended to be used
     with Hugging Face Datasets that are loaded into memory (as opposed
@@ -1716,7 +1716,7 @@ def from_huggingface(
 
     Returns:
         MaterializedDatastream holding Arrow records from the Hugging Face Dataset, or a
-        dict of datasets in case ``dataset`` is a ``DatasetDict``.
+        dict of MaterializedDatastream in case ``dataset`` is a ``DatasetDict``.
     """
     import datasets
 
@@ -1738,7 +1738,7 @@ def from_huggingface(
 def from_tf(
     dataset: "tf.data.Dataset",
 ) -> MaterializedDatastream:
-    """Create a dataset from a TensorFlow dataset.
+    """Create a datastream from a TensorFlow dataset.
 
     This function is inefficient. Use it to read small datasets or prototype.
 
@@ -1748,17 +1748,17 @@ def from_tf(
         like :meth:`~ray.data.read_images`.
 
     .. note::
-        This function isn't paralellized. It loads the entire dataset into the head
+        This function isn't paralellized. It loads the entire dataset into the local
         node's memory before moving the data to the distributed object store.
 
     Examples:
         >>> import ray
         >>> import tensorflow_datasets as tfds
         >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])  # doctest: +SKIP
-        >>> dataset = ray.data.from_tf(dataset)  # doctest: +SKIP
-        >>> dataset  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
-        >>> dataset.take(1)  # doctest: +SKIP
+        >>> ds = ray.data.from_tf(dataset)  # doctest: +SKIP
+        >>> ds  # doctest: +SKIP
+        Datastream(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
+        >>> ds.take(1)  # doctest: +SKIP
         [{'id': b'train_16399', 'image': array([[[143,  96,  70],
         [141,  96,  72],
         [135,  93,  72],
@@ -1792,7 +1792,7 @@ def from_tf(
 def from_torch(
     dataset: "torch.utils.data.Dataset",
 ) -> MaterializedDatastream:
-    """Create a dataset from a Torch dataset.
+    """Create a datastream from a Torch dataset.
 
     This function is inefficient. Use it to read small datasets or prototype.
 
@@ -1809,10 +1809,10 @@ def from_torch(
         >>> import ray
         >>> from torchvision import datasets
         >>> dataset = datasets.MNIST("data", download=True)  # doctest: +SKIP
-        >>> dataset = ray.data.from_torch(dataset)  # doctest: +SKIP
-        >>> dataset  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=60000, schema=<class 'tuple'>)
-        >>> dataset.take(1)  # doctest: +SKIP
+        >>> ds = ray.data.from_torch(dataset)  # doctest: +SKIP
+        >>> ds  # doctest: +SKIP
+        Datastream(num_blocks=200, num_rows=60000, schema=<class 'tuple'>)
+        >>> ds.take(1)  # doctest: +SKIP
         [(<PIL.Image.Image image mode=L size=28x28 at 0x...>, 5)]
 
     Args:
