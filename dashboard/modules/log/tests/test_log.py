@@ -184,7 +184,7 @@ def test_log_proxy(ray_start_with_dashboard, test_file, content_kind):
         assert response.content == data[2:6]
         return True
 
-    # wait_for_condition(verify)
+    wait_for_condition(verify)
 
     # Test 404.
     def verify():
