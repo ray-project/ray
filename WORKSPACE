@@ -17,54 +17,53 @@ crates_repository(
     name = "wasm_crate_index",
     cargo_lockfile = "//wasm:Cargo.lock",
     lockfile = "//wasm:Cargo.Bazel.lock",
-    packages = {
-        "anyhow": crate.spec(
-            version = "1.0.70",
-        ),
-        "tokio": crate.spec(
-            version = "1.26.0",
-            features = ["full"],
-        ),
-        "clap": crate.spec(
-            version = "4.1.11",
-            features = ["derive"],
-        ),
-        "prost": crate.spec(
-            version = "0.11",
-        ),
-        "prost-types": crate.spec(
-            version = "0.11",
-        ),
-        "prost-build": crate.spec(
-            version = "0.11",
-        ),
-        "tracing": crate.spec(
-            version = "0.1.37",
-        ),
-        "serde": crate.spec(
-            version = "1.0.147",
-            features = ["derive"],
-        ),
-        "serde_json": crate.spec(
-            version = "1.0.89",
-        ),
-        "uuid": crate.spec(
-            version = "1.3.0",
-            features = ["v4"],
-        ),
-        "tracing-subscriber": crate.spec(
-            version = "0.3.16",
-        ),
-        "wasmtime": crate.spec(
-            version = "6.0.0",
-        ),
-        "wasmtime-wasi": crate.spec(
-            version = "6.0.0",
-        ),
-        "lazy_static": crate.spec(
-            version = "1.4.0",
-        ),
-    },
+    manifests = ["//wasm:Cargo.toml"],
+    quiet = False,
+    # packages = {
+    #     "anyhow": crate.spec(
+    #         version = "1.0.70",
+    #     ),
+    #     "tokio": crate.spec(
+    #         version = "1.26.0",
+    #         features = ["full"],
+    #     ),
+    #     "clap": crate.spec(
+    #         version = "4.1.11",
+    #         features = ["derive"],
+    #     ),
+    #     "prost": crate.spec(
+    #         version = "0.11",
+    #     ),
+    #     "prost-types": crate.spec(
+    #         version = "0.11",
+    #     ),
+    #     "prost-build": crate.spec(
+    #         version = "0.11",
+    #     ),
+    #     "tracing": crate.spec(
+    #         version = "0.1.37",
+    #     ),
+    #     "serde": crate.spec(
+    #         version = "1.0.147",
+    #         features = ["derive"],
+    #     ),
+    #     "serde_json": crate.spec(
+    #         version = "1.0.89",
+    #     ),
+    #     "uuid": crate.spec(
+    #         version = "1.3.0",
+    #         features = ["v4"],
+    #     ),
+    #     "tracing-subscriber": crate.spec(
+    #         version = "0.3.16",
+    #     ),
+    #     "wasmtime": crate.spec(
+    #         version = "7.0.0",
+    #     ),
+    #     "lazy_static": crate.spec(
+    #         version = "1.4.0",
+    #     ),
+    # },
     render_config = render_config(
         default_package_name = ""
     ),

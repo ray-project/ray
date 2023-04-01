@@ -13,12 +13,13 @@
 // limitations under the License.
 
 use anyhow::Result;
+use wasmtime::{Val, ValRaw};
 
-mod wasmedge;
-mod wasmtime;
+mod wasmedge_engine;
+mod wasmtime_engine;
 
-use crate::engine::wasmedge::WasmEdgeEngine;
-use crate::engine::wasmtime::WasmtimeEngine;
+use crate::engine::wasmedge_engine::WasmEdgeEngine;
+use crate::engine::wasmtime_engine::WasmtimeEngine;
 use crate::ray::{Hostcall, Hostcalls};
 
 pub trait WasmEngine {
@@ -35,16 +36,17 @@ pub trait WasmEngine {
     ) -> Result<Box<&dyn WasmInstance>>;
     fn execute(
         &mut self,
+        sandbox_name: &str,
         instance_name: &str,
         func_name: &str,
-        args: Vec<Box<dyn WasmValue>>,
-    ) -> Result<Vec<Box<dyn WasmValue>>>;
+        args: Vec<WasmValue>,
+    ) -> Result<Vec<WasmValue>>;
 
     fn list_modules(&self) -> Result<Vec<Box<&dyn WasmModule>>>;
     fn list_sandboxes(&self) -> Result<Vec<Box<&dyn WasmSandbox>>>;
     fn list_instances(&self, sandbox_name: &str) -> Result<Vec<Box<&dyn WasmInstance>>>;
 
-    fn register_hostcalls(&self, hostcalls: &mut Hostcalls) -> Result<()>;
+    fn register_hostcalls(&mut self, hostcalls: &Hostcalls) -> Result<()>;
 }
 
 pub trait WasmModule {}
@@ -54,8 +56,6 @@ pub trait WasmSandbox {
 }
 
 pub trait WasmInstance {}
-
-pub trait WasmValue {}
 
 pub enum WasmEngineType {
     WASMEDGE,
@@ -75,4 +75,26 @@ impl WasmEngineFactory {
             _ => panic!("not supported engine type"),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WasmValue {
+    I32(i32),
+    I64(i64),
+    F32(u32),
+    F64(u64),
+    V128(u128),
+    FuncRef(usize),
+    ExternRef(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WasmType {
+    I32,
+    I64,
+    F32,
+    F64,
+    V128,
+    FuncRef,
+    ExternRef,
 }

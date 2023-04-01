@@ -13,7 +13,6 @@
 // limitations under the License.
 use wasm_on_ray::config;
 use wasm_on_ray::engine;
-use wasm_on_ray::engine::WasmInstance;
 use wasm_on_ray::ray;
 use wasm_on_ray::util;
 
@@ -60,6 +59,8 @@ impl RayWaContextFactory {
         context.runtime.do_init()?;
         context.engine.init()?;
 
+        context.runtime.setup_hostcalls(&mut context.engine)?;
+
         Ok(context)
     }
 
@@ -105,6 +106,8 @@ async fn run_binary(args: &util::LauncherParameters) -> Result<()>  {
     let instance = ctx.engine.instantiate("sandbox", "module", "instance")?;
 
     info!("wasm module instantiated");
+
+    ctx.engine.execute("sandbox", "instance", "_start", vec![]);
 
     Ok(())
 }

@@ -14,15 +14,19 @@
 
 use crate::config::ConfigInternal;
 use crate::config::RunMode;
+use crate::engine::{WasmEngine, WasmType, WasmValue};
 use crate::ray::common_proto::WorkerType;
 use crate::ray::ClusterHelper;
 use anyhow::Result;
 use tracing::info;
 
+use super::Hostcalls;
+
 pub trait RayRuntime {
     fn do_init(&mut self) -> Result<()>;
     fn do_shutdown(&mut self) -> Result<()>;
     fn launch_task_loop(&mut self) -> Result<()>;
+    fn setup_hostcalls(&mut self, engine: &mut Box<dyn WasmEngine>) -> Result<()>;
 }
 
 pub struct RayRuntimeFactory {}
@@ -39,13 +43,22 @@ impl RayRuntimeFactory {
 
 pub struct RayRuntimeClusterMode {
     internal_cfg: ConfigInternal,
+    hostcalls: Hostcalls,
 }
 
 impl RayRuntimeClusterMode {
     pub fn new(internal_cfg: ConfigInternal) -> Self {
-        Self {
+        let mut res = Self {
             internal_cfg: internal_cfg,
-        }
+            hostcalls: Hostcalls::new("ray"),
+        };
+        res.setup_hostcall_entries();
+        res
+    }
+
+    fn setup_hostcall_entries(&mut self) {
+        self.hostcalls
+            .register_function("test", vec![], vec![], test);
     }
 
     pub fn load_binary_from_paths(&self, paths: Vec<String>) {
@@ -83,6 +96,10 @@ impl RayRuntime for RayRuntimeClusterMode {
         }
         info!("launch_task_loop done");
         Ok(())
+    }
+
+    fn setup_hostcalls(&mut self, engine: &mut Box<dyn WasmEngine>) -> Result<()> {
+        engine.register_hostcalls(&mut self.hostcalls)
     }
 }
 
@@ -124,4 +141,13 @@ impl RayRuntime for RayRuntimeSingleProcessMode {
     fn launch_task_loop(&mut self) -> Result<()> {
         Err(anyhow::anyhow!("not implemented"))
     }
+
+    fn setup_hostcalls(&mut self, engine: &mut Box<dyn WasmEngine>) -> Result<()> {
+        Err(anyhow::anyhow!("not implemented"))
+    }
+}
+
+fn test(params: &[WasmValue]) -> Result<Vec<WasmValue>> {
+    info!("test");
+    Ok(vec![])
 }

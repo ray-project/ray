@@ -15,6 +15,9 @@ use crate::engine::{WasmEngine, WasmInstance, WasmModule, WasmSandbox, WasmValue
 use crate::ray::{Hostcall, Hostcalls};
 use anyhow::Result;
 
+// temp Val
+pub struct Value {}
+
 pub struct WasmEdgeEngine {}
 
 impl WasmEdgeEngine {
@@ -25,19 +28,15 @@ impl WasmEdgeEngine {
 
 impl WasmEngine for WasmEdgeEngine {
     fn init(&self) -> Result<()> {
-        Err(anyhow::anyhow!("WasmEdgeEngine::init is not implemented"))
+        unimplemented!()
     }
 
     fn compile(&mut self, name: &str, wasm_bytes: &[u8]) -> Result<Box<&dyn WasmModule>> {
-        Err(anyhow::anyhow!(
-            "WasmEdgeEngine::compile is not implemented"
-        ))
+        unimplemented!()
     }
 
     fn create_sandbox(&mut self, name: &str) -> Result<Box<&dyn WasmSandbox>> {
-        Err(anyhow::anyhow!(
-            "WasmEdgeEngine::create_sandbox is not implemented"
-        ))
+        unimplemented!()
     }
 
     fn instantiate(
@@ -46,44 +45,33 @@ impl WasmEngine for WasmEdgeEngine {
         module_name: &str,
         instance_name: &str,
     ) -> Result<Box<&dyn WasmInstance>> {
-        Err(anyhow::anyhow!(
-            "WasmEdgeEngine::instantiate is not implemented"
-        ))
+        unimplemented!()
     }
 
     fn execute(
         &mut self,
+        sandbox_name: &str,
         instance_name: &str,
         func_name: &str,
-        args: Vec<Box<dyn WasmValue>>,
-    ) -> Result<Vec<Box<dyn WasmValue>>> {
-        Err(anyhow::anyhow!(
-            "WasmEdgeEngine::execute is not implemented"
-        ))
+        args: Vec<WasmValue>,
+    ) -> Result<Vec<WasmValue>> {
+        unimplemented!()
     }
 
     fn list_modules(&self) -> Result<Vec<Box<&dyn WasmModule>>> {
-        Err(anyhow::anyhow!(
-            "WasmEdgeEngine::list_modules is not implemented"
-        ))
+        unimplemented!()
     }
 
     fn list_sandboxes(&self) -> Result<Vec<Box<&dyn WasmSandbox>>> {
-        Err(anyhow::anyhow!(
-            "WasmEdgeEngine::list_sandboxes is not implemented"
-        ))
+        unimplemented!()
     }
 
     fn list_instances(&self, sandbox_name: &str) -> Result<Vec<Box<&dyn WasmInstance>>> {
-        Err(anyhow::anyhow!(
-            "WasmEdgeEngine::list_instances is not implemented"
-        ))
+        unimplemented!()
     }
 
-    fn register_hostcalls(&self, hostcalls: &mut Hostcalls) -> Result<()> {
-        Err(anyhow::anyhow!(
-            "WasmEdgeEngine::register_hostcalls is not implemented"
-        ))
+    fn register_hostcalls(&mut self, hostcalls: &Hostcalls) -> Result<()> {
+        unimplemented!()
     }
 }
 
@@ -122,16 +110,4 @@ impl WasmEdgeInstance {
 
 impl WasmInstance for WasmEdgeInstance {
     // TODO: implement WasmInstance
-}
-
-struct WasmEdgeValue {}
-
-impl WasmEdgeValue {
-    pub fn new() -> Self {
-        WasmEdgeValue {}
-    }
-}
-
-impl WasmValue for WasmEdgeValue {
-    // TODO: implement WasmValue
 }

@@ -58,7 +58,6 @@ rust_library(
         "@wasm_crate_index//:tracing-subscriber",
         "@wasm_crate_index//:uuid",
         "@wasm_crate_index//:wasmtime",
-        "@wasm_crate_index//:wasmtime-wasi",
     ],
 )
 
@@ -96,7 +95,6 @@ rust_dylib_library(
         "@wasm_crate_index//:tracing-subscriber",
         "@wasm_crate_index//:uuid",
         "@wasm_crate_index//:wasmtime",
-        "@wasm_crate_index//:wasmtime-wasi",
     ],
 )
 
