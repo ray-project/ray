@@ -415,7 +415,7 @@ The :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule` offers 
 
 The following example shows how we can create a custom multi-agent RL module where the underlying modules share an encoder that gets applied to the global part of the observations space, while the local part is passed through a separate encoder specific to each policy. 
 
-.. tabbed:: Multi agent with shared encoder (torch)
+.. tabbed:: Multi agent with shared encoder (Torch)
 
     .. code-block:: python
 
