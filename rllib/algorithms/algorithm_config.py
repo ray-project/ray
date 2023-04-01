@@ -992,7 +992,8 @@ class AlgorithmConfig(_Config):
                     "When RLModule API are enabled, exploration_config can not be set."
                     "If you want to implement custom exploration behaviour, "
                     "please modify the `forward_exploration` method of the RLModule "
-                    "at hand."
+                    "at hand. On configs that have a default exploration config, "
+                    "this must be done with `config._exploration_config={}`."
                 )
 
         # make sure the resource requirements for learner_group is valid
