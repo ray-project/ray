@@ -8,7 +8,7 @@ import grpc
 import pytest
 import ray
 import redis
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     enable_external_redis,

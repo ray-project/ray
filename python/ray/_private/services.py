@@ -23,7 +23,6 @@ import psutil
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
-# from ray._private.gcs_utils import GcsClient
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
 
