@@ -40,7 +40,7 @@ def get_model():
 def test_model_definition_raises_deprecation_warning():
     model = get_model()
     checkpoint = TensorflowCheckpoint.from_model(model)
-    with pytest.deprecated_call():
+    with pytest.raises(DeprecationWarning):
         checkpoint.get_model(model_definition=get_model)
 
 
