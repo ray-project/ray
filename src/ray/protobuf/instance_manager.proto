@@ -73,7 +73,7 @@ message AdjustInstancesRequest {
 message AdjustInstancesReply {
   bool success = 1;
   int64 version = 2;
-  int64 num_successful_adjust_instances_request = 3;
+  int64 num_successful_adjustments = 3;
 }
 
 service InstanceManagerService {
