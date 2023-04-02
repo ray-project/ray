@@ -184,6 +184,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::function<void()> resubscribe_func_;
 };
 
+// This client is only supposed to be used from Cython / Python
 class RAY_EXPORT GcsSyncClient {
 public:
   explicit GcsSyncClient(const GcsClientOptions &options);
