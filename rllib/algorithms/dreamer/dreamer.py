@@ -122,7 +122,7 @@ class DreamerConfig(AlgorithmConfig):
 
         # .exploration()
         # This dreamer implementation does not need an exploration config
-        self.exploration_config = None
+        self.exploration_config = {}
 
         # __sphinx_doc_end__
         # fmt: on

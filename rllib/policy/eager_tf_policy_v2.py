@@ -117,7 +117,7 @@ class EagerTFPolicyV2(Policy):
 
         self._init_view_requirements()
 
-        if self.config.get("_enable_rl_module_api", True):
+        if self.config.get("_enable_rl_module_api", False):
             self.exploration = None
         else:
             self.exploration = self._create_exploration()
@@ -729,7 +729,7 @@ class EagerTFPolicyV2(Policy):
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
             # Add exploration state.
-            if not self.config.get("_enable_rl_module_api"):
+            if self.exploration:
                 # This is not compatible with RLModules, which have a method
                 # `forward_exploration` to specify custom exploration behavior.
                 state["_exploration_state"] = self.exploration.get_state()

@@ -61,16 +61,6 @@ class CRRConfig(AlgorithmConfig):
         self.td_error_loss_fn = "mse"
         self.categorical_distribution_temperature = 1.0
 
-        self.exploration_config = {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-            # EpsilonGreedy").
-            "type": "StochasticSampling",
-            # Add constructor kwargs here (if any).
-        }
-
     def training(
         self,
         *,

@@ -995,19 +995,26 @@ class AlgorithmConfig(_Config):
             else:
                 self.rl_module_spec = default_rl_module_spec
 
-            if (
-                self.exploration_config
-                and self._validate_exploration_conf_and_rl_modules
-            ):
-                # This is not compatible with RLModules, which have a method
-                # `forward_exploration` to specify custom exploration behavior.
-                raise ValueError(
-                    "When RLModule API are enabled, exploration_config can not be set."
-                    "If you want to implement custom exploration behaviour, "
-                    "please modify the `forward_exploration` method of the RLModule "
-                    "at hand. On configs that have a default exploration config, "
-                    "this must be done with `config._exploration_config={}`."
-                )
+            if self.exploration_config:
+                if self._validate_exploration_conf_and_rl_modules:
+                    # This is not compatible with RLModules, which have a method
+                    # `forward_exploration` to specify custom exploration behavior.
+                    raise ValueError(
+                        "When RLModule API are enabled, exploration_config can not be "
+                        "set. If you want to implement custom exploration behaviour, "
+                        "please modify the `forward_exploration` method of the "
+                        "RLModule at hand. On configs that have a default exploration "
+                        "config, this must be done with "
+                        "`config._exploration_config={}`."
+                    )
+                else:
+                    # RLModules don't support exploration_configs anymore.
+                    # AlgorithmConfig has a default exploration config.
+                    logger.warning(
+                        "When RLModule API are enabled, exploration_config "
+                        "will be ignored. Disable RLModule API make use of an "
+                        "exploration_config."
+                    )
 
         # make sure the resource requirements for learner_group is valid
         if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
@@ -1702,20 +1709,6 @@ class AlgorithmConfig(_Config):
         if explore is not NotProvided:
             self.explore = explore
         if exploration_config is not NotProvided:
-
-            if (
-                self._enable_rl_module_api
-                and exploration_config
-                and log_once("exploration_and_rl_modules")
-            ):
-                # RLModules don't support exploration_configs anymore.
-                # AlgorithmConfig has a default exploration config.
-                logger.warning(
-                    "When RLModule API are enabled, exploration_config "
-                    "will be ignored. Disable RLModule API make use of an "
-                    "exploration_config."
-                )
-
             # Override entire `exploration_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
             new_exploration_config = deep_update(
