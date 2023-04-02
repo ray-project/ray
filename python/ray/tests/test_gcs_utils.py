@@ -84,16 +84,16 @@ def test_kv_timeout(ray_start_regular):
     assert gcs_client.internal_kv_put(b"A", b"", False, b"") == 1
 
     with stop_gcs_server():
-        with pytest.raises(grpc.RpcError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RaySystemError, match="Deadline Exceeded"):
             gcs_client.internal_kv_put(b"A", b"B", False, b"NS", timeout=2)
 
-        with pytest.raises(grpc.RpcError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RaySystemError, match="Deadline Exceeded"):
             gcs_client.internal_kv_get(b"A", b"NS", timeout=2)
 
-        with pytest.raises(grpc.RpcError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RaySystemError, match="Deadline Exceeded"):
             gcs_client.internal_kv_keys(b"A", b"NS", timeout=2)
 
-        with pytest.raises(grpc.RpcError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RaySystemError, match="Deadline Exceeded"):
             gcs_client.internal_kv_del(b"A", True, b"NS", timeout=2)
 
 
