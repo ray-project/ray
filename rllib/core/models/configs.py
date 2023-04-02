@@ -65,6 +65,15 @@ def _convert_to_lower_case_if_tf(string: str, framework: str) -> str:
 
 @ExperimentalAPI
 @dataclass
+class _MLPConfig(ModelConfig):
+    """Generic base-class for both MLPHeadConfig and MLPEncoderConfig classes.
+
+
+    """
+
+
+@ExperimentalAPI
+@dataclass
 class MLPHeadConfig(ModelConfig):
     """Configuration for a fully connected network.
 
@@ -72,40 +81,52 @@ class MLPHeadConfig(ModelConfig):
     The stack of layers is composed of a sequence of linear layers. The first layer
     has `input_dims` inputs and the last layer has `output_dims` outputs. The number of
     units in between is determined by `hidden_layer_dims`. If `hidden_layer_dims` is
-    None, there is only one linear layer with `input_dims` inputs and `output_dims`
+    empty, there is only one linear layer with `input_dims` inputs and `output_dims`
     outputs. Each layer is followed by an activation function as per this config.
+    the output layer might have a different activation, specified via
+    `output_activation`
     See ModelConfig for usage details.
 
     Example:
+    .. code-block:: python
+        # Configuration:
+        config = MLPHeadConfig(
+            input_dims=[4],
+            hidden_layer_dims=[8, 8],
+            hidden_layer_activation="relu",
+            hidden_layer_use_layernorm=False,
+            output_dims=[2],
+            output_activation="linear",
+        )
+        model = config.build()
 
-        Configuration:
-        input_dims = [4]
-        hidden_layer_dims = [8, 8]
-        hidden_layer_activation = "relu"
-        output_dims = [2]
-        output_activation = "linear"
-
-        Resulting stack in pseudocode:
-        Linear(4, 8)
-        ReLU()
-        Linear(8, 8)
-        ReLU()
-        Linear(8, 2)
+        # Resulting stack in pseudocode:
+        # Linear(4, 8, bias=True)
+        # ReLU()
+        # Linear(8, 8, bias=True)
+        # ReLU()
+        # Linear(8, 2, bias=True)
 
     Example:
+    .. code-block:: python
+        # Configuration:
+        config = MLPHeadConfig(
+            input_dims=[2],
+            hidden_layer_dims=[10],
+            hidden_layer_activation="silu",
+            hidden_layer_use_layernorm=True,
+            output_dims=[2],
+            output_activation="tanh",
+            use_bias=False,
+        )
+        model = config.build()
 
-        Configuration:
-        input_dims = [2]
-        hidden_layer_dims = [10]
-        hidden_layer_activation = "silu"
-        hidden_layer_use_layernorm = True
-        output_dims = [2]
-
-        Resulting stack in pseudocode:
-        Linear(2, 10)
-        LayerNorm()
-        SiLU()
-        Linear(10, 2)
+        # Resulting stack in pseudocode:
+        # Linear(2, 10, bias=False)
+        # LayerNorm((10,))
+        # SiLU()
+        # Linear(10, 2, bias=False)
+        # Tanh()
 
     Attributes:
         hidden_layer_dims: The sizes of the hidden layers.

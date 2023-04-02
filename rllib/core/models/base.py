@@ -200,24 +200,43 @@ class Model(abc.ABC):
         Returns:
             NestedDict: The output tensors.
         """
-        raise NotImplementedError
 
     @abc.abstractmethod
     def get_num_parameters(self) -> Tuple[int, int]:
         """Returns a tuple of (num trainable params, num non-trainable params)."""
-        raise NotImplementedError
+
+    @abc.abstractmethod
+    def _set_to_dummy_weights(self, value_sequence=(-0.02, -0.01, 0.01, 0.02)) -> None:
+        """Helper method to set all weights to deterministic dummy values.
+
+        Calling this method on two `Models` that have the same architecture using
+        the exact same `value_sequence` arg should make both models output the exact
+        same values on arbitrary inputs. This will work, even if the two `Models`
+        are of different DL frameworks.
+
+        Args:
+            value_sequence: Looping through the list of all parameters (weight matrices,
+                bias tensors, etc..) of this model, in each iteration i, we set all
+                values in this parameter to `value_sequence[i % len(value_sequence)]`
+                (round robin).
+
+        Example:
+            TODO: 
+        """
 
 
 class Encoder(Model, abc.ABC):
-    """The framework-agnostic base class for all encoders RLlib produces.
+    """The framework-agnostic base class for all RLlib encoders.
 
-    Encoders are used to encode observations into a latent space in RLModules.
-    Therefore, their input_spec contains the observation space dimensions.
-    Similarly, their output_spec contains the latent space dimensions.
+    Encoders are used to transform observations to a latent space.
+    Therefore, their `input_spec` contains the observation space dimensions.
+    Similarly, their `output_spec` contains the latent space dimensions.
+
     Encoders can be recurrent, in which case the state should be part of input- and
-    output_specs. The latents that are produced by an encoder are fed into subsequent
-    heads. Any implementation of Encoder should also be callable. This should be done
-    by also inheriting from a framework-specific model base-class, s.a. TorchModel.
+    output_specs. The latent vectors produced by an encoder are fed into subsequent
+    "heads". Any implementation of Encoder should also be callable. This should be done
+    by also inheriting from a framework-specific model base-class, s.a. TorchModel or
+    TfModel.
 
     Abstract illustration of typical flow of tensors:
 
@@ -233,15 +252,16 @@ class Encoder(Model, abc.ABC):
     That is, for time-series data, we encode into the latent space for each time step.
     This should be reflected in the output_spec.
 
-    Usage Example together with a ModelConfig:
+    Usage example together with a ModelConfig:
 
     .. testcode::
 
-        from ray.rllib.core.models.base import ModelConfig
-        from ray.rllib.core.models.base import ENCODER_OUT, STATE_IN, STATE_OUT, Encoder
-        from ray.rllib.policy.sample_batch import SampleBatch
         from dataclasses import dataclass
         import numpy as np
+
+        from ray.rllib.core.models.base import ModelConfig
+        from ray.rllib.core.models.base import Encoder, ENCODER_OUT, STATE_IN, STATE_OUT
+        from ray.rllib.policy.sample_batch import SampleBatch
 
         class NumpyEncoder(Encoder):
             def __init__(self, config):
@@ -293,18 +313,23 @@ class Encoder(Model, abc.ABC):
         This method is called by the forwarding method of the respective framework
         that is itself wrapped by RLlib in order to check model inputs and outputs.
 
-        The input dict contains at minimum the observation and the state of the encoder.
-        The output dict contains at minimum the latent and the state of the encoder.
-        These values have the keys `SampleBatch.OBS` and `STATE_IN` in the inputs, and
-        `STATE_OUT` and `ENCODER_OUT` and outputs to establish an agreement
-        between the encoder and RLModules. For stateless encoders, states can be None.
+        The input dict contains at minimum the observation and the state of the encoder
+        (None for stateless encoders).
+        The output dict contains at minimum the latent and the state of the encoder
+        (None for stateless encoders).
+        To establish an agreement between the encoder and RLModules, these values
+        have the fixed keys `SampleBatch.OBS` and `STATE_IN` for the `input_dict`,
+        and `STATE_OUT` and `ENCODER_OUT` for the returned NestedDict.
 
         Args:
-            input_dict: The input tensors.
+            input_dict: The input tensors. Must contain at a minimum the keys
+                SampleBatch.OBS and STATE_IN (which might be None for stateless
+                encoders).
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            NestedDict: The output tensors.
+            NestedDict: The output tensors. Must contain at a minimum the keys
+                ENCODER_OUT and STATE_OUT (which might be None for stateless encoders).
         """
         raise NotImplementedError
 

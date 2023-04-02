@@ -101,8 +101,7 @@ class TfCNN(tf.keras.Model):
                 contains elements of the form
                 `[number of filters, [kernel width, kernel height], stride]` to
                 specify a convolutional layer stacked in order of the outer list.
-            cnn_activation: The activation function to use after each layer (except for
-                the output).
+            cnn_activation: The activation function to use after each Conv2D layer.
             cnn_use_layernorm: Whether to insert a LayerNorm functionality
                 in between each Conv2D layer's output and its activation.
             use_bias: Whether to use bias on all Conv2D layers.

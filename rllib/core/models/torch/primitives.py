@@ -87,8 +87,7 @@ class TorchCNN(nn.Module):
             list contains elements of the form
             `[number of filters, [kernel width, kernel height], stride]` to
             specify a convolutional layer stacked in order of the outer list.
-        cnn_activation: The activation function to use after each layer (except for
-            the output).
+        cnn_activation: The activation function to use after each Conv2D layer.
         cnn_use_layernorm: Whether to insert a LayerNorm functionality
             in between each CNN layer's outputs and its activation.
         output_activation: The activation function to use for the last filter layer.

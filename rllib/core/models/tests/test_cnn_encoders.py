@@ -1,6 +1,8 @@
 import unittest
 import itertools
 
+import numpy as np
+
 from ray.rllib.core.models.base import ENCODER_OUT, STATE_IN, STATE_OUT
 from ray.rllib.core.models.configs import CNNEncoderConfig
 from ray.rllib.models.utils import get_filter_config
@@ -84,7 +86,14 @@ class TestCNNEncoders(unittest.TestCase):
             )
 
             # To compare number of params between frameworks.
-            tf_counts = None
+            param_counts = {}
+            # To compare computed outputs from fixed-weights-nets between frameworks.
+            output_values = {}
+
+            # We will pass an observation filled with this one random value through
+            # all DL networks (after they have been set to fixed-weights) to compare
+            # the computed outputs.
+            random_fill_input_value = np.random.uniform(-1.0, 1.0)
 
             for fw in framework_iterator(frameworks=("tf2", "torch")):
                 model = config.build(framework=fw)
@@ -92,10 +101,11 @@ class TestCNNEncoders(unittest.TestCase):
 
                 # Pass a B=1 observation through the model.
                 if fw == "tf2":
+                    #obs = tf.fill([1] + inputs_dims, random_fill_input_value)
                     obs = tf.random.uniform([1] + inputs_dims)
                     seq_lens = tf.Variable([1])
                 else:
-                    obs = torch.randn(1, *inputs_dims)
+                    obs = torch.full([1] + inputs_dims, random_fill_input_value)
                     seq_lens = torch.tensor([1])
                 state = None
 
@@ -107,20 +117,30 @@ class TestCNNEncoders(unittest.TestCase):
                     }
                 )
 
-                if fw == "tf2":
-                    tf_counts = model.get_num_parameters()
-                else:
-                    torch_counts = model.get_num_parameters()
-                    # Compare number of trainable and non-trainable params between
-                    # tf and torch.
-                    self.assertEqual(torch_counts[0], tf_counts[0])
-                    self.assertEqual(torch_counts[1], tf_counts[1])
-
-                self.assertEqual(
-                    outputs[ENCODER_OUT].shape,
-                    (1, output_dims[0]),
+                # Bring model into a reproducible, comparable state (so we can compare
+                # computations across frameworks).
+                model._set_to_dummy_weights()
+                # And do another forward pass.
+                comparable_outputs = model(
+                    {
+                        SampleBatch.OBS: obs,
+                        SampleBatch.SEQ_LENS: seq_lens,
+                        STATE_IN: state,
+                    }
                 )
+
+                # Store the number of parameters for this framework's net.
+                param_counts[fw] = model.get_num_parameters()
+                # Store the fixed-weights-net outputs for this framework's net.
+                output_values[fw] = comparable_outputs.numpy()
+
+                self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims[0]))
                 self.assertEqual(outputs[STATE_OUT], None)
+
+            # Compare number of trainable and non-trainable params between all
+            # frameworks.
+            self.assertTrue(np.all(c == param_counts["tf2"] for c in param_counts.values()))
+            self.assertTrue(np.all(v == output_values["tf2"] for v in output_values.values()))
 
 
 if __name__ == "__main__":

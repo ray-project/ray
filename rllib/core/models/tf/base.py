@@ -36,9 +36,9 @@ class TfModel(Model, tf.keras.Model, abc.ABC):
         Model.__init__(self, config)
 
         # Raise errors if forward method is not decorated to check specs.
-        if not is_input_decorated(self.__call__):
+        if not is_input_decorated(self.call):
             _raise_not_decorated_exception(type(self).__name__ + ".call()", "input")
-        if not is_output_decorated(self.__call__):
+        if not is_output_decorated(self.call):
             _raise_not_decorated_exception(type(self).__name__ + ".call()", "output")
 
     @check_input_specs("input_spec")
@@ -63,3 +63,9 @@ class TfModel(Model, tf.keras.Model, abc.ABC):
             sum(int(np.prod(w.shape)) for w in self.trainable_weights),
             sum(int(np.prod(w.shape)) for w in self.non_trainable_weights),
         )
+
+    @override(Model)
+    def _set_to_dummy_weights(self, value_sequence=(-0.02, -0.01, 0.01, 0.02)):
+        for i, w in enumerate(self.trainable_weights + self.non_trainable_weights):
+            fill_val = value_sequence[i % len(value_sequence)]
+            w.assign(tf.fill(w.shape, fill_val))

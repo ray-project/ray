@@ -104,3 +104,11 @@ class TorchModel(nn.Module, Model, abc.ABC):
             num_trainable_params,
             num_all_params - num_trainable_params,
         )
+
+    @override(Model)
+    def _set_to_dummy_weights(self, value_sequence=(-0.02, -0.01, 0.01, 0.02)):
+        trainable_weights = filter(lambda p: p.requires_grad, self.parameters())
+        non_trainable_weights = filter(lambda p: not p.requires_grad, self.parameters())
+        for i, w in enumerate(trainable_weights + non_trainable_weights):
+            fill_val = value_sequence[i % len(value_sequence)]
+            w.fill_(fill_val)
