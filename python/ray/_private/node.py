@@ -150,6 +150,7 @@ class Node:
         self._config = ray_params._system_config or {}
 
         self._dashboard_agent_listen_port = ray_params.dashboard_agent_listen_port
+        self._dashboard_head_grpc_port = ray_params.dashboard_head_grpc_port
 
         # Configure log rotation parameters.
         self.max_bytes = int(
@@ -547,6 +548,11 @@ class Node:
         return self._dashboard_agent_listen_port
 
     @property
+    def dashboard_head_grpc_port(self):
+        """Get the dashboard head grpc port"""
+        return self._dashboard_head_grpc_port
+
+    @property
     def logging_config(self):
         """Get the logging config of the current node."""
         return {
@@ -930,10 +936,12 @@ class Node:
             self._temp_dir,
             self._logs_dir,
             self._session_dir,
+            port=self._ray_params.dashboard_port,
+            dashboard_head_grpc_port=self._ray_params.dashboard_head_grpc_port,
+            dashboard_ip=self._node_ip_address,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
-            port=self._ray_params.dashboard_port,
             redirect_logging=self.should_redirect_logs(),
             stdout_file=stderr_file,
             stderr_file=stderr_file,

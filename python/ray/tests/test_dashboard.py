@@ -98,7 +98,6 @@ ray.shutdown()
     indirect=True,
 )
 def test_port_conflict(listen_port, call_ray_stop_only, shutdown_only):
-
     try:
         subprocess.check_output(
             [
@@ -195,14 +194,36 @@ def run_tasks_with_runtime_env():
 def test_dashboard_agent_grpc_port_conflict(listen_port, call_ray_start):
     address = call_ray_start
     ray.init(address=address)
+
     # Tasks without runtime env still work when dashboard agent grpc port conflicts.
     run_tasks_without_runtime_env()
     # Tasks with runtime env couldn't work.
     with pytest.raises(
         ray.exceptions.RuntimeEnvSetupError,
-        match="the grpc service of agent is invalid",
+        match="Ray agent couldn't be started due to the port conflict",
     ):
         run_tasks_with_runtime_env()
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="`runtime_env` with `pip` not supported on Windows."
+)
+@pytest.mark.parametrize(
+    "listen_port",
+    [conflict_port],
+    indirect=True,
+)
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [f"ray start --head --num-cpus=1 --dashboard-head-grpc-port={conflict_port}"],
+    indirect=True,
+)
+def test_dashboard_head_grpc_port_conflict(listen_port, call_ray_start):
+    address = call_ray_start
+    addresses = ray.init(address=address)
+    dashboard_url = addresses["webui_url"]
+    # Dashboard should fail to start with conflicting head port
+    assert dashboard_url is None
 
 
 @pytest.mark.skipif(
