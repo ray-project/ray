@@ -1,6 +1,6 @@
-// ============= Scheduling Status Primitives ====================
+// ============= Cluster Resources ====================
 //
-// Following fields represents the Ray state autoscaler interested
+// Following fields represents the Cluster Resources autoscaler interested
 // in.
 
 // Represents an anti-affinity constraint. A bundle with this constraint
@@ -48,7 +48,7 @@ message NodeResourceState {
   // Dynamic labels associated with the node.
   map<string, string> dynamic_labels = 5;
 
-  // TODO(scv119): we can support static labels proposed in
+  // TODO: we can support static labels proposed in
   // https://github.com/ray-project/enhancements/pull/22 as
   // following.
   // map<string, string> static_labels = 6;
