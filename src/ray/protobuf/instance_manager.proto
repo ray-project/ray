@@ -1,59 +1,82 @@
-message GetInstanceManagerStateBatchRequest {}
 
-message RunningInstance {
+// Represents the state of a launched instance.
+// An instance is considered launched as long as
+// it has a unique instance_id associated with it.
+//
+// Note a launched instance may be DEAD. In this case,
+// the state will be garbage collected after some timeout
+// period (by default 30 minutes).
+message LaunchedInstance {
+  enum LaunchedInstanceState {
+    ALIVE = 1;
+    DEAD = 2;
+    PREMEPTING = 3;
+    TERMINATING = 4;
+  }
   bytes instance_id = 1;
   string node_type = 2;
+  LaunchedInstanceState instance_state = 3; 
 }
 
-message LaunchRequest {
-  enum RequestState {
+// Representing a pending request to launch an instance.
+//
+// Note a request could be failed due to various reasons.
+// The detailed reqson could be queried through description
+// field. A failed launching request will be GCed
+// after some timeout period (by default 30 minutes).
+message LauchingInstance {
+  enum LauchingRequestState {
     QUEUED = 1;
-    RESOURCES_ALLOCATED = 2;
-    FAILED = 3;
+    REQUESTED = 2;
+    RESOURCES_ALLOCATED = 3;
+    FAILED = 4;
   }
   string node_type = 1;
-  int count = 2;
+  string description = 2;
+  PendingRequestState pending_request_state = 3;
 }
 
-message PreemptedInstance {
-  bytes instance_id = 1;
+message GetInstanceManagerStateRequest {}
+
+message GetInstanceManagerStateReply {
+  // a monotonically increasing version number.
+  // the version number is incremented whenever
+  // the state is updated (either by successful adjusting request,
+  // or instance state change).
+  int64 version = 1;
+
+  // this number is increased whenever a successful
+  // adjusting request is received. Unlike the version,
+  // this doesn't change when instance state changes.
+  int64 num_successful_adjustments = 2;
+  repeated LaunchedInstance launched_instances = 3;
+  map<LauchingInstance, int32> launching_instances = 4;
 }
 
-message GetInstanceManagerStateBatchReply {
-  bytes version = 1;
-  repeated RunningInstance running_instances = 2;
-  repeated LaunchRequest launch_requests = 3;
-  repeated PreemptedInstance preempted_instances = 4;
+// Represents a conditional update request to launch/terminate
+// instances. 
+//
+// The request will be rejected if the expected_version
+// doesn't match the current version of the instance manager state,
+// or the expected_num_successful_adjustments doesn't match the
+// num_successful_adjustments.
+// If the expected_version is -1, the version condition is ignored.
+// similarly, if the expected_num_successful_adjustments is -1, the
+// num_successful_adjustments condition is ignored.
+message AdjustInstancesRequest {
+  int64 expected_version = 1;
+  int64 expected_num_successful_adjustments = 2; 
+  map<node_type, int32> new_nodes_to_launch = 3;
+  repeated bytes nodes_to_terminate = 4;
 }
 
-message TerminationRequest {
-  bytes instance_id = 1;
+message AdjustInstancesReply {
+  bool success = 1;
+  int64 version = 2;
+  int64 num_successful_adjust_instances_request = 3;
 }
-
-message ActOnInstancesRequest {
-  bytes last_seen_version = 1;
-  repeated LaunchRequest new_launch_requests = 2;
-  repeated TerminationRequest new_termination_requests = 3;
-}
-
-message ActOnInstancesReply {}
-
-message UpdateInstanceStateBatchRequest {
-  bytes last_seen_version = 1;
-  repeated RunningInstance running_instances = 2;
-  repeated LaunchRequest launch_requests = 3;
-  repeated PreemptedInstance preempted_instances = 4;
-}
-
-message UpdateInstanceStateBatchReply {}
 
 service InstanceManagerService {
-
-  rpc GetInstanceManagerStateBatch(GetInstanceManagerStateBatchRequest) returns (GetInstanceManagerStateBatchReply);
-
-  rpc ActOnInstances(ActOnInstancesRequest) returns (ActOnInstancesReply);
-
-  rpc UpdateInstanceStateBatch(UpdateInstanceStateBatchRequest) returns (UpdateInstanceStateBatchReply);
-
-
+  rpc GetInstanceManagerState(GetInstanceManagerStateRequest) returns (GetInstanceManagerStateReply);
+  rpc AdjustInstancesRequest(AdjustInstancesRequest) returns (AdjustInstancesReply);
 }
