@@ -220,9 +220,7 @@ Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vecto
 
   rpc::InternalKVMultiGetRequest request;
   request.set_namespace_(ns);
-  for (size_t i = 0; i < keys.size(); ++i) {
-    request.set_keys(i, keys[i]);
-  }
+  request.mutable_keys()->Add(keys.begin(), keys.end());
 
   rpc::InternalKVMultiGetReply reply;
 
@@ -230,7 +228,7 @@ Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vecto
   if (status.ok()) {
     result.clear();
     if (reply.status().code() == (int)StatusCode::OK) {
-      for(auto entry : reply.results()) {
+      for(const auto &entry : reply.results()) {
         result[entry.key()] = entry.value();
       }
       return Status::OK();

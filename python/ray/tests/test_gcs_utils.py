@@ -37,7 +37,7 @@ def test_kv_basic(ray_start_regular, monkeypatch):
     # Wait until all other calls finished
     time.sleep(2)
     # reset the counter
-    ray._private.utils._CALLED_FREQ = {}
+    ray._private.utils._CALLED_FREQ.clear()
     assert gcs_client.internal_kv_get(b"A", b"NS") is None
     assert gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
     assert gcs_client.internal_kv_get(b"A", b"NS") == b"B"

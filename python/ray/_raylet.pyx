@@ -1601,6 +1601,29 @@ cdef class GcsClient:
             return value
 
     @_auto_reconnect
+    def internal_kv_multi_get(self, keys, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            c_vector[c_string] c_keys
+            c_string c_key
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            unordered_map[c_string, c_string] c_result
+            unordered_map[c_string, c_string].iterator it
+
+        for c_key in keys:
+            c_keys.push_back(c_key)
+        self._check_error(self.inner.get().InternalKVMultiGet(ns, c_keys, timeout_ms, c_result))
+
+        result = {}
+        it = c_result.begin()
+        while it != c_result.end():
+            key = dereference(it).first
+            value = dereference(it).second
+            result[key] = value
+            postincrement(it)
+        return result
+
+    @_auto_reconnect
     def internal_kv_put(self, bytes key, bytes value, overwrite: bool = False, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
