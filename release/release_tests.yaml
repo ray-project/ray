@@ -4494,7 +4494,7 @@
       env: gce
       stable: false
       cluster:
-        cluster_env: shuffle/100tb_shuffle_app_config.yaml
+        cluster_env: shuffle/100tb_shuffle_app_config_gce.yaml
         cluster_compute: shuffle/100tb_shuffle_compute_gce.yaml
 
 ##################

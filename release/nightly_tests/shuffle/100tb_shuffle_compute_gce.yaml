@@ -12,6 +12,7 @@ gcp_advanced_configurations_json:
           disk_size_gb: 200
       - boot: false
         auto_delete: true
+        device_name: anyscale-100tb
         initialize_params:
           disk_size_gb: 2000
           disk_type: pd-standard
