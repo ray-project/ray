@@ -5,12 +5,12 @@ import torch
 from typing import Dict, Any, Type
 import unittest
 
-from ray.rllib.models.specs.specs_base import TensorSpec, TypeSpec
-from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.specs_torch import TorchTensorSpec
+from ray.rllib.core.models.specs.specs_base import TensorSpec, TypeSpec
+from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.specs.checker import (
+from ray.rllib.core.models.specs.checker import (
     convert_to_canonical_format,
     check_input_specs,
     check_output_specs,
@@ -24,15 +24,15 @@ class AbstractInterfaceClass(abc.ABC):
     input/output constraints."""
 
     @property
-    def input_spec(self) -> SpecDict:
+    def input_specs(self) -> SpecDict:
         pass
 
     @property
-    def output_spec(self) -> SpecDict:
+    def output_specs(self) -> SpecDict:
         pass
 
-    @check_input_specs("input_spec", filter=True, cache=False)
-    @check_output_specs("output_spec", cache=False)
+    @check_input_specs("input_specs", filter=True, cache=False)
+    @check_output_specs("output_specs", cache=False)
     def check_input_and_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         return self._check_input_and_output(input_dict)
 
@@ -40,7 +40,7 @@ class AbstractInterfaceClass(abc.ABC):
     def _check_input_and_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         pass
 
-    @check_input_specs("input_spec", filter=True, cache=False)
+    @check_input_specs("input_specs", filter=True, cache=False)
     def check_only_input(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         """should not override this method"""
         return self._check_only_input(input_dict)
@@ -49,7 +49,7 @@ class AbstractInterfaceClass(abc.ABC):
     def _check_only_input(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         pass
 
-    @check_output_specs("output_spec", cache=False)
+    @check_output_specs("output_specs", cache=False)
     def check_only_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         """should not override this method"""
         return self._check_only_output(input_dict)
@@ -58,16 +58,16 @@ class AbstractInterfaceClass(abc.ABC):
     def _check_only_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         pass
 
-    @check_input_specs("input_spec", filter=True, cache=True)
-    @check_output_specs("output_spec", cache=True)
+    @check_input_specs("input_specs", filter=True, cache=True)
+    @check_output_specs("output_specs", cache=True)
     def check_input_and_output_with_cache(
         self, input_dict: Dict[str, Any]
     ) -> Dict[str, Any]:
         """should not override this method"""
         return self._check_input_and_output(input_dict)
 
-    @check_input_specs("input_spec", filter=False, cache=False)
-    @check_output_specs("output_spec", cache=False)
+    @check_input_specs("input_specs", filter=False, cache=False)
+    @check_output_specs("output_specs", cache=False)
     def check_input_and_output_wo_filter(self, input_dict) -> Dict[str, Any]:
         """should not override this method"""
         return self._check_input_and_output(input_dict)
@@ -77,11 +77,11 @@ class InputNumberOutputFloat(AbstractInterfaceClass):
     """This is an abstract class enforcing a contraint on input/output"""
 
     @property
-    def input_spec(self) -> SpecDict:
+    def input_specs(self) -> SpecDict:
         return SpecDict({"input": (float, int)})
 
     @property
-    def output_spec(self) -> SpecDict:
+    def output_specs(self) -> SpecDict:
         return SpecDict({"output": float})
 
 
@@ -105,7 +105,7 @@ class CorrectImplementation(InputNumberOutputFloat):
 
         out = self.run(input_dict)
 
-        # output can be anything since ther is no output_spec
+        # Output can be anything since there are no `output_specs`.
         return {"output": str(out)}
 
     @override(AbstractInterfaceClass)
@@ -132,10 +132,10 @@ class TestCheckSpecs(unittest.TestCase):
         correct_module = CorrectImplementation()
 
         output = correct_module.check_input_and_output({"input": 2})
-        # output should also match the output_spec
-        correct_module.output_spec.validate(NestedDict(output))
+        # Output should also match the `output_specs`.
+        correct_module.output_specs.validate(NestedDict(output))
 
-        # this should raise an error saying that the `input` key is missing
+        # This should raise an error saying that the `input` key is missing.
         self.assertRaises(
             ValueError, lambda: correct_module.check_input_and_output({"not_input": 2})
         )
@@ -144,23 +144,24 @@ class TestCheckSpecs(unittest.TestCase):
         correct_module = CorrectImplementation()
         # this should not raise any error since input matches the input specs
         output = correct_module.check_only_input({"input": 2})
-        # output can be anything since ther is no output_spec
+        # Output can be anything since ther is no `output_specs`.
         self.assertRaises(
             ValueError,
-            lambda: correct_module.output_spec.validate(NestedDict(output)),
+            lambda: correct_module.output_specs.validate(NestedDict(output)),
         )
 
     def test_check_only_output(self):
         correct_module = CorrectImplementation()
-        # this should not raise any error since input does not have to match input_spec
+        # This should not raise any error since input does not have to match
+        # `input_specs`.
         output = correct_module.check_only_output({"not_input": 2})
-        # output should match the output specs
-        correct_module.output_spec.validate(NestedDict(output))
+        # Output should match the `output_specs`.
+        correct_module.output_specs.validate(NestedDict(output))
 
     def test_incorrect_implementation(self):
         incorrect_module = IncorrectImplementation()
         # this should raise an error saying that the output does not match the
-        # output_spec
+        # `output_specs`.
         self.assertRaises(
             ValueError, lambda: incorrect_module.check_input_and_output({"input": 2})
         )
@@ -168,7 +169,7 @@ class TestCheckSpecs(unittest.TestCase):
         # this should not raise an error because output is not forced to be checked
         incorrect_module.check_only_input({"input": 2})
 
-        # this should raise an error because output does not match the output_spec
+        # This should raise an error because output does not match the `output_specs`.
         self.assertRaises(
             ValueError, lambda: incorrect_module.check_only_output({"not_input": 2})
         )
@@ -232,7 +233,7 @@ class TestCheckSpecs(unittest.TestCase):
         self.assertGreater(lower_bound_time1, upper_bound_time2)
 
     def test_tensor_specs(self):
-        # test if the input_spec can be a tensor spec
+        # Test if the `input_specs` can be a tensor spec.
         class ClassWithTensorSpec:
             @property
             def input_spec1(self) -> TensorSpec:
@@ -255,14 +256,14 @@ class TestCheckSpecs(unittest.TestCase):
 
         class ClassWithTypeSpec:
             @property
-            def output_spec(self) -> Type:
+            def output_specs(self) -> Type:
                 return SpecialOutputType
 
-            @check_output_specs("output_spec", cache=False)
+            @check_output_specs("output_specs", cache=False)
             def forward_pass(self, input_data) -> Any:
                 return SpecialOutputType()
 
-            @check_output_specs("output_spec", cache=False)
+            @check_output_specs("output_specs", cache=False)
             def forward_fail(self, input_data) -> Any:
                 return WrongOutputType()
 
