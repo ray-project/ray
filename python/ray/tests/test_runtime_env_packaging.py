@@ -604,7 +604,12 @@ class TestDownloadAndUnpackPackage:
             from urllib.request import pathname2url
             from urllib.parse import urljoin
 
-            pkg_uri = urljoin("file:", pathname2url(str(zipfile_path)))
+            # in windows, file_path = ///C:/Users/...
+            # in linux, file_path = /tmp/...
+            file_path = pathname2url(str(zipfile_path))
+
+            # remove the first slash in file_path to avoid invalid path in windows
+            pkg_uri = urljoin("file:", file_path[1:])
 
             local_dir = await download_and_unpack_package(
                 pkg_uri=pkg_uri, base_directory=temp_dir
