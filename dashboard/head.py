@@ -18,11 +18,7 @@ from ray._raylet import GcsClient
 from ray._private.gcs_utils import GcsAioClient, check_health
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
-from ray.dashboard.consts import (
-    DASHBOARD_METRIC_PORT,
-    DASHBOARD_RPC_PORT,
-    DASHBOARD_PUBLIC_ADDRESS_ENV_NAME,
-)
+from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 from typing import Optional, Set
@@ -79,6 +75,8 @@ class DashboardHead:
         http_port: int,
         http_port_retries: int,
         gcs_address: str,
+        dashboard_ip: str,
+        grpc_port: int,
         log_dir: str,
         temp_dir: str,
         session_dir: str,
@@ -98,6 +96,7 @@ class DashboardHead:
             minimal: Whether or not it will load the minimal modules.
             serve_frontend: If configured, frontend HTML is
                 served from the dashboard.
+            grpc_port: The port used to listen for gRPC on.
             modules_to_load: A set of module name in string to load.
                 By default (None), it loads all available modules.
                 Note that available modules could be changed depending on
@@ -128,17 +127,15 @@ class DashboardHead:
         self.gcs_aio_client = None
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
-        # The dashboard's public IP address can be overridden from the environment
-        # e.g. for network-isolated Docker containers.
-        self.ip = os.environ.get(
-            DASHBOARD_PUBLIC_ADDRESS_ENV_NAME, ray.util.get_node_ip_address()
+        self.ip = (
+            ray.util.get_node_ip_address() if dashboard_ip is None else dashboard_ip
         )
         DataOrganizer.head_node_ip = self.ip
 
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-            self.server, f"{grpc_ip}:{DASHBOARD_RPC_PORT}"
+            self.server, f"{grpc_ip}:{grpc_port}"
         )
         logger.info("Dashboard head grpc address: %s:%s", grpc_ip, self.grpc_port)
         # If the dashboard is started as non-minimal version, http server should
