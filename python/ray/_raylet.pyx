@@ -164,6 +164,9 @@ include "includes/metric.pxi"
 # whether C++ optimizations were enabled during compilation.
 OPTIMIZED = __OPTIMIZE__
 
+STATUS_CODE_GRPC_UNAVAILABLE = <int>StatusCode_GrpcUnavailable
+STATUS_CODE_GRPC_UNKNOWN = <int>StatusCode_GrpcUnknown
+
 logger = logging.getLogger(__name__)
 
 # The currently executing task, if any. These are used to synchronize task

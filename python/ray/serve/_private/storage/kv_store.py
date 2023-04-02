@@ -64,7 +64,7 @@ class RayInternalKVStore(KVStoreBase):
                 timeout=self.timeout,
             )
         except Exception as e:
-            raise KVStoreError(e.code())
+            raise KVStoreError(e._status_code)
 
     def get(self, key: str) -> Optional[bytes]:
         """Get the value associated with the given key from the store.
@@ -85,7 +85,7 @@ class RayInternalKVStore(KVStoreBase):
                 timeout=self.timeout,
             )
         except Exception as e:
-            raise KVStoreError(e.code())
+            raise KVStoreError(e._status_code)
 
     def delete(self, key: str):
         """Delete the value associated with the given key from the store.
@@ -105,4 +105,4 @@ class RayInternalKVStore(KVStoreBase):
                 timeout=self.timeout,
             )
         except Exception as e:
-            raise KVStoreError(e.code())
+            raise KVStoreError(e._status_code)
