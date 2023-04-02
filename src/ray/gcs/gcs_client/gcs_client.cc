@@ -175,11 +175,11 @@ Status ConvertGrpcStatus(grpc::Status status) {
 }
 
 Status HandleGrpcError(rpc::GcsStatus status) {
-  RAY_CHECK(status.code() != (int)StatusCode::OK);
-  if (status.code() == (int)StatusCode::GrpcUnavailable) {
+  RAY_CHECK(status.code() != static_cast<int>(StatusCode::OK));
+  if (status.code() == static_cast<int>(StatusCode::GrpcUnavailable)) {
     return Status::GrpcUnavailable(status.message());
   }
-  if (status.code() == (int)StatusCode::GrpcUnknown) {
+  if (status.code() == static_cast<int>(StatusCode::GrpcUnknown)) {
     return Status::GrpcUnknown(status.message());
   }
   return Status::Invalid(status.message());
@@ -203,10 +203,10 @@ Status GcsSyncClient::InternalKVGet(const std::string &ns, const std::string &ke
 
   grpc::Status status = kv_stub_->InternalKVGet(&context, request, &reply);
   if (status.ok()) {
-    if (reply.status().code() == (int)StatusCode::OK) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
       value = reply.value();
       return Status::OK();
-    } else if (reply.status().code() == (int)StatusCode::NotFound) {
+    } else if (reply.status().code() == static_cast<int>(StatusCode::NotFound)) {
       return Status::KeyError(key);
     }
     return HandleGrpcError(reply.status());
@@ -227,12 +227,12 @@ Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vecto
   grpc::Status status = kv_stub_->InternalKVMultiGet(&context, request, &reply);
   if (status.ok()) {
     result.clear();
-    if (reply.status().code() == (int)StatusCode::OK) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
       for(const auto &entry : reply.results()) {
         result[entry.key()] = entry.value();
       }
       return Status::OK();
-    } else if (reply.status().code() == (int)StatusCode::NotFound) {
+    } else if (reply.status().code() == static_cast<int>(StatusCode::NotFound)) {
       // result has already been cleared above
       return Status::OK();
     }
@@ -255,7 +255,7 @@ Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &ke
 
   grpc::Status status = kv_stub_->InternalKVPut(&context, request, &reply);
   if (status.ok()) {
-    if (reply.status().code() == (int)StatusCode::OK) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
       added_num = reply.added_num();
       return Status::OK();
     }
@@ -277,7 +277,7 @@ Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &ke
 
   grpc::Status status = kv_stub_->InternalKVDel(&context, request, &reply);
   if (status.ok()) {
-    if (reply.status().code() == (int)StatusCode::OK) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
       deleted_num = reply.deleted_num();
       return Status::OK();
     }
@@ -298,7 +298,7 @@ Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &p
 
   grpc::Status status = kv_stub_->InternalKVKeys(&context, request, &reply);
   if (status.ok()) {
-    if (reply.status().code() == (int)StatusCode::OK) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
       results = std::vector<std::string>(reply.results().begin(), reply.results().end());
       return Status::OK();
     }
@@ -319,7 +319,7 @@ Status GcsSyncClient::InternalKVExists(const std::string &ns, const std::string 
 
   grpc::Status status = kv_stub_->InternalKVExists(&context, request, &reply);
   if (status.ok()) {
-    if (reply.status().code() == (int)StatusCode::OK) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
       exists = reply.exists();
       return Status::OK();
     }
@@ -340,9 +340,9 @@ Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri, int expiration_s,
 
   grpc::Status status = runtime_env_stub_->PinRuntimeEnvURI(&context, request, &reply);
   if (status.ok()) {
-    if (reply.status().code() == (int)StatusCode::OK) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
       return Status::OK();
-    } else if (reply.status().code() == (int)StatusCode::GrpcUnavailable) {
+    } else if (reply.status().code() == static_cast<int>(StatusCode::GrpcUnavailable)) {
       std::string msg = "Failed to pin URI reference for " + uri + " due to the GCS being " +
           "unavailable, most likely it has crashed: " + reply.status().message() + ".";
       return Status::GrpcUnavailable(msg);
@@ -363,7 +363,7 @@ Status GcsSyncClient::GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNod
 
   grpc::Status status = node_info_stub_->GetAllNodeInfo(&context, request, &reply);
   if (status.ok()) {
-    if (reply.status().code() == (int)StatusCode::OK) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
       result = std::vector<rpc::GcsNodeInfo>(reply.node_info_list().begin(), reply.node_info_list().end());
       return Status::OK();
     }
@@ -381,7 +381,7 @@ Status GcsSyncClient::GetAllJobInfo(int64_t timeout_ms, std::vector<rpc::JobTabl
 
   grpc::Status status = job_info_stub_->GetAllJobInfo(&context, request, &reply);
   if (status.ok()) {
-    if (reply.status().code() == (int)StatusCode::OK) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
       result = std::vector<rpc::JobTableData>(reply.job_info_list().begin(), reply.job_info_list().end());
       return Status::OK();
     }
