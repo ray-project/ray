@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ray;
-
-use ray::common_proto::{Language, WorkerType};
+use crate::runtime::common_proto::{Language, WorkerType};
 
 // declare extern c core worker functions
 extern "C" {

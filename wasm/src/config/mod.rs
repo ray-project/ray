@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-use crate::ray;
+use crate::runtime;
 use crate::util;
 use serde_json::Value;
 use tracing::debug;
@@ -20,8 +20,8 @@ use uuid::Uuid;
 
 use std::collections::HashMap;
 
-use ray::common_proto::job_config::ActorLifetime;
-use ray::common_proto::WorkerType;
+use runtime::common_proto::job_config::ActorLifetime;
+use runtime::common_proto::WorkerType;
 
 type StartupToken = i64;
 
@@ -48,7 +48,7 @@ pub struct ConfigInternal {
     pub node_ip_address: String,
     pub startup_token: StartupToken,
     pub head_args: Vec<String>,
-    pub runtime_env: Option<ray::RuntimeEnv>,
+    pub runtime_env: Option<runtime::RuntimeEnv>,
     pub runtime_env_hash: i32,
     pub default_actor_lifetime: ActorLifetime,
     pub job_config_metadata: Option<HashMap<String, String>>,
@@ -82,7 +82,7 @@ impl ConfigInternal {
     }
 
     /// process RayConfig and set the variables
-    fn process_config(&mut self, config: &ray::RayConfig) {
+    fn process_config(&mut self, config: &runtime::RayConfig) {
         if !config.address.is_empty() {
             self.set_bootstrap_address(&config.address);
         }
@@ -101,7 +101,7 @@ impl ConfigInternal {
         if !config.head_args.is_empty() {
             self.head_args = config.head_args.clone();
         }
-        if config.default_actor_lifetime == ray::ActorLifetime::Detached {
+        if config.default_actor_lifetime == runtime::ActorLifetime::Detached {
             self.default_actor_lifetime = ActorLifetime::Detached;
         }
         match config.runtime_env {
@@ -189,14 +189,14 @@ impl ConfigInternal {
         match args.ray_runtime_env {
             Some(ref data) => {
                 // deserialize json
-                let runtime_env = ray::RuntimeEnv::deserialize_from_json_string(data);
+                let runtime_env = runtime::RuntimeEnv::deserialize_from_json_string(data);
                 self.runtime_env = Some(runtime_env);
             }
             None => {}
         }
     }
 
-    pub fn init(&mut self, config: &ray::RayConfig, args: &util::WorkerParameters) {
+    pub fn init(&mut self, config: &runtime::RayConfig, args: &util::WorkerParameters) {
         // check input config and set the variables
         self.process_config(config);
 
@@ -261,7 +261,7 @@ impl ConfigInternal {
             let json_value: Value = serde_json::from_str(job_config_json_str.as_str()).unwrap();
 
             let rt_env_obj = json_value.get("runtime_env").unwrap();
-            self.runtime_env = Some(ray::RuntimeEnv::deserialize_from_json_value(
+            self.runtime_env = Some(runtime::RuntimeEnv::deserialize_from_json_value(
                 rt_env_obj.clone(),
             ));
 

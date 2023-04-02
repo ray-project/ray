@@ -20,9 +20,9 @@ mod helper;
 mod hostcalls;
 mod runtime;
 
-pub use crate::ray::helper::*;
-pub use crate::ray::hostcalls::*;
-pub use crate::ray::runtime::*;
+pub use crate::runtime::helper::*;
+pub use crate::runtime::hostcalls::*;
+pub use crate::runtime::runtime::*;
 
 #[derive(PartialEq)]
 pub enum ActorLifetime {

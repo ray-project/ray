@@ -13,7 +13,7 @@
 // limitations under the License.
 use wasm_on_ray::config;
 use wasm_on_ray::engine;
-use wasm_on_ray::ray;
+use wasm_on_ray::runtime;
 use wasm_on_ray::util;
 
 use tracing::info;
@@ -24,7 +24,7 @@ use tracing_subscriber;
 
 struct RayWaContext {
     // ray runtime
-    runtime: Box<dyn ray::RayRuntime>,
+    runtime: Box<dyn runtime::RayRuntime>,
 
     // wasm engine
     engine: Box<dyn engine::WasmEngine>,
@@ -40,7 +40,7 @@ struct RayWaContextFactory {}
 
 impl RayWaContextFactory {
     pub async fn create_context(params: &util::LauncherParameters) -> Result<RayWaContext> {
-        let cfg = ray::RayConfig::new();
+        let cfg = runtime::RayConfig::new();
         let mut internal_cfg = config::ConfigInternal::new();
 
         internal_cfg.init(&cfg, &util::WorkerParameters::new_empty());
@@ -78,8 +78,8 @@ impl RayWaContextFactory {
 
     async fn create_runtime(
         internal_cfg: config::ConfigInternal,
-    ) -> Result<Box<dyn ray::RayRuntime>> {
-        let runtime = ray::RayRuntimeFactory::create_runtime(internal_cfg);
+    ) -> Result<Box<dyn runtime::RayRuntime>> {
+        let runtime = runtime::RayRuntimeFactory::create_runtime(internal_cfg);
         Ok(runtime.unwrap())
     }
 }

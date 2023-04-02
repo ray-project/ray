@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 use crate::engine::{WasmEngine, WasmInstance, WasmModule, WasmSandbox, WasmValue};
-use crate::ray::{Hostcall, Hostcalls};
+use crate::runtime::{Hostcall, Hostcalls};
 use anyhow::Result;
 
 // temp Val

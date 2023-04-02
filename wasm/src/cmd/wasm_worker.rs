@@ -12,20 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 use wasm_on_ray::config;
-use wasm_on_ray::ray;
-use wasm_on_ray::ray::RayRuntime;
+use wasm_on_ray::runtime;
+use wasm_on_ray::runtime::RayRuntime;
 use wasm_on_ray::util;
 
 use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber;
 
-async fn init(cfg: &ray::RayConfig, args: &util::WorkerParameters) -> Result<Box<dyn RayRuntime>> {
+async fn init(cfg: &runtime::RayConfig, args: &util::WorkerParameters) -> Result<Box<dyn RayRuntime>> {
     let mut internal_cfg = config::ConfigInternal::new();
 
     internal_cfg.init(&cfg, &args);
 
-    let mut runtime = ray::RayRuntimeFactory::create_runtime(internal_cfg).unwrap();
+    let mut runtime = runtime::RayRuntimeFactory::create_runtime(internal_cfg).unwrap();
     runtime.do_init().unwrap();
 
     Ok(runtime)
@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
 
     let args = util::WorkerParameters::parse();
-    let cfg = ray::RayConfig::new();
+    let cfg = runtime::RayConfig::new();
 
     let rt = init(&cfg, &args).await.unwrap();
     run_task_loop(rt).await.unwrap();

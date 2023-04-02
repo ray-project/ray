@@ -13,5 +13,5 @@
 // limitations under the License.
 pub mod config;
 pub mod engine;
-pub mod ray;
+pub mod runtime;
 pub mod util;

@@ -20,7 +20,7 @@ mod wasmtime_engine;
 
 use crate::engine::wasmedge_engine::WasmEdgeEngine;
 use crate::engine::wasmtime_engine::WasmtimeEngine;
-use crate::ray::{Hostcall, Hostcalls};
+use crate::runtime::{Hostcall, Hostcalls};
 
 pub trait WasmEngine {
     fn init(&self) -> Result<()>;

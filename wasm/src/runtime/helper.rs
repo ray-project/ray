@@ -18,10 +18,10 @@ use std::process::Command;
 use tracing::{debug, error, info};
 
 use crate::config::ConfigInternal;
-use crate::ray::common_proto::{GcsNodeInfo, JobConfig, Language, RuntimeEnvInfo, WorkerType};
-use crate::ray::core::core_worker::*;
-use crate::ray::core::global_state_accessor::*;
-use crate::ray::RuntimeEnv;
+use crate::runtime::common_proto::{GcsNodeInfo, JobConfig, Language, RuntimeEnvInfo, WorkerType};
+use crate::runtime::core::core_worker::*;
+use crate::runtime::core::global_state_accessor::*;
+use crate::runtime::RuntimeEnv;
 use crate::util::get_node_ip_address;
 
 pub struct ClusterHelper {}
@@ -317,7 +317,7 @@ impl ClusterHelper {
             );
         }
 
-        let res = unsafe { crate::ray::core::core_worker::CoreWorkerProcess_Initialize() };
+        let res = unsafe { crate::runtime::core::core_worker::CoreWorkerProcess_Initialize() };
         if res == 0 {
             info!("core worker process initialized successfully");
         } else {

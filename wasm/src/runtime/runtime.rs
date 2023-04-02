@@ -15,12 +15,12 @@
 use crate::config::ConfigInternal;
 use crate::config::RunMode;
 use crate::engine::{WasmEngine, WasmType, WasmValue};
-use crate::ray::common_proto::WorkerType;
-use crate::ray::ClusterHelper;
+use crate::runtime::common_proto::WorkerType;
+use crate::runtime::ClusterHelper;
 use anyhow::Result;
 use tracing::info;
 
-use crate::ray::{new_ray_hostcalls, Hostcalls};
+use crate::runtime::{new_ray_hostcalls, Hostcalls};
 
 pub trait RayRuntime {
     fn do_init(&mut self) -> Result<()>;
@@ -85,7 +85,7 @@ impl RayRuntime for RayRuntimeClusterMode {
     fn launch_task_loop(&mut self) -> Result<()> {
         info!("launch_task_loop");
         unsafe {
-            crate::ray::core::core_worker::CoreWorkerProcess_RunTaskExecutionLoop();
+            crate::runtime::core::core_worker::CoreWorkerProcess_RunTaskExecutionLoop();
         }
         info!("launch_task_loop done");
         Ok(())

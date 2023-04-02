@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::engine::{WasmEngine, WasmInstance, WasmModule, WasmSandbox, WasmType, WasmValue};
-use crate::ray::{Hostcall, Hostcalls};
+use crate::runtime::{Hostcall, Hostcalls};
 use anyhow::Result;
 use std::collections::HashMap;
 use wasmtime::{Engine, FuncType, Instance, Linker, Module, Store, Val, ValRaw, ValType};
