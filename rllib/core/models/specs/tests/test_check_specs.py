@@ -23,10 +23,12 @@ class AbstractInterfaceClass(abc.ABC):
     """An abstract class that has a couple of methods, each having their own
     input/output constraints."""
 
+    @abc.abstractmethod
     @property
     def input_specs(self) -> SpecDict:
         pass
 
+    @abc.abstractmethod
     @property
     def output_specs(self) -> SpecDict:
         pass
