@@ -19,8 +19,8 @@ MAX_BATCH_SIZE = 16
 
 # Cluster setup constants
 NUM_REDIS_SHARDS = 1
-REDIS_MAX_MEMORY = 10**8
-OBJECT_STORE_MEMORY = 10**8
+REDIS_MAX_MEMORY = 10 ** 8
+OBJECT_STORE_MEMORY = 10 ** 8
 NUM_NODES = 4
 
 # RandomTest setup constants
@@ -29,6 +29,10 @@ NUM_ITERATIONS = 350
 ACTIONS_PER_ITERATION = 20
 
 RAY_UNIT_TEST = "RAY_UNIT_TEST" in os.environ
+
+# RAY_OVERRIDE_RESOURCES will prevent "num_cpus" working
+# when adding customized resource node to Cluster.
+del os.environ["RAY_OVERRIDE_RESOURCES"]
 
 
 def update_progress(result):
