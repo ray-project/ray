@@ -14,6 +14,9 @@
 use crate::engine::{WasmEngine, WasmType, WasmValue};
 use anyhow::Result;
 
+mod ray;
+pub use ray::*;
+
 #[derive(Clone)]
 pub struct Hostcalls {
     pub module_name: String,

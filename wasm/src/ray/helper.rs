@@ -119,8 +119,11 @@ impl ClusterHelper {
         // TODO: rest of the startup code
     }
 
-    pub fn ray_stop() {
-        unimplemented!()
+    pub fn ray_stop(internal_cfg: &ConfigInternal) {
+        unsafe { CoreWorkerProcess_Shutdown() };
+        if internal_cfg.bootstrap_ip.is_empty() {
+            ClusterHelper::ray_node_stop();
+        }
     }
 
     pub fn ray_node_start(

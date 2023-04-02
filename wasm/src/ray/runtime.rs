@@ -20,7 +20,7 @@ use crate::ray::ClusterHelper;
 use anyhow::Result;
 use tracing::info;
 
-use super::Hostcalls;
+use crate::ray::{new_ray_hostcalls, Hostcalls};
 
 pub trait RayRuntime {
     fn do_init(&mut self) -> Result<()>;
@@ -48,17 +48,10 @@ pub struct RayRuntimeClusterMode {
 
 impl RayRuntimeClusterMode {
     pub fn new(internal_cfg: ConfigInternal) -> Self {
-        let mut res = Self {
+        Self {
             internal_cfg: internal_cfg,
-            hostcalls: Hostcalls::new("ray"),
-        };
-        res.setup_hostcall_entries();
-        res
-    }
-
-    fn setup_hostcall_entries(&mut self) {
-        self.hostcalls
-            .register_function("test", vec![], vec![], test);
+            hostcalls: new_ray_hostcalls(),
+        }
     }
 
     pub fn load_binary_from_paths(&self, paths: Vec<String>) {
@@ -85,7 +78,7 @@ impl RayRuntime for RayRuntimeClusterMode {
     }
 
     fn do_shutdown(&mut self) -> Result<()> {
-        ClusterHelper::ray_stop();
+        ClusterHelper::ray_stop(&self.internal_cfg);
         Ok(())
     }
 
@@ -145,9 +138,4 @@ impl RayRuntime for RayRuntimeSingleProcessMode {
     fn setup_hostcalls(&mut self, engine: &mut Box<dyn WasmEngine>) -> Result<()> {
         Err(anyhow::anyhow!("not implemented"))
     }
-}
-
-fn test(params: &[WasmValue]) -> Result<Vec<WasmValue>> {
-    info!("test");
-    Ok(vec![])
 }

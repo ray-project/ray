@@ -109,6 +109,8 @@ async fn run_binary(args: &util::LauncherParameters) -> Result<()>  {
 
     ctx.engine.execute("sandbox", "instance", "_start", vec![]);
 
+    // for now, we just shutdown the runtime
+    ctx.runtime.do_shutdown();
     Ok(())
 }
 

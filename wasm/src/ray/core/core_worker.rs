@@ -50,3 +50,12 @@ extern "C" {
     // TODO: more stuff
     pub fn CoreWorkerProcessOptions_UpdateGcsClientOptions(gcs_address: *const u8, len: u32);
 }
+
+// sorry, if we link rust with c++, the linker will complain the atexit symbol cannot
+// be found in core_worker_process.cc. We could use static-nobound, but it is only
+// restricted to nightly rust. If we do this, we will see errors while compiling other
+// crates. So we just declare the atexit symbol here.
+#[no_mangle]
+pub extern "C" fn atexit(f: fn()) -> i32 {
+    0
+}
