@@ -43,7 +43,7 @@ class TfMLPEncoder(Encoder, TfModel):
         )
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Union[Spec, None]:
         return SpecDict(
             {
                 SampleBatch.OBS: TfTensorSpec("b, d", d=self.config.input_dims[0]),
@@ -53,7 +53,7 @@ class TfMLPEncoder(Encoder, TfModel):
         )
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Union[Spec, None]:
         return SpecDict(
             {
                 ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),

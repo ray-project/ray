@@ -1854,6 +1854,7 @@ py_test(
 # Tag: core
 # --------------------------------------------------------------------
 
+# Catalog
 py_test(
     name = "test_catalog",
     tags = ["team:rllib", "core"],
@@ -1861,6 +1862,7 @@ py_test(
     srcs = ["core/models/tests/test_catalog.py"]
 )
 
+# Default Models
 py_test(
     name = "test_cnn_encoders",
     tags = ["team:rllib", "core", "models"],
@@ -1882,6 +1884,29 @@ py_test(
     srcs = ["core/models/tests/test_mlp_heads.py"]
 )
 
+# Specs
+py_test(
+    name = "test_check_specs",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["core/models/specs/tests/test_check_specs.py"]
+)
+
+py_test(
+    name = "test_tensor_spec",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["core/models/specs/tests/test_tensor_spec.py"]
+)
+
+py_test(
+    name = "test_spec_dict",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["core/models/specs/tests/test_spec_dict.py"]
+)
+
+# RLModule
 py_test(
     name = "test_torch_rl_module",
     tags = ["team:rllib", "core"],
@@ -1910,6 +1935,7 @@ py_test(
     srcs = ["core/rl_module/tests/test_rl_module_specs.py"]
 )
 
+# Learner
 py_test(
     name = "test_learner_group",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
@@ -1958,13 +1984,6 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "large",
     srcs = ["models/tests/test_attention_nets.py"]
-)
-
-py_test(
-    name = "test_check_specs",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/specs/tests/test_check_specs.py"]
 )
 
 py_test(
@@ -2017,14 +2036,6 @@ py_test(
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
-# Test Tensor specs
-py_test(
-    name = "test_tensor_spec",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/specs/tests/test_tensor_spec.py"]
-)
-
 # test abstract base models
 py_test(
     name = "test_base_model",
@@ -2039,14 +2050,6 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "small",
     srcs = ["models/tests/test_torch_model.py"]
-)
-
-# test ModelSpec
-py_test(
-    name = "test_spec_dict",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/specs/tests/test_spec_dict.py"]
 )
 
 
