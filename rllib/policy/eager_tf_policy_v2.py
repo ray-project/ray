@@ -431,7 +431,7 @@ class EagerTFPolicyV2(Policy):
 
     def maybe_initialize_optimizer_and_loss(self):
         optimizers = force_list(self.optimizer())
-        if getattr(self, "exploration", None):
+        if self.exploration:
             # Policies with RLModules don't have an exploration object.
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
@@ -474,7 +474,7 @@ class EagerTFPolicyV2(Policy):
         self._is_recurrent = state_batches != []
 
         # Call the exploration before_compute_actions hook.
-        if getattr(self, "exploration", None):
+        if self.exploration:
             # Policies with RLModules don't have an exploration object.
             self.exploration.before_compute_actions(
                 timestep=timestep, explore=explore, tf_sess=self.get_session()
@@ -572,7 +572,7 @@ class EagerTFPolicyV2(Policy):
             )
 
         # Exploration hook before each forward pass.
-        if getattr(self, "exploration", None):
+        if self.exploration:
             # Policies with RLModules don't have an exploration object.
             self.exploration.before_compute_actions(explore=False)
 

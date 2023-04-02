@@ -1442,7 +1442,7 @@ class Policy(metaclass=ABCMeta):
         self._dummy_batch.deleted_keys.clear()
         self._dummy_batch.added_keys.clear()
 
-        if getattr(self, "exploration", None):
+        if self.exploration:
             # Policies with RLModules don't have an exploration object.
             self.exploration.postprocess_trajectory(self, self._dummy_batch)
 

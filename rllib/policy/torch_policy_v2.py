@@ -457,7 +457,7 @@ class TorchPolicyV2(Policy):
             ]
         else:
             optimizers = [torch.optim.Adam(self.model.parameters())]
-        if getattr(self, "exploration", None):
+        if self.exploration:
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
         return optimizers
 
@@ -597,7 +597,7 @@ class TorchPolicyV2(Policy):
                 convert_to_torch_tensor(s, self.device) for s in (state_batches or [])
             ]
 
-            if getattr(self, "exploration", None):
+            if self.exploration:
                 # Exploration hook before each forward pass.
                 self.exploration.before_compute_actions(explore=False)
 

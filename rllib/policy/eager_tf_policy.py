@@ -441,7 +441,7 @@ def _build_eager_tf_policy(
             else:
                 optimizers = tf.keras.optimizers.Adam(config["lr"])
             optimizers = force_list(optimizers)
-            if getattr(self, "exploration", None):
+            if self.exploration:
                 optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
             # The list of local (tf) optimizers (one per loss term).
@@ -582,7 +582,7 @@ def _build_eager_tf_policy(
                     prev_reward_batch
                 )
 
-            if getattr(self, "exploration", None):
+            if self.exploration:
                 # Exploration hook before each forward pass.
                 self.exploration.before_compute_actions(explore=False)
 
