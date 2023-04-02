@@ -38,7 +38,14 @@ class ModelConfig(abc.ABC):
     individual Model components inside an RLModule. However, ModelConfigs are
     not restricted to be used only with Catalog or RLModules.
     A usage Example together with a Model can be found in the individual Model classes'
-    docstrings.
+    ModelConfigs are DL framework-agnostic.
+
+    You can build models from a ModelConfig by calling its `build()` method.
+    `Catalog` objects use this API to build models and pass them to RLModules. 
+    Therefore, `ModelConfig` objects are a means of configuring models inside RLModules.
+    However, ModelConfigs are not restricted to be used only with Catalog or RLModules.
+
+    For more examples, see each Model's class docstrings.
 
     Args:
         input_dims: The input dimensions of the network
