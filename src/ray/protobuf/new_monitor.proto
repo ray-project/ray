@@ -3,21 +3,26 @@
 // Following fields represents the Ray state autoscaler interested
 // in.
 
+// Represents an anti-affinity constraint. A bundle with this constraint
+// can't be allocated to a node that has a label with the same name and
+// value.
 message AntiAffinityConstraint {
   string label_name = 1;
   string label_value = 2;
-  bool dynamic_label = 3;
 }
 
 message ResourceBundle {
   map<string, double> resources = 1;
   repeated AntiAffinityConstraint affinity_constraints = 2;
+  // If the resource bundle is allocated, the node will be labeled
+  // with the following labels.
+  map<string, string> new_labels = 3;
 }
 
 // All bundles in the same resource request require gang
-// allocation semantics: they should be
-// fullfilled all or nothing.
+// allocation semantics: they should be allocated together.
 message ResourceRequest {
+  // a map from bundles to the number of bundles requested.
   map<ResourceBundle, int32_t> bundles = 1;
 }
 
@@ -25,10 +30,10 @@ message ResourceRequest {
 // issued through ray.autoscaler.sdk.request_resources.
 message OnDemandResourceRequest {
   bytes request_id = 1;
-  ResourceRequest bundles = 2;
+  ResourceRequest resource_request = 2;
 }
 
-message NodeStatus {
+message NodeResourceState {
   bytes node_id = 1;
 
   // The address of the node.
@@ -43,7 +48,9 @@ message NodeStatus {
   // Dynamic labels associated with the node.
   map<string, string> dynamic_labels = 5;
 
-  // Static labels associated with the node.
+  // TODO(scv119): we can support static labels proposed in
+  // https://github.com/ray-project/enhancements/pull/22 as
+  // following.
   // map<string, string> static_labels = 6;
 }
 
@@ -52,51 +59,47 @@ message NodeStatus {
 // Following states present the Autoscaler state GCS interested in,
 // for observability and scheduling purpose.
 
-enum AutoscalerNodeStates {
+enum AutoscalerNodeStatus {
   // The underlying cloud resource is alive, it's up to the cluster to decide
   // if the node has joined the cluster (active) or not (still starting up).
   ALIVE = 1;
   // A terminal state, indicating the autoscaler believes this node will never
   // join the cluster.
   DEAD = 2;
-  // A hint that this node will be downscaled. Ray doesn't get a say in whether
+  // A notification that this node will be preempted soon. Ray doesn't get a say in whether
   // this node will be downscaled. It only has an opportunity to minimize the
   // blast radius. Preemption, can happen for multiple reasons such as spot
   // instance failure.
-  PREMPTED = 3;
+  PREMEPTING = 3;
 }
 
-message AutoscalerNode {
+// Presents a node that has (previously) been allocated
+// by the autoscaler. Unlike the pending node, allocated
+// node has node_id assigned.
+// Note the node might be terminated (DEAD), and it 
+// will be garbage collected by the autoscaler after
+// a timeout (default 30 minutes).
+message AllocatedNode {
   bytes node_id = 1;
   AutoscalerNodeStates node_state = 2;
-  string description = 4;
+  string description = 3;
+  string node_type = 4;
 }
 
-message PendingNode {
+// Represents a node that autoscaler
+// has decided to upscale but pending.
+message PendingUpscaleNode {
   string node_type = 1;
-  uint64 pending_count = 2;
-  uint64 sent_count = 3;
+  int64_t num_pending = 2;
+  int64_t num_bootstraping = 3;
 }
 
-message AutoscalerDecision {
-  oneof possible_autoscaler_decisions {
-    // Information about actions taken on nodes.
-    AutoscalerNode autoscaler_node = 1;
-    // Feedback about whether a resource request was infeasible.
-    ResourceRequest infeasible_request_data = 2;
-    // The unfinished requests in the autoscaler. Ray will only use this
-    // information for observability.
-    PendingNode pending_node = 3;
-  }
-}
-
-
-// ============= Batched approach =======================
+// ============= Snapshot based Autoscaling Service API =======================
 //
-// Option 1 (recommended): Autoscaler periodically calls to
-// two snapshot/batch APIs, GetBatchSchedulingStatus
-// and ReportAutoscalerDecisions. 
-// The GetBatchSchedulingStatus will return a snapshot
+// Autoscaler periodically calls to
+// two snapshot APIs, GetClusterResourceState
+// and ReportAutoscalingState. 
+// The GetClusterResourceState will return a snapshot
 // of Ray state that Autoscaler interested, along with
 // the snapshot_id (version).
 //
@@ -104,74 +107,45 @@ message AutoscalerDecision {
 // based on the latest Ray state, and also change its
 // state based on the information from node provider.
 // Autoscaler will periodically report its state to GCS
-// through ReportAutoscalerDecisions API.
+// through ReportAutoscalingState API.
 
-message ReportBatchAutoscalerDecisionsReply {}
+message ReportAutoscalingStateReply {}
 
-message ReportBatchAutoscalerDecisionsRequest {
-  bytes scheduling_state_id = 1;
-  // For the same secheduling state id, the
-  // autoscaler state might be different. i.e.
-  // pending node started, or some node terminated.
-  // Thus it worths to report a separate autoscaler_sequence_no
-  // for GCS to tell the staleness of the response.
-  int64_t autoscaler_sequence_no = 2;
-  repeated AutoscalerDecision decisions = 3;
+message ReportAutoscalingStateRequest {
+  int64_t last_seen_cluster_resource_state_version = 1;
+  // A monotonically increasing version identifies
+  // the state of autoscaler.
+  // Note: for the same cluster resource state, the
+  // autoscaler state might be different, since
+  // the autoscaler's state could also be updated by
+  // node provider.
+  int64_t autoscaler_state_version = 2;
+  repeated AllocatedNode allocated_nodes = 3;
+  repeated PendingUpscaleNode pending_nodes = 4;
+  repeated ResourceRequest infeasible_requests = 5;
 }
 
-message GetBatchSchedulingStatusReply {
-  bytes scheduling_state_id = 1;
-  repeated NodeStatus node_states = 2;
+message GetClusterResourceStateReply {
+  // an monotonically increasing version of the cluster resources.
+  int64_t cluster_resource_state_version = 1;
+  repeated NodeResourceState node_resource_states = 2;
   repeated ResourceRequest resource_requests = 3;
   repeated OnDemandResourceRequest on_demand_resource_requests = 4;
 }
 
-message GetBatchSchedulingStatusRequest {
-  // The last seen scheduling state id. The default value is reserved for if a
+message GetClusterResourceStateRequest {
+  // The last seen cluster resource state version. The default value is reserved for if a
   // previous scheduling state has never been seen.
-  bytes last_seen_scheduling_state_id = 01;
+  int64_t last_seen_cluster_resource_state_version = 1;
 }
 
-service BatchAutoscalerService {
-  rpc GetBatchSchedulingStatus(GetBatchSchedulingStatusRequest) returns GetBatchSchedulingStatusReply;
-  rpc ReportAutoscalerDecisions(ReportBatchAutoscalerDecisionsRequest) returns ReportBatchAutoscalerDecisionsReply;
+service AutoscalerStateService {
+  rpc GetClusterResourceState(GetClusterResourceStateRequest) returns GetClusterResourceStateReply;
+  rpc ReportAutoscalingState(ReportAutoscalingStateRequest) returns ReportAutoscalingStateReply;
 }
-
-// // ================ Streaming approach ================
-// // Option 2 (future): This is the streaming/delta update version of
-// // Option 1. Semantically it should be identical to option1, just
-// // that we allow Autoscaler/GCS to report delta update through 
-// // a stream.
-
-// message ReportBatchAutoscalerDecisionsStreamReply {}
-
-// message ReportAutoscalerDecisionsStreamPacket {
-//   bytes scheduling_state_id = 1;
-//   AutoscalerDecision decision = 2;
-// }
-
-// message GetStreamSchedulingStatusPacket{
-//   bytes scheduling_state_id = 1;
-//   oneof update_type {
-//      NodeStatus node_states = 2;
-//      ResourceRequest resource_requests = 3;
-//      OnDemandResourceRequest on_demand_resource_requests = 4;
-//   }
-// }
-
-// message GetStreamSchedulingStatusRequest {
-//   // The last seen scheduling state id. The default value is reserved for if a
-//   // previous scheduling state has never been seen.
-//   bytes last_seen_scheduling_state_id = 01;
-// }
-
-
-// service StreamAutoscalerService {
-//   rpc GetBatchSchedulingStatus(GetStreamSchedulingStatusRequest) returns (stream GetStreamSchedulingStatusPacket);
-//   rpc ReportAutoscalerDecisionsStream(stream ReportAutoscalerDecisionsStreamPacket) returns ReportBatchAutoscalerDecisionsStreamReply;
-// }
 
 // ============= Metrics =================
+// A metric service. Don't review for now.
 
 message EmitMetricRequest {
   string metric_name = 2;
