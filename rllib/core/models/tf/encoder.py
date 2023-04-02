@@ -15,9 +15,9 @@ from ray.rllib.core.models.configs import (
 )
 from ray.rllib.core.models.tf.base import TfModel
 from ray.rllib.core.models.tf.primitives import TfMLP, TfCNN
-from ray.rllib.models.specs.specs_base import Spec
-from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.specs_tf import TfTensorSpec
+from ray.rllib.core.models.specs.specs_base import Spec
+from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.core.models.specs.specs_tf import TfTensorSpec
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -62,7 +62,7 @@ class TfMLPEncoder(Encoder, TfModel):
         )
 
     @override(Model)
-    def _forward(self, inputs: NestedDict) -> NestedDict:
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
         return NestedDict(
             {
                 ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
@@ -99,7 +99,7 @@ class TfCNNEncoder(TfModel, Encoder):
         self.net = tf.keras.Sequential(layers)
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Union[Spec, None]:
         return SpecDict(
             {
                 SampleBatch.OBS: TfTensorSpec(
@@ -114,7 +114,7 @@ class TfCNNEncoder(TfModel, Encoder):
         )
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Union[Spec, None]:
         return SpecDict(
             {
                 ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),
@@ -123,11 +123,11 @@ class TfCNNEncoder(TfModel, Encoder):
         )
 
     @override(Model)
-    def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
         return NestedDict(
             {
-                ENCODER_OUT: self.net(input_dict[SampleBatch.OBS]),
-                STATE_OUT: input_dict[STATE_IN],
+                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
+                STATE_OUT: inputs[STATE_IN],
             }
         )
 

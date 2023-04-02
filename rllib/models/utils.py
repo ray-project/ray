@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Callable, Optional, Union
 
 from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict

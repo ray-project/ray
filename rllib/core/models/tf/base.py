@@ -8,11 +8,9 @@ from ray.rllib.core.models.base import (
     ModelConfig,
     _raise_not_decorated_exception,
 )
-from ray.rllib.models.specs.checker import (
+from ray.rllib.core.models.specs.checker import (
     check_input_specs,
     check_output_specs,
-)
-from ray.rllib.models.specs.checker import (
     is_input_decorated,
     is_output_decorated,
 )

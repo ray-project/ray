@@ -4,11 +4,11 @@ from typing import List, Optional, Tuple, Union
 
 from ray.rllib import SampleBatch
 from ray.rllib.core.models.specs.specs_base import Spec
+from ray.rllib.core.models.specs.checker import convert_to_canonical_format
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.core.models.specs.checker import convert_to_canonical_format
 from ray.rllib.utils.typing import TensorType
 
 # Top level keys that unify model i/o.

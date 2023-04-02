@@ -8,7 +8,6 @@ from ray.rllib.core.models.base import (
     ModelConfig,
     _raise_not_decorated_exception,
 )
-from ray.rllib.core.models.torch.primitives import nn
 from ray.rllib.core.models.specs.checker import (
     is_input_decorated,
     is_output_decorated,
@@ -16,8 +15,11 @@ from ray.rllib.core.models.specs.checker import (
     check_output_specs,
 )
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
+
+torch, nn = try_import_torch()
 
 
 class TorchModel(nn.Module, Model, abc.ABC):
@@ -107,8 +109,9 @@ class TorchModel(nn.Module, Model, abc.ABC):
 
     @override(Model)
     def _set_to_dummy_weights(self, value_sequence=(-0.02, -0.01, 0.01, 0.02)):
-        trainable_weights = filter(lambda p: p.requires_grad, self.parameters())
-        non_trainable_weights = filter(lambda p: not p.requires_grad, self.parameters())
+        trainable_weights = [p for p in self.parameters() if p.requires_grad]
+        non_trainable_weights = [p for p in self.parameters() if not p.requires_grad]
         for i, w in enumerate(trainable_weights + non_trainable_weights):
             fill_val = value_sequence[i % len(value_sequence)]
-            w.fill_(fill_val)
+            with torch.no_grad():
+                w.fill_(fill_val)

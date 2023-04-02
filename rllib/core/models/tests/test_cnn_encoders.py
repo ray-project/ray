@@ -18,7 +18,7 @@ class TestCNNEncoders(unittest.TestCase):
     def test_cnn_encoders(self):
         """Tests building CNN encoders properly and checks for correct architecture."""
 
-        # Input dims supported by RLlib via get_filter_config().
+        # Loop through different combinations of hyperparameters.
         inputs_dimss = [
             [480, 640, 3],
             [480, 640, 1],
@@ -34,15 +34,10 @@ class TestCNNEncoders(unittest.TestCase):
             [42, 42, 1],
             [10, 10, 3],
         ]
-
         cnn_activations = [None, "linear", "relu"]
-
         cnn_use_layernorms = [False, True]
-
         output_dimss = [[1], [100]]
-
         output_activations = cnn_activations
-
         use_biases = [False, True]
 
         for permutation in itertools.product(
@@ -101,8 +96,7 @@ class TestCNNEncoders(unittest.TestCase):
 
                 # Pass a B=1 observation through the model.
                 if fw == "tf2":
-                    #obs = tf.fill([1] + inputs_dims, random_fill_input_value)
-                    obs = tf.random.uniform([1] + inputs_dims)
+                    obs = tf.fill([1] + inputs_dims, random_fill_input_value)
                     seq_lens = tf.Variable([1])
                 else:
                     obs = torch.full([1] + inputs_dims, random_fill_input_value)
@@ -132,15 +126,25 @@ class TestCNNEncoders(unittest.TestCase):
                 # Store the number of parameters for this framework's net.
                 param_counts[fw] = model.get_num_parameters()
                 # Store the fixed-weights-net outputs for this framework's net.
-                output_values[fw] = comparable_outputs.numpy()
+                if fw == "tf2":
+                    output_values[fw] = comparable_outputs[ENCODER_OUT].numpy()
+                else:
+                    output_values[fw] = comparable_outputs[ENCODER_OUT].detach().numpy()
 
                 self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims[0]))
                 self.assertEqual(outputs[STATE_OUT], None)
 
             # Compare number of trainable and non-trainable params between all
             # frameworks.
-            self.assertTrue(np.all(c == param_counts["tf2"] for c in param_counts.values()))
-            self.assertTrue(np.all(v == output_values["tf2"] for v in output_values.values()))
+            self.assertTrue(
+                np.all([c == param_counts["tf2"] for c in param_counts.values()])
+            )
+            # Compare dummy outputs by exact values given that all nets received the
+            # same input and all nets have the same (dummy) weight values.
+            self.assertTrue(np.all([
+                np.allclose(v, output_values["tf2"], rtol=0.001)
+                for v in output_values.values()
+            ]))
 
 
 if __name__ == "__main__":

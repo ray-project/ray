@@ -43,9 +43,9 @@ class TfMLP(tf.keras.Model):
         assert input_dim > 0
 
         layers = []
-
-        # input = tf.keras.layers.Dense(input_dim, activation=activation)
+        # Input layer.
         layers.append(tf.keras.Input(shape=(input_dim,)))
+
         for i in range(len(hidden_layer_dims)):
             # Dense layer with activation (or w/o in case we use LayerNorm, in which
             # case the activation is applied after the layer normalization step).
@@ -62,7 +62,7 @@ class TfMLP(tf.keras.Model):
             )
             # Add LayerNorm and activation.
             if hidden_layer_use_layernorm:
-                layers.append(tf.keras.layers.LayerNormalization())
+                layers.append(tf.keras.layers.LayerNormalization(epsilon=1e-5))
                 layers.append(tf.keras.layers.Activation(hidden_layer_activation))
 
         if output_dim is not None:
@@ -113,6 +113,8 @@ class TfCNN(tf.keras.Model):
         cnn_activation = get_activation_fn(cnn_activation, framework="tf2")
 
         layers = []
+        # Input layer.
+        layers.append(tf.keras.layers.Input(shape=input_dims))
 
         for num_filters, kernel_size, strides in cnn_filter_specifiers:
             layers.append(
@@ -126,7 +128,7 @@ class TfCNN(tf.keras.Model):
                 )
             )
             if cnn_use_layernorm:
-                layers.append(tf.keras.layers.LayerNormalization(axis=[-3, -2, -1]))
+                layers.append(tf.keras.layers.LayerNormalization(axis=[-3, -2, -1], epsilon=1e-5))
                 layers.append(tf.keras.layers.Activation(cnn_activation))
 
         # Create the cnn that potentially includes a flattened layer

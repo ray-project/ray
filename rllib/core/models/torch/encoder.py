@@ -133,11 +133,11 @@ class TorchCNNEncoder(TorchModel, Encoder):
         )
 
     @override(Model)
-    def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
         return NestedDict(
             {
-                ENCODER_OUT: self.net(input_dict[SampleBatch.OBS]),
-                STATE_OUT: input_dict[STATE_IN],
+                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
+                STATE_OUT: inputs[STATE_IN],
             }
         )
 
