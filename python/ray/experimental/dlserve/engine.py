@@ -33,7 +33,9 @@ class Config:
 
 
 class ExecutionEngine:
-    """A stage replica engine represents a physical replica in the pipeline stage."""
+    """A stage replica engine represents a physical replica in the pipeline stage.
+    It follows a precomputed schedule to schedule until reconfigured.
+    """
 
     def __init__(self, schedule: Schedule, config: Config):
         self.input_queue = deque()
