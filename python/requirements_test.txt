@@ -82,9 +82,15 @@ pytest-forked==1.4.0
 # For dataset tests
 polars==0.14.21
 
+# Dependencies from requirements.txt that are pinned
+# in library requirements
+protobuf==3.19.6
+typer==0.6.1
+uvicorn==0.16.0
+rich==12.0.1
+
 # Some packages have downstream dependencies that we have to specify here to resolve conflicts.
 # Feel free to add (or remove!) packages here liberally.
-protobuf==3.19.6
 tensorboardX==2.4.1
 starlette==0.17.1
 h11==0.12.0
