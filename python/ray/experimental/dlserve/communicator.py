@@ -3,6 +3,19 @@ from abc import ABC
 import torch
 
 
+class _FullfiledFuture:
+    """A future that is already fullfilled."""
+
+    def is_completed(self):
+        return True
+
+    def wait(self):
+        pass
+
+
+FULLFILLED_FUTURE = _FullfiledFuture()
+
+
 class Communicator(ABC):
     """Provides MPI style communication primitives."""
 
@@ -28,15 +41,17 @@ class TorchBasedCommunicator(Communicator):
 
     def send(self, tensor: torch.Tensor, dest_rank: int, async_op: bool = False):
         if async_op:
-            torch.distributed.isend(tensor, dest_rank)
+            return torch.distributed.isend(tensor, dest_rank)
         else:
             torch.distributed.send(tensor, dest_rank)
+            return FULLFILLED_FUTURE
 
     def recv(self, tensor, src_rank, async_op: bool = False):
         if async_op:
-            torch.distributed.irecv(tensor, src_rank)
+            return torch.distributed.irecv(tensor, src_rank)
         else:
             torch.distributed.recv(tensor, src_rank)
+            return FULLFILLED_FUTURE
 
     def reconfigure(word_size: int, rank: int):
         pass

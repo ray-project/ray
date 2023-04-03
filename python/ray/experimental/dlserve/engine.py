@@ -1,7 +1,7 @@
 from abc import ABC
 from collections import deque
 from threading import Lock, Thread
-from typing import Any
+from typing import Any, Callable
 
 import torch
 from ray.experimental.dlserve.communicator import TorchBasedCommunicator
@@ -52,12 +52,14 @@ class Config:
         input_tensor_shape: Any,
         input_tensor_dtype: torch.type,
         device_name: str,
+        model_builder: Callable[[], torch.nn.Module],
     ) -> None:
         self.world_size = world_size
         self.rank = rank
         self.input_tensor_shape = input_tensor_shape
         self.input_tensor_dtype = input_tensor_dtype
         self.device_name = device_name
+        self.model_builder = model_builder
 
 
 class ExecutionEngine:
@@ -70,13 +72,14 @@ class ExecutionEngine:
         self.execution_lock = Lock()
         self.stop = False
         self.config = config
-        self.initialize_config(config)
+        self._initialize_config(config)
 
-    def initialize_config(self, config: Config):
+    def _initialize_config(self, config: Config):
         self.input_tensor_shape = config.input_tensor_shape
         self.input_tensor_dtype = config.input_tensor_dtype
         self.cuda = torch.device(config.device_name)
         self.communicator = TorchBasedCommunicator(config.world_size, config.rank)
+        self.model = config.model_builder().to(self.cuda)
 
     def start(self):
         """Start the engine execution"""
@@ -110,6 +113,7 @@ class ExecutionEngine:
                 self.communicator.send(
                     self.output_queue.popleft(), instruction.dest_rank, async_op=True
                 )
+                # TODO: do we need to wait for the future to be completed?
         elif isinstance(instruction, Receive):
             for _ in range(instruction.count):
                 tensor = torch.new_empty(
@@ -117,8 +121,12 @@ class ExecutionEngine:
                     dtype=self.input_tensor_dtype,
                     device=self.cuda,
                 )
-                self.communicator.recv(tensor, instruction.src_rank, async_op=True)
-                self.input_queue.append(tensor)
+                future = self.communicator.recv(
+                    tensor, instruction.src_rank, async_op=True
+                )
+                self.input_queue.append((tensor, future))
         if isinstance(instruction, Forward):
             for _ in range(instruction.count):
-                self.output_queue.append(self.model.forward(self.input_qeuue.popleft()))
+                tensor, future = self.input_queue.popleft()
+                future.wait()
+                self.output_queue.append(self.model.forward(tensor))
