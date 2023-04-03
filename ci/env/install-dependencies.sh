@@ -528,8 +528,7 @@ install_dependencies() {
   install_thirdparty_packages
 }
 
-#install_dependencies "$@"
-install_pip_packages "$@"
+install_dependencies "$@"
 
 # Pop caller's shell options (quietly)
 { set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null
