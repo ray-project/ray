@@ -7,9 +7,7 @@ import sys
 import threading
 import time
 from ray._private.state_api_test_utils import (
-    PidActor,
     verify_failed_task,
-    verify_tasks_running_or_terminated,
 )
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
@@ -289,40 +287,6 @@ def test_failed_task_runtime_env_setup(shutdown_only):
         name="task-runtime-env-failed",
         error_type="RUNTIME_ENV_SETUP_FAILED",
         error_message="ResolvePackageNotFound",
-    )
-
-
-def test_fault_tolerance_parent_failed(shutdown_only):
-    ray.init(num_cpus=4, _system_config=_SYSTEM_CONFIG)
-
-    # Each parent task spins off 2 child task, where each child spins off
-    # 1 grand_child task.
-    NUM_CHILD = 2
-    pid_actor = PidActor.remote()
-
-    @ray.remote
-    def grand_child(i, pid_actor):
-        ray.get(pid_actor.report_pid.remote(f"grand_child_{i}", os.getpid()))
-        time.sleep(999)
-
-    @ray.remote
-    def child(i, pid_actor):
-        ray.get(pid_actor.report_pid.remote(f"child_{i}", os.getpid()))
-        ray.get(grand_child.options(name=f"grand_child_{i}").remote(i, pid_actor))
-
-    @ray.remote
-    def parent(pid_actor):
-        ray.get(pid_actor.report_pid.remote("parent", os.getpid(), "FAILED"))
-        for i in range(NUM_CHILD):
-            child.options(name=f"child_{i}").remote(i, pid_actor)
-        raise ValueError("parent task is expected to fail")
-
-    parent.remote(pid_actor)
-    # Wait for all tasks to report pids: 5 =2 children + 2 grand_children + 1 parent
-    wait_for_condition(lambda: len(ray.get(pid_actor.get_pids.remote())) == 5)
-    wait_for_condition(
-        verify_tasks_running_or_terminated,
-        task_pids=ray.get(pid_actor.get_pids.remote()),
     )
 
 

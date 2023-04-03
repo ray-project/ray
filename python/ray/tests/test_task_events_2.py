@@ -581,7 +581,8 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
 
     def tasks_in_execution_graph_all_running():
         running_tasks = [
-            task["name"] for task in list_tasks(filters=[("state", "=", "RUNNING")])
+            task["name"]
+            for task in list_tasks(filters=[("state", "=", "RUNNING")], limit=10000)
         ]
         for task in tasks:
             assert task in running_tasks, f"Task {task} not running"

@@ -28,6 +28,56 @@ void GcsTaskManager::Stop() {
   }
 }
 
+bool GcsTaskManager::GcsTaskManagerStorage::ShouldMarkChildrenFailed(
+    const TaskID &child_task, const TaskID &parent_task, int64_t *failed_ts) const {
+  const auto &child_task_event = GetLatestTaskEvent(child_task);
+  if (!child_task_event.has_value()) {
+    return false;
+  }
+  // TODO(rickyx): Fix detached actor
+  // // A detached actor task should not be affected by its parent's tasks.
+  // if (child_task_event->has_task_info() &&
+  //     child_task_event->task_info().is_detached_actor()) {
+  //   return false;
+  // }
+
+  // If the child task has already finished/failed, we don't need to mark it
+  if (child_task_event->has_state_updates() &&
+      (child_task_event->state_updates().failed_ts() != 0 ||
+       child_task_event->state_updates().finished_ts() != 0)) {
+    return false;
+  }
+
+  if (parent_task.IsNil()) {
+    return false;
+  }
+
+  const auto &parent_task_event = GetLatestTaskEvent(parent_task);
+
+  if (!parent_task_event.has_value()) {
+    return false;
+  }
+
+  // Check if parent has failed.
+  if (!parent_task_event->has_state_updates()) {
+    return false;
+  }
+
+  auto state_updates = parent_task_event->state_updates();
+  if (state_updates.failed_ts() == 0) {
+    return false;
+  }
+
+  // Only if parent failed with worker died or actor died, we should mark the
+  // children tasks failed since the children tasks' workers are killed.
+  if (state_updates.error_info().error_type() == rpc::ErrorType::WORKER_DIED ||
+      state_updates.error_info().error_type() == rpc::ErrorType::ACTOR_DIED) {
+    *failed_ts = state_updates.failed_ts();
+    return true;
+  }
+  return false;
+}
+
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents()
     const {
   std::vector<rpc::TaskEvents> ret;
@@ -215,56 +265,6 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskFailedOnAncestorFailed(
   error_info.set_error_message(error_message.str());
 
   MarkTaskAttemptFailed(*latest_task_attempt, failed_ts, error_info);
-}
-
-bool GcsTaskManager::GcsTaskManagerStorage::ShouldMarkChildrenFailed(
-    const TaskID &child_task, const TaskID &parent_task, int64_t *failed_ts) const {
-  const auto &child_task_event = GetLatestTaskEvent(child_task);
-  if (!child_task_event.has_value()) {
-    return false;
-  }
-  // TODO(rickyx): Fix detached actor
-  // // A detached actor task should not be affected by its parent's tasks.
-  // if (child_task_event->has_task_info() &&
-  //     child_task_event->task_info().is_detached_actor()) {
-  //   return false;
-  // }
-
-  // If the child task has already finished/failed, we don't need to mark it
-  if (child_task_event->has_state_updates() &&
-      (child_task_event->state_updates().failed_ts() != 0 ||
-       child_task_event->state_updates().finished_ts() != 0)) {
-    return false;
-  }
-
-  if (parent_task.IsNil()) {
-    return false;
-  }
-
-  const auto &parent_task_event = GetLatestTaskEvent(parent_task);
-
-  if (!parent_task_event.has_value()) {
-    return false;
-  }
-
-  // Check if parent has failed.
-  if (!parent_task_event->has_state_updates()) {
-    return false;
-  }
-
-  auto state_updates = parent_task_event->state_updates();
-  if (state_updates.failed_ts() == 0) {
-    return false;
-  }
-
-  // Only if parent failed with worker died or actor died, we should mark the
-  // children tasks failed since the children tasks' workers are killed.
-  if (state_updates.error_info().error_type() == rpc::ErrorType::WORKER_DIED ||
-      state_updates.error_info().error_type() == rpc::ErrorType::ACTOR_DIED) {
-    *failed_ts = state_updates.failed_ts();
-    return true;
-  }
-  return false;
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailedIfNeeded(

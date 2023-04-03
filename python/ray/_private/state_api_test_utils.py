@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from copy import deepcopy
 from collections import defaultdict
 import concurrent.futures
@@ -389,7 +390,6 @@ def verify_tasks_running_or_terminated(task_pids: Dict[str, Tuple[int, Optional[
     """
     import psutil
 
-    print(task_pids)
     for task_name, pid_and_state in task_pids.items():
         tasks = list_tasks(detail=True, filters=[("name", "=", task_name)])
         assert len(tasks) > 0, (
@@ -399,9 +399,14 @@ def verify_tasks_running_or_terminated(task_pids: Dict[str, Tuple[int, Optional[
         task = tasks[0]
         pid, expected_state = pid_and_state
 
-        print(
-            f"p:{psutil.Process(pid).name() if psutil.pid_exists(pid) else task['name']}"
-        )
+        # If it's windows, we don't have a way to check if the process is actually
+        # running the task since the process name is just python.exe, rather than
+        # the actual task name.
+        if sys.platform == "win32":
+            if expected_state is not None:
+                assert task["state"] == expected_state, task
+            continue
+
         if psutil.pid_exists(pid) and task_name in psutil.Process(pid).name():
             assert (
                 "ray::IDLE" not in task["name"]
