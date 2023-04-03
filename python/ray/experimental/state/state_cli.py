@@ -31,7 +31,6 @@ from ray.experimental.state.common import (
     resource_to_schema,
 )
 from ray.experimental.state.exception import RayStateApiException
-from ray.experimental.state.util import HumanReadable
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
