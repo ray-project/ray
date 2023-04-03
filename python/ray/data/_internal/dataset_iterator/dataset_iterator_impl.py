@@ -30,7 +30,7 @@ class DatasetIteratorImpl(DatasetIterator):
         ds = self._base_dataset
         block_iterator, stats, executor = ds._plan.execute_to_iterator()
         ds._current_executor = executor
-        return block_iterator, stats
+        return block_iterator, stats, False
 
     def stats(self) -> str:
         return self._base_dataset.stats()

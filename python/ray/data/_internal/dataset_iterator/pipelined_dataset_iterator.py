@@ -35,11 +35,20 @@ class PipelinedDatasetIterator(DatasetIterator):
     ]:
         epoch_pipeline = self._get_next_dataset()
 
+        if epoch_pipeline._first_dataset is not None:
+            blocks_owned_by_consumer = (
+                epoch_pipeline._first_dataset._plan.execute()._owned_by_consumer
+            )
+        else:
+            blocks_owned_by_consumer = (
+                epoch_pipeline._peek()._plan.execute()._owned_by_consumer
+            )
+
         def block_iter():
             for ds in epoch_pipeline.iter_datasets():
                 yield from ds._plan.execute().iter_blocks_with_metadata()
 
-        return block_iter(), None
+        return block_iter(), None, blocks_owned_by_consumer
 
     def iter_batches(
         self,

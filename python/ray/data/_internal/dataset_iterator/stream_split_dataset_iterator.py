@@ -100,7 +100,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
                     )
                     yield block_ref
 
-        return gen_blocks(), None
+        return gen_blocks(), None, False
 
     def stats(self) -> str:
         """Implements DatasetIterator."""
