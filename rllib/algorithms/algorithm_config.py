@@ -606,6 +606,9 @@ class AlgorithmConfig(_Config):
             elif key.startswith("evaluation_"):
                 eval_call[key] = value
             elif key == "exploration_config":
+                if config_dict.get("_enable_rl_module_api", False):
+                    self.exploration_config = value
+                    continue
                 if isinstance(value, dict) and "type" in value:
                     value["type"] = deserialize_type(value["type"])
                 self.exploration(exploration_config=value)
@@ -855,7 +858,7 @@ class AlgorithmConfig(_Config):
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
             # enable RLModule API and connectors if env variable is set
             # (to be used in unittesting)
-            self._enable_rl_module_api = True
+            self.rl_module(_enable_rl_module_api=True)
             self.enable_connectors = True
 
         # Explore parameter cannot be False with RLModule API enabled.
