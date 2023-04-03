@@ -632,21 +632,6 @@ class JobManager:
         if job_supervisor is not None:
             ray.kill(job_supervisor, no_restart=True)
 
-    def _get_current_node_resource_key(self) -> str:
-        """Get the Ray resource key for current node.
-
-        It can be used for actor placement.
-        """
-        current_node_id = ray.get_runtime_context().get_node_id()
-        for node in ray.nodes():
-            if node["NodeID"] == current_node_id:
-                # Found the node.
-                for key in node["Resources"].keys():
-                    if key.startswith("node:"):
-                        return key
-        else:
-            raise ValueError("Cannot find the node dictionary for current node.")
-
     def _handle_supervisor_startup(self, job_id: str, result: Optional[Exception]):
         """Handle the result of starting a job supervisor actor.
 
