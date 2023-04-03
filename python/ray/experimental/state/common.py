@@ -1,3 +1,4 @@
+import datetime
 import logging
 import sys
 from abc import ABC
@@ -197,7 +198,30 @@ class StateSchema(ABC):
     # Returns {"column_a", "column_b"}
     s.columns()
     ```
+
+    In addition, the schema also provides a humanify abstract method to
+    convert the state object into something human readable, ready for printing.
+
+    Subclasses should override this method, providing logic to convert its own fields
+    to something human readable, packaged and returned in a dict.
+
+    Each field that wants to be humanified should include a 'format_fn' key in its
+    metadata dictionary.
     """
+
+    @classmethod
+    def humanify(cls, state: dict) -> dict:
+        """Return a human readable state object ready for printing. Subclasses should override this method."""
+        return state
+
+    @classmethod
+    def is_valid_state(cls, state: dict) -> bool:
+        """Checks to make sure state has all keys in the current schema class."""
+        cols = cls.list_columns()
+        for col in cols:
+            if col not in state:
+                return False
+        return True
 
     @classmethod
     def list_columns(cls) -> List[str]:
@@ -506,6 +530,15 @@ class ClusterEventState(StateSchema):
 class TaskState(StateSchema):
     """Task State"""
 
+    @classmethod
+    def humanify(cls, state: dict) -> dict:
+        if not cls.is_valid_state(state):
+            return state  # return the original state
+        for f in fields(cls):
+            if f.metadata.get("format_fn") is not None:
+                state[f.name] = f.metadata["format_fn"](state[f.name])
+        return state
+
     #: The id of the task.
     task_id: str = state_column(filterable=True)
     #: The attempt (retry) number of the task.
@@ -561,7 +594,11 @@ class TaskState(StateSchema):
     #: The time when the task is created. A Unix timestamp in ms.
     creation_time_ms: Optional[int] = state_column(detail=True, filterable=False)
     #: The time when the task starts to run. A Unix timestamp in ms.
-    start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    start_time_ms: Optional[int] = state_column(
+        detail=True,
+        filterable=False,
+        metadata={"format_fn": lambda x: datetime.datetime.fromtimestamp(x / 1000)},
+    )
     #: The time when the task is finished or failed. A Unix timestamp in ms.
     end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
 
