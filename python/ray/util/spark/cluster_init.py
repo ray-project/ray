@@ -115,9 +115,9 @@ class RayClusterOnSpark:
                     __import__("ray.dashboard.optional_deps")
                 except ModuleNotFoundError:
                     _logger.warning(
-                        "Dependencies to launch the optional dashboard API ",
-                        "server cannot be found. They can be installed with ",
-                        "pip install ray[default].",
+                        "Dependencies to launch the optional dashboard API "
+                        "server cannot be found. They can be installed with "
+                        "pip install ray[default]."
                     )
 
         except Exception:
