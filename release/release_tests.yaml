@@ -4496,6 +4496,11 @@
       cluster:
         cluster_env: shuffle/100tb_shuffle_app_config_gce.yaml
         cluster_compute: shuffle/100tb_shuffle_compute_gce.yaml
+      run:
+        timeout: 28800
+        script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=50000 --partition-size=1e9 --shuffle
+        wait_for_nodes:
+          num_nodes: 100
 
 ##################
 # Core Chaos tests
