@@ -31,7 +31,7 @@ class TorchMLP(nn.Module):
         *,
         input_dim: int,
         hidden_layer_dims: List[int],
-        hidden_layer_activation: Union[str, Callable] = "linear",
+        hidden_layer_activation: Union[str, Callable] = "relu",
         hidden_layer_use_layernorm: bool = False,
         output_dim: Optional[int] = None,
         output_activation: Union[str, Callable] = "linear",

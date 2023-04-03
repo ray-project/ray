@@ -44,24 +44,22 @@ class TorchFreeLogStdMLPHead(TorchModel, nn.Module):
     """An MLPHead that implements floating log stds for Gaussian distributions."""
 
     def __init__(self, config: FreeLogStdMLPHeadConfig) -> None:
-        mlp_head_config = config.mlp_head_config
-
         nn.Module.__init__(self)
-        TorchModel.__init__(self, mlp_head_config)
+        TorchModel.__init__(self, config)
 
         assert (
-            mlp_head_config.output_dims[0] % 2 == 0
+            config.output_dims[0] % 2 == 0
         ), "output_dims must be even for free std!"
-        self._half_output_dim = mlp_head_config.output_dims[0] // 2
+        self._half_output_dim = config.output_dims[0] // 2
 
         self.net = TorchMLP(
-            input_dim=mlp_head_config.input_dims[0],
-            hidden_layer_dims=mlp_head_config.hidden_layer_dims,
-            hidden_layer_activation=mlp_head_config.hidden_layer_activation,
-            hidden_layer_use_layernorm=mlp_head_config.hidden_layer_use_layernorm,
+            input_dim=config.input_dims[0],
+            hidden_layer_dims=config.hidden_layer_dims,
+            hidden_layer_activation=config.hidden_layer_activation,
+            hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             output_dim=self._half_output_dim,
-            output_activation=mlp_head_config.output_activation,
-            use_bias=mlp_head_config.use_bias,
+            output_activation=config.output_activation,
+            use_bias=config.use_bias,
         )
 
         self.log_std = torch.nn.Parameter(

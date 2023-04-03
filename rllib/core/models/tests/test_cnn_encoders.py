@@ -61,7 +61,7 @@ class TestCNNEncoders(unittest.TestCase):
 
             print(
                 f"Testing ...\n"
-                f"inputs_dims: {inputs_dims}\n"
+                f"input_dims: {inputs_dims}\n"
                 f"cnn_filter_specifiers: {filter_specifiers}\n"
                 f"cnn_activation: {cnn_activation}\n"
                 f"cnn_use_layernorm: {cnn_use_layernorm}\n"

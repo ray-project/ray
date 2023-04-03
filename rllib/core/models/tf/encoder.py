@@ -32,13 +32,14 @@ class TfMLPEncoder(Encoder, TfModel):
         TfModel.__init__(self, config)
         Encoder.__init__(self, config)
 
-        # Create the neural networks
+        # Create the neural network.
         self.net = TfMLP(
             input_dim=config.input_dims[0],
             hidden_layer_dims=config.hidden_layer_dims,
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             output_dim=config.output_dims[0],
+            output_activation=config.output_activation,
             use_bias=config.use_bias,
         )
 

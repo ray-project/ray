@@ -47,7 +47,7 @@ class TestMLPEncoders(unittest.TestCase):
 
             print(
                 f"Testing ...\n"
-                f"inputs_dim: {inputs_dims}\n"
+                f"input_dims: {inputs_dims}\n"
                 f"hidden_layer_dims: {hidden_layer_dims}\n"
                 f"hidden_layer_activation: {hidden_layer_activation}\n"
                 f"hidden_layer_use_layernorm: {hidden_layer_use_layernorm}\n"
