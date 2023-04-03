@@ -419,3 +419,5 @@ RAY_ALLOWED_CACHED_PORTS = {
     "dashboard_agent_listen_port",
     "gcs_server_port",  # the `port` option for gcs port.
 }
+
+RAY_ENABLE_RECORD_TASK_LOGGING = env_bool("RAY_ENABLE_RECORD_TASK_LOGGING", False)
