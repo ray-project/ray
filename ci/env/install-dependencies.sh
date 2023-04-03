@@ -326,6 +326,11 @@ compile_ray_requirements() {
     "${WORKSPACE_DIR}/python/requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements_test.txt" \
     "${WORKSPACE_DIR}/python/requirements_linters.txt"
+    
+  if [ -z "${BUILDKITE-}" ]; then
+    rm -rf /artifact-mount/requirements*.txt
+    cp -f "${WORKSPACE_DIR}/python/requirements_pinned.txt" /artifact-mount/
+  fi
 }
 
 install_pip_packages() {

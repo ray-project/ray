@@ -88,6 +88,7 @@ protobuf==3.19.6
 typer==0.6.1
 uvicorn==0.16.0
 rich==12.0.1
+importlib-metadata>=5.0.0,<7
 
 # Some packages have downstream dependencies that we have to specify here to resolve conflicts.
 # Feel free to add (or remove!) packages here liberally.
@@ -96,8 +97,6 @@ starlette==0.17.1
 h11==0.12.0
 markdown-it-py==1.1.0
 attrs==21.4.0
-importlib-metadata==4.13.0
-
 
 # For test_basic.py::test_omp_threads_set
 threadpoolctl==3.1.0
