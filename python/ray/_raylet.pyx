@@ -1529,10 +1529,12 @@ cdef class EmptyProfileEvent:
     def __exit__(self, *args):
         pass
 
+
 class RetryGcsConnectionError(Exception):
     "If this error is raised, we should try to reconnect to GCS."
     def __init__(self, exception):
         self.exception = exception
+
 
 def _auto_reconnect(f):
     @wraps(f)
@@ -1557,6 +1559,7 @@ def _auto_reconnect(f):
                 remaining_retry -= 1
                 continue
     return wrapper
+
 
 cdef class GcsClient:
     """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
@@ -1618,7 +1621,8 @@ cdef class GcsClient:
 
         for c_key in keys:
             c_keys.push_back(c_key)
-        self._check_error(self.inner.get().InternalKVMultiGet(ns, c_keys, timeout_ms, c_result))
+        self._check_error(self.inner.get().InternalKVMultiGet(
+            ns, c_keys, timeout_ms, c_result))
 
         result = {}
         it = c_result.begin()
@@ -1630,22 +1634,26 @@ cdef class GcsClient:
         return result
 
     @_auto_reconnect
-    def internal_kv_put(self, bytes key, bytes value, overwrite: bool = False, namespace=None, timeout=None):
+    def internal_kv_put(self, bytes key, bytes value, overwrite: bool = False,
+                        namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             int num_added
-        self._check_error(self.inner.get().InternalKVPut(ns, key, value, overwrite, timeout_ms, num_added))
+        self._check_error(self.inner.get().InternalKVPut(
+            ns, key, value, overwrite, timeout_ms, num_added))
 
         return num_added
 
     @_auto_reconnect
-    def internal_kv_del(self, bytes key, c_bool del_by_prefix, namespace=None, timeout=None):
+    def internal_kv_del(self, bytes key, c_bool del_by_prefix,
+                        namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             int num_deleted
-        self._check_error(self.inner.get().InternalKVDel(ns, key, del_by_prefix, timeout_ms, num_deleted))
+        self._check_error(self.inner.get().InternalKVDel(
+            ns, key, del_by_prefix, timeout_ms, num_deleted))
 
         return num_deleted
 
@@ -1657,7 +1665,8 @@ cdef class GcsClient:
             c_vector[c_string] keys
             c_string key
 
-        self._check_error(self.inner.get().InternalKVKeys(ns, prefix, timeout_ms, keys))
+        self._check_error(self.inner.get().InternalKVKeys(
+            ns, prefix, timeout_ms, keys))
 
         result = []
 
@@ -1672,14 +1681,16 @@ cdef class GcsClient:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_bool exists
-        self._check_error(self.inner.get().InternalKVExists(ns, key, timeout_ms, exists))
+        self._check_error(self.inner.get().InternalKVExists(
+            ns, key, timeout_ms, exists))
         return exists
 
     @_auto_reconnect
     def pin_runtime_env_uri(self, str uri, int expiration_s, timeout=None):
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-        self._check_error(self.inner.get().PinRuntimeEnvUri(uri.encode(), expiration_s, timeout_ms))
+        self._check_error(self.inner.get().PinRuntimeEnvUri(
+            uri.encode(), expiration_s, timeout_ms))
 
     @_auto_reconnect
     def get_all_node_info(self, timeout=None):
@@ -1710,7 +1721,7 @@ cdef class GcsClient:
             result[job_info.job_id()] = {
                 "is_dead": job_info.is_dead(),
                 "config": {
-                    "ray_namespace" : job_info.config().ray_namespace().decode()
+                    "ray_namespace": job_info.config().ray_namespace().decode()
                 }
             }
         return result

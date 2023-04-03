@@ -317,16 +317,31 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
 
         CRayStatus Connect()
 
-        CRayStatus InternalKVGet(const c_string &ns, const c_string &key, int64_t timeout_ms, c_string &value)
-        CRayStatus InternalKVMultiGet(const c_string &ns, const c_vector[c_string] &keys, int64_t timeout_ms, unordered_map[c_string, c_string] &result);
-        CRayStatus InternalKVPut(const c_string &ns, const c_string &key, const c_string &value, c_bool overwrite, int64_t timeout_ms, c_bool &added);
-        CRayStatus InternalKVDel(const c_string &ns, const c_string &key, c_bool del_by_prefix, int64_t timeout_ms, int &deleted_num);
-        CRayStatus InternalKVKeys(const c_string &ns, const c_string &prefix, int64_t timeout_ms, c_vector[c_string] &value);
-        CRayStatus InternalKVExists(const c_string &ns, const c_string &key, int64_t timeout_ms, c_bool &exists);
+        CRayStatus InternalKVGet(
+            const c_string &ns, const c_string &key,
+            int64_t timeout_ms, c_string &value)
+        CRayStatus InternalKVMultiGet(
+            const c_string &ns, const c_vector[c_string] &keys,
+            int64_t timeout_ms, unordered_map[c_string, c_string] &result)
+        CRayStatus InternalKVPut(
+            const c_string &ns, const c_string &key, const c_string &value,
+            c_bool overwrite, int64_t timeout_ms, c_bool &added)
+        CRayStatus InternalKVDel(
+            const c_string &ns, const c_string &key, c_bool del_by_prefix,
+            int64_t timeout_ms, int &deleted_num)
+        CRayStatus InternalKVKeys(
+            const c_string &ns, const c_string &prefix,
+            int64_t timeout_ms, c_vector[c_string] &value)
+        CRayStatus InternalKVExists(
+            const c_string &ns, const c_string &key,
+            int64_t timeout_ms, c_bool &exists)
 
-        CRayStatus PinRuntimeEnvUri(const c_string &uri, int expiration_s, int64_t timeout_ms);
-        CRayStatus GetAllNodeInfo(int64_t timeout_ms, c_vector[CGcsNodeInfo]& result);
-        CRayStatus GetAllJobInfo(int64_t timeout_ms, c_vector[CJobTableData]& result);
+        CRayStatus PinRuntimeEnvUri(
+            const c_string &uri, int expiration_s, int64_t timeout_ms)
+        CRayStatus GetAllNodeInfo(
+            int64_t timeout_ms, c_vector[CGcsNodeInfo]& result)
+        CRayStatus GetAllJobInfo(
+            int64_t timeout_ms, c_vector[CJobTableData]& result)
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
