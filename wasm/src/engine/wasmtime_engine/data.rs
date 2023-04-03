@@ -15,15 +15,15 @@
 use crate::engine::{WasmType, WasmValue};
 use wasmtime::{Val, ValRaw, ValType};
 
-pub fn to_wasmtime_raw_value(val: &WasmValue) -> wasmtime::ValRaw {
+pub fn to_wasmtime_raw_value(val: &WasmValue) -> ValRaw {
     match val {
-        WasmValue::I32(v) => wasmtime::ValRaw::i32(*v),
-        WasmValue::I64(v) => wasmtime::ValRaw::i64(*v),
-        WasmValue::F32(v) => wasmtime::ValRaw::f32(*v),
-        WasmValue::F64(v) => wasmtime::ValRaw::f64(*v),
-        WasmValue::V128(v) => wasmtime::ValRaw::v128(*v),
-        WasmValue::ExternRef(v) => wasmtime::ValRaw::externref(*v),
-        WasmValue::FuncRef(v) => wasmtime::ValRaw::funcref(*v),
+        WasmValue::I32(v) => ValRaw::i32(*v),
+        WasmValue::I64(v) => ValRaw::i64(*v),
+        WasmValue::F32(v) => ValRaw::f32(*v),
+        WasmValue::F64(v) => ValRaw::f64(*v),
+        WasmValue::V128(v) => ValRaw::v128(*v),
+        WasmValue::ExternRef(v) => ValRaw::externref(*v),
+        WasmValue::FuncRef(v) => ValRaw::funcref(*v),
     }
 }
 
@@ -38,7 +38,7 @@ pub fn to_wasmtime_value(val: &WasmValue) -> Val {
     }
 }
 
-pub fn from_wasmtime_raw_value(ty: &WasmType, val: &wasmtime::ValRaw) -> WasmValue {
+pub fn from_wasmtime_raw_value(ty: &WasmType, val: &ValRaw) -> WasmValue {
     match ty {
         WasmType::I32 => WasmValue::I32(val.get_i32()),
         WasmType::I64 => WasmValue::I64(val.get_i64()),

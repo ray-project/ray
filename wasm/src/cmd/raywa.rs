@@ -18,7 +18,7 @@ use wasm_on_ray::util;
 
 use tracing::info;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::Parser;
 use tracing_subscriber;
 
@@ -84,16 +84,13 @@ impl RayWaContextFactory {
     }
 }
 
-async fn run_binary(args: &util::LauncherParameters) -> Result<()>  {
+async fn run_binary(args: &util::LauncherParameters) -> Result<()> {
     let ctx = RayWaContextFactory::create_context(&args);
 
     // check if wasm file exists
     let wasm_file = std::path::Path::new(&args.file);
     if !wasm_file.exists() {
-        return Err(anyhow::anyhow!(
-            "wasm file \"{}\" not found",
-            wasm_file.display()
-        ));
+        return Err(anyhow!("wasm file \"{}\" not found", wasm_file.display()));
     }
     // if file found, read it and compile it
     let data = std::fs::read(wasm_file)?;
@@ -107,10 +104,13 @@ async fn run_binary(args: &util::LauncherParameters) -> Result<()>  {
 
     info!("wasm module instantiated");
 
-    ctx.engine.execute("sandbox", "instance", "_start", vec![]);
+    match ctx.engine.execute("sandbox", "instance", "_start", vec![]) {
+        Ok(_) => info!("wasm module executed"),
+        Err(e) => info!("wasm module execution failed: {}", e),
+    }
 
     // for now, we just shutdown the runtime
-    ctx.runtime.do_shutdown();
+    ctx.runtime.do_shutdown().unwrap();
     Ok(())
 }
 
@@ -122,7 +122,13 @@ async fn run_text(args: &util::LauncherParameters) -> Result<()> {
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
     let args = util::LauncherParameters::parse();
-    
+
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default_panic(info);
+        std::process::exit(1);
+    }));
+
     // load data
     match args.file_format {
         util::WasmFileFormat::WASM => run_binary(&args).await?,

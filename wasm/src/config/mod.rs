@@ -290,7 +290,9 @@ impl ConfigInternal {
         if self.logs_dir.is_empty() {
             self.logs_dir = format!("{}/logs", self.session_dir);
         }
-        info!("Ray session directory is set to {}", self.session_dir);
-        info!("Ray logs directory is set to {}", self.logs_dir);
+        info!(
+            "Ray session_dir: \"{}\", logs_dir: \"{}\".",
+            self.session_dir, self.logs_dir
+        );
     }
 }

@@ -115,12 +115,19 @@ message CppFunctionDescriptor {
   string class_name = 3;
 }
 
+/// Function descriptor for WASM.
+message WasmFunctionDescriptor {
+  string module_name = 1;
+  string function_name = 2;
+}
+
 // A union wrapper for various function descriptor types.
 message FunctionDescriptor {
   oneof function_descriptor {
     JavaFunctionDescriptor java_function_descriptor = 1;
     PythonFunctionDescriptor python_function_descriptor = 2;
     CppFunctionDescriptor cpp_function_descriptor = 3;
+    WasmFunctionDescriptor wasm_function_descriptor = 4;
   }
 }
 

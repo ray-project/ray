@@ -58,6 +58,7 @@ rust_library(
         "@wasm_crate_index//:tracing-subscriber",
         "@wasm_crate_index//:uuid",
         "@wasm_crate_index//:wasmtime",
+        "@wasm_crate_index//:libc",
     ],
 )
 
@@ -95,6 +96,7 @@ rust_dylib_library(
         "@wasm_crate_index//:tracing-subscriber",
         "@wasm_crate_index//:uuid",
         "@wasm_crate_index//:wasmtime",
+        "@wasm_crate_index//:libc",
     ],
 )
 
@@ -161,6 +163,7 @@ rust_binary(
         "@wasm_crate_index//:tokio",
         "@wasm_crate_index//:tracing",
         "@wasm_crate_index//:tracing-subscriber",
+        "@wasm_crate_index//:libc",
     ],
 )
 

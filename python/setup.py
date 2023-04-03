@@ -730,7 +730,8 @@ def api_main(program, *args):
     result = None
 
     if parsed_args.command == "build":
-        kwargs = dict(build_python=False, build_java=False, build_cpp=False, build_wasm=False)
+        kwargs = dict(build_python=False, build_java=False, build_cpp=False,
+                      build_wasm=False)
         for lang in parsed_args.language.split(","):
             if "python" in lang:
                 kwargs.update(build_python=True)

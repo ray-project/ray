@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::Result;
-use wasmtime::{Val, ValRaw};
-
 mod wasmedge_engine;
 mod wasmtime_engine;
 
+use std::any::Any;
+
 use crate::engine::wasmedge_engine::WasmEdgeEngine;
 use crate::engine::wasmtime_engine::WasmtimeEngine;
-use crate::runtime::{Hostcall, Hostcalls};
+
+use anyhow::{anyhow, Result};
 
 pub trait WasmEngine {
     fn init(&self) -> Result<()>;
@@ -97,4 +97,58 @@ pub enum WasmType {
     V128,
     FuncRef,
     ExternRef,
+}
+
+#[derive(Clone)]
+pub struct Hostcalls {
+    pub module_name: String,
+    pub functions: Vec<Hostcall>,
+}
+
+#[derive(Clone)]
+pub struct Hostcall {
+    pub name: String,
+    pub params: Vec<WasmType>,
+    pub results: Vec<WasmType>,
+    pub func: fn(&mut dyn WasmContext, &[WasmValue]) -> Result<Vec<WasmValue>>,
+}
+
+impl Hostcalls {
+    pub fn new(module_name: &str) -> Self {
+        Hostcalls {
+            module_name: module_name.to_string(),
+            functions: Vec::new(),
+        }
+    }
+
+    pub fn register_function(
+        &mut self,
+        name: &str,
+        params: Vec<WasmType>,
+        results: Vec<WasmType>,
+        func: fn(&mut dyn WasmContext, &[WasmValue]) -> Result<Vec<WasmValue>>,
+    ) -> Result<()> {
+        if self.functions.iter().any(|f| f.name == name) {
+            return Err(anyhow!("Hostcall {} already exists", name));
+        }
+        self.functions.push(Hostcall {
+            name: name.to_string(),
+            params,
+            results,
+            func,
+        });
+        Ok(())
+    }
+
+    pub fn unregister_function(&mut self, name: &str) -> Result<()> {
+        if self.functions.iter().any(|f| f.name == name) {
+            return Err(anyhow!("Hostcall {} does not exist", name));
+        }
+        self.functions.retain(|f| f.name != name);
+        Ok(())
+    }
+}
+
+pub trait WasmContext {
+    fn get_memory_region(&mut self, off: usize, len: usize) -> Result<&[u8]>;
 }

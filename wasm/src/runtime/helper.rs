@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use anyhow::{anyhow, Result};
+use core::panic;
+use libc::c_void;
 use prost::Message;
 use std::ffi::CStr;
 use std::process::Command;
@@ -27,11 +30,12 @@ use crate::util::get_node_ip_address;
 pub struct ClusterHelper {}
 
 impl ClusterHelper {
-    pub fn do_init() {
+    pub fn do_init() -> Result<()> {
         // TODO: nothing to do for now
+        Ok(())
     }
 
-    pub fn ray_start(internal_cfg: &mut ConfigInternal) {
+    pub fn ray_start(internal_cfg: &mut ConfigInternal) -> Result<()> {
         let mut bootstrap_ip = internal_cfg.bootstrap_ip.clone();
         let bootstrap_port = internal_cfg.bootstrap_port;
         let worker_type = internal_cfg.worker_type;
@@ -42,12 +46,17 @@ impl ClusterHelper {
 
             let redis_password = internal_cfg.redis_password.clone();
             let head_args = internal_cfg.head_args.clone();
-            ClusterHelper::ray_node_start(
+            match ClusterHelper::ray_node_start(
                 &bootstrap_ip,
                 bootstrap_port,
                 &redis_password,
                 &head_args,
-            );
+            ) {
+                Ok(_) => {}
+                Err(e) => {
+                    panic!("ray start failed: {}", e);
+                }
+            }
         }
 
         let bootstrap_address = format!("{}:{}", bootstrap_ip, bootstrap_port);
@@ -60,22 +69,14 @@ impl ClusterHelper {
             }
         }
 
-        ClusterHelper::create_global_state_accessor(bootstrap_address.as_str());
+        let gcs = GlobalStateAccessor::new(bootstrap_address.as_str());
 
         // get worker type
         let worker_type = internal_cfg.worker_type;
         if worker_type == WorkerType::Driver {
-            let mut buffer: [u8; 1024] = [0; 1024];
-            let mut buffer_size: u32 = buffer.len() as u32;
-            unsafe {
-                GlobalStateAccessor_GetNodeToConnectForDriver(
-                    node_ip.as_ptr(),
-                    buffer.as_mut_ptr(),
-                    &mut buffer_size,
-                );
-            }
+            let node_info = gcs.get_node_to_connect_for_driver(node_ip.as_str());
             // protobuf decode using prost
-            let node_info = GcsNodeInfo::decode(&buffer[..buffer_size as usize]).unwrap();
+            let node_info = GcsNodeInfo::decode(node_info.as_slice()).unwrap();
 
             // set config internal variables
             info!("node info: {:?}", node_info);
@@ -85,21 +86,10 @@ impl ClusterHelper {
         }
 
         if worker_type == WorkerType::Driver {
-            let mut buffer: [u8; 1024] = [0; 1024];
-            let mut buffer_size: u32 = buffer.len() as u32;
             let ns = "session".to_string();
             let key = "session_dir".to_string();
-            unsafe {
-                // call GlobalStateAccessor_GetInternalKV
-                GlobalStateAccessor_GetInternalKV(
-                    ns.as_ptr(),
-                    ns.len() as u32,
-                    key.as_ptr(),
-                    key.len() as u32,
-                    buffer.as_mut_ptr(),
-                    &mut buffer_size,
-                );
-            }
+            let buffer = gcs.get_internal_kv(ns.as_str(), key.as_str());
+
             // convert c string buffer to rust string
             let session_dir = unsafe {
                 CStr::from_ptr(buffer.as_ptr() as *const i8)
@@ -111,19 +101,22 @@ impl ClusterHelper {
         }
 
         ClusterHelper::prepare_and_initialize_core_worker(
+            &gcs,
             internal_cfg,
             bootstrap_address.as_str(),
             node_ip.as_str(),
         );
 
         // TODO: rest of the startup code
+        Ok(())
     }
 
-    pub fn ray_stop(internal_cfg: &ConfigInternal) {
+    pub fn ray_stop(internal_cfg: &ConfigInternal) -> Result<()> {
         unsafe { CoreWorkerProcess_Shutdown() };
         if internal_cfg.bootstrap_ip.is_empty() {
-            ClusterHelper::ray_node_stop();
+            ClusterHelper::ray_node_stop()?;
         }
+        Ok(())
     }
 
     pub fn ray_node_start(
@@ -131,7 +124,7 @@ impl ClusterHelper {
         port: i32,
         redis_password: &str,
         head_args: &Vec<String>,
-    ) {
+    ) -> Result<()> {
         // get the ray start command
         let mut cmd = Command::new("ray");
         let child = cmd
@@ -149,20 +142,22 @@ impl ClusterHelper {
             }
         }
         // info! the whole command line
-        info!("ray start command: {:?}", child);
+        debug!("ray start command: {:?}", child);
 
         // wait for process to finish
         let output = child.output().expect("failed to execute process");
         if output.status.success() {
-            info!("ray start command executed successfully");
+            debug!("ray start command executed successfully");
         } else {
-            error!("ray start command failed");
+            return Err(anyhow!("ray start command failed"));
         }
         println!("stdout: \n{}", String::from_utf8_lossy(&output.stdout));
         println!("stderr: \n{}", String::from_utf8_lossy(&output.stderr));
+        Ok(())
     }
 
-    pub fn prepare_and_initialize_core_worker(
+    fn prepare_and_initialize_core_worker(
+        gcs: &GlobalStateAccessor,
         internal_cfg: &ConfigInternal,
         bootstrap_address: &str,
         node_ip: &str,
@@ -170,7 +165,7 @@ impl ClusterHelper {
         unsafe {
             CoreWorkerProcessOptions_UpdateGcsClientOptions(
                 bootstrap_address.as_ptr(),
-                bootstrap_address.len() as u32,
+                bootstrap_address.len(),
             );
         }
         // get worker type and set it to the config
@@ -187,18 +182,12 @@ impl ClusterHelper {
         // set store socket
         let store_socket = internal_cfg.plasma_store_socket_name.clone();
         unsafe {
-            CoreWorkerProcessOptions_SetStoreSocket(
-                store_socket.as_ptr(),
-                store_socket.len() as u32,
-            );
+            CoreWorkerProcessOptions_SetStoreSocket(store_socket.as_ptr(), store_socket.len());
         }
         // set raylet socket
         let raylet_socket = internal_cfg.raylet_socket_name.clone();
         unsafe {
-            CoreWorkerProcessOptions_SetRayletSocket(
-                raylet_socket.as_ptr(),
-                raylet_socket.len() as u32,
-            );
+            CoreWorkerProcessOptions_SetRayletSocket(raylet_socket.as_ptr(), raylet_socket.len());
         }
         let worker_type = internal_cfg.worker_type;
         if worker_type == WorkerType::Driver {
@@ -212,18 +201,13 @@ impl ClusterHelper {
                 }
                 // set core worker process options job id
                 unsafe {
-                    CoreWorkerProcessOptions_SetJobID_Hex(
-                        job_id_hex.as_ptr(),
-                        job_id_hex.len() as u32,
-                    );
+                    CoreWorkerProcessOptions_SetJobID_Hex(job_id_hex.as_ptr(), job_id_hex.len());
                 }
             } else {
                 // get next job id and save in a buffer
-                let mut buffer: [u8; 1024] = [0; 1024];
-                let mut buffer_size: u32 = buffer.len() as u32;
+                let buffer = gcs.get_next_job_id_hex();
                 unsafe {
-                    GlobalStateAccessor_GetNextJobID_Hex(buffer.as_mut_ptr(), &mut buffer_size);
-                    CoreWorkerProcessOptions_SetJobID_Hex(buffer.as_ptr(), buffer_size as u32);
+                    CoreWorkerProcessOptions_SetJobID_Hex(buffer.as_ptr(), buffer.len());
                 }
             }
         }
@@ -234,19 +218,16 @@ impl ClusterHelper {
         // set log dir
         let log_dir = internal_cfg.logs_dir.clone();
         unsafe {
-            CoreWorkerProcessOptions_SetLogDir(log_dir.as_ptr(), log_dir.len() as u32);
+            CoreWorkerProcessOptions_SetLogDir(log_dir.as_ptr(), log_dir.len());
             CoreWorkerProcessOptions_SetInstallFailureSignalHandler(true);
-            CoreWorkerProcessOptions_SetNodeIpAddress(node_ip.as_ptr(), node_ip.len() as u32);
+            CoreWorkerProcessOptions_SetNodeIpAddress(node_ip.as_ptr(), node_ip.len());
         }
         // set node manager port
         let node_manager_port = internal_cfg.node_manager_port;
         unsafe {
             CoreWorkerProcessOptions_SetNodeManagerPort(node_manager_port);
-            CoreWorkerProcessOptions_SetRayletIpAddress(node_ip.as_ptr(), node_ip.len() as u32);
-            CoreWorkerProcessOptions_SetDriverName(
-                "wasm_worker".as_ptr(),
-                "wasm_worker".len() as u32,
-            );
+            CoreWorkerProcessOptions_SetRayletIpAddress(node_ip.as_ptr(), node_ip.len());
+            CoreWorkerProcessOptions_SetDriverName("wasm_worker".as_ptr(), "wasm_worker".len());
             CoreWorkerProcessOptions_SetMetricsAgentPort(-1);
         }
         // set callback
@@ -313,42 +294,35 @@ impl ClusterHelper {
         unsafe {
             CoreWorkerProcessOptions_SetSerializedJobConfig(
                 job_config_buffer.as_ptr(),
-                job_config_buffer.len() as u32,
+                job_config_buffer.len(),
             );
         }
 
         let res = unsafe { crate::runtime::core::core_worker::CoreWorkerProcess_Initialize() };
         if res == 0 {
-            info!("core worker process initialized successfully");
+            debug!("core worker process initialized successfully");
         } else {
             error!("core worker process initialization failed");
         }
     }
 
-    pub fn ray_node_stop() {
+    pub fn ray_node_stop() -> Result<()> {
         // get the ray stop command
         let mut cmd = Command::new("ray");
         let child = cmd.arg("stop");
 
         // info! print the command line
-        info!("ray stop command: {:?}", child);
+        debug!("ray stop command: {:?}", child);
 
         let output = child.output().expect("failed to execute process");
         if output.status.success() {
             info!("ray stop command executed successfully");
         } else {
-            error!("ray stop command failed");
+            return Err(anyhow!(
+                "ray stop command failed with error: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
-    }
-
-    pub fn create_global_state_accessor(gcs_address: &str) {
-        info!(
-            "initializing global state accessor using gcs address: {}",
-            gcs_address
-        );
-        unsafe {
-            GcsClientOptions_Update(gcs_address.as_ptr(), gcs_address.len() as u32);
-            GlobalStateAccessor_Init();
-        };
+        Ok(())
     }
 }

@@ -51,7 +51,13 @@ class RayFunction {
 
   Language GetLanguage() const { return language_; }
 
+  void SetLanguage(Language language) { language_ = language; }
+
   const FunctionDescriptor &GetFunctionDescriptor() const { return function_descriptor_; }
+
+  void SetFunctionDescriptor(const FunctionDescriptor &function_descriptor) {
+    function_descriptor_ = function_descriptor;
+  }
 
  private:
   Language language_;

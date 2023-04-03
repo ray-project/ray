@@ -14,19 +14,50 @@
 
 use crate::config::ConfigInternal;
 use crate::config::RunMode;
-use crate::engine::{WasmEngine, WasmType, WasmValue};
+use crate::engine::WasmEngine;
 use crate::runtime::common_proto::WorkerType;
 use crate::runtime::ClusterHelper;
-use anyhow::Result;
-use tracing::info;
+use crate::runtime::ObjectStore;
+use crate::runtime::TaskExecutor;
+use crate::util::get_node_ip_address;
 
-use crate::runtime::{new_ray_hostcalls, Hostcalls};
+use anyhow::Result;
+use libc::c_void;
+use tracing::{debug, info};
+
+use crate::engine::Hostcalls;
+use crate::runtime::new_ray_hostcalls;
+
+use super::core::global_state_accessor::GlobalStateAccessor;
+use super::CallOptions;
+use super::ObjectID;
+use super::ObjectStoreFactory;
+use super::ObjectStoreType;
+use super::RemoteFunctionHolder;
+use super::TaskArg;
+use super::TaskSubmitter;
+use super::TaskSubmitterFactory;
 
 pub trait RayRuntime {
     fn do_init(&mut self) -> Result<()>;
     fn do_shutdown(&mut self) -> Result<()>;
-    fn launch_task_loop(&mut self) -> Result<()>;
+    fn launch_task_loop(&self) -> Result<()>;
     fn setup_hostcalls(&mut self, engine: &mut Box<dyn WasmEngine>) -> Result<()>;
+
+    // object get/put related
+    fn put_with_id(&self, data: Vec<u8>, obj_id: ObjectID) -> Result<()>;
+    fn put(&self, data: Vec<u8>) -> Result<ObjectID>;
+    fn get(&self, obj_id: ObjectID) -> Result<Vec<u8>>;
+    fn gets(&self, obj_ids: Vec<ObjectID>) -> Result<Vec<Vec<u8>>>;
+
+    // task submit related
+    fn wait(&self, obj_ids: Vec<ObjectID>, num_obj: i32, timeout: i32) -> Result<Vec<Vec<u8>>>;
+    fn call(
+        &mut self,
+        remote_func_holder: RemoteFunctionHolder,
+        args: Vec<Box<dyn TaskArg>>,
+        task_options: CallOptions,
+    ) -> Result<Vec<u8>>;
 }
 
 pub struct RayRuntimeFactory {}
@@ -44,13 +75,28 @@ impl RayRuntimeFactory {
 pub struct RayRuntimeClusterMode {
     internal_cfg: ConfigInternal,
     hostcalls: Hostcalls,
+    object_store: Box<dyn ObjectStore>,
+    task_executor: TaskExecutor,
+    task_submitter: Box<dyn TaskSubmitter>,
+    global_state_accessor: GlobalStateAccessor,
 }
 
 impl RayRuntimeClusterMode {
     pub fn new(internal_cfg: ConfigInternal) -> Self {
+        let mut bootstrap_address = internal_cfg.bootstrap_ip.clone();
+        if bootstrap_address.is_empty() {
+            bootstrap_address = get_node_ip_address("");
+        }
+        bootstrap_address = format!("{}:{}", bootstrap_address, internal_cfg.bootstrap_port);
         Self {
-            internal_cfg: internal_cfg,
+            internal_cfg,
             hostcalls: new_ray_hostcalls(),
+            object_store: ObjectStoreFactory::create_object_store(ObjectStoreType::Native),
+            task_executor: TaskExecutor::new(),
+            task_submitter: TaskSubmitterFactory::create_task_submitter(
+                super::TaskSubmitterType::Native,
+            ),
+            global_state_accessor: GlobalStateAccessor::new(bootstrap_address.as_str()),
         }
     }
 
@@ -61,9 +107,9 @@ impl RayRuntimeClusterMode {
 
 impl RayRuntime for RayRuntimeClusterMode {
     fn do_init(&mut self) -> Result<()> {
-        ClusterHelper::do_init();
-        ClusterHelper::ray_start(&mut self.internal_cfg);
-        info!("native ray runtime started.");
+        ClusterHelper::do_init()?;
+        ClusterHelper::ray_start(&mut self.internal_cfg)?;
+        debug!("native ray runtime started.");
 
         // check worker type from config internal
         match self.internal_cfg.worker_type {
@@ -78,32 +124,63 @@ impl RayRuntime for RayRuntimeClusterMode {
     }
 
     fn do_shutdown(&mut self) -> Result<()> {
-        ClusterHelper::ray_stop(&self.internal_cfg);
+        ClusterHelper::ray_stop(&self.internal_cfg)?;
         Ok(())
     }
 
-    fn launch_task_loop(&mut self) -> Result<()> {
-        info!("launch_task_loop");
+    fn launch_task_loop(&self) -> Result<()> {
+        debug!("launch_task_loop");
         unsafe {
             crate::runtime::core::core_worker::CoreWorkerProcess_RunTaskExecutionLoop();
         }
-        info!("launch_task_loop done");
+        debug!("launch_task_loop done");
         Ok(())
     }
 
     fn setup_hostcalls(&mut self, engine: &mut Box<dyn WasmEngine>) -> Result<()> {
         engine.register_hostcalls(&mut self.hostcalls)
     }
+
+    fn put_with_id(&self, data: Vec<u8>, obj_id: ObjectID) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn put(&self, data: Vec<u8>) -> Result<ObjectID> {
+        unimplemented!()
+    }
+
+    fn get(&self, obj_id: ObjectID) -> Result<Vec<u8>> {
+        unimplemented!()
+    }
+
+    fn gets(&self, obj_ids: Vec<ObjectID>) -> Result<Vec<Vec<u8>>> {
+        unimplemented!()
+    }
+
+    fn wait(&self, obj_ids: Vec<ObjectID>, num_obj: i32, timeout: i32) -> Result<Vec<Vec<u8>>> {
+        unimplemented!()
+    }
+
+    fn call(
+        &mut self,
+        remote_func_holder: RemoteFunctionHolder,
+        args: Vec<Box<dyn TaskArg>>,
+        task_options: CallOptions,
+    ) -> Result<Vec<u8>> {
+        unimplemented!()
+    }
 }
 
 pub struct RayRuntimeSingleProcessMode {
     internal_cfg: ConfigInternal,
+    hostcalls: Hostcalls,
 }
 
 impl RayRuntimeSingleProcessMode {
     pub fn new(internal_cfg: ConfigInternal) -> Self {
         Self {
-            internal_cfg: internal_cfg,
+            internal_cfg,
+            hostcalls: new_ray_hostcalls(),
         }
     }
 
@@ -131,11 +208,45 @@ impl RayRuntime for RayRuntimeSingleProcessMode {
         Ok(())
     }
 
-    fn launch_task_loop(&mut self) -> Result<()> {
-        Err(anyhow::anyhow!("not implemented"))
+    fn launch_task_loop(&self) -> Result<()> {
+        info!("launch_task_loop");
+        unsafe {
+            crate::runtime::core::core_worker::CoreWorkerProcess_RunTaskExecutionLoop();
+        }
+        info!("launch_task_loop done");
+        Ok(())
     }
 
     fn setup_hostcalls(&mut self, engine: &mut Box<dyn WasmEngine>) -> Result<()> {
-        Err(anyhow::anyhow!("not implemented"))
+        engine.register_hostcalls(&mut self.hostcalls)
+    }
+
+    fn put_with_id(&self, data: Vec<u8>, obj_id: ObjectID) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn put(&self, data: Vec<u8>) -> Result<ObjectID> {
+        unimplemented!()
+    }
+
+    fn get(&self, obj_id: ObjectID) -> Result<Vec<u8>> {
+        unimplemented!()
+    }
+
+    fn gets(&self, obj_ids: Vec<ObjectID>) -> Result<Vec<Vec<u8>>> {
+        unimplemented!()
+    }
+
+    fn wait(&self, obj_ids: Vec<ObjectID>, num_obj: i32, timeout: i32) -> Result<Vec<Vec<u8>>> {
+        unimplemented!()
+    }
+
+    fn call(
+        &mut self,
+        remote_func_holder: RemoteFunctionHolder,
+        args: Vec<Box<dyn TaskArg>>,
+        task_options: CallOptions,
+    ) -> Result<Vec<u8>> {
+        todo!()
     }
 }

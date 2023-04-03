@@ -11,8 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-use crate::engine::{WasmEngine, WasmInstance, WasmModule, WasmSandbox, WasmValue};
-use crate::runtime::{Hostcall, Hostcalls};
+use crate::engine::{Hostcalls, WasmEngine, WasmInstance, WasmModule, WasmSandbox, WasmValue};
 use anyhow::Result;
 
 // temp Val

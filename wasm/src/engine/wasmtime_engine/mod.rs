@@ -12,16 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engine::{WasmEngine, WasmInstance, WasmModule, WasmSandbox, WasmType, WasmValue};
-use crate::runtime::{Hostcall, Hostcalls};
-use anyhow::Result;
+use crate::engine::{
+    Hostcalls, WasmEngine, WasmInstance, WasmModule, WasmSandbox, WasmType, WasmValue,
+};
+use anyhow::{anyhow, Result};
 use std::collections::HashMap;
-use wasmtime::{Engine, FuncType, Instance, Linker, Module, Store, Val, ValRaw, ValType};
+use tracing::{debug, info};
+use wasmtime::{
+    AsContextMut, Caller, Engine, FuncType, Instance, Linker, Module, Store, Val, ValType,
+};
 
 mod data;
 use data::*;
 
-use super::wasmedge_engine;
+use super::WasmContext;
 
 pub struct WasmtimeEngine {
     engine: Engine,
@@ -136,52 +140,69 @@ impl WasmEngine for WasmtimeEngine {
                     .params
                     .iter()
                     .map(|p| wasmtime_type(p))
-                    .collect::<Vec<wasmtime::ValType>>(),
+                    .collect::<Vec<ValType>>(),
                 hostcall
                     .results
                     .iter()
                     .map(|r| wasmtime_type(r))
-                    .collect::<Vec<wasmtime::ValType>>(),
+                    .collect::<Vec<ValType>>(),
             );
             unsafe {
                 let module_name = hostcalls.module_name.clone();
                 let hostcall = hostcall.clone();
+                debug!(
+                    "Registered hostcall: {}, params# {} result# {}, func_type: {:?}",
+                    hostcall.name,
+                    hostcall.params.len(),
+                    hostcall.results.len(),
+                    ft
+                );
                 let res = self.linker.func_new_unchecked(
                     &module_name,
                     &hostcall.name,
                     ft,
-                    move |caller, args| -> Result<()> {
+                    move |mut caller, args| -> Result<()> {
                         // iterate params and convert them to WasmValue
-                        let mut index = 0;
                         let mut params = Vec::new();
-                        if args.len() < hostcall.params.len()
-                            || args.len() != hostcall.params.len() + hostcall.results.len()
+                        if args.len()
+                            != std::cmp::max(hostcall.params.len(), hostcall.results.len())
                         {
-                            return Err(anyhow::anyhow!("Not enough params"));
+                            return Err(anyhow!(
+                                "Invalid number of arguments. given {} vs expected {} + {}",
+                                args.len(),
+                                hostcall.params.len(),
+                                hostcall.results.len()
+                            ));
                         }
-                        for param in hostcall.params.iter() {
-                            params.push(from_wasmtime_raw_value(param, &args[index]));
-                            index += 1;
+                        for index in 0..hostcall.params.len() {
+                            params.push(from_wasmtime_raw_value(
+                                &hostcall.params[index],
+                                &args[index],
+                            ));
                         }
 
+                        let mut tmp_caller = caller;
+                        let mut ctx = WasmtimeContext {
+                            caller: &mut tmp_caller,
+                        };
+
                         // call hostcall
-                        let result = (hostcall.func)(&params);
+                        let result = (hostcall.func)(&mut ctx, &params);
                         if result.is_err() {
-                            return Err(anyhow::anyhow!("Failed to call hostcall"));
+                            return Err(anyhow!("Failed to call hostcall"));
                         }
 
                         let result = result.unwrap();
 
                         // iterate results and convert them to ValRaw
-                        for result_type in hostcall.results.iter() {
+                        for index in 0..hostcall.results.len() {
                             args[index] = to_wasmtime_raw_value(&result[index]);
-                            index += 1;
                         }
                         Ok(())
                     },
                 );
                 if res.is_err() {
-                    return Err(anyhow::anyhow!("Failed to register hostcall"));
+                    return Err(anyhow!("Failed to register hostcall"));
                 }
             }
         }
@@ -242,3 +263,24 @@ impl WasmtimeInstance {
 }
 
 impl WasmInstance for WasmtimeInstance {}
+
+pub struct WasmtimeContext<'a> {
+    caller: &'a mut Caller<'a, WasmtimeStoreData>,
+}
+
+impl WasmContext for WasmtimeContext<'_> {
+    fn get_memory_region(&mut self, off: usize, len: usize) -> Result<&[u8]> {
+        let memory = self
+            .caller
+            .get_export("memory")
+            .unwrap()
+            .into_memory()
+            .unwrap();
+        // check memory size
+        if memory.data_size(self.caller.as_context_mut()) < off + len {
+            return Err(anyhow!("Invalid memory access"));
+        }
+        let data = memory.data(self.caller.as_context_mut());
+        Ok(&data[off..off + len])
+    }
+}

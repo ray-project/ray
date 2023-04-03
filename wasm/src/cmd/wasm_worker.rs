@@ -20,7 +20,10 @@ use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber;
 
-async fn init(cfg: &runtime::RayConfig, args: &util::WorkerParameters) -> Result<Box<dyn RayRuntime>> {
+async fn init(
+    cfg: &runtime::RayConfig,
+    args: &util::WorkerParameters,
+) -> Result<Box<dyn RayRuntime>> {
     let mut internal_cfg = config::ConfigInternal::new();
 
     internal_cfg.init(&cfg, &args);
@@ -31,7 +34,7 @@ async fn init(cfg: &runtime::RayConfig, args: &util::WorkerParameters) -> Result
     Ok(runtime)
 }
 
-async fn run_task_loop(mut runtime: Box<dyn RayRuntime>) -> Result<()> {
+async fn run_task_loop(runtime: Box<dyn RayRuntime>) -> Result<()> {
     runtime.launch_task_loop().unwrap();
     Ok(())
 }
@@ -39,6 +42,11 @@ async fn run_task_loop(mut runtime: Box<dyn RayRuntime>) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default_panic(info);
+        std::process::exit(1);
+    }));
 
     let args = util::WorkerParameters::parse();
     let cfg = runtime::RayConfig::new();

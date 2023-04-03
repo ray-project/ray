@@ -18,11 +18,20 @@ use std::collections::HashMap;
 mod core;
 mod helper;
 mod hostcalls;
+mod id;
+mod obj_store;
 mod runtime;
+mod task_executor;
+mod task_submitter;
 
+pub use crate::runtime::core::*;
 pub use crate::runtime::helper::*;
 pub use crate::runtime::hostcalls::*;
+pub use crate::runtime::id::*;
+pub use crate::runtime::obj_store::*;
 pub use crate::runtime::runtime::*;
+pub use crate::runtime::task_executor::*;
+pub use crate::runtime::task_submitter::*;
 
 #[derive(PartialEq)]
 pub enum ActorLifetime {
