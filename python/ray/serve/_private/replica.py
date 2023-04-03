@@ -252,7 +252,7 @@ def create_replica_wrapper(name: str):
         async def get_metadata(
             self,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            # Wait for replica initialization finish
+            # Wait for replica initialization to finish
             await self.init_finish_event.wait()
             return self.replica.deployment_config, self.replica.version
 
