@@ -474,13 +474,18 @@ install_pip_packages() {
     eval "${pip_cmd}" -r "${file}"
     # pip_cmd+=" -r ${file}"
   done
+
+  pip_add=""
   for package in "${requirements_packages[@]}"; do
-    pip_cmd+=" ${package}"
+    pip_add+=" ${package}"
   done
 
-  # Run the pip command to install all collected requirements files
-  echo Running pip install: "$pip_cmd"
-  eval "${pip_cmd}"
+  if [ -n "${pip_add}" ]; then
+    pip_cmd+="$pip_add"
+    # Run the pip command to install all collected requirements files
+    echo Running pip install: "$pip_cmd"
+    eval "${pip_cmd}"
+  fi
 
   # Additional Tune dependency for Horovod.
   # This must be run last (i.e., torch cannot be re-installed after this)
