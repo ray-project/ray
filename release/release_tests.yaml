@@ -4344,8 +4344,6 @@
     timeout: 2400
     script: python iter_tensor_batches_benchmark.py --data-size-gb=10
 
-
-
 - name: iter_batches_benchmark_single_node
   group: data-tests
   working_dir: nightly_tests/dataset
