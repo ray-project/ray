@@ -320,15 +320,11 @@ compile_ray_requirements() {
   alias pip="python -m pip"
   pip install pip-tools
 
-  pip-compile --resolver=backtracking --no-annotate --no-header -q -o \
+  pip-compile --resolver=backtracking -q \
+     --pip-args --no-deps --strip-extras --no-annotate --no-header -q -o \
     "${WORKSPACE_DIR}/python/requirements_pinned.txt" \
     "${WORKSPACE_DIR}/python/requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/data_processing/requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/data_processing/requirements_dataset.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/requirements_rllib.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/requirements_train.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/requirements_tune.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/requirements_upstream.txt"
+    "${WORKSPACE_DIR}/python/requirements_test.txt"
 }
 
 install_pip_packages() {
@@ -431,7 +427,7 @@ install_pip_packages() {
   fi
 
   # Remove this entire section once Serve dependencies are fixed.
-  if [ "${MINIMAL_INSTALL-}" != 1 ] && [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
+  if [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
     # If CI has deemed that a different version of Torch
     # should be installed, then upgrade/downgrade to that specific version.
     if [ -n "${TORCH_VERSION-}" ]; then
