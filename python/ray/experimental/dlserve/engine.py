@@ -1,6 +1,8 @@
 from abc import ABC
 from collections import deque
+from typing import Any
 
+import torch
 from ray.experimental.dlserve.communicator import TorchBasedCommunicator
 
 
@@ -42,9 +44,19 @@ class Schedule(ABC):
 
 
 class Config:
-    def __init__(self, world_size: int, rank: int) -> None:
+    def __init__(
+        self,
+        world_size: int,
+        rank: int,
+        input_tensor_shape: Any,
+        input_tensor_dtype: torch.type,
+        device_name: str,
+    ) -> None:
         self.world_size = world_size
         self.rank = rank
+        self.input_tensor_shape = input_tensor_shape
+        self.input_tensor_dtype = input_tensor_dtype
+        self.device_name = device_name
 
 
 class ExecutionEngine:
@@ -55,13 +67,17 @@ class ExecutionEngine:
         self.output_queue = deque()
         self.schedule = schedule
         self.stop = False
+        self.config = config
         self.initialize_config(config)
 
     def initialize_config(self, config: Config):
+        self.input_tensor_shape = config.input_tensor_shape
+        self.input_tensor_dtype = config.input_tensor_dtype
+        self.cuda = torch.device(config.device_name)
         self.communicator = TorchBasedCommunicator(config.world_size, config.rank)
 
     def start(self):
-        """Execute the replica according to the schedule."""
+        """Start the engine execution"""
         pass
 
     def stop(self):
@@ -89,9 +105,13 @@ class ExecutionEngine:
                 )
         elif isinstance(instruction, Receive):
             for _ in range(instruction.count):
-                self.communicator.recv(
-                    self.output_queue.popleft(), instruction.src_rank
+                tensor = torch.new_empty(
+                    size=self.input_tensor_shape,
+                    dtype=self.input_tensor_dtype,
+                    device=self.cuda,
                 )
+                self.communicator.recv(tensor, instruction.src_rank)
+                self.input_queue.append(tensor)
         if isinstance(instruction, Forward):
             for _ in range(instruction.count):
                 self.output_queue.append(self.model.forward(self.input_qeuue.popleft()))
