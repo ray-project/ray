@@ -22,7 +22,6 @@ Built-in Exploration components
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    ~exploration.Exploration
    ~random.Random
@@ -68,8 +67,8 @@ Setting and getting states
 Scheduler API
 -------------
 
-Use a scheduler to set scheduled values for variables (in Python, PyTorch, or 
-TensorFlow) based on an (int64) timestep input. The computed values are usually float32 
+Use a scheduler to set scheduled values for variables (in Python, PyTorch, or
+TensorFlow) based on an (int64) timestep input. The computed values are usually float32
 types.
 
 
@@ -82,7 +81,6 @@ Built-in Scheduler components
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    ~schedule.Schedule
    ~constant_schedule.ConstantSchedule
@@ -157,7 +155,7 @@ Tensorflow utilities
 Torch utilities
 ~~~~~~~~~~~~~~~
 
-.. currentmodule:: ray.rllib.utils.torch_utils  
+.. currentmodule:: ray.rllib.utils.torch_utils
 
 
 .. autosummary::
@@ -179,6 +177,11 @@ Torch utilities
    ~warn_if_infinite_kl_divergence
    ~set_torch_seed
    ~softmax_cross_entropy_with_logits
+
+.. autosummary::
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
+
    ~Swish
 
 
