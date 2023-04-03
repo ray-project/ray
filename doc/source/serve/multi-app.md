@@ -153,7 +153,10 @@ The config submitted to the cluster describes the target state for Ray Serve. Co
 * To add an application, add a new entry under the `applications` field.
 * To delete an application, remove the corresponding entry under the `applications` field.
 * To update an application, modify the config options in the corresponding entry under the `applications` field.
-Note that the update behavior for each application when a config is resubmitted is the same as the old single-application behavior. For how an application reacts to different config changes, see [updating a Serve application](serve-in-production-updating).
+
+:::{note}
+The update behavior for each application when a config is resubmitted is the same as the old single-application behavior. For how an application reacts to different config changes, see [updating a Serve application](serve-in-production-updating).
+:::
 
 ## New Multi-Application Config
 
