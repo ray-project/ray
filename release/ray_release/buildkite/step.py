@@ -41,7 +41,6 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
                 "image": "rayproject/ray",
                 "propagate-environment": True,
                 "volumes": [
-                    "/dev/disk/by-id:/dev/disk/by-id",
                     "/var/lib/buildkite/builds:/var/lib/buildkite/builds",
                     "/usr/local/bin/buildkite-agent:/usr/local/bin/buildkite-agent",
                     f"{DEFAULT_ARTIFACTS_DIR_HOST}:{DEFAULT_ARTIFACTS_DIR_HOST}",
