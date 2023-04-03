@@ -32,7 +32,8 @@ RAY_UNIT_TEST = "RAY_UNIT_TEST" in os.environ
 
 # RAY_OVERRIDE_RESOURCES will prevent "num_cpus" working
 # when adding customized resource node to Cluster.
-del os.environ["RAY_OVERRIDE_RESOURCES"]
+if "RAY_OVERRIDE_RESOURCES" in os.environ:
+    del os.environ["RAY_OVERRIDE_RESOURCES"]
 
 
 def update_progress(result):
