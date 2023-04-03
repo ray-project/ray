@@ -76,7 +76,7 @@ DEFAULT_NEW_EXECUTION_BACKEND = bool(
 # Whether to use the streaming executor. This only has an effect if the new execution
 # backend is enabled.
 DEFAULT_USE_STREAMING_EXECUTOR = bool(
-    int(os.environ.get("RAY_DATASET_USE_STREAMING_EXECUTOR", "1"))
+    int(os.environ.get("RAY_DATASET_USE_STREAMING_EXECUTOR", "0"))
 )
 
 # Whether to eagerly free memory (new backend only).
@@ -200,7 +200,6 @@ class DatasetContext:
         global _default_context
 
         with _context_lock:
-
             if _default_context is None:
                 _default_context = DatasetContext(
                     block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
