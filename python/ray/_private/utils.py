@@ -35,6 +35,8 @@ from typing import (
     List,
 )
 
+import grpc
+
 # Import psutil after ray so the packaged version is used.
 import psutil
 from google.protobuf import json_format
@@ -50,6 +52,10 @@ from ray.core.generated.runtime_env_common_pb2 import (
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
 
+try:
+    from grpc import aio as aiogrpc
+except ImportError:
+    from grpc.experimental import aio as aiogrpc
 
 pwd = None
 if sys.platform != "win32":
@@ -1319,12 +1325,6 @@ def init_grpc_channel(
     options: Optional[Sequence[Tuple[str, Any]]] = None,
     asynchronous: bool = False,
 ):
-    import grpc
-    try:
-        from grpc import aio as aiogrpc
-    except ImportError:
-        from grpc.experimental import aio as aiogrpc
-
     grpc_module = aiogrpc if asynchronous else grpc
 
     options = options or []
@@ -1369,7 +1369,6 @@ def check_dashboard_dependencies_installed() -> bool:
 
 
 def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
-    import grpc
     result = None
     if isinstance(prefix, str):
         prefix = prefix.encode()
@@ -1406,7 +1405,6 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
 
 
 def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
-    import grpc
     result = None
     if isinstance(key, str):
         key = key.encode()
@@ -1459,7 +1457,6 @@ def parse_resources_json(
 
 
 def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20):
-    import grpc
     if isinstance(key, str):
         key = key.encode()
     if isinstance(value, str):
