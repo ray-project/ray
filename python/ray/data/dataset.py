@@ -1610,7 +1610,7 @@ class Datastream(Generic[T]):
             return ds.split_at_indices([ds_length - test_size])
 
     @ConsumptionAPI(pattern="Args:")
-    def union(self, *other: List["Datastream[T]"]) -> "MaterializedDatastream[T]":
+    def union(self, *other: List["Datastream[T]"]) -> "Datastream[T]":
         """Materialize and combine this datastream with others of the same type.
 
         The order of the blocks in the datastreams is preserved, as is the
@@ -2137,7 +2137,7 @@ class Datastream(Generic[T]):
             logical_plan = LogicalPlan(op)
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
-    def zip(self, other: "Datastream[U]") -> "MaterializedDatastream[(T, U)]":
+    def zip(self, other: "Datastream[U]") -> "Datastream[(T, U)]":
         """Materialize and zip this datastream with the elements of another.
 
         The datastreams must have the same number of rows. For tabular datastreams, the
@@ -2184,7 +2184,7 @@ class Datastream(Generic[T]):
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
     @ConsumptionAPI
-    def limit(self, limit: int) -> "MaterializedDatastream[T]":
+    def limit(self, limit: int) -> "Datastream[T]":
         """Materialize and truncate the datastream to the first ``limit`` records.
 
         Contrary to :meth`.take`, this will not move any data to the caller's

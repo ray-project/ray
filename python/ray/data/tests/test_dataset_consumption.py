@@ -1638,8 +1638,8 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
 
 def test_dataset_plan_as_string(ray_start_cluster):
     ds = ray.data.read_parquet("example://iris.parquet")
-    assert ds._plan.get_plan_as_string() == (
-        "Dataset(\n"
+    assert ds._plan.get_plan_as_string("Datastream") == (
+        "Datastream(\n"
         "   num_blocks=1,\n"
         "   num_rows=150,\n"
         "   schema={\n"
@@ -1653,13 +1653,13 @@ def test_dataset_plan_as_string(ray_start_cluster):
     )
     for _ in range(5):
         ds = ds.map_batches(lambda x: x)
-    assert ds._plan.get_plan_as_string() == (
+    assert ds._plan.get_plan_as_string("Datastream") == (
         "MapBatches(<lambda>)\n"
         "+- MapBatches(<lambda>)\n"
         "   +- MapBatches(<lambda>)\n"
         "      +- MapBatches(<lambda>)\n"
         "         +- MapBatches(<lambda>)\n"
-        "            +- Dataset(\n"
+        "            +- Datastream(\n"
         "                  num_blocks=1,\n"
         "                  num_rows=150,\n"
         "                  schema={\n"
