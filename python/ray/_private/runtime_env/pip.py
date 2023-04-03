@@ -14,6 +14,7 @@ from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.serve._private.utils import get_random_letters
 
 default_logger = logging.getLogger(__name__)
 
@@ -69,7 +70,8 @@ class _PathHelper:
 
     @staticmethod
     def get_requirements_file(target_dir: str) -> str:
-        return os.path.join(target_dir, "requirements.txt")
+        filename = "ray_runtime_env_pip_requirements.txt"
+        return os.path.join(target_dir, filename)
 
 
 class PipProcessor:
