@@ -288,18 +288,9 @@ def format_get_api_output(
     if not state_data or len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
 
-    make_human_readable = HumanReadable(
-        {
-            "creation_time_ms": lambda x: datetime.fromtimestamp(x / 1000.0),
-            "created_ms": lambda x: datetime.fromtimestamp(x / 1000.0),
-            "start_time": lambda x: datetime.fromtimestamp(x / 1000.0),
-            "start_time_ms": lambda x: datetime.fromtimestamp(x / 1000.0),
-            "end_time": lambda x: datetime.fromtimestamp(x / 1000.0),
-        }
-    )
-    make_human_readable.format(state_data)
+    human_readable_state_data = schema.humanify(state_data)
 
-    return output_with_format(state_data, schema=schema, format=format)
+    return output_with_format(human_readable_state_data, schema=schema, format=format)
 
 
 def format_list_api_output(
@@ -311,26 +302,17 @@ def format_list_api_output(
     if len(state_data) == 0:
         return "No resource in the cluster"
 
-    make_human_readable = HumanReadable(
-        {
-            "creation_time_ms": lambda x: datetime.fromtimestamp(x / 1000.0),
-            "created_ms": lambda x: datetime.fromtimestamp(x / 1000.0),
-            "start_time": lambda x: datetime.fromtimestamp(x / 1000.0),
-            "start_time_ms": lambda x: datetime.fromtimestamp(x / 1000.0),
-            "end_time": lambda x: datetime.fromtimestamp(x / 1000.0),
-        }
-    )
-    for state in state_data:
-        make_human_readable.format(state)
+    human_readable_state_data = [schema.humanify(data) for data in state_data]
 
     if schema == TaskState and format == AvailableFormat.YAML:
         augmented_task_state_data = [
-            {("task_id: " + state["task_id"]): state} for state in state_data
+            {("task_id: " + state["task_id"]): state}
+            for state in human_readable_state_data
         ]
         return output_with_format(
             augmented_task_state_data, schema=schema, format=format
         )
-    return output_with_format(state_data, schema=schema, format=format)
+    return output_with_format(human_readable_state_data, schema=schema, format=format)
 
 
 def _should_explain(format: AvailableFormat) -> bool:
