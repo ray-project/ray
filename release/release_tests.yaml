@@ -2431,11 +2431,6 @@
   frequency: nightly
   team: ml
 
-  # It seems this test only succeeds the 2nd try.
-  # Mark as unstable for now.
-  # TODO(jungong) : figure out why.
-  stable: false
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 2_g4dn_12xlarge.yaml
@@ -3717,14 +3712,11 @@
     cluster_env: app_config.yaml
     cluster_compute: many_nodes.yaml
 
-  env: staging_v1
-
   run:
     timeout: 3600
     script: python distributed/test_many_tasks.py --num-tasks=1000
     wait_for_nodes:
       num_nodes: 250
-    type: sdk_command
 
 
 - name: scheduling_test_many_0s_tasks_many_nodes
