@@ -216,7 +216,7 @@ def test_controller_recover_initializing_actor(serve_instance):
     @serve.deployment
     class V1:
         async def __init__(self):
-            signal2.send.remote()
+            ray.get(signal2.send.remote())
             await signal.wait.remote()
 
         def __call__(self, request):
@@ -241,11 +241,11 @@ def test_controller_recover_initializing_actor(serve_instance):
     assert controller_tag1 != controller_tag2
 
     # Let the actor proceed initialization
-    signal.send.remote()
+    ray.get(signal.send.remote())
     client._wait_for_deployment_healthy(V1.name)
     # Make sure the actor before controller dead is staying alive.
-    actor_tag2 = get_actor_tag(V1.name)
-    assert actor_tag == actor_tag2
+    assert actor_tag == get_actor_tag(V1.name)
+
 
 
 if __name__ == "__main__":
