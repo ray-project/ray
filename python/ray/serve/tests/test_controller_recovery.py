@@ -225,27 +225,27 @@ def test_controller_recover_initializing_actor(serve_instance):
     serve.run(V1.bind(), _blocking=False)
     ray.get(pending_init_indicator.remote())
 
-    def get_actor_tag(name: str):
+    def get_actor_info(name: str):
         all_current_actors = list_actors(filters=[("state", "=", "ALIVE")])
         for actor in all_current_actors:
+            if SERVE_PROXY_NAME in actor["name"]:
+                continue
             if name in actor["name"]:
-                return actor["name"]
+                print(actor)
+                return actor["name"], actor["pid"]
 
-    actor_tag = get_actor_tag(V1.name)
-    controller_tag1 = get_actor_tag(SERVE_CONTROLLER_NAME)
+    actor_tag, _ = get_actor_info(V1.name)
+    _, controller1_pid = get_actor_info(SERVE_CONTROLLER_NAME)
     ray.kill(serve.context._global_client._controller, no_restart=False)
     # wait for controller is alive again
-    wait_for_condition(get_actor_tag, name=SERVE_CONTROLLER_NAME)
-    controller_tag2 = get_actor_tag(SERVE_CONTROLLER_NAME)
-
-    assert controller_tag1 != controller_tag2
+    wait_for_condition(get_actor_info, name=SERVE_CONTROLLER_NAME)
+    assert controller1_pid != get_actor_info(SERVE_CONTROLLER_NAME)[1]
 
     # Let the actor proceed initialization
     ray.get(signal.send.remote())
     client._wait_for_deployment_healthy(V1.name)
     # Make sure the actor before controller dead is staying alive.
-    assert actor_tag == get_actor_tag(V1.name)
-
+    assert actor_tag == get_actor_info(V1.name)[0]
 
 
 if __name__ == "__main__":
