@@ -16,7 +16,8 @@ _INVALID_TYPE = "Expected data type {} but found {}"
 @DeveloperAPI
 class Spec(abc.ABC):
     @DeveloperAPI
-    @abc.abstractstaticmethod
+    @staticmethod
+    @abc.abstractmethod
     def validate(self, data: Any) -> None:
         """Validates the given data against this spec.
 
@@ -120,8 +121,7 @@ class TensorSpec(Spec):
     def rdrop(self, n: int) -> "TensorSpec":
         """Drops the last n dimensions.
 
-        Returns of copy of TensorSpec with the rightmost
-        n dimensions removed.
+        Returns a copy of this TensorSpec with the rightmost n dimensions removed.
 
         Args:
             n: A positive number of dimensions to remove from the right
@@ -134,10 +134,10 @@ class TensorSpec(Spec):
             AssertionError: If n is negative or not an int
         """
         assert isinstance(n, int) and n >= 0, "n must be a positive integer or zero"
-        self = deepcopy(self)
-        self._expected_shape = self.shape[:-n]
-        self._full_shape = self._get_full_shape()
-        return self
+        copy_ = deepcopy(self)
+        copy_._expected_shape = copy_.shape[:-n]
+        copy_._full_shape = self._get_full_shape()
+        return copy_
 
     def append(self, spec: "TensorSpec") -> "TensorSpec":
         """Appends the given TensorSpec to the self TensorSpec.
@@ -149,10 +149,10 @@ class TensorSpec(Spec):
             A new tensor spec resulting from the concatenation of self and spec
 
         """
-        self = deepcopy(self)
-        self._expected_shape = (*self.shape, *spec.shape)
-        self._full_shape = self._get_full_shape()
-        return self
+        copy_ = deepcopy(self)
+        copy_._expected_shape = (*copy_.shape, *spec.shape)
+        copy_._full_shape = self._get_full_shape()
+        return copy_
 
     @property
     def dtype(self) -> Any:
@@ -267,7 +267,7 @@ class TensorSpec(Spec):
 
     def _validate_shape_vals(
         self, d_names: List[str], shape_vals: Dict[str, int]
-    ) -> List[str]:
+    ) -> None:
         """Checks if the shape_vals is valid.
 
         Valid means that shape consist of unique dimension names and shape_vals only
