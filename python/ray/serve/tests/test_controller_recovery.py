@@ -243,7 +243,8 @@ def test_controller_recover_initializing_actor(serve_instance):
     # Let the actor finish initializing
     signal.send.remote()
     client._wait_for_deployment_healthy(V1.name)
-    # Make sure the actor before controller dead is staying alive.
+    # Make sure the running replica actor is the same as one as before the controller died.
+    # The replica should not have been restarted.
     actor_tag2 = get_actor_tag(V1.name)
     assert actor_tag == actor_tag2
 
