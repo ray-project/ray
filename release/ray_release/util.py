@@ -26,10 +26,10 @@ class DeferredEnvVar:
 
 ANYSCALE_HOST = DeferredEnvVar("ANYSCALE_HOST", "https://console.anyscale.com")
 
+
 def get_cloud_environment() -> str:
-  return os.environ.get(
-    "ANYSCALE_CLOUD_STORAGE_PROVIDER", "s3"
-  )
+    return os.environ.get("ANYSCALE_CLOUD_STORAGE_PROVIDER", "s3")
+
 
 def deep_update(d, u) -> Dict:
     for k, v in u.items():

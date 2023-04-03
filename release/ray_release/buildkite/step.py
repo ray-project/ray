@@ -13,7 +13,6 @@ from ray_release.config import (
     parse_python_version,
 )
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
-from ray_release.exception import ReleaseTestConfigError
 from ray_release.template import get_test_env_var
 from ray_release.util import python_version_str, DeferredEnvVar
 
@@ -99,9 +98,9 @@ def get_step(
     label = commit[:7] if commit else branch
 
     if smoke_test:
-      concurrency_test = as_smoke_test(test)
+        concurrency_test = as_smoke_test(test)
     else:
-      concurrency_test = test
+        concurrency_test = test
     concurrency_group, concurrency_limit = get_concurrency_group(concurrency_test)
 
     step["concurrency_group"] = concurrency_group
