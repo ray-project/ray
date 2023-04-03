@@ -13,7 +13,6 @@ from jsonschema import validate
 import ray
 import ray._private.usage.usage_constants as usage_constants
 import ray._private.usage.usage_lib as ray_usage_lib
-from ray._private import gcs_utils
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,

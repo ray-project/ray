@@ -1,6 +1,5 @@
 import enum
 import logging
-import time
 import traceback
 import inspect
 import os
@@ -185,7 +184,8 @@ def _auto_reconnect(f):
     else:
 
         raise NotImplementedError(
-            "This code moved to Cython, see https://github.com/ray-project/ray/pull/33769"
+            "This code moved to Cython, see "
+            "https://github.com/ray-project/ray/pull/33769"
         )
 
 

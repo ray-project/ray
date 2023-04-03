@@ -9,7 +9,6 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
-from ray._private import gcs_utils
 from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
