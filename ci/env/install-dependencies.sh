@@ -452,6 +452,9 @@ install_pip_packages() {
       esac
       requirements_packages+=("torch==${TORCH_VERSION-1.9.0}")
       requirements_packages+=("torchvision==${TORCHVISION_VERSION}")
+      # Install right away - some torch dependencies (e.g. torch-spline-conv)
+      # need an existing torch for dependency resolution
+      pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION}"
     fi
   fi
 
