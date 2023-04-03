@@ -260,12 +260,14 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
     try:
         if filelock:
             with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
-                if isinstance(fs, fsspec.implementations.ftp.FTPFileSystem):
+                #if isinstance(fs, fsspec.implementations.ftp.FTPFileSystem):
+                if str(type(fs)).find('FTPFileSystem') >= 0:
                     fs.get(bucket_path, local_path, recursive=True)
                     return
                 _pyarrow_fs_copy_files(bucket_path, local_path, source_filesystem=fs)
         else:
-            if isinstance(fs, fsspec.implementations.ftp.FTPFileSystem):
+            #if isinstance(fs, fsspec.implementations.ftp.FTPFileSystem):
+            if str(type(fs)).find('FTPFileSystem') >= 0:
                 fs.get(bucket_path, local_path, recursive=True)
                 return
             _pyarrow_fs_copy_files(bucket_path, local_path, source_filesystem=fs)
@@ -305,7 +307,8 @@ def upload_to_uri(
 
     if not exclude:
         _ensure_directory(bucket_path, fs=fs)
-        if isinstance(fs, fsspec.implementations.ftp.FTPFileSystem):
+        #if isinstance(fs, fsspec.implementations.ftp.FTPFileSystem):
+        if str(type(fs)).find('FTPFileSystem') >= 0:
             fs.put(local_path, bucket_path, recursive=True)
             return
         _pyarrow_fs_copy_files(local_path, bucket_path, destination_filesystem=fs)
@@ -337,7 +340,8 @@ def _upload_to_uri_with_exclude(
             full_target_path = os.path.normpath(os.path.join(bucket_path, candidate))
 
             _ensure_directory(str(Path(full_target_path).parent), fs=fs)
-            if isinstance(fs, fsspec.implementations.ftp.FTPFileSystem):
+            #if isinstance(fs, fsspec.implementations.ftp.FTPFileSystem):
+            if str(type(fs)).find('FTPFileSystem') >= 0:
                 fs.put(local_path, bucket_path, recursive=True)
                 return
             _pyarrow_fs_copy_files(
