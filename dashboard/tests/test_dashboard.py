@@ -232,7 +232,7 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     assert "Raylet logs:" in err.error_message, err.error_message
     assert (
         os.path.getsize(os.path.join(node.get_session_dir_path(), "logs", "raylet.out"))
-        < 1 * 1024 ** 2
+        < 1 * 1024**2
     )
 
 
@@ -257,7 +257,7 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     with open(
         os.path.join(node.get_session_dir_path(), "logs", "raylet.out"), "a"
     ) as f:
-        f.write("test data\n" * 1024 ** 2)
+        f.write("test data\n" * 1024**2)
 
     # The agent should be dead if raylet exits.
     raylet_proc.kill()
