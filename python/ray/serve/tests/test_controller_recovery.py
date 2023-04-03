@@ -3,6 +3,7 @@ import sys
 import time
 import pytest
 from collections import defaultdict
+from ray._private.test_utils import wait_for_condition
 
 import ray
 from ray._private.test_utils import SignalActor
@@ -225,15 +226,20 @@ def test_controller_recover_initializing_actor(serve_instance):
     ray.get(pending_init_indicator.remote())
 
     def get_actor_tag(name: str):
-        all_current_actors = ray.util.list_named_actors(all_namespaces=True)
+        all_current_actors = list_actors(filters=[("state", "=", "ALIVE")])
         for actor in all_current_actors:
             if name in actor["name"]:
                 return actor["name"]
 
     actor_tag = get_actor_tag(V1.name)
-
+    controller_tag1 = get_actor_tag(SERVE_CONTROLLER_NAME)
     ray.kill(serve.context._global_client._controller, no_restart=False)
-    time.sleep(1)
+    # wait for controller is alive again
+    wait_for_condition(get_actor_tag, name=SERVE_CONTROLLER_NAME)
+    controller_tag2 = get_actor_tag(SERVE_CONTROLLER_NAME)
+
+    assert controller_tag1 != controller_tag2
+
     # Let the actor proceed initialization
     signal.send.remote()
     client._wait_for_deployment_healthy(V1.name)
