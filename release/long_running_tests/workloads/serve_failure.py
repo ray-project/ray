@@ -31,7 +31,7 @@ ACTIONS_PER_ITERATION = 20
 RAY_UNIT_TEST = "RAY_UNIT_TEST" in os.environ
 
 # RAY_OVERRIDE_RESOURCES will prevent "num_cpus" from working
-# when adding customized resource node to Cluster.
+# when adding a node with custom resources to Cluster.
 if "RAY_OVERRIDE_RESOURCES" in os.environ:
     del os.environ["RAY_OVERRIDE_RESOURCES"]
 
