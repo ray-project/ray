@@ -177,6 +177,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   ClusterResourceManager &cluster_resource_manager_;
   NodeID local_node_id_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
+  /// Num of alive nodes in the cluster.
+  size_t num_alive_nodes_ = 0;
 
   friend GcsMonitorServerTest;
 };

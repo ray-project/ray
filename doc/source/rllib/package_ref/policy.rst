@@ -31,7 +31,6 @@ Base Policy classes
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
     ~policy.policy.Policy
 
@@ -78,7 +77,7 @@ Base Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :toctree: doc/
-    
+
     ~policy.policy.Policy.compute_actions
     ~policy.policy.Policy.compute_actions_from_input_dict
     ~policy.policy.Policy.compute_single_action
@@ -87,7 +86,7 @@ Torch Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :toctree: doc/
-    
+
     ~policy.torch_policy_v2.TorchPolicyV2.action_sampler_fn
     ~policy.torch_policy_v2.TorchPolicyV2.action_distribution_fn
     ~policy.torch_policy_v2.TorchPolicyV2.extra_action_out
@@ -96,7 +95,7 @@ Tensorflow Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :toctree: doc/
-    
+
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.action_sampler_fn
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.action_distribution_fn
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.extra_action_out_fn
@@ -104,7 +103,7 @@ Tensorflow Policy
 .. --------------------------------------------
 
 Computing, processing, and applying gradients
----------------------------------------------   
+---------------------------------------------
 
 Base Policy
 ~~~~~~~~~~~~~~~~~~~~
@@ -133,7 +132,7 @@ Tensorflow Policy
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.apply_gradients_fn
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.extra_learn_fetches_fn
 
-    
+
 
 .. --------------------------------------------
 
@@ -145,7 +144,7 @@ Base Policy
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :toctree: doc/
-    
+
     ~policy.Policy.learn_on_batch
     ~policy.Policy.load_batch_into_buffer
     ~policy.Policy.learn_on_loaded_batch
