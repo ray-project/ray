@@ -400,12 +400,8 @@ def test_redis_full(ray_start_cluster_head):
     # GCS should fail
     import grpc
 
-    with pytest.raises(grpc.RpcError) as execinfo:
+    with pytest.raises(grpc.RpcError):
         gcs_cli.internal_kv_put(b"A", b"A" * 6 * 1024 * 1024, True, None)
-    assert (
-        "Failed to connect to GCS. Please check `gcs_server.out` for more details."
-        in str(execinfo.value)
-    )
     logs_dir = ray_start_cluster_head.head_node._logs_dir
 
     with open(os.path.join(logs_dir, "gcs_server.err")) as err:

@@ -42,6 +42,13 @@ logger = logging.getLogger(__name__)
 START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "60"))
 
 
+@pytest.fixture(autouse=True)
+def pre_envs(monkeypatch):
+    # To make test run faster
+    monkeypatch.setenv("RAY_NUM_REDIS_GET_RETRIES", "5")
+    yield
+
+
 def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
     """Wait for a Redis server to be available.
 
@@ -455,9 +462,7 @@ def ray_start_object_store_memory(request, maybe_external_redis):
 
 
 @pytest.fixture
-def call_ray_start(monkeypatch, request):
-    # To make test run faster
-    monkeypatch.setenv("RAY_NUM_REDIS_GET_RETRIES", "5")
+def call_ray_start(request):
     with call_ray_start_context(request) as address:
         yield address
 
