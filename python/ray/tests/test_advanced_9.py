@@ -350,6 +350,36 @@ print(ray.get([use_gpu.remote(), use_gpu.remote()]))
     wait_for_condition(lambda: check_demands(1))
 
 
+def test_omp_threads_set_third_party(ray_start_cluster, monkeypatch):
+    ###########################
+    # Test the OMP_NUM_THREADS are picked up by 3rd party libraries
+    # when running tasks if no OMP_NUM_THREADS is set by user.
+    # e.g. numpy, numexpr
+    ###########################
+    with monkeypatch.context() as m:
+        m.delenv("OMP_NUM_THREADS", raising=False)
+
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=4)
+        ray.init(address=cluster.address)
+
+        @ray.remote(num_cpus=2)
+        def f():
+            # Assert numpy using 2 threads for it's parallelism backend.
+            import numpy  # noqa: F401
+            from threadpoolctl import threadpool_info
+
+            for pool_info in threadpool_info():
+                assert pool_info["num_threads"] == 2
+
+            import numexpr
+
+            assert numexpr.nthreads == 2
+            return True
+
+        assert ray.get(f.remote())
+
+
 if __name__ == "__main__":
     import pytest
     import os
