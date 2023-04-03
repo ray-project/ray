@@ -85,8 +85,7 @@ def cleanup_cluster(cluster_config):
     """
     print("======================================")
     print("Cleaning up cluster...")
-    result = subprocess.run(["ray", "down", "-v", "-y", str(cluster_config)], check=True)
-    print(result.stdout)
+    subprocess.run(["ray", "down", "-v", "-y", str(cluster_config)], check=True)
 
 
 def run_ray_commands(cluster_config, retries):
