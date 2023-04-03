@@ -10,7 +10,6 @@ from typing import (
     TypeVar,
     Union,
 )
-import warnings
 
 
 import numpy as np
@@ -575,6 +574,8 @@ def read_images(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     meta_provider: BaseFileMetadataProvider = _ImageFileMetadataProvider(),
+    ray_remote_args: Dict[str, Any] = None,
+    arrow_open_file_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[
         PathPartitionFilter
     ] = ImageDatasource.file_extension_filter(),
@@ -630,6 +631,9 @@ def read_images(
             limited by the number of files of the dataset.
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        arrow_open_file_args: kwargs passed to
+            ``pyarrow.fs.FileSystem.open_input_file``.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
@@ -662,6 +666,8 @@ def read_images(
         filesystem=filesystem,
         parallelism=parallelism,
         meta_provider=meta_provider,
+        ray_remote_args=ray_remote_args,
+        open_stream_args=arrow_open_file_args,
         partition_filter=partition_filter,
         partitioning=partitioning,
         size=size,
@@ -1301,11 +1307,10 @@ def read_binary_files(
         Dataset holding records read from the specified paths.
     """
     if not output_arrow_format:
-        warnings.warn(
+        logger.warning(
             "read_binary_files() returns Dataset in Python list format as of Ray "
             "v2.4. Use read_binary_files(output_arrow_format=True) to return Dataset "
             "in Arrow format.",
-            DeprecationWarning,
         )
 
     return read_datasource(
