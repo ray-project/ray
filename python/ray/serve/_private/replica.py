@@ -129,7 +129,7 @@ def create_replica_wrapper(name: str):
                 controller_name, namespace=SERVE_NAMESPACE
             )
 
-            # Indicate the replica finish the initialization.
+            # Indicates whether the replica has finished initializing.
             self.init_finish_event = asyncio.Event()
 
             # This closure initializes user code and finalizes replica
