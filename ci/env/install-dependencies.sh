@@ -320,7 +320,7 @@ compile_ray_requirements() {
   alias pip="python -m pip"
   pip install pip-tools
 
-  pip-compile --resolver=backtracing --no-annotate --no-header -q -o \
+  pip-compile --resolver=backtracking --no-annotate --no-header -q -o \
     "${WORKSPACE_DIR}/python/requirements_pinned.txt" \
     "${WORKSPACE_DIR}/python/requirements.txt"
 }
