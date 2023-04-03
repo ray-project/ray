@@ -615,8 +615,8 @@ class Node:
                 errors = [e for e in err.readlines() if " C " in e or " E " in e][-10:]
             error_msg = "\n" + "".join(errors) + "\n"
             raise RuntimeError(
-                f"Failed to start GCS. "
-                " Last {len(errors)} lines of error files:"
+                f"Failed to {'start' if self.head else 'connect to'} GCS. "
+                f" Last {len(errors)} lines of error files:"
                 f"{error_msg}."
                 f"Please check {os.path.join(self._logs_dir, 'gcs_server.out')}"
                 " for details"
