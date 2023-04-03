@@ -324,7 +324,8 @@ compile_ray_requirements() {
      --pip-args --no-deps --strip-extras --no-annotate --no-header -q -o \
     "${WORKSPACE_DIR}/python/requirements_pinned.txt" \
     "${WORKSPACE_DIR}/python/requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements_test.txt"
+    "${WORKSPACE_DIR}/python/requirements_test.txt" \
+    "${WORKSPACE_DIR}/python/requirements_linters.txt"
 }
 
 install_pip_packages() {
