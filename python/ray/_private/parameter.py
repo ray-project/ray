@@ -1,8 +1,7 @@
 import logging
 import os
 from typing import Dict, List, Optional
-
-import numpy as np
+import pkg_resources
 
 import ray._private.ray_constants as ray_constants
 
@@ -412,7 +411,7 @@ class RayParams:
             raise DeprecationWarning("The redirect_output argument is deprecated.")
 
         # Parse the numpy version.
-        numpy_version = np.__version__.split(".")
+        numpy_version = pkg_resources.get_distribution("numpy").version.split(".")
         numpy_major, numpy_minor = int(numpy_version[0]), int(numpy_version[1])
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning(

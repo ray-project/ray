@@ -1415,6 +1415,8 @@ def start_raylet(
         redis_password: The password to use when connecting to Redis.
         metrics_agent_port: The port where metrics agent is bound to.
         metrics_export_port: The port at which metrics are exposed to.
+        dashboard_agent_listen_port: The port at which the dashboard agent
+            listens to for http.
         use_valgrind: True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler: True if the raylet should be started inside
