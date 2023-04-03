@@ -229,7 +229,6 @@ def test_controller_recover_initializing_actor(serve_instance):
         for actor in all_current_actors:
             if name in actor["name"]:
                 return actor["name"]
-        return None
 
     actor_tag = get_actor_tag(V1.name)
 

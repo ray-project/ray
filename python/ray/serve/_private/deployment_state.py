@@ -498,7 +498,7 @@ class ActorReplicaWrapper:
                 )
             except Exception:
                 logger.exception(
-                    f"Exception in replica '{self._replica_tag}',"
+                    f"Exception in replica '{self._replica_tag}', "
                     "the replica will be stopped."
                 )
                 return ReplicaStartupStatus.FAILED, None
