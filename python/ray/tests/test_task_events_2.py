@@ -494,7 +494,6 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
     }
 
     ray.init(_system_config=_SYSTEM_CONFIG)
-    # ray.init("auto")
 
     @ray.remote
     class Killer:
