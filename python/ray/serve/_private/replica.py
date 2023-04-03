@@ -130,7 +130,7 @@ def create_replica_wrapper(name: str):
             )
 
             # Indicates whether the replica has finished initializing.
-            self.init_finish_event = asyncio.Event()
+            self._init_finish_event = asyncio.Event()
 
             # This closure initializes user code and finalizes replica
             # startup. By splitting the initialization step like this,
@@ -167,7 +167,7 @@ def create_replica_wrapper(name: str):
                     is_function,
                     controller_handle,
                 )
-                self.init_finish_event.set()
+                self._init_finish_event.set()
 
             # Is it fine that replica is None here?
             # Should we add a check in all methods that use self.replica
@@ -253,7 +253,7 @@ def create_replica_wrapper(name: str):
             self,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             # Wait for replica initialization to finish
-            await self.init_finish_event.wait()
+            await self._init_finish_event.wait()
             return self.replica.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
