@@ -316,6 +316,7 @@ retry_pip_install() {
 
 compile_ray_requirements() {
   # Compile unpinned python/requirements.txt into python/requirements_pinned.txt
+  # shellcheck disable=SC2262
   alias pip="python -m pip"
   pip install pip-tools
 
@@ -453,17 +454,17 @@ install_pip_packages() {
   fi
 
   # Generate the pip command with collected requirements files
-  pip_args="pip install"
+  pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements_pinned.txt"
   for file in "${requirements_files[@]}"; do
-    pip_args+=" -r ${file}"
+    pip_cmd+=" -r ${file}"
   done
   for package in "${requirements_packages[@]}"; do
-    pip_args+=" ${package}"
+    pip_cmd+=" ${package}"
   done
 
   # Run the pip command to install all collected requirements files
-  echo Running pip install: pip install -U -c "${WORKSPACE_DIR}"/python/requirements_pinned.txt ${pip_args}
-  pip install -U -c "${WORKSPACE_DIR}"/python/requirements_pinned.txt ${pip_args}
+  echo Running pip install: "$pip_cmd"
+  eval "${pip_cmd}"
 
   # Additional Tune dependency for Horovod.
   # This must be run last (i.e., torch cannot be re-installed after this)
@@ -481,6 +482,7 @@ install_pip_packages() {
 }
 
 install_thirdparty_packages() {
+  # shellcheck disable=SC2262
   alias pip="python -m pip"
   CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
