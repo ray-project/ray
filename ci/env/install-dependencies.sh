@@ -322,7 +322,14 @@ compile_ray_requirements() {
 
   pip-compile --resolver=backtracking --no-annotate --no-header -q -o \
     "${WORKSPACE_DIR}/python/requirements_pinned.txt" \
-    "${WORKSPACE_DIR}/python/requirements.txt"
+    "${WORKSPACE_DIR}/python/requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/data_processing/requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/data_processing/requirements_dataset.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/requirements_rllib.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/requirements_train.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/requirements_tune.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/requirements_upstream.txt"
 }
 
 install_pip_packages() {
