@@ -1,5 +1,6 @@
 from abc import ABC
 from collections import deque
+from threading import Lock, Thread
 from typing import Any
 
 import torch
@@ -66,6 +67,7 @@ class ExecutionEngine:
         self.input_queue = deque()
         self.output_queue = deque()
         self.schedule = schedule
+        self.execution_lock = Lock()
         self.stop = False
         self.config = config
         self.initialize_config(config)
@@ -78,30 +80,35 @@ class ExecutionEngine:
 
     def start(self):
         """Start the engine execution"""
-        pass
+        self.thread = Thread(target=self._execute)
+        self.thread.start()
 
     def stop(self):
         """Stop the engine if it's running."""
-        pass
+        with self.execution_lock:
+            self.stop = True
+        self.thread.join()
 
     def check_state(self):
         """Check the state of the engine."""
         pass
 
-    def reconfigure_schedule(self, schedule: Schedule):
+    def reconfigure(self, schedule: Schedule, config: Config):
         """Reconfgure the engine with a new schedule."""
         pass
 
     def _execute(self):
-        if not self.stop:
-            for instruction in self.schedule.steps():
-                self._execute_instruction(instruction)
+        with self.execution_lock:
+            if self.stop:
+                return
+        for instruction in self.schedule.steps():
+            self._execute_instruction(instruction)
 
     def _execute_step(self, instruction: Instruction):
         if isinstance(instruction, Send):
             for _ in range(instruction.count):
                 self.communicator.send(
-                    self.output_queue.popleft(), instruction.dest_rank
+                    self.output_queue.popleft(), instruction.dest_rank, async_op=True
                 )
         elif isinstance(instruction, Receive):
             for _ in range(instruction.count):
@@ -110,7 +117,7 @@ class ExecutionEngine:
                     dtype=self.input_tensor_dtype,
                     device=self.cuda,
                 )
-                self.communicator.recv(tensor, instruction.src_rank)
+                self.communicator.recv(tensor, instruction.src_rank, async_op=True)
                 self.input_queue.append(tensor)
         if isinstance(instruction, Forward):
             for _ in range(instruction.count):
