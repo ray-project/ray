@@ -2,6 +2,18 @@
 
 In Ray 2.4+, deploying multiple independent Serve applications is supported. This user guide walks through how to generate a multi-application config file and deploy it using the Serve CLI, and monitor your applications using the CLI and the Ray Serve dashboard.
 
+## When to Use Multiple Applications
+It can be useful to deploy multiple independent applications on one Ray cluster. However, it is also important to keep in mind the downsides of doing so.
+
+We suggest you deploy multiple applications per cluster if:
+* You want to save cost by sharing resources between applications.
+* You have many small independent models, and you want to be able to easily add and delete models often.
+
+However, we suggest you limit to one application per cluster if:
+* Your applications are large and require a lot of resources. Deploying multiple applications per cluster can cause competition of resources in this case.
+* You want better isolation between applications. Although applications are independent of one another, isolation can't be guaranteed. Also, if you need to change the configuration of the cluster for one application, all other applications will also be affected. 
+
+
 ## Get Started
 
 Define a Serve application:
@@ -122,36 +134,26 @@ deployment_statuses:
 Notice that in the output of `serve status`, the prefix of each deployment name is the application name. At runtime, all deployments will have their corresponding application prepended to their names.
 :::
 
-## Inspect Deeper
+### Inspect Deeper
 
 For more visibility into the applications running on the cluster, go to the Ray Serve dashboard at [`http://localhost:8265/#/serve`](http://localhost:8265/#/serve).
 
-### Serve Overview
-The top level view shows cluster-level information about Serve:
-
-![serve-overview](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/multi-app/system-level-options-dashboard.png)
-
-It also shows all applications that are deployed on the Ray cluster:
+You can see all applications that are deployed on the Ray cluster, the list of deployments under each application, as well as the list of replicas for each deployment.
 
 ![applications](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/multi-app/applications-dashboard.png)
 
-### Application and its deployments
-Click into the first application, `app1` to see an overview of the application:
-
-![application-overview](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/multi-app/application-overview-dashboard.png)
-
-It also shows the list of deployments under that application:
-
-![deploymentsd](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/multi-app/deployments-dashboard.png)
-
-### Replicas
-Click the drop down arrow for the first deployment, `Adder` to see the list of replicas for that deployment:
+![deployments](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/multi-app/deployments-dashboard.png)
 
 ![replicas](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/multi-app/replica-dashboard.png)
 
-Click into one of the replicas to see an overview of the replica as well as a list of actor tasks run on the replica actor:
+For more details on the Ray Serve dashboard, see the [Serve dashboard documentation](dash-serve-view).
 
-![replica-overview](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/multi-app/replica-overview-dashboard.png)
+## Adding, Deleting, and Updating Applications
+The config submitted to the cluster describes the target state for Ray Serve. Consequently, Ray Serve will add, remove, or update based on the list of applications in the config and the config options set for each application.
+* To add an application, add a new entry under the `applications` field.
+* To delete an application, remove the corresponding entry under the `applications` field.
+* To update an application, modify the config options in the corresponding entry under the `applications` field.
+Note that the update behavior for each application when a config is resubmitted is the same as the old single-application behavior. For how an application reacts to different config changes, see [updating a Serve application](serve-in-production-updating).
 
 ## New Multi-Application Config
 
@@ -201,14 +203,3 @@ For more details on the multi-application config format, see the documentation f
 :::{note} 
 You must remove `host` and `port` from the application entry. In a multi-application config, specifying cluster-level options within an individual application isn't applicable, and is not supported.
 :::
-
-## One application vs Multiple Applications
-It can be useful to deploy multiple independent applications on one Ray cluster. However, it is also important to keep in mind the downsides of doing so.
-
-We suggest you deploy multiple applications per cluster if:
-* You want to save cost by sharing resources between applications.
-* You have many small independent models, and you want to be able to easily add and delete models often.
-
-However, we suggest you limit to one application per cluster if:
-* Your applications are large and require a lot of resources. Deploying multiple applications per cluster can cause competition of resources in this case.
-* You want better isolation between applications. Although applications are independent of one another, isolation can't be guaranteed. Also, if you need to change the configuration of the cluster for one application, all other applications will also be affected. 
