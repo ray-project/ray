@@ -225,6 +225,22 @@ PROCESS_TYPE_PYTHON_CORE_WORKER = "python-core-worker"
 MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_MONITOR}.log"
 LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 
+# Enable log deduplication.
+RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
+
+# How many seconds of messages to buffer for log deduplication.
+RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
+
+# Regex for log messages to never deduplicate, or None. This takes precedence over
+# the skip regex below. A default pattern is set for testing.
+TESTING_NEVER_DEDUP_TOKEN = "__ray_testing_never_deduplicate__"
+RAY_DEDUP_LOGS_ALLOW_REGEX = os.environ.get(
+    "RAY_DEDUP_LOGS_ALLOW_REGEX", TESTING_NEVER_DEDUP_TOKEN
+)
+
+# Regex for log messages to always skip / suppress, or None.
+RAY_DEDUP_LOGS_SKIP_REGEX = os.environ.get("RAY_DEDUP_LOGS_SKIP_REGEX")
+
 WORKER_PROCESS_TYPE_IDLE_WORKER = "ray::IDLE"
 WORKER_PROCESS_TYPE_SPILL_WORKER_NAME = "SpillWorker"
 WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME = "RestoreWorker"
@@ -301,6 +317,9 @@ NODE_DEFAULT_IP = "127.0.0.1"
 
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
+
+# The max number of bytes for task execution error message.
+MAX_APPLICATION_ERROR_LEN = 500
 
 # Max 64 bit integer value, which is needed to ensure against overflow
 # in C++ when passing integer values cross-language.
@@ -381,7 +400,7 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
-RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
 
 # Whether to enable Ray clusters (in addition to local Ray).
 # Ray clusters are not explicitly supported for Windows and OSX.
@@ -390,3 +409,13 @@ ENABLE_RAY_CLUSTER = env_bool(
     ENABLE_RAY_CLUSTERS_ENV_VAR,
     not (sys.platform == "darwin" or sys.platform == "win32"),
 )
+
+
+# The allowed cached ports in Ray. Refer to Port configuration for more details:
+# https://docs.ray.io/en/latest/ray-core/configure.html#ports-configurations
+RAY_ALLOWED_CACHED_PORTS = {
+    "metrics_agent_port",
+    "metrics_export_port",
+    "dashboard_agent_listen_port",
+    "gcs_server_port",  # the `port` option for gcs port.
+}

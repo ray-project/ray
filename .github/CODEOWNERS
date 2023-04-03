@@ -44,7 +44,10 @@
 /ci/lint/format.sh @richardliaw @ericl @edoakes
 
 # Docker image build script.
-/ci/build/build-docker-images.py @amogkam @krfricke @ray-project/ray-core
+/ci/build/build-docker-images.py @amogkam @krfricke @gvspraveen @alanwguo @ray-project/ray-core
+
+# Dockerfiles
+/ci/docker/base.gpu.Dockerfile @gvspraveen @alanwguo
 
 # Python worker.
 #/python/ray/ @ray-project/ray-core
@@ -116,17 +119,17 @@
 # ==== Build and CI ====
 
 # Bazel.
-#/BUILD.bazel @ray-project/ray-core
-#/WORKSPACE @ray-project/ray-core
-#/bazel/ @ray-project/ray-core
+#/BUILD.bazel @ray-project/ray-core @ray-project/ray-ci
+#/WORKSPACE @ray-project/ray-core @ray-project/ray-ci
+#/bazel/ @ray-project/ray-core @ray-project/ray-ci
 
 # CI scripts.
-#/.travis.yml @ray-project/ray-core
-#/ci/ @ray-project/ray-core
+#/.travis.yml @ray-project/ray-core @ray-project/ray-ci
+#/ci/ @ray-project/ray-core @ray-project/ray-ci
 
 # Buildkite pipeline management
-.buildkite/hooks @simon-mo @krfricke
+.buildkite/hooks @ray-project/ray-ci
 
-/release/ray_release @krfricke @rkooo567 @simon-mo @Yard1
+/release/ray_release @ray-project/ray-ci
 
 /.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang @scv119 @pcmoritz

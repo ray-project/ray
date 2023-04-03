@@ -145,16 +145,6 @@ class MultiAgentRLModule(RLModule):
             self._check_module_exists(module_id)
         del self._rl_modules[module_id]
 
-    @override(RLModule)
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        # TODO (Avnish) Implement this.
-        pass
-
-    @override(RLModule)
-    def is_distributed(self) -> bool:
-        # TODO (Avnish) Implement this.
-        return False
-
     def __getitem__(self, module_id: ModuleID) -> RLModule:
         """Returns the module with the given module ID.
 
@@ -431,6 +421,7 @@ class MultiAgentRLModuleSpec:
             )
 
     def get_marl_config(self) -> "MultiAgentRLModuleConfig":
+        """Returns the MultiAgentRLModuleConfig for this spec."""
         return MultiAgentRLModuleConfig(modules=self.module_specs)
 
     @OverrideToImplementCustomLogic

@@ -610,6 +610,61 @@
     timeout: 3600
     script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
 
+
+#####################################
+# Workspace templates release tests #
+#####################################
+
+- name: workspace_template_small_01_batch_inference
+  group: Workspace templates
+  working_dir: workspace_templates/01_batch_inference
+  python: "3.9"
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_compute: ../configs/compute/gpu/aws_small.yaml
+
+  run:
+    timeout: 600
+    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
+      --to script --output _test batch_inference.ipynb && ipython _test.py
+
+
+- name: workspace_template_small_02_many_model_training
+  group: Workspace templates
+  working_dir: workspace_templates/02_many_model_training
+  python: "3.9"
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_compute: ../configs/compute/cpu/aws_small.yaml
+
+  run:
+    timeout: 300
+    script: pip install -U -r requirements.txt
+      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
+      --to script --output _test many_model_training.ipynb && ipython _test.py
+
+
+- name: workspace_template_small_03_serving_stable_diffusion
+  group: Workspace templates
+  working_dir: workspace_templates/03_serving_stable_diffusion
+  python: "3.9"
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_compute: ../configs/compute/gpu/aws_small.yaml
+
+  run:
+    timeout: 900
+    script: pip install -U -r requirements.txt
+      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
+      --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
+
+
 #######################
 # XGBoost release tests
 #######################
@@ -955,6 +1010,49 @@
 
   alert: default
 
+#######################
+# Lightning tests
+#######################
+
+# Naming convention: lightning_{accelerator}_{mode}_{#cpu}_{#gpu}
+
+- name: lightning_gpu_train_3x16_3x1
+  group: Lightning tests
+  working_dir: lightning_tests
+
+  frequency: nightly-3x
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl.yaml
+
+  run:
+    timeout: 1200
+    script: python workloads/test_trainer.py
+    wait_for_nodes:
+      num_nodes: 3
+
+  alert: default
+
+- name: lightning_gpu_tune_3x16_3x1
+  group: Lightning tests
+  working_dir: lightning_tests
+
+  frequency: nightly-3x
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl.yaml
+
+  run:
+    timeout: 1200
+    script: python workloads/test_tuner.py
+    wait_for_nodes:
+      num_nodes: 3
+
+  alert: default
 
 #######################
 # ML user tests
@@ -1140,12 +1238,9 @@
 #######################
 # Tune cloud  tests
 #######################
-- name: tune_cloud_aws_no_sync_down
+- name: tune_cloud_no_sync_down
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
-
-  stable: true
-
   frequency: nightly
   team: ml
 
@@ -1160,15 +1255,19 @@
     wait_for_nodes:
       num_nodes: 4
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_4x8.yaml
 
   alert: tune_tests
 
-- name: tune_cloud_aws_ssh_sync
+- name: tune_cloud_ssh_sync
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
-
-  stable: true
-
   frequency: nightly
   team: ml
 
@@ -1179,19 +1278,22 @@
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py ssh_sync
-
     wait_for_nodes:
       num_nodes: 4
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_4x8.yaml
 
   alert: tune_tests
 
-- name: tune_cloud_aws_durable_upload
+- name: tune_cloud_durable_upload
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
-
-  stable: true
-
   frequency: nightly
   team: ml
 
@@ -1206,6 +1308,18 @@
     wait_for_nodes:
       num_nodes: 4
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_4x8.yaml
+      run:
+        timeout: 600
+        script: python workloads/run_cloud_test.py durable_upload --bucket gs://tune-cloud-tests/durable_upload
+        wait_for_nodes:
+          num_nodes: 4
 
   alert: tune_tests
 
@@ -1462,8 +1576,6 @@
 
   frequency: nightly
   team: ml
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: staging_v1
 
   cluster:
     cluster_env: app_config.yaml
@@ -1472,8 +1584,6 @@
   run:
     timeout: 600
     script: python workloads/test_result_throughput_single_node.py
-    # Not an anyscale_job as it fails due to extra overhead
-    type: job
 
   alert: tune_tests
 
@@ -1498,6 +1608,29 @@
 
   alert: tune_tests
 
+
+############################
+# Tune fault tolerance tests
+############################
+- name: tune_worker_fault_tolerance
+  group: Tune fault tolerance tests
+  working_dir: tune_tests/fault_tolerance_tests
+
+  stable: true
+
+  frequency: nightly-3x
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_aws_16x1.yaml
+
+  run:
+    timeout: 5400
+    script: python workloads/test_tune_worker_fault_tolerance.py
+
+    wait_for_nodes:
+      num_nodes: 16
 
 ########################
 # Golden Notebook tests
@@ -2304,10 +2437,30 @@
 
   run:
     timeout: 3600
-    script: bash run.sh
+    script: bash run_train_opt_2_7b.sh
 
     wait_for_nodes:
       num_nodes: 2
+
+  alert: default
+
+- name: alpa_opt_30b_inference
+  group: Alpa tests
+  working_dir: alpa_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1_p3_16xlarge.yaml
+
+  run:
+    timeout: 3600
+    script: bash run_inference_opt_30b.sh
+
+    wait_for_nodes:
+      num_nodes: 1
 
   alert: default
 
@@ -3072,6 +3225,27 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
+- name: benchmark_worker_startup
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: benchmark-worker-startup
+  stable: false
+
+  python: "3.9"
+
+  cluster:
+    cluster_env: app_config_gpu.yaml
+    cluster_compute: only_head_node_1gpu_64cpu.yaml
+
+  run:
+    timeout: 7200
+    script: python benchmark_worker_startup.py
+        --num_cpus_in_cluster 64
+        --num_gpus_in_cluster 64
+        --num_tasks_or_actors_per_run 64
+        --num_measurements_per_configuration 5
+
 - name: dask_on_ray_100gb_sort
   group: core-daily-test
   working_dir: nightly_tests
@@ -3444,11 +3618,14 @@
     cluster_env: app_config.yaml
     cluster_compute: distributed.yaml
 
+  env: staging_v1
+
   run:
     timeout: 3600
     script: python distributed/test_many_actors.py
     wait_for_nodes:
       num_nodes: 65
+    type: sdk_command
 
 
 - name: many_actors_smoke_test
@@ -3461,11 +3638,14 @@
     cluster_env: app_config.yaml
     cluster_compute: distributed_smoke_test.yaml
 
+  env: staging_v1
+
   run:
     timeout: 3600
     script: SMOKE_TEST=1 python distributed/test_many_actors.py
     wait_for_nodes:
       num_nodes: 2
+    type: sdk_command
 
 
 - name: many_tasks
@@ -3478,11 +3658,14 @@
     cluster_env: app_config.yaml
     cluster_compute: distributed.yaml
 
+  env: staging_v1
+
   run:
     timeout: 3600
     script: python distributed/test_many_tasks.py --num-tasks=10000
     wait_for_nodes:
       num_nodes: 65
+    type: sdk_command
 
 
 - name: many_pgs
@@ -3794,6 +3977,22 @@
     timeout: 2400
     script: python iter_tensor_batches_benchmark.py
 
+- name: iter_tensor_batches_benchmark_multi_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: multi_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
+    script: python iter_tensor_batches_benchmark.py --data-size-gb=10
+
+
 
 - name: iter_batches_benchmark_single_node
   group: data-tests
@@ -3857,16 +4056,11 @@
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2 once the test has been confirmed
-  # to be stable.
-  env: staging_v1
-
   run:
     timeout: 7200
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
-    type: sdk_command
 
 - name: dataset_shuffle_sort_1tb
   group: data-tests
@@ -4161,7 +4355,7 @@
 
   run:
     timeout: 1200
-    script: cd tests && bash test_aws_cluster_launcher.sh aws_cluster.yaml
+    script: cd tests && python aws_launch_and_verify_cluster.py aws_cluster.yaml
     type: sdk_command
 
 - name: aws_cluster_launcher_minimal
@@ -4181,5 +4375,5 @@
 
   run:
     timeout: 1200
-    script: cd tests && bash test_aws_cluster_launcher.sh ../example-minimal.yaml
+    script: cd tests && python aws_launch_and_verify_cluster.py ../example-minimal.yaml
     type: sdk_command

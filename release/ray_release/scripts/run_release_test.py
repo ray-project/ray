@@ -8,8 +8,6 @@ from ray_release.aws import maybe_fetch_api_token
 from ray_release.config import (
     DEFAULT_PYTHON_VERSION,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
-    DEFAULT_CORE_RUN_TYPE,
-    DEFAULT_CORE_ENV_TYPE,
     as_smoke_test,
     find_test,
     parse_python_version,
@@ -58,7 +56,8 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
         "Can be e.g. `master` to fetch latest wheels from the "
         "Ray master branch. Can also be `<repo_url>:<branch>` or "
         "`<repo_url>:<commit>` to specify a different repository to "
-        "fetch wheels from, if available."
+        "fetch wheels from, if available. Can also be "
+        "`file://<path to local wheel>` for wheels built locally."
     ),
 )
 @click.option(
@@ -117,13 +116,6 @@ def main(
 
     if smoke_test:
         test = as_smoke_test(test)
-
-    # Several core tests have perf regression from V2 Job submission Runner.
-    # So we stick to the original implementation for now.
-    team = test.get("team")
-    if team == "core":
-        test["run"]["type"] = test["run"].get("type", DEFAULT_CORE_RUN_TYPE)
-        test["env"] = test.get("env", DEFAULT_CORE_ENV_TYPE)
 
     env_to_use = env or test.get("env", DEFAULT_ENVIRONMENT)
     env_dict = load_environment(env_to_use)
