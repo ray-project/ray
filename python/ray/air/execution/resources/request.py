@@ -209,7 +209,7 @@ class AcquiredResources(abc.ABC):
     resource_request: ResourceRequest
 
     def annotate_remote_entities(
-        self, entities: List[RemoteRayEntity]
+        self, entities: List[RemoteRayEntity], **option_kwargs
     ) -> List[Union[RemoteRayEntity]]:
         """Return remote ray entities (tasks/actors) to use the acquired resources.
 
@@ -218,6 +218,8 @@ class AcquiredResources(abc.ABC):
 
         Args:
             entities: Remote Ray entities to annotate with the acquired resources.
+            option_kwargs: Keyword arguments passed to the ``options()`` call on
+                the remote object.
         """
         bundles = self.resource_request.bundles
 
@@ -236,7 +238,9 @@ class AcquiredResources(abc.ABC):
             # The empty head bundle is place on the first bundle index with empty
             # resources.
             annotated.append(
-                self._annotate_remote_entity(entities[0], {}, bundle_index=0)
+                self._annotate_remote_entity(
+                    entities[0], {}, bundle_index=0, **option_kwargs
+                )
             )
 
             # Shift the remaining entities
@@ -244,12 +248,18 @@ class AcquiredResources(abc.ABC):
 
         for i, (entity, bundle) in enumerate(zip(entities, bundles)):
             annotated.append(
-                self._annotate_remote_entity(entity, bundle, bundle_index=i)
+                self._annotate_remote_entity(
+                    entity, bundle, bundle_index=i, **option_kwargs
+                )
             )
 
         return annotated
 
     def _annotate_remote_entity(
-        self, entity: RemoteRayEntity, bundle: Dict[str, float], bundle_index: int
+        self,
+        entity: RemoteRayEntity,
+        bundle: Dict[str, float],
+        bundle_index: int,
+        **option_kwargs,
     ) -> RemoteRayEntity:
         raise NotImplementedError

@@ -409,7 +409,16 @@ class RayTrialExecutor:
 
         self._trial_to_acquired_resources[trial] = acquired_resources
 
-        [full_actor_class] = acquired_resources.annotate_remote_entities([_actor_cls])
+        [full_actor_class] = acquired_resources.annotate_remote_entities(
+            [_actor_cls],
+            runtime_env={
+                "env_vars": {
+                    "RAY_AIR_LOCAL_CACHE_DIR": os.environ.get(
+                        "RAY_AIR_LOCAL_CACHE_DIR", ""
+                    )
+                }
+            },
+        )
 
         # Clear the Trial's location (to be updated later on result)
         # since we don't know where the remote runner is placed.

@@ -1,4 +1,5 @@
 import logging
+import os
 import random
 import time
 import uuid
@@ -354,7 +355,15 @@ class RayActorManager:
 
                 # Associate to acquired resources
                 [remote_actor_cls] = acquired_resources.annotate_remote_entities(
-                    [actor_cls]
+                    [actor_cls],
+                    runtime_env={
+                        # Todo: generalize this outside of AIR
+                        "env_vars": {
+                            "RAY_AIR_LOCAL_CACHE_DIR": os.environ.get(
+                                "RAY_AIR_LOCAL_CACHE_DIR", ""
+                            )
+                        }
+                    },
                 )
 
                 # Start Ray actor
