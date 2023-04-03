@@ -1,9 +1,11 @@
 from abc import ABC
+
 import torch
 
+
 class Communicator(ABC):
-    """Provides MPI style communication primitives.
-    """
+    """Provides MPI style communication primitives."""
+
     def __init__(self, world_size: int, rank: int):
         self.world_size = world_size
         self.rank = rank
@@ -24,13 +26,11 @@ class TorchBaseCommunicator(Communicator):
         super().__init__(world_size, rank)
         # TODO: do torch distributed initialization here.
 
-
     def send(self, tensor: torch.Tensor, dest_rank: int, async_op: bool = False):
         if async_op:
             torch.distributed.isend(tensor, dest_rank)
         else:
             torch.distributed.send(tensor, dest_rank)
-
 
     def recv(self, tensor, src_rank, async_op: bool = False):
         if async_op:

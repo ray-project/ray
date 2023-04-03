@@ -1,4 +1,7 @@
 from abc import ABC
+from collections import deque
+
+from ray.experimental.dlserve.communicator import TorchBaseCommunicator
 
 
 class Instruction(ABC):
@@ -10,21 +13,23 @@ class Instruction(ABC):
 class Send(Instruction):
     """Send data to dest rank."""
 
-    def __init__(self, dest_rank: int):
+    def __init__(self, dest_rank: int, count: int = 1):
         self.dest_rank = dest_rank
+        self.count = count
 
 
 class Receive(Instruction):
     """Receive data from dest rank."""
 
-    def __init__(self, src_rank: int):
+    def __init__(self, src_rank: int, count: int = 1):
         self.src_rank = src_rank
+        self.count = count
 
 
 class Forward(Instruction):
     """Apply forward computation against the model."""
 
-    def __init__(self, count: int):
+    def __init__(self, count: int = 1):
         self.count = count
 
 
@@ -37,21 +42,23 @@ class Schedule(ABC):
 
 
 class Config:
-    pass
+    def __init__(self, world_size: int, rank: int) -> None:
+        self.world_size = world_size
+        self.rank = rank
 
 
 class ExecutionEngine:
     """A stage replica engine represents a physical replica in the pipeline stage."""
 
     def __init__(self, schedule: Schedule, config: Config):
-        self.input_buffer = []
-        self.output_buffer = []
+        self.input_queue = deque()
+        self.output_queue = deque()
         self.schedule = schedule
         self.stop = False
+        self.initialize_config(config)
 
     def initialize_config(self, config: Config):
-        """Initialize the engine with a configuration."""
-        pass
+        self.communicator = TorchBaseCommunicator(config.world_size, config.rank)
 
     def start(self):
         """Execute the replica according to the schedule."""
@@ -75,4 +82,16 @@ class ExecutionEngine:
                 self._execute_instruction(instruction)
 
     def _execute_step(self, instruction: Instruction):
-        pass
+        if isinstance(instruction, Send):
+            for _ in range(instruction.count):
+                self.communicator.send(
+                    self.output_queue.popleft(), instruction.dest_rank
+                )
+        elif isinstance(instruction, Receive):
+            for _ in range(instruction.count):
+                self.communicator.recv(
+                    self.output_queue.popleft(), instruction.src_rank
+                )
+        if isinstance(instruction, Forward):
+            for _ in range(instruction.count):
+                self.output_queue.append(self.model.forward(self.input_qeuue.popleft()))
