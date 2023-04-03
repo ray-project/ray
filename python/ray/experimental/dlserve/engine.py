@@ -1,7 +1,7 @@
 from abc import ABC
 from collections import deque
 
-from ray.experimental.dlserve.communicator import TorchBaseCommunicator
+from ray.experimental.dlserve.communicator import TorchBasedCommunicator
 
 
 class Instruction(ABC):
@@ -58,7 +58,7 @@ class ExecutionEngine:
         self.initialize_config(config)
 
     def initialize_config(self, config: Config):
-        self.communicator = TorchBaseCommunicator(config.world_size, config.rank)
+        self.communicator = TorchBasedCommunicator(config.world_size, config.rank)
 
     def start(self):
         """Execute the replica according to the schedule."""
