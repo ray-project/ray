@@ -320,16 +320,22 @@ compile_ray_requirements() {
   alias pip="python -m pip"
   pip install pip-tools
 
-  pip-compile --resolver=backtracking -q \
-     --pip-args --no-deps --strip-extras --no-annotate --no-header -q -o \
-    "${WORKSPACE_DIR}/python/requirements_pinned.txt" \
-    "${WORKSPACE_DIR}/python/requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements_test.txt" \
-    "${WORKSPACE_DIR}/python/requirements_linters.txt"
+  if [ -f "${WORKSPACE_DIR}/python/requirements_pinned.txt" ]; then
+    echo requirements_pinned already exists
+  else
+    pip-compile --resolver=backtracking -q \
+       --pip-args --no-deps --strip-extras --no-annotate --no-header -q -o \
+      "${WORKSPACE_DIR}/python/requirements_pinned.txt" \
+      "${WORKSPACE_DIR}/python/requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements_test.txt" \
+      "${WORKSPACE_DIR}/python/requirements_linters.txt"
+  fi
 
-  if [ -n "${BUILDKITE-}" ]; then
+  if [ -n "${BUILDKITE-}" ] && [ -d "/artifact-mount" ]; then
     rm -rf /artifact-mount/requirements*.txt
     cp -f "${WORKSPACE_DIR}/python/requirements_pinned.txt" /artifact-mount/
+  else
+    cat "${WORKSPACE_DIR}/python/requirements_pinned.txt"
   fi
 }
 
