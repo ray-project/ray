@@ -18,8 +18,12 @@ Condition = namedtuple(
 
 aws_gpu_cpu_to_concurrency_groups = [
     Condition(min_gpu=9, max_gpu=-1, min_cpu=0, max_cpu=-1, group="large-gpu", limit=4),
-    Condition(min_gpu=1, max_gpu=9, min_cpu=0, max_cpu=-128, group="small-gpu", limit=8),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=1025, max_cpu=-1, group="enormous", limit=1),
+    Condition(
+        min_gpu=1, max_gpu=9, min_cpu=0, max_cpu=-128, group="small-gpu", limit=8
+    ),
+    Condition(
+        min_gpu=0, max_gpu=0, min_cpu=1025, max_cpu=-1, group="enormous", limit=1
+    ),
     Condition(min_gpu=0, max_gpu=0, min_cpu=513, max_cpu=1024, group="large", limit=8),
     Condition(min_gpu=0, max_gpu=0, min_cpu=129, max_cpu=512, group="medium", limit=6),
     Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=32, group="tiny", limit=32),
@@ -32,11 +36,19 @@ gce_gpu_cpu_to_concurrent_groups = [
     Condition(min_gpu=4, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=1),
     Condition(min_gpu=2, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=3),
     Condition(min_gpu=1, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=4),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=1025, max_cpu=-1, group="enormous-gce", limit=1),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=513, max_cpu=1024, group="large-gce", limit=8),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=129, max_cpu=512, group="medium-gce", limit=6),
+    Condition(
+        min_gpu=0, max_gpu=0, min_cpu=1025, max_cpu=-1, group="enormous-gce", limit=1
+    ),
+    Condition(
+        min_gpu=0, max_gpu=0, min_cpu=513, max_cpu=1024, group="large-gce", limit=8
+    ),
+    Condition(
+        min_gpu=0, max_gpu=0, min_cpu=129, max_cpu=512, group="medium-gce", limit=6
+    ),
     Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=32, group="tiny-gce", limit=32),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=128, group="small-gce", limit=16),
+    Condition(
+        min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=128, group="small-gce", limit=16
+    ),
 ]
 
 
@@ -84,10 +96,10 @@ def parse_condition(cond: int, limit: float = float("inf")) -> float:
 
 
 def get_concurrency_group(test: Test) -> Tuple[str, int]:
-    if get_cloud_environment() == 'gs':
-      concurrent_group = aws_gpu_cpu_to_concurrency_groups
+    if get_cloud_environment() == "gs":
+        concurrent_group = aws_gpu_cpu_to_concurrency_groups
     else:
-      concurrent_group = gce_gpu_cpu_to_concurrent_groups
+        concurrent_group = gce_gpu_cpu_to_concurrent_groups
     default_concurrent = concurrent_group[-1]
     try:
         test_cpus, test_gpus = get_test_resources(test)
