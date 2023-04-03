@@ -240,7 +240,7 @@ def test_controller_recover_initializing_actor(serve_instance):
 
     assert controller_tag1 != controller_tag2
 
-    # Let the actor proceed initialization
+    # Let the actor finish initializing
     signal.send.remote()
     client._wait_for_deployment_healthy(V1.name)
     # Make sure the actor before controller dead is staying alive.
