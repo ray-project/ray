@@ -377,7 +377,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
         return "ok"
 
     def on_write_complete(self, write_results: List[WriteResult]) -> None:
-        assert all(w == ["ok"] for w in write_results), write_results
+        assert all(w == "ok" for w in write_results), write_results
         self.num_ok += 1
 
     def on_write_failed(
