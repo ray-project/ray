@@ -214,9 +214,9 @@ def test_controller_recover_initializing_actor(serve_instance):
 
     @serve.deployment
     class V1:
-        def __init__(self):
+        async def __init__(self):
             signal2.send.remote()
-            ray.get(signal.wait.remote())
+            await signal.wait.remote()
 
         def __call__(self, request):
             return f"1|{os.getpid()}"
@@ -233,7 +233,7 @@ def test_controller_recover_initializing_actor(serve_instance):
     actor_tag = get_actor_tag(V1.name)
 
     ray.kill(serve.context._global_client._controller, no_restart=False)
-
+    time.sleep(1)
     # Let the actor proceed initialization
     signal.send.remote()
     client._wait_for_deployment_healthy(V1.name)
