@@ -22,11 +22,7 @@ class PlacementGroupAcquiredResources(AcquiredResources):
     placement_group: PlacementGroup
 
     def _annotate_remote_entity(
-        self,
-        entity: RemoteRayEntity,
-        bundle: Dict[str, float],
-        bundle_index: int,
-        **option_kwargs,
+        self, entity: RemoteRayEntity, bundle: Dict[str, float], bundle_index: int
     ) -> RemoteRayEntity:
         bundle = bundle.copy()
         num_cpus = bundle.pop("CPU", 0)
@@ -43,7 +39,6 @@ class PlacementGroupAcquiredResources(AcquiredResources):
             num_gpus=num_gpus,
             memory=memory,
             resources=bundle,
-            **option_kwargs,
         )
 
 
