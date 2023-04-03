@@ -20,7 +20,7 @@ class Communicator(ABC):
         pass
 
 
-class TorchBaseCommunicator(Communicator):
+class TorchBasedCommunicator(Communicator):
     def __init__(self, world_size: int, rank: int):
         assert torch.distributed.is_available()
         super().__init__(world_size, rank)
