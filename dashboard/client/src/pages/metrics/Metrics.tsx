@@ -119,6 +119,10 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
         title: "Active Actors by Name",
         pathParams: "orgId=1&theme=light&panelId=36",
       },
+      {
+        title: "Out of Memory Failure by Name",
+        pathParams: "orgId=1&theme=light&panelId=44",
+      },
     ],
   },
   {
