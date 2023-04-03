@@ -19,8 +19,8 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 
-from ray.rllib.models.specs.typing import SpecType
-from ray.rllib.models.specs.checker import (
+from ray.rllib.core.models.specs.typing import SpecType
+from ray.rllib.core.models.specs.checker import (
     check_input_specs,
     check_output_specs,
     convert_to_canonical_format,

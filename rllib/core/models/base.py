@@ -1,14 +1,14 @@
 import abc
 from dataclasses import dataclass
-from typing import List, Union, Tuple
+from typing import List, Optional, Tuple, Union
 
 from ray.rllib import SampleBatch
-from ray.rllib.models.specs.specs_base import Spec
-from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.core.models.specs.specs_base import Spec
+from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.specs.checker import convert_to_canonical_format
+from ray.rllib.core.models.specs.checker import convert_to_canonical_format
 from ray.rllib.utils.typing import TensorType
 
 # Top level keys that unify model i/o.
@@ -117,56 +117,56 @@ class Model(abc.ABC):
         This is a good place to do any initialization that requires access to the
         subclass's attributes.
         """
-        self._input_spec = self.get_input_spec()
-        self._output_spec = self.get_output_spec()
+        self._input_specs = self.get_input_specs()
+        self._output_specs = self.get_output_specs()
 
-    def get_input_spec(self) -> Union[Spec, None]:
-        """Returns the input spec of this model.
+    def get_input_specs(self) -> Optional[Spec]:
+        """Returns the input specs of this model.
 
-        Override `get_input_spec` to define your own input spec.
+        Override `get_input_specs` to define your own input specs.
         This method should not be called often, e.g. every forward pass.
-        Instead, it should be called once at instantiation to define Model.input_spec.
+        Instead, it should be called once at instantiation to define Model.input_specs.
 
         Returns:
-            Spec: The input spec.
+            Spec: The input specs.
         """
         return None
 
-    def get_output_spec(self) -> Union[Spec, None]:
-        """Returns the output spec of this model.
+    def get_output_specs(self) -> Optional[Spec]:
+        """Returns the output specs of this model.
 
-        Override `get_output_spec` to define your own output spec.
+        Override `get_output_specs` to define your own output specs.
         This method should not be called often, e.g. every forward pass.
-        Instead, it should be called once at instantiation to define Model.output_spec.
+        Instead, it should be called once at instantiation to define Model.output_specs.
 
         Returns:
-            Spec: The output spec.
+            Spec: The output specs.
         """
         return None
 
     @property
-    def input_spec(self) -> Spec:
+    def input_specs(self) -> Spec:
         """Returns the input spec of this model."""
-        return self._input_spec
+        return self._input_specs
 
-    @input_spec.setter
-    def input_spec(self, spec: Spec) -> None:
+    @input_specs.setter
+    def input_specs(self, spec: Spec) -> None:
         raise ValueError(
-            "Input spec cannot be set directly. Override "
-            "Model.get_input_spec() instead. Set Model._input_spec if "
+            "`input_specs` cannot be set directly. Override "
+            "Model.get_input_specs() instead. Set Model._input_specs if "
             "you want to override this behavior."
         )
 
     @property
-    def output_spec(self) -> Spec:
-        """Returns the output spec of this model."""
-        return self._output_spec
+    def output_specs(self) -> Spec:
+        """Returns the output specs of this model."""
+        return self._output_specs
 
-    @output_spec.setter
-    def output_spec(self, spec: Spec) -> None:
+    @output_specs.setter
+    def output_specs(self, spec: Spec) -> None:
         raise ValueError(
-            "Output spec cannot be set directly. Override "
-            "Model.get_input_spec() instead. Set Model._input_spec if "
+            "`output_specs` cannot be set directly. Override "
+            "Model.get_output_specs() instead. Set Model._output_specs if "
             "you want to override this behavior."
         )
 
@@ -198,8 +198,8 @@ class Encoder(Model, abc.ABC):
     """The framework-agnostic base class for all encoders RLlib produces.
 
     Encoders are used to encode observations into a latent space in RLModules.
-    Therefore, their input_spec contains the observation space dimensions.
-    Similarly, their output_spec contains the latent space dimensions.
+    Therefore, their `input_specs` contains the observation space dimensions.
+    Similarly, their `output_specs` contains the latent space dimensions.
     Encoders can be recurrent, in which case the state should be part of input- and
     output_specs. The latents that are produced by an encoder are fed into subsequent
     heads. Any implementation of Encoder should also be callable. This should be done
@@ -217,7 +217,7 @@ class Encoder(Model, abc.ABC):
 
     Outputs of encoders are generally of shape (B, latent_dim) or (B, T, latent_dim).
     That is, for time-series data, we encode into the latent space for each time step.
-    This should be reflected in the output_spec.
+    This should be reflected in the `output_specs`.
 
     Usage Example together with a ModelConfig:
 
@@ -234,8 +234,8 @@ class Encoder(Model, abc.ABC):
                 super().__init__(config)
                 self.factor = config.factor
 
-            @check_input_specs("input_spec")
-            @check_output_specs("output_spec")
+            @check_input_specs("input_specs")
+            @check_output_specs("output_specs")
             def __call__(self, *args, **kwargs):
                 # This is a dummy method to do checked forward passes.
                 return self._forward(*args, **kwargs)
@@ -265,11 +265,11 @@ class Encoder(Model, abc.ABC):
     """
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Union[Spec, None]:
         return convert_to_canonical_format([SampleBatch.OBS, STATE_IN])
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Union[Spec, None]:
         return convert_to_canonical_format([ENCODER_OUT, STATE_OUT])
 
     @abc.abstractmethod
@@ -322,13 +322,13 @@ class ActorCriticEncoder(Encoder):
         super().__init__(config)
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Union[Spec, None]:
         if self.config.shared:
-            state_in_spec = self.encoder.input_spec[STATE_IN]
+            state_in_spec = self.encoder.input_specs[STATE_IN]
         else:
             state_in_spec = {
-                ACTOR: self.actor_encoder.input_spec[STATE_IN],
-                CRITIC: self.critic_encoder.input_spec[STATE_IN],
+                ACTOR: self.actor_encoder.input_specs[STATE_IN],
+                CRITIC: self.critic_encoder.input_specs[STATE_IN],
             }
 
         return SpecDict(
@@ -340,13 +340,13 @@ class ActorCriticEncoder(Encoder):
         )
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Union[Spec, None]:
         if self.config.shared:
-            state_out_spec = self.encoder.output_spec[STATE_OUT]
+            state_out_spec = self.encoder.output_specs[STATE_OUT]
         else:
             state_out_spec = {
-                ACTOR: self.actor_encoder.output_spec[STATE_OUT],
-                CRITIC: self.critic_encoder.output_spec[STATE_OUT],
+                ACTOR: self.actor_encoder.output_specs[STATE_OUT],
+                CRITIC: self.critic_encoder.output_specs[STATE_OUT],
             }
 
         return SpecDict(

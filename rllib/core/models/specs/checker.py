@@ -5,9 +5,9 @@ from typing import Union, Mapping, Any, Callable
 from ray.util.annotations import DeveloperAPI
 
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.specs.specs_base import Spec, TypeSpec
-from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.typing import SpecType
+from ray.rllib.core.models.specs.specs_base import Spec, TypeSpec
+from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.core.models.specs.typing import SpecType
 
 
 @DeveloperAPI
@@ -170,7 +170,7 @@ def _validate(
 
 @DeveloperAPI(stability="alpha")
 def check_input_specs(
-    input_spec: str,
+    input_specs: str,
     *,
     filter: bool = False,
     cache: bool = False,
@@ -190,10 +190,10 @@ def check_input_specs(
 
         >>> class MyModel(nn.Module):
         ...     @property
-        ...     def input_spec(self):
+        ...     def input_specs(self):
         ...         return {"obs": TensorSpec("b, d", d=64)}
         ...
-        ...     @check_input_specs("input_spec")
+        ...     @check_input_specs("input_specs")
         ...     def forward(self, input_data, return_loss=False):
         ...         ...
 
@@ -205,8 +205,8 @@ def check_input_specs(
         func: The instance method to decorate. It should be a callable that takes
             `self` as the first argument, `input_data` as the second argument and any
             other keyword argument thereafter.
-        input_spec: `self` should have an instance attribute whose name matches the
-            string in input_spec and returns the `SpecDict`, `Spec`, or simply the
+        input_specs: `self` should have an instance attribute whose name matches the
+            string in input_specs and returns the `SpecDict`, `Spec`, or simply the
             `Type` that the `input_data` should comply with. It can also be None or
             empty list / dict to enforce no input spec.
         filter: If True, and `input_data` is a nested dict the `input_data` will be
@@ -232,10 +232,10 @@ def check_input_specs(
                 self.__checked_input_specs_cache__ = {}
 
             checked_data = input_data
-            if input_spec:
-                spec = getattr(self, input_spec, "___NOT_FOUND___")
+            if input_specs:
+                spec = getattr(self, input_specs, "___NOT_FOUND___")
                 if spec == "___NOT_FOUND___":
-                    raise ValueError(f"object {self} has no attribute {input_spec}.")
+                    raise ValueError(f"object {self} has no attribute {input_specs}.")
                 if spec is not None:
                     spec = convert_to_canonical_format(spec)
                     checked_data = _validate(
@@ -266,7 +266,7 @@ def check_input_specs(
 
 @DeveloperAPI(stability="alpha")
 def check_output_specs(
-    output_spec: str,
+    output_specs: str,
     *,
     cache: bool = False,
 ):
@@ -283,10 +283,10 @@ def check_output_specs(
 
         >>> class MyModel(nn.Module):
         ...     @property
-        ...     def output_spec(self):
+        ...     def output_specs(self):
         ...         return {"obs": TensorSpec("b, d", d=64)}
         ...
-        ...     @check_output_specs("output_spec")
+        ...     @check_output_specs("output_specs")
         ...     def forward(self, input_data, return_loss=False):
         ...         return {"obs": torch.randn(32, 64)}
 
@@ -295,8 +295,8 @@ def check_output_specs(
             `self` as the first argument, `input_data` as the second argument and any
             other keyword argument thereafter. It should return a single dict-like
             object (i.e. not a tuple).
-        input_spec: `self` should have an instance attribute whose name matches the
-            string in input_spec and returns the `SpecDict`, `Spec`, or simply the
+        output_specs: `self` should have an instance attribute whose name matches the
+            string in output_specs and returns the `SpecDict`, `Spec`, or simply the
             `Type` that the `input_data` should comply with. It can alos be None or
             empty list / dict to enforce no input spec.
         cache: If True, only checks the data validation for the first time the
@@ -319,10 +319,10 @@ def check_output_specs(
 
             output_data = func(self, input_data, **kwargs)
 
-            if output_spec:
-                spec = getattr(self, output_spec, "___NOT_FOUND___")
+            if output_specs:
+                spec = getattr(self, output_specs, "___NOT_FOUND___")
                 if spec == "___NOT_FOUND___":
-                    raise ValueError(f"object {self} has no attribute {output_spec}.")
+                    raise ValueError(f"object {self} has no attribute {output_specs}.")
                 if spec is not None:
                     spec = convert_to_canonical_format(spec)
                     _validate(

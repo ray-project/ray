@@ -2,7 +2,7 @@ from typing import Union, Mapping, Any
 
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.specs.specs_base import Spec
+from ray.rllib.core.models.specs.specs_base import Spec
 
 
 _MISSING_KEYS_FROM_SPEC = (
