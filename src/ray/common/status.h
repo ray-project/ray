@@ -283,7 +283,9 @@ class RAY_EXPORT Status {
   }
   bool IsGrpcUnavailable() const { return code() == StatusCode::GrpcUnavailable; }
   bool IsGrpcUnknown() const { return code() == StatusCode::GrpcUnknown; }
-  bool IsGrpcResourceExhausted() const { return code() == StatusCode::GrpcResourceExhausted; }
+  bool IsGrpcResourceExhausted() const {
+    return code() == StatusCode::GrpcResourceExhausted;
+  }
 
   bool IsGrpcError() const { return IsGrpcUnknown() || IsGrpcUnavailable(); }
 

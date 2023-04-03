@@ -151,11 +151,11 @@ Status GcsSyncClient::Connect() {
                    ::RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
   channel_ = rpc::BuildChannel(options_.gcs_address_, options_.gcs_port_, arguments);
   auto deadline =
-        std::chrono::system_clock::now() +
-        std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s());
+      std::chrono::system_clock::now() +
+      std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s());
   if (!channel_->WaitForConnected(deadline)) {
-    RAY_LOG(ERROR) << "Failed to connect to GCS at address " << options_.gcs_address_ << ":" << options_.gcs_port_
-                   << " within "
+    RAY_LOG(ERROR) << "Failed to connect to GCS at address " << options_.gcs_address_
+                   << ":" << options_.gcs_port_ << " within "
                    << ::RayConfig::instance().gcs_rpc_server_connect_timeout_s()
                    << " seconds.";
   }
@@ -167,7 +167,7 @@ Status GcsSyncClient::Connect() {
 }
 
 Status ConvertGrpcStatus(grpc::Status status) {
-  if (status.error_code() ==  grpc::StatusCode::RESOURCE_EXHAUSTED) {
+  if (status.error_code() == grpc::StatusCode::RESOURCE_EXHAUSTED) {
     return Status::GrpcResourceExhausted(status.error_message());
   } else {
     return Status::GrpcUnknown(status.error_message());
@@ -187,11 +187,15 @@ Status HandleGrpcError(rpc::GcsStatus status) {
 
 void GrpcClientContextWithTimeoutMs(grpc::ClientContext &context, int64_t timeout_ms) {
   if (timeout_ms != -1) {
-    context.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(timeout_ms));
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::milliseconds(timeout_ms));
   }
 }
 
-Status GcsSyncClient::InternalKVGet(const std::string &ns, const std::string &key, int64_t timeout_ms, std::string &value) {
+Status GcsSyncClient::InternalKVGet(const std::string &ns,
+                                    const std::string &key,
+                                    int64_t timeout_ms,
+                                    std::string &value) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -214,7 +218,11 @@ Status GcsSyncClient::InternalKVGet(const std::string &ns, const std::string &ke
   return ConvertGrpcStatus(status);
 }
 
-Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vector<std::string> &keys, int64_t timeout_ms, std::unordered_map<std::string, std::string> &result) {
+Status GcsSyncClient::InternalKVMultiGet(
+    const std::string &ns,
+    const std::vector<std::string> &keys,
+    int64_t timeout_ms,
+    std::unordered_map<std::string, std::string> &result) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -228,7 +236,7 @@ Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vecto
   if (status.ok()) {
     result.clear();
     if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      for(const auto &entry : reply.results()) {
+      for (const auto &entry : reply.results()) {
         result[entry.key()] = entry.value();
       }
       return Status::OK();
@@ -241,7 +249,12 @@ Status GcsSyncClient::InternalKVMultiGet(const std::string &ns, const std::vecto
   return ConvertGrpcStatus(status);
 }
 
-Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &key, const std::string &value, bool overwrite, int64_t timeout_ms, int &added_num) {
+Status GcsSyncClient::InternalKVPut(const std::string &ns,
+                                    const std::string &key,
+                                    const std::string &value,
+                                    bool overwrite,
+                                    int64_t timeout_ms,
+                                    int &added_num) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -264,7 +277,11 @@ Status GcsSyncClient::InternalKVPut(const std::string &ns, const std::string &ke
   return ConvertGrpcStatus(status);
 }
 
-Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &key, bool del_by_prefix, int64_t timeout_ms, int &deleted_num) {
+Status GcsSyncClient::InternalKVDel(const std::string &ns,
+                                    const std::string &key,
+                                    bool del_by_prefix,
+                                    int64_t timeout_ms,
+                                    int &deleted_num) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -286,7 +303,10 @@ Status GcsSyncClient::InternalKVDel(const std::string &ns, const std::string &ke
   return ConvertGrpcStatus(status);
 }
 
-Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &prefix, int64_t timeout_ms, std::vector<std::string> &results) {
+Status GcsSyncClient::InternalKVKeys(const std::string &ns,
+                                     const std::string &prefix,
+                                     int64_t timeout_ms,
+                                     std::vector<std::string> &results) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -307,7 +327,10 @@ Status GcsSyncClient::InternalKVKeys(const std::string &ns, const std::string &p
   return ConvertGrpcStatus(status);
 }
 
-Status GcsSyncClient::InternalKVExists(const std::string &ns, const std::string &key, int64_t timeout_ms, bool &exists) {
+Status GcsSyncClient::InternalKVExists(const std::string &ns,
+                                       const std::string &key,
+                                       int64_t timeout_ms,
+                                       bool &exists) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -328,7 +351,9 @@ Status GcsSyncClient::InternalKVExists(const std::string &ns, const std::string 
   return ConvertGrpcStatus(status);
 }
 
-Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri, int expiration_s, int64_t timeout_ms) {
+Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri,
+                                       int expiration_s,
+                                       int64_t timeout_ms) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -343,18 +368,20 @@ Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri, int expiration_s,
     if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
       return Status::OK();
     } else if (reply.status().code() == static_cast<int>(StatusCode::GrpcUnavailable)) {
-      std::string msg = "Failed to pin URI reference for " + uri + " due to the GCS being " +
+      std::string msg =
+          "Failed to pin URI reference for " + uri + " due to the GCS being " +
           "unavailable, most likely it has crashed: " + reply.status().message() + ".";
       return Status::GrpcUnavailable(msg);
     }
     std::string msg = "Failed to pin URI reference for " + uri +
-        " due to unexpected error " + reply.status().message() + ".";
+                      " due to unexpected error " + reply.status().message() + ".";
     return Status::GrpcUnknown(msg);
   }
   return ConvertGrpcStatus(status);
 }
 
-Status GcsSyncClient::GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo>& result) {
+Status GcsSyncClient::GetAllNodeInfo(int64_t timeout_ms,
+                                     std::vector<rpc::GcsNodeInfo> &result) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -364,7 +391,8 @@ Status GcsSyncClient::GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNod
   grpc::Status status = node_info_stub_->GetAllNodeInfo(&context, request, &reply);
   if (status.ok()) {
     if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      result = std::vector<rpc::GcsNodeInfo>(reply.node_info_list().begin(), reply.node_info_list().end());
+      result = std::vector<rpc::GcsNodeInfo>(reply.node_info_list().begin(),
+                                             reply.node_info_list().end());
       return Status::OK();
     }
     return HandleGrpcError(reply.status());
@@ -372,7 +400,8 @@ Status GcsSyncClient::GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNod
   return ConvertGrpcStatus(status);
 }
 
-Status GcsSyncClient::GetAllJobInfo(int64_t timeout_ms, std::vector<rpc::JobTableData>& result) {
+Status GcsSyncClient::GetAllJobInfo(int64_t timeout_ms,
+                                    std::vector<rpc::JobTableData> &result) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -382,7 +411,8 @@ Status GcsSyncClient::GetAllJobInfo(int64_t timeout_ms, std::vector<rpc::JobTabl
   grpc::Status status = job_info_stub_->GetAllJobInfo(&context, request, &reply);
   if (status.ok()) {
     if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      result = std::vector<rpc::JobTableData>(reply.job_info_list().begin(), reply.job_info_list().end());
+      result = std::vector<rpc::JobTableData>(reply.job_info_list().begin(),
+                                              reply.job_info_list().end());
       return Status::OK();
     }
     return HandleGrpcError(reply.status());

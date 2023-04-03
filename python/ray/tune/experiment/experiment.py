@@ -227,7 +227,7 @@ class Experiment:
                 f"large array or other object in scope. "
                 f"Tip: use tune.with_parameters() to put large objects "
                 f"in the Ray object store. \n"
-                 f"Original exception: {traceback.format_exc()}"
+                f"Original exception: {traceback.format_exc()}"
             )
 
         self.name = name or self._run_identifier

@@ -463,6 +463,7 @@ class RpcMessageTooLargeError(RayError):
     """Indicates that a message that was sent was too large to fit into
     the underlying RPC implementation.
     """
+
     def __init__(self, message):
         self.message = message
 

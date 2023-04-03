@@ -184,7 +184,9 @@ def _auto_reconnect(f):
         return wrapper
     else:
 
-        raise NotImplementedError("This code moved to Cython, see https://github.com/ray-project/ray/pull/33769")
+        raise NotImplementedError(
+            "This code moved to Cython, see https://github.com/ray-project/ray/pull/33769"
+        )
 
 
 class GcsChannel:
