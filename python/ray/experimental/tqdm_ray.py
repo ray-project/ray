@@ -2,6 +2,7 @@ import copy
 import json
 import logging
 import os
+import threading
 import uuid
 from typing import Any, Dict, Iterable, Optional
 
@@ -25,6 +26,15 @@ RAY_TQDM_MAGIC = "__ray_tqdm_magic_token__"
 
 # Global manager singleton.
 _manager: Optional["_BarManager"] = None
+
+
+def safe_print(*args, **kwargs):
+    """Use this as an alternative to `print` that will not corrupt tqdm output."""
+    try:
+        instance().hide_bars()
+        print(*args, **kwargs)
+    finally:
+        instance().unhide_bars()
 
 
 class tqdm:
@@ -75,7 +85,9 @@ class tqdm:
     def close(self):
         """Implements tqdm.tqdm.close."""
         self._closed = True
-        self._dump_state()
+        # Don't bother if ray is shutdown (in __del__ hook).
+        if ray is not None:
+            self._dump_state()
 
     def _dump_state(self) -> None:
         if ray._private.worker.global_worker.mode == ray.WORKER_MODE:
@@ -225,6 +237,7 @@ class _BarManager:
         self.bar_groups = {}
         self.in_hidden_state = False
         self.num_hides = 0
+        self.lock = threading.RLock()
 
     def process_state_update(self, state: ProgressBarState) -> None:
         """Apply the remote progress bar state update.
@@ -233,12 +246,14 @@ class _BarManager:
         created or destroyed, we also recalculate and update the `pos_offset` of each
         BarGroup on the screen.
         """
+        with self.lock:
+            self._process_state_update_locked(state)
+
+    def _process_state_update_locked(self, state: ProgressBarState) -> None:
         if not real_tqdm:
             if log_once("no_tqdm"):
                 logger.warning("tqdm is not installed. Progress bars will be disabled.")
             return
-        if self.in_hidden_state:
-            self.unhide_bars()
         if state["ip"] == self.ip:
             if state["pid"] == self.pid:
                 prefix = ""
@@ -271,18 +286,20 @@ class _BarManager:
 
     def hide_bars(self) -> None:
         """Temporarily hide visible bars to avoid conflict with other log messages."""
-        if not self.in_hidden_state:
-            self.in_hidden_state = True
-            self.num_hides += 1
-            for group in self.bar_groups.values():
-                group.hide_bars()
+        with self.lock:
+            if not self.in_hidden_state:
+                self.in_hidden_state = True
+                self.num_hides += 1
+                for group in self.bar_groups.values():
+                    group.hide_bars()
 
     def unhide_bars(self) -> None:
         """Opposite of hide_bars()."""
-        if self.in_hidden_state:
-            self.in_hidden_state = False
-            for group in self.bar_groups.values():
-                group.unhide_bars()
+        with self.lock:
+            if self.in_hidden_state:
+                self.in_hidden_state = False
+                for group in self.bar_groups.values():
+                    group.unhide_bars()
 
     def _get_or_allocate_bar_group(self, state: ProgressBarState):
         ptuple = (state["ip"], state["pid"])
