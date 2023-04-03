@@ -452,6 +452,10 @@ def test_fault_tolerance_chained_task_fail(
     wait_for_condition(verify)
 
 
+NORMAL_TASK = "normal_task"
+ACTOR_TASK = "actor_task"
+
+
 @pytest.mark.parametrize(
     "death_list",
     [
@@ -467,26 +471,26 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
     # Root should always be finish
     execution_graph = {
         "root": [
-            ("normal_task", "A"),
-            ("actor_task", "B"),
-            ("normal_task", "C"),
-            ("actor_task", "D"),
+            (NORMAL_TASK, "A"),
+            (ACTOR_TASK, "B"),
+            (NORMAL_TASK, "C"),
+            (ACTOR_TASK, "D"),
         ],
-        "A": [("actor_task", "Aa"), ("normal_task", "Ab")],
-        "C": [("actor_task", "Ca"), ("normal_task", "Cb")],
+        "A": [(ACTOR_TASK, "Aa"), (NORMAL_TASK, "Ab")],
+        "C": [(ACTOR_TASK, "Ca"), (NORMAL_TASK, "Cb")],
         "D": [
-            ("normal_task", "Da"),
-            ("normal_task", "Db"),
-            ("actor_task", "Dc"),
-            ("actor_task", "Dd"),
+            (NORMAL_TASK, "Da"),
+            (NORMAL_TASK, "Db"),
+            (ACTOR_TASK, "Dc"),
+            (ACTOR_TASK, "Dd"),
         ],
         "Aa": [],
-        "Ab": [("actor_task", "Aba"), ("normal_task", "Abb"), ("normal_task", "Abc")],
-        "Ca": [("actor_task", "Caa"), ("normal_task", "Cab")],
-        "Abb": [("normal_task", "Abba")],
+        "Ab": [(ACTOR_TASK, "Aba"), (NORMAL_TASK, "Abb"), (NORMAL_TASK, "Abc")],
+        "Ca": [(ACTOR_TASK, "Caa"), (NORMAL_TASK, "Cab")],
+        "Abb": [(NORMAL_TASK, "Abba")],
         "Abc": [],
-        "Abba": [("normal_task", "Abbaa"), ("actor_task", "Abbab")],
-        "Abbaa": [("normal_task", "Abbaaa"), ("actor_task", "Abbaab")],
+        "Abba": [(NORMAL_TASK, "Abbaa"), (ACTOR_TASK, "Abbab")],
+        "Abbaa": [(NORMAL_TASK, "Abbaaa"), (ACTOR_TASK, "Abbaab")],
     }
 
     ray.init(_system_config=_SYSTEM_CONFIG)
@@ -530,7 +534,7 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
     def run_children(my_name, killer, execution_graph):
         children = execution_graph.get(my_name, [])
         for task_type, child_name in children:
-            if task_type == "normal_task":
+            if task_type == NORMAL_TASK:
                 task.options(name=child_name).remote(
                     child_name, killer, execution_graph
                 )
