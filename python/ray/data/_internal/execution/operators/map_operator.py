@@ -71,8 +71,8 @@ class MapOperator(PhysicalOperator, ABC):
     def create(
         cls,
         transform_fn: MapTransformFn,
-        init_fn: Optional[_CallableClassProtocol],
         input_op: PhysicalOperator,
+        init_fn: Optional[_CallableClassProtocol] = None,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
@@ -89,8 +89,8 @@ class MapOperator(PhysicalOperator, ABC):
 
         Args:
             transform_fn: The function to apply to each ref bundle input.
-            init_fn: The callable class to instantiate if using ActorPoolMapOperator.
             input_op: Operator generating input data for this op.
+            init_fn: The callable class to instantiate if using ActorPoolMapOperator.
             name: The name of this operator.
             compute_strategy: Customize the compute strategy for this op.
             min_rows_per_bundle: The number of rows to gather per batch passed to the

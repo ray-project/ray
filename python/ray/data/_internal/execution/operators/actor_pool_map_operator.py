@@ -306,6 +306,7 @@ class _MapWorker:
         DatasetContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
 
+        # Initialize state for this actor.
         init_fn()
 
     def get_location(self) -> NodeIdStr:
