@@ -551,7 +551,7 @@ There are two possible ways to extend existing RLModules:
     
 .. tabbed:: Extending RLModule Catalog
 
-    Another way you can customize your module by extending their catalog. The catalog is a component that defines the default architecture and behavior of a model based on factors such as ``observation_space``, ``action_space``, and so on. To modify sub-components of an existing RLModule, extend the corresponding catalog class.
+    Another way to customize your module is by extending its catalog. The catalog is a component that defines the default architecture and behavior of a model based on factors such as ``observation_space``, ``action_space``, etc. To modify sub-components of an existing RLModule, extend the corresponding catalog class.
 
     For instance, to adapt the existing ``PPORLModule`` for a custom graph observation space not supported by RLlib out-of-the-box, extend the catalog class used to create the ``PPORLModule`` and override the method responsible for returning the encoder component to ensure that your custom encoder replaces the default one initially provided by RLlib. For more information on the catalog class, refer to the `RLModule Catalog` user guide.
 
