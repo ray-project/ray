@@ -33,6 +33,7 @@ from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.experimental.output import (
     get_air_verbosity,
     _detect_reporter as _detect_air_reporter,
+    IS_NOTEBOOK,
 )
 
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
@@ -509,7 +510,7 @@ def run(
         )
 
     if _remote:
-        if get_air_verbosity():
+        if get_air_verbosity() is not None:
             logger.warning(
                 "Ignoring AIR_VERBOSITY setting, "
                 "as it doesn't support ray client mode yet."
@@ -549,7 +550,14 @@ def run(
         )
 
     air_verbosity = get_air_verbosity()
-    if air_verbosity:
+    if air_verbosity is not None and IS_NOTEBOOK:
+        logger.warning(
+            "Ignoring AIR_VERBOSITY setting, "
+            "as it doesn't support JupyterNotebook mode yet."
+        )
+        air_verbosity = None
+
+    if air_verbosity is not None:
         logger.warning(
             f"Testing new AIR console output flow with verbosity={air_verbosity}. "
             f"This will also disable the old flow - setting it to 0 now."
@@ -813,13 +821,13 @@ def run(
 
     experiment_interrupted_event = _setup_signal_catching()
 
-    if progress_reporter and air_verbosity:
+    if progress_reporter and air_verbosity is not None:
         logger.warning(
             "AIR_VERBOSITY is set, ignoring passed-in ProgressReporter for now."
         )
         progress_reporter = None
 
-    if not air_verbosity:
+    if air_verbosity is None:
         progress_reporter = progress_reporter or _detect_reporter()
 
     trial_executor = trial_executor or RayTrialExecutor(
@@ -874,7 +882,7 @@ def run(
     tune_start = time.time()
 
     air_progress_reporter = None
-    if not air_verbosity:
+    if air_verbosity is None:
         progress_reporter.setup(
             start_time=tune_start,
             total_samples=search_alg.total_samples,
@@ -905,7 +913,7 @@ def run(
                 if has_verbosity(Verbosity.V1_EXPERIMENT):
                     _report_progress(runner, progress_reporter)
 
-                if air_verbosity:
+                if air_verbosity is not None:
                     _report_air_progress(runner, air_progress_reporter)
         except Exception:
             runner.cleanup()
@@ -921,7 +929,7 @@ def run(
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter, done=True)
 
-        if air_verbosity:
+        if air_verbosity is not None:
             _report_air_progress(runner, air_progress_reporter, force=True)
 
     all_trials = runner.get_trials()
@@ -1006,7 +1014,7 @@ def run_experiments(
         _ray_auto_init(entrypoint="tune.run_experiments(...)")
 
     if _remote:
-        if get_air_verbosity():
+        if get_air_verbosity() is not None:
             logger.warning(
                 "Ignoring AIR_VERBOSITY setting, "
                 "as it doesn't support ray client mode yet."
