@@ -74,7 +74,7 @@ def test_parse_test_definition():
     # Check that parsing returns one test for aws variation. Check
     # that the test is valid and the field is populdated correctly
     with mock.patch.dict(os.environ, {"ANYSCALE_ALLOWED_TEST_VARIATION": "aws"}):
-      tests = parse_test_definition(copy.deepcopy(test_definitions))
+        tests = parse_test_definition(copy.deepcopy(test_definitions))
     test = tests[0]
     schema = load_schema_file()
     assert len(tests) == 1
@@ -84,7 +84,7 @@ def test_parse_test_definition():
     # Check that parsing returns one test for gce variation. Check
     # that the test is valid and the field is populdated correctly
     with mock.patch.dict(os.environ, {"ANYSCALE_ALLOWED_TEST_VARIATION": "gce"}):
-      tests = parse_test_definition(copy.deepcopy(test_definitions))
+        tests = parse_test_definition(copy.deepcopy(test_definitions))
     test = tests[0]
     schema = load_schema_file()
     assert len(tests) == 1
