@@ -617,30 +617,12 @@ class Dataset(Generic[T]):
             )
 
         if isinstance(fn, Predictor):
-            from ray.air.checkpoint import Checkpoint
             from ray.train.batch_predictor import BatchPredictor
 
-            class _WrapperPredictor(Predictor):
-                def __init__(self, base_predictor: Predictor):
-                    self.base_predictor = base_predictor
-
-                @classmethod
-                def from_checkpoint(cls, checkpoint, use_gpu=False):
-                    return cls(base_predictor=checkpoint.to_dict()["predictor"], use_gpu=use_gpu)
-
-                def predict(self, data, feature_columns, keep_columns, **kwargs):
-                    return self.base_predictor.predict(data, feature_columns, keep_columns, **kwargs)
-
-                def _predict_pandas(self, data, **kwargs):
-                    return self.base_predictor._predict_pandas(data, **kwargs)
-
-                def _predict_numpy(self, data, **kwargs):
-                    return self.base_predictor._predict_numpy(data, **kwargs)
-
-            checkpoint = Checkpoint.from_dict({"predictor": fn})
+            checkpoint = fn.to_checkpoint()
 
             batch_predictor = BatchPredictor.from_checkpoint(
-                checkpoint, predictor_cls=_WrapperPredictor
+                checkpoint, predictor_cls=type(fn)
             )
 
             assert isinstance(compute, ActorPoolStrategy)

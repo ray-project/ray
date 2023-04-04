@@ -70,6 +70,9 @@ class TorchPredictor(DLPredictor):
             f"{self.__class__.__name__}(model={self.model!r}, "
             f"preprocessor={self._preprocessor!r}, use_gpu={self.use_gpu!r})"
         )
+    
+    def to_checkpoint(self):
+        return TorchCheckpoint.from_model(model=self.model, preprocessor=self._preprocessor)
 
     @classmethod
     def from_checkpoint(
