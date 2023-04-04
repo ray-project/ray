@@ -3,7 +3,7 @@ This file demonstrates a basic workflow that includes the Catalog base class and
 RLlib's ModelConfigs to build models and an action distribution to step through an
 environment.
 """
-
+# __sphinx_doc_begin__
 import gymnasium as gym
 import torch
 
@@ -41,3 +41,4 @@ action_dist_inputs = head(encoding)
 action_dist = action_dist_class.from_logits(action_dist_inputs)
 actions = action_dist.sample().numpy()
 env.step(actions[0])
+# __sphinx_doc_end__
