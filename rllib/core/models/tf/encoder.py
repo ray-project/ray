@@ -10,9 +10,9 @@ from ray.rllib.core.models.base import (
 from ray.rllib.core.models.base import ModelConfig, Model
 from ray.rllib.core.models.tf.primitives import TfMLP
 from ray.rllib.core.models.tf.primitives import TfModel
-from ray.rllib.models.specs.specs_base import Spec
-from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.specs_tf import TFTensorSpecs
+from ray.rllib.core.models.specs.specs_base import Spec
+from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.core.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -35,7 +35,7 @@ class TfMLPEncoder(Encoder, TfModel):
         )
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Union[Spec, None]:
         return SpecDict(
             {
                 SampleBatch.OBS: TFTensorSpecs("b, h", h=self.config.input_dims[0]),
@@ -45,7 +45,7 @@ class TfMLPEncoder(Encoder, TfModel):
         )
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Union[Spec, None]:
         return SpecDict(
             {
                 ENCODER_OUT: TFTensorSpecs("b, h", h=self.config.output_dims[0]),
