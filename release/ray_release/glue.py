@@ -453,6 +453,8 @@ def run_release_test(
 ) -> Result:
     old_wd = os.getcwd()
     start_time = time.monotonic()
+    command_runner = None
+    cluster_manager = None
     pipeline_exception = None
     # non critical for some tests. So separate it from the general one.
     fetch_result_exception = None
@@ -540,7 +542,7 @@ def run_release_test(
 
     result.last_logs = command_runner.get_last_logs()
 
-    if not no_terminate:
+    if not no_terminate and cluster_manager:
         buildkite_group(":earth_africa: Terminating cluster")
         cluster_manager.terminate_cluster(wait=False)
 
