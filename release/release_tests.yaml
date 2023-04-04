@@ -3634,6 +3634,13 @@
     wait_for_nodes:
       num_nodes: 250
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: many_nodes_gce.yaml
 
 - name: scheduling_test_many_0s_tasks_many_nodes
   group: core-scalability-test
