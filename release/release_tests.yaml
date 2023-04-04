@@ -319,6 +319,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: compute_gce_gpu_4_g4_12xl.yaml
@@ -543,6 +544,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: compute_gce_gpu_16.yaml
@@ -568,7 +570,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
-      stable: false
+      frequency: manual
       cluster:
         cluster_env: app_config_oom.yaml
         cluster_compute: compute_gce_cpu_16.yaml
@@ -594,7 +596,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
-      stable: false
+      frequency: manual
       cluster:
         cluster_env: app_config_oom.yaml
         cluster_compute: compute_gce_cpu_16.yaml
@@ -623,7 +625,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
-      stable: false
+      frequency: manual
       cluster:
         cluster_env: app_config_oom.yaml
         cluster_compute: compute_gce_cpu_16_worker_nodes_2.yaml
@@ -3338,6 +3340,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: 8gpus_96cpus_gce.yaml
@@ -3391,6 +3394,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: 8gpus_96cpus_gce.yaml
@@ -4266,7 +4270,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
-      stable: false
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: data_ingest_benchmark_compute_gce.yaml
@@ -4550,7 +4554,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
-      stable: false
+      frequency: manual
       cluster:
         cluster_env: shuffle/100tb_shuffle_app_config_gce.yaml
         cluster_compute: shuffle/100tb_shuffle_compute_gce.yaml
