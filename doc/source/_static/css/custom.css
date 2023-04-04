@@ -51,9 +51,10 @@
   color: black;
   font-size: 17px;
 }
-.top-nav-content a:hover {
-  color: #007bff;
 
+.top-nav-content a:hover {
+    color: #007bff;
+}
 
 .toctree-l2 {
     font-weight: normal;
