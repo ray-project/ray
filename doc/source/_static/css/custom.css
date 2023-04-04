@@ -526,25 +526,37 @@ span.rst-current-version > span.fa.fa-book {
     display: flex;
     flex-direction: row;
     align-items: center;
-    padding: 0;
+    padding-left: 16px;
+    padding-right:16px;
     gap: 16px;
 }
 
 .info-box {
     box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
     border-radius: 8px;
-    padding-bottom: 20px;
+    padding: 20px;
 }
+
+.info-box-2 {
+    background-color: #F9FAFB;
+    border-radius: 8px;
+    padding-right: 16px;
+    padding-left: 16px;
+    padding-bottom: 24px;
+    padding-top: 4px;
+}
+
 
 .bold-link {
     color: #000000 !important;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .community-box {
     border: 1px solid #D2DCE6;
     border-radius: 8px;
     display: flex;
+    margin-bottom: 16px;
 }
 
 .community-box p {
@@ -556,4 +568,14 @@ span.rst-current-version > span.fa.fa-book {
     padding: 0;
     max-height: 252px;
     overflow-y: auto;
+}
+
+.grid-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px,1fr));
+    grid-gap: 16px;
+}
+
+.grid-item {
+padding: 20px;
 }

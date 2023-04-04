@@ -18,16 +18,16 @@
 
 <title>Welcome to Ray!</title>
 
-
+<div style = "background-image: url(/_static/img/LandingPageBG.JPG); background-repeat:no-repeat; background-size:cover;">
 <div class="container">
   <div class="row">
     <div class="col-6">
-      <h1>Welcome to Ray!</h1>
+      <h1 style="font-weight:600;">Welcome to Ray!</h1>
       <p>Ray is an open-source unified framework for scaling AI and Python applications. 
       It provides the compute layer for parallel processing so that 
       you don’t need to be a distributed systems expert.
       </p>
-      <div class="image-header">
+      <div class="image-header" style="padding:0px;">
         <a href="https://github.com/ray-project/ray">
             <img src="/_static/img/github-fill.png" width="25px" height="25px" />
         </a>
@@ -48,45 +48,43 @@
     </div>
   </div>
 </div>
-
-<div class="container">
-    <h2>Getting Started</h2>
-<div class="container">
-
-<div class="container">
-  <div class="row">
-    <div class="col-4 info-box">
-        <div class="image-header">
-            <img src="/_static/img/ray_logo.png" width="30px" height="30px" />
-            <h3>Learn basics</h3>
-        </div>
-        <p>Understand how the Ray framework scales your ML workflows.</p>      
-        <a class="bold-link" href="./ray-overview/index.html" >Learn more ></a>      
-    </div>
-    <div class="col-4 info-box">
-        <div class="image-header">
-            <img src="/_static/img/download.png" width="30px" height="30px" />
-            <h3>Install Ray</h3>
-        </div>
-        <p><pre><code class="nohighlight" style="margin:10px;">pip install "ray[default]"</code></pre></p>      
-        <a class="bold-link" href="./ray-overview/installation.html" >Installation guide ></a>      
-    </div>
-    <div class="col-4 info-box">
-        <div class="image-header">
-            <img src="/_static/img/code.png" width="30px" height="30px" />
-            <h3>Try it out</h3>
-        </div>
-        <p>Experiment with Ray with an introductory notebook.</p>
-        <a class="bold-link" href="https://github-fill.research.google.com/github/maxpumperla/learning_ray/blob/main/notebooks/ch_02_ray_core.ipynb" 
-        >Open the notebook></a>      
-    </div>
-  </div>
 </div>
 
 
-<div class="container">
+<div class="container" style="margin-bottom:30px; margin-top:80px; padding:0px;">
+    <h2 style="font-weight:600;">Getting Started</h2>
+    
+<div class="grid-container">
+  <div class="info-box">
+        <div class="image-header" style="padding:0px;">
+            <img src="/_static/img/ray_logo.png" width="44px" height="44px" />
+            <h3>Learn basics</h3>
+        </div>
+        <p style="color:#515151;">Understand how the Ray framework scales your ML workflows.</p>      
+        <a class="bold-link" href="./ray-overview/index.html" >Learn more ></a>    
+  </div>
+  <div class="info-box">
+        <div class="image-header" style="padding:0px;">
+            <img src="/_static/img/download.png" width="44px" height="44px" />
+            <h3>Install Ray</h3>
+        </div>
+        <p><pre style="border:none;"><code class="nohighlight" style="margin:10px;">pip install "ray[default]"</code></pre></p>      
+        <a class="bold-link" href="./ray-overview/installation.html" >Installation guide ></a>    
+  </div>
+  <div class="info-box">
+        <div class="image-header" style="padding:0px;">
+            <img src="/_static/img/code.png" width="44px" height="44px" />
+            <h3>Try it out</h3>
+        </div>
+        <p style="color:#515151;">Experiment with Ray with an introductory notebook.</p>
+        <a class="bold-link" href="https://colab.research.google.com/github/maxpumperla/learning_ray/blob/main/notebooks/ch_02_ray_core.ipynb" 
+        >Open the notebook></a>   
+  </div>
+</div>
+  
+<div class="container" style="margin-bottom:30px; margin-top:80px; padding:0px;">
 
-<h2>Scaling with Ray</h2>
+<h2 style="font-weight:600;">Scaling with Ray</h2>
 
 <div class="row">
     <div class="col-4">
@@ -100,19 +98,19 @@
           <a class="nav-link" id="v-pills-tuning-tab" data-toggle="pill" href="#v-pills-tuning" role="tab" aria-controls="v-pills-tuning" aria-selected="false">
             Hyperparameter Tuning
           </a>
-          <a class="nav-link" id="v-pills-rl-tab" data-toggle="pill" href="#v-pills-rl" role="tab" aria-controls="v-pills-rl" aria-selected="false">
-            Reinforcement Learning
+          <a class="nav-link" id="v-pills-batch-tab" data-toggle="pill" href="#v-pills-batch" role="tab" aria-controls="v-pills-batch" aria-selected="false">
+            Batch Inference
           </a>
           <a class="nav-link" id="v-pills-serving-tab" data-toggle="pill" href="#v-pills-serving" role="tab" aria-controls="v-pills-serving" aria-selected="false">
             Model Serving
           </a>
-          <a class="nav-link" id="v-pills-batch-tab" data-toggle="pill" href="#v-pills-batch" role="tab" aria-controls="v-pills-batch" aria-selected="false">
-            Batch Inference
+          <a class="nav-link" id="v-pills-rl-tab" data-toggle="pill" href="#v-pills-rl" role="tab" aria-controls="v-pills-rl" aria-selected="false">
+            Reinforcement Learning
           </a>
         </div>
     </div>
     <div class="col-8">
-        <div class="tab-content" id="v-pills-tabContent">
+        <div class="tab-content" id="v-pills-tabContent" style="box-shadow: 0px 6px 30px 5px rgba(3,28,74,0.12); border-radius:8px;">
           <div class="tab-pane fade show active" id="v-pills-data" role="tabpanel" aria-labelledby="v-pills-data-tab">
             <pre style="margin:0"><code class="language-python not-selectable">
 from ray import data
@@ -126,11 +124,11 @@ dataset = dataset.repartition(num_blocks=1000)
 # Step 3: preprocess the data at scale, 1000 blocks in parallel
 preprocessor = data.preprocessors.StandardScaler(columns=["value"])
 dataset_transformed = preprocessor.fit_transform(dataset=dataset)
+
             </code></pre>
-              <div class="row">
+              <div class="row" style="padding:16px;">
                 <div class="col-10">
-                  <a href="https://docs.ray.io/en/latest/data/dataset.html">Learn more about Ray Data</a> |
-                  <a href="https://docs.ray.io/en/latest/data/api/api.html">API references</a>
+                  <a href="https://docs.ray.io/en/latest/data/dataset.html" target="_blank">Learn more </a> | <a href="https://docs.ray.io/en/latest/data/api/api.html" target="_blank"> API references</a>
                 </div>
                 <div class="col-2">
                     <a href="https://docs.ray.io/en/latest/data/examples/nyc_taxi_basic_processing.html">
@@ -161,10 +159,9 @@ trainer = TorchTrainer(
 # Step 3: run distributed model training on 32 GPUs
 result = trainer.fit()
             </code></pre>
-              <div class="row">
+              <div class="row" style="padding:16px;">
                 <div class="col-10">
-                  <a href="https://docs.ray.io/en/latest/train/train.html">Learn more about Ray Train</a> |
-                  <a href="https://docs.ray.io/en/latest/train/api/api.html">API references</a>
+                  <a href="https://docs.ray.io/en/latest/train/train.html" target="_blank">Learn more </a> | <a href="https://docs.ray.io/en/latest/train/api/api.html" target="_blank"> API references</a>
                 </div>
                 <div class="col-2">
                     <a href="https://docs.ray.io/en/latest/ray-air/examples/torch_image_example.html">
@@ -197,11 +194,11 @@ tuner = tune.Tuner(
 
 # Step 3: run distributed HPO with 1000 trials; each trial runs on 64 CPUs
 result_grid = tuner.fit()
+
             </code></pre>
-              <div class="row">
+              <div class="row" style="padding:16px;">
                 <div class="col-10">
-                  <a href="https://docs.ray.io/en/latest/tune/index.html">Learn more about Ray Tune</a> |
-                  <a href="https://docs.ray.io/en/latest/tune/api/api.html">API references</a>
+                  <a href="https://docs.ray.io/en/latest/tune/index.html" target="_blank">Learn more </a> | <a href="https://docs.ray.io/en/latest/tune/api/api.html" target="_blank"> API references</a>
                 </div>
                 <div class="col-2">
                     <a href="https://docs.ray.io/en/latest/tune/examples/lightgbm_example.html#tune-lightgbm-example">
@@ -210,6 +207,62 @@ result_grid = tuner.fit()
                 </div>
               </div>
           </div>
+          <div class="tab-pane fade" id="v-pills-batch" role="tabpanel" aria-labelledby="v-pills-batch-tab">
+            <pre style="margin:0"><code class="language-python">
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.torch import TorchPredictor
+
+dataset = ...
+
+# Step 1: create batch predictor to run inference at scale
+batch_predictor = BatchPredictor.from_checkpoint(
+    checkpoint=model_checkpoint, predictor_cls=TorchPredictor
+)
+
+# Step 2: run batch inference on 64 GPUs
+results = batch_predictor.predict(dataset, batch_size=512, num_gpus_per_worker=64)
+            </code></pre>
+              <div class="row" style="padding:16px;">
+                <div class="col-10">
+                  <a href="./ray-core/examples/batch_prediction.html" target="_blank">Learn more </a>
+                </div>
+                <div class="col-2">
+                    <a href="#">
+                        <img src="/_static/img/colab.png" height="25px" />
+                    </a>
+                </div>
+              </div>
+          </div>
+          <div class="tab-pane fade" id="v-pills-serving" role="tabpanel" aria-labelledby="v-pills-serving-tab">
+            <pre style="margin:0"><code class="language-python">
+from ray import serve
+from ray.serve import PredictorDeployment
+from ray.train.lightgbm import LightGBMPredictor
+
+# Deploy 50 replicas of the LightGBM model as a live endpoint.
+# Convert incoming JSON requests into a DataFrame.
+serve.run(
+    PredictorDeployment.options(
+        name="LightGBM_Service",
+        num_replicas=50,
+    ).bind(
+        predictor_cls=LightGBMPredictor,
+        checkpoint=lgbm_best_checkpoint,
+        http_adapter=serve.http_adapters.pandas_read_json,
+    )
+)
+            </code></pre>
+              <div class="row" style="padding:16px;">
+                <div class="col-10">
+                   <a href="./serve/index.html" target="_blank">Learn more </a> | <a href="./serve/api/index.html" target="_blank"> API references</a>
+                </div>
+                <div class="col-2">
+                    <a href="#">
+                        <img src="/_static/img/colab.png" height="25px" />
+                    </a>
+                </div>
+              </div>          
+          </div>  
           <div class="tab-pane fade" id="v-pills-rl" role="tabpanel" aria-labelledby="v-pills-rl-tab">
             <pre style="margin:0"><code class="language-python not-selectable">
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -232,10 +285,9 @@ for _ in range(5):
 
 ppo_algo.evaluate()
             </code></pre>
-              <div class="row">
+              <div class="row" style="padding:16px;">
                 <div class="col-10">
-                  <a href="https://docs.ray.io/en/latest/rllib/index.html">Learn more about RLlib</a> |
-                  <a href="https://docs.ray.io/en/latest/rllib/package_ref/index.html">API references</a>
+                  <a href="./rllib/index.html" target="_blank">Learn more </a> | <a href="./rllib/package_ref/index.html" target="_blank"> API references</a>
                 </div>
                 <div class="col-2">
                     <a href="https://docs.ray.io/en/latest/ray-air/examples/rl_online_example.html">
@@ -244,174 +296,107 @@ ppo_algo.evaluate()
                 </div>
               </div>       
           </div>
-          <div class="tab-pane fade" id="v-pills-serving" role="tabpanel" aria-labelledby="v-pills-serving-tab">
-            <pre style="margin:0"><code class="language-python not-selectable">
-from ray import serve
-from ray.serve import PredictorDeployment
-from ray.train.lightgbm import LightGBMPredictor
-
-# Deploy 50 replicas of the LightGBM model as a live endpoint.
-# Convert incoming JSON requests into a DataFrame.
-serve.run(
-    PredictorDeployment.options(
-        name="LightGBM_Service",
-        num_replicas=50,
-    ).bind(
-        predictor_cls=LightGBMPredictor,
-        checkpoint=lgbm_best_checkpoint,
-        http_adapter=serve.http_adapters.pandas_read_json,
-    )
-)
-            </code></pre>
-              <div class="row">
-                <div class="col-10">
-                  <a href="https://docs.ray.io/en/latest/serve/index.html">Learn more about Ray Serve</a> |
-                  <a href="https://docs.ray.io/en/latest/serve/api/index.html">API references</a>
-                </div>
-                <div class="col-2">
-                    <a href="https://docs.ray.io/en/latest/serve/tutorials/serve-ml-models.html">
-                        <img src="/_static/img/github-fill.png" height="25px" />
-                    </a>
-                </div>
-              </div>          
-          </div>          
-          <div class="tab-pane fade" id="v-pills-batch" role="tabpanel" aria-labelledby="v-pills-batch-tab">
-            <pre style="margin:0"><code class="language-python not-selectable">
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.torch import TorchPredictor
-
-dataset = ...
-
-# Step 1: create batch predictor to run inference at scale
-batch_predictor = BatchPredictor.from_checkpoint(
-    checkpoint=model_checkpoint, predictor_cls=TorchPredictor
-)
-
-# Step 2: run batch inference on 64 GPUs
-results = batch_predictor.predict(dataset, batch_size=512, num_gpus_per_worker=64)
-            </code></pre>
-              <div class="row">
-                <div class="col-10">
-                  <a href="https://docs.ray.io/en/latest/data/dataset.html">Learn more about Ray Data</a> |
-                  <a href="https://docs.ray.io/en/latest/data/api/api.html">API references</a>
-                </div>
-                <div class="col-2">
-                    <a href="https://docs.ray.io/en/latest/ray-core/examples/batch_prediction.html">
-                        <img src="/_static/img/github-fill.png" height="25px" />
-                    </a>
-                </div>
-              </div>
-          </div>
+                  
+          
         </div>
     </div>
 </div>
   
 </div>
 
-<div class="container">
-    <h2>Beyond the basics</h2>
+
+<div class="container" style="margin-bottom:30px; margin-top:80px; padding:0px;">
+    <h2 style="font-weight:600;">Beyond the basics</h2>
 </div>
 
-<div class="container">
-  <div class="row">
-    <div class="col-6 info-box">
-        <div class="image-header">
-            <img src="/_static/img/AIR.png" width="30px" height="30px" />
-            <h3>Ray AI Runtime</h3>
+<div class = "grid-container">
+  <div class="info-box-2">
+        <div class="image-header" style="padding:0px;">
+            <img src="/_static/img/AIR.png" width="32px" height="32px" />
+            <h3 style="font-size:24px; font-weight:600;">Ray AI Runtime</h3>
         </div>
         <p>Scale the entire ML pipeline from data ingest to model serving with high-level Python APIs that integrate with popular ecosystem frameworks.</p>      
-        <a class="bold-link" href="./ray-air/getting-started.html" >Learn more about AIR></a>      
-    </div>
-    <div class="col-6 info-box">
-        <div class="image-header">
-            <img src="/_static/img/Core.png" width="30px" height="30px" />
-            <h3>Ray Core</h3>
+        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-air/getting-started.html" >Learn more about AIR ></a>      
+  </div>
+  <div class="info-box-2">
+        <div class="image-header" style="padding:0px;">
+            <img src="/_static/img/Core.png" width="32px" height="32px" />
+            <h3 style="font-size:24px; font-weight:600;">Ray Core</h3>
         </div>
         <p>Scale generic Python code with simple, foundational primitives that enable a high degree of control for building distributed applications or custom platforms.</p>
-        <a class="bold-link" href="./ray-overview/installation.html" >Learn more about Core ></a>      
-    </div>
+        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-overview/installation.html" >Learn more about Core ></a>      
+  </div>
+  <div class="info-box-2">
+        <div class="image-header" style="padding:0px;">
+            <img src="/_static/img/rayclusters.png" width="32px" height="32px" />
+            <h3 style="font-size:24px; font-weight:600;">Ray Clusters</h3>
+        </div>
+        <p>Deploy a Ray cluster on AWS, GCP, Azure or kubernetes from a laptop to a large cluster to seamlessly scale workloads for production</p>      
+        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./cluster/getting-started.html" >Learn more about clusters ></a>      
   </div>
 </div>
 
 
-
-<div class="container">
-    <h2>Getting involved</h2>
-<div class="container">
-
-
-<div class="container">
-  
-  <div class="row">
-    <div class="col-3 mx-2 mb-2">
-        <h4>Join the community</h4> 
-    </div>
-    <div class="col-3 mx-2 mb-2">
-        <h4>Get support</h4>
-    </div>
-    <div class="col-3 mx-2 mb-2">
-        <h4>Contribute to Ray</h4>
-    </div>
-  </div>
-  
-  <div class="row">
-    <div class="col-3 mx-2 mb-2 community-box">
+<div class="container" style="margin-bottom:5px; margin-top:80px; padding:0px;">
+  <h2 style="font-weight:600;">Getting involved</h2>
+</div>
+  <div class="grid-container">
+    <div> 
+    <h4> Join the community </h4>
+    <div class="community-box">
         <div class="image-header">
-            <img src="/_static/img/meetup.png" width="20px" height="20px" />
+            <img src="/_static/img/meetup.png" width="24px" height="24px" />
             <p>Attend community events</p>
         </div>    
     </div>
-    <div class="col-3 mx-2 mb-2 community-box">
+    <div class="community-box">
         <div class="image-header">
-            <img src="/_static/img/slack-fill.png" width="20px" height="20px" />
-            <p>Find community on Slack</p>
-        </div>    
-    </div>
-    <div class="col-3 mx-2 mb-2 community-box">
-        <a href="./" class="image-header">
-            <img src="/_static/img/mail.png" width="20px" height="20px" />
-            <p>Contributor guide</p>
-        </a>    
-    </div>
-  </div>
-
-  <div class="row">
-    <div class="col-3 mx-2 mb-2 community-box">
-        <div class="image-header">
-            <img src="/_static/img/mail.png" width="20px" height="20px" />
+            <img src="/_static/img/mail.png" width="24px" height="24px" />
             <p>Subscribe to the newsletter</p>
         </div>    
     </div>
-    <div class="col-3 mx-2 mb-2 community-box">
+    <div class="community-box">
         <div class="image-header">
-            <img src="/_static/img/chat.png" width="20px" height="20px" />
-            <p>Ask questions to the forum</p>
-        </div>    
-    </div>
-    <div class="col-3 mx-2 mb-2 community-box">
-        <a href="./" class="image-header">
-            <img src="/_static/img/github-fill.png" width="20px" height="20px" />
-            <p>Create a pull request</p>
-        </a>    
-    </div>
-  </div>
-
- <div class="row">
-    <div class="col-3 mx-2 mb-2 community-box">
-        <div class="image-header">
-            <img src="/_static/img/twitter-fill.png" width="20px" height="20px" />
+            <img src="/_static/img/twitter-fill.png" width="24px" height="24px" />
             <p>Follow us on Twitter</p>
-        </div>    
-    </div>
-    <div class="col-3 mx-2 mb-2 community-box">
-        <div class="image-header">
-            <img src="/_static/img/github-fill.png" width="20px" height="20px" />
-            <p>Open an issue</p>
-        </div>    
+        </div>  
     </div>
   </div>
-
+<div> 
+    <h4> Get Support </h4>
+    <div class="community-box">
+        <div class="image-header">
+            <img src="/_static/img/slack-fill.png" width="24px" height="24px" />
+            <p>Find community on Slack</p>
+        </div>     
+    </div>
+    <div class="community-box">
+        <div class="image-header">
+            <img src="/_static/img/chat.png" width="24px" height="24px" />
+            <p>Ask questions to the forum</p>
+        </div>     
+    </div>
+    <div class="community-box">
+        <div class="image-header">
+            <img src="/_static/img/github-fill.png" width="24px" height="24px" />
+            <p>Open an issue</p>
+        </div>  
+    </div>
+  </div>
+  <div> 
+    <h4> Contribute to Ray </h4>
+    <div class="community-box">
+        <div class="image-header">
+            <img src="/_static/img/mail.png" width="24px" height="24px" />
+            <p>Contributor's guide</p>
+        </div>     
+    </div>
+    <div class="community-box">
+        <div class="image-header">
+            <img src="/_static/img/github-fill.png" width="24px" height="24px" />
+            <p>Create a pull request</p>
+        </div>     
+    </div>
+  </div>
 </div>
-
-
 ```
