@@ -351,16 +351,6 @@ install_pip_packages() {
   requirements_files=()
   requirements_packages=()
 
-  if [ -n "${PYTHON-}" ] || [ "${DL-}" = "1" ]; then
-    # Remove this entire section once Serve dependencies are fixed.
-    if { [ -z "${BUILDKITE-}" ] || [ "${DL-}" = "1" ]; } && [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
-      # We want to install the CPU version only.
-      pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_dl.txt
-    fi
-
-    retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"
-  fi
-
   requirements_files+=("${WORKSPACE_DIR}/python/requirements_test.txt")
 
   if [ "${LINT-}" = 1 ]; then
@@ -388,14 +378,18 @@ install_pip_packages() {
     pip install --no-dependencies mlagents==0.28.0
   fi
 
+  local install_ml_no_deps=0
+
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_train.txt")
+    install_ml_no_deps=1
   fi
 
   # Additional Tune/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_tune.txt")
+    install_ml_no_deps=1
   fi
 
   # For Tune, install upstream dependencies.
@@ -437,6 +431,12 @@ install_pip_packages() {
       requirements_packages+=("pymongoarrow==${ARROW_MONGO_VERSION}")
     fi
   fi
+
+  if [ "${install_ml_no_deps}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}/python/requirements/ml/requirements_no_deps.txt"
+  fi
+
+  retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements_pinned.txt"
 
   # Remove this entire section once Serve dependencies are fixed.
   if [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then

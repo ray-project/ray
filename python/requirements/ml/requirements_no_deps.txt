@@ -1,0 +1,5 @@
+# These requirements have outdated or incompatible downstream dependencies.
+# Thus we install them on a best effort basis before any other packages
+# (without constraints), but their dependencies may be overwritten afterwards.
+mlflow==1.30.0; python_version <= '3.7'
+mlflow==2.2.2; python_version > '3.7'

@@ -22,7 +22,6 @@ hyperopt==0.2.5
 jupyterlab==3.6.1
 lightgbm==3.3.5
 matplotlib!=3.4.3
-git+https://github.com/mlflow/mlflow/@v2.2.2#mlflow
 # Unavailable for arm64 in more recent versions
 mxnet==1.8.0.post0; platform_machine != "arm64"
 nevergrad==0.4.3.post7
