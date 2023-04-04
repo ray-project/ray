@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 import logging
 import os
+from pathlib import Path
 import time
 import traceback
 import warnings
@@ -378,13 +379,13 @@ class _TuneControllerBase:
             )
 
         # Set checkpoint file to load
-        logger.info(
-            f"Using following experiment state file to resume: " f"{newest_state_path}"
-        )
-
         logger.warning(
             f"Attempting to resume experiment from {self._local_experiment_path}. "
             "This will ignore any new changes to the specification."
+        )
+        logger.info(
+            "Using the newest experiment state file found within the "
+            f"experiment directory: {Path(newest_state_path).name}"
         )
 
         # Actually load data
@@ -584,6 +585,9 @@ class _TuneControllerBase:
         # based on all results
         final_decision = self._queued_trial_decisions.pop(trial.trial_id, None)
         if final_decision:
+            logger.debug(
+                f"Executing final queued decision for {trial}: {final_decision}"
+            )
             self._execute_action(trial, final_decision)
 
     def _schedule_trial_stop(self, trial: Trial, exception: Optional[Exception] = None):
@@ -600,7 +604,7 @@ class _TuneControllerBase:
             [
                 self._schedule_trial_stop(t)
                 for t in self._trials
-                if t.status is not Trial.ERROR
+                if t.status not in {Trial.ERROR, Trial.TERMINATED}
             ]
 
     ###
@@ -661,8 +665,7 @@ class _TuneControllerBase:
             self._callbacks.on_trial_complete(
                 iteration=self._iteration, trials=self._trials, trial=trial
             )
-            self._schedule_trial_export(trial)
-            self._schedule_trial_stop(trial)
+            self._schedule_graceful_trial_stop(trial)
             self._live_trials.discard(trial)
         except Exception as e:
             logger.exception("Trial %s: Error stopping trial.", trial)
@@ -674,6 +677,9 @@ class _TuneControllerBase:
                 self._process_trial_failure(
                     trial, _TuneStopTrialError(traceback.format_exc())
                 )
+
+    def _schedule_graceful_trial_stop(self, trial: Trial):
+        raise NotImplementedError
 
     ###
     # TRAIN
@@ -741,7 +747,9 @@ class _TuneControllerBase:
             decision = TrialScheduler.STOP
         else:
             with warn_if_slow("scheduler.on_trial_result"):
-                decision = self._scheduler_alg.on_trial_result(self, trial, flat_result)
+                decision = self._scheduler_alg.on_trial_result(
+                    self._wrapped(), trial, flat_result
+                )
         if decision == TrialScheduler.STOP:
             result.update(done=True)
         else:
@@ -850,7 +858,7 @@ class _TuneControllerBase:
         trial: Trial,
         storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> _TrackedCheckpoint:
+    ) -> Optional[_TrackedCheckpoint]:
         raise NotImplementedError
 
     def _on_saving_result(self, trial, checkpoint_value: Union[ray.ObjectRef, str]):
@@ -1261,8 +1269,8 @@ class TrialRunner(_TuneControllerBase):
         return TrialRunnerWrapper(
             self,
             self.trial_executor,
-            runner_whitelist_attr={"search_alg", "get_trials"},
-            executor_whitelist_attr={"has_resources_for_trial"},
+            runner_whitelist_attr={"search_alg", "get_trials", "_set_trial_status"},
+            executor_whitelist_attr={"has_resources_for_trial", "pause_trial", "save"},
         )
 
     def _used_resources_string(self) -> str:
@@ -1447,6 +1455,10 @@ class TrialRunner(_TuneControllerBase):
             trial, error=bool(exception), exc=exception
         )
 
+    def _schedule_graceful_trial_stop(self, trial: Trial):
+        self._schedule_trial_export(trial)
+        self._schedule_trial_stop(trial)
+
     def _schedule_trial_pause(self, trial: Trial, should_checkpoint: bool = True):
         self.trial_executor.pause_trial(trial, should_checkpoint=should_checkpoint)
 
@@ -1458,7 +1470,7 @@ class TrialRunner(_TuneControllerBase):
         trial: Trial,
         storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> _TrackedCheckpoint:
+    ) -> Optional[_TrackedCheckpoint]:
         return self.trial_executor.save(trial, storage=storage, result=result)
 
     def _schedule_trial_export(self, trial: Trial):

@@ -5,6 +5,13 @@ from typing import Any, Dict, Optional, Type
 import pytorch_lightning as pl
 from pytorch_lightning.plugins.environments import ClusterEnvironment
 
+from packaging.version import Version
+
+if Version(pl.__version__) >= Version("2.0.0"):
+    from pytorch_lightning.callbacks.progress import ProgressBar as ProgressBarBase
+else:
+    from pytorch_lightning.callbacks.progress.base import ProgressBarBase
+
 from ray.air import session
 from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingConfig
 from ray.air.constants import MODEL_KEY
@@ -82,7 +89,7 @@ class LightningConfigBuilder:
         self._model_checkpoint_config = {}
 
     def module(
-        self, cls: Type[pl.LightningModule], **kwargs
+        self, cls: Optional[Type[pl.LightningModule]] = None, **kwargs
     ) -> "LightningConfigBuilder":
         """Set up the Pytorch Lightning module class.
 
@@ -92,19 +99,16 @@ class LightningConfigBuilder:
                 class definition instead of a class instance.
             **kwargs: The initialization argument list of your lightning module.
         """
-        if not isclass(cls):
-            raise ValueError("'module_class' must be a class, not a class instance.")
-        if not issubclass(cls, pl.LightningModule):
-            raise ValueError(
-                "'module_class' must be a subclass of 'pl.LightningModule'!"
-            )
         self._module_class = cls
-
         self._module_init_config.update(**kwargs)
         return self
 
     def trainer(self, **kwargs) -> "LightningConfigBuilder":
         """Set up the configurations of ``pytorch_lightning.Trainer``.
+
+        Note that you don't have to specify the `strategy` argument here since the
+        ``LightningTrainer`` creates a DDPStrategy by default. You can set up
+        advanced configurations for DDPStrategy via the `.ddp_strategy()` method.
 
         Args:
             kwargs: The initialization arguments for ``pytorch_lightning.Trainer``
@@ -117,16 +121,29 @@ class LightningConfigBuilder:
     def fit_params(self, **kwargs) -> "LightningConfigBuilder":
         """The parameter lists for ``pytorch_lightning.Trainer.fit()``
 
+        ``LightningTrainer`` creates a model instance with the parameters provided
+        in `.module()` and feeds it into the ``pl.Trainer.fit()`` method.
+        Therefore, you do not need to provide a model instance here.
+
         Args:
             kwargs: The parameter lists for ``pytorch_lightning.Trainer.fit()``
                 For valid arguments to pass, please refer to:
                 https://lightning.ai/docs/pytorch/stable/common/trainer.html#fit.
         """
+
+        if "model" in kwargs:
+            logger.warning(
+                "You don't have to provide `model` argument in "
+                "`LightningConfigBuilder.fit_params()`. LightningTrainer will create "
+                "a model instance based on the parameters you provide in "
+                "`LightningConfigBuilder..module()`."
+            )
+
         self._trainer_fit_params.update(**kwargs)
         return self
 
     def ddp_strategy(self, **kwargs) -> "LightningConfigBuilder":
-        """Set up the configurations of ``pytorch_lightning.Trainer``.
+        """Set up the configurations of ``pytorch_lightning.strategies.DDPStrategy``.
 
         Args:
             kwargs: For valid arguments to pass, please refer to:
@@ -138,8 +155,22 @@ class LightningConfigBuilder:
     def checkpointing(self, **kwargs) -> "LightningConfigBuilder":
         """Set up the configurations of ``pytorch_lightning.callbacks.ModelCheckpoint``.
 
-        LightningTrainer creates a `ModelCheckpoint` callback based on this config.
-        The AIR checkpointing and logging methods are triggered in that callback.
+        LightningTrainer creates a subclass instance of the `ModelCheckpoint` callback
+        with the kwargs. It handles checkpointing and metrics logging logics.
+
+        Specifically, the callback periodically reports the latest metrics
+        and checkpoint to the AIR session via
+        :meth:`session.report() <ray.air.session.report>`.
+        The report frequency matches the checkpointing frequency here.
+        You have to make sure that the target metrics (e.g. metrics defined in
+        :class:`TuneConfig <ray.tune.TuneConfig>` or
+        :class:`CheckpointConfig <ray.air.config.CheckpointConfig>`)
+        are ready when a new checkpoint is being saved.
+
+        Note that this method is not a replacement for the
+        ``ray.air.configs.CheckpointConfig``. You still need to specify your
+        AIR checkpointing strategy in ``CheckpointConfig``. Otherwise, AIR stores
+        all the reported checkpoints by default.
 
         Args:
             kwargs: For valid arguments to pass, please refer to:
@@ -149,8 +180,22 @@ class LightningConfigBuilder:
         return self
 
     def build(self) -> Dict["str", Any]:
-        """Build and return a config dictionary to pass into LightningTrainer"""
-        return self.__dict__.copy()
+        """Build and return a config dictionary to pass into LightningTrainer."""
+        config_dict = self.__dict__.copy()
+
+        if self._module_class:
+            if not isclass(self._module_class):
+                raise ValueError(
+                    "'module_class' must be a class, not a class instance."
+                )
+            if not issubclass(self._module_class, pl.LightningModule):
+                raise ValueError(
+                    "'module_class' must be a subclass of 'pl.LightningModule'!"
+                )
+        else:
+            # Avoid default key-value pair to adapt with Ray Tune scheduler.
+            config_dict.pop("_module_class")
+        return config_dict
 
 
 @PublicAPI(stability="alpha")
@@ -160,7 +205,8 @@ class LightningTrainer(TorchTrainer):
     This Trainer runs the ``pytorch_lightning.Trainer.fit()`` method on multiple
     Ray Actors. The training is carried out in a distributed fashion through PyTorch
     DDP. These actors already have the necessary Torch process group configured for
-    distributed data parallel training.
+    distributed data parallel training. We will support more distributed training
+    strategies in the future.
 
     The training function ran on every Actor will first initialize an instance
     of the user-provided ``lightning_module`` class, which is a subclass of
@@ -169,11 +215,12 @@ class LightningTrainer(TorchTrainer):
 
     For data ingestion, the LightningTrainer will then either convert the Ray Dataset
     shards to a ``pytorch_lightning.LightningDataModule``, or directly use the
-    datamodule if provided by users.
+    datamodule or dataloaders if provided by users.
 
-    The trainer will also create a ModelCheckpoint callback based on the configuration
-    provided in ``model_checkpoint_config``. Notice that all the other ModelCheckpoint
-    callbacks specified in ``lightning_trainer_config`` will be ignored.
+    The trainer also creates a ModelCheckpoint callback based on the configuration
+    provided in ``LightningConfigBuilder.checkpointing()``. In addition to
+    checkpointing, this callback also calls ``session.report()`` to report the
+    latest metrics along with the checkpoint to the AIR session.
 
     For logging, users can continue to use Lightning's native loggers, such as
     WandbLogger, TensorboardLogger, etc. LightningTrainer will also log the latest
@@ -183,10 +230,8 @@ class LightningTrainer(TorchTrainer):
     using the arguments provided in ``LightningConfigBuilder.fit_params()`` and then
     run ``pytorch_lightning.Trainer.fit``.
 
-    TODO(yunxuanx): make this example testable
-
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import torch
             import torch.nn.functional as F
@@ -196,7 +241,8 @@ class LightningTrainer(TorchTrainer):
             from torchvision import transforms
             import pytorch_lightning as pl
             from ray.air.config import ScalingConfig
-            from ray.train.lightning import LightningTrainer, LightningConfig
+            from ray.train.lightning import LightningTrainer, LightningConfigBuilder
+
 
             class MNISTClassifier(pl.LightningModule):
                 def __init__(self, lr, feature_dim):
@@ -216,7 +262,7 @@ class LightningTrainer(TorchTrainer):
                     x, y = batch
                     y_hat = self(x)
                     loss = torch.nn.functional.cross_entropy(y_hat, y)
-                    self.log('train_loss', loss)
+                    self.log("train_loss", loss)
                     return loss
 
                 def validation_step(self, val_batch, batch_idx):
@@ -237,9 +283,8 @@ class LightningTrainer(TorchTrainer):
                     return optimizer
 
             # Prepare MNIST Datasets
-            transform = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307,), (0.3081,))]
+            transform = transforms.Compose(
+                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
             )
             mnist_train = MNIST(
                 './data', train=True, download=True, transform=transform
@@ -253,8 +298,8 @@ class LightningTrainer(TorchTrainer):
             mnist_train = Subset(mnist_train, range(1000))
             mnist_train = Subset(mnist_train, range(500))
 
-            train_loader = DataLoader(mnist_train, batch_size=32, shuffle=True)
-            val_loader = DataLoader(mnist_val, batch_size=32, shuffle=False)
+            train_loader = DataLoader(mnist_train, batch_size=128, shuffle=True)
+            val_loader = DataLoader(mnist_val, batch_size=128, shuffle=False)
 
             lightning_config = (
                 LightningConfigBuilder()
@@ -271,7 +316,14 @@ class LightningTrainer(TorchTrainer):
                 lightning_config=lightning_config,
                 scaling_config=scaling_config,
             )
-            results = trainer.fit()
+            result = trainer.fit()
+            result
+
+    .. testoutput::
+        :hide:
+        :options: +ELLIPSIS
+
+        ...
 
     Args:
         lightning_config: Configuration for setting up the Pytorch Lightning Trainer.
@@ -442,8 +494,12 @@ def _lightning_train_loop_per_worker(config):
     lightning_module = module_class(**module_init_config)
 
     # Prepare Lightning Trainer
-    # Disable Lightning progress bar to avoid corrupted AIR outputs.
-    trainer_config["enable_progress_bar"] = False
+    # Disable the Lightning progress bar to avoid corrupted AIR outputs,
+    # unless users provide a customized progress bar callback.
+    trainer_config["enable_progress_bar"] = any(
+        isinstance(callback, ProgressBarBase)
+        for callback in trainer_config.get("callbacks", [])
+    )
 
     # Setup trainer's parallel devices
     if trainer_config.get("accelerator", None) == "gpu":
