@@ -27,7 +27,7 @@ RUN sudo apt-get update \
       requirements_pinned.txt \
       requirements.txt \
       requirements_test.txt \
-      requirements_linters.txt
+      requirements_linters.txt \
     # Then, install requirements
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
            -r requirements_pinned.txt \

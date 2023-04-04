@@ -335,6 +335,11 @@ compile_ray_requirements() {
     rm -rf /artifact-mount/requirements*.txt
     cp -f "${WORKSPACE_DIR}/python/requirements_pinned.txt" /artifact-mount/
   else
+    if [ -n "${BUILDKITE-}" ]; then
+      mkdir -p /tmp/artifacts
+      rm -rf /tmp/artifacts/requirements*.txt
+      cp -f "${WORKSPACE_DIR}/python/requirements_pinned.txt" /tmp/artifacts/
+    fi
     cat "${WORKSPACE_DIR}/python/requirements_pinned.txt"
   fi
 }
@@ -389,7 +394,6 @@ install_pip_packages() {
   # Additional Tune/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_tune.txt")
-    install_ml_no_deps=1
   fi
 
   # For Tune, install upstream dependencies.
