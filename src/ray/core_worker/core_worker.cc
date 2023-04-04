@@ -732,6 +732,7 @@ void CoreWorker::Exit(
          exit_type,
          detail = std::move(detail),
          creation_task_exception_pb_bytes]() {
+          RAY_LOG(INFO) << "Initiate the shutdown";
           rpc::DrainAndResetServerCallExecutor();
           Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           Shutdown();
@@ -759,11 +760,13 @@ void CoreWorker::Exit(
             // before we shutdown. NOTE(swang): This could still cause this worker
             // process to stay alive forever if another process holds a reference
             // forever.
+            RAY_LOG(INFO) << "task shutdown";
             reference_counter_->DrainAndShutdown(shutdown);
           } else {
             // If we are an actor, then we may be holding object references in the
             // heap. Then, we should not wait to drain the object references before
             // shutdown since this could hang.
+            RAY_LOG(INFO) << "Actor task shutdown";
             shutdown();
           }
         },
@@ -3390,6 +3393,7 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
                                  rpc::KillActorReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
   ActorID intended_actor_id = ActorID::FromBinary(request.intended_actor_id());
+  RAY_LOG(INFO) << "Kill an actor";
   if (intended_actor_id != worker_context_.GetCurrentActorID()) {
     std::ostringstream stream;
     stream << "Mismatched ActorID: ignoring KillActor for previous actor "
@@ -3412,6 +3416,7 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
         rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
         absl::StrCat("Worker exits because the actor is killed. ", kill_actor_reason));
   } else {
+    RAY_LOG(INFO) << "Graceful kill actor";
     Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
          absl::StrCat("Worker exits because the actor is killed. ", kill_actor_reason));
   }

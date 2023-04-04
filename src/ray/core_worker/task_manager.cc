@@ -204,7 +204,10 @@ void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
 
   // Do not hold the lock when calling callbacks.
   if (!has_pending_tasks) {
+    RAY_LOG(INFO) << "TaskManager.DrainAndShutdown";
     shutdown();
+  } else {
+    RAY_LOG(INFO) << "TaskManager.DrainAndShutdown not called :(";
   }
 }
 

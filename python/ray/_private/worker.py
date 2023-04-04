@@ -830,8 +830,8 @@ class Worker:
         """The main loop a worker runs to receive and execute tasks."""
 
         def sigterm_handler(signum, frame):
-            shutdown(True)
             sys.exit(1)
+            shutdown(True)
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
