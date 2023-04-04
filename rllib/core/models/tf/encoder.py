@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Optional
 
 from ray.rllib.core.models.base import (
     Encoder,
@@ -32,18 +32,19 @@ class TfMLPEncoder(Encoder, TfModel):
         TfModel.__init__(self, config)
         Encoder.__init__(self, config)
 
-        # Create the neural networks
+        # Create the neural network.
         self.net = TfMLP(
             input_dim=config.input_dims[0],
             hidden_layer_dims=config.hidden_layer_dims,
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             output_dim=config.output_dims[0],
+            output_activation=config.output_activation,
             use_bias=config.use_bias,
         )
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 SampleBatch.OBS: TfTensorSpec("b, d", d=self.config.input_dims[0]),
@@ -53,7 +54,7 @@ class TfMLPEncoder(Encoder, TfModel):
         )
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),
@@ -62,7 +63,7 @@ class TfMLPEncoder(Encoder, TfModel):
         )
 
     @override(Model)
-    def _forward(self, inputs: NestedDict) -> NestedDict:
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
         return NestedDict(
             {
                 ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
@@ -86,22 +87,22 @@ class TfCNNEncoder(TfModel, Encoder):
             use_bias=config.use_bias,
         )
         layers.append(cnn)
-        # Flatten output of last CNN layer.
+
+        # Add a flatten operation to move from 2/3D into 1D space.
         layers.append(tf.keras.layers.Flatten())
 
         # Add a final linear layer to make sure that the outputs have the correct
         # dimensionality (output_dims).
-        output_activation = get_activation_fn(
-            config.output_activation, framework="tf2"
-        )
+        output_activation = get_activation_fn(config.output_activation, framework="tf2")
         layers.append(
             tf.keras.layers.Dense(config.output_dims[0], activation=output_activation),
         )
 
+        # Create the network from gathered layers.
         self.net = tf.keras.Sequential(layers)
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 SampleBatch.OBS: TfTensorSpec(
@@ -116,7 +117,7 @@ class TfCNNEncoder(TfModel, Encoder):
         )
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),
@@ -125,11 +126,11 @@ class TfCNNEncoder(TfModel, Encoder):
         )
 
     @override(Model)
-    def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
         return NestedDict(
             {
-                ENCODER_OUT: self.net(input_dict[SampleBatch.OBS]),
-                STATE_OUT: input_dict[STATE_IN],
+                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
+                STATE_OUT: inputs[STATE_IN],
             }
         )
 

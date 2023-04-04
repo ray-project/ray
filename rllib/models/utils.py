@@ -113,9 +113,7 @@ def get_activation_fn(
             return fn
 
         if name_lower in ["swish", "silu"]:
-            from ray.rllib.utils.torch_utils import Swish
-
-            return Swish
+            return nn.SiLU
         elif name_lower == "relu":
             return nn.ReLU
         elif name_lower == "tanh":

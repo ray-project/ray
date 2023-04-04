@@ -98,7 +98,11 @@ class TensorSpec(Spec):
     """
 
     def __init__(
-        self, shape: str, *, dtype: Optional[Any] = None, **shape_vals: int,
+        self,
+        shape: str,
+        *,
+        dtype: Optional[Any] = None,
+        **shape_vals: int,
     ) -> None:
         self._expected_shape = self._parse_expected_shape(shape, shape_vals)
         self._full_shape = self._get_full_shape()
@@ -228,8 +232,10 @@ class TensorSpec(Spec):
 
     @abc.abstractmethod
     def _full(self, shape: Tuple[int], fill_value: Union[float, int] = 0) -> TensorType:
-        """Creates a tensor with the given shape filled with `fill_value`. The tensor
-        dtype is inferred from `fill_value`. This is equivalent to np.full(shape, val).
+        """Creates a tensor with the given shape filled with `fill_value`.
+
+        The tensor dtype is inferred from `fill_value`. This is equivalent to
+        np.full(shape, val).
 
         Args:
             shape: The shape of the tensor to be sampled.

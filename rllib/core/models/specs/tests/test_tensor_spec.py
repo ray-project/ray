@@ -5,9 +5,9 @@ import numpy as np
 import tensorflow as tf
 
 from ray.rllib.utils.test_utils import check
-from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.core.models.specs.specs_np import NPTensorSpec
 from ray.rllib.core.models.specs.specs_tf import TfTensorSpec
+from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
 
 # TODO: add jax tests
 

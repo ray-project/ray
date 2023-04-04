@@ -1,10 +1,12 @@
 import itertools
 import unittest
 
+import numpy as np
+
 from ray.rllib.core.models.base import ENCODER_OUT, STATE_IN, STATE_OUT
 from ray.rllib.core.models.configs import CNNEncoderConfig
+from ray.rllib.core.models.utils import ModelChecker
 from ray.rllib.models.utils import get_filter_config
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -13,11 +15,10 @@ torch, _ = try_import_torch()
 
 
 class TestCNNEncoders(unittest.TestCase):
-
     def test_cnn_encoders(self):
         """Tests building CNN encoders properly and checks for correct architecture."""
 
-        # Input dims supported by RLlib via get_filter_config().
+        # Loop through different combinations of hyperparameters.
         inputs_dimss = [
             [480, 640, 3],
             [480, 640, 1],
@@ -33,15 +34,10 @@ class TestCNNEncoders(unittest.TestCase):
             [42, 42, 1],
             [10, 10, 3],
         ]
-
         cnn_activations = [None, "linear", "relu"]
-
         cnn_use_layernorms = [False, True]
-
         output_dimss = [[1], [100]]
-
         output_activations = cnn_activations
-
         use_biases = [False, True]
 
         for permutation in itertools.product(
@@ -65,7 +61,7 @@ class TestCNNEncoders(unittest.TestCase):
 
             print(
                 f"Testing ...\n"
-                f"inputs_dims: {inputs_dims}\n"
+                f"input_dims: {inputs_dims}\n"
                 f"cnn_filter_specifiers: {filter_specifiers}\n"
                 f"cnn_activation: {cnn_activation}\n"
                 f"cnn_use_layernorm: {cnn_use_layernorm}\n"
@@ -84,42 +80,18 @@ class TestCNNEncoders(unittest.TestCase):
                 use_bias=use_bias,
             )
 
-            # To compare number of params between frameworks.
-            tf_counts = None
+            # Use a ModelChecker to compare all added models (different frameworks)
+            # with each other.
+            model_checker = ModelChecker(config)
 
             for fw in framework_iterator(frameworks=("tf2", "torch")):
-                model = config.build(framework=fw)
-                print(model)
-
-                # Pass a B=1 observation through the model.
-                if fw == "tf2":
-                    obs = tf.random.uniform([1] + inputs_dims)
-                    seq_lens = tf.Variable([1])
-                else:
-                    obs = torch.randn(1, *inputs_dims)
-                    seq_lens = torch.tensor([1])
-                state = None
-
-                outputs = model({
-                    SampleBatch.OBS: obs,
-                    SampleBatch.SEQ_LENS: seq_lens,
-                    STATE_IN: state,
-                })
-
-                if fw == "tf2":
-                    tf_counts = model.get_num_parameters()
-                else:
-                    torch_counts = model.get_num_parameters()
-                    # Compare number of trainable and non-trainable params between
-                    # tf and torch.
-                    self.assertEqual(torch_counts[0], tf_counts[0])
-                    self.assertEqual(torch_counts[1], tf_counts[1])
-
-                self.assertEqual(
-                    outputs[ENCODER_OUT].shape,
-                    (1, output_dims[0]),
-                )
+                # Add this framework version of the model to our checker.
+                outputs = model_checker.add(framework=fw)
+                self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims[0]))
                 self.assertEqual(outputs[STATE_OUT], None)
+
+            # Check all added models against each other.
+            model_checker.check()
 
 
 if __name__ == "__main__":

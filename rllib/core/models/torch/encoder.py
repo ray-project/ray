@@ -35,13 +35,14 @@ class TorchMLPEncoder(TorchModel, Encoder):
         TorchModel.__init__(self, config)
         Encoder.__init__(self, config)
 
-        # Create the neural networks
+        # Create the neural network.
         self.net = TorchMLP(
             input_dim=config.input_dims[0],
             hidden_layer_dims=config.hidden_layer_dims,
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             output_dim=config.output_dims[0],
+            output_activation=config.output_activation,
             use_bias=config.use_bias,
         )
 
@@ -80,6 +81,7 @@ class TorchCNNEncoder(TorchModel, Encoder):
         Encoder.__init__(self, config)
 
         layers = []
+        # The bare-bones CNN (no flatten, no succeeding dense).
         cnn = TorchCNN(
             input_dims=config.input_dims,
             cnn_filter_specifiers=config.cnn_filter_specifiers,
@@ -93,7 +95,7 @@ class TorchCNNEncoder(TorchModel, Encoder):
         layers.append(nn.Flatten())
 
         # Add a final linear layer to make sure that the outputs have the correct
-        # dimensionality.
+        # dimensionality (output_dims).
         layers.append(
             nn.Linear(
                 int(cnn.output_width) * int(cnn.output_height) * int(cnn.output_depth),
@@ -106,6 +108,7 @@ class TorchCNNEncoder(TorchModel, Encoder):
         if output_activation is not None:
             layers.append(output_activation())
 
+        # Create the network from gathered layers.
         self.net = nn.Sequential(*layers)
 
     @override(Model)
@@ -133,11 +136,11 @@ class TorchCNNEncoder(TorchModel, Encoder):
         )
 
     @override(Model)
-    def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
         return NestedDict(
             {
-                ENCODER_OUT: self.net(input_dict[SampleBatch.OBS]),
-                STATE_OUT: input_dict[STATE_IN],
+                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
+                STATE_OUT: inputs[STATE_IN],
             }
         )
 
