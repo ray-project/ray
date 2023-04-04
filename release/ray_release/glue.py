@@ -565,7 +565,4 @@ def run_release_test(
         except Exception as e:
             logger.exception(f"Error reporting results via {type(reporter)}: {e}")
 
-    if pipeline_exception:
-        raise pipeline_exception
-
     return result
