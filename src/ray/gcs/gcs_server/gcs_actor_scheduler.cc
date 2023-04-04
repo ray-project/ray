@@ -458,7 +458,6 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
   client->PushNormalTask(
       std::move(request),
       [this, actor, worker](Status status, const rpc::PushTaskReply &reply) {
-        RAY_UNUSED(reply);
         // If the actor is still in the creating map and the status is ok, remove the
         // actor from the creating map and invoke the schedule_success_handler_.
         // Otherwise, create again, because it may be a network exception.
@@ -479,9 +478,9 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
               if (iter->second.empty()) {
                 node_to_workers_when_creating_.erase(iter);
               }
-              RAY_LOG(INFO) << "Succeeded in creating actor " << actor->GetActorID()
-                            << " on worker " << worker->GetWorkerID() << " at node "
-                            << actor->GetNodeID()
+              RAY_LOG(INFO) << "Finished actor creation task for actor "
+                            << actor->GetActorID() << " on worker "
+                            << worker->GetWorkerID() << " at node " << actor->GetNodeID()
                             << ", job id = " << actor->GetActorID().JobId();
               schedule_success_handler_(actor, reply);
             } else {

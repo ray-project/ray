@@ -18,7 +18,9 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import (
+    IO,
     Any,
+    AnyStr,
     Callable,
     Dict,
     Generic,
@@ -69,7 +71,12 @@ from ray._private.gcs_pubsub import (
     GcsPublisher,
 )
 from ray._private.inspect_util import is_cython
-from ray._private.ray_logging import global_worker_stdstream_dispatcher, setup_logger
+from ray._private.ray_logging import (
+    global_worker_stdstream_dispatcher,
+    stdout_deduplicator,
+    stderr_deduplicator,
+    setup_logger,
+)
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
@@ -82,6 +89,8 @@ from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_reset,
 )
+from ray.experimental import tqdm_ray
+from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -446,6 +455,9 @@ class Worker:
         # running on.
         self.ray_debugger_external = False
         self._load_code_from_local = False
+        # Opened file descriptor to stdout/stderr for this python worker.
+        self._out_file = None
+        self._err_file = None
         # Create the lock here because the serializer will use it before
         # initializing Ray.
         self.lock = threading.RLock()
@@ -516,6 +528,49 @@ class Worker:
     def runtime_env(self):
         """Get the runtime env in json format"""
         return self.core_worker.get_current_runtime_env()
+
+    def set_err_file(self, err_file=Optional[IO[AnyStr]]) -> None:
+        """Set the worker's err file where stderr is redirected to"""
+        self._err_file = err_file
+
+    def set_out_file(self, out_file=Optional[IO[AnyStr]]) -> None:
+        """Set the worker's out file where stdout is redirected to"""
+        self._out_file = out_file
+
+    def record_task_log_start(self):
+        """Record the task log info when task starts executing"""
+        self.core_worker.record_task_log_start(
+            self.get_out_file_path(),
+            self.get_err_file_path(),
+            self.get_current_out_offset(),
+            self.get_current_err_offset(),
+        )
+
+    def record_task_log_end(self):
+        """Record the task log info when task finishes executing"""
+        self.core_worker.record_task_log_end(
+            self.get_current_out_offset(), self.get_current_err_offset()
+        )
+
+    def get_err_file_path(self) -> str:
+        """Get the err log file path"""
+        return self._err_file.name if self._err_file is not None else ""
+
+    def get_out_file_path(self) -> str:
+        """Get the out log file path"""
+        return self._out_file.name if self._out_file is not None else ""
+
+    def get_current_out_offset(self) -> int:
+        """Get the current offset of the out file if seekable, else 0"""
+        if self._out_file is not None and self._out_file.seekable():
+            return self._out_file.tell()
+        return 0
+
+    def get_current_err_offset(self) -> int:
+        """Get the current offset of the err file if seekable, else 0"""
+        if self._err_file is not None and self._err_file.seekable():
+            return self._err_file.tell()
+        return 0
 
     def get_serialization_context(self):
         """Get the SerializationContext of the job that this worker is processing.
@@ -610,7 +665,17 @@ class Worker:
                 object_ref is None
             ), "Local Mode does not support inserting with an ObjectRef"
 
-        serialized_value = self.get_serialization_context().serialize(value)
+        try:
+            serialized_value = self.get_serialization_context().serialize(value)
+        except TypeError as e:
+            sio = io.StringIO()
+            ray.util.inspect_serializability(value, print_file=sio)
+            msg = (
+                "Could not serialize the put value "
+                f"{repr(value)}:\n"
+                f"{sio.getvalue()}"
+            )
+            raise TypeError(msg) from e
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
@@ -1690,8 +1755,23 @@ sys.excepthook = custom_excepthook
 
 
 def print_to_stdstream(data):
-    print_file = sys.stderr if data["is_err"] else sys.stdout
-    print_worker_logs(data, print_file)
+    should_dedup = data.get("pid") not in ["autoscaler", "raylet"]
+
+    if data["is_err"]:
+        if should_dedup:
+            batches = stderr_deduplicator.deduplicate(data)
+        else:
+            batches = [data]
+        sink = sys.stderr
+    else:
+        if should_dedup:
+            batches = stdout_deduplicator.deduplicate(data)
+        else:
+            batches = [data]
+        sink = sys.stdout
+
+    for batch in batches:
+        print_worker_logs(batch, sink)
 
 
 # Start time of this process, used for relative time logs.
@@ -1797,31 +1877,64 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
     if data.get("ip") == data.get("localhost"):
         for line in lines:
-            print(
-                "{}{}({}{}){} {}".format(
-                    colorama.Style.DIM,
-                    color_for(data, line),
-                    prefix_for(data),
-                    pid,
-                    colorama.Style.RESET_ALL,
-                    message_for(data, line),
-                ),
-                file=print_file,
-            )
+            if RAY_TQDM_MAGIC in line:
+                process_tqdm(line)
+            else:
+                hide_tqdm()
+                print(
+                    "{}{}({}{}){} {}".format(
+                        colorama.Style.DIM,
+                        color_for(data, line),
+                        prefix_for(data),
+                        pid,
+                        colorama.Style.RESET_ALL,
+                        message_for(data, line),
+                    ),
+                    file=print_file,
+                )
     else:
         for line in lines:
-            print(
-                "{}{}({}{}, ip={}){} {}".format(
-                    colorama.Style.DIM,
-                    color_for(data, line),
-                    prefix_for(data),
-                    pid,
-                    data.get("ip"),
-                    colorama.Style.RESET_ALL,
-                    message_for(data, line),
-                ),
-                file=print_file,
+            if RAY_TQDM_MAGIC in line:
+                process_tqdm(line)
+            else:
+                hide_tqdm()
+                print(
+                    "{}{}({}{}, ip={}){} {}".format(
+                        colorama.Style.DIM,
+                        color_for(data, line),
+                        prefix_for(data),
+                        pid,
+                        data.get("ip"),
+                        colorama.Style.RESET_ALL,
+                        message_for(data, line),
+                    ),
+                    file=print_file,
+                )
+    # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
+    restore_tqdm()
+
+
+def process_tqdm(line):
+    """Experimental distributed tqdm: see ray.experimental.tqdm_ray."""
+    try:
+        data = json.loads(line)
+        tqdm_ray.instance().process_state_update(data)
+    except Exception:
+        if log_once("tqdm_corruption"):
+            logger.warning(
+                f"[tqdm_ray] Failed to decode {line}, this may be due to "
+                "logging too fast. This warning will not be printed again."
             )
+
+
+def hide_tqdm():
+    """Hide distributed tqdm bars temporarily to avoid conflicts with other logs."""
+    tqdm_ray.instance().hide_bars()
+
+
+def restore_tqdm():
+    """Undo hide_tqdm()."""
+    tqdm_ray.instance().unhide_bars()
 
 
 def listen_error_messages(worker, threads_stopped):
@@ -1897,6 +2010,8 @@ def connect(
     startup_token: int = 0,
     ray_debugger_external: bool = False,
     entrypoint: str = "",
+    worker_launch_time_ms: int = -1,
+    worker_launched_time_ms: int = -1,
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -1918,6 +2033,12 @@ def connect(
             node this worker is running on.
         entrypoint: The name of the entrypoint script. Ignored if the
             mode != SCRIPT_MODE
+        worker_launch_time_ms: The time when the worker process for this worker
+            is launched. If the worker is not launched by raylet (e.g.,
+            driver), this must be -1 (default value).
+        worker_launched_time_ms: The time when the worker process for this worker
+            finshes launching. If the worker is not launched by raylet (e.g.,
+            driver), this must be -1 (default value).
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1938,12 +2059,6 @@ def connect(
         ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
     )
     worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
-    worker.gcs_error_subscriber = GcsErrorSubscriber(address=worker.gcs_client.address)
-    worker.gcs_log_subscriber = GcsLogSubscriber(address=worker.gcs_client.address)
-    worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
-        address=worker.gcs_client.address
-    )
-
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
@@ -2088,10 +2203,22 @@ def connect(
         startup_token,
         session_name,
         "" if mode != SCRIPT_MODE else entrypoint,
+        worker_launch_time_ms,
+        worker_launched_time_ms,
     )
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
+    worker_id = worker.worker_id
+    worker.gcs_error_subscriber = GcsErrorSubscriber(
+        worker_id=worker_id, address=worker.gcs_client.address
+    )
+    worker.gcs_log_subscriber = GcsLogSubscriber(
+        worker_id=worker_id, address=worker.gcs_client.address
+    )
+    worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
+        worker_id=worker_id, address=worker.gcs_client.address
+    )
 
     if driver_object_store_memory is not None:
         logger.warning(
@@ -2177,9 +2304,12 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
-        worker.gcs_function_key_subscriber.close()
-        worker.gcs_error_subscriber.close()
-        worker.gcs_log_subscriber.close()
+        if hasattr(worker, "gcs_function_key_subscriber"):
+            worker.gcs_function_key_subscriber.close()
+        if hasattr(worker, "gcs_error_subscriber"):
+            worker.gcs_error_subscriber.close()
+        if hasattr(worker, "gcs_log_subscriber"):
+            worker.gcs_log_subscriber.close()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
@@ -2190,6 +2320,10 @@ def disconnect(exiting_interpreter=False):
 
         worker._session_index += 1
 
+        for leftover in stdout_deduplicator.flush():
+            print_worker_logs(leftover, sys.stdout)
+        for leftover in stderr_deduplicator.flush():
+            print_worker_logs(leftover, sys.stderr)
         global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
 
     worker.node = None  # Disconnect the worker from the node.
@@ -3008,8 +3142,7 @@ def remote(
             invocation. The default value is 1.
             Pass "dynamic" to allow the task to decide how many
             return values to return during execution, and the caller will
-            receive an ObjectRef[ObjectRefGenerator] (note, this setting is
-            experimental).
+            receive an ObjectRef[ObjectRefGenerator].
             See :ref:`dynamic generators <dynamic-generators>` for more details.
         num_cpus: The quantity of CPU resources to reserve
             for this task or for the lifetime of the actor.

@@ -2,8 +2,10 @@ import pytest
 import ray
 import raydp
 import torch
+import pandas
 
 
+# RayDP tests require Ray Java. Make sure ray jar is built before running this test.
 @pytest.fixture(scope="function")
 def spark(request):
     ray.init(num_cpus=2, include_dashboard=False)
@@ -48,6 +50,14 @@ def test_raydp_to_torch_iter(spark):
     dataset = ds.to_torch(label_column="label", batch_size=3)
     data_features, data_labels = next(dataset.__iter__())
     assert torch.equal(data_features, features) and torch.equal(data_labels, labels)
+
+
+def test_to_pandas(spark):
+    df = spark.range(100)
+    ds = ray.data.from_spark(df)
+    pdf = ds.to_pandas()
+    pdf2 = df.toPandas()
+    pandas.testing.assert_frame_equal(pdf, pdf2)
 
 
 if __name__ == "__main__":

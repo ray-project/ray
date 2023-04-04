@@ -135,7 +135,7 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            deployment_statuses = self.get_serve_status().deployment_statuses
+            deployment_statuses = self.get_all_deployment_statuses()
             if len(deployment_statuses) == 0:
                 break
             else:
@@ -273,6 +273,7 @@ class ServeControllerClient:
                     version=deployment["version"],
                     route_prefix=deployment["route_prefix"],
                     is_driver_deployment=deployment["is_driver_deployment"],
+                    docs_path=deployment["docs_path"],
                 )
             )
 
@@ -283,17 +284,19 @@ class ServeControllerClient:
         tags = []
         for i, updating in enumerate(updating_list):
             deployment = deployments[i]
-            name, version = deployment["name"], deployment["version"]
+            deployment_name, version = deployment["name"], deployment["version"]
 
-            tags.append(self.log_deployment_update_status(name, version, updating))
+            tags.append(
+                self.log_deployment_update_status(deployment_name, version, updating)
+            )
 
         for i, deployment in enumerate(deployments):
-            name = deployment["name"]
+            deployment_name = deployment["name"]
             url = deployment["url"]
 
             if _blocking:
-                self._wait_for_deployment_healthy(name)
-                self.log_deployment_ready(name, version, url, tags[i])
+                self._wait_for_deployment_healthy(deployment_name)
+                self.log_deployment_ready(deployment_name, version, url, tags[i])
 
         if remove_past_deployments:
             # clean up the old deployments
@@ -313,6 +316,18 @@ class ServeControllerClient:
         config: Union[ServeApplicationSchema, ServeDeploySchema],
         _blocking: bool = False,
     ) -> None:
+        """Starts a task on the controller that deploys application(s) from a config.
+
+        Args:
+            config: A single-application config (ServeApplicationSchema) or a
+                multi-application config (ServeDeploySchema)
+            _blocking: Whether to block until the application is running.
+
+        Raises:
+            RayTaskError: If the deploy task on the controller fails. This can be
+                because a single-app config was deployed after deploying a multi-app
+                config, or vice versa.
+        """
         ray.get(self._controller.deploy_apps.remote(config))
 
         if _blocking:
@@ -407,6 +422,16 @@ class ServeControllerClient:
         return StatusOverview.from_proto(proto)
 
     @_ensure_connected
+    def get_all_deployment_statuses(self) -> List[DeploymentStatusInfo]:
+        statuses_bytes = ray.get(self._controller.get_all_deployment_statuses.remote())
+        return [
+            DeploymentStatusInfo.from_proto(
+                DeploymentStatusInfoProto.FromString(status_bytes)
+            )
+            for status_bytes in statuses_bytes
+        ]
+
+    @_ensure_connected
     def get_handle(
         self,
         deployment_name: str,
@@ -483,6 +508,7 @@ class ServeControllerClient:
         version: Optional[str] = None,
         route_prefix: Optional[str] = None,
         is_driver_deployment: Optional[str] = None,
+        docs_path: Optional[str] = None,
     ) -> Dict:
         """
         Takes a deployment's configuration, and returns the arguments needed
@@ -538,6 +564,7 @@ class ServeControllerClient:
             "route_prefix": route_prefix,
             "deployer_job_id": ray.get_runtime_context().get_job_id(),
             "is_driver_deployment": is_driver_deployment,
+            "docs_path": docs_path,
         }
 
         return controller_deploy_args

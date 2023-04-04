@@ -11,6 +11,7 @@ import ray
 from ray import tune
 from ray.tune import ExperimentAnalysis
 import ray.tune.registry
+from ray.tune.tests.utils.experiment import create_test_experiment_checkpoint
 from ray.tune.utils.mock_trainable import MyTrainableClass
 from ray.tune.utils.util import is_nan
 
@@ -22,7 +23,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        ray.shutdown()
+        if ray.is_initialized:
+            ray.shutdown()
 
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
@@ -91,7 +93,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
     def testTrialDataframe(self):
         checkpoints = self.ea._checkpoints_and_paths
         idx = random.randint(0, len(checkpoints) - 1)
-        logdir_from_trial = self.ea.trials[idx].logdir
+        logdir_from_trial = self.ea.trials[idx].local_path
         trial_df = self.ea.trial_dataframes[logdir_from_trial]
 
         self.assertTrue(isinstance(trial_df, pd.DataFrame))
@@ -226,7 +228,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
     def testAllDataframes(self):
         dataframes = self.ea.trial_dataframes
-        self.assertTrue(len(dataframes) == self.num_samples)
+        self.assertEqual(len(dataframes), self.num_samples)
 
         self.assertTrue(isinstance(dataframes, dict))
         for df in dataframes.values():
@@ -308,7 +310,7 @@ class ExperimentAnalysisPropertySuite(unittest.TestCase):
 
         self.assertEqual(ea.best_trial, trials[2])
         self.assertEqual(ea.best_config, trials[2].config)
-        self.assertEqual(ea.best_logdir, trials[2].logdir)
+        self.assertEqual(ea.best_logdir, trials[2].local_path)
         self.assertEqual(
             ea.best_checkpoint._local_path, trials[2].checkpoint.dir_or_data
         )
@@ -364,22 +366,20 @@ class ExperimentAnalysisStubSuite(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        ray.shutdown()
 
     def run_test_exp(self):
-        def training_function(config, checkpoint_dir=None):
-            tune.report(episode_reward_mean=config["alpha"])
+        with create_test_experiment_checkpoint(self.test_path) as creator:
+            for i in range(10):
+                trial = creator.create_trial(f"trial_{i}", config={})
+                creator.trial_result(
+                    trial,
+                    {
+                        "training_iteration": 1,
+                        "episode_reward_mean": 10 + int(90 * random.random()),
+                    },
+                )
 
-        return tune.run(
-            training_function,
-            name=self.test_name,
-            local_dir=self.test_dir,
-            stop={"training_iteration": 1},
-            num_samples=self.num_samples,
-            config={
-                "alpha": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
-            },
-        )
+        return ExperimentAnalysis(self.test_dir, trials=creator.get_trials())
 
     def testPickling(self):
         analysis = self.run_test_exp()
@@ -388,11 +388,6 @@ class ExperimentAnalysisStubSuite(unittest.TestCase):
             pickle.dump(analysis, f)
 
         self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
-
-        ray.shutdown()
-        ray.tune.registry._global_registry = ray.tune.registry._Registry(
-            prefix="global"
-        )
 
         with open(pickle_path, "rb") as f:
             analysis = pickle.load(f)
@@ -405,15 +400,37 @@ class ExperimentAnalysisStubSuite(unittest.TestCase):
 
         self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
 
-        ray.shutdown()
-        ray.tune.registry._global_registry = ray.tune.registry._Registry(
-            prefix="global"
-        )
-
         analysis = ExperimentAnalysis(self.test_path)
 
         # This will be None if validate_trainable during loading fails
         self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
+
+    def testEmptyCheckpoint(self):
+        """Test that empty checkpoints can still be loaded in experiment analysis.
+
+        Background: If restore from a checkpoint fails, we overwrite the checkpoint
+        data with ``None`` (because we assume the current contents are invalid, e.g.
+        an invalid object ref, or a corrupted directory). But ExperimentAnalysis
+        currently previously failed loading if it is None. This tests makes
+        sure we can still load the checkpoint.
+
+        """
+        with create_test_experiment_checkpoint(self.test_path) as creator:
+            for i in range(10):
+                trial = creator.create_trial(f"trial_{i}", config={})
+                creator.trial_result(
+                    trial,
+                    {
+                        "training_iteration": 1,
+                        "episode_reward_mean": 10 + int(90 * random.random()),
+                    },
+                )
+                creator.trial_checkpoint(trial, "first")
+                creator.trial_checkpoint(trial, None)
+                creator.trial_checkpoint(trial, "third")
+
+        ea = ExperimentAnalysis(self.test_dir)
+        assert len(ea.trials) == 10
 
 
 if __name__ == "__main__":

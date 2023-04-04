@@ -16,7 +16,7 @@ from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
-from ray.rllib.utils.annotations import Deprecated, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
@@ -144,6 +144,15 @@ class AlphaZeroConfig(AlgorithmConfig):
                 "add_dirichlet_noise": False,
             },
         })
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
@@ -400,20 +409,3 @@ class AlphaZero(Algorithm):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.alpha_zero.AlphaZeroConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(AlphaZeroConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.alpha_zero.alpha_zero.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.alpha_zero.alpha_zero.AlphaZeroConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

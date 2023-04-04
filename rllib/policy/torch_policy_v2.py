@@ -177,7 +177,11 @@ class TorchPolicyV2(Policy):
         # Combine view_requirements for Model and Policy.
         self.view_requirements.update(self.model.view_requirements)
 
-        self.exploration = self._create_exploration()
+        if self.config.get("_enable_rl_module_api", False):
+            # We don't need an exploration object with RLModules
+            self.exploration = None
+        else:
+            self.exploration = self._create_exploration()
         self._optimizers = force_list(self.optimizer())
 
         # Backward compatibility workaround so Policy will call self.loss() directly.
@@ -237,7 +241,19 @@ class TorchPolicyV2(Policy):
         Returns:
             Loss tensor given the input batch.
         """
-        raise NotImplementedError
+        # Under the new _enable_learner_api the loss function still gets called in order
+        # to initialize the view requirements of the sample batches that are returned by
+        # the sampler. In this case, we don't actually want to compute any loss, however
+        # if we access the keys that are needed for a forward_train pass, then the
+        # sampler will include those keys in the sample batches it returns. This means
+        # that the correct sample batch keys will be available when using the learner
+        # group API.
+        if self.config._enable_learner_api:
+            for k in model.input_specs_train():
+                train_batch[k]
+            return None
+        else:
+            raise NotImplementedError
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -441,7 +457,7 @@ class TorchPolicyV2(Policy):
             ]
         else:
             optimizers = [torch.optim.Adam(self.model.parameters())]
-        if getattr(self, "exploration", None):
+        if self.exploration:
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
         return optimizers
 
@@ -556,6 +572,7 @@ class TorchPolicyV2(Policy):
             Union[List[TensorStructType], TensorStructType]
         ] = None,
         actions_normalized: bool = True,
+        in_training: bool = True,
     ) -> TensorType:
 
         if is_overridden(self.action_sampler_fn) and not is_overridden(
@@ -580,8 +597,9 @@ class TorchPolicyV2(Policy):
                 convert_to_torch_tensor(s, self.device) for s in (state_batches or [])
             ]
 
-            # Exploration hook before each forward pass.
-            self.exploration.before_compute_actions(explore=False)
+            if self.exploration:
+                # Exploration hook before each forward pass.
+                self.exploration.before_compute_actions(explore=False)
 
             # Action dist class and inputs are generated via custom function.
             if is_overridden(self.action_distribution_fn):
@@ -593,13 +611,31 @@ class TorchPolicyV2(Policy):
                     explore=False,
                     is_training=False,
                 )
-
+                action_dist = dist_class(dist_inputs, self.model)
             # Default action-dist inputs calculation.
             else:
-                dist_class = self.dist_class
-                dist_inputs, _ = self.model(input_dict, state_batches, seq_lens)
+                if self.config.get("_enable_rl_module_api", False):
+                    if in_training:
+                        output = self.model.forward_train(input_dict)
+                    else:
+                        self.model.eval()
+                        output = self.model.forward_exploration(input_dict)
 
-            action_dist = dist_class(dist_inputs, self.model)
+                    action_dist = output.get(SampleBatch.ACTION_DIST)
+
+                    if action_dist is None:
+                        raise ValueError(
+                            "The model output must contain the key "
+                            "`SampleBatch.ACTION_DIST` when using the RL module API."
+                            "Make sure if is_eval_mode is True the forward_exploration "
+                            "returns this key, and if it is False the forward_train "
+                            "returns this key."
+                        )
+                else:
+                    dist_class = self.dist_class
+                    dist_inputs, _ = self.model(input_dict, state_batches, seq_lens)
+
+                    action_dist = dist_class(dist_inputs, self.model)
 
             # Normalize actions if necessary.
             actions = input_dict[SampleBatch.ACTIONS]
@@ -940,7 +976,10 @@ class TorchPolicyV2(Policy):
             optim_state_dict = convert_to_numpy(o.state_dict())
             state["_optimizer_variables"].append(optim_state_dict)
         # Add exploration state.
-        state["_exploration_state"] = self.exploration.get_state()
+        if not self.config.get("_enable_rl_module_api", False) and self.exploration:
+            # This is not compatible with RLModules, which have a method
+            # `forward_exploration` to specify custom exploration behavior.
+            state["_exploration_state"] = self.exploration.get_state()
         return state
 
     @override(Policy)
@@ -978,6 +1017,10 @@ class TorchPolicyV2(Policy):
         """
 
         os.makedirs(export_dir, exist_ok=True)
+
+        enable_rl_module = self.config.get("_enable_rl_module_api", False)
+        if enable_rl_module:
+            raise ValueError("ONNX export not supported for RLModule API.")
 
         if onnx:
             self._lazy_tensor_dict(self._dummy_batch)
@@ -1063,7 +1106,8 @@ class TorchPolicyV2(Policy):
             action_dist = fwd_out.pop("action_dist")
 
             if explore:
-                actions, logp = action_dist.sample(return_logp=True)
+                actions = action_dist.sample()
+                logp = action_dist.logp(actions)
             else:
                 actions = action_dist.sample()
                 logp = None
@@ -1071,8 +1115,8 @@ class TorchPolicyV2(Policy):
             extra_fetches = fwd_out
             dist_inputs = None
         elif is_overridden(self.action_sampler_fn):
-            action_dist = dist_inputs = None
-            actions, logp, state_out = self.action_sampler_fn(
+            action_dist = None
+            actions, logp, dist_inputs, state_out = self.action_sampler_fn(
                 self.model,
                 obs_batch=input_dict,
                 state_batches=state_batches,

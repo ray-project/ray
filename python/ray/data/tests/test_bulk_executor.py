@@ -75,7 +75,7 @@ def test_multi_stage_execution(ray_start_10_cpus_shared, preserve_order):
 
 def test_basic_stats(ray_start_10_cpus_shared):
     executor = BulkExecutor(ExecutionOptions())
-    prev_stats = ray.data.range(10).fully_executed()._plan.stats()
+    prev_stats = ray.data.range(10).cache()._plan.stats()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
@@ -89,7 +89,7 @@ def test_basic_stats(ray_start_10_cpus_shared):
     expected = [[x * 4] for x in range(20)]
     assert output == expected, (output, expected)
     stats_str = executor.get_stats().to_summary().to_string()
-    assert "Stage 0 read:" in stats_str, stats_str
+    assert "Stage 0 Read:" in stats_str, stats_str
     assert "Stage 1 Foo:" in stats_str, stats_str
     assert "Stage 2 Bar:" in stats_str, stats_str
     assert "Extra metrics:" in stats_str, stats_str
@@ -98,6 +98,7 @@ def test_basic_stats(ray_start_10_cpus_shared):
 # TODO(ekl) remove this test once we have the new backend on by default.
 def test_e2e_bulk_sanity(ray_start_10_cpus_shared):
     DatasetContext.get_current().new_execution_backend = True
+    DatasetContext.get_current().use_streaming_executor = False
     result = ray.data.range(5).map(lambda x: x + 1)
     assert result.take_all() == [1, 2, 3, 4, 5], result
 
@@ -125,6 +126,7 @@ def test_actor_strategy(ray_start_10_cpus_shared):
 
 def test_new_execution_backend_invocation(ray_start_10_cpus_shared):
     DatasetContext.get_current().new_execution_backend = True
+    DatasetContext.get_current().use_streaming_executor = False
     # Read-only: will use legacy executor for now.
     ds = ray.data.range(10)
     assert ds.take_all() == list(range(10))

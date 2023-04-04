@@ -4,7 +4,13 @@
 ##########
 
 import copy
-from collections import Iterable
+
+try:
+    # This works in Python<3.9
+    from collections import Iterable
+except ImportError:
+    # This works in Python>=3.9
+    from collections.abc import Iterable
 
 import gymnasium as gym
 import logging
@@ -28,8 +34,8 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
     NAME = "CoinGame"
     NUM_AGENTS = 2
     NUM_ACTIONS = 4
-    ACTION_SPACE = Discrete(NUM_ACTIONS)
-    OBSERVATION_SPACE = None
+    action_space = Discrete(NUM_ACTIONS)
+    observation_space = None
     MOVES = [
         np.array([0, 1]),
         np.array([0, -1]),
@@ -46,14 +52,13 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         self._load_config(config)
         self.player_red_id, self.player_blue_id = self.players_ids
         self.n_features = self.grid_size**2 * (2 * self.NUM_AGENTS)
-        self.OBSERVATION_SPACE = gym.spaces.Box(
+        self.observation_space = gym.spaces.Box(
             low=0, high=1, shape=(self.grid_size, self.grid_size, 4), dtype="uint8"
         )
 
         self.step_count_in_current_episode = None
         if self.output_additional_info:
             self._init_info()
-        self.seed(seed=config.get("seed", None))
 
     def _validate_config(self, config):
         if "players_ids" in config:

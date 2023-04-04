@@ -1,6 +1,6 @@
 from typing import Type, Union, TYPE_CHECKING
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.learner.learner_group import LearnerGroup
@@ -12,6 +12,7 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
 )
 from ray.rllib.core.rl_module.tests.test_marl_module import DEFAULT_POLICY_ID
+
 
 if TYPE_CHECKING:
     import gymnasium as gym
@@ -60,7 +61,7 @@ def get_module_spec(framework: str, env: "gym.Env", is_multi_agent: bool = False
         module_class=get_module_class(framework),
         observation_space=env.observation_space,
         action_space=env.action_space,
-        model_config={"fcnet_hiddens": [32]},
+        model_config_dict={"fcnet_hiddens": [32]},
     )
 
     if is_multi_agent:

@@ -34,7 +34,10 @@ import ray
 
 default_role = "py:obj"
 
+sys.path.append(os.path.abspath("./_ext"))
+
 extensions = [
+    "callouts",  # custom extension from _ext folder
     "sphinx_panels",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
@@ -51,11 +54,43 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.autosummary",
     "sphinx_external_toc",
-    "sphinx_thebe",
     "sphinxcontrib.autodoc_pydantic",
     "sphinxcontrib.redoc",
     "sphinx_tabs.tabs",
+    "sphinx_remove_toctrees",
 ]
+
+# Prune deep toc-trees on demand for smaller html and faster builds.
+# This only effects the navigation bar, not the content.
+if os.getenv("FAST", False):
+    remove_from_toctrees = [
+        "data/api/doc/*",
+        "ray-air/api/doc/*",
+        "ray-core/api/doc/*",
+        "ray-observability/api/state/doc/*",
+        "serve/api/doc/*",
+        "train/api/doc/*",
+        "tune/api/doc/*",
+        "workflows/api/doc/*",
+        "cluster/running-applications/job-submission/doc/*",
+        "serve/production-guide/*",
+        "serve/tutorials/deployment-graph-patterns/*",
+        "rllib/package_ref/env/*",
+        "rllib/package_ref/policy/*",
+        "rllib/package_ref/evaluation/*",
+        "rllib/package_ref/utils/*",
+        "workflows/api/*",
+        "cluster/kubernetes/user-guides/*",
+        "cluster/kubernetes/examples/*",
+        "cluster/vms/user-guides/*",
+        "cluster/running-applications/job-submission/*",
+        "ray-core/actors/*",
+        "ray-core/objects/*",
+        "ray-core/scheduling/*",
+        "ray-core/tasks/*",
+        "ray-core/patterns/*",
+        "tune/examples/*",
+    ]
 
 myst_enable_extensions = [
     "dollarmath",
@@ -68,12 +103,6 @@ myst_enable_extensions = [
     "replacements",
 ]
 
-# Thebe configuration for launching notebook cells within the docs.
-thebe_config = {
-    "selector": "div.highlight",
-    "repository_url": "https://github.com/ray-project/ray",
-    "repository_branch": "master",
-}
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
@@ -154,9 +183,7 @@ language = None
 # directories to ignore when looking for source files.
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
-    "_build",
-    "source/workflows/api/doc/ray.workflow.*",
-    "source/serve/api/doc/ray.serve.*",
+    "templates/*",
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -210,6 +237,7 @@ linkcheck_ignore = [
     # 403 Client Error: Forbidden for url.
     # They ratelimit bots.
     "https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/",
+    "https://dev.mysql.com/doc/connector-python/en/",
     # Returning 522s intermittently.
     "https://lczero.org/",
 ]
@@ -231,11 +259,6 @@ html_theme_options = {
     "path_to_docs": "doc/source",
     "home_page_in_toc": False,
     "show_navbar_depth": 1,
-    "launch_buttons": {
-        "notebook_interface": "jupyterlab",
-        "binderhub_url": "https://mybinder.org",
-        "colab_url": "https://colab.research.google.com",
-    },
     "announcement": "<div class='topnav'></div>",
 }
 
@@ -332,55 +355,6 @@ nb_render_priority = {
 }
 
 tag_mapping = {
-    # Tags for use-cases gallery
-    "scalableBatchInference": "PyTorch,Image Segmentation,Prediction",
-    "batchActorPool": "Prediction",
-    "batchCore": "Prediction",
-    "nycTaxiData": "Prediction",
-    "batchOcr": "Preprocessing",
-    "millionModels": "Regression,Training,Sklearn",
-    "batchTrainingCore": "Regression,Training,Sklearn",
-    "batchTrainingDatasets": "Regression,Training,Sklearn",
-    "tuneBasicParallel": "Regression,Training,Sklearn",
-    "tuneBatch": "Regression,Training,Tuning,Sklearn",
-    "instacartFulfillment": "Training,Prediction",
-    "productionizingMLServe": "Serving",
-    "simplifyMLOpsServe": "Serving",
-    "gettingStartedServe": "Serving",
-    "compositionServe": "Serving",
-    "examplesServe": "Serving",
-    "useCasesServe": "Serving",
-    "gettingStartedTune": "Tuning",
-    "distributeHPOTune": "Tuning",
-    "simpleDistributedHPO": "Tuning",
-    "HPOTransformers": "Tuning,PyTorch,Classification",
-    "examplesTune": "Tuning",
-    "useCasesTune": "Tuning",
-    "pyTorchTrain": "Training,PyTorch",
-    "xgboostTrain": "Training,XGBoost",
-    "gettingStartedTrain": "Training",
-    "trainingTransformers": "Training,PyTorch,Classification,Prediction",
-    "examplesTrain": "Training",
-    "useCasesTrain": "Training",
-    "appliedRLCourse": "Reinforcement Learning",
-    "introRLlib": "Reinforcement Learning",
-    "gettingStartedRLlib": "Reinforcement Learning",
-    "riotRL": "Reinforcement Learning",
-    "examplesRL": "Reinforcement Learning",
-    "useCasesRL": "Reinforcement Learning",
-    "merlin": "Preprocessing,Training,Prediction",
-    "uberScaleDL": "Preprocessing,Training,Prediction,Tuning,XGBoost,"
-    "TensorFlow,PyTorch",
-    "instacartMLPlatformTripled": "Preprocessing,Prediction,Training,Tuning",
-    "predibase": "Preprocessing,Training,Prediction,Tuning,PyTorch",
-    "GKEMLPlatform": "Preprocessing,Training,Prediction,Tuning,TensorFlow,Serving",
-    "summitMLPlatform": "Preprocessing,Prediction,Training,Tuning,Serving",
-    "torchImageExample": "Preprocessing,Prediction,Training,PyTorch,Classification",
-    "feastExample": "Classification,XGBoost,Training,Preprocessing,Prediction",
-    "xgboostExample": "Classification,XGBoost,Training,Preprocessing,Prediction",
-    "timeSeriesAutoML": "Regression,Sklearn,Tuning",
-    "AIRExamples": "Regression,Classification,Training,Tuning,Prediction,"
-    "Preprocessing,Serving,PyTorch,TensorFlow,XGBoost,LightGBM,Sklearn",
     # Tags for Ray Train examples gallery
     "trainTorchFashionMnist": "PyTorch,Training",
     "trainTransformers": "PyTorch,Training,HuggingFace",
@@ -389,7 +363,8 @@ tag_mapping = {
     "trainMlflow": "MLflow,Training",
     "trainTuneTensorflow": "TensorFlow,Training,Tuning",
     "trainTunePyTorch": "PyTorch,Training,Tuning",
-    "trainBenchmark": "PyTorch,Training"
+    "trainBenchmark": "PyTorch,Training",
+    "trainLightning": "PyTorch,Lightning,Training"
     # TODO add and integrate tags for other libraries.
     # Tune has a proper example library
     # Serve, RLlib and AIR could use one.

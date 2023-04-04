@@ -35,8 +35,9 @@ from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
+from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
@@ -73,7 +74,11 @@ from ray.rllib.utils.annotations import (
     PublicAPI,
     override,
 )
-from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
+from ray.rllib.utils.checkpoints import (
+    CHECKPOINT_VERSION,
+    get_checkpoint_info,
+    try_import_msgpack,
+)
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -97,6 +102,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
+from ray.rllib.utils.serialization import deserialize_type, NOT_SERIALIZABLE
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,
@@ -133,12 +139,10 @@ logger = logging.getLogger(__name__)
 @Deprecated(
     new="config = AlgorithmConfig().update_from_dict({'a': 1, 'b': 2}); ... ; "
     "print(config.lr) -> 0.001; if config.a > 0: [do something];",
-    error=False,
+    error=True,
 )
-def with_common_config(extra_config):
-    return Algorithm.merge_trainer_configs(
-        AlgorithmConfig().to_dict(), extra_config, _allow_unknown_configs=True
-    )
+def with_common_config(*args, **kwargs):
+    pass
 
 
 @PublicAPI
@@ -258,13 +262,35 @@ class Algorithm(Trainable):
                 "2) Call the `restore()` method of this algo object passing it"
                 " your checkpoint dir or AIR Checkpoint object."
             )
-
-        if checkpoint_info["checkpoint_version"] < version.Version("1.0"):
+        elif checkpoint_info["checkpoint_version"] < version.Version("1.0"):
             raise ValueError(
                 "`checkpoint_info['checkpoint_version']` in `Algorithm.from_checkpoint"
                 "()` must be 1.0 or later! You are using a checkpoint with "
                 f"version v{checkpoint_info['checkpoint_version']}."
             )
+
+        # This is a msgpack checkpoint.
+        if checkpoint_info["format"] == "msgpack":
+            # User did not provide unserializable function with this call
+            # (`policy_mapping_fn`). Note that if `policies_to_train` is None, it
+            # defaults to training all policies (so it's ok to not provide this here).
+            if policy_mapping_fn is None:
+                # Only DEFAULT_POLICY_ID present in this algorithm, provide default
+                # implementations of these two functions.
+                if checkpoint_info["policy_ids"] == {DEFAULT_POLICY_ID}:
+                    policy_mapping_fn = AlgorithmConfig.DEFAULT_POLICY_MAPPING_FN
+                # Provide meaningful error message.
+                else:
+                    raise ValueError(
+                        "You are trying to restore a multi-agent algorithm from a "
+                        "`msgpack` formatted checkpoint, which do NOT store the "
+                        "`policy_mapping_fn` or `policies_to_train` "
+                        "functions! Make sure that when using the "
+                        "`Algorithm.from_checkpoint()` utility, you also pass the "
+                        "args: `policy_mapping_fn` and `policies_to_train` with your "
+                        "call. You might leave `policies_to_train=None` in case "
+                        "you would like to train all policies anyways."
+                    )
 
         state = Algorithm._checkpoint_info_to_algorithm_state(
             checkpoint_info=checkpoint_info,
@@ -617,8 +643,6 @@ class Algorithm(Trainable):
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.evaluation_config,
                 num_workers=self.config.evaluation_num_workers,
-                # Don't even create a local worker if num_workers > 0.
-                local_worker=False,
                 logdir=self.logdir,
             )
 
@@ -1275,14 +1299,14 @@ class Algorithm(Trainable):
             workers: The WorkerSet to restore. This may be Rollout or Evaluation
                 workers.
         """
+        # If `workers` is None, or
+        # 1. `workers` (WorkerSet) does not have a local worker, and
+        # 2. `self.workers` (WorkerSet used for training) does not have a local worker
+        # -> we don't have a local worker to get state from, so we can't recover
+        # remote worker in this case.
         if not workers or (
             not workers.local_worker() and not self.workers.local_worker()
         ):
-            # If workers does not exist, or
-            # 1. this WorkerSet does not have a local worker, and
-            # 2. self.workers (rollout worker set) does not have a local worker,
-            # we don't have a local worker to get state from.
-            # We can't recover remote worker in this case.
             return
 
         # This is really cheap, since probe_unhealthy_workers() is a no-op
@@ -1291,12 +1315,16 @@ class Algorithm(Trainable):
 
         if restored:
             from_worker = workers.local_worker() or self.workers.local_worker()
-            state = ray.put(from_worker.get_state())
+            # Get the state of the correct (reference) worker. E.g. The local worker
+            # of the main WorkerSet.
+            state_ref = ray.put(from_worker.get_state())
+
             # By default, entire local worker state is synced after restoration
             # to bring these workers up to date.
             workers.foreach_worker(
-                func=lambda w: w.set_state(ray.get(state)),
+                func=lambda w: w.set_state(ray.get(state_ref)),
                 remote_worker_ids=restored,
+                # Don't update the local_worker, b/c it's the one we are synching from.
                 local_worker=False,
                 timeout_seconds=self.config.worker_restore_timeout_s,
                 # Bring back actor after successful state syncing.
@@ -1346,6 +1374,8 @@ class Algorithm(Trainable):
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
             if self.config._enable_learner_api:
+                is_module_trainable = self.workers.local_worker().is_policy_to_train
+                self.learner_group.set_is_module_trainable(is_module_trainable)
                 train_results = self.learner_group.update(train_batch)
             elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
@@ -1780,6 +1810,7 @@ class Algorithm(Trainable):
             ]
         ] = None,
         evaluation_workers: bool = True,
+        module_spec: Optional[SingleAgentRLModuleSpec] = None,
         # Deprecated.
         workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> Optional[Policy]:
@@ -1816,9 +1847,13 @@ class Algorithm(Trainable):
                 returns False) will not be updated.
             evaluation_workers: Whether to add the new policy also
                 to the evaluation WorkerSet.
+            module_spec: In the new RLModule API we need to pass in the module_spec for
+                the new module that is supposed to be added. Knowing the policy spec is
+                not sufficient.
             workers: A list of RolloutWorker/ActorHandles (remote
                 RolloutWorkers) to add this policy to. If defined, will only
                 add the given policy to these workers.
+
 
         Returns:
             The newly added policy (the copy that got added to the local
@@ -1828,12 +1863,12 @@ class Algorithm(Trainable):
 
         if workers is not DEPRECATED_VALUE:
             deprecation_warning(
-                old="workers",
+                old="Algorithm.add_policy(.., workers=..)",
                 help=(
-                    "The `workers` argument to `Algorithm.add_policy()` is deprecated "
-                    "and no-op now. Please do not use it anymore."
+                    "The `workers` argument to `Algorithm.add_policy()` is deprecated! "
+                    "Please do not use it anymore."
                 ),
-                error=False,
+                error=True,
             )
 
         self.workers.add_policy(
@@ -1846,7 +1881,21 @@ class Algorithm(Trainable):
             policy_state=policy_state,
             policy_mapping_fn=policy_mapping_fn,
             policies_to_train=policies_to_train,
+            module_spec=module_spec,
         )
+
+        # If learner API is enabled, we need to also add the underlying module
+        # to the learner group.
+        if self.config._enable_learner_api:
+            policy = self.get_policy(policy_id)
+            module = policy.model
+            self.learner_group.add_module(
+                module_id=policy_id,
+                module_spec=SingleAgentRLModuleSpec.from_module(module),
+            )
+
+            weights = policy.get_weights()
+            self.learner_group.set_weights({policy_id: weights})
 
         # Add to evaluation workers, if necessary.
         if evaluation_workers is True and self.evaluation_workers is not None:
@@ -1860,6 +1909,7 @@ class Algorithm(Trainable):
                 policy_state=policy_state,
                 policy_mapping_fn=policy_mapping_fn,
                 policies_to_train=policies_to_train,
+                module_spec=module_spec,
             )
 
         # Return newly added policy (from the local rollout worker).
@@ -2048,6 +2098,9 @@ class Algorithm(Trainable):
                 {
                     "type": "Algorithm",
                     "checkpoint_version": str(state["checkpoint_version"]),
+                    "format": "cloudpickle",
+                    "state_file": state_file,
+                    "policy_ids": list(policy_states.keys()),
                     "ray_version": ray.__version__,
                     "ray_commit": ray.__commit__,
                 },
@@ -2119,19 +2172,34 @@ class Algorithm(Trainable):
         eval_cf.validate()
         eval_cf.freeze()
 
-        # resources for local worker
+        # resources for the driver of this trainable
         if cf._enable_learner_api:
-            local_worker = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
+            if cf.num_learner_workers == 0:
+                # in this case local_worker only does sampling and training is done on
+                # local learner worker
+                driver = {
+                    # sampling and training is not done concurrently when local is
+                    # used, so pick the max.
+                    "CPU": max(
+                        cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
+                    ),
+                    "GPU": cf.num_gpus_per_learner_worker,
+                }
+            else:
+                # in this case local_worker only does sampling and training is done on
+                # remote learner workers
+                driver = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
         else:
-            local_worker = {
+            # Without Learner API, the local_worker can do both sampling and training.
+            # So, we need to allocate the same resources for the driver as for the
+            # local_worker.
+            driver = {
                 "CPU": cf.num_cpus_for_local_worker,
                 "GPU": 0 if cf._fake_gpus else cf.num_gpus,
             }
 
-        bundles = [local_worker]
-
-        # resources for rollout env samplers
-        rollout_workers = [
+        # resources for remote rollout env samplers
+        rollout_bundles = [
             {
                 "CPU": cf.num_cpus_per_worker,
                 "GPU": cf.num_gpus_per_worker,
@@ -2140,11 +2208,11 @@ class Algorithm(Trainable):
             for _ in range(cf.num_rollout_workers)
         ]
 
-        # resources for evaluation env samplers or datasets (if any)
+        # resources for remote evaluation env samplers or datasets (if any)
         if cls._should_create_evaluation_rollout_workers(eval_cf):
             # Evaluation workers.
             # Note: The local eval worker is located on the driver CPU.
-            evaluation_bundle = [
+            evaluation_bundles = [
                 {
                     "CPU": eval_cf.num_cpus_per_worker,
                     "GPU": eval_cf.num_gpus_per_worker,
@@ -2166,31 +2234,20 @@ class Algorithm(Trainable):
             # operations. This behavior should get fixed by the dataset team. more info
             # found here:
             # https://docs.ray.io/en/master/data/dataset-internals.html#datasets-tune
-            evaluation_bundle = []
+            evaluation_bundles = []
 
-        bundles += rollout_workers + evaluation_bundle
+        # resources for remote learner workers
+        learner_bundles = []
+        if cf._enable_learner_api and cf.num_learner_workers > 0:
+            learner_bundles = [
+                {
+                    "CPU": cf.num_cpus_per_learner_worker,
+                    "GPU": cf.num_gpus_per_learner_worker,
+                }
+                for _ in range(cf.num_learner_workers)
+            ]
 
-        if cf._enable_learner_api:
-            # resources for the trainer
-            if cf.num_learner_workers == 0:
-                # if num_learner_workers is 0, then we need to allocate one gpu if
-                # num_gpus_per_learner_worker is greater than 0.
-                trainer_bundle = [
-                    {
-                        "CPU": cf.num_cpus_per_learner_worker,
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                ]
-            else:
-                trainer_bundle = [
-                    {
-                        "CPU": cf.num_cpus_per_learner_worker,
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                    for _ in range(cf.num_learner_workers)
-                ]
-
-            bundles += trainer_bundle
+        bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -2525,7 +2582,6 @@ class Algorithm(Trainable):
                 # there in case they are used for evaluation purpose.
                 self.evaluation_workers.foreach_worker(
                     lambda w: w.set_state(ray.get(remote_state)),
-                    local_worker=False,
                     healthy_only=False,
                 )
         # If necessary, restore replay data as well.
@@ -2594,8 +2650,15 @@ class Algorithm(Trainable):
                 f"Algorithm checkpoint (but is {checkpoint_info['type']})!"
             )
 
+        msgpack = None
+        if checkpoint_info.get("format") == "msgpack":
+            msgpack = try_import_msgpack(error=True)
+
         with open(checkpoint_info["state_file"], "rb") as f:
-            state = pickle.load(f)
+            if msgpack is not None:
+                state = msgpack.load(f)
+            else:
+                state = pickle.load(f)
 
         # New checkpoint format: Policies are in separate sub-dirs.
         # Note: Algorithms like ES/ARS don't have a WorkerSet, so we just return
@@ -2619,11 +2682,15 @@ class Algorithm(Trainable):
                 if pid in policy_ids
             }
 
+            # Get Algorithm class.
+            if isinstance(state["algorithm_class"], str):
+                # Try deserializing from a full classpath.
+                # Or as a last resort: Tune registered algorithm name.
+                state["algorithm_class"] = deserialize_type(
+                    state["algorithm_class"]
+                ) or get_trainable_cls(state["algorithm_class"])
             # Compile actual config object.
-            algo_cls = state["algorithm_class"]
-            if isinstance(algo_cls, str):
-                algo_cls = get_trainable_cls(algo_cls)
-            default_config = algo_cls.get_default_config()
+            default_config = state["algorithm_class"].get_default_config()
             if isinstance(default_config, AlgorithmConfig):
                 new_config = default_config.update_from_dict(state["config"])
             else:
@@ -2642,8 +2709,13 @@ class Algorithm(Trainable):
             new_config.multi_agent(
                 policies=new_policies,
                 policies_to_train=policies_to_train,
+                **(
+                    {"policy_mapping_fn": policy_mapping_fn}
+                    if policy_mapping_fn is not None
+                    else {}
+                ),
             )
-            state["config"] = new_config.to_dict()
+            state["config"] = new_config
 
             # Prepare local `worker` state to add policies' states into it,
             # read from separate policy checkpoint files.
@@ -2653,7 +2725,8 @@ class Algorithm(Trainable):
                     checkpoint_info["checkpoint_dir"],
                     "policies",
                     pid,
-                    "policy_state.pkl",
+                    "policy_state."
+                    + ("msgpck" if checkpoint_info["format"] == "msgpack" else "pkl"),
                 )
                 if not os.path.isfile(policy_state_file):
                     raise ValueError(
@@ -2663,11 +2736,22 @@ class Algorithm(Trainable):
                     )
 
                 with open(policy_state_file, "rb") as f:
-                    worker_state["policy_states"][pid] = pickle.load(f)
+                    if msgpack is not None:
+                        worker_state["policy_states"][pid] = msgpack.load(f)
+                    else:
+                        worker_state["policy_states"][pid] = pickle.load(f)
 
+            # These two functions are never serialized in a msgpack checkpoint (which
+            # does not store code, unlike a cloudpickle checkpoint). Hence the user has
+            # to provide them with the `Algorithm.from_checkpoint()` call.
             if policy_mapping_fn is not None:
                 worker_state["policy_mapping_fn"] = policy_mapping_fn
-            if policies_to_train is not None:
+            if (
+                policies_to_train is not None
+                # `policies_to_train` might be left None in case all policies should be
+                # trained.
+                or worker_state["is_policy_to_train"] == NOT_SERIALIZABLE
+            ):
                 worker_state["is_policy_to_train"] = policies_to_train
 
         return state
@@ -2686,7 +2770,7 @@ class Algorithm(Trainable):
             None, if local replay buffer is not needed.
         """
         if not config.get("replay_buffer_config") or config["replay_buffer_config"].get(
-            "no_local_replay_buffer" or config.get("no_local_replay_buffer")
+            "no_local_replay_buffer"
         ):
             return
 
@@ -2996,29 +3080,12 @@ class Algorithm(Trainable):
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
 
-    @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
-    def _make_workers(
-        self,
-        *,
-        env_creator: EnvCreator,
-        validate_env: Optional[Callable[[EnvType, EnvContext], None]],
-        policy_class: Type[Policy],
-        config: AlgorithmConfigDict,
-        num_workers: int,
-        local_worker: bool = True,
-    ) -> WorkerSet:
-        return WorkerSet(
-            env_creator=env_creator,
-            validate_env=validate_env,
-            default_policy_class=policy_class,
-            config=config,
-            num_workers=num_workers,
-            local_worker=local_worker,
-            logdir=self.logdir,
-        )
+    @Deprecated(new="construct WorkerSet(...) instance directly", error=True)
+    def _make_workers(self, *args, **kwargs):
+        pass
 
-    def validate_config(self, config) -> None:
-        # TODO: Deprecate. All logic has been moved into the AlgorithmConfig classes.
+    @Deprecated(new="AlgorithmConfig.validate()", error=False)
+    def validate_config(self, config):
         pass
 
     @staticmethod

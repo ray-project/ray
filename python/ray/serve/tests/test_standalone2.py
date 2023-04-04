@@ -3,7 +3,6 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
-from tempfile import NamedTemporaryFile
 from typing import Dict, Set
 from concurrent.futures.thread import ThreadPoolExecutor
 
@@ -17,21 +16,20 @@ from ray.experimental.state.api import list_actors
 
 from ray import serve
 from ray._private.test_utils import (
-    run_string_as_driver,
     wait_for_condition,
     SignalActor,
 )
-from ray._private.ray_constants import gcs_actor_scheduling_enabled
-from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
+from ray.serve.exceptions import RayServeException
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ApplicationStatus, DeploymentStatus
-from ray.serve._private.constants import (
-    SERVE_NAMESPACE,
-    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
-)
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.context import get_global_client
-from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import (
+    ServeApplicationSchema,
+    ServeDeploySchema,
+    ServeInstanceDetails,
+)
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
@@ -62,7 +60,13 @@ def ray_instance(request):
 
     os.environ.update(requested_env_vars)
 
-    yield ray.init()
+    yield ray.init(
+        _metrics_export_port=9999,
+        _system_config={
+            "metrics_report_interval_ms": 1000,
+            "task_retry_delay_ms": 50,
+        },
+    )
 
     ray.shutdown()
 
@@ -429,10 +433,19 @@ class TestDeployApp:
     def get_test_config(self) -> Dict:
         return {"import_path": "ray.serve.tests.test_config_files.pizza.serve_dag"}
 
+    def check_single_app(self):
+        """Checks the application deployed through the config from get_test_config()"""
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
+            == "9 pizzas please!"
+        )
+
     def get_test_deploy_config(self) -> Dict:
         return {
-            "host": "127.0.0.1",
-            "port": 8000,
             "applications": [
                 {
                     "name": "app1",
@@ -461,22 +474,11 @@ class TestDeployApp:
             ],
         }
 
-    def test_deploy_app_basic(self, client: ServeControllerClient):
-        config = ServeApplicationSchema.parse_obj(self.get_test_config())
-        client.deploy_apps(config)
-
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-            == "4 pizzas please!"
-        )
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
-            == "9 pizzas please!"
-        )
-
-    def test_deploy_multi_app(self, client: ServeControllerClient):
-        config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
-        client.deploy_apps(config)
+    def check_multi_app(self):
+        """
+        Checks the applications deployed through the config from
+        get_test_deploy_config().
+        """
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
@@ -495,6 +497,16 @@ class TestDeployApp:
             lambda: requests.post("http://localhost:8000/app2", json=["MUL", 3]).json()
             == "12 pizzas please!"
         )
+
+    def test_deploy_app_basic(self, client: ServeControllerClient):
+        config = ServeApplicationSchema.parse_obj(self.get_test_config())
+        client.deploy_apps(config)
+        self.check_single_app()
+
+    def test_deploy_multi_app(self, client: ServeControllerClient):
+        config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
+        client.deploy_apps(config)
+        self.check_multi_app()
 
     def test_deploy_app_with_overriden_config(self, client: ServeControllerClient):
 
@@ -528,11 +540,7 @@ class TestDeployApp:
     def test_deploy_app_update_config(self, client: ServeControllerClient):
         config = ServeApplicationSchema.parse_obj(self.get_test_config())
         client.deploy_apps(config)
-
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-            == "4 pizzas please!"
-        )
+        self.check_single_app()
 
         config = self.get_test_config()
         config["deployments"] = [
@@ -554,15 +562,7 @@ class TestDeployApp:
     def test_deploy_multi_app_update_config(self, client: ServeControllerClient):
         config = self.get_test_deploy_config()
         client.deploy_apps(ServeDeploySchema.parse_obj(config))
-
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
-            == "4 pizzas please!"
-        )
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
-            == "5 pizzas please!"
-        )
+        self.check_multi_app()
 
         config["applications"][0]["deployments"] = [
             {
@@ -595,15 +595,7 @@ class TestDeployApp:
     def test_deploy_app_update_num_replicas(self, client: ServeControllerClient):
         config = ServeApplicationSchema.parse_obj(self.get_test_config())
         client.deploy_apps(config)
-
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-            == "4 pizzas please!"
-        )
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
-            == "9 pizzas please!"
-        )
+        self.check_single_app()
 
         actors = list_actors(filters=[("state", "=", "ALIVE")])
 
@@ -650,15 +642,7 @@ class TestDeployApp:
     def test_deploy_multi_app_update_num_replicas(self, client: ServeControllerClient):
         config = self.get_test_deploy_config()
         client.deploy_apps(ServeDeploySchema.parse_obj(config))
-
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
-            == "4 pizzas please!"
-        )
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
-            == "5 pizzas please!"
-        )
+        self.check_multi_app()
 
         actors = list_actors(filters=[("state", "=", "ALIVE")])
 
@@ -832,14 +816,12 @@ class TestDeployApp:
         )
 
     def test_deploy_multi_app_overwrite_apps(self, client: ServeControllerClient):
-        """Check that overwriting multiple applications works as expected."""
+        """Check that redeploying different apps with same names works as expected."""
 
         world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
         pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
         test_config = ServeDeploySchema.parse_obj(
             {
-                "host": "127.0.0.1",
-                "port": 8000,
                 "applications": [
                     {
                         "name": "app1",
@@ -875,6 +857,90 @@ class TestDeployApp:
         )
         wait_for_condition(
             lambda: requests.get("http://localhost:8000/app2").text == "wonderful world"
+        )
+
+    def test_deploy_multi_app_overwrite_apps2(self, client: ServeControllerClient):
+        """Check that deploying a new set of applications removes old ones."""
+
+        world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+        pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+        test_config = ServeDeploySchema.parse_obj(
+            {
+                "applications": [
+                    {
+                        "name": "app1",
+                        "route_prefix": "/app1",
+                        "import_path": world_import_path,
+                    },
+                    {
+                        "name": "app2",
+                        "route_prefix": "/app2",
+                        "import_path": pizza_import_path,
+                    },
+                ],
+            }
+        )
+        # Deploy app1 and app2
+        client.deploy_apps(test_config)
+
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+
+        # Deploy app3
+        new_config = ServeDeploySchema.parse_obj(
+            {
+                "applications": [
+                    {
+                        "name": "app3",
+                        "route_prefix": "/app3",
+                        "import_path": pizza_import_path,
+                        "deployments": [
+                            {
+                                "name": "Adder",
+                                "user_config": {
+                                    "increment": 3,
+                                },
+                            },
+                        ],
+                    },
+                ],
+            }
+        )
+        client.deploy_apps(new_config)
+
+        def check_dead():
+            actors = list_actors(
+                filters=[
+                    ("ray_namespace", "=", SERVE_NAMESPACE),
+                    ("state", "=", "ALIVE"),
+                ]
+            )
+            for actor in actors:
+                assert (
+                    "app1" not in actor["class_name"]
+                    and "app2" not in actor["class_name"]
+                )
+            return True
+
+        # Deployments from app1 and app2 should be deleted
+        wait_for_condition(check_dead)
+
+        # App1 and App2 should be gone
+        assert requests.get("http://localhost:8000/app1").status_code != 200
+        assert (
+            requests.post("http://localhost:8000/app2", json=["ADD", 2]).status_code
+            != 200
+        )
+
+        # App3 should be up and running
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app3", json=["ADD", 2]).json()
+            == "5 pizzas please!"
         )
 
     def test_deploy_app_runtime_env(self, client: ServeControllerClient):
@@ -918,16 +984,8 @@ class TestDeployApp:
 
         config = ServeApplicationSchema.parse_obj(self.get_test_config())
         client.deploy_apps(config)
-
         # Wait for app to deploy
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-            == "4 pizzas please!"
-        )
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
-            == "9 pizzas please!"
-        )
+        self.check_single_app()
         deployment_timestamp = client.get_serve_status().app_status.deployment_timestamp
 
         # Delete all deployments, but don't update config
@@ -1033,6 +1091,239 @@ class TestDeployApp:
             pids.append(requests.get("http://localhost:8000/f").text)
         assert (pid1 in pids) == config_update
 
+    def test_deploy_separate_runtime_envs(self, client: ServeControllerClient):
+        """Deploy two applications with separate runtime envs."""
+
+        config_template = {
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": "conditional_dag.serve_dag",
+                    "runtime_env": {
+                        "working_dir": (
+                            "https://github.com/ray-project/test_dag/archive/"
+                            "41d09119cbdf8450599f993f51318e9e27c59098.zip"
+                        )
+                    },
+                },
+                {
+                    "name": "app2",
+                    "route_prefix": "/app2",
+                    "import_path": "hello_world.app",
+                    "runtime_env": {
+                        "working_dir": (
+                            "https://github.com/zcin/test_runtime_env/archive/"
+                            "c96019b6049cd9a2997db5ea0f10432bfeffb844.zip"
+                        )
+                    },
+                },
+            ],
+        }
+
+        client.deploy_apps(ServeDeploySchema(**config_template))
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "0 pizzas please!"
+        )
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2").text == "Hello world!"
+        )
+
+    def test_deploy_one_app_failed(self, client: ServeControllerClient):
+        """Deploy two applications with separate runtime envs."""
+
+        world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+        fail_import_path = "ray.serve.tests.test_config_files.fail.node"
+        config_template = {
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": world_import_path,
+                },
+                {
+                    "name": "app2",
+                    "route_prefix": "/app2",
+                    "import_path": fail_import_path,
+                },
+            ],
+        }
+
+        client.deploy_apps(ServeDeploySchema(**config_template))
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").text
+            == "wonderful world"
+        )
+
+        wait_for_condition(
+            lambda: client.get_serve_status("app1").app_status.status
+            == ApplicationStatus.RUNNING
+            and client.get_serve_status("app2").app_status.status
+            == ApplicationStatus.DEPLOY_FAILED
+        )
+
+    def test_deploy_with_route_prefix_conflict(self, client: ServeControllerClient):
+        world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+        pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+        test_config = {
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": world_import_path,
+                },
+                {
+                    "name": "app2",
+                    "route_prefix": "/app2",
+                    "import_path": pizza_import_path,
+                },
+            ],
+        }
+
+        client.deploy_apps(ServeDeploySchema(**test_config))
+
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+
+        # Buffer time
+        time.sleep(1)
+
+        test_config["applications"][1] = {
+            "name": "app3",
+            "route_prefix": "/app2",
+            "import_path": world_import_path,
+        }
+
+        client.deploy_apps(ServeDeploySchema(**test_config))
+
+        def check():
+            serve_details = ServeInstanceDetails(
+                **ray.get(client._controller.get_serve_instance_details.remote())
+            )
+            app1_running = (
+                "app1" in serve_details.applications
+                and serve_details.applications["app1"].status == "RUNNING"
+            )
+            app3_running = (
+                "app3" in serve_details.applications
+                and serve_details.applications["app3"].status == "RUNNING"
+            )
+            app2_gone = "app2" not in serve_details.applications
+            return app1_running and app3_running and app2_gone
+
+        wait_for_condition(check)
+
+        # app1 and app3 should be up and running
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        )
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app2").text == "wonderful world"
+        )
+
+    def test_deploy_single_then_multi(self, client: ServeControllerClient):
+        """Deploying single-app then multi-app config should fail."""
+
+        single_app_config = ServeApplicationSchema.parse_obj(self.get_test_config())
+        multi_app_config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
+
+        # Deploy single app config
+        client.deploy_apps(single_app_config)
+        self.check_single_app()
+
+        # Deploying multi app config afterwards should fail
+        with pytest.raises(RayServeException):
+            client.deploy_apps(multi_app_config)
+        # The original application should still be up and running
+        self.check_single_app()
+
+    def test_deploy_multi_then_single(self, client: ServeControllerClient):
+        """Deploying multi-app then single-app config should fail."""
+
+        single_app_config = ServeApplicationSchema.parse_obj(self.get_test_config())
+        multi_app_config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
+
+        # Deploy multi app config
+        client.deploy_apps(multi_app_config)
+        self.check_multi_app()
+
+        # Deploying single app config afterwards should fail
+        with pytest.raises(RayServeException):
+            client.deploy_apps(single_app_config)
+        # The original applications should still be up and running
+        self.check_multi_app()
+
+    def test_deploy_multi_app_deleting(self, client: ServeControllerClient):
+        """Test deleting an application by removing from config."""
+
+        config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
+        client.deploy_apps(config)
+        self.check_multi_app()
+
+        # Delete app2
+        del config.applications[1]
+        client.deploy_apps(config)
+
+        # Fetch details immediately afterwards, should parse correctly
+        details = ray.get(client._controller.get_serve_instance_details.remote())
+        ServeInstanceDetails(**details)
+        # We don't enforce that the state is deleting here because that could cause
+        # flaky test performance. The app could have been deleted by the time of query
+        assert (
+            "app2" not in details["applications"]
+            or details["applications"]["app2"]["status"] == ApplicationStatus.DELETING
+        )
+
+        info_valid = True
+
+        def check_app_status():
+            global info_valid
+            try:
+                # Fetch details, should always parse correctly
+                details = ray.get(
+                    client._controller.get_serve_instance_details.remote()
+                )
+                ServeInstanceDetails(**details)
+                return (
+                    details["applications"]["app1"]["status"]
+                    == ApplicationStatus.RUNNING
+                )
+            except Exception:
+                info_valid = False
+
+        wait_for_condition(check_app_status)
+        # Check that all all details fetched from controller parsed correctly
+        assert info_valid
+
+    def test_deploy_nonexistent_deployment(self, client: ServeControllerClient):
+        """Remove an application from a config, it should reach a deleting state."""
+
+        config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
+        # Change names to invalid names that don't contain "deployment" or "application"
+        config.applications[1].name = "random1"
+        config.applications[1].deployments[0].name = "random2"
+        client.deploy_apps(config)
+
+        def check_app_message():
+            details = ray.get(client._controller.get_serve_instance_details.remote())
+            # The error message should be descriptive
+            # e.g. no deployment "x" in application "y"
+            return (
+                "application" in details["applications"]["random1"]["message"]
+                and "deployment" in details["applications"]["random1"]["message"]
+            )
+
+        wait_for_condition(check_app_message)
+
 
 class TestServeRequestProcessingTimeoutS:
     @pytest.mark.parametrize(
@@ -1114,188 +1405,6 @@ class TestServeRequestProcessingTimeoutS:
         assert len(ray.get(pid_tracker.get_pids.remote())) == 2
 
         serve.shutdown()
-
-
-def test_shutdown_remote(start_and_shutdown_ray_cli_function):
-    """Check that serve.shutdown() works on a remote Ray cluster."""
-
-    deploy_serve_script = (
-        "import ray\n"
-        "from ray import serve\n"
-        "\n"
-        'ray.init(address="auto", namespace="x")\n'
-        "serve.start(detached=True)\n"
-        "\n"
-        "@serve.deployment\n"
-        "def f(*args):\n"
-        '   return "got f"\n'
-        "\n"
-        "serve.run(f.bind())\n"
-    )
-
-    shutdown_serve_script = (
-        "import ray\n"
-        "from ray import serve\n"
-        "\n"
-        'ray.init(address="auto", namespace="x")\n'
-        "serve.shutdown()\n"
-    )
-
-    # Cannot use context manager due to tmp file's delete flag issue in Windows
-    # https://stackoverflow.com/a/15590253
-    deploy_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
-    shutdown_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
-
-    try:
-        deploy_file.write(deploy_serve_script)
-        deploy_file.close()
-
-        shutdown_file.write(shutdown_serve_script)
-        shutdown_file.close()
-
-        # Ensure Serve can be restarted and shutdown with for loop
-        for _ in range(2):
-            subprocess.check_output(["python", deploy_file.name])
-            assert requests.get("http://localhost:8000/f").text == "got f"
-            subprocess.check_output(["python", shutdown_file.name])
-            with pytest.raises(requests.exceptions.ConnectionError):
-                requests.get("http://localhost:8000/f")
-    finally:
-        os.unlink(deploy_file.name)
-        os.unlink(shutdown_file.name)
-
-
-def test_handle_early_detect_failure(shutdown_ray):
-    """Check that handle can be notified about replicas failure.
-
-    It should detect replica raises ActorError and take them out of the replicas set.
-    """
-    ray.init()
-    serve.start(detached=True)
-
-    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
-    def f(do_crash: bool = False):
-        if do_crash:
-            os._exit(1)
-        return os.getpid()
-
-    handle = serve.run(f.bind())
-    pids = ray.get([handle.remote() for _ in range(2)])
-    assert len(set(pids)) == 2
-    assert len(handle.router._replica_set.in_flight_queries.keys()) == 2
-
-    client = get_global_client()
-    # Kill the controller so that the replicas membership won't be updated
-    # through controller health check + long polling.
-    ray.kill(client._controller, no_restart=True)
-
-    with pytest.raises(RayActorError):
-        ray.get(handle.remote(do_crash=True))
-
-    pids = ray.get([handle.remote() for _ in range(10)])
-    assert len(set(pids)) == 1
-    assert len(handle.router._replica_set.in_flight_queries.keys()) == 1
-
-    # Restart the controller, and then clean up all the replicas
-    serve.start(detached=True)
-    serve.shutdown()
-
-
-@pytest.mark.skipif(
-    gcs_actor_scheduling_enabled(),
-    reason="Raylet-based scheduler favors (http proxy) actors' owner "
-    + "nodes (the head one), so the `EveryNode` option is actually not "
-    + "enforced. Besides, the second http proxy does not die with the "
-    + "placeholder (happens to both schedulers), so gcs-based scheduler (which "
-    + "may collocate the second http proxy and the place holder) "
-    + "can not shutdown the worker node.",
-)
-def test_autoscaler_shutdown_node_http_everynode(
-    shutdown_ray, call_ray_stop_only  # noqa: F811
-):
-    cluster = AutoscalingCluster(
-        head_resources={"CPU": 2},
-        worker_node_types={
-            "cpu_node": {
-                "resources": {
-                    "CPU": 4,
-                    "IS_WORKER": 100,
-                },
-                "node_config": {},
-                "max_workers": 1,
-            },
-        },
-        idle_timeout_minutes=0.05,
-    )
-    cluster.start()
-    ray.init(address="auto")
-
-    serve.start(http_options={"location": "EveryNode"})
-
-    @ray.remote
-    class Placeholder:
-        def ready(self):
-            return 1
-
-    a = Placeholder.options(resources={"IS_WORKER": 1}).remote()
-    assert ray.get(a.ready.remote()) == 1
-
-    # 2 proxies, 1 controller, and one placeholder.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 4)
-    assert len(ray.nodes()) == 2
-
-    # Now make sure the placeholder actor exits.
-    ray.kill(a)
-    # The http proxy on worker node should exit as well.
-    wait_for_condition(
-        lambda: len(
-            list(
-                filter(
-                    lambda a: a["State"] == "ALIVE",
-                    ray._private.state.actors().values(),
-                )
-            )
-        )
-        == 2
-    )
-    # Only head node should exist now.
-    wait_for_condition(
-        lambda: len(list(filter(lambda n: n["Alive"], ray.nodes()))) == 1
-    )
-
-
-def test_legacy_sync_handle_env_var(call_ray_stop_only):  # noqa: F811
-    script = """
-from ray import serve
-from ray.serve.dag import InputNode
-from ray.serve.drivers import DAGDriver
-import ray
-
-@serve.deployment
-class A:
-    def predict(self, inp):
-        return inp
-
-@serve.deployment
-class Dispatch:
-    def __init__(self, handle):
-        self.handle = handle
-
-    def predict(self, inp):
-        ref = self.handle.predict.remote(inp)
-        assert isinstance(ref, ray.ObjectRef), ref
-        return ray.get(ref)
-
-with InputNode() as inp:
-    a = A.bind()
-    d = Dispatch.bind(a)
-    dag = d.predict.bind(inp)
-
-handle = serve.run(DAGDriver.bind(dag))
-assert ray.get(handle.predict.remote(1)) == 1
-    """
-
-    run_string_as_driver(script, env={SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY: "1"})
 
 
 if __name__ == "__main__":

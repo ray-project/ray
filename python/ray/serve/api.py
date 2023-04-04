@@ -45,6 +45,7 @@ from ray.serve._private.utils import (
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
+    record_serve_tag,
 )
 
 from ray.serve._private import api as _private_api
@@ -200,6 +201,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
             async def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
+                record_serve_tag("SERVE_FASTAPI_USED", "1")
                 install_serve_encoders_to_fastapi()
 
                 self._serve_app = frozen_app
@@ -243,6 +245,8 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                     super_cls.__del__()
 
         ASGIAppWrapper.__name__ = cls.__name__
+        if hasattr(frozen_app, "docs_url"):
+            ASGIAppWrapper.__fastapi_docs_path__ = frozen_app.docs_url
         return ASGIAppWrapper
 
     return decorator
@@ -408,8 +412,8 @@ def deployment(
             ray_actor_options=(
                 ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
             ),
-            _internal=True,
             is_driver_deployment=is_driver_deployment,
+            _internal=True,
         )
 
     # This handles both parametrized and non-parametrized usage of the
@@ -548,6 +552,7 @@ def run(
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
             "is_driver_deployment": deployment._is_driver_deployment,
+            "docs_path": deployment._docs_path,
         }
         parameter_group.append(deployment_parameters)
     client.deploy_group(

@@ -10,7 +10,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
-    Deprecated,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 
@@ -81,6 +80,17 @@ class SACConfig(AlgorithmConfig):
         }
         self.grad_clip = None
         self.target_network_update_freq = 0
+
+        # .exploration()
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
 
         # .rollout()
         self.rollout_fragment_length = "auto"
@@ -359,20 +369,3 @@ class SAC(DQN):
             return SACTorchPolicy
         else:
             return SACTFPolicy
-
-
-# Deprecated: Use ray.rllib.algorithms.sac.SACConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(SACConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.sac.sac::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.sac.sac::SACConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

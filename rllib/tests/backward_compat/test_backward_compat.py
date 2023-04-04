@@ -9,6 +9,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.dqn import DQN
 from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import Policy, PolicySpec
@@ -81,34 +82,6 @@ class TestBackwardCompatibility(unittest.TestCase):
                 print(algo.train())
                 algo.stop()
 
-    def test_v1_policy_from_checkpoint(self):
-        """Tests, whether we can load Policy checkpoints for different frameworks."""
-
-        # We wouldn't need this test once we get rid of V1 policy implementations.
-
-        rllib_dir = Path(__file__).parent.parent.parent
-        print(f"rllib dir={rllib_dir} exists={os.path.isdir(rllib_dir)}")
-
-        for fw in framework_iterator(with_eager_tracing=True):
-            path_to_checkpoint = os.path.join(
-                rllib_dir,
-                "tests",
-                "backward_compat",
-                "checkpoints",
-                "v1.0",
-                "dqn_frozenlake_" + fw,
-                "policies",
-                "default_policy",
-            )
-
-            print(
-                f"path_to_checkpoint={path_to_checkpoint} "
-                f"exists={os.path.isdir(path_to_checkpoint)}"
-            )
-
-            policy = Policy.from_checkpoint(path_to_checkpoint)
-            self.assertTrue(isinstance(policy, Policy))
-
     def test_old_algorithm_config_dicts(self):
         """Tests, whether we can build Algorithm objects with old config dicts."""
 
@@ -156,7 +129,7 @@ class TestBackwardCompatibility(unittest.TestCase):
                 "policies_to_train": ["policy1"],
             },
         }
-        algo = PPO(config=config, env="test")
+        algo = DQN(config=config, env="test")
         self.assertTrue(algo.config.lr == 0.001)
         self.assertTrue(algo.config.evaluation_num_workers == 1)
         self.assertTrue(list(algo.config.policies.keys()) == ["policy1"])

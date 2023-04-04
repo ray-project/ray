@@ -27,7 +27,6 @@ def _framework_implemented(torch: bool = True, tf2: bool = True):
     if torch:
         accepted.append("torch")
     if tf2:
-        accepted.append("tf")
         accepted.append("tf2")
 
     def decorator(fn: Callable) -> Callable:
@@ -71,19 +70,19 @@ class MLPHeadConfig(ModelConfig):
 
     The configured MLP encodes 1D-observations into a latent space.
     The stack of layers is composed of a sequence of linear layers. The first layer
-    has `input_dim` inputs and the last layer has `output_dim` outputs. The number of
+    has `input_dims` inputs and the last layer has `output_dims` outputs. The number of
     units inbetween is determined by `hidden_layer_dims`. If `hidden_layer_dims` is
-    None, there is only one linear layer with `input_dim` inputs and `output_dim`
+    None, there is only one linear layer with `input_dims` inputs and `output_dims`
     outputs. Each layer is followed by an activation function as per this config.
     See ModelConfig for usage details.
 
     Example:
 
         Configuration:
-        input_dim = 4
+        input_dims = [4]
         hidden_layer_dims = [8, 8]
         hidden_layer_activation = "relu"
-        output_dim = 2
+        output_dims = [2]
         output_activation = "linear"
 
         Resulting stack in pseudocode:
@@ -94,25 +93,18 @@ class MLPHeadConfig(ModelConfig):
         Linear(8, 2)
 
     Attributes:
-        input_dim: The input dimension of the network. It cannot be None.
         hidden_layer_dims: The sizes of the hidden layers.
         hidden_layer_activation: The activation function to use after each layer (
             except for the output).
         output_activation: The activation function to use for the output layer.
-        output_dim: The output dimension of the network.
     """
 
-    input_dim: int = None
     hidden_layer_dims: List[int] = field(default_factory=lambda: [256, 256])
     hidden_layer_activation: str = "relu"
     output_activation: str = "linear"
-    output_dim: int = None
 
-    @_framework_implemented()
-    def build(self, framework: str = "torch") -> Model:
-        self.input_dim = int(self.input_dim)
-        self.output_dim = int(self.output_dim)
-
+    def _validate(self, framework: str = "torch"):
+        """Makes sure that framework strings are valid."""
         # Activation functions in TF are lower case
         self.output_activation = _convert_to_lower_case_if_tf(
             self.output_activation, framework
@@ -120,6 +112,10 @@ class MLPHeadConfig(ModelConfig):
         self.hidden_layer_activation = _convert_to_lower_case_if_tf(
             self.hidden_layer_activation, framework
         )
+
+    @_framework_implemented()
+    def build(self, framework: str = "torch") -> Model:
+        self._validate(framework=framework)
 
         if framework == "torch":
             from ray.rllib.core.models.torch.mlp import TorchMLPHead
@@ -133,6 +129,58 @@ class MLPHeadConfig(ModelConfig):
 
 @ExperimentalAPI
 @dataclass
+class FreeLogStdMLPHeadConfig(ModelConfig):
+    """Configuration for an MLPHead with a floating second half of outputs.
+
+    This model can be useful together with Gaussian Distributions.
+    This gaussian distribution would be conditioned as follows:
+        - The first half of outputs from this model can be used as
+        state-dependent means when conditioning a gaussian distribution
+        - The second half are floating free biases that can be used as
+        state-independent standard deviations to condition a gaussian distribution.
+    The state-dependent means are produced by an MLPHead, while the standard
+    deviations are added as floating free biases.
+
+    This config does not dictate the output dimensions but instead uses the output
+    dimensions of the configured MLPHHeadConfig. The output dimensions of the
+    configured MLPHeadConfig must be even and are divided by two to gain the output
+    dimensions of the underlying MLPHead.
+
+    Attributes:
+        mlp_head_config: MLPHeadConfig for the MLPHead that produces the first half
+            of the output logits that are the means.
+    """
+
+    mlp_head_config: MLPHeadConfig = None
+
+    @_framework_implemented()
+    def build(self, framework: str = "torch") -> Model:
+        self.mlp_head_config._validate(framework=framework)
+
+        # Sanity check
+        assert self.input_dims is None, (
+            "input_dims must be None for "
+            "FreeLogStdMLPHeadConfig. This is only a "
+            "convenience wrapper around MLPHeadConfig."
+        )
+        assert self.output_dims is None, (
+            "output_dims must be None for "
+            "FreeLogStdMLPHeadConfig. This is only a "
+            "convenience wrapper around MLPHeadConfig."
+        )
+
+        if framework == "torch":
+            from ray.rllib.core.models.torch.mlp import TorchFreeLogStdMLPHead
+
+            return TorchFreeLogStdMLPHead(self)
+        else:
+            from ray.rllib.core.models.tf.mlp import TfFreeLogStdMLPHead
+
+            return TfFreeLogStdMLPHead(self)
+
+
+@ExperimentalAPI
+@dataclass
 class CNNEncoderConfig(ModelConfig):
     """Configuration for a convolutional network.
 
@@ -140,7 +188,7 @@ class CNNEncoderConfig(ModelConfig):
     The stack of layers is composed of a sequence of convolutional layers.
     `input_dims` describes the shape of the input tensor. Beyond that, each layer
     specified by `filter_specifiers` is followed by an activation function according
-    to `filter_activation`. The `output_dim` is reached by flattening a final
+    to `filter_activation`. `output_dims` is reached by flattening a final
     convolutional layer and applying a linear layer with `output_activation`.
     See ModelConfig for usage details.
 
@@ -153,7 +201,7 @@ class CNNEncoderConfig(ModelConfig):
             [32, [4, 4], 2],
         ]
         filter_activation = "relu"
-        output_dim = 256
+        output_dims = [256]
         output_activation = "linear"
 
         Resulting stack in pseudocode:
@@ -175,9 +223,6 @@ class CNNEncoderConfig(ModelConfig):
         filter_layer_activation: The activation function to use after each layer (
             except for the output).
         output_activation: The activation function to use for the output layer.
-        output_dim: The output dimension. We append a final convolutional layer
-            depth-only filters that is flattened and a final linear layer to achieve
-            this dimension regardless of the previous filters.
     """
 
     input_dims: Union[List[int], Tuple[int]] = None
@@ -186,7 +231,6 @@ class CNNEncoderConfig(ModelConfig):
     )
     filter_layer_activation: str = "relu"
     output_activation: str = "linear"
-    output_dim: int = None
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Model:
@@ -244,7 +288,6 @@ class LSTMEncoderConfig(ModelConfig):
     See ModelConfig for usage details.
 
     Attributes:
-        input_dim: The input dimension of the network. It cannot be None.
         hidden_dim: The size of the hidden layer.
         num_layers: The number of LSTM layers.
         batch_first: Wether the input is batch first or not.
@@ -257,10 +300,8 @@ class LSTMEncoderConfig(ModelConfig):
         get_tokenizer_config: A callable that takes a gym.Space and a dict and
             returns a ModelConfig to build tokenizers for observations, actions and
             other spaces that might be present in the view_requirements_dict.
-
     """
 
-    input_dim: int = None
     hidden_dim: int = None
     num_layers: int = None
     batch_first: bool = True
@@ -269,11 +310,20 @@ class LSTMEncoderConfig(ModelConfig):
     action_space: gym.Space = None
     view_requirements_dict: ViewRequirementsDict = None
     get_tokenizer_config: Callable[[gym.Space, Dict], ModelConfig] = None
-    output_dim: int = None
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Encoder:
-        self.input_dim = int(self.input_dim)
+        if (
+            self.get_tokenizer_config is not None
+            or self.view_requirements_dict is not None
+        ):
+            raise NotImplementedError(
+                "LSTMEncoderConfig does not support configuring LSTMs that encode "
+                "depending on view_requirements or have a custom tokenizer. "
+                "Therefore, this config expects `view_requirements_dict=None` and "
+                "`get_tokenizer_config=None`."
+            )
+
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchLSTMEncoder
 
