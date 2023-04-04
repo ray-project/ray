@@ -408,12 +408,12 @@ To learn more, see the `SpecType` documentation.
 Writing Custom Multi-Agent RL Modules (Advanced)
 ------------------------------------------------
 
-For multi-agent modules, RLlib implements :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule`. It is a dictionary of :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` objects, one for each policy, plus possibly some shared modules. The base-class implementation works for most of use-cases where we need to defined independent neural for sub-groups of agents. For more complex, multi-agent use-cases, where the agents share some part of their neural network, one should inherit from this class and override the default implementation.
+For multi-agent modules, RLlib implements :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule`, which is a dictionary of :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` objects, one for each policy, and possibly some shared modules. The base-class implementation works for most of use cases that need to define independent neural networks for sub-groups of agents. For more complex, multi-agent use cases, where the agents share some part of their neural network, you should inherit from this class and override the default implementation.
 
 
 The :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule` offers an API for constructing custom models tailored to specific needs. The key method for this customization is :py:meth:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule`.build.
 
-The following example shows how we can create a custom multi-agent RL module where the underlying modules share an encoder that gets applied to the global part of the observations space, while the local part is passed through a separate encoder specific to each policy. 
+The following example creates a custom multi-agent RL module with underlying modules. The modules share an encoder, which gets applied to the global part of the observations space. The local part passes through a separate encoder, specific to each policy. 
 
 .. tabbed:: Multi agent with shared encoder (Torch)
 
@@ -430,7 +430,7 @@ The following example shows how we can create a custom multi-agent RL module whe
 
 
         class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
-            """A RLModule with a shared encoder between agents for global observation."""
+            """An RLModule with a shared encoder between agents for global observation."""
 
             def __init__(
                 self, encoder: nn.Module, local_dim: int, hidden_dim: int, action_dim: int
