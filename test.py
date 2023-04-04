@@ -1,14 +1,17 @@
-import ray
 import time
 from multiprocessing import Process
+
+import ray
+
+
 # ray.init(num_cpus=1)
 @ray.remote
 class MyActor:
-
     def run(self):
-       p = Process(target=time.sleep, args=(1000,), daemon=True)
-       p.start()
-       p.join()
+        p = Process(target=time.sleep, args=(1000,), daemon=True)
+        p.start()
+        p.join()
+
 
 actor = MyActor.remote()
 actor.run.remote()

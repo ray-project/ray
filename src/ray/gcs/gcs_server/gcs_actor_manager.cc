@@ -748,8 +748,9 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
         if (node_it != owners_.end() && node_it->second.count(owner_id)) {
           // Only destroy the actor if its owner is still alive. The actor may
           // have already been destroyed if the owner died.
-          DestroyActor(
-              actor_id, GenActorOutOfScopeCause(GetActor(actor_id)), /*force_kill=*/false);
+          DestroyActor(actor_id,
+                       GenActorOutOfScopeCause(GetActor(actor_id)),
+                       /*force_kill=*/false);
         }
       });
 }

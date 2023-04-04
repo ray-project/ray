@@ -1,7 +1,6 @@
 import os
 import sys
 from typing import Optional
-from pathlib import Path
 
 import click
 from ray_release.aws import maybe_fetch_api_token
