@@ -85,7 +85,6 @@ polars==0.14.21
 
 # Dependencies from requirements.txt that are pinned
 # in library requirements
-click<8
 protobuf==3.19.6
 typer==0.6.1
 uvicorn==0.16.0
