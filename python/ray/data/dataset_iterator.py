@@ -68,7 +68,7 @@ class DatasetIterator(abc.ABC):
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats], bool
     ]:
         """Returns the iterator to use for `iter_batches`.
 
@@ -76,6 +76,8 @@ class DatasetIterator(abc.ABC):
             A tuple. The first item of the tuple is an iterator over pairs of Block
             object references and their corresponding metadata. The second item of the
             tuple is a DatasetStats object used for recording stats during iteration.
+            The third item is a boolean indicating if the blocks can be safely cleared
+            after use.
         """
         raise NotImplementedError
 
