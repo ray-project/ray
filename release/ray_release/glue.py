@@ -7,7 +7,6 @@ from ray_release.anyscale_util import get_cluster_name
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
-from ray_release.command_runner.client_runner import ClientRunner
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
 from ray_release.command_runner.sdk_runner import SDKRunner
@@ -35,7 +34,6 @@ from ray_release.exception import (
     ClusterEnvCreateError,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
-from ray_release.file_manager.remote_task import RemoteTaskFileManager
 from ray_release.file_manager.session_controller import SessionControllerFileManager
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
@@ -56,26 +54,22 @@ type_str_to_command_runner = {
     "sdk_command": SDKRunner,
     "job": JobRunner,
     "anyscale_job": AnyscaleJobRunner,
-    "client": ClientRunner,
 }
 
 command_runner_to_cluster_manager = {
     SDKRunner: FullClusterManager,
-    ClientRunner: FullClusterManager,
     JobRunner: FullClusterManager,
     AnyscaleJobRunner: MinimalClusterManager,
 }
 
 file_manager_str_to_file_manager = {
     "sdk": SessionControllerFileManager,
-    "client": RemoteTaskFileManager,
     "job": JobFileManager,
     "anyscale_job": JobFileManager,
 }
 
 command_runner_to_file_manager = {
     SDKRunner: JobFileManager,  # Use job file manager per default
-    ClientRunner: RemoteTaskFileManager,
     JobRunner: JobFileManager,
     AnyscaleJobRunner: JobFileManager,
 }
