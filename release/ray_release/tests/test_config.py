@@ -2,6 +2,8 @@ import os
 import sys
 import yaml
 import pytest
+from unittest import mock
+import copy
 
 from ray_release.config import (
     read_and_validate_release_test_collection,
@@ -69,19 +71,28 @@ def test_parse_test_definition():
                 cluster_compute: compute_gce.yaml
     """
     )
-    # Check that parsing returns two tests, one for each variation (aws and gce). Check
-    # that both tests are valid, and their fields are populated correctly
-    tests = parse_test_definition(test_definitions)
-    aws_test = tests[0]
-    gce_test = tests[1]
     schema = load_schema_file()
-    assert not validate_test(aws_test, schema)
-    assert not validate_test(gce_test, schema)
-    assert aws_test["name"] == "sample_test.aws"
-    assert gce_test["cluster"]["cluster_compute"] == "compute_gce.yaml"
-    invalid_test_definition = test_definitions[0]
+    # Check that parsing returns one test for aws variation. Check
+    # that the test is valid and the field is populdated correctly
+    with mock.patch.dict(os.environ, {"ANYSCALE_ALLOWED_TEST_VARIATION": "aws"}):
+        tests = parse_test_definition(copy.deepcopy(test_definitions))
+    test = tests[0]
+    assert len(tests) == 1
+    assert not validate_test(test, schema)
+    assert test["name"] == "sample_test.aws"
+    assert test["cluster"]["cluster_compute"] == "compute.yaml"
+    # Check that parsing returns one test for gce variation. Check
+    # that the test is valid and the field is populdated correctly
+    with mock.patch.dict(os.environ, {"ANYSCALE_ALLOWED_TEST_VARIATION": "gce"}):
+        tests = parse_test_definition(copy.deepcopy(test_definitions))
+    test = tests[0]
+    assert len(tests) == 1
+    assert not validate_test(test, schema)
+    assert test["name"] == "sample_test.gce"
+    assert test["cluster"]["cluster_compute"] == "compute_gce.yaml"
     # Intentionally make the test definition invalid by create an empty 'variations'
     # field. Check that the parser throws exception at runtime
+    invalid_test_definition = test_definitions[0]
     invalid_test_definition["variations"] = []
     with pytest.raises(ReleaseTestConfigError):
         parse_test_definition([invalid_test_definition])

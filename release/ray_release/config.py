@@ -35,6 +35,7 @@ DEFAULT_CLUSTER_TIMEOUT = 1800
 DEFAULT_AUTOSUSPEND_MINS = 120
 DEFAULT_MAXIMUM_UPTIME_MINS = 3200
 DEFAULT_WAIT_FOR_NODES_TIMEOUT = 3000
+DEFAULT_ALLOWED_TEST_VARIATION = "aws"
 
 DEFAULT_CLOUD_ID = DeferredEnvVar(
     "RELEASE_DEFAULT_CLOUD_ID",
@@ -96,6 +97,12 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
                 "__suffix__" in variation,
                 "missing __suffix__ field in a variation",
             )
+            allowed_variation = os.environ.get(
+                "ANYSCALE_ALLOWED_TEST_VARIATION",
+                DEFAULT_ALLOWED_TEST_VARIATION,
+            )
+            if variation["__suffix__"] != allowed_variation:
+                continue
             test = copy.deepcopy(test_definition)
             test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
             test.update(variation)
