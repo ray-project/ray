@@ -1,3 +1,9 @@
+syntax = "proto3";
+option cc_enable_arenas = true;
+
+package ray.rpc;
+
+import "src/ray/protobuf/intance_manager.proto";
 // ============= Cluster Resources ====================
 //
 // Following fields represents the Cluster Resources autoscaler interested
@@ -65,40 +71,6 @@ message NodeResourceState {
 // Following states present the Autoscaler state GCS interested in,
 // for observability and scheduling purpose.
 
-enum AutoscalerNodeStatus {
-  // The underlying cloud resource is alive, it's up to the cluster to decide
-  // if the node has joined the cluster (active) or not (still starting up).
-  ALIVE = 1;
-  // A terminal state, indicating the autoscaler believes this node will never
-  // join the cluster.
-  DEAD = 2;
-  // A notification that this node will be preempted soon. Ray doesn't get a say in whether
-  // this node will be downscaled. It only has an opportunity to minimize the
-  // blast radius. Preemption, can happen for multiple reasons such as spot
-  // instance failure.
-  PREMEPTING = 3;
-}
-
-// Presents a node that has (previously) been allocated
-// by the autoscaler. Unlike the pending node, allocated
-// node has node_id assigned.
-// Note the node might be terminated (DEAD), and it 
-// will be garbage collected by the autoscaler after
-// a timeout (default 30 minutes).
-message AllocatedNode {
-  bytes node_id = 1;
-  AutoscalerNodeStates node_state = 2;
-  string description = 3;
-  string node_type = 4;
-}
-
-// Represents a node that autoscaler
-// has decided to upscale but pending.
-message PendingUpscaleNode {
-  string node_type = 1;
-  int64_t num_pending = 2;
-  int64_t num_initialized = 3;
-}
 
 // ============= Snapshot based Autoscaling Service API =======================
 //
@@ -126,8 +98,8 @@ message ReportAutoscalingStateRequest {
   // the autoscaler's state could also be updated by
   // node provider.
   int64 autoscaler_state_version = 2;
-  repeated AllocatedNode allocated_nodes = 3;
-  repeated PendingUpscaleNode pending_nodes = 4;
+  repeated LaunchedInstance launched_instances = 3;
+  map<LauchingInstance, int32> launching_instances = 4;
   repeated ResourceRequest infeasible_requests = 5;
 }
 

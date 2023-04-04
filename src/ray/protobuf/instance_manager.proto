@@ -1,3 +1,7 @@
+syntax = "proto3";
+option cc_enable_arenas = true;
+
+package ray.rpc;
 
 // Represents the state of a launched instance.
 // An instance is considered launched as long as
@@ -8,10 +12,18 @@
 // period (by default 30 minutes).
 message LaunchedInstance {
   enum LaunchedInstanceState {
+    // The instance is known to have finished booststrapping and
+    // should join the cluster soon/or have already
+    // joined the cluster.
     ALIVE = 1;
+    // The instance is known to be dead. 
     DEAD = 2;
+    // The node is going to be preempted by the node manager.
     PREMEPTING = 3;
+    // The node is being terminated by the node provider.
     TERMINATING = 4;
+    // The node has being allocated but envirnoment is not ready yet.
+    BOOSTRAPPING = 5;
   }
   bytes instance_id = 1;
   string node_type = 2;
