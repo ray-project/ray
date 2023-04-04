@@ -409,9 +409,9 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
     """
 
     lightweight_tagkeys = [
-        "serve_num_replicas_updated",
-        "serve_user_config_updated",
-        "serve_autoscaling_config_updated",
+        "serve_num_replicas_lightweight_updated",
+        "serve_user_config_lightweight_updated",
+        "serve_autoscaling_config_lightweight_updated",
     ]
 
     subprocess.check_output(["ray", "start", "--head"])
@@ -474,7 +474,7 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
     # Check again
     wait_for_condition(
         lambda: ray.get(storage.get_report.remote())["extra_usage_tags"][
-            f"serve_{lightweight_option}_updated"
+            f"serve_{lightweight_option}_lightweight_updated"
         ]
         == "True",
         timeout=5,
@@ -483,7 +483,7 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
     assert int(report["extra_usage_tags"]["serve_num_apps"]) == 2
     assert report["extra_usage_tags"]["serve_api_version"] == "v2"
     for tagkey in lightweight_tagkeys:
-        if not tagkey == f"serve_{lightweight_option}_updated":
+        if not tagkey == f"serve_{lightweight_option}_lightweight_updated":
             assert tagkey not in report["extra_usage_tags"]
 
 

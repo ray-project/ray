@@ -61,11 +61,11 @@ enum TagKey {
   // The number of serve apps running in the cluster as a string.
   SERVE_NUM_APPS = 14;
   // Whether num_replicas changed as a lightweight config update
-  SERVE_NUM_REPLICAS_UPDATED = 15;
+  SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED = 15;
   // Whether user_config changed as a lightweight config update
-  SERVE_USER_CONFIG_UPDATED = 16;
+  SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED = 16;
   // Whether autoscaling_config changed as a lightweight config update
-  SERVE_AUTOSCALING_CONFIG_UPDATED = 17;
+  SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED = 17;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of

@@ -868,9 +868,9 @@ def _generate_deployment_config_versions(
     }
 
     lightweight_update_options = {
-        "num_replicas": TagKey.SERVE_NUM_REPLICAS_UPDATED,
-        "user_config": TagKey.SERVE_USER_CONFIG_UPDATED,
-        "autoscaling_config": TagKey.SERVE_AUTOSCALING_CONFIG_UPDATED,
+        "num_replicas": TagKey.SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED,
+        "user_config": TagKey.SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED,
+        "autoscaling_config": TagKey.SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED,
     }
 
     def exclude_lightweight_update_options(dict):
