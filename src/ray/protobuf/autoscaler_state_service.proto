@@ -1,3 +1,9 @@
+syntax = "proto3";
+option cc_enable_arenas = true;
+
+package ray.rpc;
+
+import "src/ray/protobuf/intance_manager.proto";
 
 // ============= Cluster Resources ====================
 //
