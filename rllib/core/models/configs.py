@@ -226,11 +226,12 @@ class CNNEncoderConfig(ModelConfig):
         # Configuration:
         config = CNNEncoderConfig(
             input_dims=[84, 84, 3],  # must be 3D tensor (image: w x h x C)
-            filter_specifiers=[
+            cnn_filter_specifiers=[
                 [16, [8, 8], 4],
                 [32, [4, 4], 2],
             ],
-            filter_activation="relu",
+            cnn_activation="relu",
+            cnn_use_layernorm=False,
             output_dims=[256],  # must be 1D tensor
             output_activation="linear",
             use_bias=True,

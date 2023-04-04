@@ -3,8 +3,8 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
 from ray.rllib import SampleBatch
-from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.checker import convert_to_canonical_format
+from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
@@ -41,7 +41,7 @@ class ModelConfig(abc.ABC):
     ModelConfigs are DL framework-agnostic.
 
     You can build models from a ModelConfig by calling its `build()` method.
-    `Catalog` objects use this API to build models and pass them to RLModules. 
+    `Catalog` objects use this API to build models and pass them to RLModules.
     Therefore, `ModelConfig` objects are a means of configuring models inside RLModules.
     However, ModelConfigs are not restricted to be used only with Catalog or RLModules.
 

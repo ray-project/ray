@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Optional
 
 from ray.rllib.core.models.base import (
     Encoder,
@@ -44,7 +44,7 @@ class TfMLPEncoder(Encoder, TfModel):
         )
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 SampleBatch.OBS: TfTensorSpec("b, d", d=self.config.input_dims[0]),
@@ -54,7 +54,7 @@ class TfMLPEncoder(Encoder, TfModel):
         )
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),
@@ -100,7 +100,7 @@ class TfCNNEncoder(TfModel, Encoder):
         self.net = tf.keras.Sequential(layers)
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 SampleBatch.OBS: TfTensorSpec(
@@ -115,7 +115,7 @@ class TfCNNEncoder(TfModel, Encoder):
         )
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),
