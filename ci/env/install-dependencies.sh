@@ -460,7 +460,7 @@ install_pip_packages() {
       # need an existing torch for dependency resolution
       pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION}"
     fi
-  else
+  elif [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; then
       # E.g. torch-spline-conv needs to import torch in their setup.py
       # so it has to be installed first
       # (see https://github.com/ray-project/ray/pull/33928)
