@@ -34,7 +34,6 @@ from ray_release.exception import (
     ClusterEnvCreateError,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
-from ray_release.file_manager.remote_task import RemoteTaskFileManager
 from ray_release.file_manager.session_controller import SessionControllerFileManager
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
