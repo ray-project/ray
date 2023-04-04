@@ -1,5 +1,5 @@
 import logging
-from typing import Mapping
+from typing import Mapping, Any
 
 from ray.rllib.algorithms.ppo.ppo_base_learner import PPOBaseLearner
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
@@ -88,21 +88,31 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
         total_loss = tf.reduce_mean(
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.hps.entropy_coeff * curr_entropy
+            - self.entropy_coeff * curr_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
         if self.hps.kl_coeff > 0.0:
-            total_loss += self.hps.kl_coeff * mean_kl_loss
+            total_loss += self.kl_coeff * mean_kl_loss
 
         return {
             self.TOTAL_LOSS_KEY: total_loss,
-            "mean_policy_loss": -tf.reduce_mean(surrogate_loss),
-            "mean_vf_loss": mean_vf_loss,
+            "policy_loss": -tf.reduce_mean(surrogate_loss),
+            "vf_loss": mean_vf_loss,
             "vf_explained_var": explained_variance(
                 batch[Postprocessing.VALUE_TARGETS], value_fn_out
             ),
-            "mean_entropy": mean_entropy,
-            "mean_kl_loss": mean_kl_loss,
+            "entropy": mean_entropy,
+            "kl": mean_kl_loss,
+            "entropy_coeff": self.entropy_coeff,
+            "cur_kl_coeff": self.kl_coeff,
         }
+
+    @override(PPOBaseLearner)
+    def _create_kl_variable(self, value: float) -> Any:
+        return tf.Variable(value, trainable=False, dtype=tf.float32)
+
+    @override(PPOBaseLearner)
+    def _set_kl_coeff(self, value: float) -> None:
+        self.kl_coeff.assign(value)

@@ -997,19 +997,16 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   if (node_id == self_node_id_) {
     if (!is_node_drained_) {
-      // TODO(iycheng): Don't duplicate log here once we enable event by default.
-      RAY_EVENT(FATAL, "RAYLET_MARKED_DEAD")
+      std::ostringstream error_message;
+      error_message
           << "[Timeout] Exiting because this node manager has mistakenly been marked as "
              "dead by the "
           << "GCS: GCS failed to check the health of this node for "
           << RayConfig::instance().health_check_failure_threshold() << " times."
           << " This is likely because the machine or raylet has become overloaded.";
-      RAY_LOG(FATAL)
-          << "[Timeout] Exiting because this node manager has mistakenly been marked as "
-             "dead by the "
-          << "GCS: GCS failed to check the health of this node for "
-          << RayConfig::instance().health_check_failure_threshold() << " times."
-          << " This is likely because the machine or raylet has become overloaded.";
+      RAY_EVENT(FATAL, "RAYLET_MARKED_DEAD").WithField("node_id", self_node_id_.Hex())
+          << error_message.str();
+      RAY_LOG(FATAL) << error_message.str();
     } else {
       // No-op since this node already starts to be drained, and GCS already knows about
       // it.
@@ -2902,6 +2899,10 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               << oom_kill_suggestions;
           std::string worker_exit_message = worker_exit_message_ss.str();
 
+          // Rerpot the event to the dashboard.
+          RAY_EVENT_EVERY_MS(ERROR, "Out of Memory", 10 * 1000) << worker_exit_message;
+
+          // Mark the task as failure and raise an exception from a caller.
           rpc::RayErrorInfo task_failure_reason;
           task_failure_reason.set_error_message(worker_exit_message);
           task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
@@ -2916,12 +2917,22 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
                         worker_exit_message,
                         true /* force */);
 
-          if (worker_to_kill->GetActorId().IsNil()) {
+          if (worker_to_kill->GetWorkerType() == rpc::WorkerType::DRIVER) {
+            // TODO(sang): Add the job entrypoint to the name.
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
-                1, "MemoryManager.TaskEviction.Total");
+                1, {{"Type", "MemoryManager.DriverEviction.Total"}, {"Name", ""}});
+          } else if (worker_to_kill->GetActorId().IsNil()) {
+            const auto &ray_task = worker_to_kill->GetAssignedTask();
+            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+                1,
+                {{"Type", "MemoryManager.TaskEviction.Total"},
+                 {"Name", ray_task.GetTaskSpecification().GetName()}});
           } else {
+            const auto &ray_task = worker_to_kill->GetAssignedTask();
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
-                1, "MemoryManager.ActorEviction.Total");
+                1,
+                {{"Type", "MemoryManager.ActorEviction.Total"},
+                 {"Name", ray_task.GetTaskSpecification().GetName()}});
           }
         }
       }

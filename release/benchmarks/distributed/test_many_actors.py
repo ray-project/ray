@@ -5,6 +5,7 @@ import time
 import tqdm
 
 from dashboard_test import DashboardTestAtScale
+from ray._private.state_api_test_utils import summarize_worker_startup_time
 
 is_smoke_test = True
 if "SMOKE_TEST" in os.environ:
@@ -40,6 +41,11 @@ def no_resource_leaks():
 addr = ray.init(address="auto")
 
 test_utils.wait_for_condition(no_resource_leaks)
+try:
+    summarize_worker_startup_time()
+except Exception as e:
+    print("Failed to summarize worker startup time.")
+    print(e)
 monitor_actor = test_utils.monitor_memory_usage()
 dashboard_test = DashboardTestAtScale(addr)
 

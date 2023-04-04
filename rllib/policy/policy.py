@@ -43,13 +43,21 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
-from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
+from ray.rllib.utils.checkpoints import (
+    CHECKPOINT_VERSION,
+    get_checkpoint_info,
+    try_import_msgpack,
+)
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.serialization import space_from_dict, space_to_dict
+from ray.rllib.utils.serialization import (
+    deserialize_type,
+    space_from_dict,
+    space_to_dict,
+)
 from ray.rllib.utils.spaces.space_utils import (
     get_base_struct_from_space,
     get_dummy_batch_for_space,
@@ -137,7 +145,7 @@ class PolicySpec:
             "observation_space": space_to_dict(self.observation_space),
             "action_space": space_to_dict(self.action_space),
             # TODO(jungong) : try making the config dict durable by maybe
-            # getting rid of all the fields that are not JSON serializable.
+            #  getting rid of all the fields that are not JSON serializable.
             "config": self.config,
         }
 
@@ -164,28 +172,93 @@ class PolicySpec:
 
 @DeveloperAPI
 class Policy(metaclass=ABCMeta):
-    """Policy base class: Calculates actions, losses, and holds NN models.
+    """RLlib's base class for all Policy implementations.
 
     Policy is the abstract superclass for all DL-framework specific sub-classes
     (e.g. TFPolicy or TorchPolicy). It exposes APIs to
 
-    1) Compute actions from observation (and possibly other) inputs.
-    2) Manage the Policy's NN model(s), like exporting and loading their
-       weights.
-    3) Postprocess a given trajectory from the environment or other input
-       via the `postprocess_trajectory` method.
-    4) Compute losses from a train batch.
-    5) Perform updates from a train batch on the NN-models (this normally
-       includes loss calculations) either a) in one monolithic step
-       (`train_on_batch`) or b) via batch pre-loading, then n steps of actual
-       loss computations and updates (`load_batch_into_buffer` +
-       `learn_on_loaded_batch`).
+    1. Compute actions from observation (and possibly other) inputs.
 
-    Note: It is not recommended to sub-class Policy directly, but rather use
-    one of the following two convenience methods:
-    `rllib.policy.policy_template::build_policy_class` (PyTorch) or
-    `rllib.policy.tf_policy_template::build_tf_policy_class` (TF).
+    2. Manage the Policy's NN model(s), like exporting and loading their weights.
+
+    3. Postprocess a given trajectory from the environment or other input via the
+        `postprocess_trajectory` method.
+
+    4. Compute losses from a train batch.
+
+    5. Perform updates from a train batch on the NN-models (this normally includes loss
+        calculations) either:
+
+        a. in one monolithic step (`learn_on_batch`)
+
+        b. via batch pre-loading, then n steps of actual loss computations  and updates
+            (`load_batch_into_buffer` + `learn_on_loaded_batch`).
     """
+
+    @DeveloperAPI
+    def __init__(
+        self,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        config: AlgorithmConfigDict,
+    ):
+        """Initializes a Policy instance.
+
+        Args:
+            observation_space: Observation space of the policy.
+            action_space: Action space of the policy.
+            config: A complete Algorithm/Policy config dict. For the default
+                config keys and values, see rllib/trainer/trainer.py.
+        """
+        self.observation_space: gym.Space = observation_space
+        self.action_space: gym.Space = action_space
+        # the policy id in the global context.
+        self.__policy_id = config.get("__policy_id")
+        # The base struct of the observation/action spaces.
+        # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
+        # action_space_struct = {"a": Discrete(2)}
+        self.observation_space_struct = get_base_struct_from_space(observation_space)
+        self.action_space_struct = get_base_struct_from_space(action_space)
+
+        self.config: AlgorithmConfigDict = config
+        self.framework = self.config.get("framework")
+
+        # Create the callbacks object to use for handling custom callbacks.
+        from ray.rllib.algorithms.callbacks import DefaultCallbacks
+
+        callbacks = self.config.get("callbacks")
+        if isinstance(callbacks, DefaultCallbacks):
+            self.callbacks = callbacks()
+        elif isinstance(callbacks, (str, type)):
+            try:
+                self.callbacks: "DefaultCallbacks" = deserialize_type(
+                    self.config.get("callbacks")
+                )()
+            except Exception:
+                pass  # TEST
+        else:
+            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
+
+        # The global timestep, broadcast down from time to time from the
+        # local worker to all remote workers.
+        self.global_timestep: int = 0
+        # The number of gradient updates this policy has undergone.
+        self.num_grad_updates: int = 0
+
+        # The action distribution class to use for action sampling, if any.
+        # Child classes may set this.
+        self.dist_class: Optional[Type] = None
+
+        # Initialize view requirements.
+        self.init_view_requirements()
+
+        # Whether the Model's initial state (method) has been added
+        # automatically based on the given view requirements of the model.
+        self._model_init_state_automatically_added = False
+
+        # Connectors.
+        self.agent_connectors = None
+        self.action_connectors = None
 
     @staticmethod
     def from_checkpoint(
@@ -317,66 +390,10 @@ class Policy(metaclass=ABCMeta):
         # Return the new policy.
         return new_policy
 
-    @DeveloperAPI
-    def __init__(
-        self,
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        config: AlgorithmConfigDict,
-    ):
-        """Initializes a Policy instance.
-
-        Args:
-            observation_space: Observation space of the policy.
-            action_space: Action space of the policy.
-            config: A complete Algorithm/Policy config dict. For the default
-                config keys and values, see rllib/trainer/trainer.py.
-        """
-        self.observation_space: gym.Space = observation_space
-        self.action_space: gym.Space = action_space
-        # the policy id in the global context.
-        self.__policy_id = config.get("__policy_id")
-        # The base struct of the observation/action spaces.
-        # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
-        # action_space_struct = {"a": Discrete(2)}
-        self.observation_space_struct = get_base_struct_from_space(observation_space)
-        self.action_space_struct = get_base_struct_from_space(action_space)
-
-        self.config: AlgorithmConfigDict = config
-        self.framework = self.config.get("framework")
-        # Create the callbacks object to use for handling custom callbacks.
-        if self.config.get("callbacks"):
-            self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
-        else:
-            from ray.rllib.algorithms.callbacks import DefaultCallbacks
-
-            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
-
-        # The global timestep, broadcast down from time to time from the
-        # local worker to all remote workers.
-        self.global_timestep: int = 0
-        # The number of gradient updates this policy has undergone.
-        self.num_grad_updates: int = 0
-
-        # The action distribution class to use for action sampling, if any.
-        # Child classes may set this.
-        self.dist_class: Optional[Type] = None
-
-        # Initialize view requirements.
-        self.init_view_requirements()
-
-        # Whether the Model's initial state (method) has been added
-        # automatically based on the given view requirements of the model.
-        self._model_init_state_automatically_added = False
-
-        # Connectors.
-        self.agent_connectors = None
-        self.action_connectors = None
-
     @ExperimentalAPI
     @OverrideToImplementCustomLogic
     def make_rl_module(self) -> "RLModule":
-        """Returns the RL Module.
+        """Returns the RL Module (only for when RLModule API is enabled.)
 
         If RLModule API is enabled (self.config.rl_module(_enable_rl_module_api=True),
         this method should be implemented and should return the RLModule instance to
@@ -1110,6 +1127,7 @@ class Policy(metaclass=ABCMeta):
         filename_prefix=DEPRECATED_VALUE,
         *,
         policy_state: Optional[PolicyState] = None,
+        checkpoint_format: str = "cloudpickle",
     ) -> None:
         """Exports Policy checkpoint to a local directory and returns an AIR Checkpoint.
 
@@ -1119,6 +1137,7 @@ class Policy(metaclass=ABCMeta):
             policy_state: An optional PolicyState to write to disk. Used by
                 `Algorithm.save_checkpoint()` to save on the additional
                 `self.get_state()` calls of its different Policies.
+            checkpoint_format: Either one of 'cloudpickle' or 'msgpack'.
 
         Example:
             >>> from ray.rllib.algorithms.ppo import PPOTorchPolicy
@@ -1132,14 +1151,34 @@ class Policy(metaclass=ABCMeta):
                 old="Policy.export_checkpoint(filename_prefix=...)",
                 error=True,
             )
+        if checkpoint_format not in ["cloudpickle", "msgpack"]:
+            raise ValueError(
+                f"Value of `checkpoint_format` ({checkpoint_format}) must either be "
+                "'cloudpickle' or 'msgpack'!"
+            )
+
         if policy_state is None:
             policy_state = self.get_state()
-        policy_state["checkpoint_version"] = CHECKPOINT_VERSION
 
         # Write main policy state file.
         os.makedirs(export_dir, exist_ok=True)
-        with open(os.path.join(export_dir, "policy_state.pkl"), "w+b") as f:
-            pickle.dump(policy_state, f)
+        if checkpoint_format == "cloudpickle":
+            policy_state["checkpoint_version"] = CHECKPOINT_VERSION
+            state_file = "policy_state.pkl"
+            with open(os.path.join(export_dir, state_file), "w+b") as f:
+                pickle.dump(policy_state, f)
+        else:
+            from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+            msgpack = try_import_msgpack(error=True)
+            policy_state["checkpoint_version"] = str(CHECKPOINT_VERSION)
+            # Serialize the config for msgpack dump'ing.
+            policy_state["policy_spec"]["config"] = AlgorithmConfig._serialize_dict(
+                policy_state["policy_spec"]["config"]
+            )
+            state_file = "policy_state.msgpck"
+            with open(os.path.join(export_dir, state_file), "w+b") as f:
+                msgpack.dump(policy_state, f)
 
         # Write RLlib checkpoint json.
         with open(os.path.join(export_dir, "rllib_checkpoint.json"), "w") as f:
@@ -1147,6 +1186,8 @@ class Policy(metaclass=ABCMeta):
                 {
                     "type": "Policy",
                     "checkpoint_version": str(policy_state["checkpoint_version"]),
+                    "format": checkpoint_format,
+                    "state_file": state_file,
                     "ray_version": ray.__version__,
                     "ray_commit": ray.__commit__,
                 },
@@ -1435,7 +1476,9 @@ class Policy(metaclass=ABCMeta):
         # We should simply do self.loss(...) here.
         if self._loss is not None:
             self._loss(self, self.model, self.dist_class, train_batch)
-        elif is_overridden(self.loss) and not self.config["in_evaluation"]:
+        elif (
+            is_overridden(self.loss) or self.config.get("_enable_rl_module_api", False)
+        ) and not self.config["in_evaluation"]:
             self.loss(self.model, self.dist_class, train_batch)
         # Call the stats fn, if given.
         # TODO(jungong) : clean up after all agents get migrated.

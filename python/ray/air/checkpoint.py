@@ -247,6 +247,37 @@ class Checkpoint:
             setattr(self, attr, value)
 
     @property
+    def path(self) -> Optional[str]:
+        """Return path to checkpoint, if available.
+
+        This will return a URI to cloud storage if this checkpoint is
+        persisted on cloud, or a local path if this checkpoint
+        is persisted on local disk and available on the current node.
+
+        In all other cases, this will return None.
+
+        Example:
+
+            >>> from ray.air import Checkpoint
+            >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
+            >>> assert checkpoint.path == "s3://some-bucket/some-location"
+            >>> checkpoint = Checkpoint.from_dict({"data": 1})
+            >>> assert checkpoint.path == None
+
+        Returns:
+            Checkpoint path if this checkpoint is reachable from the current node (e.g.
+            cloud storage or locally available directory).
+
+        """
+        if self._uri:
+            return self._uri
+
+        if self._local_path:
+            return self._local_path
+
+        return None
+
+    @property
     def uri(self) -> Optional[str]:
         """Return checkpoint URI, if available.
 
