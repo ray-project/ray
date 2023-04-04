@@ -6,7 +6,7 @@ dask[complete]==2022.10.1; python_version >= '3.8'
 aioboto3==11.1.0
 crc32c==2.3
 flask_cors
-s3fs
+s3fs==2023.3.0
 modin>=0.8.3;  python_version < '3.7'
 modin>=0.11.0; python_version >= '3.7'
 pytest-repeat
