@@ -1,5 +1,6 @@
 import os
 from typing import Dict
+from unittest.mock import patch, ANY
 
 import numpy as np
 import pyarrow as pa
@@ -8,7 +9,7 @@ import pytest
 from fsspec.implementations.local import LocalFileSystem
 
 import ray
-from ray.data.datasource import Partitioning
+from ray.data.datasource import Partitioning, PathPartitionFilter
 from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
 from ray.data.datasource.image_datasource import (
     _ImageDatasourceReader,
@@ -234,6 +235,27 @@ class TestReadImages:
         finally:
             ctx.target_max_block_size = target_max_block_size
             ctx.block_splitting_enabled = block_splitting_enabled
+
+    def test_args_passthrough(ray_start_regular_shared):
+        kwargs = {
+            "paths": "foo",
+            "filesystem": pa.fs.LocalFileSystem(),
+            "parallelism": 20,
+            "meta_provider": FastFileMetadataProvider(),
+            "ray_remote_args": {"resources": {"bar": 1}},
+            "arrow_open_file_args": {"foo": "bar"},
+            "partition_filter": PathPartitionFilter.of(lambda x: True),
+            "partitioning": Partitioning("hive"),
+            "size": (2, 2),
+            "mode": "foo",
+            "include_paths": True,
+            "ignore_missing_paths": True,
+        }
+        with patch("ray.data.read_api.read_datasource") as mock:
+            ray.data.read_images(**kwargs)
+        kwargs["open_stream_args"] = kwargs.pop("arrow_open_file_args")
+        mock.assert_called_once_with(ANY, **kwargs)
+        assert isinstance(mock.call_args[0][0], ImageDatasource)
 
 
 if __name__ == "__main__":

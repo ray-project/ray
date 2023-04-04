@@ -2,6 +2,15 @@ from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 
+from ray.rllib.core.models.base import Model, ModelConfig
+from ray.rllib.core.models.specs.checker import (
+    check_input_specs,
+    check_output_specs,
+)
+from ray.rllib.core.models.specs.checker import (
+    is_input_decorated,
+    is_output_decorated,
+)
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.framework import try_import_tf
 

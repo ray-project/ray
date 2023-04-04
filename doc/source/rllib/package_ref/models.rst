@@ -10,7 +10,6 @@ Base Model classes
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
     ~modelv2.ModelV2
     ~torch.torch_modelv2.TorchModelV2
@@ -47,5 +46,4 @@ Customization
    :toctree: doc/
 
     ~modelv2.ModelV2.custom_loss
-    ~modelv2.ModelV2.metrics    
-    
+    ~modelv2.ModelV2.metrics

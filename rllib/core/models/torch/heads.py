@@ -73,11 +73,11 @@ class TorchFreeLogStdMLPHead(TorchModel):
         )
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Union[Spec, None]:
         return TorchTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Union[Spec, None]:
         return TorchTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)
@@ -111,11 +111,11 @@ class TorchCNNTransposeHead(TorchModel):
         )
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Union[Spec, None]:
         return TorchTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Union[Spec, None]:
         return TorchTensorSpec(
             "b, w, h, c",
             w=self.config.output_dims[0],

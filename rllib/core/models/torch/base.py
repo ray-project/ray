@@ -9,7 +9,7 @@ from ray.rllib.core.models.base import (
     _raise_not_decorated_exception,
 )
 from ray.rllib.core.models.torch.primitives import nn
-from ray.rllib.models.specs.checker import (
+from ray.rllib.core.models.specs.checker import (
     is_input_decorated,
     is_output_decorated,
     check_input_specs,
@@ -77,8 +77,8 @@ class TorchModel(nn.Module, Model, abc.ABC):
         if not is_output_decorated(self.forward):
             _raise_not_decorated_exception(type(self).__name__ + ".forward()", "output")
 
-    @check_input_specs("input_spec")
-    @check_output_specs("output_spec")
+    @check_input_specs("input_specs")
+    @check_output_specs("output_specs")
     def forward(
         self, inputs: Union[NestedDict, TensorType], **kwargs
     ) -> Union[NestedDict, TensorType]:

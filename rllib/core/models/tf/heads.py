@@ -33,11 +33,11 @@ class TfMLPHead(TfModel):
         )
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Union[Spec, None]:
         return TfTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Union[Spec, None]:
         return TfTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)
@@ -75,11 +75,11 @@ class TfFreeLogStdMLPHead(TfModel):
         )
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Union[Spec, None]:
         return TfTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Union[Spec, None]:
         return TfTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)

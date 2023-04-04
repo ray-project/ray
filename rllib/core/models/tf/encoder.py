@@ -15,9 +15,9 @@ from ray.rllib.core.models.configs import (
 )
 from ray.rllib.core.models.tf.base import TfModel
 from ray.rllib.core.models.tf.primitives import TfMLP, TfCNN
-from ray.rllib.models.specs.specs_base import Spec
-from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.specs_tf import TfTensorSpec
+from ray.rllib.core.models.specs.specs_base import Spec
+from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.core.models.specs.specs_tf import TfTensorSpec
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -43,7 +43,7 @@ class TfMLPEncoder(Encoder, TfModel):
         )
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Union[Spec, None]:
         return SpecDict(
             {
                 SampleBatch.OBS: TfTensorSpec("b, d", d=self.config.input_dims[0]),
@@ -53,7 +53,7 @@ class TfMLPEncoder(Encoder, TfModel):
         )
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Union[Spec, None]:
         return SpecDict(
             {
                 ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),
