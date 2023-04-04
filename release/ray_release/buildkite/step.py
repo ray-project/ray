@@ -118,7 +118,7 @@ def get_step(
     step["retry"] = {
         "automatic": [
           {
-            "exit_status": BuildkiteExitCode.TRANSIENT_INFRA_ERROR,
+            "exit_status": BuildkiteExitCode.TRANSIENT_INFRA_ERROR.value,
             "limit": 2,
           }
         ]
