@@ -58,6 +58,9 @@ If the raylet failes to reconnect to the GCS for more than 60 seconds,
 the raylet will exit and the corresponding node fails.
 This timeout threshold can be tuned by the OS environment variable ``RAY_gcs_rpc_server_reconnect_timeout_s``.
 
+You can also set the OS environment variable ``RAY_external_storage_namespace`` to isolate the data stored in Redis.
+This makes sure that there is no data conflicts if multiple Ray clusters share the same Redis instance.
+
 If the IP address of GCS will change after restarts, it's better to use a qualified domain name
 and pass it to all raylets at start time. Raylet will resolve the domain name and connect to
 the correct GCS. You need to ensure that at any time, only one GCS is alive.
