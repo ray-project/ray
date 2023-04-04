@@ -19,11 +19,9 @@ from ray.rllib.models.torch.torch_distributions import TorchDeterministic
 # Define a simple categorical distribution that can be used for PPO
 class CustomTorchCategorical(Distribution):
     def __init__(self, logits):
-        self.torch_dist = torch.distributions.categorical.Categorical(
-            logits=logits
-        )
+        self.torch_dist = torch.distributions.categorical.Categorical(logits=logits)
 
-    def sample(self, sample_shape=torch.Size()) :
+    def sample(self, sample_shape=torch.Size()):
         return self.torch_dist.sample(sample_shape)
 
     def rsample(self, sample_shape=torch.Size()):
@@ -36,9 +34,7 @@ class CustomTorchCategorical(Distribution):
         return self.torch_dist.entropy()
 
     def kl(self, other):
-        return torch.distributions.kl.kl_divergence(
-            self.torch_dist, other.torch_dist
-        )
+        return torch.distributions.kl.kl_divergence(self.torch_dist, other.torch_dist)
 
     @staticmethod
     def required_input_dim(space):
@@ -66,6 +62,7 @@ action = dummy_dist.sample()
 env = gym.make("CartPole-v1")
 env.reset()
 env.step(action.numpy())
+
 
 # Define a simple catalog that returns our custom distribution when
 # get_action_dist_cls is called

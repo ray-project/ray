@@ -26,7 +26,7 @@ obs, info = env.reset()
 input_batch = {
     SampleBatch.OBS: torch.Tensor([obs]),
     STATE_IN: None,
-    SampleBatch.SEQ_LENS: None
+    SampleBatch.SEQ_LENS: None,
 }
 # Pass everything through our models and the action distribution.
 encoding = encoder(input_batch)[ENCODER_OUT][ACTOR]

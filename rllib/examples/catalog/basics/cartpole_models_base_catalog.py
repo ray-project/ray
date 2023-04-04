@@ -22,8 +22,9 @@ expected_action_dist_input_dims = (env.action_space.n,)
 # Build an encoder for the observation space.
 encoder = catalog.build_encoder(framework="torch")
 # Build a suitable head model for the action distribution.
-head_config = MLPHeadConfig(input_dims=catalog.latent_dims,
-                          output_dims=expected_action_dist_input_dims)
+head_config = MLPHeadConfig(
+    input_dims=catalog.latent_dims, output_dims=expected_action_dist_input_dims
+)
 head = head_config.build(framework="torch")
 
 # Now we are ready to interact with the environment
@@ -33,7 +34,7 @@ obs, info = env.reset()
 input_batch = {
     SampleBatch.OBS: torch.Tensor([obs]),
     STATE_IN: None,
-    SampleBatch.SEQ_LENS: None
+    SampleBatch.SEQ_LENS: None,
 }
 # Pass everything through our models and the action distribution.
 encoding = encoder(input_batch)[ENCODER_OUT]

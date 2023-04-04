@@ -80,3 +80,21 @@ Catalogs are also similar to what was called ModelCatalog in earlier versions of
 
 RLModules create an instance of the Catalog they are configured with upon instantiation.
 They then create their internal models and distributions from this Catalog:
+
+.. tabbed:: General relationship between Catalogs and RLModules
+
+    .. image:: images/catalog_rlm_diagram.svg
+    :align: center
+
+.. tabbed:: Detailed relationship between PPOCatalog and PPORLModule
+
+    The following diagram shows a more detailed view of the relationship between the PPOCatalog and the PPORLModule.
+    Therein, the PPOCatalog is fed an observation space, action space, a model config dict and the view requirements
+    of the RLModule. The model config dicts and the view requirements are only of interest in special cases, such as
+    recurrent networks or attention networks. The PPORLModule has four components that are created by the PPOCatalog:
+    The encoder, the value function, the policy and the action distribution. You can find out more about this
+    distinction between these components in our section on Models.
+
+    .. image:: images/ppo_catalog_diagram.svg
+    :align: center
+

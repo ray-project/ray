@@ -221,7 +221,7 @@ depending on inputs such as action- and observation space.
 Each RLModule has its own default Catalog - PPORLModule has the PPOCatalog.
 Many methods of Catalogs can be overridden to alter the behavior of existing RLModules.
 
-.. image:: images/connector-diagram.svg
+.. image:: images/catalog_rlm_diagram.svg
     :align: center
 
 Examples use cases:
