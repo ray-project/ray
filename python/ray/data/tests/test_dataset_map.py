@@ -621,7 +621,7 @@ def test_map_batches_batch_zero_copy(
     ds = ray.data.range_table(num_rows, parallelism=num_blocks).repartition(num_blocks)
     # Convert to Pandas blocks.
     ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
-    ds.cache()
+    ds = ds.cache()
 
     # Apply UDF that mutates the batches, which should fail since the batch is
     # read-only.
