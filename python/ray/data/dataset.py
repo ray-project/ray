@@ -19,7 +19,6 @@ from typing import (
     Union,
 )
 from uuid import uuid4
-import warnings
 
 import numpy as np
 
@@ -407,17 +406,6 @@ class Dataset(Generic[T]):
         :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
 
         .. tip::
-            If you're using :ref:`Ray AIR <air>` for training or batch inference,
-            consider using :class:`~ray.data.preprocessors.BatchMapper`. It's more
-            performant and easier to use.
-
-        .. tip::
-
-            For some standard operations like imputing, encoding or normalization,
-            one may find directly using :py:class:`~ray.data.preprocessors.Preprocessor` to be
-            more convenient.
-
-        .. tip::
             If you have a small number of big blocks, it may limit parallelism. You may
             consider increasing the number of blocks via ``.repartition()`` before
             applying ``.map_batches()``.
@@ -510,7 +498,10 @@ class Dataset(Generic[T]):
             ...     num_gpus=1,
             ... ) # doctest: +SKIP
 
-            ``fn`` can also be a generator, yielding multiple batches in a single invocation. This is useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks.
+            ``fn`` can also be a generator, yielding multiple batches in a single
+            invocation. This is useful when returning large objects. Instead of
+            returning a very large output batch, ``fn`` can instead yield the
+            output batch in chunks.
 
             >>> from typing import Iterator
             >>> def map_fn_with_large_output(batch: List[int]) -> Iterator[List[int]]:
@@ -594,10 +585,7 @@ class Dataset(Generic[T]):
         """  # noqa: E501
 
         if batch_format == "native":
-            warnings.warn(
-                "The 'native' batch format has been renamed 'default'.",
-                DeprecationWarning,
-            )
+            logger.warning("The 'native' batch format has been renamed 'default'.")
 
         target_block_size = None
         if batch_size == "default":
@@ -2911,9 +2899,12 @@ class Dataset(Generic[T]):
                 self._write_ds = Dataset(
                     plan, self._epoch, self._lazy, logical_plan
                 ).cache()
-                datasource.on_write_complete(
-                    ray.get(self._write_ds._plan.execute().get_blocks())
+                blocks = ray.get(self._write_ds._plan.execute().get_blocks())
+                assert all(
+                    isinstance(block, list) and len(block) == 1 for block in blocks
                 )
+                write_results = [block[0] for block in blocks]
+                datasource.on_write_complete(write_results)
             except Exception as e:
                 datasource.on_write_failed([], e)
                 raise
@@ -3050,10 +3041,7 @@ class Dataset(Generic[T]):
             An iterator over record batches.
         """
         if batch_format == "native":
-            warnings.warn(
-                "The 'native' batch format has been renamed 'default'.",
-                DeprecationWarning,
-            )
+            logger.warning("The 'native' batch format has been renamed 'default'.")
 
         return self.iterator().iter_batches(
             prefetch_batches=prefetch_batches,
@@ -4067,17 +4055,15 @@ class Dataset(Generic[T]):
 
     @Deprecated(message="Use `Dataset.cache()` instead.")
     def fully_executed(self) -> "Dataset[T]":
-        warnings.warn(
+        logger.warning(
             "The 'fully_executed' call has been renamed to 'cache'.",
-            DeprecationWarning,
         )
         return self.cache()
 
     @Deprecated(message="Use `Dataset.is_cached()` instead.")
     def is_fully_executed(self) -> bool:
-        warnings.warn(
+        logger.warning(
             "The 'is_fully_executed' call has been renamed to 'is_cached'.",
-            DeprecationWarning,
         )
         return self.is_cached()
 
@@ -4131,6 +4117,10 @@ class Dataset(Generic[T]):
         self._synchronize_progress_bar()
         return blocks
 
+    @Deprecated(
+        message="Dataset is lazy by default, so this conversion call is no longer "
+        "needed and this API will be removed in a future release"
+    )
     def lazy(self) -> "Dataset[T]":
         """Enable lazy evaluation.
 

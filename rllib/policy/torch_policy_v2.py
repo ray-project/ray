@@ -177,7 +177,11 @@ class TorchPolicyV2(Policy):
         # Combine view_requirements for Model and Policy.
         self.view_requirements.update(self.model.view_requirements)
 
-        self.exploration = self._create_exploration()
+        if self.config.get("_enable_rl_module_api", False):
+            # We don't need an exploration object with RLModules
+            self.exploration = None
+        else:
+            self.exploration = self._create_exploration()
         self._optimizers = force_list(self.optimizer())
 
         # Backward compatibility workaround so Policy will call self.loss() directly.
@@ -453,7 +457,7 @@ class TorchPolicyV2(Policy):
             ]
         else:
             optimizers = [torch.optim.Adam(self.model.parameters())]
-        if getattr(self, "exploration", None):
+        if self.exploration:
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
         return optimizers
 
@@ -593,8 +597,9 @@ class TorchPolicyV2(Policy):
                 convert_to_torch_tensor(s, self.device) for s in (state_batches or [])
             ]
 
-            # Exploration hook before each forward pass.
-            self.exploration.before_compute_actions(explore=False)
+            if self.exploration:
+                # Exploration hook before each forward pass.
+                self.exploration.before_compute_actions(explore=False)
 
             # Action dist class and inputs are generated via custom function.
             if is_overridden(self.action_distribution_fn):
@@ -973,7 +978,10 @@ class TorchPolicyV2(Policy):
                 optim_state_dict = convert_to_numpy(o.state_dict())
                 state["_optimizer_variables"].append(optim_state_dict)
         # Add exploration state.
-        state["_exploration_state"] = self.exploration.get_state()
+        if not self.config.get("_enable_rl_module_api", False) and self.exploration:
+            # This is not compatible with RLModules, which have a method
+            # `forward_exploration` to specify custom exploration behavior.
+            state["_exploration_state"] = self.exploration.get_state()
         return state
 
     @override(Policy)
@@ -1013,7 +1021,7 @@ class TorchPolicyV2(Policy):
         os.makedirs(export_dir, exist_ok=True)
 
         enable_rl_module = self.config.get("_enable_rl_module_api", False)
-        if enable_rl_module:
+        if enable_rl_module and onnx:
             raise ValueError("ONNX export not supported for RLModule API.")
 
         if onnx:
@@ -1109,8 +1117,8 @@ class TorchPolicyV2(Policy):
             extra_fetches = fwd_out
             dist_inputs = None
         elif is_overridden(self.action_sampler_fn):
-            action_dist = dist_inputs = None
-            actions, logp, state_out = self.action_sampler_fn(
+            action_dist = None
+            actions, logp, dist_inputs, state_out = self.action_sampler_fn(
                 self.model,
                 obs_batch=input_dict,
                 state_batches=state_batches,
