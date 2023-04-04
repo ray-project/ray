@@ -166,9 +166,9 @@ def main(
         return_code = e.exit_code.value
     logger.info(
         f"Release test pipeline for test {test['name']} completed. "
-        f"Returning with exit code = {return_code}"
+        f"Returning with exit code = {result.return_code}"
     )
-    sys.exit(return_code)
+    sys.exit(result.buildkite_return_code)
 
 
 if __name__ == "__main__":
