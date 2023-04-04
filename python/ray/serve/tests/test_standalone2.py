@@ -3,7 +3,6 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
-from tempfile import NamedTemporaryFile
 from typing import Dict, Set
 from concurrent.futures.thread import ThreadPoolExecutor
 
@@ -17,22 +16,20 @@ from ray.experimental.state.api import list_actors
 
 from ray import serve
 from ray._private.test_utils import (
-    run_string_as_driver,
     wait_for_condition,
     SignalActor,
 )
-from ray._private.ray_constants import gcs_actor_scheduling_enabled
-from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ApplicationStatus, DeploymentStatus
-from ray.serve._private.constants import (
-    SERVE_NAMESPACE,
-    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
-)
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.context import get_global_client
-from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import (
+    ServeApplicationSchema,
+    ServeDeploySchema,
+    ServeInstanceDetails,
+)
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
@@ -63,7 +60,13 @@ def ray_instance(request):
 
     os.environ.update(requested_env_vars)
 
-    yield ray.init()
+    yield ray.init(
+        _metrics_export_port=9999,
+        _system_config={
+            "metrics_report_interval_ms": 1000,
+            "task_retry_delay_ms": 50,
+        },
+    )
 
     ray.shutdown()
 
@@ -443,8 +446,6 @@ class TestDeployApp:
 
     def get_test_deploy_config(self) -> Dict:
         return {
-            "host": "127.0.0.1",
-            "port": 8000,
             "applications": [
                 {
                     "name": "app1",
@@ -821,8 +822,6 @@ class TestDeployApp:
         pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
         test_config = ServeDeploySchema.parse_obj(
             {
-                "host": "127.0.0.1",
-                "port": 8000,
                 "applications": [
                     {
                         "name": "app1",
@@ -867,8 +866,6 @@ class TestDeployApp:
         pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
         test_config = ServeDeploySchema.parse_obj(
             {
-                "host": "127.0.0.1",
-                "port": 8000,
                 "applications": [
                     {
                         "name": "app1",
@@ -897,8 +894,6 @@ class TestDeployApp:
         # Deploy app3
         new_config = ServeDeploySchema.parse_obj(
             {
-                "host": "127.0.0.1",
-                "port": 8000,
                 "applications": [
                     {
                         "name": "app3",
@@ -1100,8 +1095,6 @@ class TestDeployApp:
         """Deploy two applications with separate runtime envs."""
 
         config_template = {
-            "host": "127.0.0.1",
-            "port": 8000,
             "applications": [
                 {
                     "name": "app1",
@@ -1145,8 +1138,6 @@ class TestDeployApp:
         world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
         fail_import_path = "ray.serve.tests.test_config_files.fail.node"
         config_template = {
-            "host": "127.0.0.1",
-            "port": 8000,
             "applications": [
                 {
                     "name": "app1",
@@ -1173,6 +1164,70 @@ class TestDeployApp:
             == ApplicationStatus.RUNNING
             and client.get_serve_status("app2").app_status.status
             == ApplicationStatus.DEPLOY_FAILED
+        )
+
+    def test_deploy_with_route_prefix_conflict(self, client: ServeControllerClient):
+        world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+        pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+        test_config = {
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": world_import_path,
+                },
+                {
+                    "name": "app2",
+                    "route_prefix": "/app2",
+                    "import_path": pizza_import_path,
+                },
+            ],
+        }
+
+        client.deploy_apps(ServeDeploySchema(**test_config))
+
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+
+        # Buffer time
+        time.sleep(1)
+
+        test_config["applications"][1] = {
+            "name": "app3",
+            "route_prefix": "/app2",
+            "import_path": world_import_path,
+        }
+
+        client.deploy_apps(ServeDeploySchema(**test_config))
+
+        def check():
+            serve_details = ServeInstanceDetails(
+                **ray.get(client._controller.get_serve_instance_details.remote())
+            )
+            app1_running = (
+                "app1" in serve_details.applications
+                and serve_details.applications["app1"].status == "RUNNING"
+            )
+            app3_running = (
+                "app3" in serve_details.applications
+                and serve_details.applications["app3"].status == "RUNNING"
+            )
+            app2_gone = "app2" not in serve_details.applications
+            return app1_running and app3_running and app2_gone
+
+        wait_for_condition(check)
+
+        # app1 and app3 should be up and running
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        )
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app2").text == "wonderful world"
         )
 
     def test_deploy_single_then_multi(self, client: ServeControllerClient):
@@ -1206,6 +1261,68 @@ class TestDeployApp:
             client.deploy_apps(single_app_config)
         # The original applications should still be up and running
         self.check_multi_app()
+
+    def test_deploy_multi_app_deleting(self, client: ServeControllerClient):
+        """Test deleting an application by removing from config."""
+
+        config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
+        client.deploy_apps(config)
+        self.check_multi_app()
+
+        # Delete app2
+        del config.applications[1]
+        client.deploy_apps(config)
+
+        # Fetch details immediately afterwards, should parse correctly
+        details = ray.get(client._controller.get_serve_instance_details.remote())
+        ServeInstanceDetails(**details)
+        # We don't enforce that the state is deleting here because that could cause
+        # flaky test performance. The app could have been deleted by the time of query
+        assert (
+            "app2" not in details["applications"]
+            or details["applications"]["app2"]["status"] == ApplicationStatus.DELETING
+        )
+
+        info_valid = True
+
+        def check_app_status():
+            global info_valid
+            try:
+                # Fetch details, should always parse correctly
+                details = ray.get(
+                    client._controller.get_serve_instance_details.remote()
+                )
+                ServeInstanceDetails(**details)
+                return (
+                    details["applications"]["app1"]["status"]
+                    == ApplicationStatus.RUNNING
+                )
+            except Exception:
+                info_valid = False
+
+        wait_for_condition(check_app_status)
+        # Check that all all details fetched from controller parsed correctly
+        assert info_valid
+
+    def test_deploy_nonexistent_deployment(self, client: ServeControllerClient):
+        """Remove an application from a config, it should reach a deleting state."""
+
+        config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
+        # Change names to invalid names that don't contain "deployment" or "application"
+        config.applications[1].name = "random1"
+        config.applications[1].deployments[0].name = "random2"
+        client.deploy_apps(config)
+
+        def check_app_message():
+            details = ray.get(client._controller.get_serve_instance_details.remote())
+            # The error message should be descriptive
+            # e.g. no deployment "x" in application "y"
+            return (
+                "application" in details["applications"]["random1"]["message"]
+                and "deployment" in details["applications"]["random1"]["message"]
+            )
+
+        wait_for_condition(check_app_message)
 
 
 class TestServeRequestProcessingTimeoutS:
@@ -1288,254 +1405,6 @@ class TestServeRequestProcessingTimeoutS:
         assert len(ray.get(pid_tracker.get_pids.remote())) == 2
 
         serve.shutdown()
-
-
-@pytest.mark.parametrize(
-    "ray_instance",
-    [
-        {
-            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND": "1",
-            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND": "2",
-        },
-    ],
-    indirect=True,
-)
-def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
-    """Test max_concurrent_queries can be honorded with long poll timeout
-
-    issue: https://github.com/ray-project/ray/issues/32652
-    """
-
-    signal_actor = SignalActor.remote()
-
-    @serve.deployment(max_concurrent_queries=1)
-    async def f():
-        await signal_actor.wait.remote()
-        return "hello"
-
-    handle = serve.run(f.bind())
-    first_ref = handle.remote()
-
-    # Clear all the internal longpoll client objects within handle
-    # long poll client will receive new updates from long poll host,
-    # this is to simulate the longpoll timeout
-    object_snapshots1 = handle.router.long_poll_client.object_snapshots
-    handle.router.long_poll_client._reset()
-    wait_for_condition(
-        lambda: len(handle.router.long_poll_client.object_snapshots) > 0, timeout=10
-    )
-    object_snapshots2 = handle.router.long_poll_client.object_snapshots
-
-    # Check object snapshots between timeout interval
-    assert object_snapshots1.keys() == object_snapshots2.keys()
-    assert len(object_snapshots1.keys()) == 1
-    key = list(object_snapshots1.keys())[0]
-    assert (
-        object_snapshots1[key][0].actor_handle != object_snapshots2[key][0].actor_handle
-    )
-    assert (
-        object_snapshots1[key][0].actor_handle._actor_id
-        == object_snapshots2[key][0].actor_handle._actor_id
-    )
-
-    # Make sure the inflight queries still one
-    assert len(handle.router._replica_set.in_flight_queries) == 1
-    key = list(handle.router._replica_set.in_flight_queries.keys())[0]
-    assert len(handle.router._replica_set.in_flight_queries[key]) == 1
-
-    # Make sure the first request is being run.
-    replicas = list(handle.router._replica_set.in_flight_queries.keys())
-    assert len(handle.router._replica_set.in_flight_queries[replicas[0]]) == 1
-    # First ref should be still ongoing
-    with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(first_ref, timeout=1)
-    # Unblock the first request.
-    signal_actor.send.remote()
-    assert ray.get(first_ref) == "hello"
-
-    serve.shutdown()
-
-
-def test_shutdown_remote(start_and_shutdown_ray_cli_function):
-    """Check that serve.shutdown() works on a remote Ray cluster."""
-
-    deploy_serve_script = (
-        "import ray\n"
-        "from ray import serve\n"
-        "\n"
-        'ray.init(address="auto", namespace="x")\n'
-        "serve.start(detached=True)\n"
-        "\n"
-        "@serve.deployment\n"
-        "def f(*args):\n"
-        '   return "got f"\n'
-        "\n"
-        "serve.run(f.bind())\n"
-    )
-
-    shutdown_serve_script = (
-        "import ray\n"
-        "from ray import serve\n"
-        "\n"
-        'ray.init(address="auto", namespace="x")\n'
-        "serve.shutdown()\n"
-    )
-
-    # Cannot use context manager due to tmp file's delete flag issue in Windows
-    # https://stackoverflow.com/a/15590253
-    deploy_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
-    shutdown_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
-
-    try:
-        deploy_file.write(deploy_serve_script)
-        deploy_file.close()
-
-        shutdown_file.write(shutdown_serve_script)
-        shutdown_file.close()
-
-        # Ensure Serve can be restarted and shutdown with for loop
-        for _ in range(2):
-            subprocess.check_output(["python", deploy_file.name])
-            assert requests.get("http://localhost:8000/f").text == "got f"
-            subprocess.check_output(["python", shutdown_file.name])
-            with pytest.raises(requests.exceptions.ConnectionError):
-                requests.get("http://localhost:8000/f")
-    finally:
-        os.unlink(deploy_file.name)
-        os.unlink(shutdown_file.name)
-
-
-def test_handle_early_detect_failure(shutdown_ray):
-    """Check that handle can be notified about replicas failure.
-
-    It should detect replica raises ActorError and take them out of the replicas set.
-    """
-    ray.init()
-    serve.start(detached=True)
-
-    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
-    def f(do_crash: bool = False):
-        if do_crash:
-            os._exit(1)
-        return os.getpid()
-
-    handle = serve.run(f.bind())
-    pids = ray.get([handle.remote() for _ in range(2)])
-    assert len(set(pids)) == 2
-    assert len(handle.router._replica_set.in_flight_queries.keys()) == 2
-
-    client = get_global_client()
-    # Kill the controller so that the replicas membership won't be updated
-    # through controller health check + long polling.
-    ray.kill(client._controller, no_restart=True)
-
-    with pytest.raises(RayActorError):
-        ray.get(handle.remote(do_crash=True))
-
-    pids = ray.get([handle.remote() for _ in range(10)])
-    assert len(set(pids)) == 1
-    assert len(handle.router._replica_set.in_flight_queries.keys()) == 1
-
-    # Restart the controller, and then clean up all the replicas
-    serve.start(detached=True)
-    serve.shutdown()
-
-
-@pytest.mark.skipif(
-    gcs_actor_scheduling_enabled(),
-    reason="Raylet-based scheduler favors (http proxy) actors' owner "
-    + "nodes (the head one), so the `EveryNode` option is actually not "
-    + "enforced. Besides, the second http proxy does not die with the "
-    + "placeholder (happens to both schedulers), so gcs-based scheduler (which "
-    + "may collocate the second http proxy and the place holder) "
-    + "can not shutdown the worker node.",
-)
-def test_autoscaler_shutdown_node_http_everynode(
-    shutdown_ray, call_ray_stop_only  # noqa: F811
-):
-    cluster = AutoscalingCluster(
-        head_resources={"CPU": 2},
-        worker_node_types={
-            "cpu_node": {
-                "resources": {
-                    "CPU": 4,
-                    "IS_WORKER": 100,
-                },
-                "node_config": {},
-                "max_workers": 1,
-            },
-        },
-        idle_timeout_minutes=0.05,
-    )
-    cluster.start()
-    ray.init(address="auto")
-
-    serve.start(http_options={"location": "EveryNode"})
-
-    @ray.remote
-    class Placeholder:
-        def ready(self):
-            return 1
-
-    a = Placeholder.options(resources={"IS_WORKER": 1}).remote()
-    assert ray.get(a.ready.remote()) == 1
-
-    # 2 proxies, 1 controller, and one placeholder.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 4)
-    assert len(ray.nodes()) == 2
-
-    # Now make sure the placeholder actor exits.
-    ray.kill(a)
-    # The http proxy on worker node should exit as well.
-    wait_for_condition(
-        lambda: len(
-            list(
-                filter(
-                    lambda a: a["State"] == "ALIVE",
-                    ray._private.state.actors().values(),
-                )
-            )
-        )
-        == 2
-    )
-    # Only head node should exist now.
-    wait_for_condition(
-        lambda: len(list(filter(lambda n: n["Alive"], ray.nodes()))) == 1
-    )
-
-
-def test_legacy_sync_handle_env_var(call_ray_stop_only):  # noqa: F811
-    script = """
-from ray import serve
-from ray.serve.dag import InputNode
-from ray.serve.drivers import DAGDriver
-import ray
-
-@serve.deployment
-class A:
-    def predict(self, inp):
-        return inp
-
-@serve.deployment
-class Dispatch:
-    def __init__(self, handle):
-        self.handle = handle
-
-    def predict(self, inp):
-        ref = self.handle.predict.remote(inp)
-        assert isinstance(ref, ray.ObjectRef), ref
-        return ray.get(ref)
-
-with InputNode() as inp:
-    a = A.bind()
-    d = Dispatch.bind(a)
-    dag = d.predict.bind(inp)
-
-handle = serve.run(DAGDriver.bind(dag))
-assert ray.get(handle.predict.remote(1)) == 1
-    """
-
-    run_string_as_driver(script, env={SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY: "1"})
 
 
 if __name__ == "__main__":

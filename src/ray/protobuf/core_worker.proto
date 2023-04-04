@@ -137,6 +137,14 @@ message PushTaskReply {
   bool is_application_error = 6;
   // Whether the task was cancelled before it started running (i.e. while queued).
   bool was_cancelled_before_running = 7;
+  // If the task was an actor creation task, and the actor class has a customized
+  // repr defined for the anonymous actor (not a named actor), the repr name of the
+  // actor will be piggybacked to GCS to be included as part of ActorTableData.
+  optional string actor_repr_name = 8;
+  // The pushed task executing error detail message. Either from the application or
+  // from the core worker. This is only set when the task execution failed.
+  // Default to empty string (not set) when no error happens.
+  string task_execution_error = 9;
 }
 
 message DirectActorCallArgWaitCompleteRequest {

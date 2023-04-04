@@ -19,6 +19,7 @@ import React, { useContext, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import { DurationText } from "../common/DurationText";
+import { ActorLink } from "../common/links";
 import { CpuProfilingLink, CpuStackTraceLink } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
 import { Actor, ActorEnum } from "../type/actor";
@@ -136,6 +137,25 @@ const ActorTable = ({
           <br />
           <br />
           Actor.options(name="unique_name").remote()
+        </Typography>
+      ),
+    },
+    {
+      label: "Repr",
+      helpInfo: (
+        <Typography>
+          The repr name of the actor instance defined by __repr__. For example,
+          this actor will have repr "Actor1"
+          <br />
+          <br />
+          @ray.remote
+          <br />
+          class Actor:
+          <br />
+          &emsp;def __repr__(self):
+          <br />
+          &emsp;&emsp;return "Actor1"
+          <br />
         </Typography>
       ),
     },
@@ -352,6 +372,7 @@ const ActorTable = ({
               ({
                 actorId,
                 actorClass,
+                reprName,
                 jobId,
                 placementGroupId,
                 pid,
@@ -392,19 +413,23 @@ const ActorTable = ({
                       arrow
                       interactive
                     >
-                      <Link
-                        to={
-                          detailPathPrefix
-                            ? `${detailPathPrefix}/${actorId}`
-                            : actorId
-                        }
-                      >
-                        {actorId}
-                      </Link>
+                      <div>
+                        <ActorLink
+                          actorId={actorId}
+                          to={
+                            detailPathPrefix
+                              ? `${detailPathPrefix}/${actorId}`
+                              : actorId
+                          }
+                        />
+                      </div>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">{actorClass}</TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
+                  <TableCell align="center">
+                    {reprName ? reprName : "-"}
+                  </TableCell>
                   <TableCell align="center">
                     <StatusChip type="actor" status={state} />
                   </TableCell>

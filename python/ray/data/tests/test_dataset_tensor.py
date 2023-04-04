@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+import time
 
 import ray
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
@@ -16,6 +17,18 @@ from ray.data.extensions.tensor_extension import (
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+# https://github.com/ray-project/ray/issues/33695
+def test_large_tensor_creation(ray_start_regular_shared):
+    """Tests that large tensor read task creation can complete successfully without
+    hanging."""
+    start_time = time.time()
+    ray.data.range_tensor(1000, parallelism=1000, shape=(80, 80, 100, 100))
+    end_time = time.time()
+
+    # Should not take more than 20 seconds.
+    assert end_time - start_time < 20
 
 
 def test_tensors_basic(ray_start_regular_shared):

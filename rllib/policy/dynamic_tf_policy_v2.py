@@ -645,7 +645,7 @@ class DynamicTFPolicyV2(TFPolicy):
         # Create the optimizer/exploration optimizer here. Some initialization
         # steps (e.g. exploration postprocessing) may need this.
         optimizers = force_list(self.optimizer())
-        if getattr(self, "exploration", None):
+        if self.exploration:
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
         # No optimizers produced -> Return.

@@ -26,6 +26,8 @@ namespace ray {
 namespace gcs {
 
 using ContextCase = rpc::ActorDeathCause::ContextCase;
+// Forward declaration.
+std::string GenErrorMessageFromDeathCause(const rpc::ActorDeathCause &death_cause);
 
 /// Helper function to produce job table data (for newly created job or updated job).
 ///
@@ -169,17 +171,15 @@ inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
         death_cause.runtime_env_failed_context());
     error_info.set_error_type(rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED);
   } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
-    *(error_info.mutable_error_message()) =
-        death_cause.actor_unschedulable_context().error_message();
     error_info.set_error_type(rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR);
   } else if (death_cause.context_case() == ContextCase::kOomContext) {
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
-    *(error_info.mutable_error_message()) = death_cause.oom_context().error_message();
     error_info.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
     error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
   }
+  error_info.set_error_message(GenErrorMessageFromDeathCause(death_cause));
   return error_info;
 }
 
@@ -194,6 +194,8 @@ inline std::string GenErrorMessageFromDeathCause(
     return death_cause.actor_unschedulable_context().error_message();
   } else if (death_cause.context_case() == ContextCase::kActorDiedErrorContext) {
     return death_cause.actor_died_error_context().error_message();
+  } else if (death_cause.context_case() == ContextCase::kOomContext) {
+    return death_cause.oom_context().error_message();
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
     return "Death cause not recorded.";
@@ -350,6 +352,10 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
   }
   case rpc::TaskStatus::RUNNING: {
     state_updates->set_running_ts(timestamp);
+    break;
+  }
+  case rpc::TaskStatus::NIL: {
+    // Not status change.
     break;
   }
   default: {

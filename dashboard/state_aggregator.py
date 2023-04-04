@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import json
 
 from dataclasses import asdict, fields
 from itertools import islice
@@ -11,10 +10,9 @@ from ray._private.ray_constants import env_integer
 from ray._private.profiling import chrome_tracing_dump
 
 import ray.dashboard.memory_utils as memory_utils
-import ray.dashboard.utils as dashboard_utils
-import ray.core.generated.common_pb2 as common_pb2
 
 from ray.experimental.state.common import (
+    protobuf_message_to_dict,
     ActorState,
     ListApiOptions,
     ListApiResponse,
@@ -36,6 +34,7 @@ from ray.experimental.state.common import (
     ClusterEventState,
     filter_fields,
     PredicateType,
+    protobuf_to_task_state_dict,
 )
 from ray.experimental.state.state_manager import (
     DataSourceUnavailable,
@@ -209,7 +208,7 @@ class StateAPIManager:
 
         result = []
         for message in reply.actor_table_data:
-            data = self._message_to_dict(
+            data = protobuf_message_to_dict(
                 message=message,
                 fields_to_decode=[
                     "actor_id",
@@ -251,7 +250,7 @@ class StateAPIManager:
         result = []
         for message in reply.placement_group_table_data:
 
-            data = self._message_to_dict(
+            data = protobuf_message_to_dict(
                 message=message,
                 fields_to_decode=["placement_group_id", "creator_job_id", "node_id"],
             )
@@ -285,7 +284,9 @@ class StateAPIManager:
 
         result = []
         for message in reply.node_info_list:
-            data = self._message_to_dict(message=message, fields_to_decode=["node_id"])
+            data = protobuf_message_to_dict(
+                message=message, fields_to_decode=["node_id"]
+            )
             data["node_ip"] = data["node_manager_address"]
             data["start_time_ms"] = int(data["start_time_ms"])
             data["end_time_ms"] = int(data["end_time_ms"])
@@ -323,7 +324,7 @@ class StateAPIManager:
 
         result = []
         for message in reply.worker_table_data:
-            data = self._message_to_dict(
+            data = protobuf_message_to_dict(
                 message=message, fields_to_decode=["worker_id", "raylet_id"]
             )
             data["worker_id"] = data["worker_address"]["worker_id"]
@@ -331,6 +332,8 @@ class StateAPIManager:
             data["ip"] = data["worker_address"]["ip_address"]
             data["start_time_ms"] = int(data["start_time_ms"])
             data["end_time_ms"] = int(data["end_time_ms"])
+            data["worker_launch_time_ms"] = int(data["worker_launch_time_ms"])
+            data["worker_launched_time_ms"] = int(data["worker_launched_time_ms"])
             result.append(data)
 
         num_after_truncation = len(result)
@@ -387,96 +390,8 @@ class StateAPIManager:
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
-        def _to_task_state(task_attempt: dict) -> dict:
-            """
-            Convert a dict repr of `TaskEvents` to a dic repr of `TaskState`
-            """
-            task_state = {}
-            task_info = task_attempt.get("task_info", {})
-            state_updates = task_attempt.get("state_updates", [])
-            profiling_data = task_attempt.get("profile_events", {})
-            if profiling_data:
-                for event in profiling_data["events"]:
-                    # End/start times are recorded in ns. We convert them to ms.
-                    event["end_time"] = int(event["end_time"]) / 1e6
-                    event["start_time"] = int(event["start_time"]) / 1e6
-                    event["extra_data"] = json.loads(event["extra_data"])
-            task_state["profiling_data"] = profiling_data
-
-            # Convert those settable fields
-            mappings = [
-                (
-                    task_info,
-                    [
-                        "task_id",
-                        "name",
-                        "actor_id",
-                        "type",
-                        "func_or_class_name",
-                        "language",
-                        "required_resources",
-                        "runtime_env_info",
-                        "parent_task_id",
-                        "placement_group_id",
-                    ],
-                ),
-                (task_attempt, ["task_id", "attempt_number", "job_id"]),
-                (state_updates, ["node_id", "worker_id", "error_type"]),
-            ]
-            for src, keys in mappings:
-                for key in keys:
-                    task_state[key] = src.get(key)
-
-            task_state["creation_time_ms"] = None
-            task_state["start_time_ms"] = None
-            task_state["end_time_ms"] = None
-            events = []
-
-            for state in common_pb2.TaskStatus.keys():
-                key = f"{state.lower()}_ts"
-                if key in state_updates:
-                    # timestamp is recorded as nanosecond from the backend.
-                    # We need to convert it to the second.
-                    ts_ms = int(state_updates[key]) // 1e6
-                    events.append(
-                        {
-                            "state": state,
-                            "created_ms": ts_ms,
-                        }
-                    )
-                    if state == "PENDING_ARGS_AVAIL":
-                        task_state["creation_time_ms"] = ts_ms
-                    if state == "RUNNING":
-                        task_state["start_time_ms"] = ts_ms
-                    if state == "FINISHED" or state == "FAILED":
-                        task_state["end_time_ms"] = ts_ms
-
-            task_state["events"] = events
-            if len(events) > 0:
-                latest_state = events[-1]["state"]
-            else:
-                latest_state = common_pb2.TaskStatus.Name(common_pb2.NIL)
-            task_state["state"] = latest_state
-
-            return task_state
-
         result = [
-            _to_task_state(
-                self._message_to_dict(
-                    message=message,
-                    fields_to_decode=[
-                        "task_id",
-                        "job_id",
-                        "node_id",
-                        "actor_id",
-                        "parent_task_id",
-                        "worker_id",
-                        "placement_group_id",
-                        "component_id",
-                    ],
-                )
-            )
-            for message in reply.events_by_task
+            protobuf_to_task_state_dict(message) for message in reply.events_by_task
         ]
 
         num_after_truncation = len(result)
@@ -527,7 +442,7 @@ class StateAPIManager:
                 # modified protobuf name
                 # (e.g., workerId instead of worker_id) as a key.
                 worker_stats.append(
-                    self._message_to_dict(
+                    protobuf_message_to_dict(
                         message=core_worker_stat,
                         fields_to_decode=["object_id"],
                         preserving_proto_field_name=False,
@@ -619,7 +534,7 @@ class StateAPIManager:
             total_runtime_envs += reply.total
             states = reply.runtime_env_states
             for state in states:
-                data = self._message_to_dict(message=state, fields_to_decode=[])
+                data = protobuf_message_to_dict(message=state, fields_to_decode=[])
                 # Need to deserialize this field.
                 data["runtime_env"] = RuntimeEnv.deserialize(
                     data["runtime_env"]
@@ -709,10 +624,21 @@ class StateAPIManager:
                 detail=summary_by == "lineage",
             )
         )
+
         if summary_by == "func_name":
             summary_results = TaskSummaries.to_summary_by_func_name(tasks=result.result)
         else:
-            summary_results = TaskSummaries.to_summary_by_lineage(tasks=result.result)
+            # We will need the actors info for actor tasks.
+            actors = await self.list_actors(
+                option=ListApiOptions(
+                    timeout=option.timeout,
+                    limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+                    detail=True,
+                )
+            )
+            summary_results = TaskSummaries.to_summary_by_lineage(
+                tasks=result.result, actors=actors.result
+            )
         summary = StateSummary(node_id_to_summary={"cluster": summary_results})
         warnings = result.warnings
         if (
@@ -787,17 +713,3 @@ class StateAPIManager:
             option=ListApiOptions(detail=True, filters=filters, limit=10000)
         )
         return chrome_tracing_dump(result.result)
-
-    def _message_to_dict(
-        self,
-        *,
-        message,
-        fields_to_decode: List[str],
-        preserving_proto_field_name: bool = True,
-    ) -> dict:
-        return dashboard_utils.message_to_dict(
-            message,
-            fields_to_decode,
-            including_default_value_fields=True,
-            preserving_proto_field_name=preserving_proto_field_name,
-        )
