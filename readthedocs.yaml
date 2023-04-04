@@ -12,17 +12,6 @@ build:
     python: "3.9"
   jobs:
     post_checkout:
-      # Cancel building pull requests when there aren't changed in the docs directory or YAML file.
-      # You can add any other files or directories that you'd like here as well,
-      # like your docs requirements file, or other files that will change your docs build.
-      #
-      # If there are no changes (git diff exits with 0) we force the command to return with 183.
-      # This is a special exit code on Read the Docs that will cancel the build immediately.
-      - |
-        if [ "$READTHEDOCS_VERSION_TYPE" = "external" ] && git diff --quiet origin/main -- doc/ .readthedocs.yaml;
-        then
-          exit 183;
-        fi
       # Use `git log` to check if the latest commit contains "skip ci",
       # in that case exit the command with 183 to cancel the build
       - (git --no-pager log --pretty="tformat:%s -- %b" -1 | grep -viq "skip ci") || exit 183
