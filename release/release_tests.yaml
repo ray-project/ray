@@ -4344,9 +4344,6 @@
 
   stable: true
 
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
-
   frequency: nightly
   team: core
   cluster:
@@ -4363,9 +4360,6 @@
   working_dir: ../python/ray/autoscaler/aws/
 
   stable: true
-
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   frequency: nightly
   team: core
