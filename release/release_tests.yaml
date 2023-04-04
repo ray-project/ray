@@ -1627,6 +1627,17 @@
 
   alert: long_running_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: smoke-test
+       frequency: nightly
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml
+
 - name: long_running_impala
   group: Long running tests
   working_dir: long_running_tests
@@ -2513,6 +2524,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 2gpus_32cpus_gce.yaml
+
 - name: rllib_learning_tests_appo_torch
   group: RLlib tests
   working_dir: rllib_tests
@@ -2835,6 +2855,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 2gpus_32cpus_gce.yaml
+
 - name: rllib_learning_tests_sac_tf
   group: RLlib tests
   working_dir: rllib_tests
@@ -2980,6 +3009,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml
+
 - name: rllib_multi_gpu_with_attention_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
@@ -3016,15 +3054,21 @@
     wait_for_nodes:
       num_nodes: 6
 
-
-
-  smoke_test:
-    frequency: nightly
-
     run:
       timeout: 2000
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: smoke-test
+      frequency: nightly
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 4gpus_544_cpus_gce.yaml
 
 ########################
 # Core Nightly Tests
