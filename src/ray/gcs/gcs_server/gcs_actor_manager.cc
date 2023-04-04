@@ -218,8 +218,6 @@ GcsActorManager::GcsActorManager(
     RuntimeEnvManager &runtime_env_manager,
     GcsFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-    std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
-        run_delayed,
     const rpc::ClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
@@ -228,7 +226,6 @@ GcsActorManager::GcsActorManager(
       destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
-      run_delayed_(run_delayed),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
@@ -1205,7 +1202,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
     // be eventually destroyed as the CoreWorker runs the creation task will exit
     // eventually due to the creation task failure.
     RunAndClearActorCreationCallbacks(
-        actor, reply, Status::CreationTaskError("Actor __init__ failed."));
+        actor, reply, Status::CreationTaskError(reply.task_execution_error()));
   } else {
     RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id
                   << ", job id = " << actor_id.JobId();
@@ -1224,6 +1221,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   auto worker_id = actor->GetWorkerID();
   auto node_id = actor->GetNodeID();
   mutable_actor_table_data->set_node_id(node_id.Binary());
+  mutable_actor_table_data->set_repr_name(reply.actor_repr_name());
   RAY_CHECK(!worker_id.IsNil());
   RAY_CHECK(!node_id.IsNil());
   RAY_CHECK(created_actors_[node_id].emplace(worker_id, actor_id).second);
@@ -1337,43 +1335,6 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       gcs_actor_scheduler_->Reschedule(actor);
     }
   }
-}
-
-void GcsActorManager::OnJobFinished(const JobID &job_id) {
-  auto on_done = [this,
-                  job_id](const absl::flat_hash_map<ActorID, ActorTableData> &result) {
-    if (!result.empty()) {
-      std::vector<ActorID> non_detached_actors;
-      for (auto &item : result) {
-        if (!item.second.is_detached()) {
-          non_detached_actors.push_back(item.first);
-        }
-      }
-
-      run_delayed_(
-          [this, non_detached_actors = std::move(non_detached_actors)]() {
-            RAY_CHECK_OK(gcs_table_storage_->ActorTable().BatchDelete(
-                non_detached_actors, [this, non_detached_actors](const Status &status) {
-                  RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().BatchDelete(
-                      non_detached_actors, nullptr));
-                }));
-          },
-
-          actor_gc_delay_);
-
-      for (auto iter = destroyed_actors_.begin(); iter != destroyed_actors_.end();) {
-        if (iter->first.JobId() == job_id && !iter->second->IsDetached()) {
-          destroyed_actors_.erase(iter++);
-        } else {
-          iter++;
-        }
-      };
-    }
-  };
-
-  // Only non-detached actors should be deleted. We get all actors of this job and to the
-  // filtering.
-  RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetByJobId(job_id, on_done));
 }
 
 const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>

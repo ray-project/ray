@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Union
 
 import numpy as np
 
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
@@ -32,7 +33,8 @@ class TorchVisionPreprocessor(Preprocessor):
         ...     transforms.Resize((224, 224)),
         ... ])
         >>> preprocessor = TorchVisionPreprocessor(["image"], transform=transform)
-        >>> preprocessor.transform(dataset)  # doctest: +ellipsis
+        >>> dataset = preprocessor.transform(dataset)  # doctest: +ellipsis
+        >>> dataset  # doctest: +ellipsis
         Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(3, 224, 224), dtype=float)})
 
         For better performance, set ``batched`` to ``True`` and replace ``ToTensor``
@@ -52,7 +54,8 @@ class TorchVisionPreprocessor(Preprocessor):
         >>> preprocessor = TorchVisionPreprocessor(
         ...     ["image"], transform=transform, batched=True
         ... )
-        >>> preprocessor.transform(dataset)  # doctest: +ellipsis
+        >>> dataset = preprocessor.transform(dataset)  # doctest: +ellipsis
+        >>> dataset  # doctest: +ellipsis
         Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(3, 224, 224), dtype=float)})
 
     Args:
@@ -120,3 +123,6 @@ class TorchVisionPreprocessor(Preprocessor):
             outputs = transform_batch(np_data)
 
         return outputs
+
+    def preferred_batch_format(cls) -> BatchFormat:
+        return BatchFormat.NUMPY

@@ -173,19 +173,19 @@ class SampleBatch(dict):
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor).
 
-        Note: All *args and those **kwargs not listed below will be passed
+        Note: All args and those kwargs not listed below will be passed
         as-is to the parent dict constructor.
 
-        Keyword Args:
-            _time_major (Optional[bool]): Whether data in this sample batch
+        Args:
+            _time_major: Whether data in this sample batch
                 is time-major. This is False by default and only relevant
                 if the data contains sequences.
-            _max_seq_len (Optional[int]): The max sequence chunk length
+            _max_seq_len: The max sequence chunk length
                 if the data contains sequences.
-            _zero_padded (Optional[bool]): Whether the data in this batch
+            _zero_padded: Whether the data in this batch
                 contains sequences AND these sequences are right-zero-padded
                 according to the `_max_seq_len` setting.
-            _is_training (Optional[bool]): Whether this batch is used for
+            _is_training: Whether this batch is used for
                 training. If False, batch may be used for e.g. action
                 computations (inference).
         """
@@ -558,7 +558,7 @@ class SampleBatch(dict):
         assert (
             sum(s.count for s in slices) == self.count
         ), f"Calling split_by_episode on {self} returns {slices}"
-        f"which should both have {self.count} timesteps!"
+        f"which should in total have {self.count} timesteps!"
         return slices
 
     def slice(
@@ -816,6 +816,7 @@ class SampleBatch(dict):
         )
 
     def get(self, key, default=None):
+        """Returns one column (by key) from the data or a default value."""
         try:
             return self.__getitem__(key)
         except KeyError:
@@ -919,6 +920,7 @@ class SampleBatch(dict):
         return self._is_training
 
     def set_training(self, training: Union[bool, "tf1.placeholder"] = True):
+        """Sets the `is_training` flag for this SampleBatch."""
         self._is_training = training
         self.intercepted_values.pop("_is_training", None)
 
@@ -993,6 +995,7 @@ class SampleBatch(dict):
 
     @DeveloperAPI
     def set_get_interceptor(self, fn):
+        """Sets a function to be called on every getitem."""
         # If get-interceptor changes, must erase old intercepted values.
         if fn is not self.get_interceptor:
             self.intercepted_values = {}

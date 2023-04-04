@@ -180,6 +180,33 @@ def test_empty_dataset(ray_start_regular_shared):
     assert ds.count() == 0
 
 
+def test_cache_dataset(ray_start_regular_shared):
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.i = 0
+
+        def inc(self):
+            print("INC")
+            self.i += 1
+            return self.i
+
+    c = Counter.remote()
+
+    def inc(x):
+        ray.get(c.inc.remote())
+        return x
+
+    ds = ray.data.range(1)
+    ds = ds.map(inc)
+    ds = ds.cache()
+
+    for _ in range(10):
+        ds.take_all()
+
+    assert ray.get(c.inc.remote()) == 2
+
+
 def test_schema(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
     ds2 = ray.data.range_table(10, parallelism=10)
@@ -391,14 +418,7 @@ def test_convert_types(ray_start_regular_shared):
 
     arrow_ds = ray.data.range_table(1)
     assert arrow_ds.map(lambda x: "plain_{}".format(x["value"])).take() == ["plain_0"]
-    # In streaming, we set batch_format to "default" (because calling
-    # ds.dataset_format() will still invoke bulk execution and we want
-    # to avoid that). As a result, it's receiving PandasRow (the defaut
-    # batch format), which unwraps [0] to plain 0.
-    if ray.data.context.DatasetContext.get_current().use_streaming_executor:
-        assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": 0}]
-    else:
-        assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": [0]}]
+    assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": [0]}]
 
 
 def test_from_items(ray_start_regular_shared):
@@ -483,14 +503,7 @@ def test_iter_rows(ray_start_regular_shared):
     # Default ArrowRows.
     for row, t_row in zip(ds.iter_rows(), to_pylist(t)):
         assert isinstance(row, TableRow)
-        # In streaming, we set batch_format to "default" because calling
-        # ds.dataset_format() will still invoke bulk execution and we want
-        # to avoid that. As a result, it's receiving PandasRow (the defaut
-        # batch format).
-        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
-            assert isinstance(row, PandasRow)
-        else:
-            assert isinstance(row, ArrowRow)
+        assert isinstance(row, ArrowRow)
         assert row == t_row
 
     # PandasRows after conversion.
@@ -504,14 +517,7 @@ def test_iter_rows(ray_start_regular_shared):
     # Prefetch.
     for row, t_row in zip(ds.iter_rows(prefetch_blocks=1), to_pylist(t)):
         assert isinstance(row, TableRow)
-        # In streaming, we set batch_format to "default" because calling
-        # ds.dataset_format() will still invoke bulk execution and we want
-        # to avoid that. As a result, it's receiving PandasRow (the defaut
-        # batch format).
-        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
-            assert isinstance(row, PandasRow)
-        else:
-            assert isinstance(row, ArrowRow)
+        assert isinstance(row, ArrowRow)
         assert row == t_row
 
 
@@ -630,7 +636,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Prefetch.
     batches = list(
-        ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
+        ds.iter_batches(prefetch_batches=1, batch_size=None, batch_format="pandas")
     )
     assert len(batches) == len(dfs)
     for batch, df in zip(batches, dfs):
@@ -639,7 +645,9 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     batch_size = 2
     batches = list(
-        ds.iter_batches(prefetch_blocks=2, batch_size=batch_size, batch_format="pandas")
+        ds.iter_batches(
+            prefetch_batches=2, batch_size=batch_size, batch_format="pandas"
+        )
     )
     assert all(len(batch) == batch_size for batch in batches)
     assert len(batches) == math.ceil(
@@ -652,7 +660,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
     # Prefetch more than number of blocks.
     batches = list(
         ds.iter_batches(
-            prefetch_blocks=len(dfs), batch_size=None, batch_format="pandas"
+            prefetch_batches=len(dfs), batch_size=None, batch_format="pandas"
         )
     )
     assert len(batches) == len(dfs)
@@ -666,7 +674,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
     try:
         context.actor_prefetcher_enabled = False
         batches = list(
-            ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
+            ds.iter_batches(prefetch_batches=1, batch_size=None, batch_format="pandas")
         )
         assert len(batches) == len(dfs)
         for batch, df in zip(batches, dfs):
@@ -1588,16 +1596,31 @@ def test_polars_lazy_import(shutdown_only):
         ctx.use_polars = original_use_polars
 
 
-def test_default_batch_format(shutdown_only):
+def test_batch_formats(shutdown_only):
     ds = ray.data.range(100)
     assert ds.default_batch_format() == list
+    assert isinstance(next(ds.iter_batches(batch_format=None)), list)
+    assert isinstance(next(ds.iter_batches(batch_format="default")), list)
+    assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
+    assert isinstance(next(ds.iter_batches(batch_format="numpy")), np.ndarray)
 
     ds = ray.data.range_tensor(100)
     assert ds.default_batch_format() == np.ndarray
+    assert isinstance(next(ds.iter_batches(batch_format=None)), pa.Table)
+    assert isinstance(next(ds.iter_batches(batch_format="default")), np.ndarray)
+    assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
+    assert isinstance(next(ds.iter_batches(batch_format="numpy")), np.ndarray)
 
     df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
     ds = ray.data.from_pandas(df)
     assert ds.default_batch_format() == pd.DataFrame
+    assert isinstance(next(ds.iter_batches(batch_format=None)), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="default")), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
+    assert isinstance(next(ds.iter_batches(batch_format="numpy")), dict)
 
 
 def test_dataset_schema_after_read_stats(ray_start_cluster):

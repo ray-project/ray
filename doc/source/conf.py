@@ -54,11 +54,43 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.autosummary",
     "sphinx_external_toc",
-    "sphinx_thebe",
     "sphinxcontrib.autodoc_pydantic",
     "sphinxcontrib.redoc",
     "sphinx_tabs.tabs",
+    "sphinx_remove_toctrees",
 ]
+
+# Prune deep toc-trees on demand for smaller html and faster builds.
+# This only effects the navigation bar, not the content.
+if os.getenv("FAST", False):
+    remove_from_toctrees = [
+        "data/api/doc/*",
+        "ray-air/api/doc/*",
+        "ray-core/api/doc/*",
+        "ray-observability/api/state/doc/*",
+        "serve/api/doc/*",
+        "train/api/doc/*",
+        "tune/api/doc/*",
+        "workflows/api/doc/*",
+        "cluster/running-applications/job-submission/doc/*",
+        "serve/production-guide/*",
+        "serve/tutorials/deployment-graph-patterns/*",
+        "rllib/package_ref/env/*",
+        "rllib/package_ref/policy/*",
+        "rllib/package_ref/evaluation/*",
+        "rllib/package_ref/utils/*",
+        "workflows/api/*",
+        "cluster/kubernetes/user-guides/*",
+        "cluster/kubernetes/examples/*",
+        "cluster/vms/user-guides/*",
+        "cluster/running-applications/job-submission/*",
+        "ray-core/actors/*",
+        "ray-core/objects/*",
+        "ray-core/scheduling/*",
+        "ray-core/tasks/*",
+        "ray-core/patterns/*",
+        "tune/examples/*",
+    ]
 
 myst_enable_extensions = [
     "dollarmath",
@@ -71,12 +103,6 @@ myst_enable_extensions = [
     "replacements",
 ]
 
-# Thebe configuration for launching notebook cells within the docs.
-thebe_config = {
-    "selector": "div.highlight",
-    "repository_url": "https://github.com/ray-project/ray",
-    "repository_branch": "master",
-}
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
@@ -211,6 +237,7 @@ linkcheck_ignore = [
     # 403 Client Error: Forbidden for url.
     # They ratelimit bots.
     "https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/",
+    "https://dev.mysql.com/doc/connector-python/en/",
     # Returning 522s intermittently.
     "https://lczero.org/",
 ]
@@ -232,11 +259,6 @@ html_theme_options = {
     "path_to_docs": "doc/source",
     "home_page_in_toc": False,
     "show_navbar_depth": 1,
-    "launch_buttons": {
-        "notebook_interface": "jupyterlab",
-        "binderhub_url": "https://mybinder.org",
-        "colab_url": "https://colab.research.google.com",
-    },
     "announcement": "<div class='topnav'></div>",
 }
 
@@ -341,7 +363,8 @@ tag_mapping = {
     "trainMlflow": "MLflow,Training",
     "trainTuneTensorflow": "TensorFlow,Training,Tuning",
     "trainTunePyTorch": "PyTorch,Training,Tuning",
-    "trainBenchmark": "PyTorch,Training"
+    "trainBenchmark": "PyTorch,Training",
+    "trainLightning": "PyTorch,Lightning,Training"
     # TODO add and integrate tags for other libraries.
     # Tune has a proper example library
     # Serve, RLlib and AIR could use one.

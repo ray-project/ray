@@ -6,7 +6,7 @@ import ray
 import tensorflow as tf
 
 from ray.air import session
-from ray.air.integrations.keras import Callback
+from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.train.tensorflow import TensorflowTrainer
 from ray.air.config import ScalingConfig
 
@@ -53,7 +53,9 @@ def train_func(config: dict):
         tf_dataset = dataset.to_tf(
             feature_columns="x", label_columns="y", batch_size=batch_size
         )
-        history = multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
+        history = multi_worker_model.fit(
+            tf_dataset, callbacks=[ReportCheckpointCallback()]
+        )
         results.append(history.history)
     return results
 

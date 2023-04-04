@@ -111,6 +111,23 @@ def test_zip_arrow(ray_start_regular_shared):
     assert result[0] == {"id": 0, "id_1": 0, "id_2": 0}
 
 
+def test_zip_preserve_order(ray_start_regular_shared):
+    def foo(x):
+        import time
+
+        if x[0] < 5:
+            time.sleep(1)
+        return x
+
+    num_items = 10
+    items = list(range(num_items))
+    ds1 = ray.data.from_items(items, parallelism=num_items)
+    ds2 = ray.data.from_items(items, parallelism=num_items)
+    ds2 = ds2.map_batches(foo, batch_size=1)
+    result = ds1.zip(ds2).take_all()
+    assert result == list(zip(range(num_items), range(num_items))), result
+
+
 def test_empty_shuffle(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=100)
     ds = ds.filter(lambda x: x)
@@ -159,6 +176,7 @@ def test_repartition_noshuffle(ray_start_regular_shared):
     # Test num_partitions > num_rows
     ds4 = ds.repartition(40, shuffle=False)
     assert ds4.num_blocks() == 40
+
     blocks = ray.get(ds4.get_internal_block_refs())
     assert all(isinstance(block, list) for block in blocks), blocks
     assert ds4.sum() == 190

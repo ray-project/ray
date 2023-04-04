@@ -1,9 +1,9 @@
-import numpy as np
-from ray.train.lightning import LightningConfigBuilder, LightningTrainer
-import ray
-from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
 import pytest
+import numpy as np
 
+import ray
+from ray.train.lightning import LightningConfigBuilder, LightningTrainer
+from ray.air.util.data_batch_conversion import _convert_batch_type_to_pandas
 from ray.train.tests.lightning_test_utils import (
     LinearModule,
     DoubleLinearModule,
@@ -27,18 +27,13 @@ def test_config_builder():
     with pytest.raises(
         ValueError, match="'module_class' must be a subclass of 'pl.LightningModule'!"
     ):
-        LightningConfigBuilder().module(cls=DummyClass)
+        LightningConfigBuilder().module(cls=DummyClass).build()
 
     with pytest.raises(
         ValueError, match="'module_class' must be a class, not a class instance."
     ):
         model = LinearModule(1, 1)
-        LightningConfigBuilder().module(cls=model)
-
-    with pytest.raises(
-        TypeError, match="module\(\) missing 1 required positional argument: 'cls'"
-    ):
-        LightningConfigBuilder().module(input_dim=10)
+        LightningConfigBuilder().module(cls=model).build()
 
     with pytest.raises(
         TypeError, match="trainer\(\) takes 1 positional argument but 3 were given"
@@ -93,7 +88,13 @@ def test_trainer_with_native_dataloader(
         lightning_config=config_builder.build(), scaling_config=scaling_config
     )
 
-    trainer.fit()
+    results = trainer.fit()
+    assert results.metrics["epoch"] == num_epochs - 1
+    assert (
+        results.metrics["step"] == num_epochs * dataset_size / num_workers / batch_size
+    )
+    assert "loss" in results.metrics
+    assert "val_loss" in results.metrics
 
 
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
@@ -109,7 +110,7 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, accelerator):
 
     lightning_config = (
         LightningConfigBuilder()
-        .module(LinearModule, input_dim=32, output_dim=4)
+        .module(cls=LinearModule, input_dim=32, output_dim=4)
         .trainer(max_epochs=num_epochs, accelerator=accelerator)
         .build()
     )
@@ -125,19 +126,26 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, accelerator):
         datasets_iter_config={"batch_size": batch_size},
     )
 
-    trainer.fit()
+    results = trainer.fit()
+    assert results.metrics["epoch"] == num_epochs - 1
+    assert (
+        results.metrics["step"] == num_epochs * dataset_size / num_workers / batch_size
+    )
+    assert "loss" in results.metrics
+    assert "val_loss" in results.metrics
 
 
-@pytest.mark.parametrize("accelerator", ["gpu"])
+@pytest.mark.parametrize("accelerator", ["cpu"])
 def test_trainer_with_categorical_ray_data(ray_start_6_cpus_2_gpus, accelerator):
     num_epochs = 4
     batch_size = 8
     num_workers = 2
     dataset_size = 256
 
+    # Create simple categorical ray dataset
     input_1 = np.random.rand(dataset_size, 32).astype(np.float32)
     input_2 = np.random.rand(dataset_size, 32).astype(np.float32)
-    pd = convert_batch_type_to_pandas({"input_1": input_1, "input_2": input_2})
+    pd = _convert_batch_type_to_pandas({"input_1": input_1, "input_2": input_2})
     train_dataset = ray.data.from_pandas(pd)
     val_dataset = ray.data.from_pandas(pd)
 
@@ -164,7 +172,14 @@ def test_trainer_with_categorical_ray_data(ray_start_6_cpus_2_gpus, accelerator)
         datasets_iter_config={"batch_size": batch_size},
     )
 
-    trainer.fit()
+    results = trainer.fit()
+    assert results.metrics["epoch"] == num_epochs - 1
+    assert (
+        results.metrics["step"] == num_epochs * dataset_size / num_workers / batch_size
+    )
+    assert "loss" in results.metrics
+    assert "val_loss" in results.metrics
+    assert results.checkpoint
 
 
 if __name__ == "__main__":
