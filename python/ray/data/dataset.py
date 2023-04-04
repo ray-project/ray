@@ -625,8 +625,8 @@ class Dataset(Generic[T]):
                     self.base_predictor = base_predictor
 
                 @classmethod
-                def from_checkpoint(cls, checkpoint):
-                    return cls(base_predictor=checkpoint.to_dict()["predictor"])
+                def from_checkpoint(cls, checkpoint, use_gpu=False):
+                    return cls(base_predictor=checkpoint.to_dict()["predictor"], use_gpu=use_gpu)
 
                 def predict(self, data, feature_columns, keep_columns, **kwargs):
                     return self.base_predictor.predict(data, feature_columns, keep_columns, **kwargs)
