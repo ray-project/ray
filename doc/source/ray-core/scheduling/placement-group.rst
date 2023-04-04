@@ -47,6 +47,7 @@ Bundles are specified by a list of dictionaries, e.g., ``[{"CPU": 1}, {"CPU": 1,
 - ``memory`` corresponds to ``memory`` as used in :func:`ray.remote <ray.remote>`
 - Other resources corresponds to ``resources`` as used in :func:`ray.remote <ray.remote>` (E.g., ``ray.init(resources={"disk": 1})`` can have a bundle of ``{"disk": 1}``).
 
+Placement group scheduling is asynchronous. The `ray.util.placement_group` returns immediately.
 
 .. tabbed:: Python
 
@@ -92,8 +93,7 @@ Bundles are specified by a list of dictionaries, e.g., ``[{"CPU": 1}, {"CPU": 1,
 
       ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
 
-Placement group scheduling is asynchronous. The `ray.util.placement_group` returns immediately. You can block your program until
-the placement group is ready using the `ready` (compatible with ``ray.get``) or `wait` (block the program until the placement group is ready) API. 
+You can block your program until the placement group is ready using the `ready` (compatible with ``ray.get``) or `wait` (block the program until the placement group is ready) API. 
 **It is recommended to verify placement groups are ready** before using them to schedule tasks and actors. 
 
 .. tabbed:: Python
@@ -131,6 +131,8 @@ the placement group is ready using the `ready` (compatible with ``ray.get``) or 
         std::cout << group.GetName() << std::endl;
       }
 
+SANG-TODO image 1
+
 Placement groups are atomically created - meaning that if there exists a bundle that cannot fit in any of the current nodes, 
 then the entire placement group will not be ready and no resources are reserved.
 To see what this means, let's create another placement group that requires ``{"CPU":1}, {"GPU": 2}`` (2 bundles). The current cluster has 
@@ -144,6 +146,8 @@ Since we cannot create every bundle to the cluster, placement group won't be cre
         :language: python
         :start-after: __create_pg_failed_start__
         :end-before: __create_pg_failed_end__
+
+SANG-TODO images 2
 
 If there are not enough resources to create a placement group, it is in the pending state.
 
@@ -162,7 +166,7 @@ Schedule Tasks and Actors to Placement Groups (Use Reserved Resources)
 In the previous section, we created a placement group that reserves ``{"CPU": 1, "GPU: 1"}`` from a 2 CPU and 2 GPU node.
 
 Now let's schedule an actor to the placement group. 
-You can schedule actors/tasks on the placement group using
+You can schedule actors/tasks to the placement group using
 :class:`options(scheduling_strategy=PlacementGroupSchedulingStrategy(...)) <ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy>`.
 
 .. tabbed:: Python
@@ -230,7 +234,7 @@ You can schedule actors/tasks on the placement group using
 
 In Ray, actor requires 1 CPU to be scheduled, and once it is created, it occupies 0 CPU.
 Since the placement group has a reserved ``{"CPU": 1, "GPU" 1}`` bundle, the actor can be scheduled onto this bundle.
-After the previous actor is created, we have remaining ``{"CPU": 1, "GPU": 1}`` from this bundle because actor uses 0 CPU.
+After the previous actor is created, we have remaining ``{"CPU": 1, "GPU": 1}`` from this bundle because the actor uses 0 CPU.
 Let's create another actor to this bundle. This time we explicitly specify actor requires 1 CPU.
 
 .. tabbed:: Python
@@ -239,8 +243,6 @@ Let's create another actor to this bundle. This time we explicitly specify actor
         :language: python
         :start-after: __schedule_pg_2_start__
         :end-before: __schedule_pg_2_end__
-
-SANG-TODO images to explain.
 
 Actor is scheduled now! Each bundle can be used by multiple tasks and actors. 
 In this case, since the actor uses 1 CPU, there's remaining 1 GPU from the bundle. 
@@ -267,7 +269,11 @@ will be scheduled on a random bundle that have the unallocated reserved resource
         :start-after: __schedule_pg_3_start__
         :end-before: __schedule_pg_3_end__
 
-We succeeds to schedule the GPU actor! You can verify the reserved resources are all used from the ``ray status`` command.
+We succeed to schedule the GPU actor! The below image describes 3 actors scheduled into the placement group. 
+
+SANG-TODO image 3
+
+You can also verify the reserved resources are all used from the ``ray status`` command.
 
 .. code-block:: bash
 
@@ -323,53 +329,6 @@ group using :func:`remove_placement_group <ray.util.remove_placement_group>` API
       ray::PlacementGroup removed_placement_group = ray::GetPlacementGroup(placement_group.GetID());
       assert(removed_placement_group.GetState(), ray::PlacementGroupState::REMOVED);
 
-.. _ray-placement-group-observability-ref:
-
-Observe and Debug Placement Groups
-----------------------------------
-
-Ray provides several useful tools to inspect the placement group states and resource usage.
-
-- **Ray Status** is a CLI tool to see the resource usage and the scheduling resource requirement of the placement groups.
-- **Ray Dashboard** is a UI tool to inspect placement group states.
-- **Ray State API** is a CLI to inspect placement group states.
-
-.. tabbed:: Ray Status
-
-  The CLI command ``ray status`` provides the autoscaling status of the cluster. 
-  It provides the "resource demands" from unscheduled placement groups as well as the resource reservation status.
-
-  SANG-TODO images
-
-.. tabbed:: Dashboard
-
-  :ref:`The dashboard job view <dash-jobs-view>` provides the placement group table that displays the scheduling state and metadata of the placement group.
-
-  .. note::
-
-    Ray dashboard is only available when Ray is installed with ``pip install "ray[default]"``.
-
-.. tabbed:: Ray State API
-
-  :ref:`Ray state API <state-api-overview-ref>` is a CLI tool to inspect the state of Ray resources (tasks, actors, placement groups, etc.). 
-
-  ``ray list placement-groups`` provides the metadata and the scheduling state of the placement group.
-  ``ray list placement-groups --detail`` provides stats and scheduling state in a greater detail.
-
-  .. note::
-
-    State API is only available when Ray is installed with ``pip install "ray[default]"``
-
-Inspect Placement Group Scheduling State
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-From the above tools, you can see the state of the placement group. The definition of states are specified in the following files.
-
-- `High level state <https://github.com/ray-project/ray/blob/03a9d2166988b16b7cbf51dac0e6e586455b28d8/src/ray/protobuf/gcs.proto#L579>`_
-- `Details <https://github.com/ray-project/ray/blob/03a9d2166988b16b7cbf51dac0e6e586455b28d8/src/ray/protobuf/gcs.proto#L524>`_
-
-SANG-TODO Diagrams
-
 .. _pgroup-strategy:
 
 Placement Strategy
@@ -406,6 +365,53 @@ Each bundle must be scheduled in a separate node.
 
 Each bundle will be spread onto separate nodes on a best effort basis.
 If strict spreading is not feasible, bundles can be placed overlapping nodes.
+
+.. _ray-placement-group-observability-ref:
+
+Observe and Debug Placement Groups
+----------------------------------
+
+Ray provides several useful tools to inspect the placement group states and resource usage.
+
+- **Ray Status** is a CLI tool to see the resource usage and the scheduling resource requirement of the placement groups.
+- **Ray Dashboard** is a UI tool to inspect placement group states.
+- **Ray State API** is a CLI to inspect placement group states.
+
+.. tabbed:: ray status (CLI)
+
+  The CLI command ``ray status`` provides the autoscaling status of the cluster. 
+  It provides the "resource demands" from unscheduled placement groups as well as the resource reservation status.
+
+  SANG-TODO images
+
+.. tabbed:: Dashboard
+
+  :ref:`The dashboard job view <dash-jobs-view>` provides the placement group table that displays the scheduling state and metadata of the placement group.
+
+  .. note::
+
+    Ray dashboard is only available when Ray is installed with ``pip install "ray[default]"``.
+
+.. tabbed:: Ray State API
+
+  :ref:`Ray state API <state-api-overview-ref>` is a CLI tool to inspect the state of Ray resources (tasks, actors, placement groups, etc.). 
+
+  ``ray list placement-groups`` provides the metadata and the scheduling state of the placement group.
+  ``ray list placement-groups --detail`` provides stats and scheduling state in a greater detail.
+
+  .. note::
+
+    State API is only available when Ray is installed with ``pip install "ray[default]"``
+
+Inspect Placement Group Scheduling State
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+From the above tools, you can see the state of the placement group. The definition of states are specified in the following files.
+
+- `High level state <https://github.com/ray-project/ray/blob/03a9d2166988b16b7cbf51dac0e6e586455b28d8/src/ray/protobuf/gcs.proto#L579>`_
+- `Details <https://github.com/ray-project/ray/blob/03a9d2166988b16b7cbf51dac0e6e586455b28d8/src/ray/protobuf/gcs.proto#L524>`_
+
+SANG-TODO Diagrams
 
 [Advanced] Child Tasks and Actors
 ---------------------------------
