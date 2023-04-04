@@ -548,13 +548,13 @@ ray::Status NodeManager::RegisterGcs() {
       [this] {
         // Flag to see whether a request is running.
         static bool checking = false;
-        if(checking) {
+        if (checking) {
           return;
         }
         checking = true;
         gcs_client_->Nodes();
-      }, "NodeManager.GcsCheckAlive")
-  return ray::Status::OK();
+      },
+      "NodeManager.GcsCheckAlive") return ray::Status::OK();
 }
 
 void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker, bool force) {
