@@ -36,12 +36,20 @@ download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERS
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp311-cp311-manylinux2014_aarch64.whl"
 
 # macOS.
-echo "Downloading Ray core MacOS wheels"
+echo "Downloading Ray core MacOS wheels (intel)"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-macosx_10_15_intel.whl"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_15_intel.whl"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp38-cp38-macosx_10_15_x86_64.whl"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp39-cp39-macosx_10_15_x86_64.whl"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp310-cp310-macosx_10_15_universal2.whl"
+
+
+# macOS arm64 CPP.
+echo "Downloading Ray core MacOS wheels (arm64)"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp38-cp38-macosx_11_0_arm64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp39-cp39-macosx_11_0_arm64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp310-cp310-macosx_11_0_arm64.whl"
+
 
 # Windows.
 echo "Downloading Ray core Windows wheels"
@@ -68,12 +76,18 @@ download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERS
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp311-cp311-manylinux2014_aarch64.whl"
 
 # macOS CPP.
-echo "Downloading Ray CPP MacOS wheels"
+echo "Downloading Ray CPP MacOS wheels (intel)"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp36-cp36m-macosx_10_15_intel.whl"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp37-cp37m-macosx_10_15_intel.whl"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp38-cp38-macosx_10_15_x86_64.whl"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp39-cp39-macosx_10_15_x86_64.whl"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp310-cp310-macosx_10_15_universal2.whl"
+
+# macOS arm64 CPP.
+echo "Downloading Ray CPP MacOS wheels (arm64)"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp38-cp38-macosx_11_0_arm64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp39-cp39-macosx_11_0_arm64.whl"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp310-cp310-macosx_11_0_arm64.whl"
 
 # Windows CPP.
 echo "Downloading Ray CPP Windows wheels"
