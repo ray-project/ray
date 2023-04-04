@@ -533,7 +533,7 @@ There are two possible ways to extend existing RLModules:
 
 .. tabbed:: Inheriting existing RLModules
 
-    One way to extend existing RLModules is to inherit from them and override the methods you need to customize. For example, you can extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization. You can then pass the new customized class into the algorithm configuration to use the PPO algorithm to optimize your custom RLModule.
+    One way to extend existing RLModules is to inherit from them and override the methods you need to customize. For example, extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization. Then pass the new customized class into the algorithm configuration to use the PPO algorithm to optimize your custom RLModule.
 
     .. code-block:: python
 
