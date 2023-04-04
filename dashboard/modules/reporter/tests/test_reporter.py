@@ -40,6 +40,7 @@ STATS_TEMPLATE = {
     "cpu": 57.4,
     "cpus": (8, 4),
     "mem": (17179869184, 5723353088, 66.7, 9234341888),
+    "shm": 456,
     "workers": [
         {
             "memory_info": Bunch(
@@ -258,21 +259,24 @@ def test_report_stats():
     }
 
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 29
+    for record in records:
+        print(record.gauge.name)
+        print(record)
+    assert len(records) == 33
     # Test stats without raylets
     STATS_TEMPLATE["raylet"] = {}
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 27
+    assert len(records) == 30
     # Test stats with gpus
     STATS_TEMPLATE["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
     ]
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 31
+    assert len(records) == 34
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 29
+    assert len(records) == 32
 
 
 def test_report_stats_gpu():

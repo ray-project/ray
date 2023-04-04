@@ -6,6 +6,7 @@ import {
   green,
   grey,
   lightBlue,
+  orange,
   red,
   yellow,
 } from "@material-ui/core/colors";
@@ -13,7 +14,11 @@ import { CSSProperties } from "@material-ui/core/styles/withStyles";
 import React, { ReactNode } from "react";
 import { ActorEnum } from "../type/actor";
 import { PlacementGroupState } from "../type/placementGroup";
-import { ServeApplicationStatus, ServeDeploymentStatus } from "../type/serve";
+import {
+  ServeApplicationStatus,
+  ServeDeploymentStatus,
+  ServeReplicaState,
+} from "../type/serve";
 import { TypeTaskStatus } from "../type/task";
 
 const colorMap = {
@@ -69,6 +74,13 @@ const colorMap = {
     [ServeDeploymentStatus.UPDATING]: yellow,
     [ServeDeploymentStatus.HEALTHY]: green,
     [ServeDeploymentStatus.UNHEALTHY]: red,
+  },
+  serveReplica: {
+    [ServeReplicaState.STARTING]: yellow,
+    [ServeReplicaState.UPDATING]: yellow,
+    [ServeReplicaState.RECOVERING]: orange,
+    [ServeReplicaState.RUNNING]: green,
+    [ServeReplicaState.STOPPING]: red,
   },
 } as {
   [key: string]: {

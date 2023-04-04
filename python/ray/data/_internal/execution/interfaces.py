@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
 
 import ray
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.progress_bar import ProgressBar
@@ -130,10 +131,8 @@ class ExecutionResources:
         """Returns a human-readable string for the object store memory field."""
         if self.object_store_memory is None:
             return "None"
-        elif self.object_store_memory >= 1024 * 1024 * 1024:
-            return f"{round(self.object_store_memory / (1024 * 1024 * 1024), 2)} GiB"
         else:
-            return f"{round(self.object_store_memory / (1024 * 1024), 2)} MiB"
+            return memory_string(self.object_store_memory)
 
     def add(self, other: "ExecutionResources") -> "ExecutionResources":
         """Adds execution resources.

@@ -16,6 +16,7 @@ from typing import (
 )
 
 import ray
+from ray.data.block import BlockMetadata
 from ray.data._internal.util import capitalize
 from ray.types import ObjectRef
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
@@ -481,7 +482,11 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
-    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats, Optional["Executor"]]:
+    ) -> Tuple[
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+        DatasetStats,
+        Optional["Executor"],
+    ]:
         """Execute this plan, returning an iterator.
 
         If the streaming execution backend is enabled, this will use streaming
@@ -497,9 +502,11 @@ class ExecutionPlan:
         """
 
         ctx = DatasetContext.get_current()
-        if not ctx.use_streaming_executor:
+        if not ctx.use_streaming_executor or self.has_computed_output():
             return (
-                self.execute(allow_clear_input_blocks, force_read).iter_blocks(),
+                self.execute(
+                    allow_clear_input_blocks, force_read
+                ).iter_blocks_with_metadata(),
                 self._snapshot_stats,
                 None,
             )
@@ -530,15 +537,15 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
+        preserve_order: bool = False,
     ) -> BlockList:
         """Execute this plan.
-
-        This will always execute the plan using bulk execution.
 
         Args:
             allow_clear_input_blocks: Whether we should try to clear the input blocks
                 for each stage.
             force_read: Whether to force the read stage to fully execute.
+            preserve_order: Whether to preserve order in execution.
 
         Returns:
             The blocks of the output dataset.
@@ -575,6 +582,7 @@ class ExecutionPlan:
                     self,
                     allow_clear_input_blocks=allow_clear_input_blocks,
                     dataset_uuid=self._dataset_uuid,
+                    preserve_order=preserve_order,
                 )
                 # TODO(ekl) we shouldn't need to set this in the future once we move
                 # to a fully lazy execution model, unless .cache() is used. The reason

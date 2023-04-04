@@ -15,6 +15,7 @@ from ray._private.test_utils import (
 )
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
+import subprocess
 
 
 @pytest.fixture
@@ -348,6 +349,93 @@ print(ray.get([use_gpu.remote(), use_gpu.remote()]))
     wait_for_condition(lambda: check_demands(2))
     proc.terminate()
     wait_for_condition(lambda: check_demands(1))
+
+
+@pytest.mark.skipif(enable_external_redis(), reason="Only valid in non redis env")
+def test_redis_not_available(monkeypatch, call_ray_stop_only):
+    monkeypatch.setenv("RAY_NUM_REDIS_GET_RETRIES", "2")
+    monkeypatch.setenv("RAY_REDIS_ADDRESS", "localhost:12345")
+    p = subprocess.run(
+        "ray start --head",
+        shell=True,
+        capture_output=True,
+    )
+    assert (
+        "Could not establish connection to Redis localhost:12345" in p.stderr.decode()
+    )
+    assert "Please check /tmp/ray/session" in p.stderr.decode()
+    assert "RuntimeError: Failed to start GCS" in p.stderr.decode()
+
+
+@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
+def test_redis_wrong_password(monkeypatch, external_redis, call_ray_stop_only):
+    monkeypatch.setenv("RAY_NUM_REDIS_GET_RETRIES", "2")
+    p = subprocess.run(
+        "ray start --head  --redis-password=1234",
+        shell=True,
+        capture_output=True,
+    )
+
+    assert "RedisError: ERR AUTH <password> called" in p.stderr.decode()
+    assert "Please check /tmp/ray/session" in p.stderr.decode()
+    assert "RuntimeError: Failed to start GCS" in p.stderr.decode()
+
+
+@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
+def test_redis_full(ray_start_cluster_head):
+    import os
+    import redis
+
+    gcs_address = ray_start_cluster_head.gcs_address
+    redis_addr = os.environ["RAY_REDIS_ADDRESS"]
+    host, port = redis_addr.split(":")
+    if os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1":
+        cli = redis.RedisCluster(host, int(port))
+    else:
+        cli = redis.Redis(host, int(port))
+    # Set the max memory to 10MB
+    cli.config_set("maxmemory", 5 * 1024 * 1024)
+
+    gcs_cli = ray._private.gcs_utils.GcsClient(address=gcs_address)
+    # GCS should fail
+    import grpc
+
+    with pytest.raises(grpc.RpcError):
+        gcs_cli.internal_kv_put(b"A", b"A" * 6 * 1024 * 1024, True, None)
+    logs_dir = ray_start_cluster_head.head_node._logs_dir
+
+    with open(os.path.join(logs_dir, "gcs_server.err")) as err:
+        assert "OOM command not allowed when used" in err.read()
+
+
+def test_omp_threads_set_third_party(ray_start_cluster, monkeypatch):
+    ###########################
+    # Test the OMP_NUM_THREADS are picked up by 3rd party libraries
+    # when running tasks if no OMP_NUM_THREADS is set by user.
+    # e.g. numpy, numexpr
+    ###########################
+    with monkeypatch.context() as m:
+        m.delenv("OMP_NUM_THREADS", raising=False)
+
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=4)
+        ray.init(address=cluster.address)
+
+        @ray.remote(num_cpus=2)
+        def f():
+            # Assert numpy using 2 threads for it's parallelism backend.
+            import numpy  # noqa: F401
+            from threadpoolctl import threadpool_info
+
+            for pool_info in threadpool_info():
+                assert pool_info["num_threads"] == 2
+
+            import numexpr
+
+            assert numexpr.nthreads == 2
+            return True
+
+        assert ray.get(f.remote())
 
 
 if __name__ == "__main__":
