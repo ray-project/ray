@@ -485,10 +485,10 @@ class Monitor:
         for _, node_type in autoscaler_summary.failed_nodes:
             failed_node_counts[node_type] += 1
 
-        # NOTE: We don't reset this metric very often, so it's possible that if
-        # nodes don't fail frequently, these values could be sticky. We can
-        # move this loop to a `for node_type in node_types: count = ...`
-        # pattern if forgetting faster is preferred.
+        # NOTE: This metric isn't reset with monitor resets. This means it will
+        # only be updated when the autoscaler' node tracker remembers failed
+        # nodes. If the node type failure is evicted from the autoscaler, the
+        # metric may not update for a while.
         for node_type, count in failed_node_counts.items():
             self.prom_metrics.recently_failed_nodes.labels(
                 SessionName=self.prom_metrics.session_name,
