@@ -38,9 +38,13 @@ message LaunchedInstance {
 // after some timeout period (by default 30 minutes).
 message LauchingInstance {
   enum LauchingRequestState {
+    // The request is queued and waiting to send.
     QUEUED = 1;
+    // The request has been sent.
     REQUESTED = 2;
+    // The request has been accepted, but no instance_id yet.
     RESOURCES_ALLOCATED = 3;
+    // The request has failed.
     FAILED = 4;
   }
   string node_type = 1;
