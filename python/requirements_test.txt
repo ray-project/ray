@@ -12,7 +12,7 @@ azure-mgmt-network==19.0.0
 azure-mgmt-resource==20.0.0
 msrestazure==0.6.4
 beautifulsoup4==4.11.1
-boto3==1.23.10
+boto3==1.26.76
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0
 # Keep in sync with `ci/build/upload_build_info.sh`
@@ -85,7 +85,7 @@ polars==0.14.21
 
 # Dependencies from requirements.txt that are pinned
 # in library requirements
-botocore==1.19.52
+botocore==1.19.76
 protobuf==3.19.6
 typer==0.6.1
 uvicorn==0.16.0
