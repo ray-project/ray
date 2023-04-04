@@ -145,8 +145,8 @@ class UsageStatsToReport:
     #: The total number of running jobs excluding internal ones
     #  when the report is generated.
     total_num_running_jobs: Optional[int]
-    #: The glibc version in the OS.
-    glibc_version: Optional[str]
+    #: The libc version in the OS.
+    libc_version: Optional[str]
 
 
 @dataclass(init=True)
@@ -360,11 +360,12 @@ def _generate_cluster_metadata():
             }
         )
         if sys.platform == "linux":
-            # Record glibc version
+            # Record llibc version
             (lib, ver) = platform.libc_ver()
-            if lib != "glibc":
-                ver = "na"
-            metadata.update({"glibc_version": ver})
+            if not lib:
+                metadata.update({"libc_version": "NA"})
+            else:
+                metadata.update({"libc_version": f"{lib}:{ver}"})
     return metadata
 
 
@@ -768,7 +769,7 @@ def generate_report_data(
         extra_usage_tags=get_extra_usage_tags_to_report(gcs_client),
         total_num_nodes=get_total_num_nodes_to_report(gcs_client),
         total_num_running_jobs=get_total_num_running_jobs_to_report(gcs_client),
-        glibc_version=cluster_metadata.get("glibc_version"),
+        libc_version=cluster_metadata.get("libc_version"),
     )
     return data
 
