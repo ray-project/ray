@@ -730,7 +730,7 @@ class AirResultProgressCallback(Callback):
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
         if self._verbosity < self._start_end_verbosity:
             return
-        has_config = trial.config is not None
+        has_config = bool(trial.config)
         print(
             " ".join(
                 [
