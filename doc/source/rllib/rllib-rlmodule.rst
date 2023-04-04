@@ -492,7 +492,7 @@ The following example shows how we can create a custom multi-agent RL module whe
 
                 self._rl_modules = rl_modules
 
-To construct this custom multi-agent RL odule, we need to pass the class to the :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` constructor. We need to also pass the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec` for each agent. This is because RLlib needs to know the observation, action spaces, and model hyper-parameters for each agent.
+To construct this custom multi-agent RL module, pass the class to the :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` constructor. Also, pass the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec` for each agent because RLlib requires the observation, action spaces, and model hyper-parameters for each agent.
 
 .. code-block:: python
 
