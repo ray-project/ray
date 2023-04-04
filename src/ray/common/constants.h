@@ -54,5 +54,10 @@ constexpr char kSetupWorkerFilename[] = "setup_worker.py";
 /// The version of Ray
 constexpr char kRayVersion[] = "3.0.0.dev0";
 
-/// Added niceness for thread in TaskEventBuffer
-constexpr int kTaskEventBufferAdditionalNice = 5;
+#if defined(__APPLE__)
+constexpr char kLibraryPathEnvName[] = "DYLD_LIBRARY_PATH";
+#elif defined(_WIN32)
+constexpr char kLibraryPathEnvName[] = "PATH";
+#else
+constexpr char kLibraryPathEnvName[] = "LD_LIBRARY_PATH";
+#endif

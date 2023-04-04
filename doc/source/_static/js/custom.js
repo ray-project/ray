@@ -28,7 +28,47 @@ window.addEventListener("scroll", loadVisibleTermynals);
 createTermynals();
 loadVisibleTermynals();
 
+// Reintroduce dropdown icons on the sidebar. This is a hack, as we can't
+// programmatically figure out which nav items have children anymore.
+document.addEventListener("DOMContentLoaded", function() {
+    let navItems = document.querySelectorAll(".bd-sidenav li");
+    for (let i = 0; i < navItems.length; i++) {
+        let navItem = navItems[i];
+        const stringList = [
+            "User Guide", "Examples",
+            "Ray Core", "Ray Core API",
+            "Ray Clusters", "Deploying on Kubernetes", "Deploying on VMs",
+            "Applications Guide", "Ray Cluster Management API",
+            "Ray AI Runtime (AIR)", "Ray AIR API",
+            "Ray Data", "Ray Datasets API", "Integrations",
+            "Ray Train", "Ray Train API",
+            "Ray Tune", "Ray Tune Examples", "Ray Tune API",
+            "Ray Serve", "Ray Serve API",
+            "Ray RLlib", "Ray RLlib API",
+            "More Libraries", "Ray Workflows (Alpha)",
+            "Monitoring and Debugging",
+            "References",
+            "Developer Guides", "Getting Involved / Contributing",
+        ];
 
+        const containsString = stringList.some(str => navItem.innerText ===str);
+
+        if (containsString && ! navItem.classList.contains('current')) {
+            if (navItem.classList.contains('toctree-l1')) {
+                navItem.style.fontWeight = "bold";
+            }
+            navItem.innerHTML +=
+                '<input checked="" class="toctree-checkbox" id="toctree-checkbox-'
+                + i + '" name="toctree-checkbox-1" type="checkbox">'
+            navItem.innerHTML +=
+                '<label htmlFor="toctree-checkbox-'
+                + i + '"><i class="fas fa-chevron-up"></i></label>'
+        }
+    }
+});
+
+// Dynamically adjust the height of all panel elements in a gallery to be the same as
+// that of the max-height element.
 document.addEventListener("DOMContentLoaded", function() {
   let images = document.getElementsByClassName("fixed-height-img");
   let maxHeight = 0;
@@ -61,3 +101,23 @@ window.onload = function() {
         localStorage.removeItem("scroll");
     }
 };
+
+
+let firstLink = document.getElementsByClassName("caption")[0];
+firstLink.classList.add("toctree-l1", "current");
+firstLink.style.textTransform = "none";
+firstLink.style.fontWeight = "normal";
+firstLink.innerText = "";
+
+let home = document.createElement("a");
+home.classList.add("reference", "internal");
+
+const version = window.location.href.split("/")[4];
+const res = (version === "latest" || version === "master") ? version : "latest";
+
+home.href = "https://docs.ray.io/en/" + res + "/index.html";
+home.textContent = "Ray Docs Home";
+
+home.style = firstLink.style;
+home.style.color = "#5a5a5a";
+firstLink.appendChild(home);

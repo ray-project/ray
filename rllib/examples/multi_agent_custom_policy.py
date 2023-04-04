@@ -25,11 +25,16 @@ from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
 
+# The new RLModule / Learner API
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.examples.rl_module.random_rl_module import RandomRLModule
+
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -84,6 +89,14 @@ if __name__ == "__main__":
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(
+            rl_module_spec=MultiAgentRLModuleSpec(
+                module_specs={
+                    "learnable_policy": SingleAgentRLModuleSpec(),
+                    "random": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                }
+            ),
+        )
     )
 
     stop = {

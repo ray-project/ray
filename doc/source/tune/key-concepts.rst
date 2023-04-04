@@ -81,10 +81,10 @@ how these values are sampled (e.g. from a uniform distribution or a normal
 distribution).
 
 Tune offers various functions to define search spaces and sampling methods.
-:ref:`You can find the documentation of these search space definitions here <tune-sample-docs>`.
+:ref:`You can find the documentation of these search space definitions here <tune-search-space>`.
 
 Here's an example covering all search space functions. Again,
-:ref:`here is the full explanation of all these functions <tune-sample-docs>`.
+:ref:`here is the full explanation of all these functions <tune-search-space>`.
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -98,12 +98,12 @@ Tune Trials
 
 You use :ref:`Tuner.fit <tune-run-ref>` to execute and manage hyperparameter tuning and generate your `trials`.
 At a minimum, your ``Tuner`` call takes in a trainable as first argument, and a ``param_space`` dictionary
-to define your search space.
+to define the search space.
 
 The ``Tuner.fit()`` function also provides many features such as :ref:`logging <tune-logging>`,
-:ref:`checkpointing <tune-function-checkpointing>`, and :ref:`early stopping <tune-stopping-ref>`.
-Continuing with the example defined earlier (minimizing ``a (x ** 2) + b``), a simple Tune run with a simplistic
-search space for ``a`` and ``b`` would look like this:
+:ref:`checkpointing <tune-trial-checkpoint>`, and :ref:`early stopping <tune-stopping-ref>`.
+In the example, minimizing ``a (x ** 2) + b``, a simple Tune run with a simplistic search space for ``a`` and ``b``
+looks like this:
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -306,10 +306,10 @@ and `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__.
 
 When using schedulers, you may face compatibility issues, as shown in the below compatibility matrix.
 Certain schedulers cannot be used with search algorithms,
-and certain schedulers require :ref:`checkpointing to be implemented <tune-function-checkpointing>`.
+and certain schedulers require that you implement :ref:`checkpointing <tune-trial-checkpoint>`.
 
 Schedulers can dynamically change trial resource requirements during tuning.
-This is currently implemented in :ref:`ResourceChangingScheduler<tune-resource-changing-scheduler>`,
+This is implemented in :ref:`ResourceChangingScheduler<tune-resource-changing-scheduler>`,
 which can wrap around any other scheduler.
 
 .. list-table:: Scheduler Compatibility Matrix

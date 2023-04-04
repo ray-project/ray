@@ -3,8 +3,8 @@ import warnings
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, Union, Dict, Any
 
-from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.air.util.data_batch_conversion import BatchFormat
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import Dataset, DatasetPipeline
@@ -67,11 +67,19 @@ class Preprocessor(abc.ABC):
         else:
             return Preprocessor.FitStatus.NOT_FITTED
 
+    @Deprecated
     def transform_stats(self) -> Optional[str]:
         """Return Dataset stats for the most recent transform call, if any."""
-        if not hasattr(self, "_transform_stats"):
-            return None
-        return self._transform_stats
+
+        raise DeprecationWarning(
+            "`preprocessor.transform_stats()` is no longer supported in Ray 2.4. "
+            "With Datasets now lazy by default, the stats are only populated "
+            "after execution. Once the dataset transform is executed, the "
+            "stats can be accessed directly from the transformed dataset "
+            "(`ds.stats()`), or can be viewed in the ray-data.log "
+            "file saved in the Ray logs directory "
+            "(defaults to /tmp/ray/session_{SESSION_ID}/logs/)."
+        )
 
     def fit(self, dataset: "Dataset") -> "Preprocessor":
         """Fit this Preprocessor to the Dataset.
@@ -142,7 +150,6 @@ class Preprocessor(abc.ABC):
                 "or simply use fit_transform() to run both steps"
             )
         transformed_ds = self._transform(dataset)
-        self._transform_stats = transformed_ds.stats()
         return transformed_ds
 
     def transform_batch(self, data: "DataBatchType") -> "DataBatchType":
@@ -209,20 +216,14 @@ class Preprocessor(abc.ABC):
         """Sub-classes should override this instead of fit()."""
         raise NotImplementedError()
 
-    def _determine_transform_to_use(self, data_format: BlockFormat) -> BatchFormat:
-        """Determine which transform to use based on data format and implementation.
+    def _determine_transform_to_use(self) -> BatchFormat:
+        """Determine which batch format to use based on Preprocessor implementation.
 
-        We will infer and pick the best transform to use:
-            * ``pandas`` data format prioritizes ``pandas`` transform if available.
-            * ``arrow`` and ``numpy`` data format prioritizes ``numpy`` transform if available. # noqa: E501
-            * Fall back to what's available if no preferred path found.
+        * If only `_transform_pandas` is implemented, then use ``pandas`` batch format.
+        * If only `_transform_numpy` is implemented, then use ``numpy`` batch format.
+        * If both are implemented, then use the Preprocessor defined preferred batch
+        format.
         """
-
-        assert data_format in (
-            "pandas",
-            "arrow",
-            "numpy",
-        ), f"Unsupported data format: {data_format}"
 
         has_transform_pandas = (
             self.__class__._transform_pandas != Preprocessor._transform_pandas
@@ -231,47 +232,25 @@ class Preprocessor(abc.ABC):
             self.__class__._transform_numpy != Preprocessor._transform_numpy
         )
 
-        # Infer transform type by prioritizing native transformation to minimize
-        # data conversion cost.
-        if data_format == BlockFormat.PANDAS:
-            # Perform native pandas transformation if possible.
-            if has_transform_pandas:
-                transform_type = BatchFormat.PANDAS
-            elif has_transform_numpy:
-                transform_type = BatchFormat.NUMPY
-            else:
-                raise NotImplementedError(
-                    "None of `_transform_numpy` or `_transform_pandas` "
-                    f"are implemented for dataset format `{data_format}`."
-                )
-        elif data_format == BlockFormat.ARROW or data_format == "numpy":
-            # Arrow -> Numpy is more efficient
-            if has_transform_numpy:
-                transform_type = BatchFormat.NUMPY
-            elif has_transform_pandas:
-                transform_type = BatchFormat.PANDAS
-            else:
-                raise NotImplementedError(
-                    "None of `_transform_numpy` or `_transform_pandas` "
-                    f"are implemented for dataset format `{data_format}`."
-                )
-
-        return transform_type
+        if has_transform_numpy and has_transform_pandas:
+            return self.preferred_batch_format()
+        elif has_transform_numpy:
+            return BatchFormat.NUMPY
+        elif has_transform_pandas:
+            return BatchFormat.PANDAS
+        else:
+            raise NotImplementedError(
+                "None of `_transform_numpy` or `_transform_pandas` are implemented. "
+                "At least one of these transform functions must be implemented "
+                "for Preprocessor transforms."
+            )
 
     def _transform(
         self, dataset: Union["Dataset", "DatasetPipeline"]
     ) -> Union["Dataset", "DatasetPipeline"]:
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
-
-        dataset_format = dataset.dataset_format()
-        if dataset_format not in (BlockFormat.PANDAS, BlockFormat.ARROW):
-            raise ValueError(
-                f"Unsupported Dataset format: '{dataset_format}'. Only 'pandas' "
-                "and 'arrow' Dataset formats are supported."
-            )
-
-        transform_type = self._determine_transform_to_use(dataset_format)
+        transform_type = self._determine_transform_to_use()
 
         # Our user-facing batch format should only be pandas or NumPy, other
         # formats {arrow, simple} are internal.
@@ -302,7 +281,7 @@ class Preprocessor(abc.ABC):
         import pandas as pd
         import numpy as np
         from ray.air.util.data_batch_conversion import (
-            convert_batch_type_to_pandas,
+            _convert_batch_type_to_pandas,
             _convert_batch_type_to_numpy,
         )
 
@@ -311,23 +290,17 @@ class Preprocessor(abc.ABC):
         except ImportError:
             pyarrow = None
 
-        if isinstance(data, pd.DataFrame):
-            data_format = BlockFormat.PANDAS
-        elif pyarrow is not None and isinstance(data, pyarrow.Table):
-            data_format = BlockFormat.ARROW
-        elif isinstance(data, (dict, np.ndarray)):
-            data_format = "numpy"
-        else:
-            raise NotImplementedError(
+        if not isinstance(data, (pd.DataFrame, pyarrow.Table, dict, np.ndarray)):
+            raise ValueError(
                 "`transform_batch` is currently only implemented for Pandas "
                 "DataFrames, pyarrow Tables, NumPy ndarray and dictionary of "
                 f"ndarray. Got {type(data)}."
             )
 
-        transform_type = self._determine_transform_to_use(data_format)
+        transform_type = self._determine_transform_to_use()
 
         if transform_type == BatchFormat.PANDAS:
-            return self._transform_pandas(convert_batch_type_to_pandas(data))
+            return self._transform_pandas(_convert_batch_type_to_pandas(data))
         elif transform_type == BatchFormat.NUMPY:
             return self._transform_numpy(_convert_batch_type_to_numpy(data))
 
@@ -342,3 +315,16 @@ class Preprocessor(abc.ABC):
     ) -> Union["np.ndarray", Dict[str, "np.ndarray"]]:
         """Run the transformation on a data batch in a NumPy ndarray format."""
         raise NotImplementedError()
+
+    @classmethod
+    @DeveloperAPI
+    def preferred_batch_format(cls) -> BatchFormat:
+        """Batch format hint for upstream producers to try yielding best block format.
+
+        The preferred batch format to use if both `_transform_pandas` and
+        `_transform_numpy` are implemented. Defaults to Pandas.
+
+        Can be overriden by Preprocessor classes depending on which transform
+        path is the most optimal.
+        """
+        return BatchFormat.PANDAS

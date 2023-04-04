@@ -19,6 +19,7 @@ from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    SERVE_DEFAULT_APP_NAME,
     MIGRATION_MESSAGE,
 )
 from ray.serve.context import (
@@ -44,6 +45,7 @@ from ray.serve._private.utils import (
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
+    record_serve_tag,
 )
 
 from ray.serve._private import api as _private_api
@@ -199,6 +201,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
             async def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
+                record_serve_tag("SERVE_FASTAPI_USED", "1")
                 install_serve_encoders_to_fastapi()
 
                 self._serve_app = frozen_app
@@ -242,6 +245,8 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                     super_cls.__del__()
 
         ASGIAppWrapper.__name__ = cls.__name__
+        if hasattr(frozen_app, "docs_url"):
+            ASGIAppWrapper.__fastapi_docs_path__ = frozen_app.docs_url
         return ASGIAppWrapper
 
     return decorator
@@ -407,8 +412,8 @@ def deployment(
             ray_actor_options=(
                 ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
             ),
-            _internal=True,
             is_driver_deployment=is_driver_deployment,
+            _internal=True,
         )
 
     # This handles both parametrized and non-parametrized usage of the
@@ -457,7 +462,7 @@ def run(
     _blocking: bool = True,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
-    name: str = "",
+    name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = "/",
 ) -> Optional[RayServeHandle]:
     """Run a Serve application and return a ServeHandle to the ingress.
@@ -495,9 +500,6 @@ def run(
 
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
-        if name:
-            for deployment in deployments:
-                deployment._name = f"{name}_{deployment._name}"
         ingress = target.ingress
     # Each DAG should always provide a valid Driver ClassNode
     elif isinstance(target, ClassNode):
@@ -550,6 +552,7 @@ def run(
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
             "is_driver_deployment": deployment._is_driver_deployment,
+            "docs_path": deployment._docs_path,
         }
         parameter_group.append(deployment_parameters)
     client.deploy_group(
@@ -564,7 +567,9 @@ def run(
 
 
 @PublicAPI(stability="alpha")
-def build(target: Union[ClassNode, FunctionNode]) -> Application:
+def build(
+    target: Union[ClassNode, FunctionNode], name: str = SERVE_DEFAULT_APP_NAME
+) -> Application:
     """Builds a Serve application into a static application.
 
     Takes in a ClassNode or FunctionNode and converts it to a
@@ -582,6 +587,7 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     Args:
         target (Union[ClassNode, FunctionNode]): A ClassNode or FunctionNode
             that acts as the top level node of the DAG.
+        name: The name of the Serve application.
 
     Returns:
         The static built Serve application
@@ -595,7 +601,7 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
 
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
-    return Application(pipeline_build(target))
+    return Application(pipeline_build(target, name))
 
 
 @PublicAPI(stability="alpha")

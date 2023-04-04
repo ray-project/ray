@@ -76,7 +76,7 @@ DEFAULT_NEW_EXECUTION_BACKEND = bool(
 # Whether to use the streaming executor. This only has an effect if the new execution
 # backend is enabled.
 DEFAULT_USE_STREAMING_EXECUTOR = bool(
-    int(os.environ.get("RAY_DATASET_USE_STREAMING_EXECUTOR", "0"))
+    int(os.environ.get("RAY_DATASET_USE_STREAMING_EXECUTOR", "1"))
 )
 
 # Whether to eagerly free memory (new backend only).
@@ -103,6 +103,12 @@ DEFAULT_AUTO_LOG_STATS = False
 DEFAULT_OPTIMIZER_ENABLED = bool(
     int(os.environ.get("RAY_DATASET_NEW_EXECUTION_OPTIMIZER", "0"))
 )
+
+# Set this env var to enable distributed tqdm (experimental).
+DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
+
+# Set this to True to use the legacy iter_batches codepath prior to 2.4.
+DEFAULT_USE_LEGACY_ITER_BATCHES = False
 
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
@@ -148,6 +154,8 @@ class DatasetContext:
         trace_allocations: bool,
         optimizer_enabled: bool,
         execution_options: "ExecutionOptions",
+        use_ray_tqdm: bool,
+        use_legacy_iter_batches: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_splitting_enabled = block_splitting_enabled
@@ -177,6 +185,8 @@ class DatasetContext:
         self.optimizer_enabled = optimizer_enabled
         # TODO: expose execution options in Dataset public APIs.
         self.execution_options = execution_options
+        self.use_ray_tqdm = use_ray_tqdm
+        self.use_legacy_iter_batches = use_legacy_iter_batches
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -222,6 +232,8 @@ class DatasetContext:
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                     optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
                     execution_options=ExecutionOptions(),
+                    use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
+                    use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
                 )
 
             return _default_context

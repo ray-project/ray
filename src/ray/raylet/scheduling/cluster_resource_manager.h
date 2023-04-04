@@ -30,6 +30,7 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+class GcsMonitorServerTest;
 namespace raylet {
 class ClusterTaskManagerTest;
 class SchedulingPolicyTest;
@@ -49,9 +50,6 @@ class ClusterResourceManager {
 
   /// Get the resource view of the cluster.
   const absl::flat_hash_map<scheduling::NodeID, Node> &GetResourceView() const;
-
-  // Mapping from predefined resource indexes to resource strings
-  std::string GetResourceNameFromIndex(int64_t res_idx);
 
   /// Update node resources. This hanppens when a node resource usage udpated.
   ///
@@ -186,6 +184,7 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
+  FRIEND_TEST(GcsMonitorServerTest, TestGetSchedulingStatus);
 
   friend class raylet::SchedulingPolicyTest;
   friend class raylet_scheduling_policy::HybridSchedulingPolicyTest;

@@ -18,7 +18,7 @@ of CPUs (cores) on your machine.
     )
     results = tuner.fit()
 
-You can override this per trial resources with :ref:`tune-with-resources`. Here you can
+You can override this per trial resources with :func:`tune.with_resources <ray.tune.with_resources>`. Here you can
 specify your resource requests using either a dictionary, a :class:`~ray.air.config.ScalingConfig`, or a
 :class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>`
 object. In any case, Ray Tune will try to start a placement group for each trial.

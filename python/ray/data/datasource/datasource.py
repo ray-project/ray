@@ -1,4 +1,5 @@
 import builtins
+from copy import copy
 from typing import Any, Callable, Dict, Generic, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
@@ -117,6 +118,16 @@ class Datasource(Generic[T]):
             kwargs: Forward-compatibility placeholder.
         """
         pass
+
+    def get_name(self) -> str:
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        """
+        name = type(self).__name__
+        datasource_suffix = "Datasource"
+        if name.endswith(datasource_suffix):
+            name = name[: -len(datasource_suffix)]
+        return name
 
 
 @PublicAPI
@@ -275,34 +286,35 @@ class _RangeDatasourceReader(Reader):
             else:
                 return list(builtins.range(start, start + count))
 
+        if block_format == "arrow":
+            _check_pyarrow_version()
+            import pyarrow as pa
+
+            schema = pa.Table.from_pydict({"value": [0]}).schema
+        elif block_format == "tensor":
+            _check_pyarrow_version()
+            import pyarrow as pa
+
+            tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
+                np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
+            )
+            schema = BlockAccessor.batch_to_block(tensor).schema
+        elif block_format == "list":
+            schema = int
+        else:
+            raise ValueError("Unsupported block type", block_format)
+        if block_format == "tensor":
+            element_size = np.product(tensor_shape)
+        else:
+            element_size = 1
+
         i = 0
         while i < n:
             count = min(block_size, n - i)
-            if block_format == "arrow":
-                _check_pyarrow_version()
-                import pyarrow as pa
-
-                schema = pa.Table.from_pydict({"value": [0]}).schema
-            elif block_format == "tensor":
-                _check_pyarrow_version()
-                import pyarrow as pa
-
-                tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
-                    np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
-                )
-                schema = BlockAccessor.batch_to_block(tensor).schema
-            elif block_format == "list":
-                schema = int
-            else:
-                raise ValueError("Unsupported block type", block_format)
-            if block_format == "tensor":
-                element_size = np.product(tensor_shape)
-            else:
-                element_size = 1
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=8 * count * element_size,
-                schema=schema,
+                schema=copy(schema),
                 input_files=None,
                 exec_stats=None,
             )
@@ -365,7 +377,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
         return "ok"
 
     def on_write_complete(self, write_results: List[WriteResult]) -> None:
-        assert all(w == ["ok"] for w in write_results), write_results
+        assert all(w == "ok" for w in write_results), write_results
         self.num_ok += 1
 
     def on_write_failed(
@@ -387,6 +399,13 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
         {'c_0': 1717767200176864416, 'c_1': 999657309586757214}
         {'c_0': 4983608804013926748, 'c_1': 1160140066899844087}
     """
+
+    def get_name(self) -> str:
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        Note: overrides the base `Datasource` method.
+        """
+        return "RandomInt"
 
     def create_reader(
         self,

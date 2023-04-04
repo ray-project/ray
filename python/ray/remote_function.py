@@ -5,15 +5,14 @@ import uuid
 from functools import wraps
 
 import ray._private.signature
-from ray import Language
-from ray import cloudpickle as pickle
-from ray import cross_language
+from ray import Language, cross_language
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import (
     client_mode_convert_function,
     client_mode_should_convert,
 )
 from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
+from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import PythonFunctionDescriptor
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -170,7 +169,7 @@ class RemoteFunction:
             max_retries: This specifies the maximum number of times that the remote
                 function should be rerun when the worker process executing it
                 crashes unexpectedly. The minimum valid value is 0,
-                the default is 4 (default), and a value of -1 indicates
+                the default is 3 (default), and a value of -1 indicates
                 infinite retries.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children. See
@@ -267,16 +266,10 @@ class RemoteFunction:
             # independent of whether or not the function was invoked by the
             # first driver. This is an argument for repickling the function,
             # which we do here.
-            try:
-                self._pickled_function = pickle.dumps(self._function)
-            except TypeError as e:
-                msg = (
-                    "Could not serialize the function "
-                    f"{self._function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting "  # noqa
-                    "for more information."
-                )
-                raise TypeError(msg) from e
+            self._pickled_function = pickle_dumps(
+                self._function,
+                f"Could not serialize the function {self._function_descriptor.repr}",
+            )
 
             self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)

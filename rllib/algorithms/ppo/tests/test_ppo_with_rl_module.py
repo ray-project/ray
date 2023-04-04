@@ -1,10 +1,14 @@
-import numpy as np
 import unittest
+
+import numpy as np
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
-
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.ppo.tests.test_ppo import PENDULUM_FAKE_BATCH
+from ray.rllib.evaluation.postprocessing import (
+    compute_gae_for_sample_batch,
+)
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import (
@@ -99,6 +103,9 @@ class TestPPO(unittest.TestCase):
                 entropy_coeff=100.0,
                 entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
                 train_batch_size=128,
+                # TODO (Kourosh): Enable when the scheduler is supported in the new
+                # Learner API stack.
+                _enable_learner_api=False,
             )
             .rollouts(
                 num_rollout_workers=1,
@@ -112,13 +119,14 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        # TODO (avnish): re enable eager tracing when we get this working with the new
-        # sampler.
         for fw in framework_iterator(
-            config, frameworks=("torch", "tf2"), with_eager_tracing=False
+            config, frameworks=("torch", "tf2"), with_eager_tracing=True
         ):
-            # TODO (Kourosh) Bring back "FrozenLake-v1" and "MsPacmanNoFrameskip-v4"
-            for env in ["CartPole-v1", "Pendulum-v1"]:
+            # TODO (Kourosh) Bring back "FrozenLake-v1"
+            for env in ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]:
+                if env == "ALE/Breakout-v5" and fw == "tf2":
+                    # TODO(Artur): Implement CNN in TF2.
+                    continue
                 print("Env={}".format(env))
                 # TODO (Kourosh, Avnishn): for now just do lstm=False
                 for lstm in [False]:
@@ -159,8 +167,9 @@ class TestPPO(unittest.TestCase):
         )
         obs = np.array(0)
 
-        # TODO (Kourosh) Test against all frameworks.
-        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
+        for fw in framework_iterator(
+            config, frameworks=("torch", "tf2"), with_eager_tracing=True
+        ):
             # Default Agent should be setup with StochasticSampling.
             trainer = config.build()
             # explore=False, always expect the same (deterministic) action.
@@ -186,6 +195,68 @@ class TestPPO(unittest.TestCase):
                     )
                 )
             check(np.mean(actions), 1.5, atol=0.2)
+            trainer.stop()
+
+    def test_ppo_free_log_std_with_rl_modules(self):
+        """Tests the free log std option works."""
+        config = (
+            (
+                ppo.PPOConfig()
+                .environment("Pendulum-v1")
+                .rollouts(
+                    num_rollout_workers=0,
+                )
+                .training(
+                    gamma=0.99,
+                    model=dict(
+                        fcnet_hiddens=[10],
+                        fcnet_activation="linear",
+                        free_log_std=True,
+                        vf_share_layers=True,
+                    ),
+                )
+            )
+            .rl_module(_enable_rl_module_api=True)
+            .training(_enable_learner_api=True)
+        )
+
+        # TODO(Artur): Enable this test for tf2 once we support CNNs
+        for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
+            trainer = config.build()
+            policy = trainer.get_policy()
+
+            # Check the free log std var is created.
+            if fw == "torch":
+                matching = [
+                    v for (n, v) in policy.model.named_parameters() if "log_std" in n
+                ]
+            else:
+                matching = [
+                    v for v in policy.model.trainable_variables if "log_std" in str(v)
+                ]
+            assert len(matching) == 1, matching
+            log_std_var = matching[0]
+
+            # linter yells at you if you don't pass in the parameters.
+            # reason: https://docs.python-guide.org/writing/gotchas/
+            # #late-binding-closures
+            def get_value(fw=fw, policy=policy, log_std_var=log_std_var):
+                if fw == "torch":
+                    return log_std_var.detach().cpu().numpy()[0]
+                else:
+                    return log_std_var.numpy()[0]
+
+            # Check the variable is initially zero.
+            init_std = get_value()
+            assert init_std == 0.0, init_std
+            batch = compute_gae_for_sample_batch(policy, PENDULUM_FAKE_BATCH.copy())
+            if fw == "torch":
+                batch = policy._lazy_tensor_dict(batch)
+            policy.learn_on_batch(batch)
+
+            # Check the variable is updated.
+            post_std = get_value()
+            assert post_std != 0.0, post_std
             trainer.stop()
 
 

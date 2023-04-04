@@ -8,6 +8,7 @@ import numpy as np
 
 import ray
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
 from ray.util.annotations import DeveloperAPI
@@ -33,6 +34,9 @@ class Timer:
 
     def __init__(self):
         self._value: float = 0
+        self._min: float = float("inf")
+        self._max: float = 0
+        self._total_count: float = 0
 
     @contextmanager
     def timer(self) -> None:
@@ -40,13 +44,27 @@ class Timer:
         try:
             yield
         finally:
-            self._value += time.perf_counter() - time_start
+            self.add(time.perf_counter() - time_start)
 
     def add(self, value: float) -> None:
         self._value += value
+        if value < self._min:
+            self._min = value
+        if value > self._max:
+            self._max = value
+        self._total_count += 1
 
     def get(self) -> float:
         return self._value
+
+    def min(self) -> float:
+        return self._min
+
+    def max(self) -> float:
+        return self._max
+
+    def avg(self) -> float:
+        return self._value / self._total_count if self._total_count else float("inf")
 
 
 class _DatasetStatsBuilder:
@@ -56,19 +74,25 @@ class _DatasetStatsBuilder:
     called with the final blocks of the new dataset, the time delta is
     saved as part of the stats."""
 
-    def __init__(self, stage_name: str, parent: "DatasetStats"):
+    def __init__(
+        self,
+        stage_name: str,
+        parent: "DatasetStats",
+        override_start_time: Optional[float],
+    ):
         self.stage_name = stage_name
         self.parent = parent
-        self.start_time = time.perf_counter()
+        self.start_time = override_start_time or time.perf_counter()
 
     def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
         for i, (k, v) in enumerate(stages.items()):
+            capped_k = capfirst(k)
             if len(stages) > 1:
                 if i == 0:
-                    stage_infos[self.stage_name + "_" + k] = v
+                    stage_infos[self.stage_name + capped_k] = v
                 else:
-                    stage_infos[self.stage_name.split("->")[-1] + "_" + k] = v
+                    stage_infos[self.stage_name.split("->")[-1] + capped_k] = v
             else:
                 stage_infos[self.stage_name] = v
         stats = DatasetStats(
@@ -197,7 +221,7 @@ class DatasetStats:
         self.stages: StatsDict = stages
         if parent is not None and not isinstance(parent, list):
             parent = [parent]
-        self.parents: List["DatasetStats"] = parent
+        self.parents: List["DatasetStats"] = parent or []
         self.number: int = (
             0 if not self.parents else max(p.number for p in self.parents) + 1
         )
@@ -209,22 +233,37 @@ class DatasetStats:
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
 
+        self._legacy_iter_batches = False
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()
         self.iter_get_s: Timer = Timer()
         self.iter_next_batch_s: Timer = Timer()
         self.iter_format_batch_s: Timer = Timer()
+        self.iter_collate_batch_s: Timer = Timer()
+        self.iter_total_blocked_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
         self.extra_metrics = {}
+
+        # Block fetch stats during iteration.
+        # These are stats about locations of blocks when the iterator is trying to
+        # consume them. The iteration performance will be affected depending on
+        # whether the block is in the local object store of the node where the
+        # iterator is running.
+        # This serves as an indicator of block prefetching effectiveness.
+        self.iter_blocks_local: int = 0
+        self.iter_blocks_remote: int = 0
+        self.iter_unknown_location: int = 0
 
     @property
     def stats_actor(self):
         return _get_or_create_stats_actor()
 
-    def child_builder(self, name: str) -> _DatasetStatsBuilder:
+    def child_builder(
+        self, name: str, override_start_time: Optional[float] = None
+    ) -> _DatasetStatsBuilder:
         """Start recording stats for an op of the given name (e.g., map)."""
-        return _DatasetStatsBuilder(name, self)
+        return _DatasetStatsBuilder(name, self, override_start_time)
 
     def child_TODO(self, name: str) -> "DatasetStats":
         """Placeholder for child ops not yet instrumented."""
@@ -245,13 +284,13 @@ class DatasetStats:
             if DatasetContext.get_current().block_splitting_enabled:
                 # Only populate stats when stats from all read tasks are ready at
                 # stats actor.
-                if len(stats_map.items()) == len(self.stages["read"]):
-                    self.stages["read"] = []
+                if len(stats_map.items()) == len(self.stages["Read"]):
+                    self.stages["Read"] = []
                     for _, blocks_metadata in sorted(stats_map.items()):
-                        self.stages["read"] += blocks_metadata
+                        self.stages["Read"] += blocks_metadata
             else:
                 for i, metadata in stats_map.items():
-                    self.stages["read"][i] = metadata[0]
+                    self.stages["Read"][i] = metadata[0]
 
         stages_stats = []
         is_substage = len(self.stages) > 1
@@ -266,12 +305,18 @@ class DatasetStats:
             )
 
         iter_stats = IterStatsSummary(
+            self._legacy_iter_batches,
             self.iter_wait_s,
             self.iter_get_s,
             self.iter_next_batch_s,
             self.iter_format_batch_s,
+            self.iter_collate_batch_s,
+            self.iter_total_blocked_s,
             self.iter_user_s,
             self.iter_total_s,
+            self.iter_blocks_local,
+            self.iter_blocks_remote,
+            self.iter_unknown_location,
         )
         stats_summary_parents = []
         if self.parents is not None:
@@ -351,11 +396,11 @@ class DatasetStatsSummary:
                 else:
                     already_printed.add(stage_uuid)
                     out += str(stage_stats_summary)
-        out += str(self.iter_stats)
         if self.extra_metrics:
             indent = "\t" if stage_stats_summary.is_substage else ""
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
+        out += str(self.iter_stats)
         return out
 
     def get_total_wall_time(self) -> float:
@@ -597,20 +642,106 @@ class StageStatsSummary:
 
 @dataclass
 class IterStatsSummary:
-    # Time spent in `ray.wait()`, in seconds
+    # Whether the legacy `iter_batches` is being used.
+    legacy_iter_batches: bool
+    # Time spent in actor based prefetching, in seconds.
     wait_time: Timer
     # Time spent in `ray.get()`, in seconds
     get_time: Timer
-    # Time spent in `batcher.next_batch()`, in seconds
+    # Time spent in batch building, in seconds
     next_time: Timer
     # Time spent in `_format_batch_()`, in seconds
     format_time: Timer
+    # Time spent in collate fn, in seconds
+    collate_time: Timer
+    # Total time user thread is blocked by iter_batches
+    block_time: Timer
     # Time spent in user code, in seconds
     user_time: Timer
     # Total time taken by Dataset iterator, in seconds
     total_time: Timer
+    # Num of blocks that are in local object store
+    iter_blocks_local: int
+    # Num of blocks that are in remote node and have to fetch locally
+    iter_blocks_remote: int
+    # Num of blocks with unknown locations
+    iter_unknown_location: int
 
     def __str__(self) -> str:
+        if self.legacy_iter_batches:
+            return self.to_string_legacy()
+        else:
+            return self.to_string()
+
+    def to_string(self) -> str:
+        out = ""
+        if (
+            self.block_time.get()
+            or self.total_time.get()
+            or self.get_time.get()
+            or self.next_time.get()
+            or self.format_time.get()
+            or self.collate_time.get()
+        ):
+            out += "\nDataset iterator time breakdown:\n"
+            if self.block_time.get():
+                out += "* Total time user code is blocked: {}\n".format(
+                    fmt(self.block_time.get())
+                )
+            if self.user_time.get():
+                out += "* Total time in user code: {}\n".format(
+                    fmt(self.user_time.get())
+                )
+            if self.total_time.get():
+                out += "* Total time overall: {}\n".format(fmt(self.total_time.get()))
+            out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
+            out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
+            out += "* Num blocks unknown location: {}\n".format(
+                self.iter_unknown_location
+            )
+            out += (
+                "* Batch iteration time breakdown (summed across prefetch threads):\n"
+            )
+            if self.get_time.get():
+                out += "    * In ray.get(): {} min, {} max, {} avg, {} total\n".format(
+                    fmt(self.get_time.min()),
+                    fmt(self.get_time.max()),
+                    fmt(self.get_time.avg()),
+                    fmt(self.get_time.get()),
+                )
+            if self.next_time.get():
+                batch_creation_str = (
+                    "    * In batch creation: {} min, {} max, " "{} avg, {} total\n"
+                )
+                out += batch_creation_str.format(
+                    fmt(self.next_time.min()),
+                    fmt(self.next_time.max()),
+                    fmt(self.next_time.avg()),
+                    fmt(self.next_time.get()),
+                )
+            if self.format_time.get():
+                format_str = (
+                    "    * In batch formatting: {} min, {} max, " "{} avg, {} total\n"
+                )
+                out += format_str.format(
+                    fmt(self.format_time.min()),
+                    fmt(self.format_time.max()),
+                    fmt(self.format_time.avg()),
+                    fmt(self.format_time.get()),
+                )
+            if self.collate_time.get():
+                out += "    * In collate_fn: {} min, {} max, {} avg, {} total\n".format(
+                    fmt(self.collate_time.min()),
+                    fmt(self.collate_time.max()),
+                    fmt(self.collate_time.avg()),
+                    fmt(self.collate_time.get()),
+                )
+
+        return out
+
+    def to_string_legacy(self) -> str:
+        """Iteration stats summary for legacy `iter_batches`."""
+
         out = ""
         if (
             self.total_time.get()
@@ -622,6 +753,11 @@ class IterStatsSummary:
             out += "\nDataset iterator time breakdown:\n"
             out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
             out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
+            out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
+            out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
+            out += "* Num blocks unknown location: {}\n".format(
+                self.iter_unknown_location
+            )
             out += "* In next_batch(): {}\n".format(fmt(self.next_time.get()))
             out += "* In format_batch(): {}\n".format(fmt(self.format_time.get()))
             out += "* In user code: {}\n".format(fmt(self.user_time.get()))

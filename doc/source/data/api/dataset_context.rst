@@ -11,7 +11,7 @@ Constructor
 .. autosummary::
    :toctree: doc/
 
-   context.DatasetContext
+   DatasetContext
 
 Get DatasetContext
 ------------------
@@ -19,4 +19,4 @@ Get DatasetContext
 .. autosummary::
    :toctree: doc/
 
-   context.DatasetContext.get_current
+   DatasetContext.get_current

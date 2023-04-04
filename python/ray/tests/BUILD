@@ -102,16 +102,32 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
+# Issue #33491
+# Once test_memory_deadlock is fixed, remove this rule and move
+# test_memory_deadlock.py to the files list in the rule below.
+# Also, edit test_memory_deadlock and uncomment the last line
+# (the pytest.main invocation in the if __name__ == "__main__":
+# block)
+py_test_module_list(
+  files = [
+    "test_memory_deadlock.py",  # Timing out right now. #33491
+  ],
+  size = "medium",
+  tags = ["exclusive", "no_main", "medium_size_python_tests_k_to_z", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
 py_test_module_list(
   files = [
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
+    "test_log_dedup.py",
     "test_logging.py",
-    "test_memory_deadlock.py",
     "test_memory_scheduling.py",
     "test_memory_pressure.py",
     "test_nested_task.py",
     "test_metrics.py",
     "test_task_events.py",
+    "test_task_events_2.py",
     "test_task_metrics.py",
     "test_task_metrics_reconstruction.py",
     "test_actor_state_metrics.py",
@@ -120,6 +136,7 @@ py_test_module_list(
     "test_multi_node_2.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
+    "test_node_manager.py",
     "test_object_assign_owner.py",
     "test_placement_group.py",
     "test_placement_group_2.py",
@@ -180,7 +197,6 @@ py_test_module_list(
     "test_metrics_agent_2.py",
     "test_microbenchmarks.py",
     "test_mini.py",
-    "test_node_manager.py",
     "test_numba.py",
     "test_redis_tls.py",
     "test_raylet_output.py",
@@ -307,6 +323,7 @@ py_test_module_list(
   files = [
     "test_basic_3.py",
     "test_output.py",
+    "test_tqdm.py",
     "test_out_of_disk_space.py",
     "test_failure_4.py",
     "test_iter.py",
