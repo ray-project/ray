@@ -31,6 +31,7 @@ class Result:
     stable: bool = True
     smoke_test: bool = False
 
+    buildkite_return_code: BuildkiteExitCode.SUCCESS
     buildkite_url: Optional[str] = None
     wheels_url: Optional[str] = None
     cluster_url: Optional[str] = None
