@@ -484,7 +484,7 @@ install_pip_packages() {
   done
 
   if [ -n "${pip_add}" ]; then
-    pip_cmd+="$pip_add"
+    pip_cmd="pip install $pip_add"
     # Run the pip command to install all collected requirements files
     echo Running pip install: "$pip_cmd"
     eval "${pip_cmd}"
