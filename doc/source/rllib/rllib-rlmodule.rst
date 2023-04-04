@@ -529,7 +529,7 @@ Extending Existing RLlib RLModules
 
 RLlib provides a number of RLModules for different frameworks (e.g. PyTorch, TensorFlow, etc.). These modules can be extended by inheriting from them and overriding the methods you need to customize. For example, you can extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization. You can then pass the new customized class into the algorithm configuration. 
 
-There are two ways possible to extend existing RLModules:
+There are two possible ways to extend existing RLModules:
 
 .. tabbed:: Inheriting existing RLModules
 
