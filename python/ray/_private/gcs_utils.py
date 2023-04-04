@@ -12,7 +12,11 @@ import grpc
 
 import ray
 from ray._private import ray_constants
-from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
+from ray.core.generated import (
+    gcs_service_pb2,
+    gcs_service_pb2_grpc,
+)
+
 from ray.core.generated.common_pb2 import ErrorType, JobConfig
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
@@ -163,12 +167,16 @@ def _auto_reconnect(f):
                 try:
                     return await f(self, *args, **kwargs)
                 except grpc.RpcError as e:
-                    if remaining_retry <= 0:
-                        raise
                     if e.code() in (
                         grpc.StatusCode.UNAVAILABLE,
                         grpc.StatusCode.UNKNOWN,
                     ):
+                        if remaining_retry <= 0:
+                            logger.error(
+                                "Failed to connect to GCS. Please check"
+                                " `gcs_server.out` for more details."
+                            )
+                            raise
                         logger.debug(
                             "Failed to send request to gcs, reconnecting. " f"Error {e}"
                         )
@@ -197,12 +205,16 @@ def _auto_reconnect(f):
                 try:
                     return f(self, *args, **kwargs)
                 except grpc.RpcError as e:
-                    if remaining_retry <= 0:
-                        raise
                     if e.code() in (
                         grpc.StatusCode.UNAVAILABLE,
                         grpc.StatusCode.UNKNOWN,
                     ):
+                        if remaining_retry <= 0:
+                            logger.error(
+                                "Failed to connect to GCS. Please check"
+                                " `gcs_server.out` for more details."
+                            )
+                            raise
                         logger.debug(
                             "Failed to send request to gcs, reconnecting. " f"Error {e}"
                         )
@@ -620,15 +632,6 @@ class GcsAioClient:
         )
         reply = await self._actor_info_stub.GetNamedActorInfo(req, timeout=timeout)
         return reply
-
-
-def use_gcs_for_bootstrap():
-    """In the current version of Ray, we always use the GCS to bootstrap.
-    (This was previously controlled by a feature flag.)
-
-    This function is included for the purposes of backwards compatibility.
-    """
-    return True
 
 
 def cleanup_redis_storage(
