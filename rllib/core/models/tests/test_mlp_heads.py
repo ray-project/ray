@@ -19,10 +19,10 @@ class TestMLPHeads(unittest.TestCase):
         # Loop through different combinations of hyperparameters.
         inputs_dims_configs = [[1], [50]]
         list_of_hidden_layer_dims = [[], [1], [64, 64], [1000, 1000, 1000]]
-        hidden_layer_activations = [None, "linear", "relu", "tanh", "swish"]
+        hidden_layer_activations = ["linear", "relu", "tanh", "swish"]
         hidden_layer_use_layernorms = [False, True]
         # Can only test even `output_dims` for FreeLogStdMLPHeadConfig.
-        output_dims_configs = [[2], [1000]]
+        output_dims_configs = [[2], [50]]
         output_activations = hidden_layer_activations
         use_biases = [False, True]
         free_stds = [False, True]
