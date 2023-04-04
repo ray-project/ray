@@ -1560,10 +1560,11 @@ def _auto_reconnect(f):
                         self._connect()
                     except Exception:
                         logger.error(f"Connecting to gcs failed. Error {e.exception}")
-                time.sleep(1)
-                remaining_retry -= 1
-                continue
-            raise
+                    time.sleep(1)
+                    remaining_retry -= 1
+                    continue
+                raise
+
     return wrapper
 
 

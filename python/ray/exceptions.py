@@ -324,6 +324,7 @@ class RaySystemError(RayError):
         self.client_exc = client_exc
         self.traceback_str = traceback_str
         self._status_code = _status_code
+        self.rpc_code = rpc_code
 
     def __str__(self):
         error_msg = f"System error: {self.client_exc}"
