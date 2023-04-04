@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 from ray.rllib.utils.typing import ViewRequirementsDict
 import functools
 
@@ -51,17 +51,21 @@ def _framework_implemented(torch: bool = True, tf2: bool = True):
 class _MLPConfig(ModelConfig):
     """Generic configuration class for multi-layer-perceptron based Model classes.
 
+    This is a private class as users should not configure their models directly
+    through this class, but use one of the sub-classes, e.g. `MLPHeadConfig` or
+    `MLPEncoderConfig`.
+
     Attributes:
         input_dims: A 1D tensor indicating the input dimension, e.g. `[32]`.
-        hidden_layer_dims: The sizes of the hidden layers.
+        hidden_layer_dims: The sizes of the hidden layers. If an empty list, only a
+            single layer will be built of size `output_dims[0]`.
         hidden_layer_activation: The activation function to use after each layer (
             except for the output).
         hidden_layer_use_layernorm: Whether to insert a LayerNorm functionality
             in between each hidden layer's output and its activation.
         output_dims: A 1D Tensor indicating the size of the output layer. This may be
-            ok to leave as `None` for some specific Model classes using this config.
-            E.g. the MLPEncoder allows only specifying its hidden layer dimensions
-            in case no special output layer should be added to the end of the stack.
+            set to `None` in case no extra output layer should be built and only the
+            layers specified by `hidden_layer_dims` will part of the network.
         output_activation: The activation function to use for the output layer, if any.
         use_bias: Whether to use bias on all dense layers in the network (including
             a possible output layer).
@@ -70,7 +74,7 @@ class _MLPConfig(ModelConfig):
     hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
     hidden_layer_activation: str = "relu"
     hidden_layer_use_layernorm: bool = False
-    output_dims: Union[List[int], Tuple[int]] = None
+    output_dims: Optional[Union[List[int], Tuple[int]]] = None
     output_activation: str = "linear"
     use_bias: bool = True
 
@@ -86,6 +90,13 @@ class _MLPConfig(ModelConfig):
                 f"`output_dims` ({self.output_dims}) of MLPConfig must be 1D, "
                 "e.g. `[32]`!"
             )
+        if self.output_dims is None and not self.hidden_layer_dims:
+            raise ValueError(
+                f"If `output_dims` is None, you must specify at least one hidden layer "
+                "dim, e.g. `hidden_layer_dims=[32]`! `hidden_layer_dims` must not "
+                "be empty in this case."
+            )
+
         # Call these already here to catch errors early on.
         get_activation_fn(self.hidden_layer_activation, framework=framework)
         get_activation_fn(self.output_activation, framework=framework)
@@ -141,13 +152,6 @@ class MLPHeadConfig(_MLPConfig):
         # Linear(10, 4, bias=False)
         # Tanh()
     """
-    def _validate(self, framework: str = "torch"):
-        super()._validate(framework)
-        if self.output_dims is None:
-            raise ValueError(
-                f"`output_dims` ({self.output_dims}) of MLPHeadConfig must not be None."
-                " Use a 1D tensor describing the output dimension, e.g. `[32]`!"
-            )
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
@@ -174,23 +178,65 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
         state-dependent means when conditioning a gaussian distribution
         - The second half are floating free biases that can be used as
         state-independent standard deviations to condition a gaussian distribution.
-    The state-dependent means are produced by an MLPHead, while the standard
-    deviations are added as floating free biases.
+    The mean values are produced by an MLPHead, while the standard
+    deviations are added as floating free biases from a single 1D trainable variable
+    (not dependent on the net's inputs).
 
     The output dimensions of the configured MLPHeadConfig must be even and are
-    divided by two to gain the output dimensions of the underlying MLPHead.
+    divided by two to gain the output dimensions of each the mean-net and the
+    free std-variable.
 
-    Attributes:
-        mlp_head_config: MLPHeadConfig for the MLPHead that produces the first half
-            of the output logits that are the means.
+    Example:
+    .. code-block:: python
+        # Configuration:
+        config = FreeLogStdMLPHeadConfig(
+            input_dims=[2],
+            hidden_layer_dims=[16],
+            hidden_layer_activation=None,
+            hidden_layer_use_layernorm=False,
+            output_dims=[8],  # <- this must be an even size
+            use_bias=True,
+        )
+        model = config.build(framework="tf2")
+
+        # Resulting stack in pseudocode:
+        # Linear(2, 16, bias=True)
+        # Linear(8, 8, bias=True)  # 16 / 2 = 8 -> 8 nodes for the mean
+        # Extra variable:
+        # Tensor((8,), float32)  # for the free (observation independent) std outputs
+
+    Example:
+    .. code-block:: python
+        # Configuration:
+        config = FreeLogStdMLPHeadConfig(
+            input_dims=[2],
+            hidden_layer_dims=[31, 100],   # <- last idx must be an even size
+            hidden_layer_activation="relu",
+            hidden_layer_use_layernorm=False,
+            output_dims=None,  # use the last hidden layer
+            use_bias=False,
+        )
+        model = config.build(framework="torch")
+
+        # Resulting stack in pseudocode:
+        # Linear(2, 31, bias=False)
+        # ReLu()
+        # Linear(31, 50, bias=False)  # 100 / 2 = 50 -> 50 nodes for the mean
+        # ReLu()
+        # Extra variable:
+        # Tensor((50,), float32)  # for the free (observation independent) std outputs
     """
 
     def _validate(self, framework: str = "torch"):
-        if len(self.output_dims) > 1 or self.output_dims[0] % 2 == 1:
+        actual_output_dims = (
+            [self.hidden_layer_dims[-1]] if self.output_dims is None
+            else self.output_dims
+        )
+        if len(actual_output_dims) > 1 or actual_output_dims[0] % 2 == 1:
             raise ValueError(
-                f"`output_dims` ({self.output_dims}) of FreeLogStdMLPHeadConfig must "
-                "be a 1D tensor, whose only item is dividable by 2, "
-                "e.g. `[2]` or `[128]`!"
+                "`output_dims` or last value in `hidden_layer_dims` "
+                f"({actual_output_dims}) of a FreeLogStdMLPHeadConfig must be a "
+                "1D tensor, whose only item is dividable by 2, e.g. `[2]` or `[128]`!"
             )
 
     @_framework_implemented()
@@ -330,7 +376,7 @@ class MLPEncoderConfig(_MLPConfig):
             hidden_layer_use_layernorm=False,
             output_dims=None,  # maybe None or a 1D tensor
         )
-        model = config.build()
+        model = config.build(framework="torch")
 
         # Resulting stack in pseudocode:
         # Linear(4, 16, bias=True)
@@ -348,7 +394,7 @@ class MLPEncoderConfig(_MLPConfig):
             output_activation="tanh",
             use_bias=False,
         )
-        model = config.build()
+        model = config.build(framework="tf2")
 
         # Resulting stack in pseudocode:
         # Linear(2, 8, bias=False)

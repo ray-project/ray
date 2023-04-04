@@ -8,22 +8,15 @@ torch, nn = try_import_torch()
 
 
 class TorchMLP(nn.Module):
-    """A multi-layer perceptron.
+    """A multi-layer perceptron with N dense layers.
 
-    Attributes:
-        input_dim: The input dimension of the network. It cannot be None.
-        hidden_layer_dims: The sizes of the hidden layers.
-        hidden_layer_activation: The activation function to use after each layer.
-            Currently "linear" (no activation), "relu", "swish", "elu", and "tanh" are
-            supported. Also, "silu" is an alias for "swish".
-        hidden_layer_use_layernorm: Whether to insert a LayerNorm functionality
-            in between each hidden layer's outputs and its activation.
-        output_dim: The output dimension of the network. If None, no specific output
-            layer will be added.
-        output_activation: The activation function to use for the output layer (if any).
-            Currently "linear" (no activation), "relu", "swish", "elu", and "tanh" are
-            supported. Also, "silu" is an alias for "swish".
-        use_bias: Whether to use bias on all dense layers.
+    All layers (except for an optional additional extra output layer) share the same
+    activation function, bias setup (use bias or not), and LayerNorm setup
+    (use layer normalization or not).
+
+    If `output_dim` (int) is not None, an additional, extra output dense layer is added,
+    which might have its own activation function (e.g. "linear"). However, the output
+    layer does NOT use layer normalization.
     """
 
     def __init__(
@@ -37,7 +30,28 @@ class TorchMLP(nn.Module):
         output_activation: Union[str, Callable] = "linear",
         use_bias: bool = True,
     ):
-        """Initialize a TorchMLP object."""
+        """Initialize a TorchMLP object.
+
+        Args:
+            input_dim: The input dimension of the network. Must not be None.
+            hidden_layer_dims: The sizes of the hidden layers. If an empty list, only a
+                single layer will be built of size `output_dim`.
+            hidden_layer_use_layernorm: Whether to insert a LayerNormalization
+                functionality in between each hidden layer's output and its activation.
+            hidden_layer_activation: The activation function to use after each layer
+                (except for the output). Either a torch.nn.[activation fn] callable or
+                the name thereof, or an RLlib recognized activation name,
+                e.g. "ReLU", "relu", "tanh", "SiLU", or "linear".
+            output_dim: The output dimension of the network. If None, no specific output
+                layer will be added and the last layer in the stack will have
+                size=`hidden_layer_dims[-1]`.
+            output_activation: The activation function to use for the output layer
+                (if any). Either a torch.nn.[activation fn] callable or
+                the name thereof, or an RLlib recognized activation name,
+                e.g. "ReLU", "relu", "tanh", "SiLU", or "linear".
+            use_bias: Whether to use bias on all dense layers (including the possible
+                output layer).
+        """
         super().__init__()
         assert input_dim > 0
 
@@ -79,19 +93,14 @@ class TorchMLP(nn.Module):
 
 
 class TorchCNN(nn.Module):
-    """A model containing a CNN and a final linear layer.
+    """A model containing a CNN with N Conv2D layers.
 
-    Attributes:
-        input_dims: The input dimensions of the network.
-        cnn_filter_specifiers: A list of lists, where each element of an inner
-            list contains elements of the form
-            `[number of filters, [kernel width, kernel height], stride]` to
-            specify a convolutional layer stacked in order of the outer list.
-        cnn_activation: The activation function to use after each Conv2D layer.
-        cnn_use_layernorm: Whether to insert a LayerNorm functionality
-            in between each CNN layer's outputs and its activation.
-        output_activation: The activation function to use for the last filter layer.
-        use_bias: Whether to use bias on all Conv2D layers.
+    All layers share the same activation function, bias setup (use bias or not),
+    and LayerNorm setup (use layer normalization or not).
+
+    Note that there is no flattening nor an additional dense layer at the end of the
+    stack. The output of the network is a 3D tensor of dimensions
+    [width x height x num output filters].
     """
 
     def __init__(
@@ -99,11 +108,27 @@ class TorchCNN(nn.Module):
         *,
         input_dims: Union[List[int], Tuple[int]],
         cnn_filter_specifiers: List[List[Union[int, List]]],
-        cnn_activation: str = "relu",
         cnn_use_layernorm: bool = False,
+        cnn_activation: str = "relu",
         use_bias: bool = True,
     ):
-        """Initializes a TorchCNN object."""
+        """Initializes a TorchCNN instance.
+
+        Args:
+            input_dims: The 3D input dimensions of the network (incoming image).
+            cnn_filter_specifiers: A list of lists, where each item represents one
+                Conv2D layer. Each such Conv2D layer is further specified by the
+                elements of the inner lists. The inner lists follow the format:
+                `[number of filters, kernel, stride]` to
+                specify a convolutional layer stacked in order of the outer list.
+                `kernel` as well as `stride` might be provided as width x height tuples
+                OR as single ints representing both dimension (width and height)
+                in case of square shapes.
+            cnn_use_layernorm: Whether to insert a LayerNorm functionality
+                in between each CNN layer's outputs and its activation.
+            cnn_activation: The activation function to use after each Conv2D layer.
+            use_bias: Whether to use bias on all Conv2D layers.
+        """
         super().__init__()
 
         assert len(input_dims) == 3

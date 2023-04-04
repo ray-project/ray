@@ -87,7 +87,8 @@ class TfCNNEncoder(TfModel, Encoder):
             use_bias=config.use_bias,
         )
         layers.append(cnn)
-        # Flatten output of last CNN layer.
+
+        # Add a flatten operation to move from 2/3D into 1D space.
         layers.append(tf.keras.layers.Flatten())
 
         # Add a final linear layer to make sure that the outputs have the correct
@@ -97,6 +98,7 @@ class TfCNNEncoder(TfModel, Encoder):
             tf.keras.layers.Dense(config.output_dims[0], activation=output_activation),
         )
 
+        # Create the network from gathered layers.
         self.net = tf.keras.Sequential(layers)
 
     @override(Model)

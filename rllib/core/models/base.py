@@ -30,24 +30,19 @@ def _raise_not_decorated_exception(class_and_method, input_or_output):
 @ExperimentalAPI
 @dataclass
 class ModelConfig(abc.ABC):
-    """Base class for model configurations.
+    """Base class for configuring a `Model` instance.
 
     ModelConfigs are DL framework-agnostic.
-    A ModelConfig is usually built (via calling its `build()` method) by RLModules
-    after receiving it from a Catalog object. It is therefore a means of configuring
-    individual Model components inside an RLModule. However, ModelConfigs are
-    not restricted to be used only with Catalog or RLModules.
-    A usage Example together with a Model can be found in the individual Model classes'
-    ModelConfigs are DL framework-agnostic.
+    A `Model` (as a sub-component of an `RLModule`) is built via calling the
+    respective ModelConfig's `build()` method.
+    RLModules build their sub-components this way after receiving one or more
+    `ModelConfig` instances from a Catalog object.
 
-    You can build models from a ModelConfig by calling its `build()` method.
-    `Catalog` objects use this API to build models and pass them to RLModules.
-    Therefore, `ModelConfig` objects are a means of configuring models inside RLModules.
-    However, ModelConfigs are not restricted to be used only with Catalog or RLModules.
+    However, `ModelConfig` is not restricted to be used only with Catalog or RLModules.
+    Usage examples can be found in the individual Model classes', e.g.
+    see `ray.rllib.core.models.configs::MLPHeadConfig`.
 
-    For more examples, see each Model's class docstrings.
-
-    Args:
+    Attributes:
         input_dims: The input dimensions of the network
         output_dims: The output dimensions of the network.
     """
