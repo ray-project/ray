@@ -19,7 +19,6 @@ from typing import (
     Union,
 )
 from uuid import uuid4
-import warnings
 
 import numpy as np
 
@@ -51,8 +50,12 @@ from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.dataset_iterator_impl import DatasetIteratorImpl
-from ray.data._internal.stream_split_dataset_iterator import StreamSplitDatasetIterator
+from ray.data._internal.dataset_iterator.dataset_iterator_impl import (
+    DatasetIteratorImpl,
+)
+from ray.data._internal.dataset_iterator.stream_split_dataset_iterator import (
+    StreamSplitDatasetIterator,
+)
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -209,7 +212,7 @@ class Dataset(Generic[T]):
         >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
         MapBatches(<lambda>)
         +- Dataset(num_blocks=17, num_rows=1000, schema=<class 'int'>)
-        >>> # Compute max.
+        >>> # Compute maximum
         >>> ds.max()
         999
         >>> # Group the data.
@@ -379,8 +382,7 @@ class Dataset(Generic[T]):
         *,
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
-        batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
-        prefetch_batches: int = 0,
+        batch_format: Optional[str] = "default",
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -540,15 +542,9 @@ class Dataset(Generic[T]):
                 (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to process. If set to greater than 0, a separate thread will be used
-                to fetch the specified amount of formatted batches from blocks. This
-                improves performance for non-CPU bound UDFs, allowing batch fetching
-                compute and formatting to be overlapped with the UDF. Defaults to 0 (no
-                prefetching enabled.) Increasing the number of batches to prefetch can
-                result in higher throughput, at the expense of requiring more heap
-                memory to buffer the batches.
+                ``Dict[str, numpy.ndarray]`` for tabular datasets, or None to return
+                the underlying block exactly as is with no additional formatting.
+                The default is "default".
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch will be a zero-copy, read-only
@@ -597,10 +593,7 @@ class Dataset(Generic[T]):
         """  # noqa: E501
 
         if batch_format == "native":
-            warnings.warn(
-                "The 'native' batch format has been renamed 'default'.",
-                DeprecationWarning,
-            )
+            logger.warning("The 'native' batch format has been renamed 'default'.")
 
         target_block_size = None
         if batch_size == "default":
@@ -648,7 +641,6 @@ class Dataset(Generic[T]):
         transform_fn = generate_map_batches_fn(
             batch_size=batch_size,
             batch_format=batch_format,
-            prefetch_batches=prefetch_batches,
             zero_copy_batch=zero_copy_batch,
         )
 
@@ -2021,14 +2013,14 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).std()
-            29.011491975882016
+            >>> round(ray.data.range(100).std(), 5)
+            29.01149
             >>> ray.data.from_items([
             ...     (i, i**2)
             ...     for i in range(100)]).std(lambda x: x[1])
             2968.1748039269296
-            >>> ray.data.range_table(100).std("value", ddof=0)
-            28.86607004772212
+            >>> round(ray.data.range_table(100).std("value", ddof=0), 5)
+            28.86607
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
             ...     for i in range(100)]).std(["A", "B"])
@@ -2661,6 +2653,76 @@ class Dataset(Generic[T]):
             tf_schema=tf_schema,
         )
 
+    @PublicAPI(stability="alpha")
+    @ConsumptionAPI
+    def write_webdataset(
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        ray_remote_args: Dict[str, Any] = None,
+        encoder: Optional[Union[bool, str, callable, list]] = True,
+    ) -> None:
+        """Write the dataset to WebDataset files.
+
+        The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
+        files will contain
+        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_ # noqa: E501
+        records, with one Example record for each row in the dataset.
+
+        .. warning::
+            tf.train.Feature only natively stores ints, floats, and bytes,
+            so this function only supports datasets with these data types,
+            and will error if the dataset contains unsupported types.
+
+        This is only supported for datasets convertible to Arrow records.
+        To control the number of files, use ``.repartition()``.
+
+        Unless a custom block path provider is given, the format of the output
+        files will be {uuid}_{block_idx}.tfrecords, where ``uuid`` is an unique id
+        for the dataset.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([
+            ...     { "name": "foo", "score": 42 },
+            ...     { "name": "bar", "score": 43 },
+            ... ])
+            >>> ds.write_webdataset("s3://bucket/path") # doctest: +SKIP
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            path: The path to the destination root directory, where tfrecords
+                files will be written to.
+            filesystem: The filesystem implementation to write to.
+            try_create_dir: Try to create all directories in destination path
+                if True. Does nothing if all directories already exist.
+            arrow_open_stream_args: kwargs passed to
+                pyarrow.fs.FileSystem.open_output_stream
+            block_path_provider: BlockWritePathProvider implementation to
+                write each dataset block to a custom output path.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+
+        """
+
+        from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
+
+        self.write_datasource(
+            WebDatasetDatasource(),
+            ray_remote_args=ray_remote_args,
+            path=path,
+            dataset_uuid=self._uuid,
+            filesystem=filesystem,
+            try_create_dir=try_create_dir,
+            open_stream_args=arrow_open_stream_args,
+            block_path_provider=block_path_provider,
+            encoder=encoder,
+        )
+
     @ConsumptionAPI
     def write_numpy(
         self,
@@ -2845,9 +2907,12 @@ class Dataset(Generic[T]):
                 self._write_ds = Dataset(
                     plan, self._epoch, self._lazy, logical_plan
                 ).cache()
-                datasource.on_write_complete(
-                    ray.get(self._write_ds._plan.execute().get_blocks())
+                blocks = ray.get(self._write_ds._plan.execute().get_blocks())
+                assert all(
+                    isinstance(block, list) and len(block) == 1 for block in blocks
                 )
+                write_results = [block[0] for block in blocks]
+                datasource.on_write_complete(write_results)
             except Exception as e:
                 datasource.on_write_failed([], e)
                 raise
@@ -2935,13 +3000,15 @@ class Dataset(Generic[T]):
     def iter_batches(
         self,
         *,
-        prefetch_blocks: int = 0,
+        prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
-        batch_format: str = "default",
+        batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        # Deprecated.
+        prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the dataset.
 
@@ -2953,18 +3020,23 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Args:
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
-            batch_format: The format in which to return each batch.
-                Specify "default" to use the default block format (promoting
-                tables to Pandas and tensors to NumPy), "pandas" to select
-                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
-                to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
+            batch_format: Specify ``"default"`` to use the default block format
+                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
+                ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
+                ``Dict[str, numpy.ndarray]`` for tabular datasets, or None
+                to return the underlying block exactly as is with no additional
+                formatting. The default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -2977,12 +3049,10 @@ class Dataset(Generic[T]):
             An iterator over record batches.
         """
         if batch_format == "native":
-            warnings.warn(
-                "The 'native' batch format has been renamed 'default'.",
-                DeprecationWarning,
-            )
+            logger.warning("The 'native' batch format has been renamed 'default'.")
 
         return self.iterator().iter_batches(
+            prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
@@ -2996,7 +3066,7 @@ class Dataset(Generic[T]):
     def iter_torch_batches(
         self,
         *,
-        prefetch_blocks: int = 0,
+        prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
@@ -3006,6 +3076,8 @@ class Dataset(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        # Deprecated
+        prefetch_blocks: int = 0,
     ) -> Iterator["TorchTensorBatchType"]:
         """Return a local batched iterator of Torch Tensors over the dataset.
 
@@ -3028,8 +3100,12 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Args:
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -3060,6 +3136,7 @@ class Dataset(Generic[T]):
             An iterator over Torch Tensor batches.
         """
         return self.iterator().iter_torch_batches(
+            prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             dtypes=dtypes,
@@ -3074,12 +3151,14 @@ class Dataset(Generic[T]):
     def iter_tf_batches(
         self,
         *,
-        prefetch_blocks: int = 0,
+        prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["tf.dtypes.DType", Dict[str, "tf.dtypes.DType"]]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        # Deprecated
+        prefetch_blocks: int = 0,
     ) -> Iterator[TensorFlowTensorBatchType]:
         """Return a local batched iterator of TensorFlow Tensors over the dataset.
 
@@ -3105,8 +3184,12 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Args:
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -3128,6 +3211,7 @@ class Dataset(Generic[T]):
             An iterator over TensorFlow Tensor batches.
         """
         return self.iterator().iter_tf_batches(
+            prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             dtypes=dtypes,
@@ -3149,12 +3233,14 @@ class Dataset(Generic[T]):
             Union["torch.dtype", List["torch.dtype"], Dict[str, "torch.dtype"]]
         ] = None,
         batch_size: int = 1,
-        prefetch_blocks: int = 0,
+        prefetch_batches: int = 1,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         unsqueeze_label_tensor: bool = True,
         unsqueeze_feature_tensors: bool = True,
+        # Deprecated
+        prefetch_blocks: int = 0,
     ) -> "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
@@ -3215,8 +3301,12 @@ class Dataset(Generic[T]):
                 all tensors. If None, then automatically infer the dtype.
             batch_size: How many samples per batch to yield at a time.
                 Defaults to 1.
-            prefetch_blocks: The number of blocks to prefetch ahead of
-                the current block during the scan.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
@@ -3251,6 +3341,7 @@ class Dataset(Generic[T]):
             feature_column_dtypes=feature_column_dtypes,
             batch_size=batch_size,
             prefetch_blocks=prefetch_blocks,
+            prefetch_batches=prefetch_batches,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
@@ -3264,11 +3355,13 @@ class Dataset(Generic[T]):
         feature_columns: Union[str, List[str]],
         label_columns: Union[str, List[str]],
         *,
-        prefetch_blocks: int = 0,
+        prefetch_batches: int = 1,
         batch_size: int = 1,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        # Deprecated
+        prefetch_blocks: int = 0,
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
@@ -3333,8 +3426,12 @@ class Dataset(Generic[T]):
             label_column: Columns that correspond to model targets. If this is a
                 string, the target data is a tensor. If this is a list, the target data
                 is a ``dict`` that maps column names to their tensor representation.
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
+                `use_legacy_iter_batches` to True in the DatasetContext.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
@@ -3363,6 +3460,7 @@ class Dataset(Generic[T]):
         return self.iterator().to_tf(
             feature_columns=feature_columns,
             label_columns=label_columns,
+            prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             drop_last=drop_last,
             batch_size=batch_size,
@@ -3638,9 +3736,13 @@ class Dataset(Generic[T]):
         Returns:
             A list of remote Arrow tables created from this dataset.
         """
-        blocks: List[ObjectRef[Block]] = self.get_internal_block_refs()
+        import pyarrow as pa
 
-        if self.dataset_format() == BlockFormat.ARROW:
+        blocks: List[ObjectRef["pyarrow.Table"]] = self.get_internal_block_refs()
+        # Schema is safe to call since we have already triggered execution with
+        # get_internal_block_refs.
+        schema = self.schema(fetch_if_missing=True)
+        if isinstance(schema, pa.Schema):
             # Zero-copy path.
             return blocks
 
@@ -3961,17 +4063,15 @@ class Dataset(Generic[T]):
 
     @Deprecated(message="Use `Dataset.cache()` instead.")
     def fully_executed(self) -> "Dataset[T]":
-        warnings.warn(
+        logger.warning(
             "The 'fully_executed' call has been renamed to 'cache'.",
-            DeprecationWarning,
         )
         return self.cache()
 
     @Deprecated(message="Use `Dataset.is_cached()` instead.")
     def is_fully_executed(self) -> bool:
-        warnings.warn(
+        logger.warning(
             "The 'is_fully_executed' call has been renamed to 'is_cached'.",
-            DeprecationWarning,
         )
         return self.is_cached()
 
@@ -4025,6 +4125,10 @@ class Dataset(Generic[T]):
         self._synchronize_progress_bar()
         return blocks
 
+    @Deprecated(
+        message="Dataset is lazy by default, so this conversion call is no longer "
+        "needed and this API will be removed in a future release"
+    )
     def lazy(self) -> "Dataset[T]":
         """Enable lazy evaluation.
 
@@ -4237,6 +4341,7 @@ class Dataset(Generic[T]):
         pattern="for the first block.",
         insert_after=True,
     )
+    @Deprecated(message="`dataset_format` is deprecated for streaming execution.")
     def dataset_format(self) -> BlockFormat:
         """The format of the dataset's underlying data blocks. Possible values
         are: "arrow", "pandas" and "simple".
@@ -4244,6 +4349,14 @@ class Dataset(Generic[T]):
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
         """
+        context = DatasetContext.get_current()
+        if context.use_streaming_executor:
+            raise DeprecationWarning(
+                "`dataset_format` is deprecated for streaming execution. To use "
+                "`dataset_format`, you must explicitly enable bulk execution by "
+                "setting `use_streaming_executor` to False in the `DatasetContext`"
+            )
+
         # We need schema to properly validate, so synchronously
         # fetch it if necessary.
         schema = self.schema(fetch_if_missing=True)
@@ -4291,18 +4404,10 @@ class Dataset(Generic[T]):
         """Build set of aggregations for applying a single aggregation to
         multiple columns.
         """
-
         # Expand None into an aggregation for each column.
         if on is None:
-            try:
-                dataset_format = self.dataset_format()
-            except ValueError:
-                dataset_format = None
-            if dataset_format in [BlockFormat.ARROW, BlockFormat.PANDAS]:
-                # This should be cached from the .dataset_format() check, so we
-                # don't fetch and we assert that the schema is not None.
-                schema = self.schema(fetch_if_missing=False)
-                assert schema is not None
+            schema = self.schema(fetch_if_missing=True)
+            if schema is not None and not isinstance(schema, type):
                 if not skip_cols:
                     skip_cols = []
                 if len(schema.names) > 0:

@@ -12,7 +12,6 @@ Replay Buffer Base Classes
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     ~replay_buffer.StorageUnit
     ~replay_buffer.ReplayBuffer
@@ -35,7 +34,7 @@ Public Methods
     ~ReplayBuffer.set_state
 
 
-Multi Agent Buffers 
+Multi Agent Buffers
 -------------------
 
 The following classes use the above, "single-agent", buffers as underlying buffers to facilitate splitting up experiences between the different agents' policies.
@@ -46,7 +45,6 @@ This leads to the need for MultiAgentReplayBuffers that store the experiences of
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     ~multi_agent_replay_buffer.MultiAgentReplayBuffer
     ~multi_agent_prioritized_replay_buffer.MultiAgentPrioritizedReplayBuffer

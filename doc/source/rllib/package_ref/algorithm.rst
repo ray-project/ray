@@ -14,9 +14,9 @@ and thus fully supports distributed hyperparameter tuning for RL.
 .. figure:: ../images/trainer_class_overview.svg
     :align: left
 
-    **A typical RLlib Algorithm object:** Algorhtms are normally comprised of 
-    N :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` that 
-    orchestrated via a :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet` object. 
+    **A typical RLlib Algorithm object:** Algorhtms are normally comprised of
+    N :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` that
+    orchestrated via a :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet` object.
     Each worker own its own a set of :py:class:`~ray.rllib.policy.policy.Policy` objects and their NN models per worker, plus a :py:class:`~ray.rllib.env.base_env.BaseEnv` instance per worker.
 
 .. _algo-config-api:
@@ -37,7 +37,6 @@ Constructor
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     ~AlgorithmConfig
 
@@ -128,7 +127,6 @@ Constructor
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     ~Algorithm
 

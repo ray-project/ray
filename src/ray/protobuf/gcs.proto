@@ -155,6 +155,11 @@ message ActorTableData {
   optional bytes node_id = 29;
   // Placement group ID if the actor requires a placement group.
   optional bytes placement_group_id = 30;
+  // The repr name of the actor if specified with a customized repr method, e.g. __repr__
+  // This field is only available after the actor creation task has been run since it
+  // might depend on actor fields to be initialized in __init__.
+  // Default to empty string if no customized repr is defined.
+  string repr_name = 31;
 }
 
 message ErrorTableData {
@@ -197,6 +202,22 @@ message ProfileEvents {
   repeated ProfileEventEntry events = 4;
 }
 
+// Represents the info of a worker's log file for which executes the task.
+message TaskLogInfo {
+  // stdout log file absolute path.
+  optional string stdout_file = 1;
+  // stderr log file absolute path.
+  optional string stderr_file = 2;
+  // Start offset of stdout when task starts.
+  optional int32 stdout_start = 3;
+  // End offset of stdout when task finishes.
+  optional int32 stdout_end = 4;
+  // Start offset of stderr when task starts.
+  optional int32 stderr_start = 5;
+  // End offset of stderr when task finishes.
+  optional int32 stderr_end = 6;
+}
+
 // Represents task states which could be changed during task execution.
 message TaskStateUpdate {
   // Node that runs the task.
@@ -216,7 +237,9 @@ message TaskStateUpdate {
   // Worker that runs the task.
   optional bytes worker_id = 8;
   // Task faulure info.
-  optional ErrorType error_type = 9;
+  optional RayErrorInfo error_info = 9;
+  // Task logs info.
+  optional TaskLogInfo task_log_info = 10;
 }
 
 // Represents events and state changes from a single task run.
@@ -378,10 +401,28 @@ message WorkerTableData {
   optional string exit_detail = 20;
   // pid of the worker process.
   uint32 pid = 21;
-  // The unix ms timestamp the worker was started at.
+
+  /* The below fields are worker lifecycle events
+     worker_launch_time_ms (process startup requested).
+     -> worker_launched_time_ms (process started).
+     -> start_time_ms (worker is ready to be used).
+     -> end_time_ms (worker is destroyed).
+  */
+
+  // The unix ms timestamp the worker was started and finished initialization.
   uint64 start_time_ms = 23;
   // The unix ms timestamp the worker was ended at.
   uint64 end_time_ms = 24;
+  // The time when this worker process is requested from raylet.
+  // The field exists only when the worker is launched
+  // by a raylet. (I.e., driver worker won't have this value).
+  // If the value doesn't present, it is -1.
+  uint64 worker_launch_time_ms = 25;
+  // The time when this worker process is successfully started.
+  // The field exists only when the worker is launched
+  // by a raylet. (I.e., driver worker won't have this value).
+  // If the value doesn't present, it is -1.
+  uint64 worker_launched_time_ms = 26;
 }
 
 // Fields to publish when worker fails.

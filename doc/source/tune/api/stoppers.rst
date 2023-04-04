@@ -23,7 +23,6 @@ Stopper Interface (tune.Stopper)
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     Stopper
 

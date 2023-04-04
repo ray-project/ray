@@ -374,6 +374,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void SetActorTitle(const std::string &title);
 
+  /// Sets the actor's repr name.
+  ///
+  /// This is set explicitly rather than included as part of actor creation task spec
+  /// because it's only available after running the creation task as it might depend on
+  /// fields to be be initialized during actor creation task. The repr name will be
+  /// included as part of actor creation task reply (PushTaskReply) to GCS.
+  ///
+  /// \param repr_name Actor repr name.
+  void SetActorReprName(const std::string &repr_name);
+
   void SetCallerCreationTimestamp();
 
   /// Increase the reference count for this object ID.
@@ -1119,6 +1129,27 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// interface with language bindings.
   std::unordered_map<std::string, std::vector<int64_t>> GetActorCallStats() const;
 
+  /// Add task log info for a task when it starts executing.
+  ///
+  /// It's an no-op in local mode.
+  ///
+  /// \param stdout_path Path to stdout log file.
+  /// \param stderr_path Path to stderr log file.
+  /// \param stdout_start_offset Start offset of the stdout for this task.
+  /// \param stderr_start_offset Start offset of the stderr for this task.
+  void RecordTaskLogStart(const std::string &stdout_path,
+                          const std::string &stderr_path,
+                          int64_t stdout_start_offset,
+                          int64_t stderr_start_offset) const;
+
+  /// Add task log info for a task when it finishes executing.
+  ///
+  /// It's an no-op in local mode.
+  ///
+  /// \param stdout_end_offset End offset of the stdout for this task.
+  /// \param stderr_end_offset End offset of the stderr for this task.
+  void RecordTaskLogEnd(int64_t stdout_end_offset, int64_t stderr_end_offset) const;
+
  private:
   static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);
 
@@ -1182,7 +1213,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void ForceExit(const rpc::WorkerExitType exit_type, const std::string &detail);
 
   /// Register this worker or driver to GCS.
-  void RegisterToGcs();
+  void RegisterToGcs(int64_t worker_launch_time_ms, int64_t worker_launched_time_ms);
 
   /// (WORKER mode only) Check if the raylet has failed. If so, shutdown.
   void ExitIfParentRayletDies();
@@ -1241,6 +1272,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///                     objects whose IDs we passed to the task in its
   ///                     arguments and recursively, any object IDs that were
   ///                     contained in those objects.
+  /// \param results[out] is_retryable_error Whether the task failed with a retryable
+  ///                     error.
+  /// \param results[out] application_error The error message if the
+  ///                     task failed during execution or cancelled.
   /// \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
@@ -1250,7 +1285,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
           *dynamic_return_objects,
       ReferenceCounter::ReferenceTableProto *borrowed_refs,
       bool *is_retryable_error,
-      bool *is_application_error);
+      std::string *application_error);
 
   /// Put an object in the local plasma store.
   Status PutInLocalPlasmaStore(const RayObject &object,

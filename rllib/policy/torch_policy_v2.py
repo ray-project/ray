@@ -1098,7 +1098,8 @@ class TorchPolicyV2(Policy):
             action_dist = fwd_out.pop("action_dist")
 
             if explore:
-                actions, logp = action_dist.sample(return_logp=True)
+                actions = action_dist.sample()
+                logp = action_dist.logp(actions)
             else:
                 actions = action_dist.sample()
                 logp = None
@@ -1106,8 +1107,8 @@ class TorchPolicyV2(Policy):
             extra_fetches = fwd_out
             dist_inputs = None
         elif is_overridden(self.action_sampler_fn):
-            action_dist = dist_inputs = None
-            actions, logp, state_out = self.action_sampler_fn(
+            action_dist = None
+            actions, logp, dist_inputs, state_out = self.action_sampler_fn(
                 self.model,
                 obs_batch=input_dict,
                 state_batches=state_batches,
