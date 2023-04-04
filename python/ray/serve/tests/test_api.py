@@ -675,8 +675,8 @@ def test_application_route_prefix_override(serve_instance, ingress_route, app_ro
         assert requests.get(f"http://localhost:8000{app_route}").text == "hello"
 
 
-@pytest.mark.parametrize("ingress_route", ["/hello", "/", None])
-def test_application_route_prefix_override2(serve_instance, ingress_route):
+@pytest.mark.parametrize("ingress_route", ["/hello", "/"])
+def test_application_route_prefix_override1(serve_instance, ingress_route):
     """
     Don't set route prefix in serve.run, check it always uses the ingress deployment
     route.
