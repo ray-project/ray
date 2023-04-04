@@ -5,7 +5,13 @@ import itertools
 from typing import List, Iterator, Any, Dict, Optional, Union
 
 import ray
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    BlockExecStats,
+    _CallableClassProtocol,
+)
 from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
@@ -65,6 +71,7 @@ class MapOperator(PhysicalOperator, ABC):
     def create(
         cls,
         transform_fn: MapTransformFn,
+        init_fn: Optional[_CallableClassProtocol],
         input_op: PhysicalOperator,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
@@ -82,6 +89,7 @@ class MapOperator(PhysicalOperator, ABC):
 
         Args:
             transform_fn: The function to apply to each ref bundle input.
+            init_fn: The callable class to instantiate if using ActorPoolMapOperator.
             input_op: Operator generating input data for this op.
             name: The name of this operator.
             compute_strategy: Customize the compute strategy for this op.
@@ -119,6 +127,7 @@ class MapOperator(PhysicalOperator, ABC):
             autoscaling_policy = AutoscalingPolicy(autoscaling_config)
             return ActorPoolMapOperator(
                 transform_fn,
+                init_fn,
                 input_op,
                 autoscaling_policy=autoscaling_policy,
                 name=name,

@@ -62,20 +62,18 @@ def _plan_udf_map_op(
         fn_ = op._fn
 
         def fn(item: Any) -> Any:
-            # Wrapper providing cached instantiation of stateful callable class
-            # UDFs.
+            assert ray.data._cached_fn is not None
+            assert ray.data._cached_cls == fn_
+            return ray.data._cached_fn(item)
+
+        def init_fn():
             if ray.data._cached_fn is None:
                 ray.data._cached_cls = fn_
                 ray.data._cached_fn = fn_(*fn_constructor_args, **fn_constructor_kwargs)
-            else:
-                # A worker is destroyed when its actor is killed, so we
-                # shouldn't have any worker reuse across different UDF
-                # applications (i.e. different map operators).
-                assert ray.data._cached_cls == fn_
-            return ray.data._cached_fn(item)
 
     else:
         fn = op._fn
+        init_fn = None
     fn_args = (fn,)
     if op._fn_args:
         fn_args += op._fn_args
@@ -86,6 +84,7 @@ def _plan_udf_map_op(
 
     return MapOperator.create(
         do_map,
+        init_fn,
         input_physical_dag,
         name=op.name,
         compute_strategy=compute,
