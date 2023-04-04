@@ -77,7 +77,7 @@
             <h3>Try it out</h3>
         </div>
         <p>Experiment with Ray with an introductory notebook.</p>
-        <a class="bold-link" href="https://colab.research.google.com/github/maxpumperla/learning_ray/blob/main/notebooks/ch_02_ray_core.ipynb" 
+        <a class="bold-link" href="https://github-fill.research.google.com/github/maxpumperla/learning_ray/blob/main/notebooks/ch_02_ray_core.ipynb" 
         >Open the notebook></a>      
     </div>
   </div>
@@ -114,184 +114,190 @@
     <div class="col-8">
         <div class="tab-content" id="v-pills-tabContent">
           <div class="tab-pane fade show active" id="v-pills-data" role="tabpanel" aria-labelledby="v-pills-data-tab">
-            <pre style="margin:0"><code class="language-python">
+            <pre style="margin:0"><code class="language-python not-selectable">
 from ray import data
 
-# Load in some data.
-dataset = data.read_csv("s3://bucket/path")
+# Step 1: read 100 files in parallel from S3 directory
+dataset = data.read_csv(paths="s3://structured/data", parallelism=100)
 
-# Partition the dataset into shards.
-dataset = dataset.repartition(1000)
+# Step 2: partition the dataset into blocks
+dataset = dataset.repartition(num_blocks=1000)
 
-# Preprocess and transform the data.
-preprocessor = data.preprocessors.StandardScaler(["value"])
-dataset_transformed = preprocessor.fit_transform(dataset)
+# Step 3: preprocess the data at scale, 1000 blocks in parallel
+preprocessor = data.preprocessors.StandardScaler(columns=["value"])
+dataset_transformed = preprocessor.fit_transform(dataset=dataset)
             </code></pre>
               <div class="row">
                 <div class="col-10">
-                  <a href="#">Learn more | API references</a>
+                  <a href="https://docs.ray.io/en/latest/data/dataset.html">Learn more about Ray Data</a> |
+                  <a href="https://docs.ray.io/en/latest/data/api/api.html">API references</a>
                 </div>
                 <div class="col-2">
-                    <a href="#">
-                        <img src="/_static/img/colab.png" height="25px" />
+                    <a href="https://docs.ray.io/en/latest/data/examples/nyc_taxi_basic_processing.html">
+                        <img src="/_static/img/github-fill.png" height="25px" />
                     </a>
                 </div>
               </div>
           </div>
           <div class="tab-pane fade" id="v-pills-training" role="tabpanel" aria-labelledby="v-pills-training-tab">
-            <pre style="margin:0"><code class="language-python">
-from ray.data import Dataset
-from ray.train.torch import TorchTrainer
+            <pre style="margin:0"><code class="language-python not-selectable">
 from ray.air.config import ScalingConfig
+from ray.train.torch import TorchTrainer
 
-# Load and preprocess the data.
-data.read_parquet("s3://bucket/path")
-preprocessor = data.preprocessors.BatchMapper(map_fn)
+# Step 1: setup PyTorch model training as you normally would
 def train_loop_per_worker():
-    ...
-    # Define custom training logic here.
-    # Set up an integrated PyTorch Trainer.
+    model = ...
+    train_dataset = ...
+    for epoch in range(num_epochs):
+        ...  # model training logic
 
+# Step 2: setup Ray's PyTorch Trainer to run on 32 GPUs
 trainer = TorchTrainer(
     train_loop_per_worker=train_loop_per_worker,
-    scaling_config=ScalingConfig(num_workers=100),
-    preprocessor=preprocessor,
-    dataset={"train": dataset},
+    scaling_config=ScalingConfig(num_workers=32, use_gpu=True),
+    datasets={"train": train_dataset},
 )
 
-# Run distributed training.
+# Step 3: run distributed model training on 32 GPUs
 result = trainer.fit()
             </code></pre>
               <div class="row">
                 <div class="col-10">
-                  <a href="#">Learn more | API references</a>
+                  <a href="https://docs.ray.io/en/latest/train/train.html">Learn more about Ray Train</a> |
+                  <a href="https://docs.ray.io/en/latest/train/api/api.html">API references</a>
                 </div>
                 <div class="col-2">
-                    <a href="#">
-                        <img src="/_static/img/colab.png" height="25px" />
+                    <a href="https://docs.ray.io/en/latest/ray-air/examples/torch_image_example.html">
+                        <img src="/_static/img/github-fill.png" height="25px" />
                     </a>
                 </div>
               </div>
           </div>
           <div class="tab-pane fade" id="v-pills-tuning" role="tabpanel" aria-labelledby="v-pills-tuning-tab">
-            <pre style="margin:0"><code class="language-python">
+            <pre style="margin:0"><code class="language-python not-selectable">
 from ray import tune
 from ray.air.config import ScalingConfig
 from ray.train.lightgbm import LightGBMTrainer
 
-# Load in some data.
-dataset = data.read_csv("s3://bucket/path")
+train_dataset, eval_dataset = ...
 
-# Create an integrated LightGBM Trainer.
+# Step 1: setup Ray's LightGBM Trainer to train on 64 CPUs
 trainer = LightGBMTrainer(
-       label_column="y",
-       params={"objective": "regression"},
-       scaling_config=ScalingConfig(num_workers=100),
-       datasets={"train": dataset},
+    ...
+    scaling_config=ScalingConfig(num_workers=64),
+    datasets={"train": train_dataset, "eval": eval_dataset},
 )
 
-# Create a Tuner with search space and scaling config.
+# Step 2: setup Ray Tuner to run 1000 trials
 tuner = tune.Tuner(
-       trainer=trainer,
-       param_space={
-           "num_leaves": tune.randint(50, 150),
-           "min_data_in_leaf": tune.uniform(500, 1000),
-       },
-       tune_config=tune.TuneConfig(num_samples=100,metric="loss", mode="min")
+    trainer=trainer,
+    param_space=hyper_param_space,
+    tune_config=tune.TuneConfig(num_samples=1000),
 )
 
-# Run distributed hyperparameter tuning.
+# Step 3: run distributed HPO with 1000 trials; each trial runs on 64 CPUs
 result_grid = tuner.fit()
             </code></pre>
               <div class="row">
                 <div class="col-10">
-                  <a href="#">Learn more | API references</a>
+                  <a href="https://docs.ray.io/en/latest/tune/index.html">Learn more about Ray Tune</a> |
+                  <a href="https://docs.ray.io/en/latest/tune/api/api.html">API references</a>
                 </div>
                 <div class="col-2">
-                    <a href="#">
-                        <img src="/_static/img/colab.png" height="25px" />
+                    <a href="https://docs.ray.io/en/latest/tune/examples/lightgbm_example.html#tune-lightgbm-example">
+                        <img src="/_static/img/github-fill.png" height="25px" />
                     </a>
                 </div>
               </div>
           </div>
           <div class="tab-pane fade" id="v-pills-rl" role="tabpanel" aria-labelledby="v-pills-rl-tab">
-            <pre style="margin:0"><code class="language-python">
+            <pre style="margin:0"><code class="language-python not-selectable">
 from ray.rllib.algorithms.ppo import PPOConfig
 
-# Configure the algorithm.
-config = ( 
+# Step 1: configure PPO to run 64 parallel workers to collect samples from the env.
+ppo_config = (
     PPOConfig()
-    .environment("Taxi-v3")
-    .rollouts(num_rollout_workers=2)
-    .framework("tf2")
-    .training(model={"fcnet_hiddens": [64, 64]})
-    .evaluation(evaluation_num_workers=1)
+    .environment(env="Taxi-v3")
+    .rollouts(num_rollout_workers=64)
+    .framework("torch")
+    .training(model=rnn_lage)
 )
 
-# Build the algorithm.
-algo = config.build()
+# Step 2: build the PPO algorithm
+ppo_algo = ppo_config.build()
 
-# Run distributed training.
+# Step 3: train and evaluate PPO
 for _ in range(5):
-    print(algo.train())
+    print(ppo_algo.train())
 
-# Evaluate.
-algo.evaluate()
+ppo_algo.evaluate()
             </code></pre>
               <div class="row">
                 <div class="col-10">
-                  <a href="#">Learn more | API references</a>
+                  <a href="https://docs.ray.io/en/latest/rllib/index.html">Learn more about RLlib</a> |
+                  <a href="https://docs.ray.io/en/latest/rllib/package_ref/index.html">API references</a>
                 </div>
                 <div class="col-2">
-                    <a href="#">
-                        <img src="/_static/img/colab.png" height="25px" />
+                    <a href="https://docs.ray.io/en/latest/ray-air/examples/rl_online_example.html">
+                        <img src="/_static/img/github-fill.png" height="25px" />
                     </a>
                 </div>
               </div>       
           </div>
           <div class="tab-pane fade" id="v-pills-serving" role="tabpanel" aria-labelledby="v-pills-serving-tab">
-            <pre style="margin:0"><code class="language-python">
-import requests
+            <pre style="margin:0"><code class="language-python not-selectable">
 from ray import serve
+from ray.serve import PredictorDeployment
+from ray.train.lightgbm import LightGBMPredictor
 
-# Define a Ray Serve deployment
-@serve.deployment(route_prefix="/")
-class MyModelDeployment:
-     def __init__(self, msg: str):
-        # Initialize model state: could be very large neural net weights.
-        self._msg = msg
-
-     def __call__(self, request):
-        return {"result": self._msg}
-
-# Deploy the model.
-serve.run(MyModelDeployment.bind(msg="Hello world!"))
-
-# Query the deployment and print the result.
-print(requests.get("http://localhost:8000/").json())
+# Deploy 50 replicas of the LightGBM model as a live endpoint.
+# Convert incoming JSON requests into a DataFrame.
+serve.run(
+    PredictorDeployment.options(
+        name="LightGBM_Service",
+        num_replicas=50,
+    ).bind(
+        predictor_cls=LightGBMPredictor,
+        checkpoint=lgbm_best_checkpoint,
+        http_adapter=serve.http_adapters.pandas_read_json,
+    )
+)
             </code></pre>
               <div class="row">
                 <div class="col-10">
-                  <a href="#">Learn more | API references</a>
+                  <a href="https://docs.ray.io/en/latest/serve/index.html">Learn more about Ray Serve</a> |
+                  <a href="https://docs.ray.io/en/latest/serve/api/index.html">API references</a>
                 </div>
                 <div class="col-2">
-                    <a href="#">
-                        <img src="/_static/img/colab.png" height="25px" />
+                    <a href="https://docs.ray.io/en/latest/serve/tutorials/serve-ml-models.html">
+                        <img src="/_static/img/github-fill.png" height="25px" />
                     </a>
                 </div>
               </div>          
           </div>          
           <div class="tab-pane fade" id="v-pills-batch" role="tabpanel" aria-labelledby="v-pills-batch-tab">
-            <pre style="margin:0"><code class="language-python">
-CODE TBD
+            <pre style="margin:0"><code class="language-python not-selectable">
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.torch import TorchPredictor
+
+dataset = ...
+
+# Step 1: create batch predictor to run inference at scale
+batch_predictor = BatchPredictor.from_checkpoint(
+    checkpoint=model_checkpoint, predictor_cls=TorchPredictor
+)
+
+# Step 2: run batch inference on 64 GPUs
+results = batch_predictor.predict(dataset, batch_size=512, num_gpus_per_worker=64)
             </code></pre>
               <div class="row">
                 <div class="col-10">
-                  <a href="#">Learn more | API references</a>
+                  <a href="https://docs.ray.io/en/latest/data/dataset.html">Learn more about Ray Data</a> |
+                  <a href="https://docs.ray.io/en/latest/data/api/api.html">API references</a>
                 </div>
                 <div class="col-2">
-                    <a href="#">
-                        <img src="/_static/img/colab.png" height="25px" />
+                    <a href="https://docs.ray.io/en/latest/ray-core/examples/batch_prediction.html">
+                        <img src="/_static/img/github-fill.png" height="25px" />
                     </a>
                 </div>
               </div>
