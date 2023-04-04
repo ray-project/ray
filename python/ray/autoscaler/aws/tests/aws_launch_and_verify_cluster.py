@@ -16,6 +16,8 @@ import sys
 import time
 from pathlib import Path
 
+# DEBUG: print the output of pip list freeze
+subprocess.run(["pip", "list", "--format=freeze"])
 import boto3
 
 
