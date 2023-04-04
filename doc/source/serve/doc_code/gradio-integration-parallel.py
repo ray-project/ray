@@ -28,7 +28,7 @@ class TextGenerationModel:
 
 
 app1 = TextGenerationModel.bind("gpt2")
-app2 = TextGenerationModel.bind("EleutherAI/gpt-neo-125M")
+app2 = TextGenerationModel.bind("distilgpt2")
 # __doc_models_end__
 
 

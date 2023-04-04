@@ -35,7 +35,10 @@ Remember you can substitute this with your own Gradio app if you want to try sca
 ### Deploying Gradio Server
 In order to deploy your Gradio app onto Ray Serve, you need to wrap your Gradio app in a Serve [deployment](serve-key-concepts-deployment). `GradioServer` acts as that wrapper. It serves your Gradio app remotely on Ray Serve so that it can process and respond to HTTP requests. 
 
-Replicas in a deployment are copies of your program running on Ray Serve, where each replica runs on a separate Ray cluster node's worker process. More replicas scales your deployment by serving more client requests. By wrapping your application in `GradioServer`, you can increase the number of replicas of your application or increase the number of CPUs and/or GPUs available to each replica.
+By wrapping your application in `GradioServer`, you can increase the number of CPUs and/or GPUs available to the application.
+:::{note}
+Currently, there is no support for routing requests properly to multiple replicas of `GradioServer`, so we recommend only having a single replica.
+:::
 
 :::{note} 
 `GradioServer` is simply `GradioIngress` but wrapped in a Serve deployment. You can use `GradioServer` for the simple wrap-and-deploy use case, but as you will see in the next section, you can use `GradioIngress` to define your own Gradio Server for more customized use cases.
@@ -65,7 +68,7 @@ You can run multiple models in parallel with Ray Serve by utilizing the [deploym
 ### Original Approach
 Suppose you want to run the following program.
 
-1. Take two text generation models, [`gpt2`](https://huggingface.co/gpt2) and [`EleutherAI/gpt-neo-125M`](https://huggingface.co/EleutherAI/gpt-neo-125M).
+1. Take two text generation models, [`gpt2`](https://huggingface.co/gpt2) and [`distilgpt2`](https://huggingface.co/distilgpt2).
 2. Run the two models on the same input text, such that the generated text has a minimum length of 20 and maximum length of 100.
 3. Display the outputs of both models using Gradio.
 
@@ -91,7 +94,7 @@ Let's walk through a few steps to achieve parallelism. First, let's import our d
 :end-before: __doc_import_end__
 ```
 
-Then, let's wrap our `gpt2` and `EleutherAI/gpt-neo-125M` models in Serve deployments, named `TextGenerationModel`.
+Then, let's wrap our `gpt2` and `distilgpt2` models in Serve deployments, named `TextGenerationModel`.
 ```{literalinclude} ../doc_code/gradio-integration-parallel.py
 :start-after: __doc_models_begin__
 :end-before: __doc_models_end__

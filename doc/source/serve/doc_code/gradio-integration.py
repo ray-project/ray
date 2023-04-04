@@ -49,7 +49,7 @@ def gradio_summarizer_builder():
 
 
 # __doc_app_begin__
-app = GradioServer.options(num_replicas=2, ray_actor_options={"num_cpus": 4}).bind(
+app = GradioServer.options(ray_actor_options={"num_cpus": 4}).bind(
     gradio_summarizer_builder
 )
 # __doc_app_end__
