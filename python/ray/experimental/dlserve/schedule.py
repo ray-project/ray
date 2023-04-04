@@ -29,6 +29,13 @@ class Forward(Instruction):
         self.count = count
 
 
+class LoadBatch(Instruction):
+    """Load a batch of data from the data loader."""
+
+    def __init__(self, count: int = 1):
+        self.count = count
+
+
 class Schedule(ABC):
     """A schedule represents the execution schedule of a stage replica."""
 
