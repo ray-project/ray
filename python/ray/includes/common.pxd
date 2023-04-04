@@ -143,8 +143,6 @@ cdef extern from "ray/common/status.h" namespace "ray::StatusCode" nogil:
     cdef StatusCode StatusCode_UnknownError "UnknownError"
     cdef StatusCode StatusCode_NotImplemented "NotImplemented"
     cdef StatusCode StatusCode_RedisError "RedisError"
-    cdef StatusCode StatusCode_GrpcUnavailable "ray::StatusCode::GrpcUnavailable"
-    cdef StatusCode StatusCode_GrpcUnknown "ray::StatusCode::GrpcUnknown"
 
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:

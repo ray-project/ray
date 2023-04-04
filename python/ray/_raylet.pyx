@@ -92,8 +92,6 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
     PLACEMENT_STRATEGY_STRICT_SPREAD,
-    StatusCode_GrpcUnavailable,
-    StatusCode_GrpcUnknown,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -165,9 +163,6 @@ include "includes/metric.pxi"
 # Expose GCC & Clang macro to report
 # whether C++ optimizations were enabled during compilation.
 OPTIMIZED = __OPTIMIZE__
-
-STATUS_CODE_GRPC_UNAVAILABLE = <int>StatusCode_GrpcUnavailable
-STATUS_CODE_GRPC_UNKNOWN = <int>StatusCode_GrpcUnknown
 
 logger = logging.getLogger(__name__)
 
