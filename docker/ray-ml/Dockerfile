@@ -31,14 +31,13 @@ RUN sudo apt-get update \
       requirements.txt \
       requirements_test.txt \
       requirements_linters.txt \
-    # Then, install requirements
-    && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
-           -r requirements_pinned.txt \
     # Install no-deps requirements. Their dependencies may be overwritten
     # in subsequent steps
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
-           -c requirements_pinned.txt \
            -r requirements_no_deps.txt \
+        # Then, install requirements
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
+           -r requirements_pinned.txt \
     # Install other requirements. Keep pinned requirements bounds as constraints
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
            -c requirements_pinned.txt \
