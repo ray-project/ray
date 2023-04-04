@@ -1547,7 +1547,7 @@ def _auto_reconnect(f):
                 return f(self, *args, **kwargs)
             except RetryGcsConnectionError as e:
                 if remaining_retry <= 0:
-                    raise e.exception
+                    raise RuntimeError(str(e.exception))
                 logger.debug(
                     f"Failed to send request to gcs, reconnecting. Error {e.exception}"
                 )
