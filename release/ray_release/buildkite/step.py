@@ -15,6 +15,7 @@ from ray_release.config import (
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
 from ray_release.template import get_test_env_var
 from ray_release.util import python_version_str, DeferredEnvVar
+from ray_release.result import BuildkiteExitCode
 
 DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 
@@ -120,6 +121,16 @@ def get_step(
     # (otherwise keep default QUEUE_DEFAULT)
     if test.get("run", {}).get("type") == "client":
         step["agents"]["queue"] = str(RELEASE_QUEUE_CLIENT)
+
+    # Auto-retry on transient infra error (according to result.BuildkiteExitCode)
+    step["retry"] = {
+        "automatic": [
+          {
+            "exit_status": BuildkiteExitCode.TRANSIENT_INFRA_ERROR,
+            "limit": 2,
+          }
+        ]
+    }
 
     # If a test is not stable, allow to soft fail
     stable = test.get("stable", True)
