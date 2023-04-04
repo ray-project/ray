@@ -4600,6 +4600,7 @@ class Datastream(Generic[T]):
 Dataset = Datastream
 
 
+@PublicAPI
 class MaterializedDatastream(Datastream, Generic[T]):
     """A Datastream that has been materialized into Ray memory, e.g., via `.cache()`.
 
