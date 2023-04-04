@@ -225,7 +225,7 @@ class TestReadImages:
             root = "example://image-datasets/simple"
             ds = ray.data.read_images(root, parallelism=1)
             assert ds.num_blocks() == 1
-            ds.cache()
+            ds = ds.cache()
             # Verify dynamic block splitting taking effect to generate more blocks.
             assert ds.num_blocks() == 3
 

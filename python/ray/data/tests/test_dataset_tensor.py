@@ -203,7 +203,12 @@ def test_batch_tensors(ray_start_regular_shared):
     import torch
 
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)], parallelism=40)
-    res = "Datastream(num_blocks=40, num_rows=40, schema=<class 'torch.Tensor'>)"
+    res = (
+        "MaterializedDatastream(\n"
+        "   num_blocks=40,\n"
+        "   num_rows=40,\n"
+        "   schema=<class 'torch.Tensor'>\n)"
+    )
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))

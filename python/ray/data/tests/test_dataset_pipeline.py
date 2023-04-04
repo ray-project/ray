@@ -46,7 +46,7 @@ def test_warnings(shutdown_only):
         "window to "
         "~1 concurrent tasks per window. To maximize "
         "performance, increase the blocks per window to at least 2. This "
-        "may require increasing the base dataset's parallelism and/or "
+        "may require increasing the base datastream's parallelism and/or "
         "adjusting the windowing parameters."
     ]
     assert dataset.logger.infos == [
@@ -92,7 +92,7 @@ def test_warnings(shutdown_only):
             "per window "
             "to ~1 concurrent tasks per window. To maximize performance, increase "
             "the blocks per window to at least 2. This may require increasing the "
-            "base dataset's parallelism and/or adjusting the windowing parameters.",
+            "base datastream's parallelism and/or adjusting the windowing parameters.",
             f"{WARN_PREFIX} This pipeline's windows are ~0.76MiB in size each and may "
             "not fit "
             "in object store memory without spilling. To improve performance, "
