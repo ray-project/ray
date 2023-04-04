@@ -19,13 +19,26 @@ RUN sudo apt-get update \
         libgl1-mesa-dev \
         unzip \
         unrar \
-    && $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
-    # First, install requirements
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -U pip pip-tools \
+    # First, compile requirements. This command should be kept in sync
+    # with install-dependencies.sh
+    && $HOME/anaconda3/bin/pip-compile --resolver=backtracking -q \
+       --pip-args --no-deps --strip-extras --no-annotate --no-header -q -o \
+      requirements_pinned.txt \
+      requirements.txt \
+      requirements_test.txt \
+      requirements_linters.txt
+    # Then, install requirements
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
-           -r requirements.txt \
-    # Then, keep requirements bounds as constraints and install remaining test dependencies
+           -r requirements_pinned.txt \
+    # Install no-deps requirements. Their dependencies may be overwritten
+    # in subsequent steps
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
-           -c requirements.txt \
+           -c requirements_pinned.txt \
+           -r requirements_no_deps.txt \
+    # Install other requirements. Keep pinned requirements bounds as constraints
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
+           -c requirements_pinned.txt \
            -r requirements_rllib.txt \
            -r requirements_train.txt \
            -r requirements_tune.txt \
