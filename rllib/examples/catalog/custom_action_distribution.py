@@ -3,7 +3,7 @@ This example shows two things:
 1. How to write a custom action distribution
 2. How to inject a custom action distribution into a Catalog
 """
-
+# __sphinx_doc_begin__
 import torch
 import gymnasium as gym
 
@@ -14,7 +14,6 @@ from ray.rllib.models.distributions import Distribution
 from ray.rllib.models.torch.torch_distributions import TorchDeterministic
 
 
-# __sphinx_doc_begin__
 # Define a simple categorical distribution that can be used for PPO
 class CustomTorchCategorical(Distribution):
     def __init__(self, logits):

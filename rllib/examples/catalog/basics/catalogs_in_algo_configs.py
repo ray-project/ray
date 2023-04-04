@@ -22,8 +22,9 @@ config = (
 )
 
 # Specify the catalog to use for the PPORLModule.
-config = config.rl_module(rl_module_spec=SingleAgentRLModuleSpec(
-    catalog_class=MyPPOCatalog))
+config = config.rl_module(
+    rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyPPOCatalog)
+)
 # This is how RLlib constructs a PPORLModule
 # It will say "Hi from within PPORLModule!".
 ppo_rl_module = config.rl_module_spec.build()

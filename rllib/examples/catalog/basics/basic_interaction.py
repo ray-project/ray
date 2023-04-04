@@ -1,8 +1,6 @@
 """
 This files demonstrates basic interaction with Catalogs in RLlib.
 """
-
-
 # __sphinx_doc_begin__
 import gymnasium as gym
 

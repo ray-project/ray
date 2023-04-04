@@ -128,10 +128,6 @@ Inject your custom models into RLModules
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can make Catalog build custom models by overriding the Catalog’s methods used by RL Modules to build models.
-For example, a PPOCatalog has the following methods for building models:
-    - build_actor_critic_encoder
-    - build_pi_head
-    - build_vf_head
 Have a look at these lines from the constructor of the PPORLModules to see how Catalogs are being used by RLModules:
 
 .. literalinclude:: ../../../rllib/algorithms/ppo/ppo_base_rl_module.py
