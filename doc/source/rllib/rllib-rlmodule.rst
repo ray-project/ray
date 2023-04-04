@@ -524,7 +524,7 @@ To construct this custom multi-agent RL module, pass the class to the :py:class:
 
     module = spec.build()
 
-Extending Existing RLlib RL Modules
+Extending Existing RLlib RLModules
 -----------------------------------
 
 RLlib provides a number of RLModules for different frameworks (e.g. PyTorch, TensorFlow, etc.). These modules can be extended by inheriting from them and overriding the methods you need to customize. For example, you can extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization. You can then pass the new customized class into the algorithm configuration. 
