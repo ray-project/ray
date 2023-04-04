@@ -225,6 +225,22 @@ PROCESS_TYPE_PYTHON_CORE_WORKER = "python-core-worker"
 MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_MONITOR}.log"
 LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 
+# Enable log deduplication.
+RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
+
+# How many seconds of messages to buffer for log deduplication.
+RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
+
+# Regex for log messages to never deduplicate, or None. This takes precedence over
+# the skip regex below. A default pattern is set for testing.
+TESTING_NEVER_DEDUP_TOKEN = "__ray_testing_never_deduplicate__"
+RAY_DEDUP_LOGS_ALLOW_REGEX = os.environ.get(
+    "RAY_DEDUP_LOGS_ALLOW_REGEX", TESTING_NEVER_DEDUP_TOKEN
+)
+
+# Regex for log messages to always skip / suppress, or None.
+RAY_DEDUP_LOGS_SKIP_REGEX = os.environ.get("RAY_DEDUP_LOGS_SKIP_REGEX")
+
 WORKER_PROCESS_TYPE_IDLE_WORKER = "ray::IDLE"
 WORKER_PROCESS_TYPE_SPILL_WORKER_NAME = "SpillWorker"
 WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME = "RestoreWorker"
@@ -393,3 +409,16 @@ ENABLE_RAY_CLUSTER = env_bool(
     ENABLE_RAY_CLUSTERS_ENV_VAR,
     not (sys.platform == "darwin" or sys.platform == "win32"),
 )
+
+SESSION_LATEST = "session_latest"
+NUM_PORT_RETRIES = 40
+NUM_REDIS_GET_RETRIES = int(os.environ.get("RAY_NUM_REDIS_GET_RETRIES", "20"))
+
+# The allowed cached ports in Ray. Refer to Port configuration for more details:
+# https://docs.ray.io/en/latest/ray-core/configure.html#ports-configurations
+RAY_ALLOWED_CACHED_PORTS = {
+    "metrics_agent_port",
+    "metrics_export_port",
+    "dashboard_agent_listen_port",
+    "gcs_server_port",  # the `port` option for gcs port.
+}

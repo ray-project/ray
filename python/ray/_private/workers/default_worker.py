@@ -12,6 +12,7 @@ import ray.actor
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
 
+
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
 )
@@ -152,6 +153,15 @@ parser.add_argument(
     help="The time when raylet starts to launch the worker process.",
 )
 
+parser.add_argument(
+    "--worker-preload-modules",
+    type=str,
+    required=False,
+    help=(
+        "A comma-separated list of Python module names "
+        "to import before accepting work."
+    ),
+)
 
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
@@ -239,6 +249,10 @@ if __name__ == "__main__":
     configure_log_file(out_file, err_file)
     ray._private.worker.global_worker.set_out_file(out_file)
     ray._private.worker.global_worker.set_err_file(err_file)
+
+    if mode == ray.WORKER_MODE and args.worker_preload_modules:
+        module_names_to_import = args.worker_preload_modules.split(",")
+        ray._private.utils.try_import_each_module(module_names_to_import)
 
     if mode == ray.WORKER_MODE:
         ray._private.worker.global_worker.main_loop()

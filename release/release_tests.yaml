@@ -1238,12 +1238,9 @@
 #######################
 # Tune cloud  tests
 #######################
-- name: tune_cloud_aws_no_sync_down
+- name: tune_cloud_no_sync_down
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
-
-  stable: true
-
   frequency: nightly
   team: ml
 
@@ -1258,15 +1255,19 @@
     wait_for_nodes:
       num_nodes: 4
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_4x8.yaml
 
   alert: tune_tests
 
-- name: tune_cloud_aws_ssh_sync
+- name: tune_cloud_ssh_sync
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
-
-  stable: true
-
   frequency: nightly
   team: ml
 
@@ -1277,19 +1278,22 @@
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py ssh_sync
-
     wait_for_nodes:
       num_nodes: 4
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_4x8.yaml
 
   alert: tune_tests
 
-- name: tune_cloud_aws_durable_upload
+- name: tune_cloud_durable_upload
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
-
-  stable: true
-
   frequency: nightly
   team: ml
 
@@ -1304,6 +1308,18 @@
     wait_for_nodes:
       num_nodes: 4
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_4x8.yaml
+      run:
+        timeout: 600
+        script: python workloads/run_cloud_test.py durable_upload --bucket gs://tune-cloud-tests/durable_upload
+        wait_for_nodes:
+          num_nodes: 4
 
   alert: tune_tests
 
@@ -1560,8 +1576,6 @@
 
   frequency: nightly
   team: ml
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: staging_v1
 
   cluster:
     cluster_env: app_config.yaml
@@ -1570,8 +1584,6 @@
   run:
     timeout: 600
     script: python workloads/test_result_throughput_single_node.py
-    # Not an anyscale_job as it fails due to extra overhead
-    type: job
 
   alert: tune_tests
 
@@ -1913,8 +1925,6 @@
   working_dir: long_running_tests
 
   stable: true
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: staging_v1
 
   frequency: weekly
   team: serve
@@ -1926,7 +1936,6 @@
     timeout: 86400
     script: python workloads/serve_failure.py
     long_running: true
-    type: sdk_command
 
   smoke_test:
     frequency: nightly
@@ -2418,11 +2427,6 @@
 
   frequency: nightly
   team: ml
-
-  # It seems this test only succeeds the 2nd try.
-  # Mark as unstable for now.
-  # TODO(jungong) : figure out why.
-  stable: false
 
   cluster:
     cluster_env: app_config.yaml
@@ -3705,14 +3709,11 @@
     cluster_env: app_config.yaml
     cluster_compute: many_nodes.yaml
 
-  env: staging_v1
-
   run:
     timeout: 3600
     script: python distributed/test_many_tasks.py --num-tasks=1000
     wait_for_nodes:
       num_nodes: 250
-    type: sdk_command
 
 
 - name: scheduling_test_many_0s_tasks_many_nodes
@@ -3973,6 +3974,22 @@
     timeout: 2400
     script: python iter_tensor_batches_benchmark.py
 
+- name: iter_tensor_batches_benchmark_multi_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: multi_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
+    script: python iter_tensor_batches_benchmark.py --data-size-gb=10
+
+
 
 - name: iter_batches_benchmark_single_node
   group: data-tests
@@ -4036,16 +4053,11 @@
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2 once the test has been confirmed
-  # to be stable.
-  env: staging_v1
-
   run:
     timeout: 7200
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
-    type: sdk_command
 
 - name: dataset_shuffle_sort_1tb
   group: data-tests
@@ -4340,7 +4352,7 @@
 
   run:
     timeout: 1200
-    script: cd tests && bash test_aws_cluster_launcher.sh aws_cluster.yaml
+    script: cd tests && python aws_launch_and_verify_cluster.py aws_cluster.yaml
     type: sdk_command
 
 - name: aws_cluster_launcher_minimal
@@ -4360,5 +4372,5 @@
 
   run:
     timeout: 1200
-    script: cd tests && bash test_aws_cluster_launcher.sh ../example-minimal.yaml
+    script: cd tests && python aws_launch_and_verify_cluster.py ../example-minimal.yaml
     type: sdk_command

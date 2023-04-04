@@ -7,7 +7,7 @@ from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.nested_dict import NestedDict
 
-from ray.rllib.models.specs.typing import SpecType
+from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
@@ -144,16 +144,6 @@ class MultiAgentRLModule(RLModule):
         if raise_err_if_not_found:
             self._check_module_exists(module_id)
         del self._rl_modules[module_id]
-
-    @override(RLModule)
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        # TODO (Avnish) Implement this.
-        pass
-
-    @override(RLModule)
-    def is_distributed(self) -> bool:
-        # TODO (Avnish) Implement this.
-        return False
 
     def __getitem__(self, module_id: ModuleID) -> RLModule:
         """Returns the module with the given module ID.

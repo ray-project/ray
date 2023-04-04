@@ -20,7 +20,6 @@ Trainer Base Classes
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     ~train.trainer.BaseTrainer
     ~train.data_parallel_trainer.DataParallelTrainer
@@ -47,6 +46,7 @@ Train Backend Base Classes
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     ~train.backend.Backend
     ~train.backend.BackendConfig
@@ -86,7 +86,7 @@ PyTorch Training Loop Utilities
     ~train.torch.enable_reproducibility
 
 PyTorch Lightning
-*****************
+~~~~~~~~~~~~~~~~~
 
 .. autosummary::
     :toctree: doc/
@@ -94,6 +94,7 @@ PyTorch Lightning
     ~train.lightning.LightningTrainer
     ~train.lightning.LightningConfigBuilder
     ~train.lightning.LightningCheckpoint
+    ~train.lightning.LightningPredictor
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~

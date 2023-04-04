@@ -40,18 +40,6 @@ class TorchRLModule(nn.Module, RLModule):
     def load_state(self, path: Union[str, pathlib.Path]) -> None:
         self.set_state(torch.load(str(path)))
 
-    @override(RLModule)
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        """Makes the module distributed."""
-        # TODO (Avnish): Implement this.
-        pass
-
-    @override(RLModule)
-    def is_distributed(self) -> bool:
-        """Returns True if the module is distributed."""
-        # TODO (Avnish): Implement this.
-        return False
-
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     def __init__(self, *args, **kwargs) -> None:
@@ -86,15 +74,3 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     @override(RLModule)
     def load_state(self, *args, **kwargs):
         self.module.load_state(*args, **kwargs)
-
-    @override(RLModule)
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        # TODO (Kourosh): Not to sure about this make_distributed api belonging to
-        # RLModule or the Learner? For now the logic is kept in Learner.
-        # We should see if we can use this api end-point for both tf
-        # and torch instead of doing it in the learner.
-        pass
-
-    @override(RLModule)
-    def is_distributed(self) -> bool:
-        return True

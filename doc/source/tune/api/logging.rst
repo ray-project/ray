@@ -24,7 +24,6 @@ LoggerCallback Interface (tune.logger.LoggerCallback)
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     ~tune.logger.LoggerCallback
 

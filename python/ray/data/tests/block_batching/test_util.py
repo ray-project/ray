@@ -7,6 +7,7 @@ import pyarrow as pa
 
 import ray
 from ray.data._internal.block_batching.util import (
+    _calculate_ref_hits,
     make_async_gen,
     blocks_to_batches,
     format_batches,
@@ -170,6 +171,14 @@ def test_make_async_gen_multiple_threads():
 
     # 4 second for first item, 5 seconds for udf, 0.5 seconds buffer
     assert end_time - start_time < 9.5
+
+
+def test_calculate_ref_hits(ray_start_regular_shared):
+    refs = [ray.put(0), ray.put(1)]
+    hits, misses, unknowns = _calculate_ref_hits(refs)
+    assert hits == 2
+    assert misses == 0
+    assert unknowns == 0
 
 
 if __name__ == "__main__":
