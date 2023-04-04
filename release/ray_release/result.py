@@ -22,13 +22,13 @@ class Result:
 
     status: str = "invalid"
     return_code: int = 0
+    buildkite_return_code: int = BuildkiteExitCode.SUCCESS.value
     last_logs: Optional[str] = None
 
     runtime: Optional[float] = None
     stable: bool = True
     smoke_test: bool = False
 
-    buildkite_return_code: BuildkiteExitCode.SUCCESS
     buildkite_url: Optional[str] = None
     wheels_url: Optional[str] = None
     cluster_url: Optional[str] = None
