@@ -37,6 +37,10 @@ logger = DatasetLogger(__name__)
 # Set this environment variable for detailed scheduler debugging logs.
 DEBUG_TRACE_SCHEDULING = "RAY_DATASET_TRACE_SCHEDULING" in os.environ
 
+# Force a progress bar update after this many events processed . This avoids the
+# progress bar seeming to stall for very large scale workloads.
+PROGRESS_BAR_UPDATE_INTERVAL = 50
+
 
 class StreamingExecutor(Executor, threading.Thread):
     """A streaming Dataset executor.
@@ -218,7 +222,11 @@ class StreamingExecutor(Executor, threading.Thread):
             execution_id=self._execution_id,
             autoscaling_state=self._autoscaling_state,
         )
+        i = 0
         while op is not None:
+            i += 1
+            if i > PROGRESS_BAR_UPDATE_INTERVAL:
+                break
             if DEBUG_TRACE_SCHEDULING:
                 _debug_dump_topology(topology)
             topology[op].dispatch_next_task()
