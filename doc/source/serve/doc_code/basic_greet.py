@@ -19,6 +19,7 @@ app = DAGDriver.options(route_prefix="/greet").bind(greeter, http_adapter=json_r
 # __serve_example_end__
 
 # Test
-serve.run(app)
-resp = requests.post("http://localhost:8000/greet", json="Bob").json()
-assert resp == "Good morning Bob!"
+if __name__ == "__main__":
+    serve.run(app)
+    resp = requests.post("http://localhost:8000/greet", json="Bob").json()
+    assert resp == "Good morning Bob!"

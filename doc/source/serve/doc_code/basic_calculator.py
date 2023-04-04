@@ -51,6 +51,7 @@ app = DAGDriver.options(route_prefix="/calculator").bind(
 # __serve_example_end__
 
 # Test
-serve.run(app)
-resp = requests.post("http://localhost:8000/calculator", json=["ADD", 5]).json()
-assert resp == 7
+if __name__ == "__main__":
+    serve.run(app)
+    resp = requests.post("http://localhost:8000/calculator", json=["ADD", 5]).json()
+    assert resp == 7

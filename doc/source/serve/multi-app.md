@@ -10,7 +10,7 @@ We suggest you deploy multiple applications per cluster if:
 * You have many small independent models, and you want to be able to easily add and delete models often.
 
 However, we suggest you limit to one application per cluster if:
-* Your applications are large and require a lot of resources. Deploying multiple applications per cluster can cause competition of resources in this case.
+* Your applications are large and require a lot of resources. Deploying multiple applications per cluster can cause some applications to starve other applications of resources.
 * You want better isolation between applications. Although applications are independent of one another, isolation can't be guaranteed. Also, if you need to change the configuration of the cluster for one application, all other applications will also be affected. 
 
 
@@ -147,6 +147,29 @@ You can see all applications that are deployed on the Ray cluster, the list of d
 ![replicas](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/multi-app/replica-dashboard.png)
 
 For more details on the Ray Serve dashboard, see the [Serve dashboard documentation](dash-serve-view).
+
+### Development Workflow with `serve run`
+You can also use the CLI command `serve run` to run and test your application easily, either locally or on a remote cluster. 
+```console
+$ serve run config.yaml
+> 2023-04-04 11:00:05,901	INFO scripts.py:327 -- Deploying from config file: "config.yaml".
+> 2023-04-04 11:00:07,505	INFO worker.py:1613 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
+> 2023-04-04 11:00:09,012	SUCC scripts.py:393 -- Submitted deploy config successfully.
+```
+
+You can then query the applications in the same way:
+```pycon
+>>> requests.post("http://localhost:8000/calculator", json=["ADD", 5]).json()
+7
+
+>>> requests.post("http://localhost:8000/greet", json="Bob").json()
+'Good morning Bob!'
+```
+
+`serve run` blocks the terminal, which allows logs from Serve and your deployments to stream to the console. This helps you test and debug your applications easily. If you want to change your code, you can hit Ctrl-C to interrupt the command and shutdown Serve and all its applications, then rerun `serve run`.
+
+Note that `serve run` only has support for running multi-application config files. If you want to run applications directly using its import path, `serve run` can only run one application at a time.
+
 
 ## Adding, Deleting, and Updating Applications
 The config submitted to the cluster describes the target state for Ray Serve. Consequently, Ray Serve will add, remove, or update based on the list of applications in the config and the config options set for each application.
