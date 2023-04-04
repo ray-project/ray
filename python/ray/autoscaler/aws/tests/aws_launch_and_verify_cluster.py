@@ -85,12 +85,7 @@ def cleanup_cluster(cluster_config):
     """
     print("======================================")
     print("Cleaning up cluster...")
-    result = subprocess.run(
-        ["ray", "down", "-v", "-y", str(cluster_config)],
-        check=True,
-        capture_output=True,
-    )
-    print(result.stdout.decode("utf-8"))
+    subprocess.run(["ray", "down", "-v", "-y", str(cluster_config)], check=True)
 
 
 def run_ray_commands(cluster_config, retries):
@@ -107,8 +102,7 @@ def run_ray_commands(cluster_config, retries):
 
     print("======================================")
     print("Starting new cluster...")
-    result = subprocess.run(["ray", "up", "-v", "-y", str(cluster_config)], check=True)
-    print(result.stdout.decode("utf-8"))
+    subprocess.run(["ray", "up", "-v", "-y", str(cluster_config)], check=True)
 
     print("======================================")
     print("Verifying Ray is running...")
@@ -117,7 +111,7 @@ def run_ray_commands(cluster_config, retries):
     count = 0
     while count < retries:
         try:
-            result = subprocess.run(
+            subprocess.run(
                 [
                     "ray",
                     "exec",
@@ -126,14 +120,11 @@ def run_ray_commands(cluster_config, retries):
                     "python -c 'import ray; ray.init(\"localhost:6379\")'",
                 ],
                 check=True,
-                capture_output=True,
             )
-            print(result.stdout.decode("utf-8"))
             success = True
             break
-        except subprocess.CalledProcessError as e:
+        except subprocess.CalledProcessError:
             count += 1
-            print(e.stdout.decode("utf-8"))
             print(f"Verification failed. Retry attempt {count} of {retries}...")
             time.sleep(5)
 
