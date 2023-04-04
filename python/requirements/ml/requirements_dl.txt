@@ -5,7 +5,8 @@ tensorflow==2.11.0; sys_platform != 'darwin' or platform_machine != 'arm64'
 tensorflow-macos==2.11.0; sys_platform == 'darwin' and platform_machine == 'arm64'
 tensorflow-probability==0.19.0
 
-# If you make changes below this line, please also make the corresponding changes to `requirements_ml_docker.txt`!
+# If you make changes below this line, please also make the corresponding changes to `requirements_ml_docker.txt`
+# and to `install-dependencies.sh`!
 
 --extra-index-url https://download.pytorch.org/whl/cpu  # for CPU versions of torch, torchvision
 --find-links https://data.pyg.org/whl/torch-1.13.0+cpu.html  # for CPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv

@@ -460,6 +460,12 @@ install_pip_packages() {
       # need an existing torch for dependency resolution
       pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION}"
     fi
+  else
+      # E.g. torch-spline-conv needs to import torch in their setup.py
+      # so it has to be installed first
+      # (see https://github.com/ray-project/ray/pull/33928)
+      # Keep in sync with requirements_dl.txt
+      pip install torch==1.13.0 torchvision==0.14.0
   fi
 
   # Inject our own mirror for the CIFAR10 dataset
