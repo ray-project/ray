@@ -25,13 +25,14 @@ import yaml
 
 import ray
 from ray import air, tune
-from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
+from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
 )
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import PartialAlgorithmConfigDict, ResultDict
 from ray.tune import CLIReporter, run_experiments
 
@@ -185,8 +186,10 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         false: Whether to check that x and y are NOT the same.
     """
     # A dict type.
-    if isinstance(x, dict):
-        assert isinstance(y, dict), "ERROR: If x is dict, y needs to be a dict as well!"
+    if isinstance(x, (dict, NestedDict)):
+        assert isinstance(y, (dict, NestedDict)), (
+            "ERROR: If x is dict, y needs to be a dict as well!"
+        )
         y_keys = set(x.keys())
         for key, value in x.items():
             assert key in y, f"ERROR: y does not have x's key='{key}'! y={y}"

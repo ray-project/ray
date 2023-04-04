@@ -6,6 +6,7 @@ import numpy as np
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.core.models.configs import MLPEncoderConfig
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT, ENCODER_OUT
+from ray.rllib.core.models.utils import ModelChecker
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -66,72 +67,18 @@ class TestMLPEncoders(unittest.TestCase):
                 use_bias=use_bias,
             )
 
-            # To compare number of params between frameworks.
-            param_counts = {}
-            # To compare computed outputs from fixed-weights-nets between frameworks.
-            output_values = {}
-
-            # We will pass an observation filled with this one random value through
-            # all DL networks (after they have been set to fixed-weights) to compare
-            # the computed outputs.
-            random_fill_input_value = np.random.uniform(-1.0, 1.0)
+            # Use a ModelChecker to compare all added models (different frameworks)
+            # with each other.
+            model_checker = ModelChecker(config)
 
             for fw in framework_iterator(frameworks=("tf2", "torch")):
-
-                model = config.build(framework=fw)
-                print(model)
-
-                # Pass a B=1 observation through the model.
-                if fw == "tf2":
-                    obs = tf.fill([1] + [inputs_dims[0]], random_fill_input_value)
-                    seq_lens = tf.Variable([1])
-                else:
-                    obs = torch.full([1] + [inputs_dims[0]], random_fill_input_value)
-                    seq_lens = torch.tensor([1])
-                state = None
-
-                outputs = model(
-                    {
-                        SampleBatch.OBS: obs,
-                        SampleBatch.SEQ_LENS: seq_lens,
-                        STATE_IN: state,
-                    }
-                )
-
-                # Bring model into a reproducible, comparable state (so we can compare
-                # computations across frameworks).
-                model._set_to_dummy_weights()
-                # And do another forward pass.
-                comparable_outputs = model(
-                    {
-                        SampleBatch.OBS: obs,
-                        SampleBatch.SEQ_LENS: seq_lens,
-                        STATE_IN: state,
-                    }
-                )
-
-                # Store the number of parameters for this framework's net.
-                param_counts[fw] = model.get_num_parameters()
-                # Store the fixed-weights-net outputs for this framework's net.
-                if fw == "tf2":
-                    output_values[fw] = comparable_outputs[ENCODER_OUT].numpy()
-                else:
-                    output_values[fw] = comparable_outputs[ENCODER_OUT].detach().numpy()
-
+                # Add this framework version of the model to our checker.
+                outputs = model_checker.add(framework=fw)
                 self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims[0]))
                 self.assertEqual(outputs[STATE_OUT], None)
 
-            # Compare number of trainable and non-trainable params between all
-            # frameworks.
-            self.assertTrue(
-                np.all([c == param_counts["tf2"] for c in param_counts.values()])
-            )
-            # Compare dummy outputs by exact values given that all nets received the
-            # same input and all nets have the same (dummy) weight values.
-            self.assertTrue(np.all([
-                np.allclose(v, output_values["tf2"], rtol=0.001)
-                for v in output_values.values()
-            ]))
+            # Check all added models against each other.
+            model_checker.check()
 
 
 if __name__ == "__main__":
