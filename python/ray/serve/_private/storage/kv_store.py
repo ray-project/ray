@@ -64,7 +64,7 @@ class RayInternalKVStore(KVStoreBase):
                 namespace=ray_constants.KV_NAMESPACE_SERVE,
                 timeout=self.timeout,
             )
-        except Exception as e:
+        except ray.exceptions.RpcError as e:
             raise KVStoreError(e.rpc_code)
 
     def get(self, key: str) -> Optional[bytes]:
@@ -85,7 +85,7 @@ class RayInternalKVStore(KVStoreBase):
                 namespace=ray_constants.KV_NAMESPACE_SERVE,
                 timeout=self.timeout,
             )
-        except Exception as e:
+        except ray.exceptions.RpcError as e:
             raise KVStoreError(e.rpc_code)
 
     def delete(self, key: str):
@@ -105,5 +105,5 @@ class RayInternalKVStore(KVStoreBase):
                 namespace=ray_constants.KV_NAMESPACE_SERVE,
                 timeout=self.timeout,
             )
-        except Exception as e:
+        except ray.exceptions.RpcError as e:
             raise KVStoreError(e.rpc_code)

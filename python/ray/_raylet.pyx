@@ -1543,12 +1543,12 @@ def _auto_reconnect(f):
                     grpc.StatusCode.UNKNOWN.value[0],
                 ]:
                     logger.debug(
-                        f"Failed to send request to gcs, reconnecting. Error {e.exception}"
+                        f"Failed to send request to gcs, reconnecting. Error {e}"
                     )
                     try:
                         self._connect()
                     except Exception:
-                        logger.error(f"Connecting to gcs failed. Error {e.exception}")
+                        logger.error(f"Connecting to gcs failed. Error {e}")
                     time.sleep(1)
                     remaining_retry -= 1
                     continue
