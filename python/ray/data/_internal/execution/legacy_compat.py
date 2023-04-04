@@ -277,6 +277,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             fn_args = (fn,)
         else:
             fn_args = ()
+            init_fn = None
         if stage.fn_args:
             fn_args += stage.fn_args
         fn_kwargs = stage.fn_kwargs or {}
