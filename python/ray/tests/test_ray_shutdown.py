@@ -24,6 +24,7 @@ def get_all_ray_worker_processes():
     for p in processes:
         if p is not None and len(p) > 0 and "ray::" in p[0]:
             result.append(p[0])
+    print("result", result)
     return result
 
 
@@ -174,9 +175,12 @@ tasks = [f.remote() for _ in range(num_cpus)]
     p.wait()
     time.sleep(0.1)
 
+    # try:
     wait_for_condition(
         lambda: len(get_all_ray_worker_processes()) == 0, timeout=WAIT_TIMEOUT
     )
+    # except:
+    #     time.sleep(3600)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")

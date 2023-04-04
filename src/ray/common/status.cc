@@ -65,11 +65,12 @@ namespace ray {
 #define STATUS_CODE_GRPC_UNAVAILABLE "GrpcUnavailable"
 #define STATUS_CODE_GRPC_UNKNOWN "GrpcUnknown"
 
-Status::Status(StatusCode code, const std::string &msg) {
+Status::Status(StatusCode code, const std::string &msg, int rpc_code) {
   assert(code != StatusCode::OK);
   state_ = new State;
   state_->code = code;
   state_->msg = msg;
+  state_->rpc_code = rpc_code;
 }
 
 void Status::CopyFrom(const State *state) {

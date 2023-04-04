@@ -167,11 +167,7 @@ Status GcsSyncClient::Connect() {
 }
 
 Status ConvertGrpcStatus(grpc::Status status) {
-  if (status.error_code() == grpc::StatusCode::RESOURCE_EXHAUSTED) {
-    return Status::GrpcResourceExhausted(status.error_message());
-  } else {
-    return Status::GrpcUnknown(status.error_message());
-  }
+  return Status::RpcError(status.error_message(), status.error_code());
 }
 
 Status HandleGrpcError(rpc::GcsStatus status) {

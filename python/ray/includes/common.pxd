@@ -119,11 +119,13 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsGrpcResourceExhausted()
         c_bool IsGrpcUnavailable()
         c_bool IsGrpcUnknown()
+        c_bool IsRpcError()
 
         c_string ToString()
         c_string CodeAsString()
         StatusCode code()
         c_string message()
+        int rpc_code()
 
     # We can later add more of the common status factory methods as needed
     cdef CRayStatus RayStatus_OK "Status::OK"()

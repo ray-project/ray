@@ -219,7 +219,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsGrpcResourceExhausted():
         raise RpcMessageTooLargeError(message)
     else:
-        raise RaySystemError(message, _status_code=<int>status.code())
+        raise RaySystemError(message, _status_code=<int>status.code(), rpc_code=status.rpc_code())
 
 cdef RayObjectsToDataMetadataPairs(
         const c_vector[shared_ptr[CRayObject]] objects):
@@ -1545,19 +1545,25 @@ def _auto_reconnect(f):
         while True:
             try:
                 return f(self, *args, **kwargs)
-            except RetryGcsConnectionError as e:
+            except RaySystemError as e:
+                import grpc
                 if remaining_retry <= 0:
-                    raise RuntimeError(str(e.exception))
-                logger.debug(
-                    f"Failed to send request to gcs, reconnecting. Error {e.exception}"
-                )
-                try:
-                    self._connect()
-                except Exception:
-                    logger.error(f"Connecting to gcs failed. Error {e.exception}")
+                    raise
+                if e.rpc_code in [
+                    grpc.StatusCode.UNAVAILABLE,
+                    grpc.StatusCode.UNKNOWN,
+                ]:
+                    logger.debug(
+                        f"Failed to send request to gcs, reconnecting. Error {e.exception}"
+                    )
+                    try:
+                        self._connect()
+                    except Exception:
+                        logger.error(f"Connecting to gcs failed. Error {e.exception}")
                 time.sleep(1)
                 remaining_retry -= 1
                 continue
+            raise
     return wrapper
 
 
@@ -1579,13 +1585,7 @@ cdef class GcsClient:
         check_status(self.inner.get().Connect())
 
     cdef _check_error(self, CRayStatus status):
-        try:
-            check_status(status)
-        except RaySystemError as e:
-            if status.IsGrpcUnavailable() or status.IsGrpcUnknown():
-                raise RetryGcsConnectionError(e)
-            else:
-                raise RuntimeError(str(e))
+        check_status(status)
 
     @property
     def address(self):
