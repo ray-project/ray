@@ -1010,7 +1010,7 @@ class AlgorithmConfig(_Config):
                         "please modify the `forward_exploration` method of the "
                         "RLModule at hand. On configs that have a default exploration "
                         "config, this must be done with "
-                        "`config._exploration_config={}`."
+                        "`config.exploration_config={}`."
                     )
                 else:
                     # RLModules don't support exploration_configs anymore.
@@ -2417,7 +2417,7 @@ class AlgorithmConfig(_Config):
                     "please modify the `forward_exploration` method of the "
                     "RLModule at hand. On configs that have a default exploration "
                     "config, this must be done with "
-                    "`config._exploration_config={}`."
+                    "`config.exploration_config={}`."
                 )
                 self.exploration_config = {}
         else:
