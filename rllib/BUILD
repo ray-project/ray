@@ -17,6 +17,7 @@
 #    simple CartPole and more advanced variants of it.
 # -- "fake_gpus": Tests that run using 2 fake GPUs.
 # -- "ray_data": Tests that rely on ray_data.
+# -- "learning_tests_with_ray_data": Learning tests that rely on ray_data.
 
 # - Quick algo compilation/tune-train tests, tagged "quick_train".
 #   NOTE: These should be obsoleted in favor of "algorithms_dir" tests as
@@ -247,7 +248,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_cql",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "ray_data"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
@@ -263,7 +264,7 @@ py_test(
 py_test(
    name = "learning_tests_pendulum_crr",
    main = "tests/run_regression_tests.py",
-   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "ray_data"],
+   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
    size = "large",
    srcs = ["tests/run_regression_tests.py"],
    # Include an offline json data file as well.
@@ -277,7 +278,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_crr",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "ray_data"],
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_with_ray_data"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
@@ -291,7 +292,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_crr_expectation",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "ray_data"],
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_with_ray_data"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
@@ -392,7 +393,7 @@ py_test(
 py_test(
    name = "learning_tests_pendulum_dt",
    main = "tests/run_regression_tests.py",
-   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "ray_data"],
+   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
    size = "large",
    srcs = ["tests/run_regression_tests.py"],
    # Include an offline json data file as well.
@@ -406,7 +407,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_dt",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "ray_data"],
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_with_ray_data"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     # Include an offline json data file as well.
@@ -924,6 +925,13 @@ py_test(
     tags = ["team:rllib", "algorithms_dir", "multi_gpu", "exclusive"],
     size = "large",
     srcs = ["algorithms/appo/tests/test_appo_off_policyness.py"]
+)
+
+py_test(
+    name = "test_appo_learner",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/appo/tests/tf/test_appo_learner.py"]
 )
 
 # ARS
@@ -1846,6 +1854,7 @@ py_test(
 # Tag: core
 # --------------------------------------------------------------------
 
+# Catalog
 py_test(
     name = "test_catalog",
     tags = ["team:rllib", "core"],
@@ -1853,34 +1862,7 @@ py_test(
     srcs = ["core/models/tests/test_catalog.py"]
 )
 
-py_test(
-    name = "test_torch_rl_module",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"]
-)
-
-py_test(
-    name = "test_tf_rl_module",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["core/rl_module/tf/tests/test_tf_rl_module.py"]
-)
-
-py_test(
-    name = "test_marl_module",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["core/rl_module/tests/test_marl_module.py"]
-)
-
-py_test(
-    name = "test_rl_module_specs",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["core/rl_module/tests/test_rl_module_specs.py"]
-)
-
+# Default Models
 py_test(
     name = "test_tf_mlp_head",
     tags = ["team:rllib", "core", "models"],
@@ -1909,6 +1891,58 @@ py_test(
     srcs = ["core/models/torch/tests/test_torch_mlp_head.py"]
 )
 
+# Specs
+py_test(
+    name = "test_check_specs",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["core/models/specs/tests/test_check_specs.py"]
+)
+
+py_test(
+    name = "test_tensor_spec",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["core/models/specs/tests/test_tensor_spec.py"]
+)
+
+py_test(
+    name = "test_spec_dict",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["core/models/specs/tests/test_spec_dict.py"]
+)
+
+# RLModule
+py_test(
+    name = "test_torch_rl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"]
+)
+
+py_test(
+    name = "test_tf_rl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/tf/tests/test_tf_rl_module.py"]
+)
+
+py_test(
+    name = "test_marl_module",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/tests/test_marl_module.py"]
+)
+
+py_test(
+    name = "test_rl_module_specs",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_module/tests/test_rl_module_specs.py"]
+)
+
+# Learner
 py_test(
     name = "test_learner_group",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
@@ -1957,13 +1991,6 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "large",
     srcs = ["models/tests/test_attention_nets.py"]
-)
-
-py_test(
-    name = "test_check_specs",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/specs/tests/test_check_specs.py"]
 )
 
 py_test(
@@ -2016,14 +2043,6 @@ py_test(
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
-# Test Tensor specs
-py_test(
-    name = "test_tensor_spec",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/specs/tests/test_tensor_spec.py"]
-)
-
 # test abstract base models
 py_test(
     name = "test_base_model",
@@ -2038,14 +2057,6 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "small",
     srcs = ["models/tests/test_torch_model.py"]
-)
-
-# test ModelSpec
-py_test(
-    name = "test_spec_dict",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/specs/tests/test_spec_dict.py"]
 )
 
 
@@ -2293,6 +2304,13 @@ py_test(
 )
 
 # ReplayBuffers
+py_test(
+    name = "test_episode_replay_buffer",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_episode_replay_buffer.py"]
+)
+
 py_test(
     name = "test_multi_agent_mixin_replay_buffer",
     tags = ["team:rllib", "utils"],

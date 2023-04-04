@@ -24,6 +24,7 @@ parts:
           - file: ray-core/examples/overview
             title: "Examples"
             sections:
+              - file: ray-core/examples/gentle_walkthrough
               - file: ray-core/examples/monte_carlo_pi
               - file: ray-core/examples/plot_example-a3c
               - file: ray-core/examples/plot_example-lm
@@ -35,6 +36,7 @@ parts:
               - file: ray-core/examples/batch_training
               - file: ray-core/examples/automl_for_time_series
               - file: ray-core/examples/web-crawler
+              - file: ray-core/examples/map_reduce
           - file: ray-core/api/index
 
       - file: ray-air/getting-started
@@ -126,6 +128,8 @@ parts:
             sections:
               - file: train/examples/pytorch/torch_fashion_mnist_example
                 title: "PyTorch Fashion MNIST Example"
+              - file: train/examples/lightning/lightning_mnist_example
+                title: "PyTorch Lightning MNIST Example"
               - file: train/examples/transformers/transformers_example
                 title: "HF Transformers Example"
               - file: train/examples/tf/tensorflow_mnist_example
@@ -379,6 +383,7 @@ parts:
         title: References
         sections:
           - file: cluster/usage-stats
+          - file: ray-references/glossary
 
       - file: ray-contribute/stability
         title: Developer Guides

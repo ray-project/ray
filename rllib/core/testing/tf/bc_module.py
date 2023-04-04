@@ -8,7 +8,7 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleConfig,
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.models.specs.typing import SpecType
+from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict

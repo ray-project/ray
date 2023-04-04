@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 import warnings
@@ -9,6 +10,9 @@ from ray.air._internal.remote_storage import list_at_uri
 from ray.air.util.node import _force_on_current_node
 from ray.tune import TuneError
 from ray.tune.execution.experiment_state import _ResumeConfig
+from ray.tune.experimental.output import (
+    get_air_verbosity,
+)
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal, _TUNER_PKL
@@ -18,6 +22,8 @@ from ray.tune.progress_reporter import (
     _stream_client_output,
 )
 from ray.util import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ray.train.base_trainer import BaseTrainer
@@ -39,7 +45,7 @@ _TUNER_FAILED_MSG = (
     "The Ray Tune run failed. Please inspect the previous error messages for a "
     "cause. After fixing the issue, you can restart the run from scratch or "
     "continue this run. To continue this run, you can use "
-    '`tuner = Tuner.restore("{path}")`.'
+    '`tuner = Tuner.restore("{path}", trainable=...)`.'
 )
 
 
@@ -112,7 +118,7 @@ class Tuner:
 
     .. code-block:: python
 
-        tuner = Tuner.restore(results.experiment_path)
+        tuner = Tuner.restore(results.experiment_path, trainable=trainer)
         tuner.fit()
 
     ``results.experiment_path`` can be retrieved from the
@@ -144,6 +150,11 @@ class Tuner:
         """Configure and construct a tune run."""
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
+        if self._is_ray_client and get_air_verbosity():
+            logger.warning(
+                "Ignoring AIR_VERBOSITY setting, "
+                "as it doesn't support ray client mode yet."
+            )
 
         if _tuner_internal:
             if not self._is_ray_client:
@@ -294,7 +305,7 @@ class Tuner:
             exp_dir = os.path.join(local_dir, name)
 
             if Tuner.can_restore(exp_dir):
-                tuner = Tuner.restore(exp_dir, resume_errored=True)
+                tuner = Tuner.restore(exp_dir, trainable=train_fn, resume_errored=True)
             else:
                 tuner = Tuner(
                     train_fn,
@@ -339,8 +350,12 @@ class Tuner:
         In such cases, there will be instruction like the following printed out
         at the end of console output to inform users on how to resume.
 
-        Please use tuner = Tuner.restore("~/ray_results/tuner_resume")
-        to resume.
+        Please use `Tuner.restore` to resume.
+
+        .. code-block:: python
+
+            tuner = Tuner.restore("~/ray_results/tuner_resume", trainable=trainable)
+            tuner.fit()
 
         Raises:
             RayTaskError: If user-provided trainable raises an exception
@@ -390,7 +405,8 @@ class Tuner:
 
             from ray.tune import Tuner
 
-            tuner = Tuner.restore("/path/to/experiment')
+            # `trainable` is what was passed in to the original `Tuner`
+            tuner = Tuner.restore("/path/to/experiment', trainable=trainable)
             results = tuner.get_results()
 
         Returns:
