@@ -138,7 +138,7 @@ def get_ray_wheels_url_from_local_wheel(ray_wheels: str) -> Optional[str]:
 
     The uploaded object will have local user and current timestamp encoded
     in the upload key path, e.g.:
-    "ubuntu_2022_01_01_23:59:99/ray-3.0.0.dev0-cp37-cp37m-manylinux_x86_64.whl"
+    "ubuntu_2022_01_01_23:59:99/ray-2.4.0-cp37-cp37m-manylinux_x86_64.whl"
 
     Args:
         ray_wheels: File path with `file://` prefix.
