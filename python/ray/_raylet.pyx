@@ -1530,12 +1530,6 @@ cdef class EmptyProfileEvent:
         pass
 
 
-class RetryGcsConnectionError(Exception):
-    "If this error is raised, we should try to reconnect to GCS."
-    def __init__(self, exception):
-        self.exception = exception
-
-
 def _auto_reconnect(f):
     @wraps(f)
     def wrapper(self, *args, **kwargs):
