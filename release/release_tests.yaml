@@ -1925,8 +1925,6 @@
   working_dir: long_running_tests
 
   stable: true
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: staging_v1
 
   frequency: weekly
   team: serve
@@ -1938,7 +1936,6 @@
     timeout: 86400
     script: python workloads/serve_failure.py
     long_running: true
-    type: sdk_command
 
   smoke_test:
     frequency: nightly
