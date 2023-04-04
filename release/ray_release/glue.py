@@ -540,7 +540,7 @@ def run_release_test(
         result.job_url = command_runner.job_manager.job_url
         result.job_id = command_runner.job_manager.job_id
 
-    result.last_logs = command_runner.get_last_logs()
+    result.last_logs = command_runner.get_last_logs() if command_runner else None
 
     if not no_terminate and cluster_manager:
         buildkite_group(":earth_africa: Terminating cluster")
