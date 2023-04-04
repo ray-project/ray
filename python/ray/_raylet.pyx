@@ -130,7 +130,7 @@ from ray.exceptions import (
     TaskCancelledError,
     AsyncioActorExit,
     PendingCallsLimitExceeded,
-    RpcMessageTooLargeError,
+    RpcError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -211,10 +211,10 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ValueError(message)
     elif status.IsObjectUnknownOwner():
         raise ValueError(message)
-    elif status.IsGrpcResourceExhausted():
-        raise RpcMessageTooLargeError(message)
+    elif status.IsRpcError():
+        raise RpcError(message, rpc_code=status.rpc_code())
     else:
-        raise RaySystemError(message, _status_code=<int>status.code(), rpc_code=status.rpc_code())
+        raise RaySystemError(message)
 
 cdef RayObjectsToDataMetadataPairs(
         const c_vector[shared_ptr[CRayObject]] objects):
@@ -1534,13 +1534,13 @@ def _auto_reconnect(f):
         while True:
             try:
                 return f(self, *args, **kwargs)
-            except RaySystemError as e:
+            except RpcError as e:
                 import grpc
                 if remaining_retry <= 0:
                     raise
                 if e.rpc_code in [
-                    grpc.StatusCode.UNAVAILABLE,
-                    grpc.StatusCode.UNKNOWN,
+                    grpc.StatusCode.UNAVAILABLE.value[0],
+                    grpc.StatusCode.UNKNOWN.value[0],
                 ]:
                     logger.debug(
                         f"Failed to send request to gcs, reconnecting. Error {e.exception}"
@@ -1574,9 +1574,6 @@ cdef class GcsClient:
     def _connect(self):
         check_status(self.inner.get().Connect())
 
-    cdef _check_error(self, CRayStatus status):
-        check_status(status)
-
     @property
     def address(self):
         return self.address
@@ -1596,7 +1593,7 @@ cdef class GcsClient:
         if status.IsKeyError():
             return None
         else:
-            self._check_error(status)
+            check_status(status)
             return value
 
     @_auto_reconnect
@@ -1611,7 +1608,7 @@ cdef class GcsClient:
 
         for c_key in keys:
             c_keys.push_back(c_key)
-        self._check_error(self.inner.get().InternalKVMultiGet(
+        check_status(self.inner.get().InternalKVMultiGet(
             ns, c_keys, timeout_ms, c_result))
 
         result = {}
@@ -1630,7 +1627,7 @@ cdef class GcsClient:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             int num_added
-        self._check_error(self.inner.get().InternalKVPut(
+        check_status(self.inner.get().InternalKVPut(
             ns, key, value, overwrite, timeout_ms, num_added))
 
         return num_added
@@ -1642,7 +1639,7 @@ cdef class GcsClient:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             int num_deleted
-        self._check_error(self.inner.get().InternalKVDel(
+        check_status(self.inner.get().InternalKVDel(
             ns, key, del_by_prefix, timeout_ms, num_deleted))
 
         return num_deleted
@@ -1655,7 +1652,7 @@ cdef class GcsClient:
             c_vector[c_string] keys
             c_string key
 
-        self._check_error(self.inner.get().InternalKVKeys(
+        check_status(self.inner.get().InternalKVKeys(
             ns, prefix, timeout_ms, keys))
 
         result = []
@@ -1671,7 +1668,7 @@ cdef class GcsClient:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_bool exists
-        self._check_error(self.inner.get().InternalKVExists(
+        check_status(self.inner.get().InternalKVExists(
             ns, key, timeout_ms, exists))
         return exists
 
@@ -1679,7 +1676,7 @@ cdef class GcsClient:
     def pin_runtime_env_uri(self, str uri, int expiration_s, timeout=None):
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-        self._check_error(self.inner.get().PinRuntimeEnvUri(
+        check_status(self.inner.get().PinRuntimeEnvUri(
             uri.encode(), expiration_s, timeout_ms))
 
     @_auto_reconnect
@@ -1688,7 +1685,7 @@ cdef class GcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             CGcsNodeInfo node_info
             c_vector[CGcsNodeInfo] node_infos
-        self._check_error(self.inner.get().GetAllNodeInfo(timeout_ms, node_infos))
+        check_status(self.inner.get().GetAllNodeInfo(timeout_ms, node_infos))
 
         result = {}
         for node_info in node_infos:
@@ -1704,7 +1701,7 @@ cdef class GcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             CJobTableData job_info
             c_vector[CJobTableData] job_infos
-        self._check_error(self.inner.get().GetAllJobInfo(timeout_ms, job_infos))
+        check_status(self.inner.get().GetAllJobInfo(timeout_ms, job_infos))
 
         result = {}
         for job_info in job_infos:

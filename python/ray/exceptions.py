@@ -320,11 +320,9 @@ class RaySystemError(RayError):
     This exception can be thrown when the raylet is killed.
     """
 
-    def __init__(self, client_exc, traceback_str=None, _status_code=None, rpc_code=None):
+    def __init__(self, client_exc, traceback_str=None):
         self.client_exc = client_exc
         self.traceback_str = traceback_str
-        self._status_code = _status_code
-        self.rpc_code = rpc_code
 
     def __str__(self):
         error_msg = f"System error: {self.client_exc}"
@@ -460,13 +458,12 @@ class ObjectFetchTimedOutError(ObjectLostError):
 
 
 @DeveloperAPI
-class RpcMessageTooLargeError(RayError):
-    """Indicates that a message that was sent was too large to fit into
-    the underlying RPC implementation.
-    """
+class RpcError(RayError):
+    """Indicates an error in the underlying RPC system."""
 
-    def __init__(self, message):
+    def __init__(self, message, rpc_code=None):
         self.message = message
+        self.rpc_code = rpc_code
 
     def __str__(self):
         return self.message

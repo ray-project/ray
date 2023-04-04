@@ -166,10 +166,6 @@ Status GcsSyncClient::Connect() {
   return Status::OK();
 }
 
-Status ConvertGrpcStatus(grpc::Status status) {
-  return Status::RpcError(status.error_message(), status.error_code());
-}
-
 Status HandleGrpcError(rpc::GcsStatus status) {
   RAY_CHECK(status.code() != static_cast<int>(StatusCode::OK));
   if (status.code() == static_cast<int>(StatusCode::GrpcUnavailable)) {
@@ -211,7 +207,7 @@ Status GcsSyncClient::InternalKVGet(const std::string &ns,
     }
     return HandleGrpcError(reply.status());
   }
-  return ConvertGrpcStatus(status);
+  return Status::RpcError(status.error_message(), status.error_code());
 }
 
 Status GcsSyncClient::InternalKVMultiGet(
@@ -242,7 +238,7 @@ Status GcsSyncClient::InternalKVMultiGet(
     }
     return HandleGrpcError(reply.status());
   }
-  return ConvertGrpcStatus(status);
+  return Status::RpcError(status.error_message(), status.error_code());
 }
 
 Status GcsSyncClient::InternalKVPut(const std::string &ns,
@@ -270,7 +266,7 @@ Status GcsSyncClient::InternalKVPut(const std::string &ns,
     }
     return HandleGrpcError(reply.status());
   }
-  return ConvertGrpcStatus(status);
+  return Status::RpcError(status.error_message(), status.error_code());
 }
 
 Status GcsSyncClient::InternalKVDel(const std::string &ns,
@@ -296,7 +292,7 @@ Status GcsSyncClient::InternalKVDel(const std::string &ns,
     }
     return HandleGrpcError(reply.status());
   }
-  return ConvertGrpcStatus(status);
+  return Status::RpcError(status.error_message(), status.error_code());
 }
 
 Status GcsSyncClient::InternalKVKeys(const std::string &ns,
@@ -320,7 +316,7 @@ Status GcsSyncClient::InternalKVKeys(const std::string &ns,
     }
     return HandleGrpcError(reply.status());
   }
-  return ConvertGrpcStatus(status);
+  return Status::RpcError(status.error_message(), status.error_code());
 }
 
 Status GcsSyncClient::InternalKVExists(const std::string &ns,
@@ -344,7 +340,7 @@ Status GcsSyncClient::InternalKVExists(const std::string &ns,
     }
     return HandleGrpcError(reply.status());
   }
-  return ConvertGrpcStatus(status);
+  return Status::RpcError(status.error_message(), status.error_code());
 }
 
 Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri,
@@ -373,7 +369,7 @@ Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri,
                       " due to unexpected error " + reply.status().message() + ".";
     return Status::GrpcUnknown(msg);
   }
-  return ConvertGrpcStatus(status);
+  return Status::RpcError(status.error_message(), status.error_code());
 }
 
 Status GcsSyncClient::GetAllNodeInfo(int64_t timeout_ms,
@@ -393,7 +389,7 @@ Status GcsSyncClient::GetAllNodeInfo(int64_t timeout_ms,
     }
     return HandleGrpcError(reply.status());
   }
-  return ConvertGrpcStatus(status);
+  return Status::RpcError(status.error_message(), status.error_code());
 }
 
 Status GcsSyncClient::GetAllJobInfo(int64_t timeout_ms,
@@ -413,7 +409,7 @@ Status GcsSyncClient::GetAllJobInfo(int64_t timeout_ms,
     }
     return HandleGrpcError(reply.status());
   }
-  return ConvertGrpcStatus(status);
+  return Status::RpcError(status.error_message(), status.error_code());
 }
 
 }  // namespace gcs

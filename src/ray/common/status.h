@@ -113,9 +113,7 @@ enum class StatusCode : char {
   // out of disk.
   OutOfDisk = 28,
   ObjectUnknownOwner = 29,
-  // GRPC message too large
-  GrpcResourceExhausted = 30,
-  RpcError = 31,
+  RpcError = 30,
 };
 
 #if defined(__clang__)
@@ -239,10 +237,6 @@ class RAY_EXPORT Status {
     return Status(StatusCode::GrpcUnknown, msg);
   }
 
-  static Status GrpcResourceExhausted(const std::string &msg) {
-    return Status(StatusCode::GrpcResourceExhausted, msg);
-  }
-
   static Status RpcError(const std::string &msg, int rpc_code) {
     return Status(StatusCode::RpcError, msg, rpc_code);
   }
@@ -288,11 +282,10 @@ class RAY_EXPORT Status {
   }
   bool IsGrpcUnavailable() const { return code() == StatusCode::GrpcUnavailable; }
   bool IsGrpcUnknown() const { return code() == StatusCode::GrpcUnknown; }
-  bool IsGrpcResourceExhausted() const {
-    return code() == StatusCode::GrpcResourceExhausted;
-  }
 
   bool IsGrpcError() const { return IsGrpcUnknown() || IsGrpcUnavailable(); }
+
+  bool IsRpcError() const { return code() == StatusCode::RpcError; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

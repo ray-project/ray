@@ -17,7 +17,8 @@ def get_storage_key(namespace: str, storage_key: str) -> str:
 
 
 class KVStoreError(Exception):
-    pass
+    def __init__(self, rpc_code):
+        self.rpc_code = rpc_code
 
 
 class RayInternalKVStore(KVStoreBase):

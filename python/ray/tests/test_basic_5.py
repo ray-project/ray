@@ -114,13 +114,13 @@ def test_internal_kv(ray_start_regular):
     assert kv._internal_kv_get("k2", namespace="n") is None
     assert kv._internal_kv_get("k3", namespace="n") is None
 
-    with pytest.raises(ray.exceptions.RaySystemError):
+    with pytest.raises(ray.exceptions.RpcError):
         kv._internal_kv_put("@namespace_", "x", True)
-    with pytest.raises(ray.exceptions.RaySystemError):
+    with pytest.raises(ray.exceptions.RpcError):
         kv._internal_kv_get("@namespace_", namespace="n")
-    with pytest.raises(ray.exceptions.RaySystemError):
+    with pytest.raises(ray.exceptions.RpcError):
         kv._internal_kv_del("@namespace_def", namespace="n")
-    with pytest.raises(ray.exceptions.RaySystemError):
+    with pytest.raises(ray.exceptions.RpcError):
         kv._internal_kv_list("@namespace_abc", namespace="n")
 
 
