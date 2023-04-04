@@ -15,7 +15,6 @@ from ray.dashboard.utils import (
 )
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
-    DEFAULT_LOG_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     ActorState,
     GetApiOptions,
@@ -1123,9 +1122,11 @@ def get_log(
     task_id: Optional[str] = None,
     pid: Optional[int] = None,
     follow: bool = False,
-    tail: int = DEFAULT_LOG_LIMIT,
+    tail: int = -1,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     suffix: Optional[str] = None,
+    encoding: Optional[str] = "utf-8",
+    errors: Optional[str] = "strict",
     _interval: Optional[float] = None,
 ) -> Generator[str, None, None]:
     """Retrieve log file based on file name or some entities ids (pid, actor id, task id).
@@ -1157,6 +1158,10 @@ def get_log(
             the entire log.
         timeout: Max timeout for requests made when getting the logs.
         suffix: The suffix of the log file if query by id of tasks/workers/actors.
+        encoding: The encoding used to decode the content of the log file. Default is
+            "utf-8". Use None to get binary data directly.
+        errors: The error handling scheme to use for decoding errors. Default is
+            "strict". See https://docs.python.org/3/library/codecs.html#error-handlers
         _interval: The interval in secs to print new logs when `follow=True`.
 
     Return:
@@ -1201,7 +1206,9 @@ def get_log(
             # First byte 1 means success.
             if bytes.startswith(b"1"):
                 bytes.pop(0)
-                logs = bytes.decode("utf-8")
+                logs = bytes
+                if encoding is not None:
+                    logs = bytes.decode(encoding=encoding, errors=errors)
             else:
                 assert bytes.startswith(b"0")
                 error_msg = bytes.decode("utf-8")
