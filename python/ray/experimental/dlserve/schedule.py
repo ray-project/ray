@@ -1,5 +1,6 @@
 from abc import ABC
 
+
 class Instruction(ABC):
     """An instruction represents a single step in the execution schedule."""
 

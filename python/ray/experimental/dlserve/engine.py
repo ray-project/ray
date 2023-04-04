@@ -3,10 +3,14 @@ from threading import Lock, Thread
 from typing import Any, Callable
 
 import torch
-from ray.experimental.dlserve.communicator import TorchBasedCommunicator
+from ray.experimental.dlserve.communicator import (
+    FULLFILLED_FUTURE,
+    TorchBasedCommunicator,
+)
 from ray.experimental.dlserve.schedule import (
     Forward,
     Instruction,
+    LoadBatch,
     Receive,
     Schedule,
     Send,
@@ -15,6 +19,7 @@ from ray.experimental.dlserve.schedule import (
 
 class Config:
     """A config represents the configuration of a stage replica."""
+
     def __init__(
         self,
         world_size: int,
@@ -23,6 +28,7 @@ class Config:
         input_tensor_dtype: torch.type,
         device_name: str,
         model_builder: Callable[[], torch.nn.Module],
+        data_loader_builder: Callable[[], torch.utils.data.DataLoader],
     ) -> None:
         self.world_size = world_size
         self.rank = rank
@@ -30,6 +36,7 @@ class Config:
         self.input_tensor_dtype = input_tensor_dtype
         self.device_name = device_name
         self.model_builder = model_builder
+        self.data_loader_builder = data_loader_builder
 
 
 class ExecutionEngine:
@@ -50,8 +57,9 @@ class ExecutionEngine:
         self.input_tensor_shape = config.input_tensor_shape
         self.input_tensor_dtype = config.input_tensor_dtype
         self.cuda = torch.device(config.device_name)
-        self.communicator = TorchBasedCommunicator(config.world_size, config.rank)
+        self.dist = TorchBasedCommunicator(config.world_size, config.rank)
         self.model = config.model_builder().to(self.cuda)
+        self.data_loader = config.data_loader_builder()
 
     def start(self):
         """Start the engine execution"""
@@ -82,7 +90,7 @@ class ExecutionEngine:
     def _execute_step(self, instruction: Instruction):
         if isinstance(instruction, Send):
             for _ in range(instruction.count):
-                self.communicator.send(
+                self.dist.send(
                     self.output_queue.popleft(), instruction.dest_rank, async_op=True
                 )
                 # TODO: do we need to wait for the future to be completed?
@@ -93,12 +101,19 @@ class ExecutionEngine:
                     dtype=self.input_tensor_dtype,
                     device=self.cuda,
                 )
-                future = self.communicator.recv(
-                    tensor, instruction.src_rank, async_op=True
-                )
+                future = self.dist.recv(tensor, instruction.src_rank, async_op=True)
                 self.input_queue.append((tensor, future))
-        if isinstance(instruction, Forward):
+        elif isinstance(instruction, Forward):
             for _ in range(instruction.count):
                 tensor, future = self.input_queue.popleft()
                 future.wait()
                 self.output_queue.append(self.model.forward(tensor))
+        elif isinstance(instruction, LoadBatch):
+            for _ in range(instruction.count):
+                tensor = torch.new_empty(
+                    size=self.input_tensor_shape,
+                    dtype=self.input_tensor_dtype,
+                    device=self.cuda,
+                )
+                self.data_loader.next_batch(tensor)
+                self.input_queue.append((tensor, FULLFILLED_FUTURE))
