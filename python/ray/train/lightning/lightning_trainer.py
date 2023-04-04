@@ -5,10 +5,7 @@ from typing import Any, Dict, Optional, Type
 import pytorch_lightning as pl
 from pytorch_lightning.plugins.environments import ClusterEnvironment
 
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
+from packaging.version import Version
 
 if Version(pl.__version__) >= Version("2.0.0"):
     from pytorch_lightning.callbacks.progress import ProgressBar as ProgressBarBase
