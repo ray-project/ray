@@ -1,5 +1,6 @@
 import enum
 import os
+import os
 from dataclasses import dataclass
 from typing import Optional, Dict, Tuple
 
@@ -33,6 +34,7 @@ class Result:
     stable: bool = True
     smoke_test: bool = False
 
+    buildkite_return_code: BuildkiteExitCode.SUCCESS
     buildkite_url: Optional[str] = None
     wheels_url: Optional[str] = None
     cluster_url: Optional[str] = None
