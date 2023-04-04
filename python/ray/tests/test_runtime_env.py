@@ -43,7 +43,7 @@ import ray._private.ray_constants as ray_constants
 def test_get_wheel_filename():
     """Test the code that generates the filenames of the `latest` wheels."""
     # NOTE: These should not be changed for releases.
-    ray_version = "2.4.0"
+    ray_version = "3.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             if sys_platform == "win32" and py_version == (3, 6):
@@ -63,7 +63,7 @@ def test_get_wheel_filename():
 def test_get_master_wheel_url():
     """Test the code that generates the filenames of `master` commit wheels."""
     # NOTE: These should not be changed for releases.
-    ray_version = "2.4.0"
+    ray_version = "3.0.0.dev0"
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/master/<test_commit>/`.
