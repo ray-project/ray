@@ -15,7 +15,6 @@ from ray.rllib.models.torch.torch_distributions import TorchDeterministic
 
 
 # __sphinx_doc_begin__
-
 # Define a simple categorical distribution that can be used for PPO
 class CustomTorchCategorical(Distribution):
     def __init__(self, logits):
@@ -82,5 +81,4 @@ algo = (
 )
 results = algo.train()
 print(results)
-
 # __sphinx_doc_end__

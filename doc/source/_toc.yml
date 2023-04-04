@@ -287,7 +287,7 @@ parts:
         title: Ray RLlib
         sections:
           - file: rllib/rllib-training
-          - file: rllib/core-concepts
+          - file: rllib/key-concepts
           - file: rllib/rllib-env
           - file: rllib/rllib-algorithms
           - file: rllib/user-guides
@@ -299,6 +299,7 @@ parts:
               - file: rllib/rllib-sample-collection
               - file: rllib/rllib-replay-buffers
               - file: rllib/rllib-offline
+              - file: rllib/rllib-catalogs
               - file: rllib/rllib-connector
               - file: rllib/rllib-fault-tolerance
               - file: rllib/rllib-dev

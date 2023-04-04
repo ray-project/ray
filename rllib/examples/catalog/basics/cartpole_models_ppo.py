@@ -13,7 +13,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 env = gym.make("CartPole-v1")
 
 catalog = PPOCatalog(env.observation_space, env.action_space, model_config_dict={})
-# Build an encoder for the observation space.
+# Build an encoder that fits CartPole's observation space.
 encoder = catalog.build_actor_critic_encoder(framework="torch")
 policy_head = catalog.build_pi_head(framework="torch")
 # We expect a categorical distribution for CartPole.
@@ -28,7 +28,7 @@ input_batch = {
     STATE_IN: None,
     SampleBatch.SEQ_LENS: None,
 }
-# Pass everything through our models and the action distribution.
+# Pass the batch through our models and the action distribution.
 encoding = encoder(input_batch)[ENCODER_OUT][ACTOR]
 action_dist_inputs = policy_head(encoding)
 action_dist = action_dist_class.from_logits(action_dist_inputs)
