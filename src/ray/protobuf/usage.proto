@@ -60,6 +60,12 @@ enum TagKey {
   SERVE_REST_API_VERSION = 13;
   // The number of serve apps running in the cluster as a string.
   SERVE_NUM_APPS = 14;
+  // Whether num replicas changed
+  SERVE_NUM_REPLICAS_UPDATED = 15;
+  // Whether user config changed
+  SERVE_USER_CONFIG_UPDATED = 16;
+  // Whether autoscaling config changed
+  SERVE_AUTOSCALING_CONFIG_UPDATED = 17;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of

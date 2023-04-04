@@ -18,6 +18,7 @@ from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.context import get_global_client
 from ray.serve._private.common import ApplicationStatus
 from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
+from ray.serve.schema import ServeDeploySchema
 
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
@@ -380,6 +381,110 @@ def test_rest_api(manage_ray, tmp_dir, version):
         report = ray.get(storage.get_report.remote())
         assert int(report["extra_usage_tags"]["serve_num_apps"]) == 1
         assert int(report["extra_usage_tags"]["serve_num_deployments"]) == 1
+
+
+@serve.deployment(ray_actor_options={"num_cpus": 0})
+class Tester:
+    def __call__(self, *args):
+        pass
+
+    def reconfigure(self, *args):
+        pass
+
+
+tester = Tester.bind()
+
+
+@pytest.mark.parametrize(
+    "lightweight_option,value",
+    [
+        ("num_replicas", 2),
+        ("user_config", {"some_setting": 10}),
+        ("autoscaling_config", {"max_replicas": 5}),
+    ],
+)
+def test_lightweight_config_options(manage_ray, lightweight_option, value):
+    """
+    Check that lightweight config options are detected by telemetry.
+    """
+
+    lightweight_tagkeys = [
+        "serve_num_replicas_updated",
+        "serve_user_config_updated",
+        "serve_autoscaling_config_updated",
+    ]
+
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(check_ray_started, timeout=5)
+    storage = TelemetryStorage.remote()
+
+    config = {
+        "applications": [
+            {
+                "name": "receiver_app",
+                "import_path": "ray.serve.tests.test_telemetry.receiver_app",
+                "route_prefix": TELEMETRY_ROUTE_PREFIX,
+            },
+            {
+                "name": "test_app",
+                "import_path": "ray.serve.tests.test_telemetry.tester",
+                "deployments": [{"name": "Tester"}],
+            },
+        ]
+    }
+
+    # Deploy first config
+    client = serve.start(detached=True)
+    client.deploy_apps(ServeDeploySchema(**config))
+    wait_for_condition(
+        lambda: client.get_serve_status("receiver_app").app_status.status
+        == ApplicationStatus.RUNNING,
+        timeout=15,
+    )
+    wait_for_condition(
+        lambda: client.get_serve_status("test_app").app_status.status
+        == ApplicationStatus.RUNNING,
+        timeout=15,
+    )
+    wait_for_condition(
+        lambda: ray.get(storage.get_reports_received.remote()) > 0, timeout=5
+    )
+    report = ray.get(storage.get_report.remote())
+
+    # Check
+    assert int(report["extra_usage_tags"]["serve_num_apps"]) == 2
+    assert report["extra_usage_tags"]["serve_api_version"] == "v2"
+    for tagkey in lightweight_tagkeys:
+        assert tagkey not in report["extra_usage_tags"]
+
+    # Change config and deploy again
+    config["applications"][1]["deployments"][0][lightweight_option] = value
+    client.deploy_apps(ServeDeploySchema(**config))
+    wait_for_condition(
+        lambda: client.get_serve_status("receiver_app").app_status.status
+        == ApplicationStatus.DEPLOYING,
+        timeout=15,
+    )
+    wait_for_condition(
+        lambda: client.get_serve_status("test_app").app_status.status
+        == ApplicationStatus.RUNNING,
+        timeout=15,
+    )
+
+    # Check again
+    wait_for_condition(
+        lambda: ray.get(storage.get_report.remote())["extra_usage_tags"][
+            f"serve_{lightweight_option}_updated"
+        ]
+        == "True",
+        timeout=5,
+    )
+    report = ray.get(storage.get_report.remote())
+    assert int(report["extra_usage_tags"]["serve_num_apps"]) == 2
+    assert report["extra_usage_tags"]["serve_api_version"] == "v2"
+    for tagkey in lightweight_tagkeys:
+        if not tagkey == f"serve_{lightweight_option}_updated":
+            assert tagkey not in report["extra_usage_tags"]
 
 
 if __name__ == "__main__":

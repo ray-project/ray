@@ -56,6 +56,7 @@ from ray.serve._private.utils import (
     get_random_letters,
 )
 from ray.serve._private.application_state import ApplicationStateManager
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -866,16 +867,17 @@ def _generate_deployment_config_versions(
         d["name"]: d for d in last_deployed_config.get("deployments", [])
     }
 
+    lightweight_update_options = {
+        "num_replicas": TagKey.SERVE_NUM_REPLICAS_UPDATED,
+        "user_config": TagKey.SERVE_USER_CONFIG_UPDATED,
+        "autoscaling_config": TagKey.SERVE_AUTOSCALING_CONFIG_UPDATED,
+    }
+
     def exclude_lightweight_update_options(dict):
         # Exclude config options from dict that qualify for a lightweight config
         # update. Changes in any other config options are considered a code change,
         # and require a version change to trigger an update that tears
         # down existing replicas and replaces them with updated ones.
-        lightweight_update_options = [
-            "num_replicas",
-            "user_config",
-            "autoscaling_config",
-        ]
         return {
             option: dict[option]
             for option in dict
@@ -884,15 +886,21 @@ def _generate_deployment_config_versions(
 
     updated_versions = {}
     for name in new_deployments:
-        new_deployment = exclude_lightweight_update_options(new_deployments[name])
-        old_deployment = exclude_lightweight_update_options(
-            old_deployments.get(name, {})
-        )
+        old_deployment = old_deployments.get(name, {})
+        new_deployment = new_deployments[name]
+        new_deployment_filtered = exclude_lightweight_update_options(new_deployment)
+        old_deployment_filtered = exclude_lightweight_update_options(old_deployment)
 
         # If config options haven't changed, version stays the same
         # otherwise, generate a new random version
-        if old_deployment == new_deployment:
+        if old_deployment_filtered == new_deployment_filtered:
             updated_versions[name] = last_deployed_versions[name]
+
+            # If the rest of the options haven't changed, but a lightweight option has
+            # changed, then Serve will execute a lightweight update
+            for option, tagkey in lightweight_update_options.items():
+                if old_deployment.get(option) != new_deployment.get(option):
+                    record_extra_usage_tag(tagkey, "True")
         else:
             updated_versions[name] = get_random_letters()
 
