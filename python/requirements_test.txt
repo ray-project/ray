@@ -92,9 +92,9 @@ typer==0.6.1
 uvicorn==0.16.0
 responses==0.13.4
 rich==12.0.1
-# gymnasium requires 4.8.0. It's also compatible with flake8.
+# ale-py requires 4.10.0. It's also compatible with flake8.
 # It's not compatible with mosaicml though
-importlib-metadata==4.8.0
+importlib-metadata==4.10.0
 
 # Some packages have downstream dependencies that we have to specify here to resolve conflicts.
 # Feel free to add (or remove!) packages here liberally.
