@@ -79,6 +79,18 @@ class ExitCode(enum.Enum):
     COMMAND_TIMEOUT = 42
     PREPARE_ERROR = 43
 
+class BuildkiteExitCode(enum.Enum):
+    """ 
+    Final exit code the test runner passes to buildkite-agent. This exit code is used
+    to determine job policies, such as automatic retries
+    """ 
+    SUCCESS = 0
+    UNKNOWN = 1
+    TRANSIENT_INFRA_ERROR = 10
+    INFRA_ERROR = 11
+    INFRA_TIMEOUT = 30
+    ERROR = 40 
+    TIMEOUT = 42 
 
 def handle_exception(e: Exception) -> Tuple[ExitCode, ResultStatus, Optional[int]]:
     from ray_release.exception import ReleaseTestError
