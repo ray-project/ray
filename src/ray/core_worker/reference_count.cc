@@ -49,6 +49,7 @@ bool ReferenceCounter::OwnedByUs(const ObjectID &object_id) const {
 void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
   absl::MutexLock lock(&mutex_);
   if (object_id_refs_.empty()) {
+    RAY_LOG(INFO) << "DrainAndShutdown object ref empty. Execute immeidately";
     shutdown();
   } else {
     RAY_LOG(WARNING)
@@ -59,6 +60,7 @@ void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
 }
 
 void ReferenceCounter::ShutdownIfNeeded() {
+  RAY_LOG(INFO) << "Shutdown if needed. Object ref exists. " << object_id_refs_.size();
   if (shutdown_hook_ && object_id_refs_.empty()) {
     RAY_LOG(WARNING)
         << "All object references have gone out of scope, shutting down worker.";

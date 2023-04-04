@@ -834,15 +834,16 @@ Status WorkerInfoAccessor::AsyncReportWorkerFailure(
   RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
   rpc::ReportWorkerFailureRequest request;
   request.mutable_worker_failure()->CopyFrom(*data_ptr);
+  const auto pid =  data_ptr->pid();
   client_impl_->GetGcsRpcClient().ReportWorkerFailure(
       request,
-      [worker_address, callback](const Status &status,
+      [worker_address, callback, pid](const Status &status,
                                  const rpc::ReportWorkerFailureReply &reply) {
         if (callback) {
           callback(status);
         }
         RAY_LOG(DEBUG) << "Finished reporting worker failure, "
-                       << worker_address.DebugString() << ", status = " << status;
+                       << worker_address.DebugString() << ", status = " << status << ", pid = " << pid;
       });
   return Status::OK();
 }

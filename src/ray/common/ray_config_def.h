@@ -285,7 +285,7 @@ RAY_CONFIG(int64_t, raylet_fetch_timeout_milliseconds, 1000)
 
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.
-RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
+RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 5000)
 
 /// The duration that we wait after the worker is launched before the
 /// starting_worker_timeout_callback() is called.
