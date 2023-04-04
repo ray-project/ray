@@ -288,6 +288,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: compute_gce_gpu_1_g4_8xl.yaml
@@ -503,6 +504,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: compute_gce_gpu_1.yaml
@@ -1273,6 +1275,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_gce_4x8.yaml
@@ -1299,6 +1302,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_gce_4x8.yaml
@@ -1326,6 +1330,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_gce_4x8.yaml
@@ -1492,6 +1497,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_gce_1x16.yaml
@@ -1544,6 +1550,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_gce_1x32_hd.yaml
@@ -1583,6 +1590,7 @@
           num_nodes: 20
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_gce_100x2.yaml
@@ -1611,6 +1619,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_gce_16x64.yaml
@@ -1636,6 +1645,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_gce_1x96.yaml
@@ -1669,6 +1679,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config_data.yaml
         cluster_compute: tpl_gce_16x64.yaml
@@ -1751,6 +1762,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -1785,6 +1797,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: tpl_cpu_3_gce.yaml
@@ -1816,6 +1829,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: tpl_cpu_1_large_gce.yaml
@@ -1847,6 +1861,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -1878,6 +1893,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -1914,6 +1930,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: many_ppo_gce.yaml
@@ -1945,6 +1962,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -1976,6 +1994,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -2007,6 +2026,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -2038,6 +2058,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -2069,6 +2090,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -2130,6 +2152,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -2160,6 +2183,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce.yaml
@@ -2192,6 +2216,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
@@ -2220,6 +2245,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
@@ -2242,6 +2268,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
@@ -2264,6 +2291,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_gpu_node.yaml
@@ -2286,6 +2314,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_gpu_worker.yaml
@@ -2317,6 +2346,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: rte_gce_small.yaml
@@ -2345,6 +2375,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: rte_gce_minimal.yaml
@@ -3338,6 +3369,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: 4gpus_544_cpus_gce.yaml 
@@ -3366,6 +3398,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/shuffle_compute_multi_gce.yaml
@@ -3389,6 +3422,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: stress_tests/stress_tests_app_config.yaml
         cluster_compute: stress_tests/placement_group_tests_compute_gce.yaml
@@ -3411,6 +3445,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: decision_tree/decision_tree_app_config.yaml
         cluster_compute: decision_tree/autoscaling_compute_gce.yaml
@@ -3434,6 +3469,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
@@ -3459,6 +3495,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_64_gce.yaml
@@ -4158,6 +4195,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: data_ingest_benchmark_compute_gce.yaml
@@ -4376,6 +4414,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
@@ -4590,6 +4629,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
