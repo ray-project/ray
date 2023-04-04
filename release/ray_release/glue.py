@@ -465,7 +465,7 @@ def run_release_test(
         exit_code, buildkite_exit_code, runtime = handle_exception(pipeline_exception)
 
         result.return_code = exit_code.value
-        result.status = buildkite_exit_code.name.lower
+        result.buildkite_return_code = buildkite_exit_code
         if runtime is not None:
             result.runtime = runtime
 
@@ -476,8 +476,5 @@ def run_release_test(
             reporter.report_result(test, result)
         except Exception as e:
             logger.exception(f"Error reporting results via {type(reporter)}: {e}")
-
-    if pipeline_exception:
-        raise pipeline_exception
 
     return result

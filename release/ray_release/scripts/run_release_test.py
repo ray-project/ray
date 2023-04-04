@@ -148,28 +148,22 @@ def main(
     if report:
         reporters.append(DBReporter())
 
-    try:
-        result = run_release_test(
-            test,
-            anyscale_project=anyscale_project,
-            result=result,
-            ray_wheels_url=ray_wheels_url,
-            reporters=reporters,
-            smoke_test=smoke_test,
-            cluster_id=cluster_id,
-            cluster_env_id=cluster_env_id,
-            no_terminate=no_terminate,
-        )
-        return_code = result.return_code
-    except ReleaseTestError as e:
-        logger.exception(e)
-        return_code = e.exit_code.value
-
+    result = run_release_test(
+        test,
+        anyscale_project=anyscale_project,
+        result=result,
+        ray_wheels_url=ray_wheels_url,
+        reporters=reporters,
+        smoke_test=smoke_test,
+        cluster_id=cluster_id,
+        cluster_env_id=cluster_env_id,
+        no_terminate=no_terminate,
+    )
     logger.info(
         f"Release test pipeline for test {test['name']} completed. "
-        f"Returning with exit code = {return_code}"
+        f"Returning with exit code = {result.return_code}"
     )
-    sys.exit(return_code)
+    sys.exit(result.buildkite_return_code)
 
 
 if __name__ == "__main__":
