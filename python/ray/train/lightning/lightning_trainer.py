@@ -4,7 +4,16 @@ from inspect import isclass
 from typing import Any, Dict, Optional, Type
 import pytorch_lightning as pl
 from pytorch_lightning.plugins.environments import ClusterEnvironment
-from pytorch_lightning.callbacks.progress.base import ProgressBarBase
+
+try:
+    from packaging.version import Version
+except ImportError:
+    from distutils.version import LooseVersion as Version
+
+if Version(pl.__version__) >= Version("2.0.0"):
+    from pytorch_lightning.callbacks.progress import ProgressBar as ProgressBarBase
+else:
+    from pytorch_lightning.callbacks.progress.base import ProgressBarBase
 
 from ray.air import session
 from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingConfig
