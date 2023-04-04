@@ -292,7 +292,7 @@ def build_tf_policy(
             else:
                 optimizers = base.optimizer(self)
             optimizers = force_list(optimizers)
-            if getattr(self, "exploration", None):
+            if self.exploration:
                 optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
             # No optimizers produced -> Return None.
