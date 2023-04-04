@@ -112,6 +112,9 @@ class Preprocessor(abc.ABC):
 
         return self._fit(dataset)
 
+    def __call__(self, batch):
+        return self.transform_batch(batch)
+    
     def fit_transform(self, dataset: "Dataset") -> "Dataset":
         """Fit this Preprocessor to the Dataset and then transform the Dataset.
 
