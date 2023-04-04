@@ -106,6 +106,15 @@ Basic Examples
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
+    .. link-button:: gentle_walkthrough
+        :type: ref
+        :text: A Gentle Introduction to Ray Core by Example
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
     .. link-button:: highly_parallel
         :type: ref
         :text: Using Ray for Highly Parallelizable Tasks
