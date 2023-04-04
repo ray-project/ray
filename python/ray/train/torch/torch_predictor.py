@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import TYPE_CHECKING, Dict, Optional, Union, List
 
 import numpy as np
 import torch
@@ -158,6 +158,8 @@ class TorchPredictor(DLPredictor):
     def predict(
         self,
         data: DataBatchType,
+        feature_columns: List[str],
+        keep_columns: List[str],
         dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     ) -> DataBatchType:
         """Run inference on data batch.
@@ -173,6 +175,15 @@ class TorchPredictor(DLPredictor):
 
         Args:
             data: A batch of input data of ``DataBatchType``.
+            feature_columns: List of columns in the preprocessed dataset to use for
+                prediction. Columns not specified will be dropped
+                from `data` before being passed to the predictor.
+                If None, use all columns in the preprocessed dataset.
+            keep_columns: List of columns in the preprocessed dataset to include
+                in the prediction result. This is useful for calculating final
+                accuracies/metrics on the result dataset. If None,
+                the columns in the output dataset will contain
+                just the prediction results.
             dtype: The dtypes to use for the tensors. Either a single dtype for all
                 tensors or a mapping from column name to dtype.
 
@@ -230,7 +241,7 @@ class TorchPredictor(DLPredictor):
                 0  [0.61623406]
                 1    [2.857038]
         """
-        return super(TorchPredictor, self).predict(data=data, dtype=dtype)
+        return super(TorchPredictor, self).predict(data=data, feature_columns=feature_columns, keep_columns=keep_columns, dtype=dtype)
 
     def _arrays_to_tensors(
         self,

@@ -122,7 +122,7 @@ class BatchPredictor:
         num_gpus_per_worker: Optional[int] = None,
         separate_gpu_stage: bool = True,
         ray_remote_args: Optional[Dict[str, Any]] = None,
-        **predict_kwargs,
+        predict_kwargs,
     ) -> Union[ray.data.Dataset, ray.data.DatasetPipeline]:
         """Run batch scoring on a Dataset.
 

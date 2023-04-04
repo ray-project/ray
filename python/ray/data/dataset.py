@@ -628,8 +628,8 @@ class Dataset(Generic[T]):
                 def from_checkpoint(cls, checkpoint):
                     return cls(base_predictor=checkpoint.to_dict()["predictor"])
 
-                def predict(self, data, **kwargs):
-                    return self.base_predictor.predict(data, **kwargs)
+                def predict(self, data, feature_columns, keep_columns, **kwargs):
+                    return self.base_predictor.predict(data, feature_columns, keep_columns, **kwargs)
 
                 def _predict_pandas(self, data, **kwargs):
                     return self.base_predictor._predict_pandas(data, **kwargs)
@@ -653,7 +653,7 @@ class Dataset(Generic[T]):
                 num_cpus_per_worker=ray_remote_args.pop("num_cpus", None),
                 num_gpus_per_worker=ray_remote_args.pop("num_gpus", None),
                 ray_remote_args=ray_remote_args,
-                **kwargs,
+                predict_kwargs=kwargs,
             )
 
         if fn_constructor_args is not None or fn_constructor_kwargs is not None:

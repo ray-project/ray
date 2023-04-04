@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, Type, Optional, Union, Callable
+from typing import Dict, Type, Optional, Union, Callable, List
 
 import numpy as np
 import pandas as pd
@@ -164,11 +164,65 @@ class Predictor(abc.ABC):
         """
         self._cast_tensor_columns = True
 
-    def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
+    def _select_columns_from_input_batch(
+                self,
+                batch_data: DataBatchType,
+                select_columns: Optional[List[str]] = None,
+            ):
+                """Return a subset of input batch based on provided columns."""
+                # No select columns specified, use all columns.
+                if not select_columns:
+                    return batch_data
+                elif isinstance(batch_data, np.ndarray):
+                    raise ValueError(
+                        f"Column name(s) {select_columns} should not be provided "
+                        "for prediction input data type of ``numpy.ndarray``"
+                    )
+                elif isinstance(batch_data, dict):
+                    return {k: v for k, v in batch_data.items() if k in select_columns}
+                elif isinstance(batch_data, pd.DataFrame):
+                    # Select a subset of the pandas columns.
+                    return batch_data[select_columns]
+                
+    def _keep_columns_from_input_batch(
+                self,
+                input_batch: DataBatchType,
+                prediction_output_batch: DataBatchType,
+                keep_columns: Optional[List[str]] = None,
+            ):
+                """Return a union of input batch and prediction output batch
+                based on provided columns.
+                """
+                if not keep_columns:
+                    return prediction_output_batch
+                elif isinstance(input_batch, np.ndarray):
+                    raise ValueError(
+                        f"Column name(s) {keep_columns} should not be provided "
+                        "for prediction input data type of ``numpy.ndarray``"
+                    )
+                elif isinstance(input_batch, dict):
+                    for column in keep_columns:
+                        prediction_output_batch[column] = input_batch[column]
+                    return prediction_output_batch
+                elif isinstance(input_batch, pd.DataFrame):
+                    prediction_output_batch[keep_columns] = input_batch[keep_columns]
+                    return prediction_output_batch
+
+    def predict(self, data: DataBatchType, feature_columns: List[str],
+        keep_columns: List[str], **kwargs) -> DataBatchType:
         """Perform inference on a batch of data.
 
         Args:
             data: A batch of input data of type ``DataBatchType``.
+            feature_columns: List of columns in the preprocessed dataset to use for
+                prediction. Columns not specified will be dropped
+                from `data` before being passed to the predictor.
+                If None, use all columns in the preprocessed dataset.
+            keep_columns: List of columns in the preprocessed dataset to include
+                in the prediction result. This is useful for calculating final
+                accuracies/metrics on the result dataset. If None,
+                the columns in the output dataset will contain
+                just the prediction results.
             kwargs: Arguments specific to predictor implementations. These are passed
             directly to ``_predict_numpy`` or ``_predict_pandas``.
 
@@ -191,26 +245,30 @@ class Predictor(abc.ABC):
         if self._preprocessor:
             data = self._preprocessor.transform_batch(data)
 
+        feature_data = self._select_columns_from_input_batch(data, feature_columns)
+
         batch_format_to_use = self._batch_format_to_use()
 
         # We can finish prediction as long as one predict method is implemented.
         # For prediction, we have to return back in the same format as the input.
         if batch_format == BatchFormat.PANDAS:
             if batch_format_to_use == BatchFormat.PANDAS:
-                return self._predict_pandas(
-                    _convert_batch_type_to_pandas(data), **kwargs
+                output = self._predict_pandas(
+                    _convert_batch_type_to_pandas(feature_data), **kwargs
                 )
             elif batch_format_to_use == BatchFormat.NUMPY:
-                return _convert_batch_type_to_pandas(
-                    self._predict_numpy(_convert_batch_type_to_numpy(data), **kwargs)
+                output = _convert_batch_type_to_pandas(
+                    self._predict_numpy(_convert_batch_type_to_numpy(feature_data), **kwargs)
                 )
         elif batch_format == BatchFormat.NUMPY:
             if batch_format_to_use == BatchFormat.PANDAS:
-                return _convert_batch_type_to_numpy(
-                    self._predict_pandas(_convert_batch_type_to_pandas(data), **kwargs)
+                output =  _convert_batch_type_to_numpy(
+                    self._predict_pandas(_convert_batch_type_to_pandas(feature_data), **kwargs)
                 )
             elif batch_format_to_use == BatchFormat.NUMPY:
-                return self._predict_numpy(_convert_batch_type_to_numpy(data), **kwargs)
+                output = self._predict_numpy(_convert_batch_type_to_numpy(feature_data), **kwargs)
+
+        return self._keep_columns_from_input_batch(data, output, keep_columns)
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
