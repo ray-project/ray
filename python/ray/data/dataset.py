@@ -602,7 +602,9 @@ class Dataset(Generic[T]):
                 f"{batch_format}"
             )
 
-        if isinstance(fn, CallableClass) and (
+        from ray.train.predictor import Predictor
+
+        if isinstance(fn, (CallableClass, Predictor)) and (
             compute is None
             or compute == "tasks"
             or isinstance(compute, TaskPoolStrategy)
@@ -612,6 +614,46 @@ class Dataset(Generic[T]):
                 f"specify the actor compute strategy, but got: {compute}"
                 'For example, use ``compute="actors"`` or '
                 "``compute=ActorPoolStrategy(min, max)``."
+            )
+
+        if isinstance(fn, Predictor):
+            from ray.air.checkpoint import Checkpoint
+            from ray.train.batch_predictor import BatchPredictor
+
+            class _WrapperPredictor(Predictor):
+                def __init__(self, base_predictor: Predictor):
+                    self.base_predictor = base_predictor
+
+                @classmethod
+                def from_checkpoint(cls, checkpoint):
+                    return cls(base_predictor=checkpoint.to_dict()["predictor"])
+
+                def predict(self, data, **kwargs):
+                    return self.base_predictor.predict(data, **kwargs)
+
+                def _predict_pandas(self, data, **kwargs):
+                    return self.base_predictor._predict_pandas(data, **kwargs)
+
+                def _predict_numpy(self, data, **kwargs):
+                    return self.base_predictor._predict_numpy(data, **kwargs)
+
+            checkpoint = Checkpoint.from_dict({"predictor": fn})
+
+            batch_predictor = BatchPredictor.from_checkpoint(
+                checkpoint, predictor_cls=_WrapperPredictor
+            )
+
+            assert isinstance(compute, ActorPoolStrategy)
+            kwargs = fn_kwargs if fn_kwargs else {}
+            return batch_predictor.predict(
+                data=self,
+                batch_size=batch_size,
+                min_scoring_workers=compute.min_size,
+                max_scoring_workers=compute.max_size,
+                num_cpus_per_worker=ray_remote_args.pop("num_cpus", None),
+                num_gpus_per_worker=ray_remote_args.pop("num_gpus", None),
+                ray_remote_args=ray_remote_args,
+                **kwargs,
             )
 
         if fn_constructor_args is not None or fn_constructor_kwargs is not None:

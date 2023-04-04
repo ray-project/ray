@@ -82,7 +82,6 @@ class Predictor(abc.ABC):
         self._cast_tensor_columns = False
 
     @classmethod
-    @abc.abstractmethod
     def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
         """Create a specific predictor from a checkpoint.
 
@@ -245,10 +244,3 @@ class Predictor(abc.ABC):
 
         """
         raise NotImplementedError
-
-    def __reduce__(self):
-        raise PredictorNotSerializableException(
-            "Predictor instances are not serializable. Instead, you may want "
-            "to serialize a checkpoint and initialize the Predictor with "
-            "Predictor.from_checkpoint."
-        )
