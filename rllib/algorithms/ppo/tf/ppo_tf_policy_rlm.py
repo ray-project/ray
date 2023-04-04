@@ -129,9 +129,8 @@ class PPOTfPolicyWithRLModule(
             mean_vf_unclipped_loss = tf.reduce_mean(vf_loss)
         # Ignore the value function.
         else:
-            mean_vf_unclipped_loss = (
-                value_fn_out
-            ) = vf_loss_clipped = mean_vf_loss = tf.constant(0.0)
+            mean_vf_unclipped_loss = tf.constant(0.0)
+            value_fn_out = vf_loss_clipped = mean_vf_loss = tf.constant(0.0)
 
         total_loss = tf.reduce_mean(
             -surrogate_loss
