@@ -1,4 +1,5 @@
 import itertools
+import random
 import pytest
 import threading
 import time
@@ -447,6 +448,31 @@ def test_can_pickle(ray_start_10_cpus_shared, restore_dataset_context):
     # Should work even if a streaming exec is in progress.
     ds2 = cloudpickle.loads(cloudpickle.dumps(ds))
     assert ds2.count() == 1000000
+
+
+def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_dataset_context):
+    DatasetContext.get_current().new_execution_backend = True
+    DatasetContext.get_current().use_streaming_executor = True
+
+    def f(x):
+        import os
+
+        if random.random() > 0.9:
+            print("force exit")
+            os._exit(1)
+        return x
+
+    # Test recover.
+    base = ray.data.range(1000, parallelism=100)
+    ds1 = base.map_batches(
+        f, compute=ray.data.ActorPoolStrategy(4, 4), max_task_retries=999
+    )
+    ds1.take_all()
+
+    # Test disabling fault tolerance.
+    ds2 = base.map_batches(f, compute=ray.data.ActorPoolStrategy(4, 4), max_restarts=0)
+    with pytest.raises(ray.exceptions.RayActorError):
+        ds2.take_all()
 
 
 if __name__ == "__main__":
