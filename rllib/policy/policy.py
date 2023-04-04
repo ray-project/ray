@@ -1446,7 +1446,10 @@ class Policy(metaclass=ABCMeta):
         self._dummy_batch.deleted_keys.clear()
         self._dummy_batch.added_keys.clear()
 
-        self.exploration.postprocess_trajectory(self, self._dummy_batch)
+        if self.exploration:
+            # Policies with RLModules don't have an exploration object.
+            self.exploration.postprocess_trajectory(self, self._dummy_batch)
+
         postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
         seq_lens = None
         if state_outs:
