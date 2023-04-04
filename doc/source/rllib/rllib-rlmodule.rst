@@ -492,7 +492,7 @@ The following example creates a custom multi-agent RL module with underlying mod
 
                 self._rl_modules = rl_modules
 
-To construct this custom multi-agent RL odule, we need to pass the class to the :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` constructor. We need to also pass the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec` for each agent. This is because RLlib needs to know the observation, action spaces, and model hyper-parameters for each agent.
+To construct this custom multi-agent RL module, pass the class to the :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` constructor. Also, pass the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec` for each agent because RLlib requires the observation, action spaces, and model hyper-parameters for each agent.
 
 .. code-block:: python
 
@@ -524,16 +524,16 @@ To construct this custom multi-agent RL odule, we need to pass the class to the 
 
     module = spec.build()
 
-Extending Existing RLlib RL Modules
+Extending Existing RLlib RLModules
 -----------------------------------
 
-RLlib provides a number of RLModules for different frameworks (e.g. PyTorch, TensorFlow, etc.). These modules can be extended by inheriting from them and overriding the methods you need to customize. For example, you can extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization. You can then pass the new customized class into the algorithm configuration. 
+RLlib provides a number of RLModules for different frameworks (e.g., PyTorch, TensorFlow, etc.). Extend these modules by inheriting from them and overriding the methods you need to customize. For example, extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization. Then pass the new customized class into the algorithm configuration. 
 
-There are two ways possible to extend existing RLModules:
+There are two possible ways to extend existing RLModules:
 
 .. tabbed:: Inheriting existing RLModules
 
-    One way to extend existing RLModules is to inherit from them and override the methods you need to customize. For example, you can extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization. You can then pass the new customized class into the algorithm configuration to use the PPO algorithm to optimize your custom RLModule.
+    One way to extend existing RLModules is to inherit from them and override the methods you need to customize. For example, extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization. Then pass the new customized class into the algorithm configuration to use the PPO algorithm to optimize your custom RLModule.
 
     .. code-block:: python
 
@@ -551,9 +551,9 @@ There are two ways possible to extend existing RLModules:
     
 .. tabbed:: Extending RLModule Catalog
 
-    Another way you can customize your module by extending their catalog. The catalog is a component that defines the default architecture and behavior of a model based on factors such as ``observation_space``, ``action_space``, and so on. To modify sub-components of an existing RLModule, extend the corresponding catalog class.
+    Another way to customize your module is by extending its catalog. The catalog is a component that defines the default architecture and behavior of a model based on factors such as ``observation_space``, ``action_space``, etc. To modify sub-components of an existing RLModule, extend the corresponding catalog class.
 
-    For instance, if you want to adapt the existing ``PPORLModule`` for a custom graph observation space not supported by RLlib out-of-the-box, you can extend the catalog class used to create the ``PPORLModule`` and override the method responsible for returning the encoder component. This will ensure your custom encoder replaces the default one initially provided by RLlib. For more information on the catalog class, refer to the `RLModule Catalog` user-guide.
+    For instance, to adapt the existing ``PPORLModule`` for a custom graph observation space not supported by RLlib out-of-the-box, extend the catalog class used to create the ``PPORLModule`` and override the method responsible for returning the encoder component to ensure that your custom encoder replaces the default one initially provided by RLlib. For more information on the catalog class, refer to the `RLModule Catalog` user guide.
 
 
     .. code-block:: python
