@@ -765,6 +765,65 @@ assert ray.get(c.r.remote(10)) == 10
     wait_for_pid_to_exit(gcs_server_pid, 1000)
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
+            gcs_server_request_timeout_seconds=10,
+            raylet_liveness_self_check_interval_ms=3000,
+        )
+    ],
+    indirect=True,
+)
+def test_redis_data_loss_no_leak(ray_start_regular_with_external_redis):
+    @ray.remote
+    def create_actor():
+        @ray.remote
+        class A:
+            def pid(self):
+                return os.getpid()
+
+        a = A.options(lifetime="detached", name="A").remote()
+        ray.get(a.pid.remote())
+
+    ray.get(create_actor.remote())
+
+    ray._private.worker._global_node.kill_gcs_server()
+    # Delete redis
+    redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
+    import redis
+
+    ip, port = redis_addr.split(":")
+    cli = redis.Redis(ip, port)
+    cli.flushall()
+
+    from grpc_health.v1 import health_pb2
+    from grpc_health.v1 import health_pb2_grpc
+    import grpc
+
+    raylet_channel = grpc.insecure_channel(
+        f"localhost:{ray._private.worker._global_node.node_manager_port}"
+    )
+    health_stub = health_pb2_grpc.HealthStub(raylet_channel)
+
+    def check_raylet_healthy():
+        request = health_pb2.HealthCheckRequest()
+        try:
+            reply = health_stub.Check(request)
+            return health_pb2.HealthCheckResponse.SERVING == reply.status
+        except Exception:
+            return False
+
+    wait_for_condition(lambda: check_raylet_healthy())
+    # Start GCS
+    ray._private.worker._global_node.start_gcs_server()
+
+    # Waiting for raylet to become unhealthy
+    wait_for_condition(lambda: not check_raylet_healthy())
+
+
 if __name__ == "__main__":
 
     import pytest

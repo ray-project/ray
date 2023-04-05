@@ -397,6 +397,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   // Fail to setup this will lead to the health check failure.
   node_manager_server_.GetServer().GetHealthCheckService()->SetServingStatus(
       self_node_id_.Hex(), true);
+  node_manager_server_.GetServer().GetHealthCheckService()->SetServingStatus(true);
   worker_pool_.SetNodeManagerPort(GetServerPort());
 
   auto agent_command_line = ParseCommandLine(config.agent_command);
@@ -552,9 +553,24 @@ ray::Status NodeManager::RegisterGcs() {
           return;
         }
         checking = true;
-        gcs_client_->Nodes();
+        gcs_client_->Nodes().AsyncCheckSelfAlive([this](auto status, auto alive) mutable {
+          if (status.ok()) {
+            if (!alive) {
+              // GCS think this raylet is dead. Set the raylet unhealthy.
+              RAY_LOG(WARNING)
+                  << "GCS consider this node to be dead. Set the status to be unhealthy";
+              node_manager_server_.GetServer().GetHealthCheckService()->SetServingStatus(
+                  self_node_id_.Hex(), false);
+              node_manager_server_.GetServer().GetHealthCheckService()->SetServingStatus(
+                  false);
+            }
+            checking = false;
+          }
+        });
       },
-      "NodeManager.GcsCheckAlive") return ray::Status::OK();
+      RayConfig::instance().raylet_liveness_self_check_interval_ms(),
+      "NodeManager.GcsCheckAlive");
+  return ray::Status::OK();
 }
 
 void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker, bool force) {
