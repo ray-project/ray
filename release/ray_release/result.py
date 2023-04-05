@@ -83,20 +83,25 @@ class ExitCode(enum.Enum):
     COMMAND_TIMEOUT = 42
     PREPARE_ERROR = 43
 
-class BuildkiteExitCode(enum.Enum):
-    """ 
-    Final exit code the test runner passes to buildkite-agent. This exit code is used
-    to determine job policies, such as automatic retries
-    """ 
-    SUCCESS = 0
-    UNKNOWN = 1
-    TRANSIENT_INFRA_ERROR = 10
-    INFRA_ERROR = 11
-    INFRA_TIMEOUT = 30
-    ERROR = 40 
-    TIMEOUT = 42 
 
-def handle_exception(e: Exception, runtime: int) -> Tuple[ExitCode, BuildkiteExitCode, Optional[int]]:
+def _is_transient_error(runtime: int) -> bool:
+    """
+    Classify whether an infra-failure issue is a transient issue. This is based on
+    the status of its previous retries, and its runtime.
+    """
+    retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", "0"))
+    if retry_count > 0:
+        # Already retried at least once and failed again, not a transient issue
+        return False
+    if runtime > 30 * 60:
+        # Take too long to run
+        return False
+    return True
+
+
+def handle_exception(
+    e: Exception, runtime: int
+) -> Tuple[ExitCode, BuildkiteExitCode, Optional[int]]:
     from ray_release.exception import ReleaseTestError
 
     if not isinstance(e, ReleaseTestError):
