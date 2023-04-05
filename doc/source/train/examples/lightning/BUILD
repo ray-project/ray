@@ -1,5 +1,5 @@
 filegroup(
-    name = "lightning_mnist_example",
+    name = "lightning_examples",
     srcs = glob(["*.ipynb"]),
     visibility = ["//doc:__subpackages__"]
 )
