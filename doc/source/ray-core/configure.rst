@@ -228,7 +228,7 @@ of each deployment. By using the initContainer, we can dynamically retrieve the 
 The scripts perform the following steps: first, a 2048-bit RSA private key is generated and saved as 
 `/etc/ray/tls/tls.key`. Then, a Certificate Signing Request (CSR) is generated using the `tls.key` file
 and the `csr.conf` configuration file. Finally, a self-signed certificate (`tls.crt`) is created using
-the Certificate Authority's (`ca.key`) private key and the CSR (`ca.csr`).
+the Certificate Authority's (`ca.key and ca.crt`) keypair and the CSR (`ca.csr`).
 
 Step 3: Set the environment variables for both Ray head and worker to enable TLS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
