@@ -250,8 +250,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
                     raise ValueError(
                         "``compute`` must be specified when using a callable class, "
                         "and must specify the actor compute strategy. "
-                        'For example, use ``compute="actors"`` or '
-                        "``compute=ActorPoolStrategy(min, max)``."
+                        "For example, use ``compute=ActorPoolStrategy(size=n)``."
                     )
                 assert isinstance(compute, ActorPoolStrategy)
 
