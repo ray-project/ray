@@ -2907,9 +2907,12 @@ class Dataset(Generic[T]):
                 self._write_ds = Dataset(
                     plan, self._epoch, self._lazy, logical_plan
                 ).cache()
-                datasource.on_write_complete(
-                    ray.get(self._write_ds._plan.execute().get_blocks())
+                blocks = ray.get(self._write_ds._plan.execute().get_blocks())
+                assert all(
+                    isinstance(block, list) and len(block) == 1 for block in blocks
                 )
+                write_results = [block[0] for block in blocks]
+                datasource.on_write_complete(write_results)
             except Exception as e:
                 datasource.on_write_failed([], e)
                 raise
