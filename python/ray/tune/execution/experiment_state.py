@@ -120,7 +120,9 @@ class _ExperimentCheckpointManager:
         # Synch to/from cloud
         self._sync_config = sync_config or SyncConfig
         # Resolves syncer="auto" to an actual syncer if needed
-        self._syncer = get_node_to_storage_syncer(self._sync_config)
+        self._syncer = get_node_to_storage_syncer(
+            self._sync_config, self._remote_checkpoint_dir
+        )
 
         # Last save + sync time
         self._last_save_time = 0.0

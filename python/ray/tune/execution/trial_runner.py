@@ -20,6 +20,7 @@ from ray.tune.execution.experiment_state import (
     _find_newest_experiment_checkpoint,
     _experiment_checkpoint_exists,
 )
+from ray.tune.utils.util import _split_remote_local_path
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList, Callback
@@ -39,6 +40,8 @@ from ray.tune.result import (
     TIME_THIS_ITER_S,
     RESULT_DUPLICATE,
     SHOULD_CHECKPOINT,
+    _get_defaults_results_dir,
+    DEFAULT_EXPERIMENT_NAME,
 )
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
@@ -144,16 +147,46 @@ class _TuneControllerBase:
 
         self._sync_config = sync_config or SyncConfig()
 
+        # Rename for better code readability
+        local_experiment_path, remote_experiment_path = _split_remote_local_path(
+            experiment_path, None
+        )
+
+        # Derive experiment dir name from local path
+        if not experiment_dir_name and local_experiment_path:
+            # Maybe derive experiment dir name from local storage dir
+            experiment_dir_name = Path(local_experiment_path).name
+        elif not experiment_dir_name:
+            experiment_dir_name = DEFAULT_EXPERIMENT_NAME
+
+        # Set default experiment dir name
+        if not local_experiment_path:
+            local_experiment_path = str(
+                Path(_get_defaults_results_dir()) / experiment_dir_name
+            )
+            os.makedirs(local_experiment_path, exist_ok=True)
+
         self._experiment_dir_name = experiment_dir_name
 
-        # Rename for better code readability
-        local_experiment_path = experiment_path
-        remote_experiment_path = None
-
         if self._sync_config.upload_dir and self._experiment_dir_name:
-            remote_experiment_path = str(
-                URI(self._sync_config.upload_dir) / self._experiment_dir_name
-            )
+            if remote_experiment_path:
+                if not remote_experiment_path.startswith(self.sync_config.upload_dir):
+                    raise ValueError(
+                        f"Both a `SyncConfig.upload_dir` and an `experiment_path` "
+                        f"pointing to remote storage were passed, but they do not "
+                        f"point to the same location. Got: "
+                        f"`experiment_path={experiment_path}` and "
+                        f"`SyncConfig.upload_dir={self.sync_config.upload_dir}`. "
+                    )
+                warnings.warn(
+                    "If `experiment_path` points to a remote storage location, "
+                    "do not set `SyncConfig.upload_dir`. ",
+                    DeprecationWarning,
+                )
+            else:
+                remote_experiment_path = str(
+                    URI(self._sync_config.upload_dir) / self._experiment_dir_name
+                )
 
         self._local_experiment_path = local_experiment_path
         self._remote_experiment_path = remote_experiment_path
@@ -1261,7 +1294,9 @@ class TrialRunner(_TuneControllerBase):
             # TODO(ml-team): Remove these in 2.6.
             trainable_kwargs={
                 "sync_timeout": self._sync_config.sync_timeout,
-                "custom_syncer": get_node_to_storage_syncer(self._sync_config),
+                "custom_syncer": get_node_to_storage_syncer(
+                    self._sync_config, self._remote_experiment_path
+                ),
             },
         )
 
