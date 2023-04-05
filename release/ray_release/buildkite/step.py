@@ -125,10 +125,10 @@ def get_step(
     # Auto-retry on transient infra error (according to result.BuildkiteExitCode)
     step["retry"] = {
         "automatic": [
-          {
-            "exit_status": BuildkiteExitCode.TRANSIENT_INFRA_ERROR.value,
-            "limit": 2,
-          }
+            {
+                "exit_status": BuildkiteExitCode.TRANSIENT_INFRA_ERROR.value,
+                "limit": 2,
+            }
         ]
     }
 
