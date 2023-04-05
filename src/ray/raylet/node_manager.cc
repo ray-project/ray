@@ -397,7 +397,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   // Fail to setup this will lead to the health check failure.
   node_manager_server_.GetServer().GetHealthCheckService()->SetServingStatus(
       self_node_id_.Hex(), true);
-  node_manager_server_.GetServer().GetHealthCheckService()->SetServingStatus(true);
   worker_pool_.SetNodeManagerPort(GetServerPort());
 
   auto agent_command_line = ParseCommandLine(config.agent_command);
