@@ -1,9 +1,9 @@
 import unittest
 import numpy as np
 
-from ray.rllib.models.specs.specs_np import NPTensorSpec
-from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.checker import (
+from ray.rllib.core.models.specs.specs_np import NPTensorSpec
+from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.core.models.specs.checker import (
     check_input_specs,
     convert_to_canonical_format,
 )

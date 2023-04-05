@@ -35,6 +35,7 @@ parts:
               - file: ray-core/examples/batch_training
               - file: ray-core/examples/automl_for_time_series
               - file: ray-core/examples/web-crawler
+              - file: ray-core/examples/map_reduce
           - file: ray-core/api/index
 
       - file: ray-air/getting-started
@@ -381,6 +382,7 @@ parts:
         title: References
         sections:
           - file: cluster/usage-stats
+          - file: ray-references/glossary
 
       - file: ray-contribute/stability
         title: Developer Guides

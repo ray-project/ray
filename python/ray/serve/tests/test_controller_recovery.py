@@ -3,6 +3,7 @@ import sys
 import time
 import pytest
 from collections import defaultdict
+from ray._private.test_utils import wait_for_condition
 
 import ray
 from ray._private.test_utils import SignalActor
@@ -198,6 +199,53 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     # We should have two running replicas of the new version.
     client._wait_for_deployment_healthy(V2.name)
     make_nonblocking_calls({"2": 2}, num_returns=2)
+
+
+def test_controller_recover_initializing_actor(serve_instance):
+    """Recover the actor which is under PENDING_INITIALIZATION"""
+
+    signal = SignalActor.remote()
+    signal2 = SignalActor.remote()
+    client = serve_instance
+
+    @ray.remote
+    def pending_init_indicator():
+        ray.get(signal2.wait.remote())
+        return True
+
+    @serve.deployment
+    class V1:
+        async def __init__(self):
+            ray.get(signal2.send.remote())
+            await signal.wait.remote()
+
+        def __call__(self, request):
+            return f"1|{os.getpid()}"
+
+    serve.run(V1.bind(), _blocking=False)
+    ray.get(pending_init_indicator.remote())
+
+    def get_actor_info(name: str):
+        all_current_actors = list_actors(filters=[("state", "=", "ALIVE")])
+        for actor in all_current_actors:
+            if SERVE_PROXY_NAME in actor["name"]:
+                continue
+            if name in actor["name"]:
+                print(actor)
+                return actor["name"], actor["pid"]
+
+    actor_tag, _ = get_actor_info(V1.name)
+    _, controller1_pid = get_actor_info(SERVE_CONTROLLER_NAME)
+    ray.kill(serve.context._global_client._controller, no_restart=False)
+    # wait for controller is alive again
+    wait_for_condition(get_actor_info, name=SERVE_CONTROLLER_NAME)
+    assert controller1_pid != get_actor_info(SERVE_CONTROLLER_NAME)[1]
+
+    # Let the actor proceed initialization
+    ray.get(signal.send.remote())
+    client._wait_for_deployment_healthy(V1.name)
+    # Make sure the actor before controller dead is staying alive.
+    assert actor_tag == get_actor_info(V1.name)[0]
 
 
 if __name__ == "__main__":

@@ -26,10 +26,11 @@ from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.result import _get_defaults_results_dir
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import date_str
+from ray.tune.utils.util import _resolve_storage_path, _split_remote_local_path
 from ray.util import log_once
 
 from ray.util.annotations import DeveloperAPI, Deprecated
@@ -70,7 +71,7 @@ def _validate_log_to_file(log_to_file):
 
 
 def _get_local_dir_with_expand_user(local_dir: Optional[str]) -> str:
-    return os.path.abspath(os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR))
+    return os.path.abspath(os.path.expanduser(local_dir or _get_defaults_results_dir()))
 
 
 def _get_dir_name(run, explicit_name: Optional[str], combined_name: str) -> str:
@@ -155,17 +156,12 @@ class Experiment:
 
         self.sync_config = sync_config
 
-        local_storage_path = storage_path
-        remote_storage_path = self.sync_config.upload_dir
+        # Resolve storage_path
+        local_storage_path, remote_storage_path = _resolve_storage_path(
+            storage_path, local_dir, sync_config.upload_dir, error_location="Experiment"
+        )
 
         if local_dir:
-            if local_storage_path:
-                raise ValueError(
-                    "Only one of `local_dir` and `storage_path` can be passed to "
-                    "``Experiment().` Since `local_dir` is deprecated, pass "
-                    "only `storage_path` instead."
-                )
-
             if log_once("tune_experiment_local_dir"):
                 warnings.warn(
                     "The `local_dir` argument of `Experiment is deprecated. "
@@ -290,7 +286,7 @@ class Experiment:
             "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
-            "experiment_path": self.local_path,
+            "experiment_path": self.path,
             "experiment_dir_name": self.dir_name,
             "sync_config": sync_config,
             "checkpoint_config": checkpoint_config,
@@ -427,7 +423,7 @@ class Experiment:
     def get_experiment_checkpoint_dir(
         cls,
         run_obj: Union[str, Callable, Type],
-        local_dir: Optional[str] = None,
+        storage_path: Optional[str] = None,
         name: Optional[str] = None,
     ):
         """Get experiment checkpoint dir without setting up an experiment.
@@ -436,20 +432,23 @@ class Experiment:
 
         Args:
             run_obj: Trainable to run.
-            local_dir: The local_dir path.
+            storage_path: The path to Ray AIR's result storage.
             name: The name of the experiment specified by user.
 
         Returns:
             Checkpoint directory for experiment.
         """
         assert run_obj
-        local_dir = _get_local_dir_with_expand_user(local_dir)
+
+        local_path, _ = _split_remote_local_path(storage_path, None)
+        local_path = _get_local_dir_with_expand_user(local_path)
+
         run_identifier = cls.get_trainable_name(run_obj)
         combined_name = name or run_identifier
 
         dir_name = _get_dir_name(run_obj, name, combined_name)
 
-        return os.path.join(local_dir, dir_name)
+        return os.path.join(local_path, dir_name)
 
     @property
     def stopper(self):

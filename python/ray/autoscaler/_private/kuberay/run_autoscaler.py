@@ -71,7 +71,9 @@ def _setup_logging() -> None:
     Also log to pod stdout (logs viewable with `kubectl logs <head-pod> -c autoscaler`).
     """
     log_dir = os.path.join(
-        ray._private.utils.get_ray_temp_dir(), ray._private.node.SESSION_LATEST, "logs"
+        ray._private.utils.get_ray_temp_dir(),
+        ray._private.ray_constants.SESSION_LATEST,
+        "logs",
     )
     # The director should already exist, but try (safely) to create it just in case.
     try_to_create_directory(log_dir)
