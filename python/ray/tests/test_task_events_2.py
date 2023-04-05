@@ -311,7 +311,7 @@ class Actor:
         ray.get(task_finish_child.remote())
         task_sleep_child.remote()
         raise ValueError("expected to fail.")
-    
+
     def child_actor(self, wait_fn):
         a = ChildActor.remote()
         a.children.remote()
@@ -349,21 +349,18 @@ def test_fault_tolerance_actor_tasks_failed(shutdown_only):
 
 def test_fault_tolerance_nested_actors_failed(shutdown_only):
     ray.init(_system_config=_SYSTEM_CONFIG)
-    # 2 creation task + 1 parent actor task + 1 child actor task + 
+    # 2 creation task + 1 parent actor task + 1 child actor task +
     # 2 normal tasks run by child actors
     expected_task_num = 6
 
     # Test nested actor tasks
     with pytest.raises(ray.exceptions.RayTaskError):
         a = Actor.remote()
-        ray.get(a.child_actor.remote(lambda : len(list_tasks() == 6)))
+        ray.get(a.child_actor.remote(lambda: len(list_tasks() == expected_task_num)))
 
     def verify():
         tasks = list_tasks(detail=True)
-        assert len(tasks) == 6, (
-            "2 creation task + 1 parent actor task + 1 child actor task "
-            " + 2 normal tasks run by child actor"
-        )
+        assert len(tasks) == expected_task_num
         for task in tasks:
             if "finish" in task["name"] or "__init__" in task["name"]:
                 assert task["state"] == "FINISHED", task
