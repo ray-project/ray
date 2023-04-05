@@ -213,6 +213,8 @@ then paste encoded strings to the secret.yaml.
 
   cat ca.key | base64
   cat ca.crt | base64
+# Alternatively, the command automatically encode and create the secret for the CA keypair.
+kubectl create secret generic ca-tls --from-file=ca.crt=<path-to-ca.crt> --from-file=ca.key=<path-to-ca.key>
 
 Step 2: Generate individual private keys and self-signed certificates for the Ray head and workers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
