@@ -1626,7 +1626,7 @@
   variations:
     - __suffix__: aws
     - __suffix__: smoke-test
-       frequency: nightly
+      frequency: nightly
     - __suffix__: gce
       env: gce
       frequency: manual
