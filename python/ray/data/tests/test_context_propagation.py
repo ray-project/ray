@@ -5,7 +5,7 @@ from ray.tests.conftest import *  # noqa
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data.datasource import Datasource, ReadTask
-from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
+from ray._private.test_utils import run_string_as_driver
 
 
 def test_read(ray_start_regular_shared):
@@ -93,17 +93,9 @@ assert pipe.take_all() == list(range(1, 101))
 placement_group_assert_no_leak([placement_group])
 ray.shutdown()
     """
-    proc = run_string_as_driver_nonblocking(driver_code)
 
-    def is_job_done():
-        if proc.poll() is None:
-            return False
-        if proc.returncode:
-            print(ray._private.utils.decode(proc.stderr.read()))
-            raise RuntimeError("Test failed: ", proc.returncode)
-        return True
-
-    wait_for_condition(is_job_done, timeout=10)
+    # Successful exit is sufficient to verify this test.
+    run_string_as_driver(driver_code)
 
 
 if __name__ == "__main__":
