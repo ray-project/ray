@@ -31,6 +31,7 @@ _op_name_white_list = [
     "FromPandasRefs",
     "FromDask",
     "FromModin",
+    "FromMARS",
     "FromNumpyRefs",
     "FromArrowRefs",
     # Write
