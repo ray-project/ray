@@ -3,18 +3,21 @@ import os
 from dataclasses import dataclass
 from typing import Optional, Dict, Tuple
 
+
 class BuildkiteExitCode(enum.Enum):
-    """ 
+    """
     Final exit code the test runner passes to buildkite-agent. This exit code is used
     to determine job policies, such as automatic retries
-    """ 
+    """
+
     SUCCESS = 0
     UNKNOWN = 1
     TRANSIENT_INFRA_ERROR = 10
     INFRA_ERROR = 11
     INFRA_TIMEOUT = 30
-    ERROR = 40 
-    TIMEOUT = 42 
+    ERROR = 40
+    TIMEOUT = 42
+
 
 @dataclass
 class Result:
@@ -77,11 +80,12 @@ class ExitCode(enum.Enum):
     COMMAND_TIMEOUT = 42
     PREPARE_ERROR = 43
 
+
 def handle_exception(e: Exception) -> Tuple[ExitCode, BuildkiteExitCode, Optional[int]]:
     from ray_release.exception import ReleaseTestError
 
     if not isinstance(e, ReleaseTestError):
-      return ExitCode.UNKNOWN, BuildkiteExitCode.UNKNOWN, 0
+        return ExitCode.UNKNOWN, BuildkiteExitCode.UNKNOWN, 0
     exit_code = e.exit_code
     if 1 <= exit_code.value < 10:
         error_type = BuildkiteExitCode.UNKNOWN
@@ -90,9 +94,9 @@ def handle_exception(e: Exception) -> Tuple[ExitCode, BuildkiteExitCode, Optiona
         retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", "0"))
         # Retry at least once of transient infra error
         if retry_count == 0:
-          error_type = BuildkiteExitCode.TRANSIENT_INFRA_ERROR
+            error_type = BuildkiteExitCode.TRANSIENT_INFRA_ERROR
         else:
-          error_type = BuildkiteExitCode.INFRA_ERROR
+            error_type = BuildkiteExitCode.INFRA_ERROR
         runtime = None
     elif 30 <= exit_code.value < 40:
         error_type = BuildkiteExitCode.INFRA_TIMEOUT
