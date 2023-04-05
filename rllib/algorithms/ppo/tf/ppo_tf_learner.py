@@ -73,14 +73,14 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
         # Compute a value function loss.
         if self.hps.use_critic:
             value_fn_out = fwd_out[SampleBatch.VF_PREDS]
-            vf_loss = tf.math.squared_difference(
-                value_fn_out, batch[Postprocessing.VALUE_TARGETS]
-            )
+            vf_loss = tf.math.square(value_fn_out - batch[Postprocessing.VALUE_TARGETS])
             vf_loss_clipped = tf.clip_by_value(vf_loss, 0, self.hps.vf_clip_param)
             mean_vf_loss = tf.reduce_mean(vf_loss_clipped)
+            mean_vf_unclipped_loss = tf.reduce_mean(vf_loss)
         # Ignore the value function.
         else:
             value_fn_out = tf.constant(0.0, dtype=surrogate_loss.dtype)
+            mean_vf_unclipped_loss = tf.constant(0.0, dtype=surrogate_loss.dtype)
             vf_loss_clipped = mean_vf_loss = tf.constant(
                 0.0, dtype=surrogate_loss.dtype
             )
@@ -100,6 +100,7 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
             self.TOTAL_LOSS_KEY: total_loss,
             "policy_loss": -tf.reduce_mean(surrogate_loss),
             "vf_loss": mean_vf_loss,
+            "unclipped_vf_loss": mean_vf_unclipped_loss,
             "vf_explained_var": explained_variance(
                 batch[Postprocessing.VALUE_TARGETS], value_fn_out
             ),
