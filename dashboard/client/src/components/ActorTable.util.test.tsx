@@ -50,7 +50,7 @@ describe("sortActors", () => {
 
   it.each([
     [
-      "sorts actors by state when states∏ are different",
+      "sorts actors by state when states are different",
       "DEAD",
       "ALIVE",
       [actor2, actor1],
