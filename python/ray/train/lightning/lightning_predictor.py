@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Type, Dict, Any
+from typing import Optional, Type
 
 from ray.data.preprocessor import Preprocessor
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
@@ -88,11 +88,39 @@ class LightningPredictor(TorchPredictor):
         *,
         preprocessor: Optional[Preprocessor] = None,
         use_gpu: bool = False,
-        load_from_checkpoint_kwargs: Optional[Dict[str, Any]] = None
+        **load_from_checkpoint_kwargs
     ) -> "LightningPredictor":
         """Instantiate the LightningPredictor from a Checkpoint.
 
         The checkpoint is expected to be a result of ``LightningTrainer``.
+
+        Example:
+            .. code-block:: python
+
+                import pytorch_lightning as pl
+                from ray.train.lightning import LightningCheckpoint, LightningPredictor
+
+                class MyLightningModule(pl.LightningModule):
+                    def __init__(self, input_dim, output_dim) -> None:
+                        super().__init__()
+                        self.linear = nn.Linear(input_dim, output_dim)
+
+                    # ...
+
+                checkpoint = LightningCheckpoint.from_directory(
+                    "path/to/checkpoint_dir"
+                )
+
+                # `from_checkpoint()` takes the argument list of
+                # `LightningModule.load_from_checkpoint()` as additional kwargs.
+
+                predictor = LightningPredictor.from_checkpoint(
+                    checkpoint=checkpoint,
+                    use_gpu=False,
+                    model_class=MyLightningModule,
+                    input_dim=32,
+                    output_dim=10,
+                )
 
         Args:
             checkpoint: The checkpoint to load the model and preprocessor from.
@@ -104,14 +132,12 @@ class LightningPredictor(TorchPredictor):
                 to prediction.
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
-            load_from_checkpoint_kwargs: A dictionary of arguments to pass into
-                ``pl.LightningModule.load_from_checkpoint``
+            **load_from_checkpoint_kwargs: Arguments to pass into
+                ``pl.LightningModule.load_from_checkpoint``.
         """
-        if not load_from_checkpoint_kwargs:
-            load_from_checkpoint_kwargs = {}
 
         model = checkpoint.get_model(
             model_class=model_class,
-            load_from_checkpoint_kwargs=load_from_checkpoint_kwargs,
+            **load_from_checkpoint_kwargs,
         )
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)

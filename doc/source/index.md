@@ -27,7 +27,6 @@ Learn how to install Ray, compute an example with the Ray Core API, and use Ray'
 **User guides**
 ^^^^^^^^^^^
 
-
 Learn about the key concepts and features. Get in-depth information about Ray's libraries and tooling.
 +++
 
