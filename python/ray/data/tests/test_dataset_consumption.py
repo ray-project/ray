@@ -18,7 +18,7 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.pandas_block import PandasRow
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DatasetContext
-from ray.data.dataset import Dataset, _sliding_window
+from ray.data.dataset import Dataset, MaterializedDatastream, _sliding_window
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.row import TableRow
@@ -202,10 +202,15 @@ def test_cache_dataset(ray_start_regular_shared):
 
     ds = ray.data.range(1)
     ds = ds.map(inc)
-    ds = ds.cache()
+    assert not ds.is_cached()
+    assert not isinstance(ds, MaterializedDatastream)
+    ds2 = ds.cache()
+    assert ds2.is_cached()
+    assert isinstance(ds2, MaterializedDatastream)
+    assert not ds.is_cached()
 
     for _ in range(10):
-        ds.take_all()
+        ds2.take_all()
 
     assert ray.get(c.inc.remote()) == 2
 
