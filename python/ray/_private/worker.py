@@ -830,8 +830,10 @@ class Worker:
         """The main loop a worker runs to receive and execute tasks."""
 
         def sigterm_handler(signum, frame):
+            print(f'sigterm handler pid {os.getpid()}')
+            sys.stdout.flush()
             sys.exit(1)
-            shutdown(True)
+            #shutdown(True)
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
@@ -1659,6 +1661,7 @@ def init(
 # Functions to run as callback after a successful ray init.
 _post_init_hooks = []
 
+#_exiting = False
 
 @PublicAPI
 @client_mode_hook(auto_init=False)
@@ -1680,6 +1683,12 @@ def shutdown(_exiting_interpreter: bool = False):
             and false otherwise. If we are exiting the interpreter, we will
             wait a little while to print any extra error messages.
     """
+    #global _exiting
+
+    #if _exiting:
+    #    return
+    #_exiting = True
+
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
         # to make sure that log messages finish printing.
@@ -1714,6 +1723,9 @@ def shutdown(_exiting_interpreter: bool = False):
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
+    
+    #TODO exitcode
+    #sys.exit(1)
 
 
 atexit.register(shutdown, True)

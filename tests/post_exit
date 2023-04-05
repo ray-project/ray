@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+
+import sys
+
+import atexit
+
+@atexit.register
+def a():
+    print('atexit a')
+
+sys.exit(1)
+
+print('shutdown pls')
+sys.stdout.flush()
+
+raise ValueError()

@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+
+import time
+
+import atexit
+print(f'atexit ncallbacks {atexit._ncallbacks()}')
+
+from multiprocessing import Process
+
+class MyActor:
+
+    def __init__(self):
+        self.p = None
+
+    def run(self):
+        print(f'atexit ncallbacks {atexit._ncallbacks()}')
+        p = Process(target=time.sleep, args=(1000,), daemon=True)
+        print(f'atexit ncallbacks {atexit._ncallbacks()}')
+        p.start()
+        print(f'atexit ncallbacks {atexit._ncallbacks()}')
+        self.p = p
+
+    def __del__(self):
+        print('destructor')
+
+a = MyActor()
+a.run()
+input('wait')
+del a
+input('wait2')
