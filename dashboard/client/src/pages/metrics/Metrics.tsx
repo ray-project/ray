@@ -120,7 +120,7 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "orgId=1&theme=light&panelId=36",
       },
       {
-        title: "Out of Memory Failure by Name",
+        title: "Out of Memory Failures by Name",
         pathParams: "orgId=1&theme=light&panelId=44",
       },
     ],

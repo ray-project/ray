@@ -241,8 +241,8 @@ DEFAULT_GRAFANA_PANELS = [
     ),
     Panel(
         id=44,
-        title="Node Out of Memory Failure by Name",
-        description="The number of tasks and actors killed by Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html.",
+        title="Node Out of Memory Failures by Name",
+        description="The number of tasks and actors killed by the Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html.",
         unit="failures",
         targets=[
             Target(
