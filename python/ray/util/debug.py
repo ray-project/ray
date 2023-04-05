@@ -5,9 +5,6 @@ import re
 import time
 import tracemalloc
 from typing import Callable, List, Optional
-
-import numpy as np
-
 from ray.util.annotations import DeveloperAPI
 
 _logged = set()
@@ -202,6 +199,7 @@ def _take_snapshot(table, suspicious=None):
 
 def _find_memory_leaks_in_table(table):
     import scipy.stats
+    import numpy as np
 
     suspects = []
 
