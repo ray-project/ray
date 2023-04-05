@@ -603,6 +603,10 @@ class Dataset(Generic[T]):
             )
 
         from ray.train.predictor import Predictor
+        from ray.data.preprocessor import Preprocessor
+
+        if isinstance(fn, Preprocessor):
+            return fn.transform(self)
 
         if isinstance(fn, (CallableClass, Predictor)) and (
             compute is None
