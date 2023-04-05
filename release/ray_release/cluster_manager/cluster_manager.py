@@ -128,7 +128,7 @@ class ClusterManager(abc.ABC):
 
     def terminate_cluster(self, wait: bool = False):
         try:
-            self.terminate_cluster(wait=False)
+            self.terminate_cluster_ex(wait=False)
         except Exception as e:
             logger.exception(f"Could not terminate cluster: {e}")
 
