@@ -73,8 +73,8 @@ def test_iter_batches_no_spilling_upon_no_transformation(shutdown_only):
 
 
 def test_torch_iteration(shutdown_only):
-    # The object store is about 300MB.
-    ctx = ray.init(num_cpus=1, object_store_memory=300e6)
+    # The object store is about 400MB.
+    ctx = ray.init(num_cpus=1, object_store_memory=400e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
     ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
 
