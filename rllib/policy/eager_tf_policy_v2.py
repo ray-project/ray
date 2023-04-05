@@ -736,7 +736,7 @@ class EagerTFPolicyV2(Policy):
             # This is not compatible with RLModules, which have a method
             # `forward_exploration` to specify custom exploration behavior.
             state["_exploration_state"] = self.exploration.get_state()
-        
+
         return state
 
     @override(Policy)
