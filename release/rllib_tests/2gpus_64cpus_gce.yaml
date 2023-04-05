@@ -20,6 +20,14 @@ worker_node_types:
       max_workers: 1
       use_spot: false
 
+gcp_advanced_configurations_json:
+  instance_properties:
+    disks:
+      - boot: true
+        auto_delete: true
+        initialize_params:
+          disk_size_gb: 500
+
 #aws:
 #    BlockDeviceMappings:
 #        - DeviceName: /dev/sda1
