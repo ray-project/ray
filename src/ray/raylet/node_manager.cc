@@ -552,7 +552,8 @@ ray::Status NodeManager::RegisterGcs() {
           return;
         }
         checking = true;
-        gcs_client_->Nodes().AsyncCheckSelfAlive([this](auto status, auto alive) mutable {
+        RAY_CHECK_OK(gcs_client_->Nodes().AsyncCheckSelfAlive([this](auto status,
+                                                                     auto alive) mutable {
           if (status.ok()) {
             if (!alive) {
               // GCS think this raylet is dead. Set the raylet unhealthy.
@@ -565,7 +566,7 @@ ray::Status NodeManager::RegisterGcs() {
             }
             checking = false;
           }
-        });
+        }));
       },
       RayConfig::instance().raylet_liveness_self_check_interval_ms(),
       "NodeManager.GcsCheckAlive");
