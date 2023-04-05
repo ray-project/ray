@@ -25,7 +25,7 @@ class DatasetIteratorImpl(DatasetIterator):
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats], bool
     ]:
         ds = self._base_dataset
         block_iterator, stats, executor = ds._plan.execute_to_iterator()

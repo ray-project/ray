@@ -31,10 +31,14 @@ class PipelinedDatasetIterator(DatasetIterator):
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats], bool
     ]:
         epoch_pipeline = self._get_next_dataset()
 
+        # Peek the first dataset from the pipeline to see if blocks are owned
+        # by consumer. If so, the blocks are safe to be eagerly cleared after use
+        # because memories are not shared across different consumers. This will
+        # improve the memory efficiency.
         if epoch_pipeline._first_dataset is not None:
             blocks_owned_by_consumer = (
                 epoch_pipeline._first_dataset._plan.execute()._owned_by_consumer

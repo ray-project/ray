@@ -79,7 +79,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats], bool
     ]:
         def gen_blocks() -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
             cur_epoch = ray.get(
