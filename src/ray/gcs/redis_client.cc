@@ -142,45 +142,8 @@ RedisClient::RedisClient(const RedisClientOptions &options) : options_(options) 
                                     /*sharding=*/options_.enable_sharding_conn_,
                                     /*password=*/options_.password_,
                                     /*enable_ssl=*/options_.enable_ssl_));
-  // Firstly, we need to find the master node
-  // Replica information contains data as the following format:
-  //   # Replication
-  //   role:master
-  //   connected_slaves:0
-  //   master_failover_state:no-failover
-  //   master_replid:07a4734361f1c81d019d0a0449310e7bd76d459c
-  //   master_replid2:0000000000000000000000000000000000000000
-  //   master_repl_offset:0
-  //   second_repl_offset:-1
-  //   repl_backlog_active:0
-  //   repl_backlog_size:1048576
-  //   repl_backlog_first_byte_offset:0
-  //   repl_backlog_histlen:0
-  // Each line end with \r\n
-  auto reply = tmp_context->RunArgvSync(std::vector<std::string>{"INFO", "REPLICATION"});
-  RAY_CHECK(reply && !reply->IsNil()) << "Failed to get Redis replication info";
-  auto replication_info = reply->ReadAsString();
-  auto parts = absl::StrSplit(replication_info, "\r\n");
+  // Firstly, we need to find the leader node
 
-  for (auto &part : parts) {
-    if (part.empty() || part[0] == '#') {
-      continue;
-    }
-    std::vector<std::string> kv = absl::StrSplit(part, ":");
-    RAY_CHECK(kv.size() == 2);
-    if (kv[0] == "role" && kv[1] == "master") {
-      leader_ip_ = options_.server_ip_;
-      leader_port_ = options_.server_port_;
-      break;
-    }
-
-    if (kv[0] == "master_host") {
-      leader_ip_ = kv[1];
-    }
-    if (kv[0] == "master_port") {
-      leader_port_ = std::stoi(kv[1]);
-    }
-  }
   RAY_LOG(INFO) << "Find redis leader: " << leader_ip_ << ":" << leader_port_;
   RAY_CHECK(!leader_ip_.empty() && leader_port_ != 0) << "Failed to get leader info";
 }
