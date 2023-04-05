@@ -466,6 +466,7 @@ install_pip_packages() {
       # (see https://github.com/ray-project/ray/pull/33928)
       # Keep in sync with requirements_dl.txt
       pip install torch==1.13.0 torchvision==0.14.0
+      requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
   fi
 
   # Inject our own mirror for the CIFAR10 dataset
