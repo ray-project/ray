@@ -367,6 +367,10 @@ class StandardAutoscaler:
             assert os.path.exists(local_path)
         logger.info("StandardAutoscaler: {}".format(self.config))
 
+    @property
+    def all_node_types(self) -> Set[str]:
+        return self.config["available_node_types"].keys()
+
     def update(self):
         try:
             self.reset(errors_fatal=False)

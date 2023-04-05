@@ -8,6 +8,7 @@ import signal
 import sys
 import time
 import traceback
+from collections import Counter
 from dataclasses import asdict
 from typing import Any, Callable, Dict, Optional, Union
 
@@ -190,6 +191,7 @@ class Monitor:
             self.event_logger = None
 
         self.prom_metrics = AutoscalerPrometheusMetrics(session_name=self._session_name)
+
         if monitor_ip and prometheus_client:
             # If monitor_ip wasn't passed in, then don't attempt to start the
             # metric server to keep behavior identical to before metrics were
@@ -206,6 +208,11 @@ class Monitor:
                     registry=self.prom_metrics.registry,
                     **kwargs,
                 )
+
+                # Reset some gauges, since we don't know which labels have
+                # leaked if the autoscaler was restarted.
+                self.prom_metrics.pending_nodes.clear()
+                self.prom_metrics.active_nodes.clear()
             except Exception:
                 logger.exception(
                     "An exception occurred while starting the metrics server."
@@ -393,6 +400,11 @@ class Monitor:
                     self.autoscaler.update()
                     status["autoscaler_update_time"] = time.time() - update_start_time
                     autoscaler_summary = self.autoscaler.summary()
+                    self.emit_metrics(
+                        load_metrics_summary,
+                        autoscaler_summary,
+                        self.autoscaler.all_node_types,
+                    )
                     if autoscaler_summary:
                         status["autoscaler_report"] = asdict(autoscaler_summary)
                         status[
@@ -400,27 +412,6 @@ class Monitor:
                         ] = (
                             self.autoscaler.non_terminated_nodes.non_terminated_nodes_time  # noqa: E501
                         )
-
-                        for resource_name in ["CPU", "GPU"]:
-                            _, total = load_metrics_summary.usage.get(
-                                resource_name, (0, 0)
-                            )
-                            pending = autoscaler_summary.pending_resources.get(
-                                resource_name, 0
-                            )
-                            self.prom_metrics.cluster_resources.labels(
-                                resource=resource_name,
-                                SessionName=self.prom_metrics.session_name,
-                            ).set(total)
-                            self.prom_metrics.pending_resources.labels(
-                                resource=resource_name,
-                                SessionName=self.prom_metrics.session_name,
-                            ).set(pending)
-
-                    self.prom_metrics.pending_nodes.set(
-                        len(autoscaler_summary.pending_nodes)
-                        + len(autoscaler_summary.pending_launches)
-                    )
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to
@@ -452,6 +443,57 @@ class Monitor:
             # Wait for a autoscaler update interval before processing the next
             # round of messages.
             time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
+
+    def emit_metrics(self, load_metrics_summary, autoscaler_summary, node_types):
+        if autoscaler_summary is None:
+            return None
+
+        for resource_name in ["CPU", "GPU"]:
+            _, total = load_metrics_summary.usage.get(resource_name, (0, 0))
+            pending = autoscaler_summary.pending_resources.get(resource_name, 0)
+            self.prom_metrics.cluster_resources.labels(
+                resource=resource_name,
+                SessionName=self.prom_metrics.session_name,
+            ).set(total)
+            self.prom_metrics.pending_resources.labels(
+                resource=resource_name,
+                SessionName=self.prom_metrics.session_name,
+            ).set(pending)
+
+        pending_node_count = Counter()
+        for _, node_type, _ in autoscaler_summary.pending_nodes:
+            pending_node_count[node_type] += 1
+
+        for node_type, count in autoscaler_summary.pending_launches:
+            pending_node_count[node_type] += count
+
+        for node_type in node_types:
+            count = pending_node_count[node_type]
+            self.prom_metrics.pending_nodes.labels(
+                SessionName=self.prom_metrics.session_name,
+                NodeType=node_type,
+            ).set(count)
+
+        for node_type in node_types:
+            count = autoscaler_summary.active_nodes.get(node_type, 0)
+            self.prom_metrics.active_nodes.labels(
+                SessionName=self.prom_metrics.session_name,
+                NodeType=node_type,
+            ).set(count)
+
+        failed_node_counts = Counter()
+        for _, node_type in autoscaler_summary.failed_nodes:
+            failed_node_counts[node_type] += 1
+
+        # NOTE: This metric isn't reset with monitor resets. This means it will
+        # only be updated when the autoscaler' node tracker remembers failed
+        # nodes. If the node type failure is evicted from the autoscaler, the
+        # metric may not update for a while.
+        for node_type, count in failed_node_counts.items():
+            self.prom_metrics.recently_failed_nodes.labels(
+                SessionName=self.prom_metrics.session_name,
+                NodeType=node_type,
+            ).set(count)
 
     def update_event_summary(self):
         """Report the current size of the cluster.

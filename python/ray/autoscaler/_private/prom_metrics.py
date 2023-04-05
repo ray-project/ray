@@ -16,6 +16,9 @@ class NullMetric:
     def labels(self, *args, **kwargs):
         return self
 
+    def clear(self):
+        pass
+
 
 try:
 
@@ -99,11 +102,37 @@ try:
             self.pending_nodes: Gauge = Gauge(
                 "pending_nodes",
                 "Number of nodes pending to be started.",
-                labelnames=("SessionName",),
+                labelnames=(
+                    "NodeType",
+                    "SessionName",
+                ),
                 unit="nodes",
                 namespace="autoscaler",
                 registry=self.registry,
-            ).labels(SessionName=session_name)
+            )
+            self.active_nodes: Gauge = Gauge(
+                "active_nodes",
+                "Number of nodes in the cluster.",
+                labelnames=(
+                    "NodeType",
+                    "SessionName",
+                ),
+                unit="nodes",
+                namespace="autoscaler",
+                registry=self.registry,
+            )
+            self.recently_failed_nodes = Gauge(
+                "recently_failed_nodes",
+                "The number of recently failed nodes. This count could reset "
+                "at undefined times.",
+                labelnames=(
+                    "NodeType",
+                    "SessionName",
+                ),
+                unit="nodes",
+                namespace="autoscaler",
+                registry=self.registry,
+            )
             self.started_nodes: Counter = Counter(
                 "started_nodes",
                 "Number of nodes started.",
