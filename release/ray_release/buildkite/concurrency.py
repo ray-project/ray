@@ -6,7 +6,6 @@ from typing import Tuple, Optional, Dict
 from ray_release.config import Test, RELEASE_PACKAGE_DIR
 from ray_release.template import load_test_cluster_compute
 from ray_release.logger import logger
-from ray_release.util import get_cloud_environment
 
 # Keep 10% for the buffer.
 limit = int(15784 * 0.9)
@@ -96,7 +95,7 @@ def parse_condition(cond: int, limit: float = float("inf")) -> float:
 
 
 def get_concurrency_group(test: Test) -> Tuple[str, int]:
-    if get_cloud_environment() == "gs":
+    if test.get("env", None) == "gce":
         concurrent_group = gce_gpu_cpu_to_concurrent_groups
     else:
         concurrent_group = aws_gpu_cpu_to_concurrency_groups
