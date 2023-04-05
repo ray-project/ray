@@ -1,13 +1,13 @@
+# coding: utf-8
 import pytest
-
+import sys
+import os
 from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
 import ray
 from ray import serve
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
-import grpc
 from ray.cluster_utils import Cluster
 from ray.serve._private.constants import SERVE_NAMESPACE
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, run_string_as_driver
 from ray.serve.exceptions import RayServeException
 
 from ray.serve._private.constants import (
@@ -16,9 +16,10 @@ from ray.serve._private.constants import (
 )
 
 from unittest.mock import patch
-
-
-pytestmark = pytest.mark.asyncio
+from ray._private.test_utils import (
+    setup_tls,
+    teardown_tls,
+)
 
 
 @pytest.fixture
@@ -38,8 +39,87 @@ def ray_cluster():
     cluster.shutdown()
 
 
-@patch("ray.serve._private.api.FLAG_DISABLE_HTTP_PROXY", True)
-async def test_deploy_basic(serve_start_shutdown):
+@pytest.fixture
+def use_tls(request):
+    if request.param:
+        key_filepath, cert_filepath, temp_dir = setup_tls()
+    yield request.param
+    if request.param:
+        teardown_tls(key_filepath, cert_filepath, temp_dir)
+
+
+def tls_enabled():
+    return os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
+)
+@pytest.mark.parametrize("use_tls", [True], indirect=True)
+def test_deploy_basic(use_tls):
+    if use_tls:
+        run_string_as_driver(
+            """
+# coding: utf-8
+import os
+from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
+import ray
+from ray import serve
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+import grpc
+from ray.serve.exceptions import RayServeException
+from ray._private.tls_utils import load_certs_from_env
+import logging
+import asyncio
+try:
+    ray.init()
+    @serve.deployment
+    class D1:
+        def __call__(self, input):
+            return input["a"]
+
+    serve.run(DefaultgRPCDriver.bind(D1.bind()))
+
+    async def send_request():
+        server_cert_chain, private_key, ca_cert = load_certs_from_env()
+        credentials = grpc.ssl_channel_credentials(
+            certificate_chain=server_cert_chain,
+            private_key=private_key,
+            root_certificates=ca_cert,
+        )
+
+        async with grpc.aio.secure_channel("localhost:9000", credentials) as channel:
+            stub = serve_pb2_grpc.PredictAPIsServiceStub(channel)
+            response = await stub.Predict(
+                serve_pb2.PredictRequest(input={"a": bytes("123", "utf-8")})
+            )
+        return response
+
+    resp = asyncio.run(send_request())
+    assert resp.prediction == b"123"
+finally:
+    serve.shutdown()
+    ray.shutdown()
+        """,
+            env=os.environ.copy(),
+        )
+    else:
+        run_string_as_driver(
+            """
+# coding: utf-8
+import os
+from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
+import ray
+from ray import serve
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+import grpc
+from ray.serve.exceptions import RayServeException
+from ray._private.tls_utils import load_certs_from_env
+import logging
+import asyncio
+try:
+    ray.init()
     @serve.deployment
     class D1:
         def __call__(self, input):
@@ -55,9 +135,14 @@ async def test_deploy_basic(serve_start_shutdown):
             )
         return response
 
-    resp = await send_request()
-
+    resp = asyncio.run(send_request())
     assert resp.prediction == b"123"
+finally:
+    serve.shutdown()
+    ray.shutdown()
+        """,
+            env=os.environ.copy(),
+        )
 
 
 @patch("ray.serve._private.api.FLAG_DISABLE_HTTP_PROXY", True)
