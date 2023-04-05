@@ -226,7 +226,7 @@ class StateDataSourceClient:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
-        request = GetAllActorInfoRequest(limit=limit, show_dead_jobs=True)
+        request = GetAllActorInfoRequest(limit=limit)
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
             request, timeout=timeout
         )

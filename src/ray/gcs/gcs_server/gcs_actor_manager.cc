@@ -646,12 +646,8 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
       request.task_spec(), actor_namespace, actor_state_counter_);
   actor->UpdateState(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
-  RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
-      actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {
-        // Pub this state for dashboard showing
-        RAY_CHECK_OK(gcs_publisher_->PublishActor(actor_id, actor_table_data, nullptr));
-      }));
-
+  // Pub this state for dashboard showing.
+  RAY_CHECK_OK(gcs_publisher_->PublishActor(actor_id, actor_table_data, nullptr));
   RemoveUnresolvedActor(actor);
 
   // Update the registered actor as its creation task specification may have changed due

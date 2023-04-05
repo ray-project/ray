@@ -188,7 +188,7 @@ ray.get(x)
 
     def driver_running():
         t = list_tasks(filters=[("name", "=", "node-killed")])
-        return len(t) > 0 and t[0]["state"] == "RUNNING"
+        return len(t) > 0
 
     wait_for_condition(driver_running)
 

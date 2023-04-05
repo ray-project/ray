@@ -8,7 +8,6 @@ import sys
 from dataclasses import asdict
 
 from ray.experimental.state.api import (
-    list_actors,
     summarize_tasks,
     summarize_actors,
     summarize_objects,
@@ -384,14 +383,12 @@ def test_actor_summary(ray_start_cluster):
         summary = summary["cluster"]["summary"]
         actor_summary = None
         infeasible_summary = None
-        print(summary)
         for actor_class_name, s in summary.items():
             if ".Actor" in actor_class_name:
                 actor_summary = s
             elif ".Infeasible" in actor_class_name:
                 infeasible_summary = s
 
-        print(list_actors())
         assert actor_summary["state_counts"]["PENDING_CREATION"] == 1
         assert actor_summary["state_counts"]["ALIVE"] == 2
         assert infeasible_summary["state_counts"]["PENDING_CREATION"] == 1
