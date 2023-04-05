@@ -65,6 +65,7 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
   }
   case REDIS_REPLY_ERROR: {
     RAY_CHECK(false) << "Got an error in redis reply: " << redis_reply->str;
+    error_reply_ = std::string(redis_reply->str, redis_reply->len);
     break;
   }
   case REDIS_REPLY_INTEGER: {
@@ -140,9 +141,16 @@ void CallbackReply::ParseAsStringArray(redisReply *redis_reply) {
 
 bool CallbackReply::IsNil() const { return REDIS_REPLY_NIL == reply_type_; }
 
+bool CallbackReply::IsError() const { return REDIS_REPLY_ERROR == reply_type_; }
+
 int64_t CallbackReply::ReadAsInteger() const {
   RAY_CHECK(reply_type_ == REDIS_REPLY_INTEGER) << "Unexpected type: " << reply_type_;
   return int_reply_;
+}
+
+const std::string &CallbackReply::ReadAsError() const {
+  RAY_CHECK(reply_type_ == REDIS_REPLY_ERROR) << "Unexpected type: " << reply_type_;
+  return error_reply_;
 }
 
 Status CallbackReply::ReadAsStatus() const {

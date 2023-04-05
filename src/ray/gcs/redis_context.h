@@ -46,6 +46,8 @@ class CallbackReply {
   /// Whether this reply is `nil` type reply.
   bool IsNil() const;
 
+  bool IsError() const;
+
   /// Read this reply data as an integer.
   int64_t ReadAsInteger() const;
 
@@ -60,6 +62,9 @@ class CallbackReply {
 
   /// Read this reply data as pub-sub data.
   const std::string &ReadAsPubsubData() const;
+
+  /// Read the error message;
+  const std::string &ReadAsError() const;
 
   /// Read this reply data as a string array.
   [[nodiscard]] const std::vector<std::optional<std::string>> &ReadAsStringArray() const;
@@ -88,6 +93,9 @@ class CallbackReply {
 
   /// Reply data if reply_type_ is REDIS_REPLY_STRING.
   std::string string_reply_;
+
+  /// Reply data if reply_type_ is REDIS_REPLY_ERROR.
+  std::string error_reply_;
 
   /// Reply data if reply_type_ is REDIS_REPLY_ARRAY.
   /// Represent the reply of StringArray or ScanArray.
