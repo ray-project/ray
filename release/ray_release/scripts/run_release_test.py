@@ -163,7 +163,7 @@ def main(
         f"Release test pipeline for test {test['name']} completed. "
         f"Returning with exit code = {result.return_code}"
     )
-    sys.exit(result.buildkite_return_code)
+    sys.exit(result.buildkite_exit_code)
 
 
 if __name__ == "__main__":
