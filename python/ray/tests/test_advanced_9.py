@@ -363,7 +363,8 @@ def test_redis_not_available(monkeypatch, call_ray_stop_only):
     assert (
         "Could not establish connection to Redis localhost:12345" in p.stderr.decode()
     )
-    assert "Please check /tmp/ray/session" in p.stderr.decode()
+    assert "Please check" in p.stderr.decode()
+    assert "gcs_server.out for details" in p.stderr.decode()
     assert "RuntimeError: Failed to start GCS" in p.stderr.decode()
 
 
