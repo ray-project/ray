@@ -125,10 +125,8 @@ from ray.air import RunConfig
 from ray.tune import SyncConfig
 
 run_config = RunConfig(
-    sync_config=SyncConfig(
-        # This will store checkpoints on S3.
-        upload_dir="s3://remote-bucket/location"
-    )
+    # This will store checkpoints on S3.
+    storage_path="s3://remote-bucket/location"
 )
 # __sync_config_end__
 
