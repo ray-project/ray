@@ -1,0 +1,26 @@
+# .readthedocs.yaml
+# Read the Docs configuration file
+# See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
+
+# Required
+version: 2
+
+# Set the version of Python and other tools you might need
+build:
+  os: ubuntu-22.04
+  tools:
+    python: "3.9"
+  jobs:
+    post_checkout:
+      # Use `git log` to check if the latest commit contains "skip ci",
+      # in that case exit the command with 183 to cancel the build
+      - (git --no-pager log --pretty="tformat:%s -- %b" -1 | grep -viq "skip ci") || exit 183
+
+# Build documentation in the "docs/" directory with Sphinx
+sphinx:
+   configuration: doc/source/conf.py
+
+# Optionally declare the Python requirements required to build your docs
+python:
+   install:
+   - requirements: doc/requirements-doc.txt
