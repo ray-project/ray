@@ -2,7 +2,7 @@ from typing import Tuple, Any, Union, Type
 
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.models.specs.specs_base import TensorSpec
+from ray.rllib.core.models.specs.specs_base import TensorSpec
 
 
 torch, _ = try_import_torch()
