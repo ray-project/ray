@@ -272,9 +272,9 @@ class Datastream(Generic[T]):
         if not _as:
             _as = Datastream
         if _deep_copy:
-            return _as(ds._plan.copy(), ds._epoch, ds._lazy)
+            return _as(ds._plan.copy(), ds._epoch, ds._lazy, ds._logical_plan)
         else:
-            return _as(ds._plan.deep_copy(), ds._epoch, ds._lazy)
+            return _as(ds._plan.deep_copy(), ds._epoch, ds._lazy, ds._logical_plan)
 
     def map(
         self,
