@@ -266,10 +266,13 @@ class Datastream(Generic[T]):
         self._current_executor: Optional["Executor"] = None
 
     @staticmethod
-    def copy(ds: "Datastream[T]", _as: Optional[type] = None) -> "Datastream[T]":
+    def copy(ds: "Datastream[T]", _deep_copy: bool = False, _as: Optional[type] = None) -> "Datastream[T]":
         if not _as:
             _as = Datastream
-        return _as(ds._plan.copy(), ds._epoch, ds._lazy)
+        if _deep_copy:
+            return _as(ds._plan.copy(), ds._epoch, ds._lazy)
+        else:
+            return _as(ds._plan.deep_copy(), ds._epoch, ds._lazy)
 
     def map(
         self,
@@ -4100,7 +4103,7 @@ class Datastream(Generic[T]):
         Returns:
             A Datastream with all blocks fully materialized in memory.
         """
-        copy = Datastream.copy(self, _as=MaterializedDatastream)
+        copy = Datastream.copy(self, _deep_copy=True, _as=MaterializedDatastream)
         copy._plan.execute(force_read=True)
         return copy
 
