@@ -99,9 +99,7 @@ class GrpcClient {
              ClientCallManager &call_manager,
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
-    std::shared_ptr<grpc::Channel> channel =
-        BuildChannel(address, port, CreateDefaultChannelArguments());
-    channel_ = BuildChannel(address, port);
+    channel_ = BuildChannel(address, port, CreateDefaultChannelArguments());
     stub_ = GrpcService::NewStub(channel_);
   }
 

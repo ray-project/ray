@@ -337,7 +337,7 @@ def test_num_errors_terminated(tmpdir):
     trials = [Trial("foo", local_dir=str(tmpdir), stub=True) for i in range(10)]
 
     # Only create 1 shared trial logdir for this test
-    trials[0].init_logdir()
+    trials[0].init_local_path()
     for trial in trials[1:]:
         trial.relative_logdir = trials[0].relative_logdir
 
