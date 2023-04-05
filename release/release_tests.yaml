@@ -1551,6 +1551,8 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test:
+        frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_gce_1x32_hd.yaml
@@ -1763,6 +1765,8 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test:
+        frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -1798,6 +1802,10 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test: 
+        frequency: manual
+        run:
+          timeout: 3600
       cluster:
         cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: tpl_cpu_3_gce.yaml
@@ -1830,6 +1838,10 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
       cluster:
         cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: tpl_cpu_1_large_gce.yaml
@@ -1862,6 +1874,10 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -1894,6 +1910,10 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -1931,6 +1951,10 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
       cluster:
         cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: many_ppo_gce.yaml
@@ -1963,6 +1987,10 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -1995,6 +2023,10 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -2027,6 +2059,10 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -2059,6 +2095,10 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
       cluster:
         cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -2091,6 +2131,10 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -2153,6 +2197,10 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
@@ -2184,6 +2232,10 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce.yaml
@@ -3370,6 +3422,10 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 2000
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: 4gpus_544_cpus_gce.yaml 
