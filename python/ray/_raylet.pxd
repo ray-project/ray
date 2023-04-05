@@ -98,7 +98,7 @@ cdef class ObjectRef(BaseID):
         c_bool in_core_worker
         c_string call_site_data
         c_bool _asyncio_future_blocking
-        object _wrapped_asyncio_future
+        object _py_wrapped_asyncio_future
 
     cdef CObjectID native(self)
 
