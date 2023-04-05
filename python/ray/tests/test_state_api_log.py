@@ -664,12 +664,6 @@ def test_log_list(ray_start_cluster):
 
     wait_for_condition(verify)
 
-    node_id = "XXXX"
-    with pytest.raises(requests.HTTPError) as e:
-        list_logs(node_id=node_id)
-
-    e.match(f"Given node id {node_id} is not available")
-
 
 def test_log_get(ray_start_cluster):
     cluster = ray_start_cluster
@@ -794,40 +788,6 @@ def test_log_get(ray_start_cluster):
 
     wait_for_condition(verify)
 
-    ##############################
-    # Test binary files and encodings.
-    ##############################
-    # Write a binary file to ray log directory.
-    log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
-    file = "test.bin"
-    binary_file = os.path.join(log_dir, file)
-    with open(binary_file, "wb") as f:
-        data = bytearray(i for i in range(256))
-        f.write(data)
-
-    # Get the log
-    def verify():
-        for read in get_log(node_ip=head_node["node_ip"], filename=file, encoding=None):
-            assert read == data
-
-        # Default utf-8
-        for read in get_log(
-            node_ip=head_node["node_ip"], filename=file, errors="replace"
-        ):
-            assert read == data.decode(encoding="utf-8", errors="replace")
-
-        for read in get_log(
-            node_ip=head_node["node_ip"],
-            filename=file,
-            encoding="iso-8859-1",
-            errors="replace",
-        ):
-            assert read == data.decode(encoding="iso-8859-1", errors="replace")
-
-        return True
-
-    wait_for_condition(verify)
-
 
 def test_log_cli(shutdown_only):
     ray.init(num_cpus=1)
@@ -836,7 +796,8 @@ def test_log_cli(shutdown_only):
     # Test the head node is chosen by default.
     def verify():
         result = runner.invoke(logs_state_cli_group, ["cluster"])
-        assert result.exit_code == 0, result.exception
+        print(result.output)
+        assert result.exit_code == 0
         assert "raylet.out" in result.output
         assert "raylet.err" in result.output
         assert "gcs_server.out" in result.output
@@ -849,6 +810,7 @@ def test_log_cli(shutdown_only):
     def verify():
         result = runner.invoke(logs_state_cli_group, ["cluster", "raylet.out"])
         assert result.exit_code == 0
+        print(result.output)
         assert "raylet.out" not in result.output
         assert "raylet.err" not in result.output
         assert "gcs_server.out" not in result.output
@@ -862,7 +824,8 @@ def test_log_cli(shutdown_only):
     # Test when there's more than 1 match, it prints a list of logs.
     def verify():
         result = runner.invoke(logs_state_cli_group, ["cluster", "raylet.*"])
-        assert result.exit_code == 0, result.exception
+        assert result.exit_code == 0
+        print(result.output)
         assert "raylet.out" in result.output
         assert "raylet.err" in result.output
         assert "gcs_server.out" not in result.output
@@ -884,7 +847,8 @@ def test_log_cli(shutdown_only):
 
     def verify():
         result = runner.invoke(logs_state_cli_group, ["actor", "--id", actor_id])
-        assert result.exit_code == 0, result.exception
+        assert result.exit_code == 0
+        print(result.output)
         assert ACTOR_LOG_LINE in result.output
         return True
 
@@ -904,7 +868,8 @@ def test_log_cli(shutdown_only):
 
     def verify():
         result = runner.invoke(logs_state_cli_group, ["worker", "--pid", pid])
-        assert result.exit_code == 0, result.exception
+        assert result.exit_code == 0
+        print(result.output)
         assert WORKER_LOG_LINE in result.output
         return True
 
@@ -913,39 +878,12 @@ def test_log_cli(shutdown_only):
     # Test `ray logs raylet.*` forwarding to `ray logs cluster raylet.*`
     def verify():
         result = runner.invoke(logs_state_cli_group, ["raylet.*"])
-        assert result.exit_code == 0, result.exception
+        assert result.exit_code == 0
+        print(result.output)
         assert "raylet.out" in result.output
         assert "raylet.err" in result.output
         assert "gcs_server.out" not in result.output
         assert "gcs_server.err" not in result.output
-        return True
-
-    wait_for_condition(verify)
-
-    # Test binary binary files and encodings.
-    log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
-    file = "test.bin"
-    binary_file = os.path.join(log_dir, file)
-    with open(binary_file, "wb") as f:
-        data = bytearray(i for i in range(256))
-        f.write(data)
-
-    def verify():
-        # Tailing with lines is not supported for binary files, thus the `tail=-1`
-        result = runner.invoke(
-            logs_state_cli_group,
-            [
-                file,
-                "--encoding",
-                "iso-8859-1",
-                "--encoding-errors",
-                "replace",
-                "--tail",
-                "-1",
-            ],
-        )
-        assert result.exit_code == 0, result.exception
-        assert result.output == data.decode(encoding="iso-8859-1", errors="replace")
         return True
 
     wait_for_condition(verify)

@@ -117,10 +117,7 @@ class EagerTFPolicyV2(Policy):
 
         self._init_view_requirements()
 
-        if self.config.get("_enable_rl_module_api", False):
-            self.exploration = None
-        else:
-            self.exploration = self._create_exploration()
+        self.exploration = self._create_exploration()
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(self._state_inputs) > 0
 
@@ -431,8 +428,7 @@ class EagerTFPolicyV2(Policy):
 
     def maybe_initialize_optimizer_and_loss(self):
         optimizers = force_list(self.optimizer())
-        if self.exploration:
-            # Policies with RLModules don't have an exploration object.
+        if getattr(self, "exploration", None):
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
         # The list of local (tf) optimizers (one per loss term).
@@ -474,11 +470,9 @@ class EagerTFPolicyV2(Policy):
         self._is_recurrent = state_batches != []
 
         # Call the exploration before_compute_actions hook.
-        if self.exploration:
-            # Policies with RLModules don't have an exploration object.
-            self.exploration.before_compute_actions(
-                timestep=timestep, explore=explore, tf_sess=self.get_session()
-            )
+        self.exploration.before_compute_actions(
+            timestep=timestep, explore=explore, tf_sess=self.get_session()
+        )
 
         ret = self._compute_actions_helper(
             input_dict,
@@ -572,9 +566,7 @@ class EagerTFPolicyV2(Policy):
             )
 
         # Exploration hook before each forward pass.
-        if self.exploration:
-            # Policies with RLModules don't have an exploration object.
-            self.exploration.before_compute_actions(explore=False)
+        self.exploration.before_compute_actions(explore=False)
 
         # Action dist class and inputs are generated via custom function.
         if is_overridden(self.action_distribution_fn):
@@ -724,19 +716,12 @@ class EagerTFPolicyV2(Policy):
         # Legacy Policy state (w/o keras model and w/o PolicySpec).
         state = super().get_state()
 
-        state["global_timestep"] = state["global_timestep"].numpy()
-        # In the new Learner API stack, the optimizers live in the learner.
-        state["_optimizer_variables"] = []
-        if not self.config.get("_enable_learner_api", False):
+        if not self.config.get("_enable_rl_module_api", False):
+            state["global_timestep"] = state["global_timestep"].numpy()
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
-
-        # Add exploration state.
-        if self.exploration:
-            # This is not compatible with RLModules, which have a method
-            # `forward_exploration` to specify custom exploration behavior.
+            # Add exploration state.
             state["_exploration_state"] = self.exploration.get_state()
-
         return state
 
     @override(Policy)

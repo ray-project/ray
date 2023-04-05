@@ -441,7 +441,7 @@ def _build_eager_tf_policy(
             else:
                 optimizers = tf.keras.optimizers.Adam(config["lr"])
             optimizers = force_list(optimizers)
-            if self.exploration:
+            if getattr(self, "exploration", None):
                 optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
             # The list of local (tf) optimizers (one per loss term).
@@ -582,9 +582,8 @@ def _build_eager_tf_policy(
                     prev_reward_batch
                 )
 
-            if self.exploration:
-                # Exploration hook before each forward pass.
-                self.exploration.before_compute_actions(explore=False)
+            # Exploration hook before each forward pass.
+            self.exploration.before_compute_actions(explore=False)
 
             # Action dist class and inputs are generated via custom function.
             if action_distribution_fn:
@@ -732,10 +731,7 @@ def _build_eager_tf_policy(
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
             # Add exploration state.
-            if not self.config.get("_enable_rl_module_api", False) and self.exploration:
-                # This is not compatible with RLModules, which have a method
-                # `forward_exploration` to specify custom exploration behavior.
-                state["_exploration_state"] = self.exploration.get_state()
+            state["_exploration_state"] = self.exploration.get_state()
             return state
 
         @override(Policy)

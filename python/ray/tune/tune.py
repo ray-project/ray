@@ -33,7 +33,6 @@ from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.experimental.output import (
     get_air_verbosity,
     _detect_reporter as _detect_air_reporter,
-    IS_NOTEBOOK,
 )
 
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
@@ -46,7 +45,6 @@ from ray.tune.progress_reporter import (
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
-from ray.tune.result import _get_defaults_results_dir
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import (
@@ -83,7 +81,6 @@ from ray.tune.utils.log import (
     set_verbosity,
 )
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.utils.util import _resolve_storage_path
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
 
@@ -245,7 +242,7 @@ def run(
         None, Mapping[str, Union[float, int, Mapping]], PlacementGroupFactory
     ] = None,
     num_samples: int = 1,
-    storage_path: Optional[str] = None,
+    local_dir: Optional[str] = None,
     search_alg: Optional[Union[Searcher, SearchAlgorithm, str]] = None,
     scheduler: Optional[Union[TrialScheduler, str]] = None,
     keep_checkpoints_num: Optional[int] = None,
@@ -271,7 +268,6 @@ def run(
     max_concurrent_trials: Optional[int] = None,
     # Deprecated
     trial_executor: Optional[RayTrialExecutor] = None,
-    local_dir: Optional[str] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
@@ -360,9 +356,8 @@ def run(
             provided as an argument, the grid will be repeated
             `num_samples` of times. If this is -1, (virtually) infinite
             samples are generated until a stopping condition is met.
-        storage_path: Path to store results at. Can be a local directory or
-            a destination on cloud storage. Defaults to
-            the local ``~/ray_results`` directory.
+        local_dir: Local dir to save training results to.
+            Defaults to ``~/ray_results``.
         search_alg: Search algorithm for
             optimization. You can also use the name of the algorithm.
         scheduler: Scheduler for executing
@@ -514,7 +509,7 @@ def run(
         )
 
     if _remote:
-        if get_air_verbosity() is not None:
+        if get_air_verbosity():
             logger.warning(
                 "Ignoring AIR_VERBOSITY setting, "
                 "as it doesn't support ray client mode yet."
@@ -543,17 +538,6 @@ def run(
 
     del remote_run_kwargs
 
-    if os.environ.get("TUNE_RESULT_DIR"):
-        # Deprecate: Raise in 2.6, remove in 2.7
-        warnings.warn(
-            "The TUNE_RESULT_DIR environment variable is deprecated and will be "
-            "removed in the future. If you want to set persistent storage to "
-            "a local directory, pass `storage_path` instead. If you are using "
-            "remote storage and want to control the local cache directory, "
-            "set the RAY_AIR_LOCAL_CACHE_DIR environment variable instead.",
-            DeprecationWarning,
-        )
-
     ray._private.usage.usage_lib.record_library_usage("tune")
 
     all_start = time.time()
@@ -565,14 +549,7 @@ def run(
         )
 
     air_verbosity = get_air_verbosity()
-    if air_verbosity is not None and IS_NOTEBOOK:
-        logger.warning(
-            "Ignoring AIR_VERBOSITY setting, "
-            "as it doesn't support JupyterNotebook mode yet."
-        )
-        air_verbosity = None
-
-    if air_verbosity is not None:
+    if air_verbosity:
         logger.warning(
             f"Testing new AIR console output flow with verbosity={air_verbosity}. "
             f"This will also disable the old flow - setting it to 0 now."
@@ -592,41 +569,7 @@ def run(
         )
 
     sync_config = sync_config or SyncConfig()
-
-    # Resolve storage_path
-    local_path, remote_path = _resolve_storage_path(
-        storage_path, local_dir, sync_config.upload_dir, error_location="tune.run"
-    )
-
-    if sync_config.upload_dir:
-        assert remote_path == sync_config.upload_dir
-        warnings.warn(
-            "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
-            "in the future. Pass `RunConfig.storage_path` instead."
-        )
-        # Set upload_dir to None to avoid further downstream resolution.
-        # Copy object first to not alter user input.
-        sync_config = copy.copy(sync_config)
-        sync_config.upload_dir = None
-
-    if local_dir:
-        assert local_path == local_dir
-        warnings.warn(
-            "Passing a `local_dir` is deprecated and will be removed "
-            "in the future. Pass `storage_path` instead or set the"
-            "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
-        )
-        local_path = local_dir
-
-    sync_config.validate_upload_dir(remote_path)
-
-    if not local_path:
-        local_path = _get_defaults_results_dir()
-
-    storage_path = storage_path or remote_path or local_path
-
-    if storage_path != local_path and local_path:
-        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
+    sync_config.validate_upload_dir()
 
     checkpoint_score_attr = checkpoint_score_attr or ""
     if checkpoint_score_attr.startswith("min-"):
@@ -743,7 +686,7 @@ def run(
                 config=config,
                 resources_per_trial=resources_per_trial,
                 num_samples=num_samples,
-                storage_path=storage_path,
+                local_dir=local_dir,
                 _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
                 checkpoint_config=checkpoint_config,
@@ -870,13 +813,13 @@ def run(
 
     experiment_interrupted_event = _setup_signal_catching()
 
-    if progress_reporter and air_verbosity is not None:
+    if progress_reporter and air_verbosity:
         logger.warning(
             "AIR_VERBOSITY is set, ignoring passed-in ProgressReporter for now."
         )
         progress_reporter = None
 
-    if air_verbosity is None:
+    if not air_verbosity:
         progress_reporter = progress_reporter or _detect_reporter()
 
     trial_executor = trial_executor or RayTrialExecutor(
@@ -888,7 +831,7 @@ def run(
         search_alg=search_alg,
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
-        experiment_path=experiments[0].path,
+        experiment_path=experiments[0].local_path,
         experiment_dir_name=experiments[0].dir_name,
         sync_config=sync_config,
         stopper=experiments[0].stopper,
@@ -931,7 +874,7 @@ def run(
     tune_start = time.time()
 
     air_progress_reporter = None
-    if air_verbosity is None:
+    if not air_verbosity:
         progress_reporter.setup(
             start_time=tune_start,
             total_samples=search_alg.total_samples,
@@ -962,7 +905,7 @@ def run(
                 if has_verbosity(Verbosity.V1_EXPERIMENT):
                     _report_progress(runner, progress_reporter)
 
-                if air_verbosity is not None:
+                if air_verbosity:
                     _report_air_progress(runner, air_progress_reporter)
         except Exception:
             runner.cleanup()
@@ -978,7 +921,7 @@ def run(
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter, done=True)
 
-        if air_verbosity is not None:
+        if air_verbosity:
             _report_air_progress(runner, air_progress_reporter, force=True)
 
     all_trials = runner.get_trials()
@@ -1018,7 +961,6 @@ def run(
         default_metric=metric,
         default_mode=mode,
         sync_config=sync_config,
-        remote_storage_path=remote_path,
     )
 
     return ea
@@ -1064,7 +1006,7 @@ def run_experiments(
         _ray_auto_init(entrypoint="tune.run_experiments(...)")
 
     if _remote:
-        if get_air_verbosity() is not None:
+        if get_air_verbosity():
             logger.warning(
                 "Ignoring AIR_VERBOSITY setting, "
                 "as it doesn't support ray client mode yet."

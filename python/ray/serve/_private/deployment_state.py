@@ -497,10 +497,7 @@ class ActorReplicaWrapper:
                     self._allocated_obj_ref
                 )
             except Exception:
-                logger.exception(
-                    f"Exception in replica '{self._replica_tag}', "
-                    "the replica will be stopped."
-                )
+                logger.exception(f"Exception in deployment '{self._deployment_name}'")
                 return ReplicaStartupStatus.FAILED, None
         if self._deployment_is_cross_language:
             # todo: The replica's userconfig whitch java client created

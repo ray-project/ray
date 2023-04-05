@@ -129,9 +129,6 @@ def create_replica_wrapper(name: str):
                 controller_name, namespace=SERVE_NAMESPACE
             )
 
-            # Indicates whether the replica has finished initializing.
-            self._init_finish_event = asyncio.Event()
-
             # This closure initializes user code and finalizes replica
             # startup. By splitting the initialization step like this,
             # we can already access this actor before the user code
@@ -167,7 +164,6 @@ def create_replica_wrapper(name: str):
                     is_function,
                     controller_handle,
                 )
-                self._init_finish_event.set()
 
             # Is it fine that replica is None here?
             # Should we add a check in all methods that use self.replica
@@ -247,13 +243,9 @@ def create_replica_wrapper(name: str):
             if user_config is not None:
                 await self.replica.reconfigure(user_config)
 
-            return await self.get_metadata()
+            return self.get_metadata()
 
-        async def get_metadata(
-            self,
-        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            # Wait for replica initialization to finish
-            await self._init_finish_event.wait()
+        def get_metadata(self) -> Tuple[DeploymentConfig, DeploymentVersion]:
             return self.replica.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):

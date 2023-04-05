@@ -67,9 +67,6 @@ class TestImpalaTfLearner(unittest.TestCase):
                 _enable_rl_module_api=True,
             )
         )
-        # We have to set exploration_config here manually because setting it through
-        # config.exploration() only deepupdates it
-        config.exploration_config = {}
 
         for fw in framework_iterator(config, ("tf2")):
             trainer = config.build()

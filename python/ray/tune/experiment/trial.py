@@ -1,4 +1,3 @@
-import warnings
 from collections import deque
 import copy
 import json
@@ -31,6 +30,7 @@ from ray.tune.logger import NoopLogger
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import (
+    DEFAULT_RESULTS_DIR,
     DONE,
     NODE_IP,
     PID,
@@ -41,7 +41,6 @@ from ray.tune.result import (
     STDOUT_FILE,
     STDERR_FILE,
     DEFAULT_EXPERIMENT_NAME,
-    _get_defaults_results_dir,
 )
 from ray.tune.syncer import SyncConfig
 from ray.tune.execution.placement_groups import (
@@ -51,7 +50,6 @@ from ray.tune.execution.placement_groups import (
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
-from ray.tune.utils.util import _split_remote_local_path
 from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
@@ -366,9 +364,9 @@ class Trial:
         self._orig_experiment_path = experiment_path
         self._orig_experiment_dir_name = experiment_dir_name
 
-        local_experiment_path, remote_experiment_path = _split_remote_local_path(
-            experiment_path, None
-        )
+        # Rename for better code readability
+        local_experiment_path = experiment_path
+        remote_experiment_path = None
 
         # Backwards compatibility for `local_dir`
         if local_dir:
@@ -388,31 +386,14 @@ class Trial:
 
         # Set default experiment dir name
         if not local_experiment_path:
-            local_experiment_path = str(
-                Path(_get_defaults_results_dir()) / experiment_dir_name
-            )
+            local_experiment_path = str(Path(DEFAULT_RESULTS_DIR) / experiment_dir_name)
             os.makedirs(local_experiment_path, exist_ok=True)
 
         # Set remote experiment path if upload_dir is set
         if self.sync_config.upload_dir:
-            if remote_experiment_path:
-                if not remote_experiment_path.startswith(self.sync_config.upload_dir):
-                    raise ValueError(
-                        f"Both a `SyncConfig.upload_dir` and an `experiment_path` "
-                        f"pointing to remote storage were passed, but they do not "
-                        f"point to the same location. Got: "
-                        f"`experiment_path={experiment_path}` and "
-                        f"`SyncConfig.upload_dir={self.sync_config.upload_dir}`. "
-                    )
-                warnings.warn(
-                    "If `experiment_path` points to a remote storage location, "
-                    "do not set `SyncConfig.upload_dir`. ",
-                    DeprecationWarning,
-                )
-            else:
-                remote_experiment_path = str(
-                    URI(self.sync_config.upload_dir) / experiment_dir_name
-                )
+            remote_experiment_path = str(
+                URI(self.sync_config.upload_dir) / experiment_dir_name
+            )
 
         # Finally, set properties
         self._local_experiment_path = local_experiment_path

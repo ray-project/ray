@@ -17,5 +17,4 @@ gradio-dag-visualization
 java
 stable-diffusion
 text-classification
-object-detection
 ```

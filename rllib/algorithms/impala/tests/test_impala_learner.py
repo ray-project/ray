@@ -76,9 +76,6 @@ class TestImpalaLearner(unittest.TestCase):
                 _enable_rl_module_api=True,
             )
         )
-        # TODO (Artur): See if setting Impala's default to {} pose any issues.
-        #  Deprecate the current default and set it to {}.
-        config.exploration_config = {}
 
         for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
             trainer = config.build()

@@ -18,7 +18,7 @@ import os
 import ray
 from ray import air, tune
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.tune.registry import get_trainable_cls
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 class BasicMultiAgentMultiSpaces(MultiAgentEnv):
@@ -129,8 +129,7 @@ if __name__ == "__main__":
     # TODO (Artur): in PPORLModule vf_share_layers = True is broken in tf2. fix it.
     vf_share_layers = not bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False))
     config = (
-        get_trainable_cls(args.run)
-        .get_default_config()
+        AlgorithmConfig()
         .environment(env=BasicMultiAgentMultiSpaces)
         .resources(
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

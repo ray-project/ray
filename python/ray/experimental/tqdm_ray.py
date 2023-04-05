@@ -1,4 +1,3 @@
-import builtins
 import copy
 import json
 import logging
@@ -10,7 +9,6 @@ from typing import Any, Dict, Iterable, Optional
 import colorama
 
 import ray
-from ray._private.ray_constants import env_bool
 from ray.util.debug import log_once
 
 try:
@@ -28,18 +26,13 @@ RAY_TQDM_MAGIC = "__ray_tqdm_magic_token__"
 
 # Global manager singleton.
 _manager: Optional["_BarManager"] = None
-_print = builtins.print
 
 
 def safe_print(*args, **kwargs):
-    """Use this as an alternative to `print` that will not corrupt tqdm output.
-
-    By default, the builtin print will be patched to this function when tqdm_ray is
-    used. To disable this, set RAY_TQDM_PATCH_PRINT=0.
-    """
+    """Use this as an alternative to `print` that will not corrupt tqdm output."""
     try:
         instance().hide_bars()
-        _print(*args, **kwargs)
+        print(*args, **kwargs)
     finally:
         instance().unhide_bars()
 
@@ -153,7 +146,7 @@ class _Bar:
     def update(self, state: ProgressBarState) -> None:
         """Apply the updated worker progress bar state."""
         if state["desc"] != self.state["desc"]:
-            self.bar.set_description(state["desc"])
+            self.bar.set_description(state["desc"] + " " + str(state["pos"]))
         delta = state["x"] - self.state["x"]
         if delta:
             self.bar.update(delta)
@@ -327,10 +320,6 @@ def instance() -> _BarManager:
     global _manager
     if _manager is None:
         _manager = _BarManager()
-        if env_bool("RAY_TQDM_PATCH_PRINT", True):
-            import builtins
-
-            builtins.print = safe_print
     return _manager
 
 

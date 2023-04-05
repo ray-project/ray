@@ -54,6 +54,7 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.autosummary",
     "sphinx_external_toc",
+    "sphinx_thebe",
     "sphinxcontrib.autodoc_pydantic",
     "sphinxcontrib.redoc",
     "sphinx_tabs.tabs",
@@ -103,6 +104,12 @@ myst_enable_extensions = [
     "replacements",
 ]
 
+# Thebe configuration for launching notebook cells within the docs.
+thebe_config = {
+    "selector": "div.highlight",
+    "repository_url": "https://github.com/ray-project/ray",
+    "repository_branch": "master",
+}
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
@@ -259,6 +266,11 @@ html_theme_options = {
     "path_to_docs": "doc/source",
     "home_page_in_toc": False,
     "show_navbar_depth": 1,
+    "launch_buttons": {
+        "notebook_interface": "jupyterlab",
+        "binderhub_url": "https://mybinder.org",
+        "colab_url": "https://colab.research.google.com",
+    },
     "announcement": "<div class='topnav'></div>",
 }
 
