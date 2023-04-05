@@ -6,9 +6,9 @@ In Ray 2.4+, deploying multiple independent Serve applications is supported. Thi
 ## When to Use Multiple Applications
 With the introduction of multi-application Serve, we walk you through the new concept of applications and when you should choose to deploy a single application versus multiple applications per cluster. 
 
-An application consists of one or more deployments. The deployments in an application are tied into a direct acyclic graph through [model composition](serve-model-composition). In application can be called via HTTP at the specified route prefix, and the ingress deployment handles all such inbound traffic. Due to the dependence between deployments in an application, one application is a unit of upgrade. 
+An application consists of one or more deployments. The deployments in an application are tied into a direct acyclic graph through [model composition](serve-model-composition). An application can be called via HTTP at the specified route prefix, and the ingress deployment handles all such inbound traffic. Due to the dependence between deployments in an application, one application is a unit of upgrade. 
 
-With that in mind, if you have many independent models each behind different endpoints, and you want to be able to easily add, delete, or update these models, then you should use multiple applications. Each model should be deployed as a separate application. On the other hand, if you have ML logic and business logic distributed among multiple separate deployments that all need to be executed for a single request, then you should use model composition to build a single application consisting of multiple deployments.
+With that in mind, if you have many independent models each behind different endpoints, and you want to be able to easily add, delete, or update these models, then you should use multiple applications. Each model should then be deployed as a separate application. On the other hand, if you have ML logic and business logic distributed among separate deployments that all need to be executed for a single request, then you should use model composition to build a single application consisting of multiple deployments.
 
 
 ## Get Started
@@ -224,7 +224,7 @@ Migrating the single-application config `ServeApplicationSchema` to the multi-ap
 * Copy the entire old config to an entry under the `applications` field.
 * Remove `host` and `port` from the entry and move them under the `http_options` field.
 * Name the application.
-* If you haven't already, set the application-level `route_prefix` to the route prefix of the ingress deployment in the application.
+* If you haven't already, set the application-level `route_prefix` to the route prefix of the ingress deployment in the application. In a multi-application config, you should set route prefixes at the application level instead of for the ingress deployment in each application.
 * When needed, add more applications.
 
 For more details on the multi-application config format, see the documentation for [`ServeDeploySchema`](serve-rest-api-config-schema).
