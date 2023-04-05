@@ -523,8 +523,18 @@ class Deployment:
         return str(self)
 
 
-def deployment_to_schema(d: Deployment) -> DeploymentSchema:
-    """Converts a live deployment object to a corresponding structured schema."""
+def deployment_to_schema(
+    d: Deployment, include_route_prefix: bool = True
+) -> DeploymentSchema:
+    """Converts a live deployment object to a corresponding structured schema.
+
+    Args:
+        d: Deployment object to convert
+        include_route_prefix: Whether to include the route_prefix in the returned
+            schema. This should be set to False if the schema will be included in a
+            higher-level object describing an application, and you want to place
+            route_prefix at the application level.
+    """
 
     if d.ray_actor_options is not None:
         ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
@@ -534,7 +544,6 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
     deployment_options = {
         "name": d.name,
         "num_replicas": None if d._config.autoscaling_config else d.num_replicas,
-        "route_prefix": d.route_prefix,
         "max_concurrent_queries": d.max_concurrent_queries,
         "user_config": d.user_config,
         "autoscaling_config": d._config.autoscaling_config,
@@ -545,6 +554,9 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "ray_actor_options": ray_actor_options_schema,
         "is_driver_deployment": d._is_driver_deployment,
     }
+
+    if include_route_prefix:
+        deployment_options["route_prefix"] = d.route_prefix
 
     # Let non-user-configured options be set to defaults. If the schema
     # is converted back to a deployment, this lets Serve continue tracking

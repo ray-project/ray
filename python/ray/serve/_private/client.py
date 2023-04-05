@@ -284,17 +284,19 @@ class ServeControllerClient:
         tags = []
         for i, updating in enumerate(updating_list):
             deployment = deployments[i]
-            name, version = deployment["name"], deployment["version"]
+            deployment_name, version = deployment["name"], deployment["version"]
 
-            tags.append(self.log_deployment_update_status(name, version, updating))
+            tags.append(
+                self.log_deployment_update_status(deployment_name, version, updating)
+            )
 
         for i, deployment in enumerate(deployments):
-            name = deployment["name"]
+            deployment_name = deployment["name"]
             url = deployment["url"]
 
             if _blocking:
-                self._wait_for_deployment_healthy(name)
-                self.log_deployment_ready(name, version, url, tags[i])
+                self._wait_for_deployment_healthy(deployment_name)
+                self.log_deployment_ready(deployment_name, version, url, tags[i])
 
         if remove_past_deployments:
             # clean up the old deployments
@@ -314,6 +316,18 @@ class ServeControllerClient:
         config: Union[ServeApplicationSchema, ServeDeploySchema],
         _blocking: bool = False,
     ) -> None:
+        """Starts a task on the controller that deploys application(s) from a config.
+
+        Args:
+            config: A single-application config (ServeApplicationSchema) or a
+                multi-application config (ServeDeploySchema)
+            _blocking: Whether to block until the application is running.
+
+        Raises:
+            RayTaskError: If the deploy task on the controller fails. This can be
+                because a single-app config was deployed after deploying a multi-app
+                config, or vice versa.
+        """
         ray.get(self._controller.deploy_apps.remote(config))
 
         if _blocking:

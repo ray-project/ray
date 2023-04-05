@@ -478,7 +478,7 @@ def actor_critic_loss(
 
 RNNSACTorchPolicy = SACTorchPolicy.with_updates(
     name="RNNSACPolicy",
-    get_default_config=lambda: ray.rllib.algorithms.sac.rnnsac.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.sac.rnnsac.RNNSACConfig(),
     action_distribution_fn=action_distribution_fn,
     make_model_and_action_dist=build_sac_model_and_action_dist,
     loss_fn=actor_critic_loss,

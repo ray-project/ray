@@ -1,9 +1,32 @@
 import gymnasium as gym
 
 from ray.rllib.core.models.catalog import Catalog
-from ray.rllib.core.models.configs import ActorCriticEncoderConfig, MLPHeadConfig
+from ray.rllib.core.models.configs import (
+    ActorCriticEncoderConfig,
+    MLPHeadConfig,
+    FreeLogStdMLPHeadConfig,
+)
 from ray.rllib.core.models.base import Encoder, ActorCriticEncoder, Model
 from ray.rllib.utils import override
+
+
+def _check_if_diag_gaussian(action_distribution_cls, framework):
+    if framework == "torch":
+        from ray.rllib.models.torch.torch_distributions import TorchDiagGaussian
+
+        assert issubclass(action_distribution_cls, TorchDiagGaussian), (
+            f"free_log_std is only supported for DiagGaussian action distributions. "
+            f"Found action distribution: {action_distribution_cls}."
+        )
+    elif framework == "tf2":
+        from ray.rllib.models.tf.tf_distributions import TfDiagGaussian
+
+        assert issubclass(action_distribution_cls, TfDiagGaussian), (
+            "free_log_std is only supported for DiagGaussian action distributions. "
+            "Found action distribution: {}.".format(action_distribution_cls)
+        )
+    else:
+        raise ValueError(f"Framework {framework} not supported for free_log_std.")
 
 
 class PPOCatalog(Catalog):
@@ -46,21 +69,6 @@ class PPOCatalog(Catalog):
             action_space=action_space,
             model_config_dict=model_config_dict,
         )
-        free_log_std = model_config_dict.get("free_log_std")
-        assert not free_log_std, "free_log_std not supported yet."
-
-        assert isinstance(
-            observation_space, gym.spaces.Box
-        ), "This simple PPO Module only supports Box observation space."
-
-        assert len(observation_space.shape) in (
-            1,
-            3,
-        ), "This simple PPO Module only supports 1D and 3D observation spaces."
-
-        assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
-            "This simple PPO Module only supports Discrete and Box action spaces.",
-        )
 
         # Replace EncoderConfig by ActorCriticEncoderConfig
         self.actor_critic_encoder_config = ActorCriticEncoderConfig(
@@ -96,7 +104,7 @@ class PPOCatalog(Catalog):
         configuring the behavior of a PPORLModuleBase implementation.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The ActorCriticEncoder.
@@ -121,18 +129,25 @@ class PPOCatalog(Catalog):
         the behavior of a PPORLModuleBase implementation.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The policy head.
         """
         # Get action_distribution_cls to find out about the output dimension for pi_head
         action_distribution_cls = self.get_action_dist_cls(framework=framework)
-        self.pi_head_config.output_dims = (
-            action_distribution_cls.required_model_output_shape(
-                space=self.action_space, model_config=self.model_config_dict
-            )
+        required_output_dim = action_distribution_cls.required_input_dim(
+            space=self.action_space, model_config=self.model_config_dict
         )
+        self.pi_head_config.output_dims = (required_output_dim,)
+        if self.model_config_dict["free_log_std"]:
+            _check_if_diag_gaussian(
+                action_distribution_cls=action_distribution_cls, framework=framework
+            )
+            self.pi_head_config = FreeLogStdMLPHeadConfig(
+                mlp_head_config=self.pi_head_config
+            )
+
         return self.pi_head_config.build(framework=framework)
 
     def build_vf_head(self, framework: str) -> Model:
@@ -143,7 +158,7 @@ class PPOCatalog(Catalog):
         configuring the behavior of a PPORLModuleBase implementation.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The value function head.

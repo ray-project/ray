@@ -51,7 +51,7 @@ class TestTfMLPHead(unittest.TestCase):
                 output_activation=output_activation,
             )
 
-            model = config.build(framework="tf")
+            model = config.build(framework="tf2")
 
             inputs = tf.random.uniform((1, inputs_dims[0]))
 

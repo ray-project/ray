@@ -13,7 +13,6 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -321,20 +320,3 @@ class QMix(SimpleQ):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.qmix.qmix.QMixConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(QMixConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.qmix.qmix.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.qmix.qmix.QMixConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

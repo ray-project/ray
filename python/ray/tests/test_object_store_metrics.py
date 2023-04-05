@@ -4,6 +4,7 @@ from typing import Dict
 import numpy as np
 import sys
 
+import requests
 import ray
 from ray._private.test_utils import (
     raw_metrics,
@@ -350,6 +351,37 @@ def test_seal_memory(shutdown_only):
         timeout=20,
         retry_interval_ms=500,
     )
+
+
+def test_object_store_memory_matches_dashboard_obj_memory(shutdown_only):
+    # https://github.com/ray-project/ray/issues/32092
+    # Verify the dashboard's object store memory report is same as
+    # the one from metrics
+    ctx = ray.init(
+        object_store_memory=500 * MiB,
+    )
+
+    def verify():
+        resources = raw_metrics(ctx)["ray_resources"]
+        object_store_memory_bytes_from_metrics = 0
+        for sample in resources:
+            # print(sample)
+            if sample.labels["Name"] == "object_store_memory":
+                object_store_memory_bytes_from_metrics += sample.value
+
+        r = requests.get(f"http://{ctx.dashboard_url}/nodes?view=summary")
+        object_store_memory_bytes_from_dashboard = int(
+            r.json()["data"]["summary"][0]["raylet"]["objectStoreAvailableMemory"]
+        )
+
+        assert (
+            object_store_memory_bytes_from_dashboard
+            == object_store_memory_bytes_from_metrics
+        )
+        assert object_store_memory_bytes_from_dashboard == 500 * MiB
+        return True
+
+    wait_for_condition(verify)
 
 
 if __name__ == "__main__":

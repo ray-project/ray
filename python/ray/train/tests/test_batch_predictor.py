@@ -114,7 +114,7 @@ def test_separate_gpu_stage(shutdown_only):
         num_gpus_per_worker=1,
         separate_gpu_stage=True,
         allow_gpu=True,
-    ).fully_executed()
+    ).cache()
     stats = ds.stats()
     assert "Stage 1 ReadRange->DummyPreprocessor:" in stats, stats
     assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
@@ -125,7 +125,7 @@ def test_separate_gpu_stage(shutdown_only):
         num_gpus_per_worker=1,
         separate_gpu_stage=False,
         allow_gpu=True,
-    ).fully_executed()
+    ).cache()
     stats = ds.stats()
     assert "Stage 1 ReadRange:" in stats, stats
     assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
@@ -148,7 +148,7 @@ def test_automatic_enable_gpu_from_num_gpus_per_worker(shutdown_only):
     with pytest.raises(
         ValueError, match="DummyPredictor does not support GPU prediction"
     ):
-        batch_predictor.predict(test_dataset, num_gpus_per_worker=1).fully_executed()
+        batch_predictor.predict(test_dataset, num_gpus_per_worker=1).cache()
 
 
 def test_batch_prediction():
@@ -158,7 +158,7 @@ def test_batch_prediction():
     )
 
     test_dataset = ray.data.range_table(4)
-    ds = batch_predictor.predict(test_dataset).fully_executed()
+    ds = batch_predictor.predict(test_dataset).cache()
     # Check fusion occurred.
     assert "ReadRange->DummyPreprocessor" in ds.stats(), ds.stats()
     assert ds.to_pandas().to_numpy().squeeze().tolist() == [
@@ -177,27 +177,6 @@ def test_batch_prediction():
         0.0,
         4.0,
     ]
-
-
-def test_batch_prediction_simple():
-    """Tests that simple dataset is not supported with"""
-    batch_predictor = BatchPredictor.from_checkpoint(
-        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
-        DummyPredictor,
-    )
-
-    test_dataset = ray.data.range(4)
-
-    with pytest.raises(ValueError):
-        batch_predictor.predict(test_dataset)
-
-    test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0])
-    with pytest.raises(ValueError):
-        assert next(
-            batch_predictor.predict_pipelined(
-                test_dataset, blocks_per_window=2
-            ).iter_datasets()
-        )
 
 
 def test_batch_prediction_various_combination():
@@ -265,6 +244,34 @@ def test_batch_prediction_various_combination():
             # Pandas predictor outputs Pandas dataset.
             "pandas",
         ),
+        (
+            DummyPreprocessor(),
+            DummyWithNumpyPredictor,
+            ray.data.from_items([1, 2, 3]),
+            # Numpy predictor outputs Arrow dataset.
+            "arrow",
+        ),
+        (
+            DummyWithNumpyPreprocessor(),
+            DummyWithNumpyPredictor,
+            ray.data.from_items([1, 2, 3]),
+            # Numpy predictor outputs Arrow dataset.
+            "arrow",
+        ),
+        (
+            DummyPreprocessor(),
+            DummyPredictor,
+            ray.data.from_items([1, 2, 3]),
+            # Pandas predictor outputs Pandas dataset.
+            "pandas",
+        ),
+        (
+            DummyWithNumpyPreprocessor(),
+            DummyPredictor,
+            ray.data.from_items([1, 2, 3]),
+            # Pandas predictor outputs Pandas dataset.
+            "pandas",
+        ),
     ]
 
     for test_case in test_cases:
@@ -275,7 +282,7 @@ def test_batch_prediction_various_combination():
             predictor_cls,
         )
 
-        ds = batch_predictor.predict(input_dataset).fully_executed()
+        ds = batch_predictor.predict(input_dataset).cache()
         # Check no fusion needed since we're not doing a dataset read.
         assert f"Stage 1 {preprocessor.__class__.__name__}" in ds.stats(), ds.stats()
         assert ds.to_pandas().to_numpy().squeeze().tolist() == [
@@ -283,8 +290,15 @@ def test_batch_prediction_various_combination():
             8.0,
             12.0,
         ]
-
-        assert ds.dataset_format() == dataset_format, test_case
+        block = ray.get(ds.get_internal_block_refs()[0])
+        if dataset_format == "pandas":
+            assert isinstance(block, pd.DataFrame)
+        elif dataset_format == "arrow":
+            assert isinstance(block, pa.Table)
+        else:
+            raise ValueError(
+                f"Unsupported test case with dataset format: {dataset_format}"
+            )
 
 
 def test_batch_prediction_fs():

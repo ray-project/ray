@@ -55,6 +55,11 @@ ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
 ParamRef = Hashable
 ParamDictType = Dict[ParamRef, ParamType]
 
+# COMMON LEARNER LOSS_KEYS
+POLICY_LOSS_KEY = "policy_loss"
+VF_LOSS_KEY = "vf_loss"
+ENTROPY_KEY = "entropy"
+
 
 @dataclass
 class FrameworkHPs:
@@ -290,7 +295,6 @@ class Learner:
             gradients: A dictionary of gradients, in the same format as self._params.
         """
 
-    @abc.abstractmethod
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         """Returns the weights of the underlying MultiAgentRLModule.
 
@@ -305,6 +309,8 @@ class Learner:
             A dictionary that holds the weights of the modules in a numpy-friendly
             format.
         """
+        module_states = self._module.get_state(module_ids)
+        return convert_to_numpy({k: v for k, v in module_states.items()})
 
     @abc.abstractmethod
     def set_weights(self, weights: Mapping[str, Any]) -> None:
@@ -373,7 +379,7 @@ class Learner:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def compile_results(
         self,
-        batch: NestedDict,
+        batch: MultiAgentBatch,
         fwd_out: Mapping[str, Any],
         postprocessed_loss: Mapping[str, Any],
         postprocessed_gradients: Mapping[str, Any],
@@ -389,18 +395,25 @@ class Learner:
         Returns:
             A dictionary of results.
         """
+        if not isinstance(batch, MultiAgentBatch):
+            raise ValueError(
+                f"batch must be a MultiAgentBatch, but got {type(batch)} instead."
+            )
+
         loss_numpy = convert_to_numpy(postprocessed_loss)
 
         # We restructure the loss to be module_id -> LEARNER_STATS_KEY -> key-values.
         # This matches what the legacy RLlib policies used to return.
         module_learner_stats = defaultdict(dict)
-        for module_id in self.module.keys():
+        for module_id in batch.policy_batches.keys():
             module_learner_stats[module_id] = {LEARNER_STATS_KEY: loss_numpy[module_id]}
 
         # We put the stats for all modules under the ALL_MODULES key. e.g. average of
         # the gradients across all modules will go here.
         mean_grads = [
-            np.mean(grad) for grad in convert_to_numpy(postprocessed_gradients.values())
+            np.mean(grad)
+            for grad in convert_to_numpy(postprocessed_gradients.values())
+            if grad is not None
         ]
 
         module_learner_stats[ALL_MODULES] = {
@@ -429,8 +442,8 @@ class Learner:
                 parameter group that share the same optimizer object, if None, the
                 default optimizer_cls will be used with all the parameters from the
                 module.
-            optimizer_cls: The optimizer class to use. If None, the set_optimizer_fn
-                should be provided.
+            optimizer_cls: The optimizer class to use. If None, the optimizer_cls of the
+                first parameter in the current list of parameters will be used.
         """
         self.__check_if_build_called()
         module = module_spec.build()
@@ -438,14 +451,16 @@ class Learner:
         # construct a default set_optimizer_fn if not provided
         if set_optimizer_fn is None:
             if optimizer_cls is None:
-                raise ValueError(
-                    "Either set_optimizer_fn or optimizer_cls must be provided."
-                )
+                # by default, use the optimizer_cls of the first parameter
+                optimizer_cls = next(iter(self._param_to_optim.values())).__class__
 
             def set_optimizer_fn(module):
-                optimizer = self.get_optimizer_obj(module, optimizer_cls)
-                parameters = self.get_parameters(module)
-                return [(parameters, optimizer)]
+                param_optims = []
+                if self._is_module_compatible_with_learner(module):
+                    optimizer = self.get_optimizer_obj(module, optimizer_cls)
+                    parameters = self.get_parameters(module)
+                    param_optims = [(parameters, optimizer)]
+                return param_optims
 
         for param_seq, optimizer in set_optimizer_fn(module):
             self._optim_to_param[optimizer] = []
@@ -467,16 +482,17 @@ class Learner:
         self.__check_if_build_called()
         module = self._module[module_id]
 
-        parameters = self.get_parameters(module)
-        for param in parameters:
-            param_ref = self.get_param_ref(param)
-            if param_ref in self._params:
-                del self._params[param_ref]
-            if param_ref in self._param_to_optim:
-                optimizer = self._param_to_optim[param_ref]
-                if optimizer in self._optim_to_param:
-                    del self._optim_to_param[optimizer]
-                del self._param_to_optim[param_ref]
+        if self._is_module_compatible_with_learner(module):
+            parameters = self.get_parameters(module)
+            for param in parameters:
+                param_ref = self.get_param_ref(param)
+                if param_ref in self._params:
+                    del self._params[param_ref]
+                if param_ref in self._param_to_optim:
+                    optimizer = self._param_to_optim[param_ref]
+                    if optimizer in self._optim_to_param:
+                        del self._optim_to_param[optimizer]
+                    del self._param_to_optim[param_ref]
 
         self._module.remove_module(module_id)
 
@@ -569,7 +585,9 @@ class Learner:
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
-    def additional_update(self, *args, **kwargs) -> Mapping[str, Any]:
+    def additional_update(
+        self, module_ids_to_update: Sequence[ModuleID] = None, **kwargs
+    ) -> Mapping[ModuleID, Any]:
         """Apply additional non-gradient based updates to this Trainer.
 
         For example, this could be used to do a polyak averaging update
@@ -581,7 +599,7 @@ class Learner:
 
             class DQNLearner(TorchLearner):
 
-                def additional_update_per_module(self, module_id: str, tau: float):
+                def additional_update_per_module(self, module_id: ModuleID, tau: float):
                     # perform polyak averaging update
                     main = self._module[module_id].main
                     target = self._module[module_id].target
@@ -603,24 +621,24 @@ class Learner:
                     self.learner.additional_update(tau=0.01)
 
         Args:
-            *args: Arguments to use for the update.
+            module_ids_to_update: The ids of the modules to update. If None, all
+                modules will be updated.
             **kwargs: Keyword arguments to use for the additional update.
 
         Returns:
             A dictionary of results from the update
         """
         results_all_modules = {}
-        for module_id in self._module.keys():
-            module_results = self.additional_update_per_module(
-                module_id, *args, **kwargs
-            )
+        module_ids = module_ids_to_update or self._module.keys()
+        for module_id in module_ids:
+            module_results = self.additional_update_per_module(module_id, **kwargs)
             results_all_modules[module_id] = module_results
 
         return results_all_modules
 
     @OverrideToImplementCustomLogic
     def additional_update_per_module(
-        self, module_id: str, *args, **kwargs
+        self, module_id: ModuleID, **kwargs
     ) -> Mapping[str, Any]:
         """Apply additional non-gradient based updates for a single module.
 
@@ -628,7 +646,6 @@ class Learner:
 
         Args:
             module_id: The id of the module to update.
-            *args: Arguments to use for the update.
             **kwargs: Keyword arguments to use for the additional update.
 
         Returns:
@@ -685,11 +702,30 @@ class Learner:
         """
         self.__check_if_build_called()
 
-        batch_iter = (
-            MiniBatchCyclicIterator
-            if minibatch_size is not None
-            else MiniBatchDummyIterator
-        )
+        missing_module_ids = set(batch.policy_batches.keys()) - set(self._module.keys())
+        if len(missing_module_ids) > 0:
+            raise ValueError(
+                "Batch contains module ids that are not in the learner: "
+                f"{missing_module_ids}"
+            )
+
+        if num_iters < 1:
+            # we must do at least one pass on the batch for training
+            raise ValueError("num_iters must be >= 1")
+
+        if minibatch_size:
+            batch_iter = MiniBatchCyclicIterator
+        elif num_iters > 1:
+            # minibatch size was not set but num_iters > 1
+            # Under the old training stack, users could do multiple sgd passes
+            # over a batch without specifying a minibatch size. We enable
+            # this behavior here by setting the minibatch size to be the size
+            # of the batch (e.g. 1 minibatch of size batch.count)
+            minibatch_size = batch.count
+            batch_iter = MiniBatchCyclicIterator
+        else:
+            # minibatch_size and num_iters are not set by the user
+            batch_iter = MiniBatchDummyIterator
 
         results = []
         for minibatch in batch_iter(batch, minibatch_size, num_iters):
@@ -729,6 +765,21 @@ class Learner:
         self.__check_if_build_called()
         # TODO: once we figure out the optimizer format, we can set/get the state
         return {"module_state": self._module.get_state()}
+
+    @abc.abstractmethod
+    def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
+        """Check whether the module is compatible with the learner.
+
+        For example, if there is a random RLModule, it will not be a torch or tf
+        module, but rather it is a numpy module. Therefore we should not consider it
+        during gradient based optimization.
+
+        Args:
+            module: The module to check.
+
+        Returns:
+            True if the module is compatible with the learner.
+        """
 
     def _make_module(self) -> MultiAgentRLModule:
         """Construct the multi-agent RL module for the learner.
@@ -784,15 +835,14 @@ class Learner:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def _update(
         self,
-        batch: Union[MultiAgentBatch, NestedDict],
+        batch: MultiAgentBatch,
     ) -> Mapping[str, Any]:
         """Performs a single update given a batch of data."""
-
         # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
         # NestedDict from the base class.
-        batch = self._convert_batch_type(batch)
-        fwd_out = self._module.forward_train(batch)
-        loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
+        tensorbatch = self._convert_batch_type(batch)
+        fwd_out = self._module.forward_train(tensorbatch)
+        loss = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
         gradients = self.compute_gradients(loss)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)

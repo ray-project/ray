@@ -161,7 +161,7 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
         ds = (
             ray.data.range(200000, parallelism=1)
             .map(lambda _: uuid.uuid4().hex)
-            .fully_executed()
+            .cache()
         )
         # Fully execute the operations prior to write, because with
         # parallelism=1, there is only one task; so the write operator

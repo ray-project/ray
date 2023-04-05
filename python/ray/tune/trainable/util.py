@@ -94,9 +94,10 @@ class TrainableUtil:
         `checkpoint_path`.
         For example, returns `checkpoint00000`.
         """
-        assert checkpoint_path.startswith(
-            logdir
-        ), "expecting `logdir` to be a prefix of `checkpoint_path`"
+        assert checkpoint_path.startswith(logdir), (
+            f"expecting `logdir` to be a prefix of `checkpoint_path`, got "
+            f"{checkpoint_path} (not in {logdir})"
+        )
         rel_path = os.path.relpath(checkpoint_path, logdir)
         tokens = rel_path.split(os.sep)
         return os.path.join(tokens[0])

@@ -1,6 +1,5 @@
 import argparse
 import json
-import os
 
 # For compatibility under py2 to consider unicode as str
 from ray.air import CheckpointConfig
@@ -199,7 +198,7 @@ def _create_trial_from_spec(
     if resources:
         trial_kwargs["placement_group_factory"] = resources
 
-    experiment_dir_name = spec.get("experiment_dir_name")
+    experiment_dir_name = spec.get("experiment_dir_name") or output_path
 
     sync_config = spec.get("sync_config", SyncConfig())
     if (
@@ -223,9 +222,9 @@ def _create_trial_from_spec(
         trainable_name=spec["run"],
         # json.load leads to str -> unicode in py2.7
         config=spec.get("config", {}),
-        local_dir=os.path.join(spec["local_dir"], output_path),
         # json.load leads to str -> unicode in py2.7
         stopping_criterion=spec.get("stop", {}),
+        experiment_path=spec["experiment_path"],
         experiment_dir_name=experiment_dir_name,
         sync_config=sync_config,
         checkpoint_config=checkpoint_config,

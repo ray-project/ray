@@ -49,6 +49,11 @@ def test_get_wheel_filename():
             if sys_platform == "win32" and py_version == (3, 6):
                 # Windows wheels are not built for py3.6 anymore
                 continue
+
+            # TODO(https://github.com/ray-project/ray/issues/31362)
+            if py_version == (3, 11) and sys_platform != "linux":
+                continue
+
             filename = get_wheel_filename(sys_platform, ray_version, py_version)
             prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
             url = f"{prefix}{filename}"
@@ -62,12 +67,17 @@ def test_get_master_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/master/<test_commit>/`.
-    test_commit = "6fd684bbdb186a73732f6113a83a12b63200f170"
+    test_commit = "cf23cd6810dbfd7b1ac3016fba02ff4594f24b7f"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             if sys_platform == "win32" and py_version == (3, 6):
                 # Windows wheels are not built for py3.6 anymore
                 continue
+
+            # TODO(https://github.com/ray-project/ray/issues/31362)
+            if py_version == (3, 11) and sys_platform != "linux":
+                continue
+
             url = get_master_wheel_url(
                 test_commit, sys_platform, ray_version, py_version
             )
@@ -79,13 +89,24 @@ def test_get_release_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/releases/2.2.0/<commit>/`.
-    test_commits = {"2.2.0": "b6af0887ee5f2e460202133791ad941a41f15beb"}
+    test_commits = {"2.3.0": "cf7a56b4b0b648c324722df7c99c168e92ff0b45"}
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             for version, commit in test_commits.items():
                 if sys_platform == "win32" and py_version == (3, 6):
                     # Windows wheels are not built for py3.6 anymore
                     continue
+
+                # TODO(https://github.com/ray-project/ray/issues/31362)
+                if py_version == (3, 11) and sys_platform != "linux":
+                    continue
+
+                # TODO(https://github.com/ray-project/ray/issues/33396)
+                # We currently don't have a release with the new wheel names with the
+                # x86_64 suffix.
+                if sys_platform == "darwin":
+                    continue
+
                 url = get_release_wheel_url(commit, sys_platform, version, py_version)
                 assert requests.head(url).status_code == 200, url
 

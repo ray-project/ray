@@ -131,7 +131,12 @@ Enabling Streaming Ingest
 Shuffling Data
 ~~~~~~~~~~~~~~
 
-Shuffling or data randomization is important for training high-quality models. By default, AIR will randomize the order the data files (blocks) are read from. AIR also offers options for further randomizing data records within each file:
+Shuffling or data randomization is important for training high-quality models.
+
+By default, AIR shuffles the assignment of data blocks (files) to dataset shards between epochs. You can disable this behavior by setting
+``randomize_block_order`` to ``False`` in your :class:`~ray.air.config.DatasetConfig`.
+
+To randomize data records within a file, perform a local or global shuffle.
 
 .. tabbed:: Local Shuffling
 
@@ -412,7 +417,7 @@ Performance Tips
 Dataset Sharing
 ~~~~~~~~~~~~~~~
 
-When you pass Datasets to a Tuner, Datasets are executed independently per-trial. This could potentially duplicate data reads in the cluster. To share Dataset blocks between trials, call ``ds = ds.fully_executed()`` prior to passing the Dataset to the Tuner. This ensures that the initial read operation will not be repeated per trial.
+When you pass Datasets to a Tuner, Datasets are executed independently per-trial. This could potentially duplicate data reads in the cluster. To share Dataset blocks between trials, call ``ds = ds.cache()`` prior to passing the Dataset to the Tuner. This ensures that the initial read operation will not be repeated per trial.
 
 
 FAQ
