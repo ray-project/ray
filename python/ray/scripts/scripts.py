@@ -788,19 +788,17 @@ def start(
                     if include_node_ip_address
                     else "",
                 )
-            cli_logger.newline()
-            cli_logger.print(
-                "To connect to this Ray instance from outside of "
-                "the cluster, for example "
-            )
-            cli_logger.print(
-                "when connecting to a remote cluster from your laptop, " "make sure the"
-            )
-            cli_logger.print(
-                "dashboard {}is accessible and use the Ray Jobs API. For example:",
-                f"({dashboard_url}) " if dashboard_url else "",
-            )
+
             if dashboard_url:
+                cli_logger.newline()
+                cli_logger.print(
+                    "To submit a Ray job from outside of the cluster, for example "
+                    "from your laptop, make sure the"
+                )
+                cli_logger.print(
+                    "dashboard {}is accessible and use the Ray Jobs API. For example:",
+                    f"({dashboard_url}) " if dashboard_url else "",
+                )
                 cli_logger.print(
                     cf.bold(
                         "  RAY_ADDRESS='http://<dashboard URL>:{}' ray job submit "
@@ -809,25 +807,26 @@ def start(
                     ),
                     ray_params.dashboard_port,
                 )
-            cli_logger.newline()
-            cli_logger.print(
-                "See https://docs.ray.io/en/latest/cluster/running-applications"
-                "/job-submission/index.html"
-            )
-            cli_logger.print(
-                "for more information on connecting to the Ray cluster from "
-                "a remote client."
-            )
+                cli_logger.newline()
+                cli_logger.print(
+                    "See https://docs.ray.io/en/latest/cluster/running-applications"
+                    "/job-submission/index.html"
+                    "for more information on submitting Ray jobs to the Ray cluster"
+                )
+
             cli_logger.newline()
             cli_logger.print("To see the status of the cluster, use")
             cli_logger.print("  {}".format(cf.bold("ray status")))
+
             if dashboard_url:
+                cli_logger.newline()
                 cli_logger.print("To monitor and debug Ray, view the dashboard at ")
                 cli_logger.print(
                     "  {}".format(
                         cf.bold(dashboard_url),
                     )
                 )
+
             cli_logger.newline()
             cli_logger.print(
                 cf.underlined(
