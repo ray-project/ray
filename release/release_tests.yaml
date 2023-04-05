@@ -113,6 +113,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: cpt_autoscaling_1-3_gce.yaml
@@ -139,6 +140,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_env: horovod/app_config_master.yaml
         cluster_compute: horovod/compute_tpl_gce.yaml
