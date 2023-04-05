@@ -573,7 +573,7 @@ def run_release_test(
 
         result.return_code = exit_code.value
         result.status = buildkite_exit_code.name.lower()
-        result.buildkite_return_code = buildkite_exit_code.value
+        result.buildkite_exit_code = buildkite_exit_code.value
         if runtime is not None:
             result.runtime = runtime
 

@@ -22,7 +22,7 @@ class Result:
 
     status: str = "invalid"
     return_code: int = 0
-    buildkite_return_code: int = BuildkiteExitCode.SUCCESS.value
+    buildkite_exit_code: int = BuildkiteExitCode.SUCCESS.value
     last_logs: Optional[str] = None
 
     runtime: Optional[float] = None
