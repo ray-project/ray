@@ -532,9 +532,8 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared):
         compute_strategy=compute_strategy,
     )
 
-    with pytest.raises(RayActorError) as e:
+    with pytest.raises(RayActorError, match=r"init_failed"):
         op.start(ExecutionOptions())
-        assert "init_failed" in e.error_msg
 
 
 @pytest.mark.parametrize(

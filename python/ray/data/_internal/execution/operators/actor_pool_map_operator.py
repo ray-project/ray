@@ -37,7 +37,7 @@ class ActorPoolMapOperator(MapOperator):
     def __init__(
         self,
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
-        init_fn: _CallableClassProtocol,
+        init_fn: Callable[[], None],
         input_op: PhysicalOperator,
         autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
