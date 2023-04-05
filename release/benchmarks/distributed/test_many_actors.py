@@ -41,11 +41,6 @@ def no_resource_leaks():
 addr = ray.init(address="auto")
 
 test_utils.wait_for_condition(no_resource_leaks)
-try:
-    summarize_worker_startup_time()
-except Exception as e:
-    print("Failed to summarize worker startup time.")
-    print(e)
 monitor_actor = test_utils.monitor_memory_usage()
 dashboard_test = DashboardTestAtScale(addr)
 
@@ -63,6 +58,12 @@ del monitor_actor
 test_utils.wait_for_condition(no_resource_leaks)
 
 rate = MAX_ACTORS_IN_CLUSTER / (end_time - start_time)
+try:
+    summarize_worker_startup_time()
+except Exception as e:
+    print("Failed to summarize worker startup time.")
+    print(e)
+
 print(
     f"Success! Started {MAX_ACTORS_IN_CLUSTER} actors in "
     f"{end_time - start_time}s. ({rate} actors/s)"
