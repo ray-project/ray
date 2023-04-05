@@ -16,8 +16,6 @@ import sys
 import time
 from pathlib import Path
 
-# DEBUG: print the output of pip list freeze
-subprocess.run(["pip", "list", "--format=freeze"])
 import boto3
 
 
@@ -67,14 +65,15 @@ def download_ssh_key():
     s3_client = boto3.client("s3", region_name="us-west-2")
 
     # Set the name of the S3 bucket and the key to download
-    bucket_name = "oss-release-test-ssh-keys"
-    key_name = "ray-autoscaler_59_us-west-2.pem"
+    bucket_name = "anyscale-staging-data-cld-kvedzwag2qa8i5bjxuevf5i7"
+    key_name = "oss-release-test-ssh-keys/ray-autoscaler_59_us-west-2.pem"
 
     # Download the key from the S3 bucket to a local file
-    local_key_path = os.path.expanduser(f"~/.ssh/{key_name}")
+    local_filename = os.path.basename(key_name)
+    local_key_path = os.path.expanduser(f"~/.ssh/{local_filename}")
     s3_client.download_file(bucket_name, key_name, local_key_path)
 
-    # Set permissions on the key file
+    # Set permissions on the key file to 400 (read-only for owner)
     os.chmod(local_key_path, 0o400)
 
 
