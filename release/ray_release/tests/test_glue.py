@@ -244,7 +244,7 @@ class GlueTest(unittest.TestCase):
         if until == "fetch_results":
             return
 
-        self.command_runner_return["get_last_logs"] = "Lorem ipsum"
+        self.command_runner_return["get_last_logs_ex"] = "Lorem ipsum"
 
         if until == "get_last_logs":
             return

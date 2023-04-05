@@ -120,11 +120,11 @@ class CommandRunner(abc.ABC):
         )
 
     def get_last_logs(self) -> str:
-      try:
-        return self.get_last_logs_ex()
-      except Exception as e:
-        logger.exception(f"Error fetching logs: {e}")
-        return "No logs could be retrieved."
+        try:
+            return self.get_last_logs_ex()
+        except Exception as e:
+            logger.exception(f"Error fetching logs: {e}")
+            return "No logs could be retrieved."
 
     def get_last_logs_ex(self):
         raise NotImplementedError

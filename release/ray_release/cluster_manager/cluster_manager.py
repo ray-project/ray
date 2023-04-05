@@ -127,10 +127,10 @@ class ClusterManager(abc.ABC):
         raise NotImplementedError
 
     def terminate_cluster(self, wait: bool = False):
-      try:
-          self.terminate_cluster(wait=False)
-      except Exception as e:
-          logger.exception(f"Could not terminate cluster: {e}")
+        try:
+            self.terminate_cluster(wait=False)
+        except Exception as e:
+            logger.exception(f"Could not terminate cluster: {e}")
 
     def terminate_cluster_ex(self, wait: bool = False):
         raise NotImplementedError
