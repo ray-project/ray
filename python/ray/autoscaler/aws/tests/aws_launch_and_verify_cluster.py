@@ -61,6 +61,7 @@ def download_ssh_key():
     """Download the ssh key from the S3 bucket to the local machine."""
     print("======================================")
     print("Downloading ssh key...")
+
     # Create a Boto3 client to interact with S3
     s3_client = boto3.client("s3", region_name="us-west-2")
 
@@ -68,9 +69,15 @@ def download_ssh_key():
     bucket_name = "anyscale-staging-data-cld-kvedzwag2qa8i5bjxuevf5i7"
     key_name = "oss-release-test-ssh-keys/ray-autoscaler_59_us-west-2.pem"
 
-    # Download the key from the S3 bucket to a local file
+    # Determine the local file path for the downloaded key
     local_filename = os.path.basename(key_name)
-    local_key_path = os.path.expanduser(f"~/.ssh/{local_filename}")
+    local_key_dir = os.path.expanduser("~/.ssh")
+    local_key_path = os.path.join(local_key_dir, local_filename)
+
+    # Create the local_key_dir if it doesn't exist
+    os.makedirs(local_key_dir, exist_ok=True)
+
+    # Download the key from the S3 bucket to the local_key_path
     s3_client.download_file(bucket_name, key_name, local_key_path)
 
     # Set permissions on the key file to 400 (read-only for owner)
