@@ -97,9 +97,9 @@ def parse_condition(cond: int, limit: float = float("inf")) -> float:
 
 def get_concurrency_group(test: Test) -> Tuple[str, int]:
     if get_cloud_environment() == "gs":
-        concurrent_group = aws_gpu_cpu_to_concurrency_groups
-    else:
         concurrent_group = gce_gpu_cpu_to_concurrent_groups
+    else:
+        concurrent_group = aws_gpu_cpu_to_concurrency_groups
     default_concurrent = concurrent_group[-1]
     try:
         test_cpus, test_gpus = get_test_resources(test)
