@@ -47,6 +47,13 @@ cdef class ObjectRef(BaseID):
         self.owner_addr = owner_addr
         self.in_core_worker = False
         self.call_site_data = call_site_data
+        # Initialize to False. This is used to detect if the asyncio future
+        # is being blocked on. 
+        # This field is also used to check if the object ref is being used
+        # as a asyncio.Future duck-type compatible object.
+        # With this, asyncio.isfuture() will return True for ObjectRef.
+        self._asyncio_future_blocking = False
+        self._py_wrapped_asyncio_future = None
 
         worker = ray._private.worker.global_worker
         # TODO(edoakes): We should be able to remove the in_core_worker flag.
@@ -106,6 +113,10 @@ cdef class ObjectRef(BaseID):
         check_id(id)
         self.data = CObjectID.FromBinary(<c_string>id)
 
+    @property
+    def _asyncio_future_blocking(self):
+        return self._asyncio_future_blocking
+
     @classmethod
     def nil(cls):
         return cls(CObjectID.Nil().Binary())
@@ -143,7 +154,9 @@ cdef class ObjectRef(BaseID):
         if not _internal:
             logger.warning("ref.as_future() is deprecated in favor of "
                            "asyncio.wrap_future(ref.future()).")
-        return asyncio.wrap_future(self.future())
+        if self._py_wrapped_asyncio_future is None:
+            self._py_wrapped_asyncio_future = asyncio.wrap_future(self.future())
+        return self._py_wrapped_asyncio_future
 
     def _on_completed(self, py_callback: Callable[[Any], None]):
         """Register a callback that will be called after Object is ready.
@@ -154,3 +167,44 @@ cdef class ObjectRef(BaseID):
         core_worker = ray._private.worker.global_worker.core_worker
         core_worker.set_get_async_callback(self, py_callback)
         return self
+
+    ##############################
+    # Overloading functions for asyncio.Future
+    # See https://github.com/ray-project/ray/issues/34067
+    ##############################
+    def result(self):
+        return self.as_future(_internal=True).result()
+
+    def set_result(self, result):
+        self.as_future(_internal=True).set_result(result) 
+
+    def exception(self):
+        return self.as_future(_internal=True).exception()
+    
+    def set_exception(self, exception):
+        self.as_future(_internal=True).set_exception(exception)
+
+    def done(self):
+        return self.as_future(_internal=True).done()
+
+    def cancelled(self):
+        return self.as_future(_internal=True).cancelled()
+
+    def add_done_callback(self, callback, *, context=None):
+        if sys.version_info >= (3, 7):
+            self.as_future(_internal=True).add_done_callback(
+                callback, context=context)
+            return 
+        self.as_future(_internal=True).add_done_callback(callback)
+
+    def remove_done_callback(self, fn):
+        return self.as_future(_internal=True).remove_done_callback(fn)
+
+    def cancel(self, msg=None):
+        if sys.version_info >= (3, 9):
+            self.as_future(_internal=True).cancel(msg)
+            return
+        self.as_future(_internal=True).cancel()
+
+    def get_loop(self):
+        return self.as_future(_internal=True).get_loop()

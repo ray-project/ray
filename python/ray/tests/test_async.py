@@ -165,6 +165,29 @@ def test_concurrent_future_many(ray_start_regular_shared):
 
 
 @pytest.mark.asyncio
+async def test_object_ref_as_asyncio_future(ray_start_regular_shared):
+    import functools
+
+    @ray.remote
+    def f():
+        return 1
+
+    called = [False]
+
+    def check(called, fut):
+        assert fut.result() == 1
+        called[0] = True
+
+    ref = f.remote()
+    ref.add_done_callback(functools.partial(check, called))
+    assert asyncio.isfuture(ref)
+    assert await ref == 1
+    assert called[0] == True
+
+    # TODO: test all the stub methods.
+
+
+@pytest.mark.asyncio
 async def test_run_backgroun_job():
     """Test `run_backgroun_job` works as expected."""
     result = {}
