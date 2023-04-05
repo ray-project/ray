@@ -50,7 +50,7 @@ class CRRConfig(AlgorithmConfig):
         self.actor_lr = 3e-4
         self.tau = 5e-3
 
-        # Overriding the trainer config default:
+        # Override the AlgorithmConfig default:
         # Only PyTorch supported thus far. Make this the default framework.
         self.framework_str = "torch"
         # If data ingestion/sample_time is slow, increase this
@@ -60,6 +60,19 @@ class CRRConfig(AlgorithmConfig):
 
         self.td_error_loss_fn = "mse"
         self.categorical_distribution_temperature = 1.0
+
+        # TODO (Artur): CRR should not need an exploration config as an offline
+        #  algorithm. However, the current implementation of the CRR algorithm
+        #  requires it. Investigate.
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
 
     def training(
         self,
