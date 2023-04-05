@@ -96,7 +96,7 @@ class BuildkiteExitCode(enum.Enum):
     ERROR = 40 
     TIMEOUT = 42 
 
-def handle_exception(e: Exception) -> Tuple[ExitCode, ResultStatus, Optional[int]]:
+def handle_exception(e: Exception, runtime: int) -> Tuple[ExitCode, BuildkiteExitCode, Optional[int]]:
     from ray_release.exception import ReleaseTestError
 
     if not isinstance(e, ReleaseTestError):
