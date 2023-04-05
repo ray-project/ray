@@ -23,7 +23,12 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.from_arrow_operator import FromArrowRefs
 from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
-from ray.data._internal.logical.operators.from_pandas_operator import FromPandasRefs
+from ray.data._internal.logical.operators.from_pandas_operator import (
+    FromDask,
+    FromMARS,
+    FromModin,
+    FromPandasRefs,
+)
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.pandas_block import PandasRow
@@ -1450,9 +1455,13 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
                 "Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}"
             )
 
-    return from_pandas_refs(
+    ds = from_pandas_refs(
         [to_ref(next(iter(part.dask.values()))) for part in persisted_partitions]
     )
+
+    from_dask_op = FromDask(df)
+    ds._logical_plan = LogicalPlan(from_dask_op)
+    return ds
 
 
 @PublicAPI
@@ -1467,7 +1476,11 @@ def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
     """
     import mars.dataframe as md
 
-    return md.to_ray_dataset(df)
+    ds = md.to_ray_dataset(df)
+
+    from_mars_op = FromMARS(df)
+    ds._logical_plan = LogicalPlan(from_mars_op)
+    return ds
 
 
 @PublicAPI
@@ -1483,7 +1496,11 @@ def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
     from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
     parts = unwrap_partitions(df, axis=0)
-    return from_pandas_refs(parts)
+    ds = from_pandas_refs(parts)
+
+    from_modin_op = FromModin(df)
+    ds._logical_plan = LogicalPlan(from_modin_op)
+    return ds
 
 
 @PublicAPI

@@ -10,6 +10,7 @@ from ray.data._internal.logical.operators.from_pandas_operator import (
     FromPandasRefs,
     FromDask,
     FromModin,
+    FromMARS,
 )
 from ray.data.context import DatasetContext
 from ray import ObjectRef
@@ -24,7 +25,7 @@ df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
 
 
 def _plan_from_pandas_refs_op(
-    op: Union[FromPandasRefs, FromDask, FromModin]
+    op: Union[FromPandasRefs, FromDask, FromModin, FromMARS]
 ) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for FromPandasRefs.
 
@@ -60,11 +61,22 @@ def _plan_from_pandas_refs_op(
 
         op._dfs = unwrap_partitions(op._df, axis=0)
 
+    def _init_data_from_mars(op: FromMARS):
+        from mars.dataframe.contrib.raydataset import get_chunk_refs
+
+        op._dfs = get_chunk_refs(op._df)
+
     def get_input_data() -> List[RefBundle]:
+        owns_blocks = True
         if isinstance(op, FromDask):
             _init_data_from_dask(op)
         elif isinstance(op, FromModin):
             _init_data_from_modin(op)
+        elif isinstance(op, FromMARS):
+            _init_data_from_mars(op)
+            # MARS holds the MARS dataframe in memory in `to_ray_dataset()`
+            # to avoid object GC, so this operator cannot not own the blocks.
+            owns_blocks = False
 
         context = DatasetContext.get_current()
         ref_bundles: List[RefBundle] = []
@@ -79,7 +91,7 @@ def _plan_from_pandas_refs_op(
             else:
                 block, block_metadata = df_to_block.remote(df_ref)
             ref_bundles.append(
-                RefBundle([(block, ray.get(block_metadata))], owns_blocks=True)
+                RefBundle([(block, ray.get(block_metadata))], owns_blocks=owns_blocks)
             )
         return ref_bundles
 
