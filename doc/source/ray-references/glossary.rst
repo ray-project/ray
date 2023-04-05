@@ -94,9 +94,7 @@ Ray Data specifically, please see the :ref:`Ray Datasets Glossary<datasets_gloss
         .. TODO: How does this relate to RLlib checkpoints etc.? Be clear here
 
     Ray Client
-        The Ray Client is an API that connects a Python script to a remote Ray cluster.
-        Effectively, it allows you to leverage a remote Ray cluster just like you would
-        with Ray running on your local machine.
+        The Ray Client is an API that connects an interactive shell to a remote Ray cluster.
         :ref:`Learn more<ray-client-ref>`.
 
     Ray Cluster
