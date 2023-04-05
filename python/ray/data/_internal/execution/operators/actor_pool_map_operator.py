@@ -404,24 +404,30 @@ class AutoscalingPolicy:
         Returns:
             Whether the actor pool should be scaled up by one actor.
         """
-        # TODO(Clark): Replace the ready-to-total-ratio heuristic with a a work queue
+        # TODO: Replace the ready-to-total-ratio heuristic with a a work queue
         # heuristic such that scale-up is only triggered if the current pool doesn't
         # have enough worker slots to process the work queue.
-        # TODO(Clark): Use profiling of the bundle arrival rate, worker startup
+        # TODO: Use profiling of the bundle arrival rate, worker startup
         # time, and task execution time to tailor the work queue heuristic to the
         # running workload and observed Ray performance. E.g. this could be done via an
         # augmented EMA using a queueing model
-        return (
-            # 1. The actor pool will not exceed the configured maximum size.
-            num_total_workers < self._config.max_workers
-            # TODO(Clark): Remove this once we have a good work queue heuristic and our
-            # resource-based backpressure is working well.
-            # 2. At least 80% of the workers in the pool have already started. This will
-            # ensure that workers will be launched in parallel while bounding the worker
-            # pool to requesting 125% of the cluster's available resources.
-            and num_running_workers / num_total_workers
-            > self._config.ready_to_total_workers_ratio
-        )
+        if num_total_workers < self._config.min_workers:
+            # The actor pool does not reach the configured minimum size.
+            return True
+        else:
+            return (
+                # 1. The actor pool will not exceed the configured maximum size.
+                num_total_workers < self._config.max_workers
+                # TODO: Remove this once we have a good work queue heuristic and our
+                # resource-based backpressure is working well.
+                # 2. At least 80% of the workers in the pool have already started.
+                # This will ensure that workers will be launched in parallel while
+                # bounding the worker pool to requesting 125% of the cluster's
+                # available resources.
+                and num_total_workers > 0
+                and num_running_workers / num_total_workers
+                > self._config.ready_to_total_workers_ratio
+            )
 
     def should_scale_down(
         self,
