@@ -263,7 +263,7 @@ def test_load_trial_from_json_state(tmpdir):
         "MockTrainable", stub=True, trial_id="abcd1234", local_dir=str(tmpdir)
     )
     trial.create_placement_group_factory()
-    trial.init_logdir()
+    trial.init_local_path()
     trial.status = Trial.TERMINATED
 
     checkpoint_logdir = os.path.join(trial.local_path, "checkpoint_00000")
@@ -285,7 +285,7 @@ def test_change_trial_local_dir(tmpdir):
     trial = Trial(
         "MockTrainable", stub=True, trial_id="abcd1234", local_dir=str(tmpdir)
     )
-    trial.init_logdir()
+    trial.init_local_path()
     trial.status = Trial.TERMINATED
 
     checkpoint_logdir = os.path.join(trial.local_path, "checkpoint_00000")

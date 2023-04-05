@@ -201,7 +201,9 @@ class Trainable:
             self.sync_config.syncer = custom_syncer
         else:
             # Resolves syncer="auto" to an actual syncer if needed
-            self.sync_config.syncer = get_node_to_storage_syncer(self.sync_config)
+            self.sync_config.syncer = get_node_to_storage_syncer(
+                self.sync_config, self.remote_checkpoint_dir
+            )
 
         self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
         self.sync_sleep_time = float(
