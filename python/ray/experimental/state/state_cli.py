@@ -705,7 +705,7 @@ log_tail_option = click.option(
     required=False,
     type=int,
     default=DEFAULT_LOG_LIMIT,
-    help="Number of lines to tail from log. -1 indicates fetching the whole file.",
+    help="Number of lines to tail from log. Use -1 to fetch the whole file.",
 )
 
 log_interval_option = click.option(
@@ -756,6 +756,27 @@ log_suffix_option = click.option(
     ),
 )
 
+log_encoding_option = click.option(
+    "--encoding",
+    required=False,
+    default="utf-8",
+    help=(
+        "The encoding use to decode the log file. Accepts any encoding "
+        "supported by Python's `codecs` module. Defaults to utf-8."
+    ),
+)
+
+log_encoding_errors_option = click.option(
+    "--encoding-errors",
+    required=False,
+    default="strict",
+    help=(
+        "The error handling scheme to use for decoding errors. "
+        "Accepts any error handling scheme supported by Python's `codecs`"
+        "module. Defaults to strict."
+    ),
+)
+
 
 def _get_head_node_ip(address: Optional[str] = None):
     """Get the head node ip from the ray address if possible
@@ -786,6 +807,8 @@ def _print_log(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     interval: Optional[float] = None,
     suffix: Optional[str] = None,
+    encoding: str = "utf-8",
+    encoding_errors: str = "strict",
 ):
     """Wrapper around `get_log()` that prints the preamble and the log lines"""
     if tail > 0:
@@ -810,6 +833,8 @@ def _print_log(
         _interval=interval,
         timeout=timeout,
         suffix=suffix,
+        encoding=encoding,
+        errors=encoding_errors,
     ):
         print(chunk, end="", flush=True)
 
@@ -884,6 +909,8 @@ logs_state_cli_group = LogCommandGroup(help=LOG_CLI_HELP_MSG)
 @log_tail_option
 @log_interval_option
 @log_timeout_option
+@log_encoding_option
+@log_encoding_errors_option
 @click.pass_context
 @PublicAPI(stability="alpha")
 def log_cluster(
@@ -896,6 +923,8 @@ def log_cluster(
     tail: int,
     interval: float,
     timeout: int,
+    encoding: str,
+    encoding_errors: str,
 ):
     """Get/List logs that matches the GLOB_FILTER in the cluster.
     By default, it prints a list of log files that match the filter.
@@ -970,6 +999,8 @@ def log_cluster(
         follow=follow,
         interval=interval,
         timeout=timeout,
+        encoding=encoding,
+        encoding_errors=encoding_errors,
     )
 
 
