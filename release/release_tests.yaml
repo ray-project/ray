@@ -1618,10 +1618,6 @@
     wait_for_nodes:
       num_nodes: 3
 
-
-  smoke_test:
-    frequency: nightly
-
     run:
       timeout: 3600
 
