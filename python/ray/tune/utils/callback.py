@@ -82,7 +82,7 @@ def _create_default_callbacks(
         isinstance(c, TrialProgressCallback) for c in callbacks
     )
 
-    if has_trial_progress_callback and air_verbosity:
+    if has_trial_progress_callback and air_verbosity is not None:
         logger.warning(
             "AIR_VERBOSITY is set, ignoring passed-in TrialProgressCallback."
         )
@@ -90,7 +90,7 @@ def _create_default_callbacks(
             c for c in callbacks if not isinstance(c, TrialProgressCallback)
         ]
         callbacks = new_callbacks
-    if air_verbosity:  # new flow
+    if air_verbosity is not None:  # new flow
         from ray.tune.experimental.output import AirResultCallbackWrapper
 
         callbacks.append(AirResultCallbackWrapper(air_verbosity))
