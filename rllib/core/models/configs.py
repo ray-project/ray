@@ -261,40 +261,19 @@ class CNNTransposeHeadConfig(ModelConfig):
     The configured CNNTranspose transforms 1D-observations into an image space.
     The stack of layers is composed of a sequence of Conv2DTranspose layers.
     `input_dims` describes the shape of the (1D) input tensor,
-    `initial_dense_layer_output_dims` describes the input into the first Conv2DTranspose
-    layer. Translation from `input_dim` to `initial_dense_layer_output_dims` is done
+    `initial_image_dims` describes the input into the first Conv2DTranspose
+    layer. Translation from `input_dim` to `initial_image_dims` is done
     via an initial Dense layer (w/o activation, w/o layer-norm, and w/ bias).
     Beyond that, each layer specified by `cnn_transpose_filter_specifiers`
     is followed by an activation function according
-    to `cnn_transpose_activation`. `output_dims` is reached after the final
-    Conv2DTranspose layer with `output_activation`.
-    See ModelConfig for usage details.
-
-    Example:
-
-        Configuration:
-        input_dims = [10]  # input z-vector
-        initial_dense_layer_output_dims = [4, 4, 96]  # first input to deconv stack
-        cnn_transpose_filter_specifiers = [
-            [48, [4, 4], 2],
-            [24, [4, 4], 2],
-            [3, [4, 4], 2],
-        ]
-        cnn_transpose_activation = "silu"
-        cnn_transpose_use_layernorm = False
-        use_bias = True|False
-
-        Resulting stack in pseudocode:
-        Linear(10, 4*4*24)
-        Conv2DTranspose(in_channels=96, out_channels=48, kernel_size=[4, 4], stride=2)
-        Swish()
-        Conv2DTranspose(in_channels=48, out_channels=24, kernel_size=[4, 4], stride=2)
-        Swish()
-        Conv2DTranspose(in_channels=24, out_channels=3, kernel_size=[4, 4], stride=2)
+    to `cnn_transpose_activation`.
+    `output_dims` is reached after the final Conv2DTranspose layer.
+    Not that the last Conv2DTranspose layer is never activated and never layer-norm'd
+    regardless of the other settings.
 
     Attributes:
         input_dims: The input dimensions of the network. This must be a 1D tensor.
-        initial_dense_layer_output_dims: The shape of the input to the first
+        initial_image_dims: The shape of the input to the first
             Conv2DTranspose layer. We will make sure the input is transformed to
             these dims via a preceding initial Dense layer, followed by a reshape,
             before entering the Conv2DTranspose stack.
@@ -307,10 +286,73 @@ class CNNTransposeHeadConfig(ModelConfig):
         cnn_transpose_use_layernorm: Whether to insert a LayerNorm functionality
             in between each Conv2DTranspose layer's output and its activation.
         use_bias: Whether to use bias on all Conv2D layers.
+
+    Example:
+    .. code-block:: python
+        # Configuration:
+        config = CNNTransposeHeadConfig(
+            input_dims=[10],  # 1D input vector (possibly coming from another NN)
+            initial_image_dims=[4, 4, 96],  # first image input to deconv stack
+            cnn_transpose_filter_specifiers=[
+                [48, [4, 4], 2],
+                [24, [4, 4], 2],
+                [3, [4, 4], 2],
+            ],
+            cnn_transpose_activation="silu",  # or "swish", which is the same
+            cnn_transpose_use_layernorm=False,
+            use_bias=True,
+        )
+        model = config.build(framework="torch)
+
+        # Resulting stack in pseudocode:
+        # Linear(10, 4*4*24)
+        # Conv2DTranspose(
+        #   in_channels=96, out_channels=48,
+        #   kernel_size=[4, 4], stride=2, bias=True,
+        # )
+        # Swish()
+        # Conv2DTranspose(
+        #   in_channels=48, out_channels=24,
+        #   kernel_size=[4, 4], stride=2, bias=True,
+        # )
+        # Swish()
+        # Conv2DTranspose(
+        #   in_channels=24, out_channels=3,
+        #   kernel_size=[4, 4], stride=2, bias=True,
+        # )
+
+    Example:
+    .. code-block:: python
+        # Configuration:
+        config = CNNTransposeHeadConfig(
+            input_dims=[128],  # 1D input vector (possibly coming from another NN)
+            initial_image_dims=[4, 4, 32],  # first image input to deconv stack
+            cnn_transpose_filter_specifiers=[
+                [16, 4, 2],
+                [3, 4, 2],
+            ],
+            cnn_transpose_activation="relu",
+            cnn_transpose_use_layernorm=True,
+            use_bias=False,
+        )
+        model = config.build(framework="torch)
+
+        # Resulting stack in pseudocode:
+        # Linear(128, 4*4*32, bias=True)  # bias always True for initial dense layer
+        # Conv2DTranspose(
+        #   in_channels=32, out_channels=16,
+        #   kernel_size=[4, 4], stride=2, bias=False,
+        # )
+        # LayerNorm((-3, -2, -1))  # layer normalize over last 3 axes
+        # ReLU()
+        # Conv2DTranspose(
+        #   in_channels=16, out_channels=3,
+        #   kernel_size=[4, 4], stride=2, bias=False,
+        # )
     """
 
     input_dims: Union[List[int], Tuple[int]] = None
-    initial_dense_layer_output_dims: Union[List[int], Tuple[int]] = field(
+    initial_image_dims: Union[List[int], Tuple[int]] = field(
         default_factory=lambda: [4, 4, 96]
     )
     cnn_transpose_filter_specifiers: List[List[Union[int, List[int]]]] = field(
@@ -320,12 +362,17 @@ class CNNTransposeHeadConfig(ModelConfig):
     cnn_transpose_use_layernorm: bool = False
     use_bias: bool = True
 
+    def _validate(self, framework: str = "torch"):
+        if len(self.input_dims) != 1:
+            raise ValueError(
+                f"`input_dims` ({self.input_dims}) of CNNTransposeHeadConfig must be a "
+                "3D tensor (image-like) with the dimensions meaning: width x height x "
+                "num_filters, e.g. `[4, 4, 92]`!"
+            )
+
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
-        # Activation functions in TF are lower case
-        self.cnn_transpose_activation = _convert_to_lower_case_if_tf(
-            self.cnn_transpose_activation, framework
-        )
+        self._validate()
 
         if framework == "torch":
             from ray.rllib.core.models.torch.heads import TorchCNNTransposeHead

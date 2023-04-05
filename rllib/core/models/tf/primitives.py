@@ -101,7 +101,7 @@ class TfCNN(tf.keras.Model):
     """A model containing a CNN with N Conv2D layers.
 
     All layers share the same activation function, bias setup (use bias or not),
-    and LayerNorm setup (use layer normalization or not).
+    and LayerNormalization setup (use layer normalization or not).
 
     Note that there is no flattening nor an additional dense layer at the end of the
     stack. The output of the network is a 3D tensor of dimensions
@@ -129,8 +129,8 @@ class TfCNN(tf.keras.Model):
                 `kernel` as well as `stride` might be provided as width x height tuples
                 OR as single ints representing both dimension (width and height)
                 in case of square shapes.
-            cnn_use_layernorm: Whether to insert a LayerNorm functionality
-                in between each CNN layer's outputs and its activation.
+            cnn_use_layernorm: Whether to insert a LayerNormalization functionality
+                in between each Conv2D layer's outputs and its activation.
             cnn_activation: The activation function to use after each Conv2D layer.
             use_bias: Whether to use bias on all Conv2D layers.
         """
@@ -141,6 +141,7 @@ class TfCNN(tf.keras.Model):
         cnn_activation = get_activation_fn(cnn_activation, framework="tf2")
 
         layers = []
+
         # Input layer.
         layers.append(tf.keras.layers.Input(shape=input_dims))
 
@@ -163,7 +164,7 @@ class TfCNN(tf.keras.Model):
                 )
                 layers.append(tf.keras.layers.Activation(cnn_activation))
 
-        # Create the cnn that potentially includes a flattened layer
+        # Create the final CNN network.
         self.cnn = tf.keras.Sequential(layers)
 
         self.expected_input_dtype = tf.float32
@@ -173,7 +174,16 @@ class TfCNN(tf.keras.Model):
 
 
 class TfCNNTranspose(tf.keras.Model):
-    """A model containing a CNNTranspose with N Conv2DTranspose layers."""
+    """A model containing a CNNTranspose with N Conv2DTranspose layers.
+
+    All layers share the same activation function, bias setup (use bias or not),
+    and LayerNormalization setup (use layer normalization or not), except for the last
+    one, which is never activated and never layer norm'd.
+
+    Note that there is no reshaping/flattening nor an additional dense layer at the
+    beginning or end of the stack. The input as well as output of the network are 3D
+    tensors of dimensions [width x height x num output filters].
+    """
 
     def __init__(
         self,
@@ -187,18 +197,23 @@ class TfCNNTranspose(tf.keras.Model):
         """Initializes a TfCNNTranspose instance.
 
         Args:
-            input_dims: The input dimensions of the network. This is a 3D tensor.
-            cnn_transpose_filter_specifiers: A list of lists, where each element of an
-                inner list contains elements of the form
-                `[number of filters, [kernel width, kernel height], stride]` to
-                specify a convolutional transpose layer stacked in order of the outer
-                list.
+            input_dims: The 3D input dimensions of the network (incoming image).
+            cnn_transpose_filter_specifiers: A list of lists, where each item represents
+                one Conv2DTranspose layer. Each such Conv2DTranspose layer is further
+                specified by the elements of the inner lists. The inner lists follow
+                the format: `[number of filters, kernel, stride]` to
+                specify a convolutional-transpose layer stacked in order of the
+                outer list.
+                `kernel` as well as `stride` might be provided as width x height tuples
+                OR as single ints representing both dimension (width and height)
+                in case of square shapes.
+            cnn_transpose_use_layernorm: Whether to insert a LayerNormalization
+                functionality in between each Conv2DTranspose layer's outputs and its
+                activation.
+                The last Conv2DTranspose layer will not be normed, regardless.
             cnn_transpose_activation: The activation function to use after each layer
                 (except for the last Conv2DTranspose layer, which is always
                 non-activated).
-            cnn_transpose_use_layernorm: Whether to insert a LayerNorm functionality
-                in between each Conv2DTranspose layer's output and its activation.
-                The last Conv2DTranspose layer will not be normed, regardless.
             use_bias: Whether to use bias on all Conv2DTranspose layers.
         """
         super().__init__()
@@ -210,6 +225,9 @@ class TfCNNTranspose(tf.keras.Model):
         )
 
         layers = []
+
+        # Input layer.
+        layers.append(tf.keras.layers.Input(shape=input_dims))
 
         for i, (num_filters, kernel_size, strides) in enumerate(
             cnn_transpose_filter_specifiers
@@ -232,9 +250,14 @@ class TfCNNTranspose(tf.keras.Model):
                 )
             )
             if cnn_transpose_use_layernorm and not is_final_layer:
-                layers.append(tf.keras.layers.LayerNormalization(axis=[-3, -2, -1]))
+                # Use epsilon=1e-5 here (instead of default 1e-3) to be unified with
+                # torch. Need to normalize over all axes.
+                layers.append(tf.keras.layers.LayerNormalization(
+                    axis=[-3, -2, -1], epsilon=1e-5
+                ))
                 layers.append(tf.keras.layers.Activation(cnn_transpose_activation))
 
+        # Create the final CNNTranspose network.
         self.cnn_transpose = tf.keras.Sequential(layers)
 
         self.expected_input_dtype = tf.float32

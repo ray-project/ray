@@ -11,7 +11,7 @@ from ray.rllib.core.models.configs import (
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.core.models.torch.primitives import TorchMLP
+from ray.rllib.core.models.torch.primitives import TorchCNNTranspose, TorchMLP
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 
@@ -93,15 +93,17 @@ class TorchCNNTransposeHead(TorchModel):
         super().__init__(config)
 
         # Initial, inactivated Dense layer (always w/ bias).
+        # This layer is responsible for getting the incoming tensor into a proper
+        # initial image shape (w x h x filters) for the suceeding Conv2DTranspose stack.
         self.initial_dense = nn.Linear(
             in_features=config.input_dims[0],
-            out_features=int(np.prod(config.initial_dense_layer_output_dims)),
+            out_features=int(np.prod(config.initial_image_dims)),
             bias=True,
         )
 
-        # The main CNN Transpose stack.
+        # The main CNNTranspose stack.
         self.cnn_transpose_net = TorchCNNTranspose(
-            input_dims=config.initial_dense_layer_output_dims,
+            input_dims=config.initial_image_dims,
             cnn_transpose_filter_specifiers=config.cnn_transpose_filter_specifiers,
             cnn_transpose_activation=config.cnn_transpose_activation,
             cnn_transpose_use_layernorm=config.cnn_transpose_use_layernorm,
@@ -126,7 +128,7 @@ class TorchCNNTransposeHead(TorchModel):
         out = self.initial_dense(inputs)
         # Reshape to initial 3D (image-like) format to enter CNN transpose stack.
         out = out.reshape((-1,) + tuple(
-            self.config.initial_dense_layer_output_dims)
+            self.config.initial_image_dims)
         )
         out = self.cnn_transpose_net(out)
         # Add 0.5 to center (always non-activated, non-normalized) outputs more

@@ -11,7 +11,7 @@ from ray.rllib.core.models.configs import (
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_tf import TfTensorSpec
 from ray.rllib.core.models.tf.base import TfModel
-from ray.rllib.core.models.tf.primitives import TfMLP
+from ray.rllib.core.models.tf.primitives import TfCNNTranspose, TfMLP
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import override
 
@@ -92,18 +92,20 @@ class TfFreeLogStdMLPHead(TfModel):
 
 class TfCNNTransposeHead(TfModel):
     def __init__(self, config: CNNTransposeHeadConfig) -> None:
-        TfModel.__init__(self, config)
+        super().__init__(config)
 
         # Initial, inactivated Dense layer (always w/ bias).
+        # This layer is responsible for getting the incoming tensor into a proper
+        # initial image shape (w x h x filters) for the suceeding Conv2DTranspose stack.
         self.initial_dense = tf.keras.layers.Dense(
-            units=int(np.prod(config.initial_dense_layer_output_dims)),
+            units=int(np.prod(config.initial_image_dims)),
             activation=None,
             use_bias=True,
         )
 
-        # The main CNN Transpose stack.
+        # The main CNNTranspose stack.
         self.cnn_transpose_net = TfCNNTranspose(
-            input_dims=config.initial_dense_layer_output_dims,
+            input_dims=config.initial_image_dims,
             cnn_transpose_filter_specifiers=config.cnn_transpose_filter_specifiers,
             cnn_transpose_activation=config.cnn_transpose_activation,
             cnn_transpose_use_layernorm=config.cnn_transpose_use_layernorm,
@@ -111,11 +113,11 @@ class TfCNNTransposeHead(TfModel):
         )
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Union[Spec, None]:
         return TfTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Union[Spec, None]:
         return TfTensorSpec(
             "b, w, h, c",
             w=self.config.output_dims[0],
@@ -125,10 +127,15 @@ class TfCNNTransposeHead(TfModel):
 
     @override(Model)
     def _forward(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
+        # Push through initial dense layer to get dimensions of first "image".
         out = self.initial_dense(inputs)
         # Reshape to initial 3D (image-like) format to enter CNN transpose stack.
-        out = tf.reshape(out, shape=(-1,) + tuple(self.config.initial_dense_layer_output_dims))
+        out = tf.reshape(
+            out,
+            shape=(-1,) + tuple(self.config.initial_image_dims),
+        )
+        # Push through CNN transpose stack.
         out = self.cnn_transpose_net(out)
-        # Add 0.5 to center (always non-activated, non-normalized) outputs more
+        # Add 0.5 to center the (always non-activated, non-normalized) outputs more
         # around 0.0.
         return out + 0.5
