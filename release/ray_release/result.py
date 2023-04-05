@@ -87,7 +87,7 @@ def handle_exception(e: Exception) -> Tuple[ExitCode, BuildkiteExitCode, Optiona
         error_type = BuildkiteExitCode.UNKNOWN
         runtime = None
     elif 10 <= exit_code.value < 20:
-        retry_count = os.environ.get("BUILDKITE_RETRY_COUNT", 0)
+        retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", "0"))
         # Retry at least once of transient infra error
         if retry_count == 0:
           error_type = BuildkiteExitCode.TRANSIENT_INFRA_ERROR
