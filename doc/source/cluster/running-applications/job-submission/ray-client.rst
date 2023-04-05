@@ -7,8 +7,9 @@ Ray Client: Interactive Development
 
 The Ray Client is an API that connects a Python script to a **remote** Ray cluster. Effectively, it allows you to leverage a remote Ray cluster just like you would with Ray running on your local machine.
 
-By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you can connect from your laptop (or anywhere) directly to a remote cluster and scale-out your Ray code, while maintaining the ability to develop interactively in a Python shell. **This will only work with Ray 1.5+.**
-
+.. warning::
+    Ray Client is only recommended for settings where your interactive Python shell is on a separate network than the Ray cluster.
+    In other settings, it is recommended to use :ref:`another method of running Ray workloads on a Ray cluster <jobs-overview>`.
 
 .. code-block:: python
 
@@ -29,12 +30,14 @@ By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you
 When to use Ray Client
 ----------------------
 
-Ray Client can be used when you want to connect an interactive Python shell to a **remote** cluster.
+Ray Client is only recommended for settings where the Python Shell must be separated from the **remote** cluster. For example, if you have
+a Jupyter Notebook deployment that is on a different cluster than your Ray deployment, then you should consider using Ray client.
 
 * Use ``ray.init("ray://<head_node_host>:10001")`` (Ray Client) if you've set up a remote cluster at ``<head_node_host>`` and you want to do interactive work. This will connect your shell to the cluster. See the section on :ref:`using Ray Client<how-do-you-use-the-ray-client>` for more details on setting up your cluster.
 * Use ``ray.init()`` (non-client connection, no address specified) if you're developing locally and want to connect to an existing cluster (i.e. ``ray start --head`` has already been run), or automatically create a local cluster and attach directly to it. This can also be used for :ref:`Ray Job <jobs-overview>` submission.
 
-Ray Client is useful for developing interactively in a local Python shell. However, it requires a stable connection to the remote cluster and will terminate the workload if the connection is lost for :ref:`more than 30 seconds <client-disconnections>`. If you have a long running workload that you want to run on your cluster, we recommend using :ref:`Ray Jobs <jobs-overview>` instead.
+Ray Client requires a stable connection to the remote cluster and will terminate the workload if the connection is lost for :ref:`more than 30 seconds <client-disconnections>`.
+If you have a long running workload that you want to run on your cluster, we recommend using :ref:`Ray Jobs <jobs-overview>` instead.
 
 Client arguments
 ----------------
