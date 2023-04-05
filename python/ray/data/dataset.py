@@ -4091,6 +4091,8 @@ class Datastream(Generic[T]):
         This can be used to read all blocks into memory. By default, Datastreams
         doesn't read blocks from the datasource until the first transform.
 
+        This is a no-op if the Datastream is already cached as a MaterializedDatastream.
+
         Returns:
             A Datastream with all blocks fully materialized in memory.
         """
