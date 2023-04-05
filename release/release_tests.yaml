@@ -1618,15 +1618,13 @@
     wait_for_nodes:
       num_nodes: 3
 
-    run:
-      timeout: 3600
-
   alert: long_running_tests
 
   variations:
     - __suffix__: aws
     - __suffix__: smoke-test
       frequency: nightly
+      timeout: 3600
     - __suffix__: gce
       env: gce
       frequency: manual
