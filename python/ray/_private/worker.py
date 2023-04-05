@@ -456,6 +456,7 @@ class Worker:
         self.ray_debugger_external = False
         self._load_code_from_local = False
         # Opened file descriptor to stdout/stderr for this python worker.
+        self._enable_record_task_log = ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING
         self._out_file = None
         self._err_file = None
         # Create the lock here because the serializer will use it before
@@ -539,6 +540,9 @@ class Worker:
 
     def record_task_log_start(self):
         """Record the task log info when task starts executing"""
+        if not self._enable_record_task_log:
+            return
+
         self.core_worker.record_task_log_start(
             self.get_out_file_path(),
             self.get_err_file_path(),
@@ -548,6 +552,9 @@ class Worker:
 
     def record_task_log_end(self):
         """Record the task log info when task finishes executing"""
+        if not self._enable_record_task_log:
+            return
+
         self.core_worker.record_task_log_end(
             self.get_current_out_offset(), self.get_current_err_offset()
         )
@@ -1271,6 +1278,8 @@ def init(
     """
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
+    else:
+        logging.getLogger("ray").handlers.clear()
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
