@@ -3,7 +3,7 @@ import React from "react";
 import { MemoryRouter } from "react-router-dom";
 import { Actor } from "../type/actor";
 import ActorTable from "./ActorTable";
-const ACTORS: { [actorId: string]: Actor } = {
+const MOCK_ACTORS: { [actorId: string]: Actor } = {
   ACTOR_1: {
     actorId: "ACTOR_1",
     jobId: "01000000",
@@ -23,6 +23,7 @@ const ACTORS: { [actorId: string]: Actor } = {
     exitDetail: "-",
     requiredResources: {},
     placementGroupId: "123",
+    reprName: ",",
   },
   ACTOR_2: {
     actorId: "ACTOR_2",
@@ -43,13 +44,14 @@ const ACTORS: { [actorId: string]: Actor } = {
     exitDetail: "-",
     requiredResources: {},
     placementGroupId: "123",
+    reprName: ",",
   },
 };
 describe("ActorTable", () => {
   it("renders a table of actors sorted by state", () => {
     const { getByRole } = render(
       <MemoryRouter>
-        <ActorTable actors={ACTORS} />
+        <ActorTable actors={MOCK_ACTORS} />
       </MemoryRouter>,
     );
 
@@ -69,11 +71,17 @@ describe("ActorTable", () => {
   });
 
   it("renders a table of actors sorted by startTime asc when states are the same", () => {
-    ACTORS["ACTOR_2"].state = "ALIVE";
+    const RUNNING_ACTORS = {
+      ...MOCK_ACTORS,
+      ACTOR_2: {
+        ...MOCK_ACTORS.ACTOR_2,
+        state: "ALIVE",
+      },
+    };
 
     const { getByRole } = render(
       <MemoryRouter>
-        <ActorTable actors={ACTORS} />
+        <ActorTable actors={RUNNING_ACTORS} />
       </MemoryRouter>,
     );
     const actor1Row = getByRole("row", {
