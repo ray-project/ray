@@ -116,13 +116,23 @@ TRIAL_INFO = "__trial_info__"
 STDOUT_FILE = "__stdout_file__"
 STDERR_FILE = "__stderr_file__"
 
+
+def _get_defaults_results_dir() -> str:
+    return (
+        # This can be overwritten by our libraries
+        os.environ.get("RAY_AIR_LOCAL_CACHE_DIR")
+        # This is a directory provided by Bazel automatically
+        or os.environ.get("TEST_TMPDIR")
+        # This is the old way to specify the results dir
+        # Deprecate: Remove in 2.6
+        or os.environ.get("TUNE_RESULT_DIR")
+        # Default
+        or os.path.expanduser("~/ray_results")
+    )
+
+
 # Where Tune writes result files by default
-DEFAULT_RESULTS_DIR = (
-    # This is the file system that bazel test uses.
-    os.environ.get("TEST_TMPDIR")
-    or os.environ.get("TUNE_RESULT_DIR")
-    or os.path.expanduser("~/ray_results")
-)
+DEFAULT_RESULTS_DIR = _get_defaults_results_dir()
 
 DEFAULT_EXPERIMENT_NAME = "default"
 
