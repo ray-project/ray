@@ -1630,7 +1630,7 @@
       frequency: manual
       cluster:
         cluster_env: app_config.yaml
-        cluster_compute: 8gpus_96cpus_gce.yaml
+        cluster_compute: tpl_cpu_3_gce.yaml
 
 - name: long_running_impala
   group: Long running tests
