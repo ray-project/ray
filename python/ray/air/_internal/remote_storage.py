@@ -41,8 +41,17 @@ from ray import logger
 
 
 class _ExcludingLocalFilesystem(LocalFileSystem):
-    def __init__(self, exclude: List[str], auto_mkdir=False, **kwargs):
-        super().__init__(auto_mkdir=auto_mkdir, **kwargs)
+    """LocalFileSystem wrapper to exclude files according to patterns.
+
+    Args:
+        exclude: List of patterns that are applied to files returned by
+            ``self.find()``. If a file path matches this pattern, it will
+            be excluded.
+
+    """
+
+    def __init__(self, exclude: List[str], **kwargs):
+        super().__init__(**kwargs)
         self._exclude = exclude
 
     @property
@@ -50,12 +59,20 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
         return "_excluding_local"
 
     def _should_exclude(self, name: str) -> bool:
+        """Return True if `name` matches any of the `self._exclude` patterns."""
+        alt = None
+        if os.path.isdir(name):
+            # If this is a directory, also test it with trailing slash
+            alt = os.path.join(name, "")
         for excl in self._exclude:
             if fnmatch.fnmatch(name, excl):
+                return True
+            if alt and fnmatch.fnmatch(alt, excl):
                 return True
         return False
 
     def find(self, path, maxdepth=None, withdirs=False, detail=False, **kwargs):
+        """Call parent find() and exclude from result."""
         names = super().find(
             path, maxdepth=maxdepth, withdirs=withdirs, detail=detail, **kwargs
         )
