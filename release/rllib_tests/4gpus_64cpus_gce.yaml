@@ -15,6 +15,7 @@ worker_node_types:
       min_workers: 0
       max_workers: 0
       use_spot: false
+
 gcp_advanced_configurations_json:
   instance_properties:
     disks:
