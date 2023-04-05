@@ -537,7 +537,8 @@ def check_file(type, task_name, expected_log, expect_no_end=False):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Failing on Windows. we should fix it asap"
+    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    reason="Skipping if not recording task logs offsets.",
 )
 def test_task_logs_info_basic(shutdown_only):
     """Test tasks (normal tasks/actor tasks) execution logging
@@ -594,6 +595,10 @@ def test_task_logs_info_basic(shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.skipif(
+    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    reason="Skipping if not recording task logs offsets.",
+)
 def test_task_logs_info_disabled(shutdown_only, monkeypatch):
     """Test when redirect disabled, no task log info is available
     due to missing log file
@@ -619,6 +624,10 @@ def test_task_logs_info_disabled(shutdown_only, monkeypatch):
         wait_for_condition(verify)
 
 
+@pytest.mark.skipif(
+    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    reason="Skipping if not recording task logs offsets.",
+)
 def test_task_logs_info_running_task(shutdown_only):
     ray.init(num_cpus=1)
 
