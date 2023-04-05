@@ -6,6 +6,7 @@ import ray
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
@@ -14,6 +15,7 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
     NodeIdStr,
 )
+from ray.data._internal.execution.util import locality_string
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _map_task,
@@ -21,6 +23,8 @@ from ray.data._internal.execution.operators.map_operator import (
 )
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
+
+logger = DatasetLogger(__name__)
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
@@ -66,10 +70,7 @@ class ActorPoolMapOperator(MapOperator):
             ObjectRef[ObjectRefGenerator], Tuple[_TaskState, ray.actor.ActorHandle]
         ] = {}
         # A pool of running actors on which we can execute mapper tasks.
-        self._actor_pool = _ActorPool(
-            max_tasks_in_flight=self._autoscaling_policy._config.max_tasks_in_flight,
-            max_tasks_rampup_threshold=self._autoscaling_policy.min_workers,
-        )
+        self._actor_pool = _ActorPool(autoscaling_policy._config.max_tasks_in_flight)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = collections.deque()
         # Cached actor class.
@@ -89,6 +90,16 @@ class ActorPoolMapOperator(MapOperator):
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
         for _ in range(self._autoscaling_policy.min_workers):
             self._start_actor()
+        refs = self._actor_pool.get_pending_actor_refs()
+
+        # We synchronously wait for the initial number of actors to start. This avoids
+        # situations where the scheduler is unable to schedule downstream operators
+        # due to lack of available actors, causing an initial "pileup" of objects on
+        # upstream operators, leading to a spike in memory usage prior to steady state.
+        logger.get_logger().info(
+            f"{self._name}: Waiting for {len(refs)} pool actors to start..."
+        )
+        ray.get(refs)
 
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
@@ -222,8 +233,9 @@ class ActorPoolMapOperator(MapOperator):
         if pending:
             base += f" ({pending} pending)"
         if self._actor_locality_enabled:
-            base += f" [{self._actor_pool._locality_hits} locality hits,"
-            base += f" {self._actor_pool._locality_misses} misses]"
+            base += " " + locality_string(
+                self._actor_pool._locality_hits, self._actor_pool._locality_misses
+            )
         else:
             base += " [locality off]"
         return base
@@ -279,6 +291,16 @@ class ActorPoolMapOperator(MapOperator):
                 ray_remote_args["scheduling_strategy"] = "SPREAD"
             else:
                 ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+        # Enable actor fault tolerance by default, with infinite actor recreations and
+        # up to N retries per task. The user can customize this in map_batches via
+        # extra kwargs (e.g., map_batches(..., max_restarts=0) to disable).
+        if "max_restarts" not in ray_remote_args:
+            ray_remote_args["max_restarts"] = -1
+        if (
+            "max_task_retries" not in ray_remote_args
+            and ray_remote_args.get("max_restarts") != 0
+        ):
+            ray_remote_args["max_task_retries"] = 5
         return ray_remote_args
 
 
@@ -433,30 +455,10 @@ class _ActorPool:
     This class is in charge of tracking the number of in-flight tasks per actor,
     providing the least heavily loaded actor to the operator, and killing idle
     actors when the operator is done submitting work to the pool.
-
-    Args:
-        max_tasks_in_flight: The maximum number of tasks to queue on a single actor at
-            a time. The actual max_tasks_in_flight starts at 1, and then ramps up
-            to this value after `ramp_up_threshold` actors have been created, to allow
-            for even scheduling for datasets with a small number of partitions.
-        max_tasks_rampup_threshold: The number of actors to wait for before ramping up
-            `max_tasks_in_flight`.
     """
 
-    def __init__(
-        self,
-        max_tasks_in_flight: int = float("inf"),
-        max_tasks_rampup_threshold: int = 1,
-    ):
-        # We start with 1 task in flight, then ramp up to `max_tasks_in_flight`
-        # after the `max_tasks_rampup_threshold` actors have been created.
-        # This is to ensure we don't overschedule tasks to certain actors
-        # when the dataset has a small number of partitions. We first prioritize
-        # even sharding across min_workers actors.
-        self._max_tasks_in_flight_final = max_tasks_in_flight
-        self._max_tasks_in_flight = 1
-        self._max_tasks_rampup_threshold = max_tasks_rampup_threshold
-
+    def __init__(self, max_tasks_in_flight: int = float("inf")):
+        self._max_tasks_in_flight = max_tasks_in_flight
         # Number of tasks in flight per actor.
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
         # Node id of each ready actor.
@@ -504,11 +506,6 @@ class _ActorPool:
         actor = self._pending_actors.pop(ready_ref)
         self._num_tasks_in_flight[actor] = 0
         self._actor_locations[actor] = ray.get(ready_ref)
-
-        # Ramp up to the final `max_tasks_in_flight` value after the threshold is
-        # reached.
-        if len(self._num_tasks_in_flight) >= self._max_tasks_rampup_threshold:
-            self._max_tasks_in_flight = self._max_tasks_in_flight_final
         return True
 
     def pick_actor(

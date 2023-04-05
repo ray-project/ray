@@ -14,7 +14,7 @@ halfcheetah_cql:
         #input: d4rl.halfcheetah-medium-replay-v0
 
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         q_model_config:
             fcnet_activation: relu
             fcnet_hiddens: [256, 256, 256]

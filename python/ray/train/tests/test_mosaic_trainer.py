@@ -9,6 +9,7 @@ from torchvision import transforms, datasets
 from ray.air import session
 from ray.air.config import ScalingConfig
 import ray.train as train
+from ray.train.trainer import TrainingFailedError
 from ray.tune.result import TRAINING_ITERATION
 
 
@@ -148,13 +149,16 @@ def test_loggers(ray_start_4_cpus):
     from composer.loggers import Logger
     from composer.core.callback import Callback
 
+    class _CallbackExistsError(ValueError):
+        pass
+
     class DummyLogger(LoggerDestination):
         def fit_start(self, state: State, logger: Logger) -> None:
-            raise ValueError("Composer Logger object exists.")
+            raise ValueError
 
     class DummyCallback(Callback):
         def fit_start(self, state: State, logger: Logger) -> None:
-            raise ValueError("Composer Callback object exists.")
+            raise _CallbackExistsError
 
     class DummyMonitorCallback(Callback):
         def fit_start(self, state: State, logger: Logger) -> None:
@@ -174,7 +178,7 @@ def test_loggers(ray_start_4_cpus):
 
     trainer.fit()
 
-    # DummyCallback should throw an error since it should not have been removed.
+    # DummyCallback should throw an error since it's not removed automatically.
     trainer_init_config["callbacks"] = DummyCallback()
     trainer = MosaicTrainer(
         trainer_init_per_worker=trainer_init_per_worker,
@@ -182,9 +186,9 @@ def test_loggers(ray_start_4_cpus):
         scaling_config=scaling_config,
     )
 
-    with pytest.raises(ValueError) as e:
+    with pytest.raises(TrainingFailedError) as exc_info:
         trainer.fit()
-        assert e == "Composer Callback object exists."
+    assert isinstance(exc_info.value.__cause__, _CallbackExistsError)
 
     trainer_init_config["callbacks"] = DummyMonitorCallback()
     trainer = MosaicTrainer(

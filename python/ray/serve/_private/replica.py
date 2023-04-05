@@ -129,6 +129,9 @@ def create_replica_wrapper(name: str):
                 controller_name, namespace=SERVE_NAMESPACE
             )
 
+            # Indicates whether the replica has finished initializing.
+            self._init_finish_event = asyncio.Event()
+
             # This closure initializes user code and finalizes replica
             # startup. By splitting the initialization step like this,
             # we can already access this actor before the user code
@@ -164,6 +167,7 @@ def create_replica_wrapper(name: str):
                     is_function,
                     controller_handle,
                 )
+                self._init_finish_event.set()
 
             # Is it fine that replica is None here?
             # Should we add a check in all methods that use self.replica
@@ -243,9 +247,13 @@ def create_replica_wrapper(name: str):
             if user_config is not None:
                 await self.replica.reconfigure(user_config)
 
-            return self.get_metadata()
+            return await self.get_metadata()
 
-        def get_metadata(self) -> Tuple[DeploymentConfig, DeploymentVersion]:
+        async def get_metadata(
+            self,
+        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+            # Wait for replica initialization to finish
+            await self._init_finish_event.wait()
             return self.replica.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
@@ -363,21 +371,6 @@ class RayServeReplica:
                 metrics_process_func=process_remote_func,
             )
 
-        # NOTE(edoakes): we used to recommend that users use the "ray" logger
-        # and tagged the logs with metadata as below. We now recommend using
-        # the "ray.serve" 'component logger' (as of Ray 1.13). This is left to
-        # maintain backwards compatibility with users who were using the
-        # existing logger. We can consider removing it in Ray 2.0.
-        ray_logger = logging.getLogger("ray")
-        for handler in ray_logger.handlers:
-            handler.setFormatter(
-                logging.Formatter(
-                    handler.formatter._fmt
-                    + f" component=serve deployment={self.deployment_name} "
-                    f"replica={self.replica_tag}"
-                )
-            )
-
     async def check_health(self):
         await self.user_health_check()
 
@@ -444,10 +437,9 @@ class RayServeReplica:
         Returns the user-provided output and a boolean indicating if the
         request succeeded (user code didn't raise an exception).
         """
-        logger.debug(
-            "Replica {} started executing request {}".format(
-                self.replica_tag, request_item.metadata.request_id
-            )
+        logger.info(
+            f"Started executing request {request_item.metadata.request_id}",
+            extra={"log_to_stderr": False},
         )
 
         args, kwargs = parse_request_item(request_item)

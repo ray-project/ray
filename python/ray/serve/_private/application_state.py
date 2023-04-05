@@ -1,5 +1,6 @@
 import traceback
 from typing import Dict, List
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.common import (
@@ -161,21 +162,25 @@ class ApplicationState:
                     return
                 try:
                     ray.get(finished[0])
+                    logger.info(f"Deploy task for app '{self.name}' ran successfully.")
                 except RayTaskError as e:
                     self.status = ApplicationStatus.DEPLOY_FAILED
                     # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
                     # here because the full details of the error is not displayed
                     # properly with traceback.format_exc(). RayTaskError has its own
                     # custom __str__ function.
-                    self.app_msg = f"Deployment failed:\n{str(e)}"
+                    self.app_msg = f"Deploying app '{self.name}' failed:\n{str(e)}"
                     self.deploy_obj_ref = None
+                    logger.warning(self.app_msg)
                     return
                 except RuntimeEnvSetupError:
                     self.status = ApplicationStatus.DEPLOY_FAILED
                     self.app_msg = (
-                        f"Runtime env setup failed:\n{traceback.format_exc()}"
+                        f"Runtime env setup for app '{self.name}' "
+                        f"failed:\n{traceback.format_exc()}"
                     )
                     self.deploy_obj_ref = None
+                    logger.warning(self.app_msg)
                     return
             deployments_statuses = (
                 self.deployment_state_manager.get_deployment_statuses(
@@ -215,11 +220,20 @@ class ApplicationState:
         )
 
     def list_deployment_details(self) -> Dict[str, DeploymentDetails]:
-        """Gets detailed info on all deployments in this application."""
-        return {
+        """Gets detailed info on all live deployments in this application.
+        (Does not include deleted deployments.)
+
+        Returns: a dictionary of deployment info. The set of deployment info returned
+            may not be the full list of deployments that are part of the application.
+            This can happen when the application is still deploying and bringing up
+            deployments, or when the application is deleting and some deployments have
+            been deleted.
+        """
+        details = {
             name: self.deployment_state_manager.get_deployment_details(name)
             for name in self.get_all_deployments()
         }
+        return {k: v for k, v in details.items() if v is not None}
 
 
 class ApplicationStateManager:
@@ -270,6 +284,9 @@ class ApplicationStateManager:
                 name,
                 self.deployment_state_manager,
             )
+        record_extra_usage_tag(
+            TagKey.SERVE_NUM_APPS, str(len(self._application_states))
+        )
         return self._application_states[name].deploy(deployment_args)
 
     def get_deployments(self, app_name: str) -> List[str]:
@@ -313,7 +330,10 @@ class ApplicationStateManager:
         return self._application_states[name].list_deployment_details()
 
     def create_application_state(
-        self, name: str, deploy_obj_ref: ObjectRef, deployment_time: float = 0
+        self,
+        name: str,
+        deploy_obj_ref: ObjectRef,
+        deployment_time: float = 0,
     ):
         """Create application state
         This is used for holding the deploy_obj_ref which is created by run_graph method
@@ -346,5 +366,10 @@ class ApplicationStateManager:
             app.update()
             if app.ready_to_be_deleted:
                 apps_to_be_deleted.append(name)
-        for app_name in apps_to_be_deleted:
-            del self._application_states[app_name]
+
+        if len(apps_to_be_deleted) > 0:
+            for app_name in apps_to_be_deleted:
+                del self._application_states[app_name]
+            record_extra_usage_tag(
+                TagKey.SERVE_NUM_APPS, str(len(self._application_states))
+            )

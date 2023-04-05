@@ -1132,7 +1132,7 @@ provider:
         reporter = StatusReporter.remote()
 
         @ray.remote(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
-        class ServeInitator:
+        class ServeInitiator:
             def __init__(self):
                 # This is used in the worker process
                 # so it won't be tracked as library usage.
@@ -1155,7 +1155,7 @@ provider:
 
         # We need to start a serve with runtime env to make this test
         # work with minimal installation.
-        s = ServeInitator.remote()
+        s = ServeInitiator.remote()
         ray.get(s.ready.remote())
 
         """
@@ -1197,13 +1197,14 @@ provider:
         payload["extra_usage_tags"]["num_actor_tasks"] = "0"
         payload["extra_usage_tags"]["num_normal_tasks"] = "0"
         payload["extra_usage_tags"]["num_drivers"] = "0"
-        assert payload["extra_usage_tags"] == {
+        expected_payload = {
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
             "_test2": "extra_v3",
             "dashboard_metrics_grafana_enabled": "False",
             "dashboard_metrics_prometheus_enabled": "False",
             "serve_num_deployments": "1",
+            "serve_num_gpu_deployments": "0",
             "serve_api_version": "v1",
             "actor_num_created": "0",
             "pg_num_created": "0",
@@ -1214,6 +1215,10 @@ provider:
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
         }
+        if os.environ.get("RAY_MINIMAL") != "1":
+            expected_payload["tune_scheduler"] = "FIFOScheduler"
+            expected_payload["tune_searcher"] = "BasicVariantGenerator"
+        assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
         if os.environ.get("RAY_MINIMAL") == "1":

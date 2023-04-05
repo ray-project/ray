@@ -21,21 +21,6 @@ py_test(
 
 ### Ray Data
 py_test(
-    name = "quick_start",
-    size = "small",
-    srcs = ["source/data/doc_code/quick_start.py"],
-    tags = ["exclusive", "team:ml"]
-)
-
-py_test(
-    name = "tensor",
-    size = "small",
-    srcs = ["source/data/doc_code/tensor.py"],
-    tags = ["exclusive", "team:ml"]
-)
-
-
-py_test(
     name = "datasets_train",
     size = "medium",
     srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
@@ -146,6 +131,7 @@ py_test_run_all_subdirectory(
     exclude = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
+         "source/serve/doc_code/object_detection.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
@@ -156,6 +142,7 @@ py_test_run_all_subdirectory(
     include = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
+        "source/serve/doc_code/object_detection.py",
     ],
     exclude = [],
     extra_srcs = [],
@@ -227,6 +214,20 @@ py_test_run_all_subdirectory(
     tags = ["exclusive", "team:ml"],
 )
 
+# --------------------------------------------------------------------
+# Test all doc/source/data/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/data/doc_code/*.py"],
+    exclude = [
+        "source/ray-air/doc_code/predictors.py",
+        "source/data/doc_code/creating_datasets_untested.py"
+    ],
+    extra_srcs = [],
+    tags = ["exclusive", "team:core"],
+)
 
 # --------------
 # Run GPU tests
@@ -248,4 +249,14 @@ py_test(
     tags = ["exclusive", "team:ml", "gpu", "ray_air"],
     data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
     args = ["--path", "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb"]
+)
+
+py_test(
+    name = "lightning_mnist_example",
+    size = "large",
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    tags = ["exclusive", "team:ml", "gpu", "ray_air"],
+    data = ["//doc/source/train/examples/lightning:lightning_mnist_example"],
+    args = ["--path", "doc/source/train/examples/lightning/lightning_mnist_example.ipynb"]
 )

@@ -34,6 +34,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
     SERVE_DEFAULT_APP_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     MULTI_APP_MIGRATION_MESSAGE,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
@@ -51,10 +52,12 @@ from ray.serve.schema import (
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
+    DEFAULT,
     override_runtime_envs_except_env_vars,
     get_random_letters,
 )
 from ray.serve._private.application_state import ApplicationStateManager
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -554,10 +557,6 @@ class ServeController:
         new_config_checkpoint = {}
 
         for app_config in applications:
-            # Prepend app name to each deployment name
-            if not _internal:
-                app_config = app_config.prepend_app_name_to_deployment_names()
-
             app_config_dict = app_config.dict(exclude_unset=True)
 
             # Compare new config options with old ones, set versions of new deployments
@@ -581,15 +580,19 @@ class ServeController:
                 updated_versions,
             )
 
-            deploy_obj_ref = run_graph.options(
+            logger.info(
+                "Starting deploy_serve_application "
+                f"task for application {app_config.name}."
+            )
+            deploy_obj_ref = deploy_serve_application.options(
                 runtime_env=app_config.runtime_env
             ).remote(
                 app_config.import_path,
                 app_config.runtime_env,
                 deployment_override_options,
                 updated_versions,
+                app_config_dict.get("route_prefix", DEFAULT.VALUE),
                 app_config.name,
-                app_config_dict.get("route_prefix", "/"),
             )
 
             self.application_state_manager.create_application_state(
@@ -773,21 +776,13 @@ class ServeController:
             statuses.append(self.get_serve_status(name))
         return statuses
 
-    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:
+    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Optional[Dict]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-        if checkpoint is None:
-            return ServeApplicationSchema.get_empty_schema_dict()
-        else:
+        if checkpoint is not None:
             _, _, config_checkpoints_dict = pickle.loads(checkpoint)
-            if name not in config_checkpoints_dict:
-                return ServeApplicationSchema.get_empty_schema_dict()
-            config, _ = config_checkpoints_dict[name]
-
-            return (
-                ServeApplicationSchema.parse_obj(config)
-                .remove_app_name_from_deployment_names()
-                .dict(exclude_unset=True)
-            )
+            if name in config_checkpoints_dict:
+                config, _ = config_checkpoints_dict[name]
+                return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
 
     def get_all_deployment_statuses(self) -> List[bytes]:
         """Gets deployment status bytes for all live deployments."""
@@ -873,16 +868,17 @@ def _generate_deployment_config_versions(
         d["name"]: d for d in last_deployed_config.get("deployments", [])
     }
 
+    lightweight_update_options = {
+        "num_replicas": TagKey.SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED,
+        "user_config": TagKey.SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED,
+        "autoscaling_config": TagKey.SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED,
+    }
+
     def exclude_lightweight_update_options(dict):
         # Exclude config options from dict that qualify for a lightweight config
         # update. Changes in any other config options are considered a code change,
         # and require a version change to trigger an update that tears
         # down existing replicas and replaces them with updated ones.
-        lightweight_update_options = [
-            "num_replicas",
-            "user_config",
-            "autoscaling_config",
-        ]
         return {
             option: dict[option]
             for option in dict
@@ -891,15 +887,21 @@ def _generate_deployment_config_versions(
 
     updated_versions = {}
     for name in new_deployments:
-        new_deployment = exclude_lightweight_update_options(new_deployments[name])
-        old_deployment = exclude_lightweight_update_options(
-            old_deployments.get(name, {})
-        )
+        old_deployment = old_deployments.get(name, {})
+        new_deployment = new_deployments[name]
+        new_deployment_filtered = exclude_lightweight_update_options(new_deployment)
+        old_deployment_filtered = exclude_lightweight_update_options(old_deployment)
 
         # If config options haven't changed, version stays the same
         # otherwise, generate a new random version
-        if old_deployment == new_deployment:
+        if old_deployment_filtered == new_deployment_filtered:
             updated_versions[name] = last_deployed_versions[name]
+
+            # If the rest of the options haven't changed, but a lightweight option has
+            # changed, then Serve will execute a lightweight update
+            for option, tagkey in lightweight_update_options.items():
+                if old_deployment.get(option) != new_deployment.get(option):
+                    record_extra_usage_tag(tagkey, "True")
         else:
             updated_versions[name] = get_random_letters()
 
@@ -907,20 +909,19 @@ def _generate_deployment_config_versions(
 
 
 @ray.remote(num_cpus=0, max_calls=1)
-def run_graph(
+def deploy_serve_application(
     import_path: str,
-    graph_env: Dict,
+    runtime_env: Dict,
     deployment_override_options: List[Dict],
     deployment_versions: Dict,
-    name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: str = "/",
+    route_prefix: str,
+    name: str,
 ):
-    """
-    Build application object from user config
+    """Deploy Serve application from a user-provided config.
 
     Args:
-        import_path: Serve deployment graph's import path
-        graph_env: runtime env to run the deployment graph in
+        import_path: import path to top-level bound deployment.
+        runtime_env: runtime_env for the application.
         deployment_override_options: Dictionary of options that overrides
             deployment options set in the graph's code itself.
         deployment_versions: Versions of each deployment, each of which is
@@ -934,35 +935,46 @@ def run_graph(
         from ray import serve
         from ray.serve.api import build
 
-        # Import and build the graph
-        graph = import_attr(import_path)
-        app = build(graph, name)
+        # Import and build the application.
+        app = build(import_attr(import_path), name)
 
-        # Override options for each deployment
+        # Override options for each deployment.
         for options in deployment_override_options:
             deployment_name = options["name"]
+            unique_deployment_name = (
+                (name + DEPLOYMENT_NAME_PREFIX_SEPARATOR) if len(name) else ""
+            ) + deployment_name
 
-            # Merge graph-level and deployment-level runtime_envs
+            if unique_deployment_name not in app.deployments:
+                raise KeyError(
+                    f'There is no deployment named "{deployment_name}" in the '
+                    f'application "{name}".'
+                )
+
+            # Merge app-level and deployment-level runtime_envs.
             if "ray_actor_options" in options:
                 # If specified, get ray_actor_options from config
                 ray_actor_options = options["ray_actor_options"] or {}
             else:
-                # Otherwise, get options from graph code (and default to {} if code
-                # sets options to None)
+                # Otherwise, get options from application code (and default to {}
+                # if the code sets options to None).
                 ray_actor_options = (
-                    app.deployments[deployment_name].ray_actor_options or {}
+                    app.deployments[unique_deployment_name].ray_actor_options or {}
                 )
             deployment_env = ray_actor_options.get("runtime_env", {})
             merged_env = override_runtime_envs_except_env_vars(
-                graph_env, deployment_env
+                runtime_env, deployment_env
             )
             ray_actor_options.update({"runtime_env": merged_env})
             options["ray_actor_options"] = ray_actor_options
             options["version"] = deployment_versions[deployment_name]
+            options["name"] = unique_deployment_name
             # Update the deployment's options
-            app.deployments[deployment_name].set_options(**options, _internal=True)
+            app.deployments[unique_deployment_name].set_options(
+                **options, _internal=True
+            )
 
-        # Run the graph locally on the cluster
+        # Run the application locally on the cluster.
         serve.run(app, name=name, route_prefix=route_prefix)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which

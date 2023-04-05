@@ -17,7 +17,7 @@ const mockGetServeApplications = jest.mocked(getServeApplications);
 
 describe("ServeReplicaDetailPage", () => {
   it("renders", async () => {
-    expect.assertions(8);
+    expect.assertions(9);
 
     mockUseParams.mockReturnValue({
       applicationName: "home",
@@ -101,5 +101,6 @@ describe("ServeReplicaDetailPage", () => {
       "12345",
     );
     expect(screen.getByText("Tasks History")).toBeVisible();
+    expect(screen.getByText("Metrics")).toBeVisible();
   });
 });

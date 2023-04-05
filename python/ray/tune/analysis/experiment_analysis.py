@@ -76,6 +76,8 @@ class ExperimentAnalysis:
         trials: Optional[List[Trial]] = None,
         default_metric: Optional[str] = None,
         default_mode: Optional[str] = None,
+        remote_storage_path: Optional[str] = None,
+        # Deprecate: Raise in 2.6, remove in 2.7
         sync_config: Optional[SyncConfig] = None,
     ):
         # Load the experiment checkpoints and their parent paths.
@@ -109,11 +111,30 @@ class ExperimentAnalysis:
         else:
             self.fetch_trial_dataframes()
 
-        remote_storage_path = None
         if sync_config and sync_config.upload_dir:
             remote_storage_path = sync_config.upload_dir
 
         self._remote_storage_path = remote_storage_path
+
+    @property
+    def _local_path(self) -> str:
+        return str(self._local_experiment_path)
+
+    @property
+    def _remote_path(self) -> Optional[str]:
+        return self._parse_cloud_path(self._local_path)
+
+    @property
+    def experiment_path(self) -> str:
+        """Path pointing to the experiment directory on persistent storage.
+
+        This can point to a remote storage location (e.g. S3) or to a local
+        location (path on the head node).
+
+        For instance, if your remote storage path is ``s3://bucket/location``,
+        this will point to ``s3://bucket/location/experiment_name``.
+        """
+        return self._remote_path or self._local_path
 
     def _parse_cloud_path(self, local_path: str):
         """Convert local path into cloud storage path"""

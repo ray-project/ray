@@ -180,6 +180,33 @@ def test_empty_dataset(ray_start_regular_shared):
     assert ds.count() == 0
 
 
+def test_cache_dataset(ray_start_regular_shared):
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.i = 0
+
+        def inc(self):
+            print("INC")
+            self.i += 1
+            return self.i
+
+    c = Counter.remote()
+
+    def inc(x):
+        ray.get(c.inc.remote())
+        return x
+
+    ds = ray.data.range(1)
+    ds = ds.map(inc)
+    ds = ds.cache()
+
+    for _ in range(10):
+        ds.take_all()
+
+    assert ray.get(c.inc.remote()) == 2
+
+
 def test_schema(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
     ds2 = ray.data.range_table(10, parallelism=10)
@@ -609,7 +636,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Prefetch.
     batches = list(
-        ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
+        ds.iter_batches(prefetch_batches=1, batch_size=None, batch_format="pandas")
     )
     assert len(batches) == len(dfs)
     for batch, df in zip(batches, dfs):
@@ -618,7 +645,9 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     batch_size = 2
     batches = list(
-        ds.iter_batches(prefetch_blocks=2, batch_size=batch_size, batch_format="pandas")
+        ds.iter_batches(
+            prefetch_batches=2, batch_size=batch_size, batch_format="pandas"
+        )
     )
     assert all(len(batch) == batch_size for batch in batches)
     assert len(batches) == math.ceil(
@@ -631,7 +660,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
     # Prefetch more than number of blocks.
     batches = list(
         ds.iter_batches(
-            prefetch_blocks=len(dfs), batch_size=None, batch_format="pandas"
+            prefetch_batches=len(dfs), batch_size=None, batch_format="pandas"
         )
     )
     assert len(batches) == len(dfs)
@@ -645,7 +674,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
     try:
         context.actor_prefetcher_enabled = False
         batches = list(
-            ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
+            ds.iter_batches(prefetch_batches=1, batch_size=None, batch_format="pandas")
         )
         assert len(batches) == len(dfs)
         for batch, df in zip(batches, dfs):

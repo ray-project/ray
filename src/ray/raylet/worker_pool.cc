@@ -18,6 +18,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <fstream>
 
+#include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
@@ -322,6 +323,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   if (language == Language::PYTHON) {
     worker_command_args.push_back("--startup-token=" +
                                   std::to_string(worker_startup_token_counter_));
+    worker_command_args.push_back("--worker-launch-time-ms=" +
+                                  std::to_string(current_sys_time_ms()));
   } else if (language == Language::CPP) {
     worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
@@ -383,6 +386,16 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
       }
 #endif
     }
+  }
+
+  if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER &&
+      RayConfig::instance().preload_python_modules().size() > 0) {
+    std::string serialized_preload_python_modules =
+        absl::StrJoin(RayConfig::instance().preload_python_modules(), ",");
+    RAY_LOG(DEBUG) << "Starting worker with preload_python_modules "
+                   << serialized_preload_python_modules;
+    worker_command_args.push_back("--worker-preload-modules=" +
+                                  serialized_preload_python_modules);
   }
 
   // We use setproctitle to change python worker process title,
@@ -462,12 +475,9 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                               serialized_runtime_env_context,
                               state);
 
-  // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
+  // Start a process and measure the startup time.
   Process proc = StartProcess(worker_command_args, env);
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-  stats::ProcessStartupTimeMs.Record(duration.count());
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
                 << worker_startup_token_counter_;

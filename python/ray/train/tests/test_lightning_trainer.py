@@ -3,7 +3,7 @@ import numpy as np
 
 import ray
 from ray.train.lightning import LightningConfigBuilder, LightningTrainer
-from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
+from ray.air.util.data_batch_conversion import _convert_batch_type_to_pandas
 from ray.train.tests.lightning_test_utils import (
     LinearModule,
     DoubleLinearModule,
@@ -27,18 +27,13 @@ def test_config_builder():
     with pytest.raises(
         ValueError, match="'module_class' must be a subclass of 'pl.LightningModule'!"
     ):
-        LightningConfigBuilder().module(cls=DummyClass)
+        LightningConfigBuilder().module(cls=DummyClass).build()
 
     with pytest.raises(
         ValueError, match="'module_class' must be a class, not a class instance."
     ):
         model = LinearModule(1, 1)
-        LightningConfigBuilder().module(cls=model)
-
-    with pytest.raises(
-        TypeError, match="module\(\) missing 1 required positional argument: 'cls'"
-    ):
-        LightningConfigBuilder().module(input_dim=10)
+        LightningConfigBuilder().module(cls=model).build()
 
     with pytest.raises(
         TypeError, match="trainer\(\) takes 1 positional argument but 3 were given"
@@ -150,7 +145,7 @@ def test_trainer_with_categorical_ray_data(ray_start_6_cpus_2_gpus, accelerator)
     # Create simple categorical ray dataset
     input_1 = np.random.rand(dataset_size, 32).astype(np.float32)
     input_2 = np.random.rand(dataset_size, 32).astype(np.float32)
-    pd = convert_batch_type_to_pandas({"input_1": input_1, "input_2": input_2})
+    pd = _convert_batch_type_to_pandas({"input_1": input_1, "input_2": input_2})
     train_dataset = ray.data.from_pandas(pd)
     val_dataset = ray.data.from_pandas(pd)
 

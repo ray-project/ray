@@ -1,5 +1,10 @@
 # flake8: noqa
 
+import ray
+
+# For tfrecords
+ray.init(runtime_env={"pip": ["tensorflow_metadata"]})
+
 # fmt: off
 # __write_parquet_begin__
 import ray

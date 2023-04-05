@@ -236,8 +236,8 @@ message TaskStateUpdate {
   optional int64 failed_ts = 7;
   // Worker that runs the task.
   optional bytes worker_id = 8;
-  // Task failure info.
-  optional ErrorType error_type = 9;
+  // Task faulure info.
+  optional RayErrorInfo error_info = 9;
   // Task logs info.
   optional TaskLogInfo task_log_info = 10;
 }
@@ -401,10 +401,28 @@ message WorkerTableData {
   optional string exit_detail = 20;
   // pid of the worker process.
   uint32 pid = 21;
-  // The unix ms timestamp the worker was started at.
+
+  /* The below fields are worker lifecycle events
+     worker_launch_time_ms (process startup requested).
+     -> worker_launched_time_ms (process started).
+     -> start_time_ms (worker is ready to be used).
+     -> end_time_ms (worker is destroyed).
+  */
+
+  // The unix ms timestamp the worker was started and finished initialization.
   uint64 start_time_ms = 23;
   // The unix ms timestamp the worker was ended at.
   uint64 end_time_ms = 24;
+  // The time when this worker process is requested from raylet.
+  // The field exists only when the worker is launched
+  // by a raylet. (I.e., driver worker won't have this value).
+  // If the value doesn't present, it is -1.
+  uint64 worker_launch_time_ms = 25;
+  // The time when this worker process is successfully started.
+  // The field exists only when the worker is launched
+  // by a raylet. (I.e., driver worker won't have this value).
+  // If the value doesn't present, it is -1.
+  uint64 worker_launched_time_ms = 26;
 }
 
 // Fields to publish when worker fails.

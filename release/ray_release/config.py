@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import re
@@ -12,12 +13,24 @@ from ray_release.util import DeferredEnvVar, deep_update
 
 
 class Test(dict):
+    """A class represents a test to run on buildkite"""
+
+    pass
+
+
+class TestDefinition(dict):
+    """
+    A class represents a definition of a test, such as test name, group, etc. Comparing
+    to the test class, there are additional field, for example variations, which can be
+    used to define several variations of a test.
+    """
+
     pass
 
 
 DEFAULT_WHEEL_WAIT_TIMEOUT = 7200  # Two hours
 DEFAULT_COMMAND_TIMEOUT = 1800
-DEFAULT_BUILD_TIMEOUT = 1800
+DEFAULT_BUILD_TIMEOUT = 3600
 DEFAULT_CLUSTER_TIMEOUT = 1800
 DEFAULT_AUTOSUSPEND_MINS = 120
 DEFAULT_MAXIMUM_UPTIME_MINS = 3200
@@ -41,19 +54,53 @@ RELEASE_TEST_SCHEMA_FILE = os.path.join(
     RELEASE_PACKAGE_DIR, "ray_release", "schema.json"
 )
 
-DEFAULT_CORE_RUN_TYPE = "sdk_command"
-DEFAULT_CORE_ENV_TYPE = "staging_v1"
-
 
 def read_and_validate_release_test_collection(
     config_file: str, schema_file: Optional[str] = None
 ) -> List[Test]:
     """Read and validate test collection from config file"""
     with open(config_file, "rt") as fp:
-        test_config = yaml.safe_load(fp)
+        tests = parse_test_definition(yaml.safe_load(fp))
 
-    validate_release_test_collection(test_config, schema_file=schema_file)
-    return test_config
+    validate_release_test_collection(tests, schema_file=schema_file)
+    return tests
+
+
+def _test_definition_invariant(
+    test_definition: TestDefinition,
+    invariant: bool,
+    message: str,
+) -> None:
+    if invariant:
+        return
+    raise ReleaseTestConfigError(
+        f'{test_definition["name"]} has invalid definition: {message}',
+    )
+
+
+def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
+    tests = []
+    for test_definition in test_definitions:
+        if "variations" not in test_definition:
+            tests.append(test_definition)
+            continue
+        variations = test_definition.pop("variations")
+        _test_definition_invariant(
+            test_definition,
+            variations,
+            "variations field cannot be empty in a test definition",
+        )
+        for variation in variations:
+            _test_definition_invariant(
+                test_definition,
+                "__suffix__" in variation,
+                "missing __suffix__ field in a variation",
+            )
+            test = copy.deepcopy(test_definition)
+            test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
+            test.update(variation)
+            tests.append(test)
+    return tests
 
 
 def load_schema_file(path: Optional[str] = None) -> Dict:

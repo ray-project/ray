@@ -99,6 +99,9 @@ class _MemActor:
                 self.cur_mem -= size_bytes
                 self.deallocated[ref] = self.allocated.pop(ref)
                 self.deallocated[ref]["dealloc_loc"] = loc
+            if ref in self.deallocated:
+                # This object reference is already deallocated.
+                pass
             else:
                 print(f"[mem_tracing] WARNING: allocation of {ref} was not traced!")
         else:

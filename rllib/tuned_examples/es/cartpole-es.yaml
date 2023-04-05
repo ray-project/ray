@@ -6,7 +6,7 @@ cartpole-es:
         timesteps_total: 500000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         num_workers: 2
         noise_size: 25000000
         episodes_per_batch: 50

@@ -281,7 +281,7 @@ class Preprocessor(abc.ABC):
         import pandas as pd
         import numpy as np
         from ray.air.util.data_batch_conversion import (
-            convert_batch_type_to_pandas,
+            _convert_batch_type_to_pandas,
             _convert_batch_type_to_numpy,
         )
 
@@ -300,7 +300,7 @@ class Preprocessor(abc.ABC):
         transform_type = self._determine_transform_to_use()
 
         if transform_type == BatchFormat.PANDAS:
-            return self._transform_pandas(convert_batch_type_to_pandas(data))
+            return self._transform_pandas(_convert_batch_type_to_pandas(data))
         elif transform_type == BatchFormat.NUMPY:
             return self._transform_numpy(_convert_batch_type_to_numpy(data))
 

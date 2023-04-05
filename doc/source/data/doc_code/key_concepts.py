@@ -26,6 +26,8 @@ tuner.fit()
 # __resource_allocation_1_end__
 # fmt: on
 
+ray.shutdown()
+
 # fmt: off
 # __resource_allocation_2_begin__
 import ray
@@ -54,7 +56,7 @@ tuner.fit()
 # fmt: off
 # __block_move_begin__
 import ray
-from ray.data.context import DatasetContext
+from ray.data import DatasetContext
 
 ctx = DatasetContext.get_current()
 ctx.optimize_fuse_stages = False
@@ -72,6 +74,10 @@ ds = ray.data.read_parquet("example://iris.parquet") \
 
 # fmt: off
 # __dataset_pipelines_execution_begin__
+import numpy as np
+import PIL
+from io import BytesIO
+
 import ray
 
 # ML ingest re-reading from storage on every epoch.
@@ -83,7 +89,7 @@ torch_ds = ray.data.read_parquet("example://iris.parquet") \
 # Streaming batch inference pipeline that pipelines the transforming of a single
 # file with the reading of a single file (at most 2 file's worth of data in-flight
 # at a time).
-infer_ds = ray.data.read_binary_files("example://mniset_subset_partitioned/") \
+infer_ds = ray.data.read_binary_files("example://mnist_subset_partitioned/") \
     .window(blocks_per_window=1) \
     .map(lambda bytes_: np.asarray(PIL.Image.open(BytesIO(bytes_)).convert("L"))) \
     .map_batches(lambda imgs: [img.mean() > 0.5 for img in imgs])

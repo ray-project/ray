@@ -130,7 +130,8 @@ class HTTPState:
                     "Starting HTTP proxy with name '{}' on node '{}' "
                     "listening on '{}:{}'".format(
                         name, node_id, self._config.host, self._config.port
-                    )
+                    ),
+                    extra={"log_to_stderr": False},
                 )
                 proxy = HTTPProxyActor.options(
                     num_cpus=self._config.num_cpus,

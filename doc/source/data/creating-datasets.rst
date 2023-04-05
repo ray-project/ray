@@ -248,7 +248,7 @@ are supported for each of these storage systems.
   `S3FileSystem <https://arrow.apache.org/docs/python/filesystems.html#s3>`__ instance
   to :func:`read_parquet() <ray.data.read_parquet>`.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __read_parquet_s3_with_fs_begin__
     :end-before: __read_parquet_s3_with_fs_end__
@@ -263,7 +263,7 @@ are supported for each of these storage systems.
     This example is not runnable as-is; you'll need to point it at your HDFS
     cluster/data.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __read_parquet_hdfs_begin__
     :end-before: __read_parquet_hdfs_end__
@@ -273,7 +273,7 @@ are supported for each of these storage systems.
   <https://arrow.apache.org/docs/python/filesystems.html#hadoop-distributed-file-system-hdfs>`__
   instance to :func:`read_parquet() <ray.data.read_parquet>`.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __read_parquet_hdfs_with_fs_begin__
     :end-before: __read_parquet_hdfs_with_fs_end__
@@ -288,7 +288,7 @@ are supported for each of these storage systems.
     This example is not runnable as-is; you'll need to point it at your GCS bucket and
     configure your GCP project and credentials.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __read_parquet_gcs_begin__
     :end-before: __read_parquet_gcs_end__
@@ -297,7 +297,7 @@ are supported for each of these storage systems.
     To verify that your GCP project and credentials are set up, validate
     that the GCS `filesystem` has permissions to read the input `path`.
 
-    .. literalinclude:: ./doc_code/creating_datasets.py
+    .. literalinclude:: ./doc_code/creating_datasets_untested.py
       :language: python
       :start-after: __validate_parquet_gcs_begin__
       :end-before: __validate_parquet_gcs_end__
@@ -310,7 +310,7 @@ are supported for each of these storage systems.
   `adlfs AzureBlobFileSystem <https://github.com/fsspec/adlfs>`__, where the appropriate
   account name and account key can be specified.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __read_parquet_az_begin__
     :end-before: __read_parquet_az_end__
@@ -484,7 +484,7 @@ futures.
   will save the Spark DataFrame partitions to Ray's object store in the Arrow format,
   which Datasets will then interpret as its blocks.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __from_spark_begin__
     :end-before: __from_spark_end__
@@ -510,7 +510,7 @@ futures.
   This conversion has near-zero overhead, since Datasets simply reinterprets existing
   Mars partition objects as Dataset blocks.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datasets_untested.py
     :language: python
     :start-after: __from_mars_begin__
     :end-before: __from_mars_end__
