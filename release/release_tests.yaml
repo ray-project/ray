@@ -3835,6 +3835,15 @@
     timeout: 1200
     script: python placement_group_tests/pg_run.py
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: placement_group_tests/app_config.yaml
+        cluster_compute: placement_group_tests/compute_gce.yaml
+
 - name: placement_group_performance_test
   group: core-daily-test
   working_dir: nightly_tests
@@ -3871,6 +3880,15 @@
     timeout: 12000
     prepare: sleep 0
     script: python single_node/test_single_node.py
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: single_node_gce.yaml
 
 - name: object_store
   group: core-scalability-test
@@ -3999,6 +4017,14 @@
     wait_for_nodes:
       num_nodes: 250
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: many_nodes_gce.yaml
 
 - name: scheduling_test_many_0s_tasks_many_nodes
   group: core-scalability-test
