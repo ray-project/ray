@@ -1626,6 +1626,10 @@
       frequency: nightly
       run:
         timeout: 3600
+        script: python workloads/apex.py
+        long_running: true
+        wait_for_nodes:
+          num_nodes: 3
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -3057,6 +3061,7 @@
       frequency: nightly
       run:
         timeout: 2000
+        script: python stress_tests/run_stress_tests.py
     - __suffix__: gce
       env: gce
       frequency: manual
