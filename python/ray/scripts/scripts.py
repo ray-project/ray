@@ -805,6 +805,15 @@ def start(
                     "for more information on submitting Ray jobs to the Ray cluster"
                 )
 
+            cli_logger.newline()
+            cli_logger.print("To terminate the Ray runtime, run")
+            cli_logger.print(cf.bold("  ray stop"))
+
+            cli_logger.newline()
+            cli_logger.print("To view the status of the cluster, use")
+            cli_logger.print("  {}".format(cf.bold("ray status")))
+
+            if dashboard_url:
                 cli_logger.newline()
                 cli_logger.print("To monitor and debug Ray, view the dashboard at ")
                 cli_logger.print(
@@ -821,14 +830,6 @@ def start(
                         "network configuration."
                     )
                 )
-
-            cli_logger.newline()
-            cli_logger.print("To view the status of the cluster, use")
-            cli_logger.print("  {}".format(cf.bold("ray status")))
-
-            cli_logger.newline()
-            cli_logger.print("To terminate the Ray runtime, run")
-            cli_logger.print(cf.bold("  ray stop"))
         ray_params.gcs_address = bootstrap_address
     else:
         # Start worker node.
