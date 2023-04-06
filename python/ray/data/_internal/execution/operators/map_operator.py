@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import copy
 from dataclasses import dataclass
 import itertools
-from typing import List, Iterator, Any, Dict, Optional, Union
+from typing import Callable, List, Iterator, Any, Dict, Optional, Union
 
 import ray
 from ray.data.block import (
@@ -10,7 +10,6 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
     BlockExecStats,
-    _CallableClassProtocol,
 )
 from ray.data._internal.compute import (
     ComputeStrategy,
@@ -72,7 +71,7 @@ class MapOperator(PhysicalOperator, ABC):
         cls,
         transform_fn: MapTransformFn,
         input_op: PhysicalOperator,
-        init_fn: Optional[_CallableClassProtocol] = None,
+        init_fn: Callable[[], None],
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
