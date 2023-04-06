@@ -2,15 +2,19 @@ import os
 import sys
 import signal
 import threading
+import json
+from pathlib import Path
 
 import ray
 import numpy as np
 import pytest
+import psutil
 import time
 
 from ray._private.test_utils import (
     SignalActor,
     wait_for_pid_to_exit,
+    run_string_as_driver_nonblocking,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -346,6 +350,85 @@ def test_actor_failure_no_wait(ray_start_regular, tmp_path):
         # Make sure it'll return within 1s
         ray.get(t)
 
+
+def test_no_worker_child_process_leaks(ray_start_cluster, tmp_path):
+    output_file_path = tmp_path / 'leaked_pids.json'
+    driver_script = f"""
+import ray
+import json
+import multiprocessing
+import shutil
+import time
+import os
+
+@ray.remote
+class Actor:
+    def create_leaked_child_process(self, num_to_leak):
+        print("Creating leaked process", os.getpid())
+
+        pids = []
+        for _ in range(num_to_leak):
+            proc = multiprocessing.Process(
+                target=time.sleep,
+                args=(1000,),
+                daemon=True,
+            )
+            proc.start()
+            pids.append(proc.pid)
+
+        return pids
+
+@ray.remote
+def task():
+    print("Creating leaked process", os.getpid())
+    proc = multiprocessing.Process(
+        target=time.sleep,
+        args=(1000,),
+        daemon=True,
+    )
+    proc.start()
+
+    return proc.pid
+
+num_to_leak_per_type = 10
+
+actor = Actor.remote()
+actor_leaked_pids = ray.get(actor.create_leaked_child_process.remote(
+    num_to_leak=num_to_leak_per_type,
+))
+
+task_leaked_pids = ray.get([task.remote() for _ in range(num_to_leak_per_type)])
+leaked_pids = actor_leaked_pids + task_leaked_pids
+
+final_file = "{output_file_path}"
+tmp_file = final_file + ".tmp"
+with open(tmp_file, "w") as f:
+    json.dump(leaked_pids, f)
+shutil.move(tmp_file, final_file)
+
+while True:
+    print(os.getpid())
+    time.sleep(1)
+    """
+    driver_proc = run_string_as_driver_nonblocking(driver_script)
+    wait_for_condition(
+        condition_predictor=lambda: Path(output_file_path).exists(),
+        timeout=30,
+    )
+
+    with open(output_file_path, 'r') as f:
+        pids = json.load(f)
+
+    processes = [psutil.Process(pid) for pid in pids]
+
+    assert all([proc.status() == psutil.STATUS_SLEEPING for proc in processes])
+
+    driver_proc.send_signal(signal.SIGINT)
+
+    wait_for_condition(
+        condition_predictor=lambda: all([not proc.is_running() for proc in processes]),
+        timeout=30,
+    )
 
 if __name__ == "__main__":
     import pytest
