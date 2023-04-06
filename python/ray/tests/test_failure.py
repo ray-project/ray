@@ -689,15 +689,32 @@ class Actor:
 
         return pids
 
+@ray.remote
+def task():
+    print("Creating leaked process", os.getpid())
+    proc = multiprocessing.Process(
+        target=time.sleep,
+        args=(1000,),
+        daemon=True,
+    )
+    proc.start()
+
+    return proc.pid
+
+num_to_leak_per_type = 10
+
 actor = Actor.remote()
-pids = ray.get(actor.create_leaked_child_process.remote(
-    num_to_leak=10,
+actor_leaked_pids = ray.get(actor.create_leaked_child_process.remote(
+    num_to_leak=num_to_leak_per_type,
 ))
+
+task_leaked_pids = ray.get([task.remote() for _ in range(num_to_leak_per_type)])
+leaked_pids = actor_leaked_pids + task_leaked_pids
 
 final_file = "{output_file_path}"
 tmp_file = final_file + ".tmp"
 with open(tmp_file, "w") as f:
-    json.dump(pids, f)
+    json.dump(leaked_pids, f)
 shutil.move(tmp_file, final_file)
 
 while True:
