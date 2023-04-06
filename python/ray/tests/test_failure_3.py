@@ -352,6 +352,7 @@ def test_actor_failure_no_wait(ray_start_regular, tmp_path):
         ray.get(t)
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_no_worker_child_process_leaks(ray_start_cluster, tmp_path):
     """
     Verify that processes created by Ray tasks and actors are

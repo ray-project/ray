@@ -736,7 +736,8 @@ void CoreWorker::KillLeakedProcs() {
 
   const auto &child_procs = *maybe_child_procs;
   const auto child_procs_str = absl::StrJoin(child_procs, ",");
-  RAY_LOG(DEBUG) << "Procs to kill: " << child_procs_str;
+  RAY_LOG(INFO) << "Try killing all child processes of this worker as it exits. "
+                << "Child process pids: " << child_procs_str;
 
   for (const auto &child_pid : child_procs) {
     auto maybe_error_code = KillProc(child_pid);
@@ -744,8 +745,8 @@ void CoreWorker::KillLeakedProcs() {
               "Expected this path to only be called when KillProc is supported.");
     auto error_code = *maybe_error_code;
 
-    RAY_LOG(DEBUG) << "Kill result for " << child_pid << ": " << error_code.message()
-                   << ", bool " << (bool)error_code;
+    RAY_LOG(INFO) << "Kill result for child pid " << child_pid << ": "
+                  << error_code.message() << ", bool " << (bool)error_code;
     if (error_code) {
       RAY_LOG(WARNING) << "Unable to kill potentially leaked process " << child_pid
                        << ": " << error_code.message();
