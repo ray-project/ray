@@ -265,7 +265,7 @@ def test_dataset__repr__(ray_start_regular_shared):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
 
-    ds = ray.data.range(10).cache()
+    ds = ray.data.range(10, parallelism=1).cache()
     ss = ds._plan.stats().to_summary()
 
     ds2 = ds.map_batches(lambda x: x).cache()
@@ -309,7 +309,11 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   dataset_uuid=U,\n"
         "   base_name=MapBatches(<lambda>),\n"
         "   number=N,\n"
-        "   extra_metrics={'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, 'obj_store_mem_peak': N},\n"  # noqa: E501
+        "   extra_metrics={\n"
+        "      obj_store_mem_alloc: N,\n"
+        "      obj_store_mem_freed: N,\n"
+        "      obj_store_mem_peak: N,\n"
+        "   },\n"
         "   stage_stats=[\n"
         "      StageStatsSummary(\n"
         "         stage_name='MapBatches(<lambda>)',\n"

@@ -411,15 +411,21 @@ class DatasetStatsSummary:
         indent = leveled_indent(level)
         stage_stats = "\n".join([ss.__repr__(level + 2) for ss in self.stages_stats])
         parent_stats = "\n".join([ps.__repr__(level + 2) for ps in self.parents])
-        # Handle formatting case where stages or parents are empty.
+        extra_metrics = "\n".join(
+            f"{leveled_indent(level + 2)}{k}: {v},"
+            for k, v in self.extra_metrics.items()
+        )
+
+        # Handle formatting case for empty outputs.
         stage_stats = f"\n{stage_stats},\n{indent}   " if stage_stats else ""
         parent_stats = f"\n{parent_stats},\n{indent}   " if parent_stats else ""
+        extra_metrics = f"\n{extra_metrics}\n{indent}   " if extra_metrics else ""
         return (
             f"{indent}DatasetStatsSummary(\n"
             f"{indent}   dataset_uuid={self.dataset_uuid},\n"
             f"{indent}   base_name={self.base_name},\n"
             f"{indent}   number={self.number},\n"
-            f"{indent}   extra_metrics={self.extra_metrics},\n"
+            f"{indent}   extra_metrics={{{extra_metrics}}},\n"
             f"{indent}   stage_stats=[{stage_stats}],\n"
             f"{indent}   iter_stats={self.iter_stats.__repr__(level+1)},\n"
             f"{indent}   parents=[{parent_stats}],\n"
