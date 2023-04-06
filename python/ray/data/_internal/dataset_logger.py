@@ -43,14 +43,17 @@ class DatasetLogger:
         for writing to the Dataset log file. Not intended (nor should it be necessary)
         to call explicitly. Assumes that `ray.init()` has already been called prior
         to calling this method; otherwise raises a `ValueError`."""
-        logger = logging.getLogger(self.log_name)
+        stdout_logger = logging.getLogger(self.log_name)
 
         # Add stderr handler.
         formatter = logging.Formatter(fmt=LOGGER_FORMAT)
         handler = logging.StreamHandler()
         handler.setFormatter(formatter)
         handler.setLevel(LOGGER_LEVEL.upper())
-        logger.addHandler(handler)
+        stdout_logger.addHandler(handler)
+        stdout_logger.propagate = False
+
+        logger = logging.getLogger(f"{self.log_name}.logfile")
 
         # If ray.init() is called and the global node session directory path
         # is valid, we can create the additional handler to write to the
@@ -74,7 +77,6 @@ class DatasetLogger:
 
         # This will ensure logs are not propagated and re-printed
         # by the user root logger.
-        logger.propagate = False
         return logger
 
     def get_logger(self, log_to_stdout: bool = True) -> logging.Logger:
@@ -93,11 +95,5 @@ class DatasetLogger:
         """
         if self._logger is None:
             self._logger = self._initialize_logger()
-        if log_to_stdout:
-            # First handler is always the stream handler
-            self._logger.handlers[0].setLevel(LOGGER_LEVEL.upper())
-        else:
-            # Disable the printing.
-            # 100 means the logger is disabled.
-            self._logger.handlers[0].setLevel(100)
+        self._logger.propagate = log_to_stdout
         return self._logger
