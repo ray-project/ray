@@ -100,13 +100,24 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: cpt_autoscaling_1-3.yaml
+    cluster_compute: cpt_autoscaling_1-3_aws.yaml
 
   run:
     timeout: 3600
     script: python workloads/tune_scale_up_down.py
     wait_for_nodes:
       num_nodes: 0
+
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: cpt_autoscaling_1-3_gce.yaml
+
 
   alert: default
 
@@ -123,7 +134,16 @@
 
   cluster:
     cluster_env: horovod/app_config_master.yaml
-    cluster_compute: horovod/compute_tpl.yaml
+    cluster_compute: horovod/compute_tpl_aws.yaml
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: horovod/app_config_master.yaml
+        cluster_compute: horovod/compute_tpl_gce.yaml
 
   run:
     timeout: 36000
@@ -1707,12 +1727,12 @@
     wait_for_nodes:
       num_nodes: 3
 
-
   smoke_test:
     frequency: nightly
 
     run:
       timeout: 3600
+
 
   alert: long_running_tests
 
@@ -1721,7 +1741,7 @@
     - __suffix__: gce
       env: gce
       frequency: manual
-      smoke_test: 
+      smoke_test:
         frequency: manual
         run:
           timeout: 3600
@@ -2820,6 +2840,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 2gpus_32cpus_gce.yaml
+
 - name: rllib_learning_tests_appo_torch
   group: RLlib tests
   working_dir: rllib_tests
@@ -3142,6 +3171,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 2gpus_32cpus_gce.yaml
+
 - name: rllib_learning_tests_sac_tf
   group: RLlib tests
   working_dir: rllib_tests
@@ -3287,6 +3325,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml
+
 - name: rllib_multi_gpu_with_attention_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
@@ -3323,8 +3370,6 @@
     wait_for_nodes:
       num_nodes: 6
 
-
-
   smoke_test:
     frequency: nightly
 
@@ -3344,7 +3389,8 @@
           timeout: 2000
       cluster:
         cluster_env: app_config.yaml
-        cluster_compute: 4gpus_544_cpus_gce.yaml 
+        cluster_compute: 4gpus_512_cpus_gce.yaml
+
 
 ########################
 # Core Nightly Tests
@@ -3835,6 +3881,15 @@
     timeout: 1200
     script: python placement_group_tests/pg_run.py
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: placement_group_tests/app_config.yaml
+        cluster_compute: placement_group_tests/compute_gce.yaml
+
 - name: placement_group_performance_test
   group: core-daily-test
   working_dir: nightly_tests
@@ -3871,6 +3926,15 @@
     timeout: 12000
     prepare: sleep 0
     script: python single_node/test_single_node.py
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: single_node_gce.yaml
 
 - name: object_store
   group: core-scalability-test
@@ -3999,6 +4063,14 @@
     wait_for_nodes:
       num_nodes: 250
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: many_nodes_gce.yaml
 
 - name: scheduling_test_many_0s_tasks_many_nodes
   group: core-scalability-test
