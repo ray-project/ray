@@ -18,7 +18,7 @@ keras==2.7.0
 # Torch addons
 torchvision==0.10.0
 
-pytorch-lightning==1.5.10
+pytorch-lightning==1.6.5
 
 # Upstream libraries
 lightgbm_ray==0.1.5
