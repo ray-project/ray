@@ -161,8 +161,8 @@ class TorchPredictor(DLPredictor):
     def predict(
         self,
         data: DataBatchType,
-        feature_columns: List[str],
-        keep_columns: List[str],
+        feature_columns: List[str]=None,
+        keep_columns: List[str]=None,
         dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     ) -> DataBatchType:
         """Run inference on data batch.

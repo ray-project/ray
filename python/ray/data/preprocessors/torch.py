@@ -118,7 +118,7 @@ class TorchVisionPreprocessor(Preprocessor):
         if isinstance(np_data, dict):
             outputs = np_data
             for column in self._columns:
-                outputs[column] = transform_batch(np_data[column])
+                outputs["transformed_"+column] = transform_batch(np_data[column])
         else:
             outputs = transform_batch(np_data)
 

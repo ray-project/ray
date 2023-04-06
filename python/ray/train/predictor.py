@@ -208,8 +208,8 @@ class Predictor(abc.ABC):
                     prediction_output_batch[keep_columns] = input_batch[keep_columns]
                     return prediction_output_batch
 
-    def predict(self, data: DataBatchType, feature_columns: List[str],
-        keep_columns: List[str], **kwargs) -> DataBatchType:
+    def predict(self, data: DataBatchType, feature_columns: List[str]=None,
+        keep_columns: List[str]=None, **kwargs) -> DataBatchType:
         """Perform inference on a batch of data.
 
         Args:
