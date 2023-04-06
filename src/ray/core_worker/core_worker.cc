@@ -741,8 +741,8 @@ void CoreWorker::KillChildProcs() {
 
   for (const auto &child_pid : child_procs) {
     auto maybe_error_code = KillProc(child_pid);
-    RAY_CHECK(maybe_error_code &&
-              "Expected this path to only be called when KillProc is supported.");
+    RAY_CHECK(maybe_error_code)
+        << "Expected this path to only be called when KillProc is supported.";
     auto error_code = *maybe_error_code;
 
     RAY_LOG(INFO) << "Kill result for child pid " << child_pid << ": "
