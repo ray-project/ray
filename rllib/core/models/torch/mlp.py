@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Optional
 
 from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import FreeLogStdMLPHeadConfig, MLPHeadConfig
@@ -28,11 +28,11 @@ class TorchMLPHead(TorchModel, nn.Module):
         )
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return TorchTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return TorchTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)
@@ -65,11 +65,11 @@ class TorchFreeLogStdMLPHead(TorchModel, nn.Module):
         )
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return TorchTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return TorchTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)

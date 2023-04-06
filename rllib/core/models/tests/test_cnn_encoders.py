@@ -3,10 +3,9 @@ import itertools
 
 from ray.rllib.core.models.base import ENCODER_OUT, STATE_OUT
 from ray.rllib.core.models.configs import CNNEncoderConfig
-from ray.rllib.core.models.utils import ModelChecker
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.test_utils import framework_iterator, ModelChecker
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()

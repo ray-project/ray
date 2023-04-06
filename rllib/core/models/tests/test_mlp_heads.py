@@ -2,9 +2,8 @@ import itertools
 import unittest
 
 from ray.rllib.core.models.configs import MLPHeadConfig, FreeLogStdMLPHeadConfig
-from ray.rllib.core.models.utils import ModelChecker
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.test_utils import framework_iterator, ModelChecker
 
 _, tf, _ = try_import_tf()
 torch, nn = try_import_torch()
