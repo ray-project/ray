@@ -143,22 +143,10 @@ GcsSyncClient::GcsSyncClient(const GcsClientOptions &options) : options_(options
 
 Status GcsSyncClient::Connect() {
   grpc::ChannelArguments arguments = CreateDefaultChannelArguments();
-  arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
-                   ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
-  arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
-                   ::RayConfig::instance().gcs_grpc_min_reconnect_backoff_ms());
-  arguments.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS,
-                   ::RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
+  arguments.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, 512 * 1024 * 1024);
+  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 60 * 1000);
+  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 60 * 1000);
   channel_ = rpc::BuildChannel(options_.gcs_address_, options_.gcs_port_, arguments);
-  auto deadline =
-      std::chrono::system_clock::now() +
-      std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s());
-  if (!channel_->WaitForConnected(deadline)) {
-    RAY_LOG(ERROR) << "Failed to connect to GCS at address " << options_.gcs_address_
-                   << ":" << options_.gcs_port_ << " within "
-                   << ::RayConfig::instance().gcs_rpc_server_connect_timeout_s()
-                   << " seconds.";
-  }
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
