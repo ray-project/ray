@@ -442,25 +442,7 @@ install_pip_packages() {
 
   retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements_pinned.txt"
 
-  # Remove this entire section once Serve dependencies are fixed.
-  if [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
-    # If CI has deemed that a different version of Torch
-    # should be installed, then upgrade/downgrade to that specific version.
-    if [ -n "${TORCH_VERSION-}" ]; then
-      case "${TORCH_VERSION-1.9.0}" in
-        1.9.0) TORCHVISION_VERSION=0.10.0;;
-        1.8.1) TORCHVISION_VERSION=0.9.1;;
-        1.6) TORCHVISION_VERSION=0.7.0;;
-        1.5) TORCHVISION_VERSION=0.6.0;;
-        *) TORCHVISION_VERSION=0.5.0;;
-      esac
-      requirements_packages+=("torch==${TORCH_VERSION-1.9.0}")
-      requirements_packages+=("torchvision==${TORCHVISION_VERSION}")
-      # Install right away - some torch dependencies (e.g. torch-spline-conv)
-      # need an existing torch for dependency resolution
-      pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION}"
-    fi
-  elif [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; then
+  if [ -z "${TORCH_VERSION-}" ] && { [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; }; then
       # E.g. torch-spline-conv needs to import torch in their setup.py
       # so it has to be installed first
       # (see https://github.com/ray-project/ray/pull/33928)
@@ -468,6 +450,32 @@ install_pip_packages() {
       pip install torch==1.13.0 torchvision==0.14.0
       requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
   fi
+
+  # If CI has deemed that a different version of Torch
+  # should be installed, then upgrade/downgrade to that specific version.
+  # Todo: We should find a better way to install these dependencies. Maybe in the
+  # build job?
+  if [ -n "${TORCH_VERSION-}" ]; then
+    case "${TORCH_VERSION-1.9.0}" in
+      1.9.0) TORCHVISION_VERSION=0.10.0;;
+      1.8.1) TORCHVISION_VERSION=0.9.1;;
+      1.6) TORCHVISION_VERSION=0.7.0;;
+      1.5) TORCHVISION_VERSION=0.6.0;;
+      *) TORCHVISION_VERSION=0.5.0;;
+    esac
+    requirements_packages+=("torch==${TORCH_VERSION-1.9.0}")
+    requirements_packages+=("torchvision==${TORCHVISION_VERSION}")
+    # Install right away - some torch dependencies (e.g. torch-spline-conv)
+    # need an existing torch for dependency resolution
+    pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION}"
+
+    # The previous block was excluded because of TORCH_VERSION, so install tf here
+    if [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; then
+      # Keep it sync with requirements_dl.txt
+      pip install -U "tensorflow==2.11.0" "tensorflow-probability==0.19.0"
+    fi
+  fi
+
 
   # Inject our own mirror for the CIFAR10 dataset
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
