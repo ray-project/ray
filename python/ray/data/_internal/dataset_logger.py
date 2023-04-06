@@ -43,28 +43,14 @@ class DatasetLogger:
         for writing to the Dataset log file. Not intended (nor should it be necessary)
         to call explicitly. Assumes that `ray.init()` has already been called prior
         to calling this method; otherwise raises a `ValueError`."""
-        # In the case where logger has not yet been set up in another file,
-        # initialize basic configs to set log level and format.
-        logging.basicConfig(
-            level=LOGGER_LEVEL.upper(),
-            format=LOGGER_FORMAT,
-        )
+        logger = logging.getLogger(self.log_name)
 
-        # We initialize a logger using the given base `log_name`, which
-        # logs to stdout. Logging with this logger to stdout is enabled by the
-        # `log_to_stdout` parameter in `self.get_logger()`.
-        stdout_logger = logging.getLogger(self.log_name)
-        stdout_logger.setLevel(LOGGER_LEVEL.upper())
-
-        # The second logger that we initialize is designated as the main logger,
-        # which has the above `stdout_logger` as an ancestor.
-        # This is so that even if the file handler is not initialized below,
-        # the logger will still propagate up to `stdout_logger` for the option
-        # of logging to stdout.
-        logger = logging.getLogger(f"{self.log_name}.logfile")
-        # We need to set the log level again when explicitly
-        # initializing a new logger (otherwise can have undesirable level).
-        logger.setLevel(LOGGER_LEVEL.upper())
+        # Add stderr handler.
+        formatter = logging.Formatter(fmt=LOGGER_FORMAT)
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        handler.setLevel(LOGGER_LEVEL.upper())
+        logger.addHandler(handler)
 
         # If ray.init() is called and the global node session directory path
         # is valid, we can create the additional handler to write to the
@@ -85,6 +71,10 @@ class DatasetLogger:
             file_log_handler.setLevel(LOGGER_LEVEL.upper())
             file_log_handler.setFormatter(file_log_formatter)
             logger.addHandler(file_log_handler)
+
+        # This will ensure logs are not propagated and re-printed
+        # by the user root logger.
+        logger.propagate = False
         return logger
 
     def get_logger(self, log_to_stdout: bool = True) -> logging.Logger:
@@ -103,5 +93,11 @@ class DatasetLogger:
         """
         if self._logger is None:
             self._logger = self._initialize_logger()
-        self._logger.propagate = log_to_stdout
+        if log_to_stdout:
+            # First handler is always the stream handler
+            self._logger.handlers[0].setLevel(LOGGER_LEVEL.upper())
+        else:
+            # Disable the printing.
+            # 100 means the logger is disabled.
+            self._logger.handlers[0].setLevel(100)
         return self._logger
