@@ -790,4 +790,13 @@ RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
 // Example: RAY_preload_python_modules=tensorflow,pytorch
 RAY_CONFIG(std::vector<std::string>, preload_python_modules, {})
 
+// Instruct the CoreWorker to kill its child processes while
+// it exits. This prevents certain classes of resource leaks
+// that are caused by the worker processes leaking processes.
+// If a user relies on Ray's old behavior of leaking processes,
+// then they can disable this behavior with
+// RAY_kill_child_processes_on_worker_exit=false. We anticipate
+// keeping this flag around at least until Ray 2.5.
+// See https://github.com/ray-project/ray/pull/33976 for more
+// info.
 RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
