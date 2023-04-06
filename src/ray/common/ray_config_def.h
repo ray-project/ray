@@ -789,3 +789,5 @@ RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
 // If left empty, no such attempt will be made.
 // Example: RAY_preload_python_modules=tensorflow,pytorch
 RAY_CONFIG(std::vector<std::string>, preload_python_modules, {})
+
+RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)

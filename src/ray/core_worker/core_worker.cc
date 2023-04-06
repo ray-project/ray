@@ -705,7 +705,13 @@ void CoreWorker::Disconnect(
 }
 
 void CoreWorker::KillLeakedProcs() {
-  RAY_LOG(DEBUG) << "Killing leaked procs";
+
+  if (!RayConfig::instance().kill_child_processes_on_worker_exit()) {
+    RAY_LOG(DEBUG) << "kill_child_processes_on_worker_exit is not true, skipping KillLeakedProcs";
+    return;
+  }
+
+  RAY_LOG(DEBUG) << "kill_child_processes_on_worker_exit true, KillLeakedProcs";
   auto maybe_child_procs = GetAllProcsWithPpid(GetPID());
 
   // Enumerating child procs is not supported on this platform.

@@ -2,8 +2,11 @@ import os
 import signal
 import sys
 import time
+import json
+from pathlib import Path
 
 import numpy as np
+import psutil
 import pytest
 
 import ray
@@ -17,6 +20,7 @@ from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
     wait_for_condition,
+    run_string_as_driver_nonblocking,
 )
 from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError
 
@@ -657,6 +661,68 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 
     # We should be able to get the return value of task 2 without any issue
     ray.get(obj2)
+
+def test_no_worker_child_process_leaks(ray_start_cluster, tmp_path):
+    output_file_path = tmp_path / 'leaked_pids.json'
+    driver_script = f"""
+import ray
+import json
+import multiprocessing
+import shutil
+import time
+import os
+
+@ray.remote
+class Actor:
+    def create_leaked_child_process(self, num_to_leak):
+        print("Creating leaked process", os.getpid())
+
+        pids = []
+        for _ in range(num_to_leak):
+            proc = multiprocessing.Process(
+                target=time.sleep,
+                args=(1000,),
+                daemon=True,
+            )
+            proc.start()
+            pids.append(proc.pid)
+
+        return pids
+
+actor = Actor.remote()
+pids = ray.get(actor.create_leaked_child_process.remote(
+    num_to_leak=10,
+))
+
+final_file = "{output_file_path}"
+tmp_file = final_file + ".tmp"
+with open(tmp_file, "w") as f:
+    json.dump(pids, f)
+shutil.move(tmp_file, final_file)
+
+while True:
+    print(os.getpid())
+    time.sleep(1)
+    """
+    driver_proc = run_string_as_driver_nonblocking(driver_script)
+    wait_for_condition(
+        condition_predictor=lambda: Path(output_file_path).exists(),
+        timeout=30,
+    )
+
+    with open(output_file_path, 'r') as f:
+        pids = json.load(f)
+
+    processes = [psutil.Process(pid) for pid in pids]
+
+    assert all([proc.status() == psutil.STATUS_SLEEPING for proc in processes])
+
+    driver_proc.send_signal(signal.SIGINT)
+
+    wait_for_condition(
+        condition_predictor=lambda: all([not proc.is_running() for proc in processes]),
+        timeout=30,
+    )
 
 
 if __name__ == "__main__":
