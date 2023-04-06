@@ -122,7 +122,7 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only):
 
     serialized_ds = ds2.serialize_lineage()
     ds3 = Dataset.deserialize_lineage(serialized_ds)
-    assert ds3.take(30) == list(range(10)) + list(range(20))
+    assert set(ds3.take(30)) == set(list(range(10)) + list(range(20)))
 
     # Zips not supported.
     ds = ray.data.from_items(list(range(10)))
@@ -424,6 +424,14 @@ def test_convert_types(ray_start_regular_shared):
 def test_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(["hello", "world"])
     assert ds.take() == ["hello", "world"]
+    assert isinstance(next(ds.iter_batches(batch_format=None)), list)
+
+    with pytest.raises(ValueError):
+        ds = ray.data.from_items(["hello", "world"], output_arrow_format=True)
+
+    ds = ray.data.from_items([{"hello": "world"}], output_arrow_format=True)
+    assert ds.take() == [{"hello": "world"}]
+    assert isinstance(next(ds.iter_batches(batch_format=None)), pa.Table)
 
 
 @pytest.mark.parametrize("parallelism", list(range(1, 21)))

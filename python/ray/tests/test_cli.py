@@ -168,6 +168,7 @@ def _die_on_error(result):
 
 
 def _debug_check_line_by_line(result, expected_lines):
+    """Print the result and expected output line-by-line."""
     output_lines = result.output.split("\n")
     i = 0
 
@@ -192,10 +193,9 @@ def _debug_check_line_by_line(result, expected_lines):
     if i < len(expected_lines):
         print("!!! ERROR: Expected extra lines (regex):")
         for line in expected_lines[i:]:
-
             print(repr(line))
 
-    assert False
+    assert False, (result.output, expected_lines)
 
 
 @contextmanager
