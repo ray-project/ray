@@ -113,6 +113,15 @@ class ESConfig(AlgorithmConfig):
                 observation_filter="NoFilter",
             )
         )
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
