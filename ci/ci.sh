@@ -236,7 +236,7 @@ test_large() {
   mount -t proc -o nodev,noexec,nosuid proc /proc && bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
       --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
       --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}"  "$@" \
-      -j $(cat /proc/cpuinfo | grep processor | wc -l) \
+      -j $(grep -c processor /proc/cpuinfo) \
       --sandbox_fake_username=true \
       --sandbox_fake_hostname=true \
       --sandbox_default_allow_network=false \
