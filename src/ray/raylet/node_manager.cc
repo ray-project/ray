@@ -553,21 +553,24 @@ ray::Status NodeManager::RegisterGcs() {
           return;
         }
         checking = true;
-        RAY_CHECK_OK(gcs_client_->Nodes().AsyncCheckSelfAlive([this](auto status,
-                                                                     auto alive) mutable {
-          if (status.ok()) {
-            if (!alive) {
-              // GCS think this raylet is dead. Set the raylet unhealthy.
-              RAY_LOG(WARNING)
-                  << "GCS consider this node to be dead. Set the status to be unhealthy";
-              node_manager_server_.GetServer().GetHealthCheckService()->SetServingStatus(
-                  self_node_id_.Hex(), false);
-              node_manager_server_.GetServer().GetHealthCheckService()->SetServingStatus(
-                  false);
-            }
-            checking = false;
-          }
-        }, /* timeout_ms = */ 30000));
+        RAY_CHECK_OK(gcs_client_->Nodes().AsyncCheckSelfAlive(
+            [this](auto status, auto alive) mutable {
+              if (status.ok()) {
+                if (!alive) {
+                  // GCS think this raylet is dead. Set the raylet unhealthy.
+                  RAY_LOG(WARNING) << "GCS consider this node to be dead. Set the status "
+                                      "to be unhealthy";
+                  node_manager_server_.GetServer()
+                      .GetHealthCheckService()
+                      ->SetServingStatus(self_node_id_.Hex(), false);
+                  node_manager_server_.GetServer()
+                      .GetHealthCheckService()
+                      ->SetServingStatus(false);
+                }
+                checking = false;
+              }
+            },
+            /* timeout_ms = */ 30000));
       },
       RayConfig::instance().raylet_liveness_self_check_interval_ms(),
       "NodeManager.GcsCheckAlive");

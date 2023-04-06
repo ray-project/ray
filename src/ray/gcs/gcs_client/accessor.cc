@@ -478,14 +478,16 @@ Status NodeInfoAccessor::AsyncCheckSelfAlive(
   RAY_CHECK(callback != nullptr);
   request.add_raylet_address(node_addr);
   client_impl_->GetGcsRpcClient().CheckAlive(
-      request, [callback](auto status, const auto &reply) {
+      request,
+      [callback](auto status, const auto &reply) {
         if (status.ok()) {
           RAY_CHECK(reply.raylet_alive().size() == 1);
           callback(status, reply.raylet_alive()[0]);
         } else {
           callback(status, true);
         }
-      }, timeout);
+      },
+      timeout);
   return Status::OK();
 }
 
