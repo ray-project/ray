@@ -774,9 +774,7 @@ def start(
                     )
 
             cli_logger.newline()
-            cli_logger.print(
-                "To connect to this Ray cluster, run `ray.init()` as usual:"
-            )
+            cli_logger.print("To connect to this Ray cluster:")
             with cli_logger.indented():
                 cli_logger.print("{} ray", cf.magenta("import"))
                 cli_logger.print(
@@ -791,34 +789,22 @@ def start(
 
             if dashboard_url:
                 cli_logger.newline()
-                cli_logger.print(
-                    "To submit a Ray job from outside of the cluster, for example "
-                    "from your laptop, make sure the"
-                )
-                cli_logger.print(
-                    "dashboard {}is accessible and use the Ray Jobs API. For example:",
-                    f"({dashboard_url}) " if dashboard_url else "",
-                )
+                cli_logger.print("To submit a Ray job using the Ray Jobs CLI:")
                 cli_logger.print(
                     cf.bold(
-                        "  RAY_ADDRESS='http://<dashboard URL>:{}' ray job submit "
+                        "  RAY_ADDRESS='http://{}' ray job submit "
                         "--working-dir . "
                         "-- python my_script.py"
                     ),
-                    ray_params.dashboard_port,
+                    dashboard_url,
                 )
                 cli_logger.newline()
                 cli_logger.print(
                     "See https://docs.ray.io/en/latest/cluster/running-applications"
-                    "/job-submission/index.html"
+                    "/job-submission/index.html "
                     "for more information on submitting Ray jobs to the Ray cluster"
                 )
 
-            cli_logger.newline()
-            cli_logger.print("To see the status of the cluster, use")
-            cli_logger.print("  {}".format(cf.bold("ray status")))
-
-            if dashboard_url:
                 cli_logger.newline()
                 cli_logger.print("To monitor and debug Ray, view the dashboard at ")
                 cli_logger.print(
@@ -827,14 +813,19 @@ def start(
                     )
                 )
 
-            cli_logger.newline()
-            cli_logger.print(
-                cf.underlined(
-                    "If connection fails, check your "
-                    "firewall settings and "
-                    "network configuration."
+                cli_logger.newline()
+                cli_logger.print(
+                    cf.underlined(
+                        "If connection to the dashboard fails, check your "
+                        "firewall settings and "
+                        "network configuration."
+                    )
                 )
-            )
+
+            cli_logger.newline()
+            cli_logger.print("To view the status of the cluster, use")
+            cli_logger.print("  {}".format(cf.bold("ray status")))
+
             cli_logger.newline()
             cli_logger.print("To terminate the Ray runtime, run")
             cli_logger.print(cf.bold("  ray stop"))
