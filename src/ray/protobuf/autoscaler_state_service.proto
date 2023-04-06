@@ -24,8 +24,8 @@ message PlacementConstraint {
   }
 }
 
-message ResourceBundle {
-  map<string, double> resources = 1;
+message ResourceRequest {
+  map<string, double> resources_bundle = 1;
   PlacementConstraint placement_constraint = 2;
   // If the resource bundle is allocated, the node will be labeled
   // with the following labels.
@@ -34,17 +34,20 @@ message ResourceBundle {
 
 // All bundles in the same resource request require gang
 // allocation semantics: they should be allocated together.
-message GangSchedulingRequest {
+message GangResourceRequest {
   // a map from bundles to the number of bundles requested.
-  map<ResourceBundle, int32_t> bundles = 1;
+  repeated ResourceBundle requests = 1;
 }
 
 // Cluster constraint represents minimial cluster size requirement,
 // issued through ray.autoscaler.sdk.request_resources.
+// TODO: we need to fix the semantics.
 message OnDemandResourceRequest {
   bytes request_id = 1;
-  GangSchedulingRequest resource_request = 2;
+  map<string, double> target_cluster_total_resources = 2;
+  repeated ResourceRequest target_bundles_to_fit = 3;
 }
+
 
 message NodeResourceState {
   bytes node_id = 1;
@@ -107,9 +110,10 @@ message ReportAutoscalingStateRequest {
 message GetClusterResourceStateReply {
   // an monotonically increasing version of the cluster resources.
   int64 cluster_resource_state_version = 1;
-  repeated NodeResourceState node_resource_states = 2;
-  map<GangSchedulingRequest, int64> resource_requests = 3;
-  repeated OnDemandResourceRequest on_demand_resource_requests = 4;
+  map<bytes, NodeResourceState> node_resource_states = 2;
+  map<ResourceRequest, int64> resource_requests = 3;
+  repeated GangResourceRequest gang_resource_requests = 4;
+  repeated OnDemandResourceRequest on_demand_resource_requests = 5;
 }
 
 message GetClusterResourceStateRequest {
