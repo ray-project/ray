@@ -138,8 +138,8 @@ dataset_transformed = preprocessor.fit_transform(dataset=dataset)
                 </div>
               </div>
           </div>
-          <div class="tab-pane fade" id="v-pills-training" role="tabpanel" aria-labelledby="v-pills-training-tab">
-            <pre style="margin:0"><code class="language-python not-selectable">
+          <div class="tab-pane fade" id="v-pills-training" role="tabpanel" aria-labelledby="v-pills-training-tab" style="user-select:none; height:100%; display:flex;flex-direction:column;">
+            <pre style="margin:0; flex-grow:1; max-height:none;"><code class="language-python not-selectable" style="height:100%">
 from ray.air.config import ScalingConfig
 from ray.train.torch import TorchTrainer
 
@@ -171,8 +171,8 @@ result = trainer.fit()
                 </div>
               </div>
           </div>
-          <div class="tab-pane fade" id="v-pills-tuning" role="tabpanel" aria-labelledby="v-pills-tuning-tab" style="user-select:none;">
-            <pre style="margin:0"><code class="language-python not-selectable">
+          <div class="tab-pane fade" id="v-pills-tuning" role="tabpanel" aria-labelledby="v-pills-tuning-tab" style="user-select:none;" style="user-select:none; height:100%; display:flex;flex-direction:column;">
+            <pre style="margin:0; flex-grow:1; max-height:none;"><code class="language-python not-selectable" style="height:100%">
 from ray import tune
 from ray.air.config import ScalingConfig
 from ray.train.lightgbm import LightGBMTrainer
@@ -208,8 +208,8 @@ result_grid = tuner.fit()
                 </div>
               </div>
           </div>
-          <div class="tab-pane fade" id="v-pills-batch" role="tabpanel" aria-labelledby="v-pills-batch-tab" style="user-select:none;">
-            <pre style="margin:0"><code class="language-python">
+          <div class="tab-pane fade" id="v-pills-batch" role="tabpanel" aria-labelledby="v-pills-batch-tab" style="user-select:none;" style="user-select:none; height:100%; display:flex;flex-direction:column;">
+            <pre style="margin:0; flex-grow:1; max-height:none;"><code class="language-python" style="height:100%">
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.torch import TorchPredictor
 
@@ -234,8 +234,8 @@ results = batch_predictor.predict(dataset, batch_size=512, num_gpus_per_worker=6
                 </div>
               </div>
           </div>
-          <div class="tab-pane fade" id="v-pills-serving" role="tabpanel" aria-labelledby="v-pills-serving-tab" style="user-select:none;">
-            <pre style="margin:0"><code class="language-python">
+          <div class="tab-pane fade" id="v-pills-serving" role="tabpanel" aria-labelledby="v-pills-serving-tab" style="user-select:none;" style="user-select:none; height:100%; display:flex;flex-direction:column;">
+            <pre style="margin:0; flex-grow:1; max-height:none;"><code class="language-python">
 from ray import serve
 from ray.serve import PredictorDeployment
 from ray.train.lightgbm import LightGBMPredictor
@@ -264,8 +264,8 @@ serve.run(
                 </div>
               </div>          
           </div>  
-          <div class="tab-pane fade" id="v-pills-rl" role="tabpanel" aria-labelledby="v-pills-rl-tab" style="user-select:none;">
-            <pre style="margin:0"><code class="language-python not-selectable">
+          <div class="tab-pane fade" id="v-pills-rl" role="tabpanel" aria-labelledby="v-pills-rl-tab" style="user-select:none;" style="user-select:none; height:100%; display:flex;flex-direction:column;">
+            <pre style="margin:0; flex-grow:1; max-height:none;"><code class="language-python not-selectable" style="height:100%">
 from ray.rllib.algorithms.ppo import PPOConfig
 
 # Step 1: configure PPO to run 64 parallel workers to collect samples from the env.
