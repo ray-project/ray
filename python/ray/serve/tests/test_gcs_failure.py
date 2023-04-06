@@ -1,6 +1,7 @@
 import os
 import sys
 
+import grpc
 import pytest
 import requests
 
@@ -39,9 +40,9 @@ def test_ray_internal_kv_timeout(serve_ha):  # noqa: F811
 
     with pytest.raises(KVStoreError) as e:
         kv1.put("2", b"2")
-    assert e.value.args[0] in (
-        ray._raylet.STATUS_CODE_GRPC_UNAVAILABLE,
-        ray._raylet.STATUS_CODE_GRPC_UNKNOWN,
+    assert e.value.rpc_code in (
+        grpc.StatusCode.UNAVAILABLE.value[0],
+        grpc.StatusCode.DEADLINE_EXCEEDED.value[0],
     )
 
 

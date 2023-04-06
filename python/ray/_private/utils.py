@@ -1379,9 +1379,9 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
         try:
             result = gcs_client.internal_kv_keys(prefix, namespace)
         except Exception as e:
-            if isinstance(e, ray.exceptions.RaySystemError) and e._status_code in (
-                ray._raylet.STATUS_CODE_GRPC_UNAVAILABLE,
-                ray._raylet.STATUS_CODE_GRPC_UNKNOWN,
+            if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
+                grpc.StatusCode.UNAVAILABLE.value[0],
+                grpc.StatusCode.UNKNOWN.value[0],
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "
@@ -1413,9 +1413,9 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
         try:
             result = gcs_client.internal_kv_get(key, namespace)
         except Exception as e:
-            if isinstance(e, ray.exceptions.RaySystemError) and e._status_code in (
-                ray._raylet.STATUS_CODE_GRPC_UNAVAILABLE,
-                ray._raylet.STATUS_CODE_GRPC_UNKNOWN,
+            if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
+                grpc.StatusCode.UNAVAILABLE.value[0],
+                grpc.StatusCode.UNKNOWN.value[0],
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "
@@ -1470,10 +1470,10 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
             return gcs_client.internal_kv_put(
                 key, value, overwrite=True, namespace=namespace
             )
-        except ray.exceptions.RaySystemError as e:
-            if e._status_code in (
-                ray._raylet.STATUS_CODE_GRPC_UNAVAILABLE,
-                ray._raylet.STATUS_CODE_GRPC_UNKNOWN,
+        except ray.exceptions.RpcError as e:
+            if e.rpc_code in (
+                grpc.StatusCode.UNAVAILABLE.value[0],
+                grpc.StatusCode.UNKNOWN.value[0],
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "

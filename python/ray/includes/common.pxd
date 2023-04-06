@@ -116,14 +116,13 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsObjectNotFound()
         c_bool IsNotFound()
         c_bool IsObjectUnknownOwner()
-        c_bool IsGrpcResourceExhausted()
-        c_bool IsGrpcUnavailable()
-        c_bool IsGrpcUnknown()
+        c_bool IsRpcError()
 
         c_string ToString()
         c_string CodeAsString()
         StatusCode code()
         c_string message()
+        int rpc_code()
 
     # We can later add more of the common status factory methods as needed
     cdef CRayStatus RayStatus_OK "Status::OK"()
@@ -141,8 +140,6 @@ cdef extern from "ray/common/status.h" namespace "ray::StatusCode" nogil:
     cdef StatusCode StatusCode_UnknownError "UnknownError"
     cdef StatusCode StatusCode_NotImplemented "NotImplemented"
     cdef StatusCode StatusCode_RedisError "RedisError"
-    cdef StatusCode StatusCode_GrpcUnavailable "ray::StatusCode::GrpcUnavailable"
-    cdef StatusCode StatusCode_GrpcUnknown "ray::StatusCode::GrpcUnknown"
 
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:

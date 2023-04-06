@@ -2,6 +2,7 @@ import copy
 import datetime
 import warnings
 from functools import partial
+import grpc
 import logging
 import os
 from pathlib import Path
@@ -23,7 +24,7 @@ from typing import (
 
 from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
-from ray.exceptions import RpcMessageTooLargeError
+from ray.exceptions import RpcError
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -220,15 +221,18 @@ class Experiment:
                 )
         try:
             self._run_identifier = Experiment.register_if_needed(run)
-        except RpcMessageTooLargeError:
-            raise TuneError(
-                f"The Trainable/training function is too large for grpc resource "
-                f"limit. Check that its definition is not implicitly capturing a "
-                f"large array or other object in scope. "
-                f"Tip: use tune.with_parameters() to put large objects "
-                f"in the Ray object store. \n"
-                f"Original exception: {traceback.format_exc()}"
-            )
+        except RpcError as e:
+            if e.rpc_code == grpc.StatusCode.RESOURCE_EXHAUSTED.value[0]:
+                raise TuneError(
+                    f"The Trainable/training function is too large for grpc resource "
+                    f"limit. Check that its definition is not implicitly capturing a "
+                    f"large array or other object in scope. "
+                    f"Tip: use tune.with_parameters() to put large objects "
+                    f"in the Ray object store. \n"
+                    f"Original exception: {traceback.format_exc()}"
+                )
+            else:
+                raise e
 
         self.name = name or self._run_identifier
 
