@@ -6,7 +6,7 @@ GCS Fault Tolerance
 Global Control Service (GCS) is a server that manages cluster-level metadata.
 It also provides a handful of cluster-level operations including :ref:`actor <ray-remote-classes>`, :ref:`placement group <ray-placement-group-doc-ref>` and node management.
 By default, GCS is not fault tolerant since all the data is stored in-memory and its failure means that the entire Ray cluster fails.
-To make GCS fault tolerant, HA storage is required. Ray supports Redis as the backend storage for durability and high availability.
+To make GCS fault tolerant, HA Redis is required.
 Then, when GCS restarts, it loads all the data from the Redis instance and resumes regular functions.
 
 During the recovery period, the following functions are not available:
@@ -54,7 +54,7 @@ Setting up Redis
 Once GCS is backed by Redis, when it restarts, it'll recover the
 state by reading from Redis. When the GCS is recovering from its failed state, the raylet
 will try to reconnect to the GCS.
-If the raylet failes to reconnect to the GCS for more than 60 seconds,
+If the raylet fails to reconnect to the GCS for more than 60 seconds,
 the raylet will exit and the corresponding node fails.
 This timeout threshold can be tuned by the OS environment variable ``RAY_gcs_rpc_server_reconnect_timeout_s``.
 
