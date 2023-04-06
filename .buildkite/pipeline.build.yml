@@ -378,7 +378,11 @@
     - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
     - mount -t proc -o nodev,noexec,nosuid proc /proc && bazel test --config=ci $(./ci/run/bazel_export_options)
-      --sandbox_fake_username=true --sandbox_fake_hostname=true --sandbox_default_allow_network=false --spawn_strategy=linux-sandbox
+      -j $(grep -c processor /proc/cpuinfo)
+      --sandbox_fake_username=true
+      --sandbox_fake_hostname=true
+      --sandbox_default_allow_network=false
+      --spawn_strategy=linux-sandbox
       --test_tag_filters=client_tests,small_size_python_tests
       -- python/ray/tests/...
     - bazel test --config=ci -j $(grep -c processor /proc/cpuinfo) $(./ci/run/bazel_export_options)
