@@ -44,7 +44,6 @@ class DatasetLogger:
         to call explicitly. Assumes that `ray.init()` has already been called prior
         to calling this method; otherwise raises a `ValueError`."""
         stdout_logger = logging.getLogger(self.log_name)
-        print(stdout_logger)
 
         # Add stderr handler.
         formatter = logging.Formatter(fmt=LOGGER_FORMAT)
