@@ -253,7 +253,7 @@ py_test(
 
 py_test_run_all_notebooks(
     size="large",
-    include=["train/examples/lightning/*.ipynb"],
+    include=["source/train/examples/lightning/*.ipynb"],
     exclude=[],
     data=["//doc/source/train/examples/lightning:lightning_examples"],
     tags=["exclusive", "team:ml", "gpu", "ray_air"],
