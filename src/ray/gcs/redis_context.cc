@@ -506,7 +506,7 @@ Status RedisContext::Connect(const std::string &address,
 
     Disconnect();
     // Connect to the true leader.
-    Connect(ip_port[0], std::stoi(ip_port[1]), sharding, password, enable_ssl);
+    return Connect(ip_port[0], std::stoi(ip_port[1]), sharding, password, enable_ssl);
   } else {
     freeReplyObject(redis_reply);
   }
