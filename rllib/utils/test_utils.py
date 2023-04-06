@@ -187,9 +187,9 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     """
     # A dict type.
     if isinstance(x, (dict, NestedDict)):
-        assert isinstance(y, (dict, NestedDict)), (
-            "ERROR: If x is dict, y needs to be a dict as well!"
-        )
+        assert isinstance(
+            y, (dict, NestedDict)
+        ), "ERROR: If x is dict, y needs to be a dict as well!"
         y_keys = set(x.keys())
         for key, value in x.items():
             assert key in y, f"ERROR: y does not have x's key='{key}'! y={y}"

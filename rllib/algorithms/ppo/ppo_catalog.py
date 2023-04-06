@@ -80,7 +80,8 @@ class PPOCatalog(Catalog):
         post_fcnet_activation = self.model_config_dict["post_fcnet_activation"]
 
         pi_head_config_class = (
-            FreeLogStdMLPHeadConfig if self.model_config_dict["free_log_std"]
+            FreeLogStdMLPHeadConfig
+            if self.model_config_dict["free_log_std"]
             else MLPHeadConfig
         )
         self.pi_head_config = pi_head_config_class(

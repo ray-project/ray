@@ -22,6 +22,7 @@ class ModelChecker:
     computation results given a common weights structure and values and identical
     inputs to the models.
     """
+
     def __init__(self, config: ModelConfig):
         self.config = config
 

@@ -47,9 +47,7 @@ class TorchFreeLogStdMLPHead(TorchModel, nn.Module):
         nn.Module.__init__(self)
         TorchModel.__init__(self, config)
 
-        assert (
-            config.output_dims[0] % 2 == 0
-        ), "output_dims must be even for free std!"
+        assert config.output_dims[0] % 2 == 0, "output_dims must be even for free std!"
         self._half_output_dim = config.output_dims[0] // 2
 
         self.net = TorchMLP(

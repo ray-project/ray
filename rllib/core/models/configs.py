@@ -70,6 +70,7 @@ class _MLPConfig(ModelConfig):
         use_bias: Whether to use bias on all dense layers in the network (including
             a possible output layer).
     """
+
     input_dims: Union[List[int], Tuple[int]] = None
     hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
     hidden_layer_activation: str = "relu"
@@ -229,7 +230,8 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
 
     def _validate(self, framework: str = "torch"):
         actual_output_dims = (
-            [self.hidden_layer_dims[-1]] if self.output_dims is None
+            [self.hidden_layer_dims[-1]]
+            if self.output_dims is None
             else self.output_dims
         )
         if len(actual_output_dims) > 1 or actual_output_dims[0] % 2 == 1:
@@ -406,6 +408,7 @@ class MLPEncoderConfig(_MLPConfig):
         # Linear(8, 4, bias=False)
         # Tanh()
     """
+
     def _validate(self, framework: str = "torch"):
         super()._validate(framework)
         if self.output_dims is None:
