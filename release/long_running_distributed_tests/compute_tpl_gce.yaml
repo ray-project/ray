@@ -1,0 +1,30 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west1
+allowed_azs: 
+    - us-west1-a
+
+max_workers: 3
+
+head_node_type:
+    name: head_node
+    instance_type: n1-standard-32-nvidia-tesla-t4-2 # g3.8xlarge
+
+worker_node_types:
+    - name: worker_node
+      instance_type: n1-standard-32-nvidia-tesla-t4-2 # g3.8xlarge
+      min_workers: 2
+      max_workers: 2
+      use_spot: false
+
+#aws:
+#  TagSpecifications:
+#    - ResourceType: "instance"
+#      Tags:
+#        - Key: ttl-hours
+#          Value: '48'
+#
+#  BlockDeviceMappings:
+#    - DeviceName: /dev/sda1
+#      Ebs:
+#        VolumeSize: 400
+#        DeleteOnTermination: true

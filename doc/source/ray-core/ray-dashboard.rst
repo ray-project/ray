@@ -6,8 +6,11 @@ Ray provides a web-based dashboard for monitoring and debugging Ray applications
 The dashboard provides a visual representation of the system state, allowing users to track the performance 
 of their applications and troubleshoot issues.
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/overview_gif.gif
-    :align: center
+.. raw:: html
+
+    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+        <iframe src="https://www.youtube.com/embed/VPksEcjACOM" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
+    </div>
 
 Common Workflows
 ----------------
@@ -273,6 +276,58 @@ You get the same information from the :ref:`Ray state APIs <state-api-overview-r
     :align: center
 
 You can expand the table to see a list of each task, actor, and placement group.
+
+.. _dash-serve-view:
+
+Serve View
+----------
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/serve.png
+    :align: center
+
+The Serve view lets you monitor the status of your :ref:`Ray Serve <rayserve>` applications.
+
+The initial page showcases your general Serve configurations, a list of the Serve applications, and, if you have :ref:`Grafana and Prometheus <ray-metrics>` configured, some high-level
+metrics of all your Serve applications. Click the name of a Serve application to go to the Serve Application Detail Page.
+
+Serve Application Detail Page
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/serve-application.png
+    :align: center
+
+This page shows the Serve application's configurations and metadata. It also lists the :ref:`Serve deployments and replicas <serve-key-concepts-deployment>`.
+Click the expand button of a deployment to see all the replicas in that deployment.
+
+For each deployment, there are two available actions. You can view the Deployment config and, if you configured :ref:`Grafana and Prometheus <ray-metrics>`, you can open
+a Grafana dashboard with detailed metrics about that deployment.
+
+For each replica, there are two available actions. You can see the logs of that replica and, if you configured :ref:`Grafana and Prometheus <ray-metrics>`, you can open
+a Grafana dashboard with detailed metrics about that replica. Click on the replica name to go to the Serve Replica Detail Page.
+
+
+Serve Replica Detail Page
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/serve-replica.png
+    :align: center
+
+This page shows metadata about the Serve replica, high-level metrics about the replica if you configured :ref:`Grafana and Prometheus <ray-metrics>`, and
+a history of completed :ref:`tasks <core-key-concepts>` of that replica.
+
+
+Serve Metrics
+~~~~~~~~~~~~~
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/serve-metrics.png
+    :align: center
+
+Ray serve exports various time-series metrics to understand the status of your Serve application over time. More details of these metrics can be found :ref:`here <serve-production-monitoring-metrics>`.
+In order to store and visualize these metrics, you must set up Prometheus and Grafana by following the instructions :ref:`here <ray-metrics>`.
+
+These metrics are available in the Ray dashboard in the Serve page and the Serve Replica Detail page. They are also accessible as Grafana dashboards.
+Within the Grafana dashboard, use the dropdown filters on the top to filter metrics by route, deployment, or replica. Exact descriptions
+of each graph are available by hovering over the "info" icon on the top left of each graph.
 
 .. _dash-node-view:
 
