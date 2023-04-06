@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, List, Union
 
+import ray
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.types import ObjectRef
 
@@ -19,7 +20,12 @@ class FromPandasRefs(LogicalOperator):
         op_name: str = "FromPandasRefs",
     ):
         super().__init__(op_name, [])
-        self._dfs = dfs
+        self._dfs: List[ObjectRef["pandas.DataFrame"]] = []
+        for df_ref in dfs:
+            if isinstance(df_ref, ray.ObjectRef):
+                self._dfs.append(df_ref)
+            else:
+                self._dfs.append(ray.put(df_ref))
 
 
 class FromDask(LogicalOperator):
@@ -44,7 +50,7 @@ class FromModin(LogicalOperator):
         super().__init__("FromModin", [])
 
 
-class FromMARS(LogicalOperator):
+class FromMars(LogicalOperator):
     """Logical operator for `from_mars`."""
 
     def __init__(
@@ -52,4 +58,4 @@ class FromMARS(LogicalOperator):
         df: "mars.DataFrame",
     ):
         self._df = df
-        super().__init__("FromMARS", [])
+        super().__init__("FromMars", [])

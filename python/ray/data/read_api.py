@@ -25,7 +25,7 @@ from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
 from ray.data._internal.logical.operators.from_pandas_operator import (
     FromDask,
-    FromMARS,
+    FromMars,
     FromModin,
     FromPandasRefs,
 )
@@ -39,9 +39,9 @@ from ray.data._internal.util import (
     _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
     _is_local_scheme,
-    _df_to_block,
-    _ndarray_to_block,
-    _get_metadata,
+    pandas_df_to_arrow_block,
+    ndarray_to_block,
+    get_table_block_metadata,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
@@ -1478,7 +1478,7 @@ def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
 
     ds = md.to_ray_dataset(df)
 
-    from_mars_op = FromMARS(df)
+    from_mars_op = FromMars(df)
     ds._logical_plan = LogicalPlan(from_mars_op)
     return ds
 
@@ -1563,7 +1563,7 @@ def from_pandas_refs(
 
     context = DatasetContext.get_current()
     if context.enable_pandas_block:
-        get_metadata = cached_remote_fn(_get_metadata)
+        get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
         return Dataset(
             ExecutionPlan(
@@ -1576,7 +1576,7 @@ def from_pandas_refs(
             logical_plan,
         )
 
-    df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
+    df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = map(list, zip(*res))
@@ -1636,9 +1636,9 @@ def from_numpy_refs(
             f"Expected Ray object ref or list of Ray object refs, got {type(ndarray)}"
         )
 
-    ndarray_to_block = cached_remote_fn(_ndarray_to_block, num_returns=2)
+    ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
 
-    res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
+    res = [ndarray_to_block_remote.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
 
@@ -1696,7 +1696,7 @@ def from_arrow_refs(
     if isinstance(tables, ray.ObjectRef):
         tables = [tables]
 
-    get_metadata = cached_remote_fn(_get_metadata)
+    get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
 
     from_arrow_refs_op = FromArrowRefs(tables)

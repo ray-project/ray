@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, List, Union
 
+import ray
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.types import ObjectRef
 
@@ -20,7 +21,12 @@ class FromArrowRefs(LogicalOperator):
         op_name: str = "FromArrowRefs",
     ):
         super().__init__(op_name, [])
-        self._tables = tables
+        self._tables: List[ObjectRef[ArrowTable]] = []
+        for table_or_ref in tables:
+            if isinstance(table_or_ref, ray.ObjectRef):
+                self._tables.append(table_or_ref)
+            else:
+                self._tables.append(ray.put(table_or_ref))
 
 
 class FromHuggingFace(FromArrowRefs):

@@ -10,22 +10,13 @@ from ray.data._internal.logical.operators.from_pandas_operator import (
     FromPandasRefs,
     FromDask,
     FromModin,
-    FromMARS,
+    FromMars,
 )
 from ray.data.context import DatasetContext
-from ray import ObjectRef
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import (
-    _df_to_block,
-    _get_metadata,
-)
-
-get_metadata = cached_remote_fn(_get_metadata)
-df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
 
 
 def _plan_from_pandas_refs_op(
-    op: Union[FromPandasRefs, FromDask, FromModin, FromMARS]
+    op: Union[FromPandasRefs, FromDask, FromModin, FromMars]
 ) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for FromPandasRefs.
 
@@ -61,38 +52,51 @@ def _plan_from_pandas_refs_op(
 
         op._dfs = unwrap_partitions(op._df, axis=0)
 
-    def _init_data_from_mars(op: FromMARS):
+    def _init_data_from_mars(op: FromMars):
         from mars.dataframe.contrib.raydataset import get_chunk_refs
 
         op._dfs = get_chunk_refs(op._df)
 
     def get_input_data() -> List[RefBundle]:
+        from ray.data._internal.remote_fn import cached_remote_fn
+        from ray.data._internal.util import (
+            pandas_df_to_arrow_block,
+            get_table_block_metadata,
+        )
+
         owns_blocks = True
         if isinstance(op, FromDask):
             _init_data_from_dask(op)
         elif isinstance(op, FromModin):
             _init_data_from_modin(op)
-        elif isinstance(op, FromMARS):
+        elif isinstance(op, FromMars):
             _init_data_from_mars(op)
             # MARS holds the MARS dataframe in memory in `to_ray_dataset()`
             # to avoid object GC, so this operator cannot not own the blocks.
             owns_blocks = False
 
         context = DatasetContext.get_current()
-        ref_bundles: List[RefBundle] = []
-        for idx, df_ref in enumerate(op._dfs):
-            if not isinstance(df_ref, ObjectRef):
-                op._dfs[idx] = ray.put(df_ref)
-                df_ref = op._dfs[idx]
 
-            if context.enable_pandas_block:
-                block = df_ref
-                block_metadata = get_metadata.remote(df_ref)
-            else:
-                block, block_metadata = df_to_block.remote(df_ref)
-            ref_bundles.append(
-                RefBundle([(block, ray.get(block_metadata))], owns_blocks=owns_blocks)
-            )
-        return ref_bundles
+        if context.enable_pandas_block:
+            get_metadata = cached_remote_fn(get_table_block_metadata)
+            metadata = ray.get([get_metadata.remote(df_ref) for df_ref in op._dfs])
+            return [
+                RefBundle([(block, block_metadata)], owns_blocks=owns_blocks)
+                for block, block_metadata in zip(op._dfs, metadata)
+            ]
+
+        df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
+        res = [df_to_block.remote(df) for df in op._dfs]
+        blocks, metadata = map(list, zip(*res))
+        metadata = ray.get(metadata)
+        return [
+            RefBundle([(block, block_metadata)], owns_blocks=owns_blocks)
+            for block, block_metadata in zip(blocks, metadata)
+        ]
+        #     block, block_metadata = df_to_block.remote(df_ref)
+        # ref_bundles.append(
+        #     RefBundle([(block, ray.get(block_metadata))], owns_blocks=owns_blocks)
+        # )
+        # return ref_bundles
 
     return InputDataBuffer(input_data_factory=get_input_data)

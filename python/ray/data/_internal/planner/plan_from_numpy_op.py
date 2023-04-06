@@ -7,12 +7,6 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray import ObjectRef
-from ray.data._internal.util import _ndarray_to_block
-
-
-ndarray_to_block = cached_remote_fn(_ndarray_to_block, num_returns=2)
 
 
 def _plan_from_numpy_refs_op(op: FromNumpyRefs) -> PhysicalOperator:
@@ -23,15 +17,18 @@ def _plan_from_numpy_refs_op(op: FromNumpyRefs) -> PhysicalOperator:
     """
 
     def get_input_data() -> List[RefBundle]:
-        ref_bundles: List[RefBundle] = []
-        for idx, arr_ref in enumerate(op._ndarrays):
-            if not isinstance(arr_ref, ObjectRef):
-                op._ndarrays[idx] = ray.put(arr_ref)
-                arr_ref = op._ndarrays[idx]
-            block, block_metadata = ndarray_to_block.remote(arr_ref)
-            ref_bundles.append(
-                RefBundle([(block, ray.get(block_metadata))], owns_blocks=True)
-            )
+        from ray.data._internal.remote_fn import cached_remote_fn
+        from ray.data._internal.util import ndarray_to_block
+
+        ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
+
+        res = [ndarray_to_block_remote.remote(arr_ref) for arr_ref in op._ndarrays]
+        blocks, metadata = map(list, zip(*res))
+        metadata = ray.get(metadata)
+        ref_bundles: List[RefBundle] = [
+            RefBundle([(block, block_metadata)], owns_blocks=True)
+            for block, block_metadata in zip(blocks, metadata)
+        ]
         return ref_bundles
 
     return InputDataBuffer(input_data_factory=get_input_data)

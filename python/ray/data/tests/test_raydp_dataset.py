@@ -3,14 +3,12 @@ import ray
 import torch
 from ray.data.tests.conftest import *  # noqa
 import pandas
+import raydp
 
 
 # RayDP tests require Ray Java. Make sure ray jar is built before running this test.
 @pytest.fixture(scope="function")
 def spark(request):
-    import raydp
-
-    ray.shutdown()
     ray.init(num_cpus=2, include_dashboard=False)
     spark_session = raydp.init_spark("test", 1, 1, "500M")
 

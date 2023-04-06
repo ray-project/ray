@@ -427,7 +427,7 @@ def capitalize(s: str):
     return "".join(capfirst(x) for x in s.split("_"))
 
 
-def _df_to_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
+def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()
@@ -442,7 +442,7 @@ def _df_to_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
     )
 
 
-def _ndarray_to_block(ndarray: np.ndarray) -> "Block[np.ndarray]":
+def ndarray_to_block(ndarray: np.ndarray) -> "Block[np.ndarray]":
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()
@@ -453,7 +453,9 @@ def _ndarray_to_block(ndarray: np.ndarray) -> "Block[np.ndarray]":
     return block, metadata
 
 
-def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> "BlockMetadata":
+def get_table_block_metadata(
+    table: Union["pyarrow.Table", "pandas.DataFrame"]
+) -> "BlockMetadata":
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()
