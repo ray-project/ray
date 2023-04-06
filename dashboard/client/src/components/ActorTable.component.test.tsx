@@ -98,4 +98,34 @@ describe("ActorTable", () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     ); // actor2Row appear after actor1Row
   });
+
+  it("renders a table of actors sorted by startTime asc when states are the same, actor2 appears first", () => {
+    const RUNNING_ACTORS = {
+      ...MOCK_ACTORS,
+      ACTOR_2: {
+        ...MOCK_ACTORS.ACTOR_2,
+        state: "ALIVE",
+        startTime: 1679010689146,
+      },
+    };
+
+    const { getByRole } = render(
+      <MemoryRouter>
+        <ActorTable actors={RUNNING_ACTORS} />
+      </MemoryRouter>,
+    );
+    const actor1Row = getByRole("row", {
+      name: /ACTOR_1/,
+    });
+    const actor2Row = getByRole("row", {
+      name: /ACTOR_2/,
+    });
+
+    expect(within(actor1Row).getByText("ACTOR_1")).toBeInTheDocument();
+    expect(within(actor2Row).getByText("ACTOR_2")).toBeInTheDocument();
+
+    expect(actor2Row.compareDocumentPosition(actor1Row)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    ); // actor2Row appear after actor1Row
+  });
 });

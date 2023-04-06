@@ -79,13 +79,17 @@ export const NodeRow = ({
       </TableCell>
       <TableCell align="center">
         <Tooltip title={raylet.nodeId} arrow interactive>
-          <div>
-            <NodeLink
-              nodeId={raylet.nodeId}
-              to={`nodes/${raylet.nodeId}`}
-              className={classes.idCol}
-            />
-          </div>
+          {raylet.state === "DEAD" ? (
+            <div className={classes.idCol}></div>
+          ) : (
+            <div>
+              <NodeLink
+                nodeId={raylet.nodeId}
+                to={`nodes/${raylet.nodeId}`}
+                className={classes.idCol}
+              />
+            </div>
+          )}
         </Tooltip>
       </TableCell>
       <TableCell align="center">
