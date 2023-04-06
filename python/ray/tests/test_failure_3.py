@@ -354,16 +354,18 @@ def test_actor_failure_no_wait(ray_start_regular, tmp_path):
 
 def test_no_worker_child_process_leaks(ray_start_cluster, tmp_path):
     """
-    Verify that processes created by Ray tasks and actors are cleaned up after a Ctrl+C is sent
-    to the driver. This is done by creating an actor and task that each spawn a number of child
-    processes, sending a SIGINT to the driver process, and verifying that all child processes
-    are killed.
+    Verify that processes created by Ray tasks and actors are
+    cleaned up after a Ctrl+C is sent to the driver. This is done by
+    creating an actor and task that each spawn a number of child
+    processes, sending a SIGINT to the driver process, and
+    verifying that all child processes are killed.
 
-    The driver script uses a temporary JSON file to communicate the list of PIDs that are children
-    of the Ray worker processes.
+    The driver script uses a temporary JSON file to communicate
+    the list of PIDs that are children of the Ray worker
+    processes.
     """
 
-    output_file_path = tmp_path / 'leaked_pids.json'
+    output_file_path = tmp_path / "leaked_pids.json"
     driver_script = f"""
 import ray
 import json
@@ -432,7 +434,7 @@ while True:
     )
 
     # Load the PIDs of the child processes.
-    with open(output_file_path, 'r') as f:
+    with open(output_file_path, "r") as f:
         pids = json.load(f)
 
     # Validate all children of the worker processes are in a sleeping state.
@@ -445,6 +447,7 @@ while True:
         condition_predictor=lambda: all([not proc.is_running() for proc in processes]),
         timeout=30,
     )
+
 
 if __name__ == "__main__":
     import pytest

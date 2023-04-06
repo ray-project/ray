@@ -2,11 +2,8 @@ import os
 import signal
 import sys
 import time
-import json
-from pathlib import Path
 
 import numpy as np
-import psutil
 import pytest
 
 import ray
@@ -20,7 +17,6 @@ from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
     wait_for_condition,
-    run_string_as_driver_nonblocking,
 )
 from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError
 
@@ -661,6 +657,7 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 
     # We should be able to get the return value of task 2 without any issue
     ray.get(obj2)
+
 
 if __name__ == "__main__":
     import pytest
