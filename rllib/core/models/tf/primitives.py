@@ -2,11 +2,11 @@ import abc
 from typing import List
 
 from ray.rllib.core.models.base import Model, ModelConfig
-from ray.rllib.models.specs.checker import (
+from ray.rllib.core.models.specs.checker import (
     check_input_specs,
     check_output_specs,
 )
-from ray.rllib.models.specs.checker import (
+from ray.rllib.core.models.specs.checker import (
     is_input_decorated,
     is_output_decorated,
 )
@@ -42,8 +42,8 @@ class TfModel(Model, tf.keras.Model, abc.ABC):
         if not is_output_decorated(self.__call__):
             _raise_not_decorated_exception("output")
 
-    @check_input_specs("input_spec")
-    @check_output_specs("output_spec")
+    @check_input_specs("input_specs")
+    @check_output_specs("output_specs")
     def __call__(self, input_dict: NestedDict, **kwargs) -> NestedDict:
         """Returns the output of this model for the given input.
 
