@@ -5,6 +5,7 @@
 
 <link rel="stylesheet"
       href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
+</link>
 <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
 <script>hljs.highlightAll();</script>
 
@@ -68,8 +69,8 @@
             <img src="/_static/img/download.png" width="44px" height="44px" />
             <h3 style="font-size:20px;">Install Ray</h3>
         </div>
-        <p><pre style="border:none;"><code class="nohighlight" style="margin:10px;">pip install "ray[default]"</code></pre></p>      
-        <a class="no-underline" href="./ray-overview/installation.html" target="_blank"> <p style="font-weight:600;">Installation guide ></p></a>
+        <p><pre style="border:none; margin:0px;"><code class="nohighlight" style="margin:10px;">pip install "ray[default]"</code></pre></p>      
+        <a class="no-underline" href="./ray-overview/installation.html" target="_blank"> <p style="font-weight:600; margin-bottom: 0px;">Installation guide ></p></a>
   </div>
   <a class="no-underline" href="https://colab.research.google.com/github/maxpumperla/learning_ray/blob/main/notebooks/ch_02_ray_core.ipynb"  target="_blank" 
         ><div class="info-box">
@@ -110,9 +111,9 @@
         </div>
     </div>
     <div class="col-8">
-        <div class="tab-content" id="v-pills-tabContent" style="box-shadow: 0px 6px 30px 5px rgba(3,28,74,0.12); border-radius:8px;">
-          <div class="tab-pane fade show active" id="v-pills-data" role="tabpanel" aria-labelledby="v-pills-data-tab" style="user-select:none;">
-            <pre style="margin:0"><code class="language-python not-selectable">
+        <div class="tab-content" id="v-pills-tabContent" style="box-shadow: 0px 6px 30px 5px rgba(3,28,74,0.12); border-radius:8px; height:100%;">
+          <div class="tab-pane fade show active" id="v-pills-data" role="tabpanel" aria-labelledby="v-pills-data-tab" style="user-select:none; height:100%; display:flex;flex-direction:column;">
+            <pre style="margin:0; flex-grow:1; max-height:none;"><code class="language-python not-selectable" style="height:100%">
 from ray import data
 
 # Step 1: read 100 files in parallel from S3 directory
