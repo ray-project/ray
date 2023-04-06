@@ -61,7 +61,7 @@ class TorchLearner(Learner):
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
         lr = self._optimizer_config["lr"]
-        pair = (
+        pair: ParamOptimizerPair = (
             self.get_parameters(module),
             torch.optim.Adam(self.get_parameters(module), lr=lr),
         )
@@ -71,7 +71,7 @@ class TorchLearner(Learner):
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]]
     ) -> ParamDictType:
-        for optim in self._optim_to_param:
+        for optim in self._optimizer_parameters:
             # set_to_none is a faster way to zero out the gradients
             optim.zero_grad(set_to_none=True)
         loss[self.TOTAL_LOSS_KEY].backward()
@@ -82,7 +82,7 @@ class TorchLearner(Learner):
     @override(Learner)
     def apply_gradients(self, gradients: ParamDictType) -> None:
         # make sure the parameters do not carry gradients on their own
-        for optim in self._optim_to_param:
+        for optim in self._optimizer_parameters:
             optim.zero_grad(set_to_none=True)
 
         # set the gradient of the parameters
@@ -90,7 +90,7 @@ class TorchLearner(Learner):
             self._params[pid].grad = grad
 
         # for each optimizer call its step function with the gradients
-        for optim in self._optim_to_param:
+        for optim in self._optimizer_parameters:
             optim.step()
 
     @override(Learner)
@@ -100,19 +100,19 @@ class TorchLearner(Learner):
         return self._module.set_state(weights)
 
     @override(Learner)
-    def _save_optimizers(self, dir: Union[str, pathlib.Path]) -> None:
-        dir = pathlib.Path(dir)
-        dir.mkdir(parents=True, exist_ok=True)
-        for name, optim in self._optim_name_to_optim.items():
-            torch.save(optim.state_dict(), dir / f"{name}.pt")
+    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        for name, optim in self._named_optimizers.items():
+            torch.save(optim.state_dict(), path / f"{name}.pt")
 
     @override(Learner)
-    def _load_optimizers(self, dir: Union[str, pathlib.Path]) -> None:
-        dir = pathlib.Path(dir)
-        if not dir.exists():
-            raise ValueError(f"Directory {dir} does not exist.")
-        for name, optim in self._optim_name_to_optim.items():
-            optim.load_state_dict(torch.load(dir / f"{name}.pt"))
+    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        path = pathlib.Path(path)
+        if not path.exists():
+            raise ValueError(f"Directory {path} does not exist.")
+        for name, optim in self._named_optimizers.items():
+            optim.load_state_dict(torch.load(path / f"{name}.pt"))
 
     @override(Learner)
     def get_param_ref(self, param: ParamType) -> Hashable:
@@ -201,6 +201,23 @@ class TorchLearner(Learner):
 
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
         return isinstance(module, nn.Module)
+
+    @override(Learner)
+    def _check_structure_param_optim_pair(self, param_optim_pair: Any) -> None:
+        super()._check_structure_param_optim_pair(param_optim_pair)
+        params, optim = param_optim_pair
+        if not isinstance(optim, torch.optim.Optimizer):
+            raise ValueError(
+                f"The optimizer in {param_optim_pair} is not a torch.optim.Optimizer. "
+                "Please use a torch.optim.Optimizer for TorchLearner."
+            )
+        for param in params:
+            if not isinstance(param, torch.Tensor):
+                raise ValueError(
+                    f"One of the parameters {param} in this ParamOptimizerPair "
+                    f"{param_optim_pair} is not a torch.Tensor. Please use a "
+                    "torch.Tensor for TorchLearner."
+                )
 
     @override(Learner)
     def _make_module(self) -> MultiAgentRLModule:

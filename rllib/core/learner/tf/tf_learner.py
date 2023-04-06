@@ -78,7 +78,10 @@ class TfLearner(Learner):
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
         lr = self._optimizer_config["lr"]
-        pair = (self.get_parameters(module), tf.keras.optimizers.Adam(learning_rate=lr))
+        pair: ParamOptimizerPair = (
+            self.get_parameters(module),
+            tf.keras.optimizers.Adam(learning_rate=lr),
+        )
         return pair
 
     @override(Learner)
@@ -94,7 +97,7 @@ class TfLearner(Learner):
         # only some agents have a sample batch that is passed but not others.
         # This is probably because of the way that we are iterating over the
         # parameters in the optim_to_param_dictionary
-        for optim, param_ref_seq in self._optim_to_param.items():
+        for optim, param_ref_seq in self._optimizer_parameters.items():
             variable_list = [
                 self._params[param_ref]
                 for param_ref in param_ref_seq
@@ -140,7 +143,7 @@ class TfLearner(Learner):
     def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        for name, optim in self._optim_name_to_optim.items():
+        for name, optim in self._named_optimizers.items():
             state = tf.keras.optimizers.serialize(optim)
             state = tf.nest.map_structure(convert_numpy_to_python_primitives, state)
             with open(path / f"{name}.json", "w") as f:
@@ -149,16 +152,16 @@ class TfLearner(Learner):
     @override(Learner)
     def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(path)
-        for name in self._optim_name_to_optim.keys():
+        for name in self._named_optimizers.keys():
             with open(path / f"{name}.json", "r") as f:
                 state = json.load(f)
             new_optim = tf.keras.optimizers.deserialize(state)
-            old_optim = self._optim_name_to_optim[name]
-            self._optim_name_to_optim[name] = new_optim
-            param_seq = self._optim_to_param.pop(old_optim)
-            self._optim_to_param[new_optim] = []
+            old_optim = self._named_optimizers[name]
+            self._named_optimizers[name] = new_optim
+            param_seq = self._optimizer_parameters.pop(old_optim)
+            self._optimizer_parameters[new_optim] = []
             for param_ref in param_seq:
-                self._optim_to_param[new_optim].append(param_ref)
+                self._optimizer_parameters[new_optim].append(param_ref)
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
@@ -174,6 +177,24 @@ class TfLearner(Learner):
 
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
         return isinstance(module, TfRLModule)
+
+    @override(Learner)
+    def _check_structure_param_optim_pair(self, param_optim_pair: Any) -> None:
+        super()._check_structure_param_optim_pair(param_optim_pair)
+        params, optim = param_optim_pair
+        if not isinstance(optim, tf.keras.optimizers.Optimizer):
+            raise ValueError(
+                f"The optimizer in {param_optim_pair} is not a tf keras optimizer. "
+                "Please use a tf.keras.optimizers.Optimizer for TfLearner."
+            )
+        for param in params:
+            if not isinstance(param, tf.Variable):
+                raise ValueError(
+                    f"One of the parameters {param} in this ParamOptimizerPair "
+                    f"{param_optim_pair} is not a tf.Variable. Please use a "
+                    "tf.Variable for TfLearner. You can retrieve the param with a call "
+                    "to learner.get_param_ref(tensor)."
+                )
 
     @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
