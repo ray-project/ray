@@ -25,8 +25,6 @@ import yaml
 
 import ray
 from ray import air, tune
-from ray.rllib.core.models.configs import ModelConfig
-from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
@@ -1186,7 +1184,7 @@ class ModelChecker:
     inputs to the models.
     """
 
-    def __init__(self, config: ModelConfig):
+    def __init__(self, config):
         self.config = config
 
         # To compare number of params between frameworks.
@@ -1207,6 +1205,7 @@ class ModelChecker:
         model = self.models[framework] = self.config.build(framework=framework)
 
         # Pass a B=1 observation through the model.
+        from ray.rllib.core.models.specs.specs_dict import SpecDict
         if isinstance(model.input_specs, SpecDict):
             inputs = {}
             for key, spec in model.input_specs.items():
