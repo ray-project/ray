@@ -287,8 +287,8 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
         return MapOperator.create(
             do_map,
-            init_fn,
             input_op,
+            init_fn,
             name=stage.name,
             compute_strategy=compute,
             min_rows_per_bundle=stage.target_block_size,

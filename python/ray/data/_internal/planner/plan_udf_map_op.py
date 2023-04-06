@@ -84,8 +84,8 @@ def _plan_udf_map_op(
 
     return MapOperator.create(
         do_map,
-        init_fn,
         input_physical_dag,
+        init_fn,
         name=op.name,
         compute_strategy=compute,
         min_rows_per_bundle=op._target_block_size,
