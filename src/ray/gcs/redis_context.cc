@@ -403,7 +403,7 @@ void ValidateRedisDB(RedisContext &context) {
   int cluster_size = 0;
 
   // Check the cluster status first
-  for (auto &part : parts) {
+  for (const auto &part : parts) {
     if (part.empty() || part[0] == '#') {
       // it's a comment
       continue;
@@ -416,7 +416,8 @@ void ValidateRedisDB(RedisContext &context) {
       } else if (kv[1] == "fail") {
         RAY_LOG(FATAL)
             << "The Redis cluster is not healthy. cluster_state shows failed status: "
-            << cluster_info;
+            << cluster_info << "."
+            << " Please check Redis cluster used.";
       }
     }
     if (kv[0] == "cluster_size") {
@@ -426,8 +427,7 @@ void ValidateRedisDB(RedisContext &context) {
 
   if (cluster_mode) {
     RAY_CHECK(cluster_size == 1)
-        << "Ray currently doesn't support sharded Redis cluster. "
-        << "Please make sure the provided Redis cluster only has one shard";
+        << "Ray currently doesn't support Redis Cluster with more than one shard. ";
   }
 }
 
@@ -450,9 +450,24 @@ Status RedisContext::Connect(const std::string &address,
                              bool sharding,
                              const std::string &password,
                              bool enable_ssl) {
+  // Connect to the leader of the Redis cluster:
+  //   1. Resolve the ip address from domain name.
+  //      It might return multiple ip addresses
+  //   2. Connect to the first ip address.
+  //   3. Validate the Redis cluster to make sure it's configured in the way
+  //      Ray accept:
+  //        - If it's cluster mode redis, only 1 shard in the cluster.
+  //        - Make sure the cluster is healthy.
+  //   4. Send a dummy delete and check the return.
+  //      - If return OK, connection is finished.
+  //      - Otherwise, make sure it's MOVED error. And we'll get the leader
+  //        address from the error message. Re-run this function with the
+  //        right leader address.
+
   RAY_CHECK(!context_);
   RAY_CHECK(!redis_async_context_);
-
+  // Fetch the ip address from the address. It might return multiple
+  // addresses and only the first one will be used.
   auto ip_addresses = ResolveDNS(address, port);
   RAY_CHECK(!ip_addresses.empty())
       << "Failed to resolve DNS for " << address << ":" << port;
