@@ -424,6 +424,14 @@ def test_convert_types(ray_start_regular_shared):
 def test_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(["hello", "world"])
     assert ds.take() == ["hello", "world"]
+    assert isinstance(next(ds.iter_batches(batch_format=None)), list)
+
+    with pytest.raises(ValueError):
+        ds = ray.data.from_items(["hello", "world"], output_arrow_format=True)
+
+    ds = ray.data.from_items([{"hello": "world"}], output_arrow_format=True)
+    assert ds.take() == [{"hello": "world"}]
+    assert isinstance(next(ds.iter_batches(batch_format=None)), pa.Table)
 
 
 @pytest.mark.parametrize("parallelism", list(range(1, 21)))
