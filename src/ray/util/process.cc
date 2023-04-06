@@ -658,32 +658,35 @@ std::optional<std::error_code> KillProc(pid_t pid) {
 static inline std::vector<pid_t> GetAllProcsWithPpidLinux(pid_t parent_pid) {
   std::vector<pid_t> child_pids;
 
-  // Open the /proc directory
-  std::filesystem::directory_iterator dir("/proc");
+  // Iterate over all files in the /proc directory, looking for directories.
+  // See `man proc` for information on the directory structure.
+  // Directories with only digits in their name correspond to processes in the process table.
+  // We read in the status of each such process and parse the parent PID.
+  // If the process parent PID is equal to parent_pid, then we add it to the vector to be returned.
+  // Ideally, we use a library for this, but at the time of writing one is not available in Ray C++.
 
-  // Iterate over all files in the /proc directory
+  std::filesystem::directory_iterator dir(kProcDirectory);
   for (const auto &file : dir) {
-    // Check if this is a directory and its name is a number (which is the PID)
     if (!file.is_directory()) {
       continue;
     }
 
+    // Determine if the directory name consists of only digits (means it's a PID).
     const auto filename = file.path().filename().string();
     bool file_name_is_only_digit =
         std::all_of(filename.begin(), filename.end(), ::isdigit);
     if (!file_name_is_only_digit) {
       continue;
     }
-
+    
+    // If so, open the status file for reading.
     pid_t pid = std::stoi(filename);
-
-    // Open the status file for this process
     std::ifstream status_file(file.path() / "status");
     if (!status_file.is_open()) {
       continue;
     }
 
-    // Read the PPID from the status file
+    // Scan for the line that starts with the ppid key.
     std::string line;
     const std::string key = "PPid:";
     while (std::getline(status_file, line)) {
@@ -692,6 +695,7 @@ static inline std::vector<pid_t> GetAllProcsWithPpidLinux(pid_t parent_pid) {
         continue;
       }
 
+      // We found it, read and parse the PPID.
       pid_t ppid = std::stoi(line.substr(substr.size()));
       if (ppid == parent_pid) {
         child_pids.push_back(pid);
