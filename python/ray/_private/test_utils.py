@@ -49,7 +49,6 @@ from ray.core.generated import (
     gcs_service_pb2,
     gcs_service_pb2_grpc,
 )
-from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
 
 
@@ -282,6 +281,8 @@ def check_call_module(main, argv, capture_stdout=False, capture_stderr=False):
 def check_call_subprocess(argv, capture_stdout=False, capture_stderr=False):
     # We use this function instead of calling the "ray" command to work around
     # some deadlocks that occur when piping ray's output on Windows
+    from ray.scripts.scripts import main as ray_main
+
     if sys.platform == "win32":
         result = check_call_module(
             ray_main, argv, capture_stdout=capture_stdout, capture_stderr=capture_stderr

@@ -96,7 +96,7 @@ def _is_tracing_enabled() -> bool:
 
 
 def _enbale_tracing():
-    global _global_is_tracing_enabled
+    global _global_is_tracing_enabled, _opentelemetry
     _global_is_tracing_enabled = True
     _opentelemetry = _OpenTelemetryProxy()
     _opentelemetry.try_all()
@@ -306,7 +306,6 @@ def _tracing_task_invocation(method):
             return method(self, args, kwargs, *_args, **_kwargs)
 
         assert "_ray_trace_ctx" not in kwargs
-
         tracer = _opentelemetry.trace.get_tracer(__name__)
         with tracer.start_as_current_span(
             _function_span_producer_name(self._function_name),
