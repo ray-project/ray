@@ -543,7 +543,8 @@ ray::Status NodeManager::RegisterGcs() {
   }
   // Raylet periodically check whether it's alive in GCS.
   // For failure cases, GCS might think this raylet dead, but this
-  // failure still think it's alive.
+  // raylet still think it's alive. This could happen when the cluster setup is wrong,
+  // for example, there is data loss in the DB.
   periodical_runner_.RunFnPeriodically(
       [this] {
         // Flag to see whether a request is running.
@@ -566,7 +567,7 @@ ray::Status NodeManager::RegisterGcs() {
             }
             checking = false;
           }
-        }));
+        }, /* timeout_ms = */ 30000));
       },
       RayConfig::instance().raylet_liveness_self_check_interval_ms(),
       "NodeManager.GcsCheckAlive");
