@@ -178,16 +178,17 @@ Deterministic Execution
 
 .. code-block::
 
+   # By default, this is set to False.
    ctx.execution_options.preserve_order = True
 
-To enable deterministic execution, set the above to True. This may decrease performance, but will ensure block ordering is preserved through execution. This flag defaults to True in Ray 2.3 but False in
-releases later.
+To enable deterministic execution, set the above to True. This may decrease performance, but will ensure block ordering is preserved through execution. This flag defaults to False.
 
 Actor Locality Optimization (ML inference use case)
 ---------------------------------------------------
 
 .. code-block::
 
+   # By default, this is set to True already.
    ctx.execution_options.actor_locality_enabled = True
 
 The actor locality optimization (if you're using actor pools) tries to schedule objects that are already local to an actor's node to the same actor. This reduces network traffic across nodes. When actor locality is enabled, you'll see a report in the progress output of the hit rate:
