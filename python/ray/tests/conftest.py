@@ -34,6 +34,7 @@ from ray._private.test_utils import (
     enable_external_redis,
     redis_replicas,
     start_redis_instance,
+    find_free_port,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -41,6 +42,15 @@ logger = logging.getLogger(__name__)
 
 START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "60"))
 
+@pytest.fixture(scope="session", autouse=True)
+def tmp_dir_session():
+    """Create a temporary directory for the session"""
+    import tempfile
+    import os
+    temp_dir = tempfile.mkdtemp()
+    print("temp_dir", temp_dir)
+    os.environ["RAY_TMPDIR"] = str(temp_dir)
+    yield
 
 def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
     """Wait for a Redis server to be available.
@@ -462,9 +472,10 @@ def call_ray_start(request):
 
 @contextmanager
 def call_ray_start_context(request):
+    free_port = find_free_port()
     default_cmd = (
         "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0"
+        f"--max-worker-port=0 --port {free_port}"
     )
     parameter = getattr(request, "param", default_cmd)
     env = None
@@ -474,7 +485,8 @@ def call_ray_start_context(request):
             env = {**os.environ, **parameter.get("env")}
 
         parameter = parameter.get("cmd", default_cmd)
-
+        assert " --port" not in parameter, "port is not allowed"
+        parameter += f" --port {free_port}"
     command_args = parameter.split(" ")
 
     try:
@@ -484,13 +496,8 @@ def call_ray_start_context(request):
     except Exception as e:
         print(type(e), e)
         raise
-    # Get the redis address from the output.
-    redis_substring_prefix = "--address='"
-    address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
-    address = out[address_location:]
-    address = address.split("'")[0]
 
-    yield address
+    yield f"127.0.0.1:{free_port}"
 
     # Disconnect from the Ray cluster.
     ray.shutdown()

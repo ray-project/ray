@@ -332,7 +332,6 @@ A.options(name="a", lifetime="detached").remote()
 
 print(ray.get([use_gpu.remote(), use_gpu.remote()]))
 """
-
     proc = run_string_as_driver_nonblocking(script)
     gcs_cli = ray._private.gcs_utils.GcsClient(address=f"{call_ray_start}")
 

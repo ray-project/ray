@@ -377,7 +377,8 @@
     - DL=1 ./ci/env/install-dependencies.sh
     - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
+    - mount -t proc -o nodev,noexec,nosuid proc /proc && bazel test --config=ci $(./ci/run/bazel_export_options)
+      --sandbox_fake_username=true --sandbox_fake_hostname=true --sandbox_default_allow_network=false --spawn_strategy=linux-sandbox
       --test_tag_filters=client_tests,small_size_python_tests
       -- python/ray/tests/...
     - bazel test --config=ci $(./ci/run/bazel_export_options)
@@ -404,7 +405,8 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
+    - mount -t proc -o nodev,noexec,nosuid proc /proc && bazel test --config=ci $(./ci/run/bazel_export_options)
+      --sandbox_fake_username=true --sandbox_fake_hostname=true --sandbox_default_allow_network=false --spawn_strategy=linux-sandbox
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       python/ray/tests/...
 
@@ -414,7 +416,8 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
+    - mount -t proc -o nodev,noexec,nosuid proc /proc && bazel test --config=ci $(./ci/run/bazel_export_options)
+      --sandbox_fake_username=true --sandbox_fake_hostname=true --sandbox_default_allow_network=false --spawn_strategy=linux-sandbox
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       python/ray/tests/...
 
@@ -425,9 +428,11 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options)
+    - mount -t proc -o nodev,noexec,nosuid proc /proc && bazel test --config=ci $(./scripts/bazel_export_options)
+      --sandbox_fake_username=true --sandbox_fake_hostname=true --sandbox_default_allow_network=false --spawn_strategy=linux-sandbox
       --test_tag_filters=client_tests,small_size_python_tests
       --test_env=TEST_EXTERNAL_REDIS=1
+      --sandbox_fake_username=true --sandbox_fake_hostname=true --sandbox_default_allow_network=false --spawn_strategy=linux-sandbox
       -- python/ray/tests/...
 
 - label: ":redis: (External Redis) (Large)"
@@ -446,7 +451,8 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options)
+    - mount -t proc -o nodev,noexec,nosuid proc /proc && bazel test --config=ci $(./scripts/bazel_export_options)
+      --sandbox_fake_username=true --sandbox_fake_hostname=true --sandbox_default_allow_network=false --spawn_strategy=linux-sandbox
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       --test_env=TEST_EXTERNAL_REDIS=1
       -- //python/ray/tests/...
@@ -458,7 +464,8 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options)
+    - mount -t proc -o nodev,noexec,nosuid proc /proc && bazel test --config=ci $(./scripts/bazel_export_options)
+      --sandbox_fake_username=true --sandbox_fake_hostname=true --sandbox_default_allow_network=false --spawn_strategy=linux-sandbox
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       --test_env=TEST_EXTERNAL_REDIS=1
       -- //python/ray/tests/...

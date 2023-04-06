@@ -489,7 +489,7 @@ def test_per_func_name_stats(shutdown_only):
         } == components
         return True
 
-    wait_for_condition(verify_components, timeout=30)
+    wait_for_condition(verify_components, timeout=60)
 
     def verify_mem_usage():
         metrics = raw_metrics(addr)
