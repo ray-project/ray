@@ -1,0 +1,10 @@
+# These are compatibility requirements to make sure certain workflows continue to work
+# with these dependency versions and on Python 3.8.
+# Concretely, we set up a fresh Python 3.8 environment and
+# run the pipeline job in `Ray Python 3.8 ML compatibility tests` with these dependencies installed.
+
+# ML libraries
+lightning==2.0.0
+pytorch-lightning==2.0.0
+
+ray[tune,data]
