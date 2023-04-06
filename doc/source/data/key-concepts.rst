@@ -94,6 +94,9 @@ Execution mode
 Most transformations are lazy. They don't execute until you consume a dataset or call
 :meth:`Dataset.cache() <ray.data.Dataset.cache>`.
 
+The transformations are executed in a streaming way, incrementally on the data and
+with operators processed in parallel, see :ref:`Streaming Execution <datasets_streaming_execution>`.
+
 For an in-depth guide on Datasets execution, read :ref:`Execution <datasets_execution>`.
 
 Fault tolerance
