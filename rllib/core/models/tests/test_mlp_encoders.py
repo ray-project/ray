@@ -17,7 +17,7 @@ class TestMLPEncoders(unittest.TestCase):
 
         # Loop through different combinations of hyperparameters.
         inputs_dims_configs = [[1], [50]]
-        list_of_hidden_layer_dims = [[], [1], [64, 64], [1000, 1000]]
+        list_of_hidden_layer_dims = [[], [1], [64, 64], [256, 256, 256]]
         hidden_layer_activations = [None, "linear", "relu", "tanh", "swish"]
         hidden_layer_use_layernorms = [False, True]
         output_dims_configs = inputs_dims_configs
