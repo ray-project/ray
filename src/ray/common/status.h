@@ -127,7 +127,7 @@ class RAY_EXPORT Status {
   Status() : state_(NULL) {}
   ~Status() { delete state_; }
 
-  Status(StatusCode code, const std::string &msg, int rpc_code=-1);
+  Status(StatusCode code, const std::string &msg, int rpc_code = -1);
 
   // Copy the specified status.
   Status(const Status &s);
