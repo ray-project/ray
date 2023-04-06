@@ -21,6 +21,7 @@ from ray._private.test_utils import (
     object_memory_usage,
     get_metric_check_condition,
     wait_for_condition,
+    MetricSamplePattern,
 )
 
 logger = logging.getLogger(__name__)
@@ -729,11 +730,20 @@ def test_scheduling_class_depth(ray_start_regular):
     metric_name = "ray_internal_num_infeasible_scheduling_classes"
 
     # timeout=60 necessary to pass on windows debug/asan builds.
-    wait_for_condition(get_metric_check_condition({metric_name: 2}), timeout=60)
+    wait_for_condition(
+        get_metric_check_condition([MetricSamplePattern(name=metric_name, value=2)]),
+        timeout=60,
+    )
     start_infeasible.remote(2)
-    wait_for_condition(get_metric_check_condition({metric_name: 3}), timeout=60)
+    wait_for_condition(
+        get_metric_check_condition([MetricSamplePattern(name=metric_name, value=3)]),
+        timeout=60,
+    )
     start_infeasible.remote(4)
-    wait_for_condition(get_metric_check_condition({metric_name: 4}), timeout=60)
+    wait_for_condition(
+        get_metric_check_condition([MetricSamplePattern(name=metric_name, value=4)]),
+        timeout=60,
+    )
 
 
 if __name__ == "__main__":

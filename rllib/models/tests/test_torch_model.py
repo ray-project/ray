@@ -15,12 +15,12 @@ B, T = 6, 8
 class SimpleRecurrentModel(TorchRecurrentModel):
     @property
     @override(TorchRecurrentModel)
-    def input_spec(self) -> SpecDict:
+    def input_specs(self) -> SpecDict:
         return SpecDict({"in": "b t h"}, h=2)
 
     @property
     @override(TorchRecurrentModel)
-    def output_spec(self) -> SpecDict:
+    def output_specs(self) -> SpecDict:
         return SpecDict({"out": "b t h"}, h=3)
 
     @property
@@ -49,12 +49,12 @@ class SimpleRecurrentModel(TorchRecurrentModel):
 class SimpleModel(TorchModel):
     @property
     @override(TorchRecurrentModel)
-    def input_spec(self) -> SpecDict:
+    def input_specs(self) -> SpecDict:
         return SpecDict({"in": "b h"}, h=2)
 
     @property
     @override(TorchRecurrentModel)
-    def output_spec(self) -> SpecDict:
+    def output_specs(self) -> SpecDict:
         return SpecDict({"out": "b h"}, h=3)
 
     @override(TorchModel)
