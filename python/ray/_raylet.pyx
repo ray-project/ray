@@ -1536,12 +1536,16 @@ def _auto_reconnect(f):
                 return f(self, *args, **kwargs)
             except RpcError as e:
                 import grpc
-                if remaining_retry <= 0:
-                    raise
                 if e.rpc_code in [
                     grpc.StatusCode.UNAVAILABLE.value[0],
                     grpc.StatusCode.UNKNOWN.value[0],
                 ]:
+                    if remaining_retry <= 0:
+                        logger.error(
+                            "Failed to connect to GCS. Please check"
+                            " `gcs_server.out` for more details."
+                        )
+                        raise
                     logger.debug(
                         f"Failed to send request to gcs, reconnecting. Error {e}"
                     )
