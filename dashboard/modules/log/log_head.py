@@ -78,8 +78,8 @@ class LogHead(dashboard_utils.DashboardHeadModule):
             )
             sr.content_length = r.content_length
             sr.content_type = r.content_type
-            sr.charset = r.charset
-
+            if r.charset and not sr.content_type.startswith("application/octet-stream"):
+                sr.charset = r.charset
             writer = await sr.prepare(req)
             async for data in r.content.iter_any():
                 await writer.write(data)
