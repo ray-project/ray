@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Optional
 
 import numpy as np
 
@@ -33,11 +33,11 @@ class TfMLPHead(TfModel):
         )
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return TfTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return TfTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)
@@ -51,9 +51,7 @@ class TfFreeLogStdMLPHead(TfModel):
     def __init__(self, config: FreeLogStdMLPHeadConfig) -> None:
         TfModel.__init__(self, config)
 
-        assert (
-            config.output_dims[0] % 2 == 0
-        ), "output_dims must be even for free std!"
+        assert config.output_dims[0] % 2 == 0, "output_dims must be even for free std!"
         self._half_output_dim = config.output_dims[0] // 2
 
         self.net = TfMLP(
@@ -74,11 +72,11 @@ class TfFreeLogStdMLPHead(TfModel):
         )
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return TfTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return TfTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)

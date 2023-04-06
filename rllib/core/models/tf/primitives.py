@@ -67,9 +67,7 @@ class TfMLP(tf.keras.Model):
                 tf.keras.layers.Dense(
                     hidden_layer_dims[i],
                     activation=(
-                        hidden_activation
-                        if not hidden_layer_use_layernorm
-                        else None
+                        hidden_activation if not hidden_layer_use_layernorm else None
                     ),
                     use_bias=use_bias,
                 )
@@ -159,8 +157,8 @@ class TfCNN(tf.keras.Model):
             if cnn_use_layernorm:
                 # Use epsilon=1e-5 here (instead of default 1e-3) to be unified with
                 # torch. Need to normalize over all axes.
-                layers.append(tf.keras.layers.LayerNormalization(
-                    axis=[-3, -2, -1], epsilon=1e-5)
+                layers.append(
+                    tf.keras.layers.LayerNormalization(axis=[-3, -2, -1], epsilon=1e-5)
                 )
                 layers.append(tf.keras.layers.Activation(cnn_activation))
 

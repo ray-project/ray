@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Optional
 
 import numpy as np
 
@@ -33,11 +33,11 @@ class TorchMLPHead(TorchModel):
         )
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return TorchTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return TorchTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)
@@ -51,9 +51,7 @@ class TorchFreeLogStdMLPHead(TorchModel):
     def __init__(self, config: FreeLogStdMLPHeadConfig) -> None:
         super().__init__(config)
 
-        assert (
-            config.output_dims[0] % 2 == 0
-        ), "output_dims must be even for free std!"
+        assert config.output_dims[0] % 2 == 0, "output_dims must be even for free std!"
         self._half_output_dim = config.output_dims[0] // 2
 
         self.net = TorchMLP(
@@ -71,11 +69,11 @@ class TorchFreeLogStdMLPHead(TorchModel):
         )
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return TorchTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return TorchTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)

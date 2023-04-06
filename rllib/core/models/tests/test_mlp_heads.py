@@ -1,12 +1,9 @@
 import itertools
 import unittest
 
-import numpy as np
-
 from ray.rllib.core.models.configs import MLPHeadConfig, FreeLogStdMLPHeadConfig
-from ray.rllib.core.models.utils import ModelChecker
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.test_utils import framework_iterator, ModelChecker
 
 _, tf, _ = try_import_tf()
 torch, nn = try_import_torch()
@@ -18,7 +15,7 @@ class TestMLPHeads(unittest.TestCase):
 
         # Loop through different combinations of hyperparameters.
         inputs_dims_configs = [[1], [50]]
-        list_of_hidden_layer_dims = [[], [1], [64, 64], [1000, 1000, 1000]]
+        list_of_hidden_layer_dims = [[], [1], [64, 64], [512, 512]]
         hidden_layer_activations = ["linear", "relu", "tanh", "swish"]
         hidden_layer_use_layernorms = [False, True]
         # Can only test even `output_dims` for FreeLogStdMLPHeadConfig.

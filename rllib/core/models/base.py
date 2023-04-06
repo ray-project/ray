@@ -300,11 +300,11 @@ class Encoder(Model, abc.ABC):
     """
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return convert_to_canonical_format([SampleBatch.OBS, STATE_IN])
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return convert_to_canonical_format([ENCODER_OUT, STATE_OUT])
 
     @abc.abstractmethod
@@ -362,7 +362,7 @@ class ActorCriticEncoder(Encoder):
         super().__init__(config)
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         if self.config.shared:
             state_in_spec = self.encoder.input_specs[STATE_IN]
         else:
@@ -380,7 +380,7 @@ class ActorCriticEncoder(Encoder):
         )
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         if self.config.shared:
             state_out_spec = self.encoder.output_specs[STATE_OUT]
         else:

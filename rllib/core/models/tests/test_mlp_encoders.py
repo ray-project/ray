@@ -1,14 +1,10 @@
 import itertools
 import unittest
 
-import numpy as np
-
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.core.models.configs import MLPEncoderConfig
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT, ENCODER_OUT
-from ray.rllib.core.models.utils import ModelChecker
+from ray.rllib.core.models.base import STATE_OUT, ENCODER_OUT
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.test_utils import framework_iterator, ModelChecker
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
@@ -20,7 +16,7 @@ class TestMLPEncoders(unittest.TestCase):
 
         # Loop through different combinations of hyperparameters.
         inputs_dims_configs = [[1], [50]]
-        list_of_hidden_layer_dims = [[], [1], [64, 64], [1000, 1000, 1000]]
+        list_of_hidden_layer_dims = [[], [1], [64, 64], [256, 256, 256]]
         hidden_layer_activations = [None, "linear", "relu", "tanh", "swish"]
         hidden_layer_use_layernorms = [False, True]
         output_dims_configs = inputs_dims_configs

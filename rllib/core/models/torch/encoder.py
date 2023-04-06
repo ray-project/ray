@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Optional
 
 import tree
 
@@ -47,7 +47,7 @@ class TorchMLPEncoder(TorchModel, Encoder):
         )
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 SampleBatch.OBS: TorchTensorSpec("b, d", d=self.config.input_dims[0]),
@@ -57,7 +57,7 @@ class TorchMLPEncoder(TorchModel, Encoder):
         )
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 ENCODER_OUT: TorchTensorSpec("b, d", d=self.config.output_dims[0]),
@@ -112,7 +112,7 @@ class TorchCNNEncoder(TorchModel, Encoder):
         self.net = nn.Sequential(*layers)
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 SampleBatch.OBS: TorchTensorSpec(
@@ -127,7 +127,7 @@ class TorchCNNEncoder(TorchModel, Encoder):
         )
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 ENCODER_OUT: TorchTensorSpec("b, d", d=self.config.output_dims[0]),
@@ -162,7 +162,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         self.linear = nn.Linear(config.hidden_dim, config.output_dims[0])
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 # `bxt` is just a name for better readability to indicate padded batch.
@@ -180,7 +180,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         )
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 ENCODER_OUT: TorchTensorSpec("bxt, h", h=self.config.output_dims[0]),
