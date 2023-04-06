@@ -1,8 +1,6 @@
 import itertools
 import unittest
 
-import numpy as np
-
 from ray.rllib.core.models.configs import MLPHeadConfig, FreeLogStdMLPHeadConfig
 from ray.rllib.core.models.utils import ModelChecker
 from ray.rllib.utils.framework import try_import_tf, try_import_torch

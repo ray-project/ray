@@ -92,7 +92,7 @@ class _MLPConfig(ModelConfig):
             )
         if self.output_dims is None and not self.hidden_layer_dims:
             raise ValueError(
-                f"If `output_dims` is None, you must specify at least one hidden layer "
+                "If `output_dims` is None, you must specify at least one hidden layer "
                 "dim, e.g. `hidden_layer_dims=[32]`! `hidden_layer_dims` must not "
                 "be empty in this case."
             )

@@ -3,10 +3,8 @@ from typing import Any
 import numpy as np
 import tree  # pip install dm_tree
 
-from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check
 

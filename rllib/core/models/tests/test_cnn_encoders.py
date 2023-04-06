@@ -1,9 +1,7 @@
 import unittest
 import itertools
 
-import numpy as np
-
-from ray.rllib.core.models.base import ENCODER_OUT, STATE_IN, STATE_OUT
+from ray.rllib.core.models.base import ENCODER_OUT, STATE_OUT
 from ray.rllib.core.models.configs import CNNEncoderConfig
 from ray.rllib.core.models.utils import ModelChecker
 from ray.rllib.models.utils import get_filter_config

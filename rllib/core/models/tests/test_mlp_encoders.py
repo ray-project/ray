@@ -1,11 +1,8 @@
 import unittest
 import itertools
 
-import numpy as np
-
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.core.models.configs import MLPEncoderConfig
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT, ENCODER_OUT
+from ray.rllib.core.models.base import STATE_OUT, ENCODER_OUT
 from ray.rllib.core.models.utils import ModelChecker
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
