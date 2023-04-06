@@ -122,9 +122,6 @@ class PPOConfig(PGConfig):
         # Deprecated keys.
         self.vf_share_layers = DEPRECATED_VALUE
 
-        # enable the rl module api by default
-        self._enable_rl_module_api = True
-        self._enable_learner_api = True
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
@@ -134,6 +131,10 @@ class PPOConfig(PGConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
+
+        # enable the rl module api by default
+        self.rl_module(_enable_rl_module_api=True)
+        self._enable_learner_api = True
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
