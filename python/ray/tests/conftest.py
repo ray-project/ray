@@ -42,15 +42,18 @@ logger = logging.getLogger(__name__)
 
 START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "60"))
 
+
 @pytest.fixture(scope="session", autouse=True)
 def tmp_dir_session():
     """Create a temporary directory for the session"""
     import tempfile
     import os
+
     temp_dir = tempfile.mkdtemp()
     print("temp_dir", temp_dir)
     os.environ["RAY_TMPDIR"] = str(temp_dir)
     yield
+
 
 def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
     """Wait for a Redis server to be available.
@@ -490,7 +493,7 @@ def call_ray_start_context(request):
     command_args = parameter.split(" ")
 
     try:
-        out = ray._private.utils.decode(
+        ray._private.utils.decode(
             subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
         )
     except Exception as e:
