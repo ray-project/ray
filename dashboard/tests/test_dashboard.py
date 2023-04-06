@@ -984,15 +984,17 @@ def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
 def test_dashboard_module_load(tmpdir):
     """Verify if the head module can load only selected modules."""
     head = DashboardHead(
-        "127.0.0.1",
-        8265,
-        1,
-        "127.0.0.1:6379",
-        str(tmpdir),
-        str(tmpdir),
-        str(tmpdir),
-        False,
-        True,
+        http_host="127.0.0.1",
+        http_port=8265,
+        http_port_retries=1,
+        gcs_address="127.0.0.1:6379",
+        dashboard_ip=None,
+        grpc_port=0,
+        log_dir=str(tmpdir),
+        temp_dir=str(tmpdir),
+        session_dir=str(tmpdir),
+        minimal=False,
+        serve_frontend=True,
     )
 
     # Test basic.
