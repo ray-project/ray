@@ -62,26 +62,10 @@ Enabling RL Modules in the Configuration
 
 Enable RLModules by setting the ``_enable_rl_module_api`` flag to ``True`` in the configuration object. 
 
-.. code-block:: python
-
-    import torch
-    from pprint import pprint
-
-    from ray.rllib.algorithms.ppo import PPOConfig
-
-    config = (
-        PPOConfig()
-        .framework("torch")
-        .environment("CartPole-v1")
-        .rl_module(_enable_rl_module_api=True)
-    )
-
-    algorithm = config.build()
-
-    # run for 2 training steps
-    for _ in range(2):
-        result = algorithm.train()
-        pprint(result)
+.. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+    :language: python
+    :start-after: __enabling-rlmodules-in-configs-begin__
+    :end-before: __enabling-rlmodules-in-configs-end__
 
 Constructing RL Modules
 -----------------------
@@ -91,76 +75,28 @@ To maintain consistency and usability, RLlib offers a standardized approach for 
 
 .. tabbed:: Single Agent
 
-    .. code-block:: python
-
-        import gymnasium as gym
-        from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-        from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
-
-        env = gym.make("CartPole-v1")
-
-        spec = SingleAgentRLModuleSpec(
-            module_class=DiscreteBCTorchModule,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            model_config_dict={"fcnet_hiddens": [64]},
-        )
-
-        module = spec.build()
+    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+        :language: python
+        :start-after: __constructing-rlmodules-sa-begin__
+        :end-before: __constructing-rlmodules-sa-end__
 
 
 .. tabbed:: Multi Agent
 
-    .. code-block:: python
-
-        import gymnasium as gym
-        from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-        from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
-
-        spec = MultiAgentRLModuleSpec(
-            module_specs = {
-                "module_1": SingleAgentRLModuleSpec(
-                    module_class=DiscreteBCTorchModule,
-                    observation_space=gym.spaces.Box(low=-1, high=1, shape=(10,)),
-                    action_space=gym.spaces.Discrete(2),
-                    model_config_dict={"fcnet_hiddens": [32]}
-                ),
-                "module_2": SingleAgentRLModuleSpec(
-                    module_class=DiscreteBCTorchModule,
-                    observation_space=gym.spaces.Box(low=-1, high=1, shape=(5,)),
-                    action_space=gym.spaces.Discrete(2),
-                    model_config_dict={"fcnet_hiddens": [16]}
-                )
-            },
-        )
-
-        marl_module = spec.build()
+    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+        :language: python
+        :start-after: __constructing-rlmodules-ma-begin__
+        :end-before: __constructing-rlmodules-ma-end__
 
 
 You can pass RLModule specs to the algorithm configuration to be used by the algorithm.
 
 .. tabbed:: Single Agent
 
-    .. code-block:: python
-
-        import gymnasium as gym
-        from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-        from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
-        from ray.rllib.core.testing.bc_algorithm import BCConfigTest
-
-
-        config = (
-            BCConfigTest()
-            .environment("CartPole-v1")
-            .rl_module(
-                _enable_rl_module_api=True,
-                rl_module_spec=SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule),
-            )
-            .training(model={"fcnet_hiddens": [32, 32]})
-        )
-
-        algo = config.build()
+    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+        :language: python
+        :start-after: __pass-specs-to-configs-sa-begin__
+        :end-before: __pass-specs-to-configs-sa-end__
 
 
     .. note::
@@ -169,27 +105,10 @@ You can pass RLModule specs to the algorithm configuration to be used by the alg
 
 .. tabbed:: Multi Agent
 
-    .. code-block:: python
-
-        import gymnasium as gym
-        from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-        from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
-        from ray.rllib.core.testing.bc_algorithm import BCConfigTest
-        from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-
-
-        config = (
-            BCConfigTest()
-            .environment(MultiAgentCartPole, env_config={"num_agents": 2})
-            .rl_module(
-                _enable_rl_module_api=True,
-                rl_module_spec=MultiAgentRLModuleSpec(
-                    module_specs=SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule)
-                )
-            )
-            .training(model={"fcnet_hiddens": [32, 32]})
-        )
+    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+        :language: python
+        :start-after: __pass-specs-to-configs-ma-begin__
+        :end-before: __pass-specs-to-configs-ma-end__
 
 
 
@@ -200,22 +119,10 @@ For single-agent algorithms (e.g., PPO, DQN) or independent multi-agent algorith
 
 RLlib treats single-agent modules as a special case of :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule` with only one module. Create the multi-agent representation of all RLModules by calling :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.as_multi_agent`. For example:
 
-.. code-block:: python
-
-    import gymnasium as gym
-    from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-    from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
-
-    env = gym.make("CartPole-v1")
-    spec = SingleAgentRLModuleSpec(
-        module_class=DiscreteBCTorchModule,
-        observation_space=env.observation_space,
-        action_space=env.action_space,
-        model_config_dict={"fcnet_hiddens": [64]},
-    )
-
-    module = spec.build()
-    marl_module = module.as_multi_agent()
+.. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+    :language: python
+    :start-after: __convert-sa-to-ma-begin__
+    :end-before: __convert-sa-to-ma-end__
 
 RLlib implements the following abstract framework specific base classes:
 
@@ -241,85 +148,18 @@ When writing RLModules, you need to use these fields to construct your model.
 
 .. tabbed:: Single Agent (torch)
 
-    .. code-block:: python
-
-        from typing import Mapping, Any
-        from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-        from ray.rllib.core.rl_module.rl_module import RLModuleConfig
-        from ray.rllib.utils.nested_dict import NestedDict
-
-        import torch
-        import torch.nn as nn
-
-        class DiscreteBCTorchModule(TorchRLModule):
-
-            def __init__(self, config: RLModuleConfig) -> None:
-                super().__init__(config)
-
-                input_dim = self.config.observation_space.shape[0]
-                hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
-                output_dim = self.config.action_space.n
-
-                self.policy = nn.Sequential(
-                    nn.Linear(input_dim, hidden_dim),
-                    nn.ReLU(),
-                    nn.Linear(hidden_dim, output_dim),
-                )
-
-                self.input_dim = input_dim
-
-            def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-                with torch.no_grad():
-                    return self._forward_train(batch)
-
-            def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
-                with torch.no_grad():
-                    return self._forward_train(batch)
-
-            def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
-                action_logits = self.policy(batch["obs"])
-                return {"action_dist": torch.distributions.Categorical(logits=action_logits)}
-    
+    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+        :language: python
+        :start-after: __write-custom-sa-rlmodule-torch-begin__
+        :end-before: __write-custom-sa-rlmodule-torch-end__
 
 
 .. tabbed:: Single Agent (tensorflow)
-
-    .. code-block:: python
-        
-        from typing import Mapping, Any
-        from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-        from ray.rllib.core.rl_module.rl_module import RLModuleConfig
-        from ray.rllib.utils.nested_dict import NestedDict
-
-        import tensorflow as tf
-
-        class DiscreteBCTfModule(TfRLModule):
-
-            def __init__(self, config: RLModuleConfig) -> None:
-                super().__init__(config)
-
-                input_dim = self.config.observation_space.shape[0]
-                hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
-                output_dim = self.config.action_space.n
-
-                self.policy = tf.keras.Sequential(
-                    [
-                        tf.keras.layers.Dense(hidden_dim, activation="relu"),
-                        tf.keras.layers.Dense(output_dim),
-                    ]
-                )
-
-                self.input_dim = input_dim
-
-            def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-                return self._forward_train(batch)
-
-            def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
-                return self._forward_train(batch)
-
-            def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
-                action_logits = self.policy(batch["obs"])
-                return {"action_dist": tf.distributions.Categorical(logits=action_logits)}
+    
+    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+        :language: python
+        :start-after: __write-custom-sa-rlmodule-tf-begin__
+        :end-before: __write-custom-sa-rlmodule-tf-end__
 
 
 In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the checking for the existence of certain input or output keys in the data that is communicated into and out of RLModules. This serves multiple purposes: 
@@ -328,69 +168,34 @@ In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the 
 - For failures to happen quickly. If users extend the modules and implement something that does not match the assumptions of the I/O specs, the check reports missing keys and their expected format. For example, we always RLModule should have an ``obs`` key on the input batch and an output ``action_dist`` key as the output. 
 
 .. tabbed:: Single Level Keys
-
-    .. code-block:: python
-
-        from ray.rllib.models.specs.typing import SpecType
-        
-        class DiscreteBCTorchModule(TorchRLModule):
-            ...
-            def input_specs_exploration(self) -> SpecType:
-                # Enforce that input nested dict to exploration method has a key "obs"
-                return ["obs"]
-            
-            def output_specs_exploration(self) -> SpecType:
-                # Enforce that output nested dict from exploration method has a key 
-                # "action_dist"
-                return ["action_dist"]
+    
+    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+        :language: python
+        :start-after: __extend-spec-checking-single-level-begin__
+        :end-before: __extend-spec-checking-single-level-end__
 
 .. tabbed:: Nested Keys
 
-    .. code-block:: python
-
-        from ray.rllib.models.specs.typing import SpecType
-        
-        class DiscreteBCTorchModule(TorchRLModule):
-            ...
-            def input_specs_exploration(self) -> SpecType:
-                # Enforce that input nested dict to exploration method has a key "obs"
-                # and within that key, it has a key "global" and "local". There should 
-                # also be a key "action_mask"
-                return [("obs", "global"), ("obs", "local"), "action_mask"]
-
+    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+        :language: python
+        :start-after: __extend-spec-checking-nested-begin__
+        :end-before: __extend-spec-checking-nested-end__
 
 
 .. tabbed:: TensorShape Spec
 
-    .. code-block:: python
-
-        from ray.rllib.models.specs.typing import SpecType
-        from ray.rllib.models.specs.torch_spec import TorchTensorSpec
-        
-        class DiscreteBCTorchModule(TorchRLModule):
-            ...
-            def input_specs_exploration(self) -> SpecType:
-                # Enforce that input nested dict to exploration method has a key "obs"
-                # and its value is a torch.Tensor with shape (b, h) where b is the
-                # batch size (determined at run-time) and h is the hidden size 
-                # (fixed at 10).
-                return {"obs": TorchTensorSpec("b, h", h=10)}
-
+    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+        :language: python
+        :start-after: __extend-spec-checking-torch-specs-begin__
+        :end-before: __extend-spec-checking-torch-specs-end__
 
 
 .. tabbed:: Type Spec
 
-    .. code-block:: python
-
-        from ray.rllib.models.specs.typing import SpecType
-        import torch
-        
-        class DiscreteBCTorchModule(TorchRLModule):
-            ...
-            def output_specs_exploration(self) -> SpecType:
-                # Enforce that output nested dict from exploration method has a key
-                # "action_dist" and its value is a torch.distribution.Categorical
-                return {"action_dist": torch.distribution.Categorical}
+    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+        :language: python
+        :start-after: __extend-spec-checking-type-specs-begin__
+        :end-before: __extend-spec-checking-type-specs-end__
 
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` has two methods for each forward method, totaling 6 methods that can be override to describe the specs of the input and output of each method:
 
@@ -417,112 +222,19 @@ The following example creates a custom multi-agent RL module with underlying mod
 
 .. tabbed:: Multi agent with shared encoder (Torch)
 
-    .. code-block:: python
+    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+        :language: python
+        :start-after: __write-custom-marlmodule-shared-enc-begin__
+        :end-before: __write-custom-marlmodule-shared-enc-end__
 
-        from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-        from ray.rllib.core.rl_module.marl_module import (
-            MultiAgentRLModuleConfig, MultiAgentRLModule
-        )
-        from ray.rllib.utils.nested_dict import NestedDict
-
-        import torch
-        import torch.nn as nn
-
-
-        class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
-            """An RLModule with a shared encoder between agents for global observation."""
-
-            def __init__(
-                self, encoder: nn.Module, local_dim: int, hidden_dim: int, action_dim: int
-            ) -> None:
-                super().__init__(config=None)
-
-                self.encoder = encoder
-                self.policy_head = nn.Sequential(
-                    nn.Linear(hidden_dim + local_dim, hidden_dim),
-                    nn.ReLU(),
-                    nn.Linear(hidden_dim, action_dim),
-                )
-
-            def _forward_inference(self, batch):
-                with torch.no_grad():
-                    return self._common_forward(batch)
-
-            def _forward_exploration(self, batch):
-                with torch.no_grad():
-                    return self._common_forward(batch)
-            
-            def _forward_train(self, batch):
-                return self._common_forward(batch)
-
-            def _common_forward(self, batch):
-                obs = batch["obs"]
-                global_enc = self.encoder(obs["global"])
-                policy_in = torch.cat([global_enc, obs["local"]], dim=-1)
-                action_logits = self.policy_head(policy_in)
-
-                return {"action_dist": torch.distributions.Categorical(logits=action_logits)}
-
-
-
-        class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
-            def __init__(self, config: MultiAgentRLModuleConfig) -> None:
-                super().__init__(config)
-
-            def build(self):
-
-                module_specs = self.config.modules
-                module_spec = next(iter(module_specs.values()))
-                global_dim = module_spec.observation_space["global"].shape[0]
-                hidden_dim = module_spec.model_config_dict["fcnet_hiddens"][0]
-                shared_encoder = nn.Sequential(
-                    nn.Linear(global_dim, hidden_dim),
-                    nn.ReLU(),
-                    nn.Linear(hidden_dim, hidden_dim),
-                )
-
-                rl_modules = {}
-                for module_id, module_spec in module_specs.items():
-                    rl_modules[module_id] = BCTorchRLModuleWithSharedGlobalEncoder(
-                        encoder=shared_encoder,
-                        local_dim=module_spec.observation_space["local"].shape[0],
-                        hidden_dim=hidden_dim,
-                        action_dim=module_spec.action_space.n,
-                    )
-
-                self._rl_modules = rl_modules
 
 To construct this custom multi-agent RL module, pass the class to the :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` constructor. Also, pass the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec` for each agent because RLlib requires the observation, action spaces, and model hyper-parameters for each agent.
 
-.. code-block:: python
+.. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+    :language: python
+    :start-after: __pass-custom-marlmodule-shared-enc-begin__
+    :end-before: __pass-custom-marlmodule-shared-enc-end__
 
-    import gymnasium as gym
-    from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-    from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-
-    spec = MultiAgentRLModuleSpec(
-        marl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
-        module_specs={
-            "local_2d": SingleAgentRLModuleSpec(
-                observation_space=gym.spaces.Dict({
-                    "global": gym.spaces.Box(low=-1, high=1, shape=(2,)),
-                    "local": gym.spaces.Box(low=-1, high=1, shape=(2,)),
-                }),
-                action_space=gym.spaces.Discrete(2),
-                model_config_dict={"fcnet_hiddens": [64]},
-            ),
-            "local_5d": SingleAgentRLModuleSpec(
-                observation_space=gym.spaces.Dict({
-                    "global": gym.spaces.Box(low=-1, high=1, shape=(2,)),
-                    "local": gym.spaces.Box(low=-1, high=1, shape=(5,)),
-                }),
-                action_space=gym.spaces.Discrete(5),
-                model_config_dict={"fcnet_hiddens": [64]},
-            ),
-        },
-    )
-
-    module = spec.build()
 
 Extending Existing RLlib RLModules
 -----------------------------------
