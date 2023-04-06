@@ -377,7 +377,8 @@
     - DL=1 ./ci/env/install-dependencies.sh
     - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
-    - mount -t proc -o nodev,noexec,nosuid proc /proc && bazel test --config=ci $(./ci/run/bazel_export_options)
+    - mount -t proc -o nodev,noexec,nosuid proc /proc
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
       -j $(grep -c processor /proc/cpuinfo)
       --sandbox_fake_username=true
       --sandbox_fake_hostname=true
@@ -409,7 +410,8 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
-    - mount -t proc -o nodev,noexec,nosuid proc /proc && bazel test --config=ci $(./ci/run/bazel_export_options)
+    - mount -t proc -o nodev,noexec,nosuid proc /proc
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
       -j $(grep -c processor /proc/cpuinfo)
       --sandbox_fake_username=true
       --sandbox_fake_hostname=true
@@ -424,7 +426,8 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
-    - mount -t proc -o nodev,noexec,nosuid proc /proc && bazel test --config=ci $(./ci/run/bazel_export_options)
+    - mount -t proc -o nodev,noexec,nosuid proc /proc
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
       -j $(grep -c processor /proc/cpuinfo)
       --sandbox_fake_username=true
       --sandbox_fake_hostname=true
@@ -440,7 +443,8 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - mount -t proc -o nodev,noexec,nosuid proc /proc && bazel test --config=ci $(./scripts/bazel_export_options)
+    - mount -t proc -o nodev,noexec,nosuid proc /proc
+    - bazel test --config=ci $(./scripts/bazel_export_options)
       -j $(grep -c processor /proc/cpuinfo)
       --sandbox_fake_username=true
       --sandbox_fake_hostname=true
@@ -467,7 +471,8 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
-    - mount -t proc -o nodev,noexec,nosuid proc /proc && bazel test --config=ci $(./scripts/bazel_export_options)
+    - mount -t proc -o nodev,noexec,nosuid proc /proc
+    - bazel test --config=ci $(./scripts/bazel_export_options)
       -j $(grep -c processor /proc/cpuinfo)
       --sandbox_fake_username=true
       --sandbox_fake_hostname=true
@@ -484,7 +489,8 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - mount -t proc -o nodev,noexec,nosuid proc /proc && bazel test --config=ci $(./scripts/bazel_export_options)
+    - mount -t proc -o nodev,noexec,nosuid proc /proc
+    - bazel test --config=ci $(./scripts/bazel_export_options)
       -j $(grep -c processor /proc/cpuinfo)
       --sandbox_fake_username=true
       --sandbox_fake_hostname=true
