@@ -705,6 +705,17 @@ void CoreWorker::Disconnect(
 }
 
 void CoreWorker::KillLeakedProcs() {
+  // There are cases where worker processes can "leak" child processes.
+  // Basically this means that the worker process (either itself, or via
+  // code in a task or actor) spawned a process and did not kill it on termination.
+  // The process will continue living beyond the lifetime of the worker process.
+  // If that leaked process has expensive resources, such as a CUDA context and associated
+  // GPU memory, then those resources will never be cleaned until something else kills the process.
+  // 
+  // This function lists all processes that are direct children of the current worker process, then
+  // kills them.
+  // This currently only works for the "happy-path"; worker process crashes will still leak processes.
+  // TODO(cade) Use more robust method to catch leaked processes even in worker crash scenarios (subreaper).
 
   if (!RayConfig::instance().kill_child_processes_on_worker_exit()) {
     RAY_LOG(DEBUG) << "kill_child_processes_on_worker_exit is not true, skipping KillLeakedProcs";
@@ -733,7 +744,7 @@ void CoreWorker::KillLeakedProcs() {
     RAY_LOG(DEBUG) << "Kill result for " << child_pid << ": " << error_code.message()
                    << ", bool " << (bool)error_code;
     if (error_code) {
-      RAY_LOG(WARNING) << "Unable to kill process " << child_pid << ": "
+      RAY_LOG(WARNING) << "Unable to kill potentially leaked process " << child_pid << ": "
                        << error_code.message();
     }
   }
