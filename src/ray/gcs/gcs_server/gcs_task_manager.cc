@@ -216,9 +216,13 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   const TaskID task_id = TaskID::FromBinary(events_by_task.task_id());
   const JobID job_id = JobID::FromBinary(events_by_task.job_id());
   int32_t attempt_number = events_by_task.attempt_number();
-  const WorkerID worker_id = GetWorkerID(events_by_task);
   TaskAttempt task_attempt = std::make_pair<>(task_id, attempt_number);
 
+  // Add the worker index if it's available.
+  const WorkerID worker_id = GetWorkerID(events_by_task);
+  if (!worker_id.IsNil()) {
+    worker_to_task_attempt_index_[worker_id].insert(task_attempt);
+  }
   // GCS perform merging of events/updates for a single task attempt from multiple
   // reports.
   auto itr = task_attempt_index_.find(task_attempt);
@@ -314,9 +318,6 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   task_attempt_index_[task_attempt] = task_events_.size();
   job_to_task_attempt_index_[job_id].insert(task_attempt);
   task_to_task_attempt_index_[task_id].insert(task_attempt);
-  if (!worker_id.IsNil()) {
-    worker_to_task_attempt_index_[worker_id].insert(task_attempt);
-  }
   // Add a new task events.
   stats_counter_.Increment(kNumTaskEventsBytesStored, events_by_task.ByteSizeLong());
   stats_counter_.Increment(kNumTaskEventsStored);
@@ -480,10 +481,14 @@ void GcsTaskManager::OnWorkerDead(
     const WorkerID &worker_id, const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
   RAY_LOG(DEBUG) << "Marking all running tasks of worker " << worker_id << " as failed.";
 
-  timer_.expires_from_now(boost::posix_time::milliseconds(
-      RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
-  timer_.async_wait(
-      [this, worker_id, worker_data](const boost::system::error_code &error) {
+  std::shared_ptr<boost::asio::deadline_timer> timer =
+      std::make_shared<boost::asio::deadline_timer>(
+          io_service_,
+          boost::posix_time::milliseconds(
+              RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
+
+  timer->async_wait(
+      [this, timer, worker_id, worker_data](const boost::system::error_code &error) {
         if (error == boost::asio::error::operation_aborted) {
           // timer canceled or aborted.
           return;
@@ -496,10 +501,15 @@ void GcsTaskManager::OnWorkerDead(
 
 void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms) {
   RAY_LOG(DEBUG) << "Marking all running tasks of job " << job_id.Hex() << " as failed.";
-  timer_.expires_from_now(boost::posix_time::milliseconds(
-      RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
-  timer_.async_wait(
-      [this, job_id, job_finish_time_ms](const boost::system::error_code &error) {
+
+  std::shared_ptr<boost::asio::deadline_timer> timer =
+      std::make_shared<boost::asio::deadline_timer>(
+          io_service_,
+          boost::posix_time::milliseconds(
+              RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
+
+  timer->async_wait(
+      [this, timer, job_id, job_finish_time_ms](const boost::system::error_code &error) {
         if (error == boost::asio::error::operation_aborted) {
           // timer canceled or aborted.
           return;

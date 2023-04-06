@@ -70,8 +70,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
           // Keep io_service_ alive.
           boost::asio::io_service::work io_service_work_(io_service_);
           io_service_.run();
-        })),
-        timer_(io_service_) {}
+        })) {}
 
   /// Handles a AddTaskEventData request.
   ///
@@ -316,9 +315,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
   /// Its own IO thread from the main thread.
   std::unique_ptr<std::thread> io_service_thread_;
-
-  /// Timer for delay functions.
-  boost::asio::deadline_timer timer_;
 
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);

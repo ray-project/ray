@@ -26,6 +26,7 @@ _SYSTEM_CONFIG = {
     "metrics_report_interval_ms": 200,
     "enable_timeline": False,
     "gcs_mark_task_failed_on_job_done_delay_ms": 1000,
+    "gcs_mark_task_failed_on_worker_dead_delay_ms": 1000,
 }
 
 
@@ -243,9 +244,8 @@ ray.get(parent.remote())
 """
     proc = run_string_as_driver_nonblocking(script)
 
-    def verify():
+    def all_tasks_running():
         tasks = list_tasks()
-        print(tasks)
         assert len(tasks) == 7, (
             "Incorrect number of tasks are reported. "
             "Expected length: 1 parent + 2 finished child +  2 failed child + "
@@ -254,7 +254,7 @@ ray.get(parent.remote())
         return True
 
     wait_for_condition(
-        verify,
+        all_tasks_running,
         timeout=10,
         retry_interval_ms=500,
     )

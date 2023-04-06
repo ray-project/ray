@@ -478,114 +478,6 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsByJob) {
                      reply_job2.mutable_events_by_task());
 }
 
-TEST_F(GcsTaskManagerTest, TestFailingParentFailChildren) {
-  // This tests that a failed parent task should automatically fail its children tasks.
-  auto task_ids = GenTaskIDs(3);
-  auto parent = task_ids[0];
-  auto child1 = task_ids[1];
-  auto child2 = task_ids[2];
-
-  // Parent task running
-  SyncAddTaskEvent({parent}, {{rpc::TaskStatus::RUNNING, 1}});
-
-  // Child tasks running
-  SyncAddTaskEvent({child1, child2}, {{rpc::TaskStatus::RUNNING, 2}}, parent);
-
-  // Parent task failed
-  SyncAddTaskEvent({parent},
-                   {{rpc::TaskStatus::FAILED, 3}},
-                   /* parent_task_id */ TaskID::Nil(),
-                   /* job_id */ 0,
-                   gcs::GetRayErrorInfo(rpc::ErrorType::WORKER_DIED,
-                                        "task failed due to worker death"));
-
-  // Get all children task events should be failed
-  {
-    auto reply = SyncGetTaskEvents({child1, child2});
-    EXPECT_EQ(reply.events_by_task_size(), 2);
-    for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_EQ(task_event.state_updates().failed_ts(), 3);
-    }
-  }
-}
-
-TEST_F(GcsTaskManagerTest, TestFailingParentNotFailChildrenDueToAppError) {
-  // This tests that a failed parent task should automatically fail its children tasks.
-  auto task_ids = GenTaskIDs(3);
-  auto parent = task_ids[0];
-  auto child1 = task_ids[1];
-  auto child2 = task_ids[2];
-
-  // Parent task running
-  SyncAddTaskEvent({parent}, {{rpc::TaskStatus::RUNNING, 1}});
-
-  // Child tasks running
-  SyncAddTaskEvent({child1, child2}, {{rpc::TaskStatus::RUNNING, 2}}, parent);
-
-  // Parent task failed
-  SyncAddTaskEvent({parent},
-                   {{rpc::TaskStatus::FAILED, 3}},
-                   /* parent_task_id */ TaskID::Nil(),
-                   /* job_id */ 0,
-                   gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
-                                        "task failed application error"));
-
-  // Get all children task events should be failed
-  {
-    auto reply = SyncGetTaskEvents({child1, child2});
-    EXPECT_EQ(reply.events_by_task_size(), 2);
-    for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_EQ(task_event.state_updates().failed_ts(), 0);
-    }
-  }
-}
-
-TEST_F(GcsTaskManagerTest, TestFailedParentShouldFailGrandChildrenIfWorkerDied) {
-  // Test that a new task event from child should fail the grand children if it finds out
-  // a failed parent.
-  auto task_ids = GenTaskIDs(4);
-  auto parent = task_ids[0];
-  auto child = task_ids[1];
-  auto grand_child1 = task_ids[2];
-  auto grand_child2 = task_ids[3];
-
-  // Parent task running
-  SyncAddTaskEvent({parent}, {{rpc::TaskStatus::RUNNING, 1}});
-
-  // Grandchild tasks running
-  SyncAddTaskEvent({grand_child1, grand_child2}, {{rpc::TaskStatus::RUNNING, 3}}, child);
-
-  // Parent task failed
-  SyncAddTaskEvent({parent},
-                   {{rpc::TaskStatus::FAILED, 4}},
-                   /* parent_task_id */ TaskID::Nil(),
-                   /* job_id */ 0,
-                   gcs::GetRayErrorInfo(rpc::ErrorType::WORKER_DIED, "worker died"));
-
-  // Get grand child should still be running since the parent-grand-child relationship is
-  // not recorded yet.
-  {
-    auto reply = SyncGetTaskEvents({grand_child1, grand_child2});
-    EXPECT_EQ(reply.events_by_task_size(), 2);
-    for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_FALSE(task_event.state_updates().has_failed_ts());
-    }
-  }
-
-  // Child task reported running.
-  SyncAddTaskEvent({child}, {{rpc::TaskStatus::RUNNING, 2}}, parent);
-
-  // Both child and grand-child should report failure since their ancestor fail.
-  // i.e. Child task should mark grandchildren failed.
-  {
-    auto reply = SyncGetTaskEvents({grand_child1, grand_child2, child});
-    EXPECT_EQ(reply.events_by_task_size(), 3);
-    for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_EQ(task_event.state_updates().failed_ts(), 4);
-    }
-  }
-}
-
 TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
   auto tasks_running_job1 = GenTaskIDs(10);
   auto tasks_finished_job1 = GenTaskIDs(10);
@@ -722,9 +614,6 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
     EXPECT_EQ(task_manager->task_event_storage_->task_events_.size(), num_limit);
     EXPECT_EQ(task_manager->task_event_storage_->stats_counter_.Get(kTotalNumNormalTask),
               task_ids.size() + num_limit);
-    // No task has parent.
-    EXPECT_EQ(task_manager->task_event_storage_->parent_to_children_task_index_.size(),
-              0);
 
     // Only in memory entries.
     EXPECT_EQ(task_manager->task_event_storage_->task_to_task_attempt_index_.size(),

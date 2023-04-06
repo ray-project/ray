@@ -420,7 +420,7 @@ def verify_tasks_running_or_terminated(task_pids: Dict[str, Tuple[int, Optional[
                 assert task["state"] in [
                     "FAILED",
                     "FINISHED",
-                ], f"{task_name} = {task['state']}"
+                ], f"{task_name}: {task['task_id']} = {task['state']}"
             else:
                 assert task["state"] == expected_state, task
 
