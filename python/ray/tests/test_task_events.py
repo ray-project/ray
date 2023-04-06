@@ -182,7 +182,9 @@ ray.init("auto")
 @ray.remote(num_cpus=2, max_retries=0)
 def sleep():
     import time
-    time.sleep(999)
+    while True:
+        time.sleep(1)
+        print("sleeping")
 
 x = sleep.options(name="node-killed").remote()
 ray.get(x)
@@ -205,6 +207,8 @@ ray.get(x)
         error_type="NODE_DIED",
         error_message="Task failed due to the node dying",
     )
+    import time
+    time.sleep(9999)
 
 
 def test_failed_task_unschedulable(shutdown_only):

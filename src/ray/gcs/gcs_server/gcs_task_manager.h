@@ -104,6 +104,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// \param job_finish_time_ms Job finish time in ms.
   void OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms);
 
+  void OnWorkerDead(const WorkerID &worker_id,
+                    const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data);
+
   /// Returns the io_service.
   ///
   /// \return Reference to its io_service.
@@ -188,40 +191,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// failed time.
     void MarkTasksFailedOnJobEnds(const JobID &job_id, int64_t job_finish_time_ns);
 
+    void MarkTasksFailedOnWorkerDead(const WorkerID &worker_id,
+                                     const rpc::WorkerTableData &worker_failure_data);
+
    private:
-    /// Mark the task tree containing this task attempt as failure if necessary.
-    ///
-    /// See `ShouldMarkTaskTreeFailed` for details on when a task tree should be marked as
-    /// failed.
-    ///
-    /// NOTE: Since there is delay in task events reporting, a task's state might not be
-    /// reported before a worker is killed, therefore, some tasks might have actually
-    /// run/been submitted but it's states not being reported to GCS. This is hard to
-    /// resolve unless we add synchronized reporting before submitting a task.
-    ///
-    /// \param task_id ID of the task event that's the root of the task tree.
-    void MarkTaskTreeFailedIfNeeded(const TaskID &task_id);
-
-    /// Check if the child task should be marked as failed.
-    ///
-    /// A child task should be marked as failed iff:
-    ///   0. The child task is still running AND
-    ///   1. The parent task failed with errors where worker is killed
-    ///     (e.g. ACTOR_DIED, WORKER_DIED) AND
-    ///   2. The child task is NOT from a detached actor.
-    ///
-    /// For other cases, such as a parent task failed with application exceptions,
-    /// Ray currently doesn't kill the child tasks. Therefore, we don't mark the child as
-    /// failed.
-    ///
-    /// \param child_task The child task.
-    /// \param parent_task The parent task.
-    /// \param failed_ts The failure timestamp.
-    /// \return True if the child task should be marked as failed, false otherwise.
-    bool ShouldMarkChildrenFailed(const TaskID &child_task,
-                                  const TaskID &parent_task,
-                                  int64_t *failed_ts) const;
-
     /// Get a reference to the TaskEvent stored in the buffer.
     ///
     /// \param task_attempt The task attempt.
@@ -250,19 +223,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// \return True if the task has finished or failed timestamp sets, false otherwise.
     bool IsTaskTerminated(const TaskID &task_id) const;
 
-    /// Mark the task as failure with the failed timestamp.
-    ///
-    /// This also overwrites the finished state of the task if the task has finished by
-    /// clearing the finished timestamp.
-    ///
-    /// \param task_id The task to mark as failed.
-    /// \param failed_ts The failure timestamp that's the same from ancestor's failure
-    /// timestamp.
-    /// \param ancestor_task_id The ancestor task id that failed.
-    void MarkTaskFailedOnAncestorFailed(const TaskID &task_id,
-                                        int64_t failed_ts,
-                                        const TaskID &ancestor_task_id);
-
     ///  Mark a task attempt as failed.
     ///
     /// \param task_attempt Task attempt.
@@ -282,17 +242,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// \return The latest task attempt of the task, abls::nullopt if no task attempt
     /// could be found or there's data loss.
     absl::optional<TaskAttempt> GetLatestTaskAttempt(const TaskID &task_id) const;
-
-    /// Get the latest task event for the task.
-    ///
-    /// If there is no such task or data loss due to task events dropped at the worker,
-    /// i.e. missing task attempts for a task with retries, absl::nullopt will be
-    /// returned.
-    ///
-    /// \param task_id The task's task id.
-    /// \return The latest task event of the task, abls::nullopt if no task event could
-    /// be found or there's data loss.
-    absl::optional<rpc::TaskEvents> GetLatestTaskEvent(const TaskID &task_id) const;
 
     /// Max number of task events allowed in the storage.
     const size_t max_num_task_events_ = 0;
@@ -317,9 +266,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     absl::flat_hash_map<JobID, absl::flat_hash_set<TaskAttempt>>
         job_to_task_attempt_index_;
 
-    /// Secondary index from parent task id to a set of children task ids.
-    absl::flat_hash_map<TaskID, absl::flat_hash_set<TaskID>>
-        parent_to_children_task_index_;
+    /// Secondary index from worker id to task attempts of the job.
+    absl::flat_hash_map<WorkerID, absl::flat_hash_set<TaskAttempt>>
+        worker_to_task_attempt_index_;
 
     /// Reference to the counter map owned by the GcsTaskManager.
     CounterMapThreadSafe<GcsTaskManagerCounter> &stats_counter_;

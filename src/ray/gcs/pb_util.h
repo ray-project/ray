@@ -321,6 +321,17 @@ inline absl::optional<int64_t> GetTaskStatusTimeFromStateUpdates(
   return absl::nullopt;
 }
 
+/// Get the worker id from the task event.
+///
+/// \param task_event Task event.
+/// \return WorkerID::Nil() if worker id info not available, else the worker id.
+inline WorkerID GetWorkerID(const rpc::TaskEvents &task_event) {
+  if (task_event.has_state_updates() && task_event.state_updates().has_worker_id()) {
+    return WorkerID::FromBinary(task_event.state_updates().worker_id());
+  }
+  return WorkerID::Nil();
+}
+
 /// Fill the rpc::TaskStateUpdate with the timestamps according to the status change.
 ///
 /// \param task_status The task status.

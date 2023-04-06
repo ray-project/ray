@@ -392,9 +392,9 @@ def verify_tasks_running_or_terminated(task_pids: Dict[str, Tuple[int, Optional[
 
     for task_name, pid_and_state in task_pids.items():
         tasks = list_tasks(detail=True, filters=[("name", "=", task_name)])
-        assert len(tasks) > 0, (
-            f"{task_name} not found. Make sure use `options(name=<task_name>)` "
-            "when creating the task."
+        assert len(tasks) == 1, (
+            f"One unique task with {task_name} should be found. "
+            "Use `options(name=<task_name>)` when creating the task."
         )
         task = tasks[0]
         pid, expected_state = pid_and_state
