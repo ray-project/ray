@@ -1,6 +1,7 @@
 from typing import Callable, List, Optional, Union, Tuple
 
-from ray.rllib.models.torch.misc import same_padding
+from ray.rllib.core.models.torch.utils import Stride2D
+from ray.rllib.models.torch.misc import same_padding, same_padding_transpose_after_stride
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.framework import try_import_torch
 
@@ -233,15 +234,27 @@ class TorchCNNTranspose(nn.Module):
             cnn_transpose_filter_specifiers
         ):
             is_final_layer = i == len(cnn_transpose_filter_specifiers) - 1
+
+            s_w, s_h = (stride, stride) if isinstance(stride, int) else stride
+            k_w, k_h = (kernel, kernel) if isinstance(kernel, int) else kernel
+
+            # Stride the image first.
+            stride_layer = Stride2D(in_size[0], in_size[1], s_w, s_h)
+            layers.append(stride_layer)
+
             # Pad like in tensorflow's SAME mode.
-            padding, out_size = same_padding(in_size, kernel, stride)
+            padding, out_size = same_padding_transpose_after_stride(
+                (stride_layer.out_width, stride_layer.out_height), kernel, stride
+            )
+
             layers.extend([
-                nn.ZeroPad2d(padding),
+                nn.ZeroPad2d(padding),  # left, right, top, bottom
                 nn.ConvTranspose2d(
                     in_depth,
                     out_depth,
                     kernel,
-                    stride,
+                    1,  # force-set stride to 1 as we already took care of
+                    padding=(k_w - 1, k_h - 1),  # disable torch auto-padding
                     # Last layer always uses bias (b/c has no LayerNorm, regardless of
                     # config).
                     bias=use_bias or is_final_layer,
@@ -254,10 +267,10 @@ class TorchCNNTranspose(nn.Module):
             if cnn_transpose_activation is not None and not is_final_layer:
                 layers.append(cnn_transpose_activation())
 
-            in_size = out_size
+            in_size = (out_size[0], out_size[1])
             in_depth = out_depth
 
-        self.output_width, self.output_height = out_size
+        self.output_width, self.output_height = out_size[0], out_size[1]
         self.output_depth = out_depth
 
         # Create the final CNNTranspose network.

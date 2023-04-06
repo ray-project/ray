@@ -20,10 +20,12 @@ class TestCNNTransposeHeads(unittest.TestCase):
         inputs_dimss = [[1], [50]]
         initial_image_dims = [4, 4, 96]
         cnn_transpose_filter_specifierss = [
-            [[48, [4, 4], 2], [24, [4, 4], 2], [3, [4, 4], 2]],
-            [[48, [4, 4], 2], [24, [4, 4], 2], [1, [4, 4], 2]],
+            [[48, 4, 2], [24, 4, 2], [3, 4, 2]],  # double image 3x (32) into an RGB
+            [[48, 4, 2], [24, 4, 2], [1, 4, 2]],  # double image 3x (32) into grayscale
+            [[3, 4, 3]],  # triple image (->12x12) into an RGB
+            [[1, 7, 3]],  # triple image (->12x12) w/ larger filter into grayscale
         ]
-        cnn_transpose_activations = [None, "linear", "relu"]
+        cnn_transpose_activations = [None, "relu", "silu"]
         cnn_transpose_use_layernorms = [False, True]
         use_biases = [False, True]
 
@@ -43,10 +45,15 @@ class TestCNNTransposeHeads(unittest.TestCase):
             ) = permutation
 
             # These need to match the above defined stacks.
-            expected_output_dims = (
-                [32, 32, 3] if cnn_transpose_filter_specifiers[-1][0] == 3
-                else [32, 32, 1]
-            )
+            if cnn_transpose_filter_specifiers == [[3, 4, 3]]:
+                expected_output_dims = [12, 12, 3]
+            elif cnn_transpose_filter_specifiers == [[1, 7, 3]]:
+                expected_output_dims = [12, 12, 1]
+            else:
+                expected_output_dims = (
+                    [32, 32, 3] if cnn_transpose_filter_specifiers[-1][0] == 3
+                    else [32, 32, 1]
+                )
 
             print(
                 f"Testing ...\n"

@@ -63,6 +63,50 @@ def same_padding(
 
 
 @DeveloperAPI
+def same_padding_transpose_after_stride(
+    strided_size: Tuple[int, int],
+    kernel: Tuple[int, int],
+    stride: Union[int, Tuple[int, int]],
+) -> (Union[int, Tuple[int, int]], Tuple[int, int]):
+    """Padding is added to match TF Conv2DTranspose `same` padding.
+
+
+
+    Args:
+        strided_size: Rows (Height), Column (Width) for input (which is already strided).
+        kernel: Rows (Height), column (Width) for kernel. If int, height == width.
+        stride (Union[int,Tuple[int, int]]): Rows (Height), column (Width)
+            for stride. If int, height == width.
+
+    Returns:
+        padding: For input into torch.nn.ZeroPad2d.
+        output: Output shape after padding and convolution.
+    """
+    s_w, s_h = (stride, stride) if isinstance(stride, int) else stride
+    k_w, k_h = (kernel, kernel) if isinstance(kernel, int) else kernel
+    # Compute the total size of the 0-padding on both axes. If results are odd numbers,
+    # the padding on e.g. left and right (or top and bottom) side will have to differ
+    # by 1.
+    pad_total_w, pad_total_h = k_w - 1 + s_w - 1, k_h - 1 + s_h - 1
+    pad_right = pad_total_w // 2
+    pad_left = pad_right + (1 if pad_total_w % 2 == 1 else 0)
+    pad_bottom = pad_total_h // 2
+    pad_top = pad_bottom + (1 if pad_total_h % 2 == 1 else 0)
+
+    # Compute the size of the strided input image.
+    #strided_size = in_size[0] * s_w - (s_w - 1), in_size[1] * s_h - (s_h - 1)
+
+    # Compute the output size.
+    output_size = (
+        strided_size[0] + pad_total_w - k_w + 1,
+        strided_size[1] + pad_total_h - k_h + 1,
+    )
+
+    # Return padding and output sizes.
+    return (pad_left, pad_right, pad_top, pad_bottom), output_size
+
+
+@DeveloperAPI
 class SlimConv2d(nn.Module):
     """Simple mock of tf.slim Conv2d"""
 
