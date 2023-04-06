@@ -155,6 +155,7 @@ test:ci --flaky_test_attempts=3
 # declared dependencies to determine if a result should be cached. More details at:
 # https://github.com/bazelbuild/bazel/issues/7091, https://github.com/bazelbuild/rules_python/issues/382
 test:ci --nocache_test_results
+test:ci -j 1
 test:ci --spawn_strategy=local
 test:ci --test_output=errors
 test:ci --test_verbose_timeout_warnings

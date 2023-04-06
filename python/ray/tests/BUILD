@@ -10,11 +10,6 @@ py_library(
   ],
 )
 
-extra_tags = select({
-    "@bazel_tools//src/conditions:linux": [],
-    "//conditions:default": ["exclusive"],
-})
-
 py_test_module_list(
   files = [
     "test_dashboard.py",
@@ -68,7 +63,7 @@ py_test_module_list(
     "test_protobuf_compatibility.py"
   ],
   size = "medium",
-  tags = extra_tags + ["medium_size_python_tests_a_to_j", "team:core"],
+  tags = ["medium_size_python_tests_a_to_j", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -77,7 +72,7 @@ py_test(
   srcs = ["test_joblib.py"],
   data = ["mnist_784_100_samples.pkl"],
   size = "medium",
-  tags = extra_tags + ["medium_size_python_tests_a_to_j", "team:core"],
+  tags = ["medium_size_python_tests_a_to_j", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -118,7 +113,7 @@ py_test_module_list(
     "test_memory_deadlock.py",  # Timing out right now. #33491
   ],
   size = "medium",
-  tags = extra_tags + ["no_main", "medium_size_python_tests_k_to_z", "team:core"],
+  tags = ["no_main", "medium_size_python_tests_k_to_z", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -177,7 +172,7 @@ py_test_module_list(
     "test_queue.py",
   ],
   size = "medium",
-  tags = extra_tags + ["medium_size_python_tests_k_to_z", "team:core"],
+  tags = ["medium_size_python_tests_k_to_z", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -211,7 +206,7 @@ py_test_module_list(
     "test_utils.py",
   ],
   size = "small",
-  tags = extra_tags + ["small_size_python_tests", "team:core"],
+  tags = ["small_size_python_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -229,7 +224,7 @@ py_test_module_list(
     "test_monitor_service.py",
   ],
   size = "medium",
-  tags = extra_tags + ["medium_size_python_tests_k_to_z", "team:serverless"],
+  tags = ["medium_size_python_tests_k_to_z", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -253,7 +248,7 @@ py_test_module_list(
     "kuberay/test_kuberay_node_provider.py"
   ],
   size = "small",
-  tags = extra_tags + ["small_size_python_tests", "team:serverless"],
+  tags = ["small_size_python_tests", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -261,7 +256,7 @@ py_test(
   name = "test_autoscaler_yaml",
   size = "small",
   srcs = ["test_autoscaler_yaml.py"],
-  tags = extra_tags + ["small_size_python_tests", "team:serverless"],
+  tags = ["small_size_python_tests", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
   data = [
     "additional_property.yaml",
@@ -280,7 +275,7 @@ py_test_module_list(
     "test_dataclient_disconnect.py",
   ],
   size = "medium",
-  tags = extra_tags + ["medium_size_python_tests_a_to_j", "team:serverless"],
+  tags = ["medium_size_python_tests_a_to_j", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -311,7 +306,7 @@ py_test_module_list(
     "test_placement_group_5.py",
   ],
   size = "large",
-  tags = extra_tags + ["exclusive", "large_size_python_tests_shard_0"],
+  tags = ["exclusive", "large_size_python_tests_shard_0"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -320,7 +315,7 @@ py_test(
   srcs = ["test_cli.py"],
   data = glob(["test_cli_patterns/*.txt", "test_cli_patterns/*.yaml"]),
   size = "large",
-  tags = extra_tags + ["exclusive", "large_size_python_tests_shard_0"],
+  tags = ["exclusive", "large_size_python_tests_shard_0"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -344,7 +339,7 @@ py_test_module_list(
     "test_reference_counting.py",
   ],
   size = "large",
-  tags = extra_tags + ["large_size_python_tests_shard_1", "team:core"],
+  tags = ["large_size_python_tests_shard_1", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -360,7 +355,7 @@ py_test_module_list(
     "test_runtime_env_working_dir_remote_uri.py"
   ],
   size = "large",
-  tags = extra_tags + ["large_size_python_tests_shard_2", "team:serve"],
+  tags = ["large_size_python_tests_shard_2", "team:serve"],
   deps = ["//:ray_lib", ":conftest"],
   data = ["pip_install_test-0.5-py3-none-any.whl"],
 )
@@ -391,7 +386,7 @@ py_test(
     name = "test_actor_group",
     size = "medium",
     srcs = ["test_actor_group.py"],
-    tags = extra_tags + ["medium_size_python_tests_a_to_j", "team:serve"],
+    tags = ["medium_size_python_tests_a_to_j", "team:serve"],
     deps = ["//:ray_lib", ":conftest"]
 )
 
@@ -401,7 +396,7 @@ py_test(
     name = "test_autoscaler_aws",
     size = "small",
     srcs = ["aws/test_autoscaler_aws.py"],
-    tags = extra_tags + ["small_size_python_tests", "team:serverless"],
+    tags = ["small_size_python_tests", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -409,7 +404,7 @@ py_test(
     name = "test_aws_batch_tag_update",
     size = "small",
     srcs = ["aws/test_aws_batch_tag_update.py"],
-    tags = extra_tags + ["small_size_python_tests", "team:serverless"],
+    tags = ["small_size_python_tests", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -417,7 +412,7 @@ py_test(
     name = "test_gcp_node_provider",
     size = "small",
     srcs = ["gcp/test_gcp_node_provider.py"],
-    tags = extra_tags + ["small_size_python_tests", "team:serverless"],
+    tags = ["small_size_python_tests", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -428,7 +423,7 @@ py_test(
     size = "medium",
     srcs = ["test_typing.py", "typing_files/check_typing_bad.py",
             "typing_files/check_typing_good.py"],
-    tags = extra_tags + ["small_size_python_tests", "team:core"],
+    tags = ["small_size_python_tests", "team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -437,7 +432,7 @@ py_test(
   name = "test_tracing",
   size = "medium",
   srcs = ["test_tracing.py"],
-  tags = extra_tags + ["medium_size_python_tests_k_to_z", "team:serve"],
+  tags = ["medium_size_python_tests_k_to_z", "team:serve"],
   deps = ["//:ray_lib", ":conftest"]
 )
 
@@ -445,7 +440,7 @@ py_test(
     name = "test_pydantic_serialization",
     size = "small",
     srcs = ["test_pydantic_serialization.py", "pydantic_module.py"],
-    tags = extra_tags + ["small_size_python_tests", "team:serve"],
+    tags = ["small_size_python_tests", "team:serve"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -457,7 +452,7 @@ py_test(
         "test_runtime_env_validation_1_schema.json",
         "test_runtime_env_validation_2_schema.json",
     ],
-    tags = extra_tags + ["small_size_python_tests", "team:serve"],
+    tags = ["small_size_python_tests", "team:serve"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -465,7 +460,7 @@ py_test(
     name = "test_runtime_env_ray_minimal",
     size = "medium",
     srcs = ["test_runtime_env_ray_minimal.py"],
-    tags = extra_tags + ["medium_size_python_tests_k_to_z", "team:serve"],
+    tags = ["medium_size_python_tests_k_to_z", "team:serve"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -473,7 +468,7 @@ py_test(
     name = "test_serve_ray_minimal",
     size = "small",
     srcs = ["test_serve_ray_minimal.py"],
-    tags = extra_tags + ["small_size_python_tests", "team:serve"],
+    tags = ["small_size_python_tests", "team:serve"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -507,7 +502,7 @@ py_test_module_list(
   size = "large",
   name_suffix = "_client_mode",
   env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},
-  tags = extra_tags + ["client_tests", "team:serverless"],
+  tags = ["client_tests", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
