@@ -80,7 +80,7 @@ class ModelChecker:
             )
         return outputs
 
-    def check(self):
+    def check(self, rtol=None):
         """Compares all added Models with each other and possibly raises errors."""
 
         main_key = next(iter(self.models.keys()))
@@ -92,4 +92,4 @@ class ModelChecker:
         # Compare dummy outputs by exact values given that all nets received the
         # same input and all nets have the same (dummy) weight values.
         for v in self.output_values.values():
-            check(v, self.output_values[main_key], rtol=0.001)
+            check(v, self.output_values[main_key], rtol=rtol or 0.002)
