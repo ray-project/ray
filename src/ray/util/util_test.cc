@@ -21,8 +21,8 @@
 #include <chrono>
 #include <thread>
 
-#include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
 
@@ -215,7 +215,7 @@ TEST(UtilTest, GetAllProcsWithPpid) {
 
   std::vector<bp::child> actual_child_procs;
 
-  for (int i=0; i<10; ++i) {
+  for (int i = 0; i < 10; ++i) {
     actual_child_procs.push_back(bp::child("bash"));
   }
 
@@ -226,18 +226,18 @@ TEST(UtilTest, GetAllProcsWithPpid) {
 
   // Assert each actual process ID is contained in the returned vector.
   auto child_procs = *maybe_child_procs;
-  for (auto& child_proc : actual_child_procs) {
+  for (auto &child_proc : actual_child_procs) {
     pid_t pid = child_proc.id();
     EXPECT_THAT(child_procs, ::testing::Contains(pid));
   }
 
   // Clean up each child proc.
-  for (auto& child_proc : actual_child_procs) {
+  for (auto &child_proc : actual_child_procs) {
     child_proc.join();
   }
 #else
-    auto result = GetAllProcsWithPpid(1);
-    ASSERT_EQ(result, std::nullopt);
+  auto result = GetAllProcsWithPpid(1);
+  ASSERT_EQ(result, std::nullopt);
 #endif
 }
 

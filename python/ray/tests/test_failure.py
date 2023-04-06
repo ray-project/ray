@@ -662,8 +662,9 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
     # We should be able to get the return value of task 2 without any issue
     ray.get(obj2)
 
+
 def test_no_worker_child_process_leaks(ray_start_cluster, tmp_path):
-    output_file_path = tmp_path / 'leaked_pids.json'
+    output_file_path = tmp_path / "leaked_pids.json"
     driver_script = f"""
 import ray
 import json
@@ -727,7 +728,7 @@ while True:
         timeout=30,
     )
 
-    with open(output_file_path, 'r') as f:
+    with open(output_file_path, "r") as f:
         pids = json.load(f)
 
     processes = [psutil.Process(pid) for pid in pids]

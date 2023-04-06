@@ -660,10 +660,11 @@ static inline std::vector<pid_t> GetAllProcsWithPpidLinux(pid_t parent_pid) {
 
   // Iterate over all files in the /proc directory, looking for directories.
   // See `man proc` for information on the directory structure.
-  // Directories with only digits in their name correspond to processes in the process table.
-  // We read in the status of each such process and parse the parent PID.
-  // If the process parent PID is equal to parent_pid, then we add it to the vector to be returned.
-  // Ideally, we use a library for this, but at the time of writing one is not available in Ray C++.
+  // Directories with only digits in their name correspond to processes in the process
+  // table. We read in the status of each such process and parse the parent PID. If the
+  // process parent PID is equal to parent_pid, then we add it to the vector to be
+  // returned. Ideally, we use a library for this, but at the time of writing one is not
+  // available in Ray C++.
 
   std::filesystem::directory_iterator dir(kProcDirectory);
   for (const auto &file : dir) {
@@ -678,7 +679,7 @@ static inline std::vector<pid_t> GetAllProcsWithPpidLinux(pid_t parent_pid) {
     if (!file_name_is_only_digit) {
       continue;
     }
-    
+
     // If so, open the status file for reading.
     pid_t pid = std::stoi(filename);
     std::ifstream status_file(file.path() / "status");
