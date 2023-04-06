@@ -1,5 +1,6 @@
 import os
 import time
+import traceback
 from typing import Optional, List, Tuple
 
 from ray_release.alerts.handle import handle_result, require_result
@@ -576,6 +577,11 @@ def run_release_test(
         result.buildkite_exit_code = buildkite_exit_code.value
         if runtime is not None:
             result.runtime = runtime
+        try:
+          raise pipeline_exception
+        except:
+          if not result.last_logs:
+            result.last_logs = traceback.format_exc()
 
     buildkite_group(":memo: Reporting results", open=True)
     for reporter in reporters or []:
