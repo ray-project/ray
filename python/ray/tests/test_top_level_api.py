@@ -5,6 +5,7 @@ import pytest
 
 import ray
 
+
 # NOTE: Before adding a new API to Ray (and modifying this test), the new API
 # must have Ray Client support.
 def test_api_functions():
