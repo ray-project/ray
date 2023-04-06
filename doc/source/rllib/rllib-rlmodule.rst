@@ -62,7 +62,7 @@ Enabling RL Modules in the Configuration
 
 Enable RLModules by setting the ``_enable_rl_module_api`` flag to ``True`` in the configuration object. 
 
-.. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+.. literalinclude:: doc_code/rlmodule_guide.py
     :language: python
     :start-after: __enabling-rlmodules-in-configs-begin__
     :end-before: __enabling-rlmodules-in-configs-end__
@@ -75,7 +75,7 @@ To maintain consistency and usability, RLlib offers a standardized approach for 
 
 .. tabbed:: Single Agent
 
-    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+    .. literalinclude:: doc_code/rlmodule_guide.py
         :language: python
         :start-after: __constructing-rlmodules-sa-begin__
         :end-before: __constructing-rlmodules-sa-end__
@@ -83,7 +83,7 @@ To maintain consistency and usability, RLlib offers a standardized approach for 
 
 .. tabbed:: Multi Agent
 
-    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+    .. literalinclude:: doc_code/rlmodule_guide.py
         :language: python
         :start-after: __constructing-rlmodules-ma-begin__
         :end-before: __constructing-rlmodules-ma-end__
@@ -93,7 +93,7 @@ You can pass RLModule specs to the algorithm configuration to be used by the alg
 
 .. tabbed:: Single Agent
 
-    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+    .. literalinclude:: doc_code/rlmodule_guide.py
         :language: python
         :start-after: __pass-specs-to-configs-sa-begin__
         :end-before: __pass-specs-to-configs-sa-end__
@@ -105,7 +105,7 @@ You can pass RLModule specs to the algorithm configuration to be used by the alg
 
 .. tabbed:: Multi Agent
 
-    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+    .. literalinclude:: doc_code/rlmodule_guide.py
         :language: python
         :start-after: __pass-specs-to-configs-ma-begin__
         :end-before: __pass-specs-to-configs-ma-end__
@@ -119,7 +119,7 @@ For single-agent algorithms (e.g., PPO, DQN) or independent multi-agent algorith
 
 RLlib treats single-agent modules as a special case of :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule` with only one module. Create the multi-agent representation of all RLModules by calling :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.as_multi_agent`. For example:
 
-.. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+.. literalinclude:: doc_code/rlmodule_guide.py
     :language: python
     :start-after: __convert-sa-to-ma-begin__
     :end-before: __convert-sa-to-ma-end__
@@ -148,7 +148,7 @@ When writing RLModules, you need to use these fields to construct your model.
 
 .. tabbed:: Single Agent (torch)
 
-    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+    .. literalinclude:: doc_code/rlmodule_guide.py
         :language: python
         :start-after: __write-custom-sa-rlmodule-torch-begin__
         :end-before: __write-custom-sa-rlmodule-torch-end__
@@ -156,7 +156,7 @@ When writing RLModules, you need to use these fields to construct your model.
 
 .. tabbed:: Single Agent (tensorflow)
     
-    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+    .. literalinclude:: doc_code/rlmodule_guide.py
         :language: python
         :start-after: __write-custom-sa-rlmodule-tf-begin__
         :end-before: __write-custom-sa-rlmodule-tf-end__
@@ -169,14 +169,14 @@ In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the 
 
 .. tabbed:: Single Level Keys
     
-    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+    .. literalinclude:: doc_code/rlmodule_guide.py
         :language: python
         :start-after: __extend-spec-checking-single-level-begin__
         :end-before: __extend-spec-checking-single-level-end__
 
 .. tabbed:: Nested Keys
 
-    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+    .. literalinclude:: doc_code/rlmodule_guide.py
         :language: python
         :start-after: __extend-spec-checking-nested-begin__
         :end-before: __extend-spec-checking-nested-end__
@@ -184,7 +184,7 @@ In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the 
 
 .. tabbed:: TensorShape Spec
 
-    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+    .. literalinclude:: doc_code/rlmodule_guide.py
         :language: python
         :start-after: __extend-spec-checking-torch-specs-begin__
         :end-before: __extend-spec-checking-torch-specs-end__
@@ -192,7 +192,7 @@ In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the 
 
 .. tabbed:: Type Spec
 
-    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+    .. literalinclude:: doc_code/rlmodule_guide.py
         :language: python
         :start-after: __extend-spec-checking-type-specs-begin__
         :end-before: __extend-spec-checking-type-specs-end__
@@ -222,7 +222,7 @@ The following example creates a custom multi-agent RL module with underlying mod
 
 .. tabbed:: Multi agent with shared encoder (Torch)
 
-    .. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+    .. literalinclude:: doc_code/rlmodule_guide.py
         :language: python
         :start-after: __write-custom-marlmodule-shared-enc-begin__
         :end-before: __write-custom-marlmodule-shared-enc-end__
@@ -230,7 +230,7 @@ The following example creates a custom multi-agent RL module with underlying mod
 
 To construct this custom multi-agent RL module, pass the class to the :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` constructor. Also, pass the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec` for each agent because RLlib requires the observation, action spaces, and model hyper-parameters for each agent.
 
-.. literalinclude:: /rllib/doc_code/rlmodule_guide.py
+.. literalinclude:: doc_code/rlmodule_guide.py
     :language: python
     :start-after: __pass-custom-marlmodule-shared-enc-begin__
     :end-before: __pass-custom-marlmodule-shared-enc-end__
