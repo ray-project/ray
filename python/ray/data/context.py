@@ -43,8 +43,7 @@ DEFAULT_OPTIMIZE_FUSE_STAGES = True
 # Whether to enable stage-reorder optimizations for dataset pipelines.
 DEFAULT_OPTIMIZE_REORDER_STAGES = True
 
-# Whether to furthermore fuse read stages. When this is enabled, data will also be
-# re-read from the base datastream in each repetition of a DatasetPipeline.
+# Whether to furthermore fuse read stages.
 DEFAULT_OPTIMIZE_FUSE_READ_STAGES = True
 
 # Whether to furthermore fuse prior map tasks with shuffle stages.
