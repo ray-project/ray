@@ -26,6 +26,7 @@ extern "C" {
 }
 
 // TODO(pcm): Integrate into the C++ tree.
+#include "absl/strings/str_split.h"
 #include "ray/common/ray_config.h"
 
 namespace {
@@ -65,7 +66,6 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
   }
   case REDIS_REPLY_ERROR: {
     RAY_CHECK(false) << "Got an error in redis reply: " << redis_reply->str;
-    error_reply_ = std::string(redis_reply->str, redis_reply->len);
     break;
   }
   case REDIS_REPLY_INTEGER: {
@@ -141,16 +141,9 @@ void CallbackReply::ParseAsStringArray(redisReply *redis_reply) {
 
 bool CallbackReply::IsNil() const { return REDIS_REPLY_NIL == reply_type_; }
 
-bool CallbackReply::IsError() const { return REDIS_REPLY_ERROR == reply_type_; }
-
 int64_t CallbackReply::ReadAsInteger() const {
   RAY_CHECK(reply_type_ == REDIS_REPLY_INTEGER) << "Unexpected type: " << reply_type_;
   return int_reply_;
-}
-
-const std::string &CallbackReply::ReadAsError() const {
-  RAY_CHECK(reply_type_ == REDIS_REPLY_ERROR) << "Unexpected type: " << reply_type_;
-  return error_reply_;
 }
 
 Status CallbackReply::ReadAsStatus() const {
@@ -277,7 +270,9 @@ RedisContext::RedisContext(instrumented_io_context &io_service)
       << redisSSLContextGetError(ssl_error);
 }
 
-RedisContext::~RedisContext() {
+RedisContext::~RedisContext() { Disconnect(); }
+
+void RedisContext::Disconnect() {
   if (context_) {
     redisFree(context_);
     context_ = nullptr;
@@ -286,6 +281,7 @@ RedisContext::~RedisContext() {
     redisFreeSSLContext(ssl_context_);
     ssl_context_ = nullptr;
   }
+  redis_async_context_.reset();
 }
 
 Status AuthenticateRedis(redisContext *context, const std::string &password) {
@@ -392,6 +388,63 @@ Status RedisContext::PingPort(const std::string &address, int port) {
       address, port, redisConnect, static_cast<redisContext **>(nullptr));
 }
 
+void ValidateRedisDB(RedisContext &context) {
+  auto reply = context.RunArgvSync(std::vector<std::string>{"INFO", "CLUSTER"});
+  // cluster_state:ok
+  // cluster_slots_assigned:16384
+  // cluster_slots_ok:16384
+  // cluster_slots_pfail:0
+  // cluster_size:1
+  RAY_CHECK(reply && !reply->IsNil()) << "Failed to get Redis cluster info";
+  auto cluster_info = reply->ReadAsString();
+
+  std::vector<std::string> parts = absl::StrSplit(cluster_info, "\r\n");
+  bool cluster_mode = false;
+  int cluster_size = 0;
+
+  // Check the cluster status first
+  for (auto &part : parts) {
+    if (part.empty() || part[0] == '#') {
+      // it's a comment
+      continue;
+    }
+    std::vector<std::string> kv = absl::StrSplit(part, ":");
+    RAY_CHECK(kv.size() == 2);
+    if (kv[0] == "cluster_state") {
+      if (kv[1] == "ok") {
+        cluster_mode = true;
+      } else if (kv[1] == "fail") {
+        RAY_LOG(FATAL)
+            << "The Redis cluster is not healthy. cluster_state shows failed status: "
+            << cluster_info;
+      }
+    }
+    if (kv[0] == "cluster_size") {
+      cluster_size = std::stoi(kv[1]);
+    }
+  }
+
+  if (cluster_mode) {
+    RAY_CHECK(cluster_size == 1)
+        << "Ray currently doesn't support sharded Redis cluster. "
+        << "Please make sure the provided Redis cluster only has one shard";
+  }
+}
+
+std::vector<std::string> ResolveDNS(const std::string &address, int port) {
+  using namespace boost::asio;
+  io_context ctx;
+  ip::tcp::resolver resolver(ctx);
+  ip::tcp::resolver::iterator iter = resolver.resolve(address, std::to_string(port));
+  ip::tcp::resolver::iterator end;
+  std::vector<std::string> ip_addresses;
+  while (iter != end) {
+    ip::tcp::endpoint endpoint = *iter++;
+    ip_addresses.push_back(endpoint.address().to_string());
+  }
+  return ip_addresses;
+}
+
 Status RedisContext::Connect(const std::string &address,
                              int port,
                              bool sharding,
@@ -400,7 +453,12 @@ Status RedisContext::Connect(const std::string &address,
   RAY_CHECK(!context_);
   RAY_CHECK(!redis_async_context_);
 
-  RAY_CHECK_OK(ConnectWithRetries(address, port, redisConnect, &context_));
+  auto ip_addresses = ResolveDNS(address, port);
+  RAY_CHECK(!ip_addresses.empty())
+      << "Failed to resolve DNS for " << address << ":" << port;
+
+  RAY_CHECK_OK(ConnectWithRetries(ip_addresses[0], port, redisConnect, &context_));
+
   if (enable_ssl) {
     RAY_CHECK(ssl_context_ != nullptr);
     RAY_CHECK(redisInitiateSSLWithContext(context_, ssl_context_) == REDIS_OK)
@@ -419,6 +477,39 @@ Status RedisContext::Connect(const std::string &address,
   RAY_CHECK_OK(AuthenticateRedis(async_context, password));
   redis_async_context_.reset(new RedisAsyncContext(async_context));
   SetDisconnectCallback(redis_async_context_.get());
+
+  // Ray has some restrictions for RedisDB. Validate it here.
+  ValidateRedisDB(*this);
+
+  // Find the true leader
+  std::vector<const char *> argv;
+  std::vector<size_t> argc;
+  std::vector<std::string> cmds = {"DEL", "DUMMY"};
+  for (const auto &arg : cmds) {
+    argv.push_back(arg.data());
+    argc.push_back(arg.size());
+  }
+
+  auto redis_reply = reinterpret_cast<redisReply *>(
+      ::redisCommandArgv(context_, cmds.size(), argv.data(), argc.data()));
+
+  if (redis_reply->type == REDIS_REPLY_ERROR) {
+    // This should be a MOVED error
+    // MOVED 14946 10.xx.xx.xx:7001
+    std::string error_msg(redis_reply->str, redis_reply->len);
+    freeReplyObject(redis_reply);
+    std::vector<std::string> parts = absl::StrSplit(error_msg, " ");
+    RAY_CHECK(parts[0] == "MOVED" && parts.size() == 3)
+        << "Setup Redis cluster failed in the dummy deletion: " << error_msg;
+    std::vector<std::string> ip_port = absl::StrSplit(parts[2], ":");
+    RAY_CHECK(ip_port.size() == 2);
+
+    Disconnect();
+    // Connect to the true leader.
+    Connect(ip_port[0], std::stoi(ip_port[1]), sharding, password, enable_ssl);
+  } else {
+    freeReplyObject(redis_reply);
+  }
 
   return Status::OK();
 }
@@ -467,8 +558,6 @@ Status RedisContext::RunArgvAsync(const std::vector<std::string> &args,
 }
 
 void RedisContext::FreeRedisReply(void *reply) { return freeReplyObject(reply); }
-
-int RedisContext::GetRedisError(redisContext *context) { return context->err; }
 
 }  // namespace gcs
 

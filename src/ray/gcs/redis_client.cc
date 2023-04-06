@@ -14,7 +14,6 @@
 
 #include "ray/gcs/redis_client.h"
 
-#include "absl/strings/str_split.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
 
@@ -134,97 +133,7 @@ static void GetRedisShards(redisContext *context,
   freeReplyObject(reply);
 }
 
-std::vector<std::string> dns_resolver(const std::string &address, int port) {
-  using namespace boost::asio;
-  io_context ctx;
-  ip::tcp::resolver resolver(ctx);
-  ip::tcp::resolver::iterator iter = resolver.resolve(address, std::to_string(port));
-  ip::tcp::resolver::iterator end;
-  std::vector<std::string> ip_addresses;
-  while (iter != end) {
-    ip::tcp::endpoint endpoint = *iter++;
-    ip_addresses.push_back(endpoint.address().to_string());
-  }
-  return ip_addresses;
-}
-
-RedisClient::RedisClient(const RedisClientOptions &options) : options_(options) {
-  auto ip_addresses = dns_resolver(options_.server_ip_, options_.server_port_);
-  RAY_CHECK(!ip_addresses.empty())
-      << "Failed to do DNS resolution. Get no IP address from " << options_.server_ip_
-      << ".";
-
-  const auto &server_ip = ip_addresses[0];
-  const auto server_port = options_.server_port_;
-  instrumented_io_context io_context;
-  auto tmp_context = std::make_shared<RedisContext>(io_context);
-  RAY_LOG(INFO) << "Using: " << server_ip << ":" << server_port
-                << " for Redis initialization";
-  RAY_CHECK_OK(tmp_context->Connect(server_ip,
-                                    server_port,
-                                    /*sharding=*/options_.enable_sharding_conn_,
-                                    /*password=*/options_.password_,
-                                    /*enable_ssl=*/options_.enable_ssl_));
-  // Firstly, we need to find the leader node
-  auto reply = tmp_context->RunArgvSync(std::vector<std::string>{"INFO", "CLUSTER"});
-  // cluster_state:ok
-  // cluster_slots_assigned:16384
-  // cluster_slots_ok:16384
-  // cluster_slots_pfail:0
-  RAY_CHECK(reply && !reply->IsNil()) << "Failed to get Redis cluster info";
-  auto cluster_info = reply->ReadAsString();
-  std::vector<std::string> parts = absl::StrSplit(cluster_info, "\r\n");
-  bool cluster_mode = false;
-  int cluster_size = 0;
-
-  // Check the cluster status first
-  for (auto &part : parts) {
-    if (part.empty() || part[0] == '#') {
-      // it's a comment
-      continue;
-    }
-    std::vector<std::string> kv = absl::StrSplit(part, ":");
-    RAY_CHECK(kv.size() == 2);
-    if (kv[0] == "cluster_state") {
-      if (kv[1] == "ok") {
-        cluster_mode = true;
-      } else if (kv[1] == "fail") {
-        RAY_LOG(FATAL)
-            << "The Redis cluster is not healthy. cluster_state shows failed status: "
-            << cluster_info;
-      }
-    }
-    if (kv[0] == "cluster_size") {
-      cluster_size = std::stoi(kv[1]);
-    }
-  }
-
-  leader_ip_ = server_ip;
-  leader_port_ = server_port;
-
-  // In case it's a Redis cluster, we might connect to the wrong node.
-  if (cluster_mode) {
-    RAY_CHECK(cluster_size == 1)
-        << "Ray currently doesn't support sharded Redis cluster. "
-        << "Please make sure the provided Redis cluster only has one shard";
-    reply = tmp_context->RunArgvSync(std::vector<std::string>{"DEL", "DUMMY"});
-    if (reply->IsError()) {
-      // This should be a MOVED error
-      // MOVED 14946 10.xx.xx.xx:7001
-      auto error_msg = reply->ReadAsError();
-      parts = absl::StrSplit(error_msg, " ");
-      RAY_CHECK(parts[0] == "MOVED" && parts.size() == 3)
-          << "Setup Redis cluster failed in the dummy deletion: " << error_msg;
-      std::vector<std::string> ip_port = absl::StrSplit(parts[2], ":");
-      RAY_CHECK(ip_port.size() == 2);
-      leader_ip_ = ip_port[0];
-      leader_port_ = std::stoi(ip_port[1]);
-    }
-  }
-
-  RAY_LOG(INFO) << "Find redis leader: " << leader_ip_ << ":" << leader_port_;
-  RAY_CHECK(!leader_ip_.empty() && leader_port_ != 0) << "Failed to get leader info";
-}
+RedisClient::RedisClient(const RedisClientOptions &options) : options_(options) {}
 
 Status RedisClient::Connect(instrumented_io_context &io_service) {
   std::vector<instrumented_io_context *> io_services;
@@ -236,15 +145,15 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
   RAY_CHECK(!is_connected_);
   RAY_CHECK(!io_services.empty());
 
-  if (leader_ip_.empty()) {
+  if (options_.server_ip_.empty()) {
     RAY_LOG(ERROR) << "Failed to connect, redis server address is empty.";
     return Status::Invalid("Redis server address is invalid!");
   }
 
   primary_context_ = std::make_shared<RedisContext>(*io_services[0]);
 
-  RAY_CHECK_OK(primary_context_->Connect(leader_ip_,
-                                         leader_port_,
+  RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_,
+                                         options_.server_port_,
                                          /*sharding=*/options_.enable_sharding_conn_,
                                          /*password=*/options_.password_,
                                          /*enable_ssl=*/options_.enable_ssl_));
@@ -257,8 +166,8 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
     GetRedisShards(primary_context_->sync_context(), &addresses, &ports);
     if (addresses.empty()) {
       RAY_CHECK(ports.empty());
-      addresses.push_back(leader_ip_);
-      ports.push_back(leader_port_);
+      addresses.push_back(options_.server_ip_);
+      ports.push_back(options_.server_port_);
     }
 
     for (size_t i = 0; i < addresses.size(); ++i) {
@@ -276,8 +185,8 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
   } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>(*io_services[0]));
     // Only async context is used in sharding context, so wen disable the other two.
-    RAY_CHECK_OK(shard_contexts_[0]->Connect(leader_ip_,
-                                             leader_port_,
+    RAY_CHECK_OK(shard_contexts_[0]->Connect(options_.server_ip_,
+                                             options_.server_port_,
                                              /*sharding=*/true,
                                              /*password=*/options_.password_,
                                              /*enable_ssl=*/options_.enable_ssl_));

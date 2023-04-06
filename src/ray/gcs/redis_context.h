@@ -46,8 +46,6 @@ class CallbackReply {
   /// Whether this reply is `nil` type reply.
   bool IsNil() const;
 
-  bool IsError() const;
-
   /// Read this reply data as an integer.
   int64_t ReadAsInteger() const;
 
@@ -62,9 +60,6 @@ class CallbackReply {
 
   /// Read this reply data as pub-sub data.
   const std::string &ReadAsPubsubData() const;
-
-  /// Read the error message;
-  const std::string &ReadAsError() const;
 
   /// Read this reply data as a string array.
   [[nodiscard]] const std::vector<std::optional<std::string>> &ReadAsStringArray() const;
@@ -186,6 +181,9 @@ class RedisContext {
                  const std::string &password,
                  bool enable_ssl = false);
 
+  /// Disconnect from the server.
+  void Disconnect();
+
   /// Run an arbitrary Redis command synchronously.
   ///
   /// \param args The vector of command args to pass to Redis.
@@ -211,6 +209,8 @@ class RedisContext {
   }
 
   instrumented_io_context &io_service() { return io_service_; }
+
+  std::pair<std::string, int> GetLeaderAddress();
 
  private:
   // These functions avoid problems with dependence on hiredis headers with clang-cl.
