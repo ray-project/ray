@@ -44,6 +44,7 @@ class DatasetLogger:
         to call explicitly. Assumes that `ray.init()` has already been called prior
         to calling this method; otherwise raises a `ValueError`."""
         stdout_logger = logging.getLogger(self.log_name)
+        print(stdout_logger)
 
         # Add stderr handler.
         formatter = logging.Formatter(fmt=LOGGER_FORMAT)
@@ -52,8 +53,10 @@ class DatasetLogger:
         handler.setLevel(LOGGER_LEVEL.upper())
         stdout_logger.addHandler(handler)
         stdout_logger.propagate = False
+        stdout_logger.setLevel(LOGGER_LEVEL.upper())
 
         logger = logging.getLogger(f"{self.log_name}.logfile")
+        logger.setLevel(LOGGER_LEVEL.upper())
 
         # If ray.init() is called and the global node session directory path
         # is valid, we can create the additional handler to write to the
@@ -93,6 +96,7 @@ class DatasetLogger:
         also removes the need for this getter method:
         `logger.info(msg="Hello world", stacklevel=2)`
         """
+
         if self._logger is None:
             self._logger = self._initialize_logger()
         self._logger.propagate = log_to_stdout
