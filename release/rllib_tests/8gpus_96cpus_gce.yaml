@@ -23,10 +23,3 @@ gcp_advanced_configurations_json:
         auto_delete: true
         initialize_params:
           disk_size_gb: 500
-
-#aws:
-#    BlockDeviceMappings:
-#        - DeviceName: /dev/sda1
-#          Ebs:
-#            DeleteOnTermination: true
-#            VolumeSize: 500

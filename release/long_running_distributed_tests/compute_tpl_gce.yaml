@@ -1,7 +1,7 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west1
 allowed_azs: 
-    - us-west1-a
+    - us-west1-b
 
 max_workers: 3
 
@@ -16,15 +16,10 @@ worker_node_types:
       max_workers: 2
       use_spot: false
 
-#aws:
-#  TagSpecifications:
-#    - ResourceType: "instance"
-#      Tags:
-#        - Key: ttl-hours
-#          Value: '48'
-#
-#  BlockDeviceMappings:
-#    - DeviceName: /dev/sda1
-#      Ebs:
-#        VolumeSize: 400
-#        DeleteOnTermination: true
+gcp_advanced_configurations_json:
+  instance_properties:
+    disks:
+      - boot: true
+        auto_delete: true
+        initialize_params:
+          disk_size_gb: 400

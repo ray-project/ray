@@ -230,7 +230,6 @@
     wait_for_nodes:
       num_nodes: 4
 
-
   alert: default
 
 - name: air_benchmark_torch_mnist_gpu_4x4
@@ -335,6 +334,15 @@
         num_nodes: 4
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gce_gpu_4_g4_12xl.yaml
 
 - name: air_benchmark_torch_mnist_cpu_4x4
   group: AIR tests
@@ -552,6 +560,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gce_gpu_16.yaml
+
 # Test tiny, medium, and huge input files.
 - name: ray-data-bulk-ingest-file-size-benchmark
   group: AIR tests
@@ -569,6 +586,15 @@
     timeout: 3600
     script: bash file_size_benchmark.sh
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config_oom.yaml
+        cluster_compute: compute_gce_cpu_16.yaml
+
 # Test dataset larger than object store memory.
 - name: ray-data-bulk-ingest-out-of-core-benchmark
   group: AIR tests
@@ -585,6 +611,15 @@
   run:
     timeout: 3600
     script: bash out_of_core_benchmark.sh
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config_oom.yaml
+        cluster_compute: compute_gce_cpu_16.yaml
 
 # Test additional CPU nodes for preprocessing.
 - name: ray-data-bulk-ingest-heterogeneity-benchmark
@@ -605,6 +640,15 @@
 
     timeout: 1800
     script: bash heterogeneity_benchmark.sh 2
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config_oom.yaml
+        cluster_compute: compute_gce_cpu_16_worker_nodes_2.yaml
 
 
 #######################
@@ -3168,7 +3212,6 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=ppo/torch --framework=torch
 
-
   alert: default
 
   variations:
@@ -3307,6 +3350,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml
+
 - name: rllib_multi_gpu_with_lstm_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
@@ -3351,6 +3403,15 @@
 
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_stress_tests
   group: RLlib tests
@@ -4210,6 +4271,15 @@
     wait_for_nodes:
       num_nodes: 20
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: data_ingest_benchmark_compute_gce.yaml
+
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -4342,8 +4412,6 @@
     # Expect the benchmark to finish around 30 minutes.
     timeout: 2400
     script: python iter_tensor_batches_benchmark.py --data-size-gb=10
-
-
 
 - name: iter_batches_benchmark_single_node
   group: data-tests
@@ -4486,6 +4554,20 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 100
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: shuffle/100tb_shuffle_app_config_gce.yaml
+        cluster_compute: shuffle/100tb_shuffle_compute_gce.yaml
+      run:
+        timeout: 28800
+        script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=40000 --partition-size=1e9 --shuffle
+        wait_for_nodes:
+          num_nodes: 100
 
 ##################
 # Core Chaos tests
