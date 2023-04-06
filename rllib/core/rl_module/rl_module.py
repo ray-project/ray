@@ -19,8 +19,8 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 
-from ray.rllib.models.specs.typing import SpecType
-from ray.rllib.models.specs.checker import (
+from ray.rllib.core.models.specs.typing import SpecType
+from ray.rllib.core.models.specs.checker import (
     check_input_specs,
     check_output_specs,
     convert_to_canonical_format,
@@ -581,14 +581,6 @@ class RLModule(abc.ABC):
         state_path = module_state_dir / module._module_state_file_name()
         module.load_state_from_file(state_path)
         return module
-
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        """Reserved API, Makes the module distributed."""
-        raise NotImplementedError
-
-    def is_distributed(self) -> bool:
-        """Reserved API, Returns True if the module is distributed."""
-        raise NotImplementedError
 
     def as_multi_agent(self) -> "MultiAgentRLModule":
         """Returns a multi-agent wrapper around this module."""

@@ -4,8 +4,8 @@ from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.base import ModelConfig
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchMLP
-from ray.rllib.models.specs.specs_base import Spec
-from ray.rllib.models.specs.specs_torch import TorchTensorSpec
+from ray.rllib.core.models.specs.specs_base import Spec
+from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 
@@ -26,11 +26,11 @@ class TorchMLPHead(TorchModel, nn.Module):
         )
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Union[Spec, None]:
         return TorchTensorSpec("b, h", h=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Union[Spec, None]:
         return TorchTensorSpec("b, h", h=self.config.output_dims[0])
 
     @override(Model)
@@ -65,11 +65,11 @@ class TorchFreeLogStdMLPHead(TorchModel, nn.Module):
         )
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Union[Spec, None]:
         return TorchTensorSpec("b, h", h=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Union[Spec, None]:
         return TorchTensorSpec("b, h", h=self.config.output_dims[0])
 
     @override(Model)
