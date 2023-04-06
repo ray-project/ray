@@ -1217,7 +1217,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// own resources (such as GPU memory), then those resources will become
   /// unavailable until the process is killed.
   /// This is called during shutdown of the process.
-  void KillLeakedProcs();
+  void KillChildProcs();
 
   /// Register this worker or driver to GCS.
   void RegisterToGcs(int64_t worker_launch_time_ms, int64_t worker_launched_time_ms);

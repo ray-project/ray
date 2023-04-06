@@ -704,7 +704,7 @@ void CoreWorker::Disconnect(
   }
 }
 
-void CoreWorker::KillLeakedProcs() {
+void CoreWorker::KillChildProcs() {
   // There are cases where worker processes can "leak" child processes.
   // Basically this means that the worker process (either itself, or via
   // code in a task or actor) spawned a process and did not kill it on termination.
@@ -721,11 +721,11 @@ void CoreWorker::KillLeakedProcs() {
 
   if (!RayConfig::instance().kill_child_processes_on_worker_exit()) {
     RAY_LOG(DEBUG)
-        << "kill_child_processes_on_worker_exit is not true, skipping KillLeakedProcs";
+        << "kill_child_processes_on_worker_exit is not true, skipping KillChildProcs";
     return;
   }
 
-  RAY_LOG(DEBUG) << "kill_child_processes_on_worker_exit true, KillLeakedProcs";
+  RAY_LOG(DEBUG) << "kill_child_processes_on_worker_exit true, KillChildProcs";
   auto maybe_child_procs = GetAllProcsWithPpid(GetPID());
 
   // Enumerating child procs is not supported on this platform.
@@ -784,7 +784,7 @@ void CoreWorker::Exit(
          creation_task_exception_pb_bytes]() {
           rpc::DrainAndResetServerCallExecutor();
           Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
-          KillLeakedProcs();
+          KillChildProcs();
           Shutdown();
         },
         "CoreWorker.Shutdown");
@@ -830,7 +830,7 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
                    << " Details: " << detail;
   Disconnect(exit_type, detail);
 
-  KillLeakedProcs();
+  KillChildProcs();
 
   // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
   // `exit()` will destruct static objects in an incorrect order, which will lead to
