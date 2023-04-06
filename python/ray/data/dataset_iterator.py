@@ -68,7 +68,7 @@ class DatasetIterator(abc.ABC):
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats], bool
     ]:
         """Returns the iterator to use for `iter_batches`.
 
@@ -76,6 +76,8 @@ class DatasetIterator(abc.ABC):
             A tuple. The first item of the tuple is an iterator over pairs of Block
             object references and their corresponding metadata. The second item of the
             tuple is a DatasetStats object used for recording stats during iteration.
+            The third item is a boolean indicating if the blocks can be safely cleared
+            after use.
         """
         raise NotImplementedError
 
@@ -153,7 +155,7 @@ class DatasetIterator(abc.ABC):
 
         time_start = time.perf_counter()
 
-        block_iterator, stats = self._to_block_iterator()
+        block_iterator, stats, blocks_owned_by_consumer = self._to_block_iterator()
         if use_legacy:
             # Legacy iter_batches does not use metadata.
             def drop_metadata(block_iterator):
@@ -164,6 +166,7 @@ class DatasetIterator(abc.ABC):
                 drop_metadata(block_iterator),
                 stats=stats,
                 prefetch_blocks=prefetch_blocks,
+                clear_block_after_read=blocks_owned_by_consumer,
                 batch_size=batch_size,
                 batch_format=batch_format,
                 drop_last=drop_last,
@@ -175,6 +178,7 @@ class DatasetIterator(abc.ABC):
             yield from iter_batches(
                 block_iterator,
                 stats=stats,
+                clear_block_after_read=blocks_owned_by_consumer,
                 batch_size=batch_size,
                 batch_format=batch_format,
                 drop_last=drop_last,

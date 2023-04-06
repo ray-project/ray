@@ -79,7 +79,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats], bool
     ]:
         def gen_blocks() -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
             cur_epoch = ray.get(
@@ -100,7 +100,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
                     )
                     yield block_ref
 
-        return gen_blocks(), None
+        return gen_blocks(), None, False
 
     def stats(self) -> str:
         """Implements DatasetIterator."""
