@@ -7,7 +7,7 @@ from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.nested_dict import NestedDict
 
-from ray.rllib.models.specs.typing import SpecType
+from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,

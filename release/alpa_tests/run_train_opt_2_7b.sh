@@ -18,9 +18,11 @@ mkdir -p $OUTPUT_DIR
 aws s3 sync $S3_MODEL_DIR $LOCAL_MODEL_DIR --exclude="*.bin,*.h5"
 
 # Run training.
+# 2 instances, 4 GPUs each. So set the pipeline parallelism to 2,
+# and tensor parallelism to 4.
 python train_opt_2_7b_minimum.py \
-    --operator_parallel 1 \
-    --pipeline_parallel 4 \
+    --operator_parallel 4 \
+    --pipeline_parallel 2 \
     --model_name_or_path $LOCAL_MODEL_DIR \
     --output_dir $OUTPUT_DIR \
     --train_file $TRAIN_FILE \

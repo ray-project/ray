@@ -10,7 +10,6 @@ from typing import (
     TypeVar,
     Union,
 )
-import warnings
 
 
 import numpy as np
@@ -19,6 +18,7 @@ import ray
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.optimizers import LogicalPlan
@@ -90,7 +90,9 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
+def from_items(
+    items: List[Any], *, parallelism: int = -1, output_arrow_format: bool = False
+) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
     Examples:
@@ -105,6 +107,8 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
         items: List of local Python objects.
         parallelism: The amount of parallelism to use for the dataset.
             Parallelism may be limited by the number of items.
+        output_arrow_format: If True, always return data in Arrow format, raising an
+            error if this is not possible. Defaults to False.
 
     Returns:
         Dataset holding the items.
@@ -132,11 +136,21 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     metadata: List[BlockMetadata] = []
     for i in builtins.range(detected_parallelism):
         stats = BlockExecStats.builder()
-        builder = DelegatingBlockBuilder()
+        if output_arrow_format:
+            builder = ArrowBlockBuilder()
+        else:
+            builder = DelegatingBlockBuilder()
         # Evenly distribute remainder across block slices while preserving record order.
         block_start = i * block_size + min(i, remainder)
         block_end = (i + 1) * block_size + min(i + 1, remainder)
         for j in builtins.range(block_start, block_end):
+            if output_arrow_format and not isinstance(items[j], (dict, np.ndarray)):
+                raise ValueError(
+                    "Arrow block format can only be used if all items are "
+                    "either dicts or Numpy arrays. Received data of type: "
+                    f"{type(items[j])}. Set `output_arrow_format` to "
+                    "False to not use Arrow blocks."
+                )
             builder.add(items[j])
         block = builder.build()
         blocks.append(ray.put(block))
@@ -590,7 +604,7 @@ def read_images(
 
     Examples:
         >>> import ray
-        >>> path = "s3://air-example-data-2/movie-image-small-filesize-1GB"
+        >>> path = "s3://anonymous@air-example-data-2/movie-image-small-filesize-1GB"
         >>> ds = ray.data.read_images(path)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
         Dataset(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3)})
@@ -1308,11 +1322,10 @@ def read_binary_files(
         Dataset holding records read from the specified paths.
     """
     if not output_arrow_format:
-        warnings.warn(
+        logger.warning(
             "read_binary_files() returns Dataset in Python list format as of Ray "
             "v2.4. Use read_binary_files(output_arrow_format=True) to return Dataset "
             "in Arrow format.",
-            DeprecationWarning,
         )
 
     return read_datasource(
