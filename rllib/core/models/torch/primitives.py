@@ -235,31 +235,39 @@ class TorchCNNTranspose(nn.Module):
         ):
             is_final_layer = i == len(cnn_transpose_filter_specifiers) - 1
 
+            # Resolve stride and kernel width/height values if only int given (squared).
             s_w, s_h = (stride, stride) if isinstance(stride, int) else stride
             k_w, k_h = (kernel, kernel) if isinstance(kernel, int) else kernel
 
-            # Stride the image first.
+            # Stride the incoming image first.
             stride_layer = Stride2D(in_size[0], in_size[1], s_w, s_h)
             layers.append(stride_layer)
-
-            # Pad like in tensorflow's SAME mode.
+            # Then 0-pad (like in tensorflow's SAME mode).
+            # This will return the necessary padding such that for stride=1, the output
+            # image has the same size as the input image, for stride=2, the output image
+            # is 2x the input image, etc..
             padding, out_size = same_padding_transpose_after_stride(
                 (stride_layer.out_width, stride_layer.out_height), kernel, stride
             )
-
-            layers.extend([
-                nn.ZeroPad2d(padding),  # left, right, top, bottom
+            layers.append(nn.ZeroPad2d(padding))  # left, right, top, bottom
+            # Then do the Conv2DTranspose operation
+            # (now that we have padded and strided manually, w/o any more padding using
+            # stride=1).
+            layers.append(
                 nn.ConvTranspose2d(
                     in_depth,
                     out_depth,
                     kernel,
-                    1,  # force-set stride to 1 as we already took care of
-                    padding=(k_w - 1, k_h - 1),  # disable torch auto-padding
+                    # Force-set stride to 1 as we already took care of it.
+                    1,
+                    # Disable torch auto-padding (torch interprets the padding setting
+                    # as: dilation (==1.0) * [`kernel` - 1] - [`padding`]).
+                    padding=(k_w - 1, k_h - 1),
                     # Last layer always uses bias (b/c has no LayerNorm, regardless of
                     # config).
                     bias=use_bias or is_final_layer,
                 ),
-            ])
+            )
             # Layernorm (never for final layer).
             if cnn_transpose_use_layernorm and not is_final_layer:
                 layers.append(nn.LayerNorm((out_depth, out_size[0], out_size[1])))
