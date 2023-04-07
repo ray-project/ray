@@ -375,7 +375,6 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
-    - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
     - mount -t proc -o nodev,noexec,nosuid proc /proc
     - bazel test --config=ci $(./ci/run/bazel_export_options)
@@ -386,6 +385,7 @@
       --spawn_strategy=linux-sandbox
       --test_tag_filters=client_tests,small_size_python_tests
       -- python/ray/tests/...
+    - bash ./ci/ci.sh prepare_docker
     - bazel test --config=ci -j $(grep -c processor /proc/cpuinfo) $(./ci/run/bazel_export_options)
       --test_tag_filters=ray_ha
       --test_env=DOCKER_HOST=tcp://docker:2376
