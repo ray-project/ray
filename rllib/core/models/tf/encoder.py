@@ -78,6 +78,7 @@ class TfCNNEncoder(TfModel, Encoder):
         Encoder.__init__(self, config)
 
         layers = []
+        layers.append(tf.keras.layers.Input(shape=config.input_dims, dtype=tf.float32))
         # The bare-bones CNN (no flatten, no succeeding dense).
         cnn = TfCNN(
             input_dims=config.input_dims,

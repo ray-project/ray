@@ -9,42 +9,17 @@ import tree
 
 import ray
 from ray.rllib import SampleBatch
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
-    PPOTfRLModule,
+from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
+from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import (
+    APPOTfRLModule,
 )
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-    PPOTorchRLModule,
-)
+#from ray.rllib.algorithms.appo.torch.appo_torch_rl_module import (
+#    APPOTorchRLModule,
+#)
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-
-
-def get_expected_module_config(
-    env: gym.Env,
-    model_config_dict: dict,
-    observation_space: gym.spaces.Space,
-) -> RLModuleConfig:
-    """Get a PPOModuleConfig that we would expect from the catalog otherwise.
-
-    Args:
-        env: Environment for which we build the model later
-        model_config_dict: Model config to use for the catalog
-        observation_space: Observation space to use for the catalog.
-
-    Returns:
-         A PPOModuleConfig containing the relevant configs to build PPORLModule
-    """
-    config = RLModuleConfig(
-        observation_space=observation_space,
-        action_space=env.action_space,
-        model_config_dict=model_config_dict,
-        catalog_class=PPOCatalog,
-    )
-
-    return config
 
 
 def dummy_torch_ppo_loss(batch, fwd_out):
@@ -90,15 +65,20 @@ def dummy_tf_ppo_loss(batch, fwd_out):
     return actor_loss + critic_loss
 
 
-def _get_ppo_module(framework, env, lstm, observation_space):
+def _get_appo_module(framework, env, lstm, observation_space):
     model_config_dict = {"use_lstm": lstm}
-    config = get_expected_module_config(
-        env, model_config_dict=model_config_dict, observation_space=observation_space
+
+    config = RLModuleConfig(
+        observation_space=observation_space,
+        action_space=env.action_space,
+        model_config_dict=model_config_dict,
+        catalog_class=APPOCatalog,
     )
+
     if framework == "torch":
-        module = PPOTorchRLModule(config)
+        raise NotImplementedError #module = APPOTorchRLModule(config)
     else:
-        module = PPOTfRLModule(config)
+        module = APPOTfRLModule(config)
     return module
 
 
@@ -112,7 +92,7 @@ def _get_input_batch_from_obs(framework, obs):
     return batch
 
 
-class TestPPO(unittest.TestCase):
+class TestAPPORLModule(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -123,7 +103,7 @@ class TestPPO(unittest.TestCase):
 
     def test_rollouts(self):
         # TODO: Add FrozenLake-v1 to cover LSTM case.
-        frameworks = ["tf2", "torch"]
+        frameworks = ["tf2"]#, "torch"]
         env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
         fwd_fns = ["forward_exploration", "forward_inference"]
         # TODO(Artur): Re-enable LSTM
@@ -143,7 +123,7 @@ class TestPPO(unittest.TestCase):
             preprocessor_cls = get_preprocessor(env.observation_space)
             preprocessor = preprocessor_cls(env.observation_space)
 
-            module = _get_ppo_module(
+            module = _get_appo_module(
                 framework=fw,
                 env=env,
                 lstm=lstm,
@@ -169,7 +149,7 @@ class TestPPO(unittest.TestCase):
 
     def test_forward_train(self):
         # TODO: Add FrozenLake-v1 to cover LSTM case.
-        frameworks = ["tf2", "torch"]
+        frameworks = ["tf2"]#, "torch"]
         env_names = ["ALE/Pong-v5", "CartPole-v1", "Pendulum-v1"]
         # TODO(Artur): Re-enable LSTM
         lstm = [False]
@@ -189,7 +169,7 @@ class TestPPO(unittest.TestCase):
             preprocessor_cls = get_preprocessor(env.observation_space)
             preprocessor = preprocessor_cls(env.observation_space)
 
-            module = _get_ppo_module(
+            module = _get_appo_module(
                 framework=fw,
                 env=env,
                 lstm=lstm,

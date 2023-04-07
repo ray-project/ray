@@ -111,11 +111,11 @@ class TfCNNTransposeHead(TfModel):
         )
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return TfTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return TfTensorSpec(
             "b, w, h, c",
             w=self.config.output_dims[0],

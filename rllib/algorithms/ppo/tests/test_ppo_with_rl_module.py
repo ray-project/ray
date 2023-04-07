@@ -120,13 +120,10 @@ class TestPPO(unittest.TestCase):
         num_iterations = 2
 
         for fw in framework_iterator(
-            config, frameworks=("torch", "tf2"), with_eager_tracing=True
+            config, frameworks=("tf2", "torch"), with_eager_tracing=True
         ):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
-            for env in ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]:
-                if env == "ALE/Breakout-v5" and fw == "tf2":
-                    # TODO(Artur): Implement CNN in TF2.
-                    continue
+            for env in ["ALE/Breakout-v5", "CartPole-v1", "Pendulum-v1"]:
                 print("Env={}".format(env))
                 # TODO (Kourosh, Avnishn): for now just do lstm=False
                 for lstm in [False]:
