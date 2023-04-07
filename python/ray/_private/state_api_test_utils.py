@@ -377,7 +377,9 @@ class PidActor:
         self.name_to_pid[name] = (pid, state)
 
 
-def verify_tasks_running_or_terminated(task_pids: Dict[str, Tuple[int, Optional[str]]]):
+def verify_tasks_running_or_terminated(
+    task_pids: Dict[str, Tuple[int, Optional[str]]], expect_num_tasks: int
+):
     """
     Check if the tasks in task_pids are in RUNNING state if pid exists
     and running the task.
@@ -390,6 +392,7 @@ def verify_tasks_running_or_terminated(task_pids: Dict[str, Tuple[int, Optional[
     """
     import psutil
 
+    assert len(task_pids) == expect_num_tasks, task_pids
     for task_name, pid_and_state in task_pids.items():
         tasks = list_tasks(detail=True, filters=[("name", "=", task_name)])
         assert len(tasks) == 1, (
@@ -406,7 +409,6 @@ def verify_tasks_running_or_terminated(task_pids: Dict[str, Tuple[int, Optional[
             if expected_state is not None:
                 assert task["state"] == expected_state, task
             continue
-
         if psutil.pid_exists(pid) and task_name in psutil.Process(pid).name():
             assert (
                 "ray::IDLE" not in task["name"]
@@ -422,6 +424,8 @@ def verify_tasks_running_or_terminated(task_pids: Dict[str, Tuple[int, Optional[
                     "FINISHED",
                 ], f"{task_name}: {task['task_id']} = {task['state']}"
             else:
-                assert task["state"] == expected_state, task
+                assert (
+                    task["state"] == expected_state
+                ), f"expect {expected_state} but {task['state']} for {task}"
 
     return True

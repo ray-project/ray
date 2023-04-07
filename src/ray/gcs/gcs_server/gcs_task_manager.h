@@ -188,12 +188,12 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     std::vector<rpc::TaskEvents> GetTaskEvents(
         const absl::flat_hash_set<TaskAttempt> &task_attempts) const;
 
-    ///  Mark tasks from a job as failed as job ends.
+    ///  Mark tasks from a job as failed.
     ///
     /// \param job_id Job ID
     /// \param job_finish_time_ns job finished time in nanoseconds, which will be the task
     /// failed time.
-    void MarkTasksFailedOnJobEnds(const JobID &job_id, int64_t job_finish_time_ns);
+    void MarkTasksFailed(const JobID &job_id, int64_t job_finish_time_ns);
 
     /// Mark tasks from a worker as failed as worker dies.
     ///

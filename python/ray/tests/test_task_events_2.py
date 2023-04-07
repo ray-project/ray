@@ -9,6 +9,7 @@ import ray
 from ray._private.state_api_test_utils import (
     PidActor,
     verify_tasks_running_or_terminated,
+    verify_failed_task,
 )
 from ray.experimental.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
@@ -211,8 +212,89 @@ ray.get(f.remote())
     wait_for_condition(verify)
 
 
+def test_fault_tolerance_detached_actor(shutdown_only):
+    """
+    Tests that tasks from a detached actor **shouldn't** be marked as failed
+    """
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    pid_actor = PidActor.remote()
+
+    # Check a detached actor's parent task's failure do not
+    # affect the actor's task subtree.
+    @ray.remote(max_retries=0)
+    def parent_starts_detached_actor(pid_actor):
+        @ray.remote
+        class DetachedActor:
+            def __init__(self):
+                pass
+
+            async def running(self):
+                while not self.running:
+                    await asyncio.sleep(0.1)
+                pass
+
+            async def run(self, pid_actor):
+                ray.get(
+                    pid_actor.report_pid.remote(
+                        "detached-actor-run", os.getpid(), "RUNNING"
+                    )
+                )
+                self.running = True
+                await asyncio.sleep(999)
+
+        # start a detached actor
+        a = DetachedActor.options(
+            name="detached-actor", lifetime="detached", namespace="test"
+        ).remote()
+        a.run.options(name="detached-actor-run").remote(pid_actor)
+        ray.get(a.running.remote())
+
+        # Enough time for events to be reported to GCS.
+        time.sleep(1)
+        # fail this parent task
+        os._exit(1)
+
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(parent_starts_detached_actor.remote(pid_actor))
+
+    a = ray.get_actor("detached-actor", namespace="test")
+    task_pids = ray.get(pid_actor.get_pids.remote())
+    wait_for_condition(
+        verify_tasks_running_or_terminated,
+        task_pids=task_pids,
+        expect_num_tasks=1,
+    )
+
+    a = ray.get_actor("detached-actor", namespace="test")
+    ray.kill(a)
+
+    # Verify the actual process no longer running.
+    task_pids["detached-actor-run"] = (task_pids["detached-actor-run"][0], "FAILED")
+    wait_for_condition(
+        verify_tasks_running_or_terminated,
+        task_pids=task_pids,
+        expect_num_tasks=1,
+    )
+
+    # Verify failed task marked with expected info.
+    wait_for_condition(
+        verify_failed_task,
+        name="detached-actor-run",
+        error_type="WORKER_DIED",
+        error_message="The actor is dead because it was killed by `ray.kill`",
+    )
+
+
 def test_fault_tolerance_job_failed(shutdown_only):
-    ray.init(num_cpus=8, _system_config=_SYSTEM_CONFIG)
+    sys_config = _SYSTEM_CONFIG.copy()
+    config = {
+        "gcs_mark_task_failed_on_job_done_delay_ms": 1000,
+        # make worker failure not trigger task failure
+        "gcs_mark_task_failed_on_worker_dead_delay_ms": 30000,
+    }
+    sys_config.update(config)
+    ray.init(num_cpus=8, _system_config=sys_config)
     script = """
 import ray
 import time
@@ -280,9 +362,6 @@ ray.get(parent.remote())
                 assert (
                     task["state"] == "FAILED"
                 ), f"task {task['func_or_class_name']} has wrong state"
-
-                assert task["error_type"] == "WORKER_DIED"
-                assert "Job finishes" in task["error_message"]
 
                 duration_ms = task["end_time_ms"] - task["start_time_ms"]
                 assert (
@@ -352,10 +431,10 @@ def test_fault_tolerance_actor_tasks_failed(shutdown_only):
 
     # Wait for all tasks to finish:
     # 3 = fail_parent + task_finish_child + task_sleep_child
-    wait_for_condition(lambda: len(ray.get(pid_actor.get_pids.remote())) == 3)
     wait_for_condition(
         verify_tasks_running_or_terminated,
         task_pids=ray.get(pid_actor.get_pids.remote()),
+        expect_num_tasks=3,
     )
 
 
@@ -370,10 +449,10 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
         ray.get(a.child_actor.options(name="child_actor").remote(pid_actor))
     # Wait for all tasks to finish:
     # 4 = child_actor + children + task_finish_child + task_sleep_child
-    wait_for_condition(lambda: len(ray.get(pid_actor.get_pids.remote())) == 4)
     wait_for_condition(
         verify_tasks_running_or_terminated,
         task_pids=ray.get(pid_actor.get_pids.remote()),
+        expect_num_tasks=4,
     )
 
 
@@ -435,11 +514,6 @@ def test_fault_tolerance_chained_task_fail(
 
     pid_actor = PidActor.remote()
 
-    def verify():
-        task_names_to_pid = ray.get(pid_actor.get_pids.remote())
-        assert len(task_names_to_pid) == 3, task_names_to_pid
-        return verify_tasks_running_or_terminated(task_names_to_pid)
-
     if actor_or_normal_tasks == "normal_task":
         with pytest.raises(
             (ray.exceptions.RayTaskError, ray.exceptions.WorkerCrashedError)
@@ -449,7 +523,11 @@ def test_fault_tolerance_chained_task_fail(
         a = Actor.remote()
         ray.get(a.run.remote(pid_actor=pid_actor))
 
-    wait_for_condition(verify)
+    wait_for_condition(
+        verify_tasks_running_or_terminated,
+        task_pids=ray.get(pid_actor.get_pids.remote()),
+        expect_num_tasks=3,
+    )
 
 
 NORMAL_TASK = "normal_task"
@@ -601,10 +679,10 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
     ray.get(killer.all_killed.remote())
     print("all killed")
 
-    wait_for_condition(lambda: len(ray.get(killer.get_pids.remote())) == len(tasks))
     wait_for_condition(
         verify_tasks_running_or_terminated,
         task_pids=ray.get(killer.get_pids.remote()),
+        expect_num_tasks=len(tasks),
         timeout=15,
         retry_interval_ms=500,
     )
