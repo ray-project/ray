@@ -205,7 +205,7 @@ class ExecutionOptions:
             streaming_split operations.
         verbose_progress: Whether to report progress individually per operator. By
             default, only AllToAll operators and global progress is reported. This
-            option is useful for performance debugging, and is off by default.
+            option is useful for performance debugging. Off by default.
     """
 
     resource_limits: ExecutionResources = ExecutionResources()
