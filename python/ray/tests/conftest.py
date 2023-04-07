@@ -475,7 +475,6 @@ def call_ray_start(request):
 
 @contextmanager
 def call_ray_start_context(request):
-    free_port = find_free_port()
     default_cmd = (
         "ray start --head --num-cpus=1 --min-worker-port=0 --max-worker-port=0"
     )
@@ -488,9 +487,19 @@ def call_ray_start_context(request):
 
         parameter = parameter.get("cmd", default_cmd)
 
-    assert " --port" not in parameter, "port is not allowed"
-    parameter += f" --port {free_port}"
     command_args = parameter.split(" ")
+
+    port = None
+    for i in range(len(command_args)):
+        if command_args[i] == "--port":
+            if int(command_args[i+1]) == 0:
+                port = str(find_free_port())
+                command_args[i+1] = port
+            else:
+                port = command_args[i+1]
+    if port is None:
+        port = str(find_free_port())
+        command_args += ["--port", port]
 
     try:
         ray._private.utils.decode(
@@ -500,7 +509,7 @@ def call_ray_start_context(request):
         print(type(e), e)
         raise
 
-    yield f"127.0.0.1:{free_port}"
+    yield f"127.0.0.1:{port}"
 
     # Disconnect from the Ray cluster.
     ray.shutdown()
