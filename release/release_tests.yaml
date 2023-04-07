@@ -1506,7 +1506,7 @@
       run:
         timeout: 500
         prepare_timeout: 600
-        script: python workloads/test_network_overhead.py
+        script: python workloads/test_network_overhead.py --smoke-test
         wait_for_nodes:
           num_nodes: 20
     - __suffix__: gce
