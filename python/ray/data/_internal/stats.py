@@ -29,6 +29,15 @@ def fmt(seconds: float) -> str:
         return str(round(seconds * 1000 * 1000, 2)) + "us"
 
 
+def leveled_indent(lvl: int = 0, spaces_per_indent: int = 3) -> str:
+    """Returns a string of spaces which contains `level` indents,
+    each indent containing `spaces_per_indent` spaces. For example:
+    >>> leveled_indent(2, 3)
+    '      '
+    """
+    return (" " * spaces_per_indent) * lvl
+
+
 class Timer:
     """Helper class for tracking accumulated time (in seconds)."""
 
@@ -403,6 +412,31 @@ class DatasetStatsSummary:
         out += str(self.iter_stats)
         return out
 
+    def __repr__(self, level=0) -> str:
+        indent = leveled_indent(level)
+        stage_stats = "\n".join([ss.__repr__(level + 2) for ss in self.stages_stats])
+        parent_stats = "\n".join([ps.__repr__(level + 2) for ps in self.parents])
+        extra_metrics = "\n".join(
+            f"{leveled_indent(level + 2)}{k}: {v},"
+            for k, v in self.extra_metrics.items()
+        )
+
+        # Handle formatting case for empty outputs.
+        stage_stats = f"\n{stage_stats},\n{indent}   " if stage_stats else ""
+        parent_stats = f"\n{parent_stats},\n{indent}   " if parent_stats else ""
+        extra_metrics = f"\n{extra_metrics}\n{indent}   " if extra_metrics else ""
+        return (
+            f"{indent}DatasetStatsSummary(\n"
+            f"{indent}   dataset_uuid={self.dataset_uuid},\n"
+            f"{indent}   base_name={self.base_name},\n"
+            f"{indent}   number={self.number},\n"
+            f"{indent}   extra_metrics={{{extra_metrics}}},\n"
+            f"{indent}   stage_stats=[{stage_stats}],\n"
+            f"{indent}   iter_stats={self.iter_stats.__repr__(level+1)},\n"
+            f"{indent}   parents=[{parent_stats}],\n"
+            f"{indent})"
+        )
+
     def get_total_wall_time(self) -> float:
         parent_wall_times = [p.get_total_wall_time() for p in self.parents]
         parent_max_wall_time = max(parent_wall_times) if parent_wall_times else 0
@@ -639,6 +673,44 @@ class StageStatsSummary:
             )
         return out
 
+    def __repr__(self, level=0) -> str:
+        """For a given (pre-calculated) `StageStatsSummary` object (e.g. generated from
+        `StageStatsSummary.from_block_metadata()`), returns a human-friendly string
+        that summarizes stage execution statistics.
+
+        Returns:
+            String with summary statistics for executing the given stage.
+        """
+        indent = leveled_indent(level)
+        indent += leveled_indent(1) if self.is_substage else ""
+
+        wall_time_stats = {k: fmt(v) for k, v in (self.wall_time or {}).items()}
+        cpu_stats = {k: fmt(v) for k, v in (self.cpu_time or {}).items()}
+        memory_stats = {k: fmt(v) for k, v in (self.memory or {}).items()}
+        output_num_rows_stats = {
+            k: fmt(v) for k, v in (self.output_num_rows or {}).items()
+        }
+        output_size_bytes_stats = {
+            k: fmt(v) for k, v in (self.output_size_bytes or {}).items()
+        }
+        node_conut_stats = {k: fmt(v) for k, v in (self.node_count or {}).items()}
+        out = (
+            f"{indent}StageStatsSummary(\n"
+            f"{indent}   stage_name='{self.stage_name}',\n"
+            f"{indent}   is_substage={self.is_substage},\n"
+            f"{indent}   time_total_s={fmt(self.time_total_s)},\n"
+            # block_execution_summary_str already ends with \n
+            f"{indent}   block_execution_summary_str={self.block_execution_summary_str}"
+            f"{indent}   wall_time={wall_time_stats or None},\n"
+            f"{indent}   cpu_time={cpu_stats or None},\n"
+            f"{indent}   memory={memory_stats or None},\n"
+            f"{indent}   output_num_rows={output_num_rows_stats or None},\n"
+            f"{indent}   output_size_bytes={output_size_bytes_stats or None},\n"
+            f"{indent}   node_count={node_conut_stats or None},\n"
+            f"{indent})"
+        )
+        return out
+
 
 @dataclass
 class IterStatsSummary:
@@ -763,6 +835,22 @@ class IterStatsSummary:
             out += "* In user code: {}\n".format(fmt(self.user_time.get()))
             out += "* Total time: {}\n".format(fmt(self.total_time.get()))
         return out
+
+    def __repr__(self, level=0) -> str:
+        indent = leveled_indent(level)
+        return (
+            f"IterStatsSummary(\n"
+            f"{indent}   wait_time={fmt(self.wait_time.get()) or None},\n"
+            f"{indent}   get_time={fmt(self.get_time.get()) or None},\n"
+            f"{indent}   iter_blocks_local={self.iter_blocks_local or None},\n"
+            f"{indent}   iter_blocks_remote={self.iter_blocks_remote or None},\n"
+            f"{indent}   iter_unknown_location={self.iter_unknown_location or None},\n"
+            f"{indent}   next_time={fmt(self.next_time.get()) or None},\n"
+            f"{indent}   format_time={fmt(self.format_time.get()) or None},\n"
+            f"{indent}   user_time={fmt(self.user_time.get()) or None},\n"
+            f"{indent}   total_time={fmt(self.total_time.get()) or None},\n"
+            f"{indent})"
+        )
 
 
 class DatasetPipelineStats:
