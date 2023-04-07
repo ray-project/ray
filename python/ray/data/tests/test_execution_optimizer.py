@@ -58,7 +58,6 @@ from ray.tests.conftest import *  # noqa
 def _check_usage_record(op_names: List[str]):
     for op_name in op_names:
         assert op_name in _op_name_white_list
-        print("===> ops list:", str(_recorded_operators))
         with _recorded_operators_lock:
             assert _recorded_operators.get(op_name, 0) > 0, _recorded_operators
 
@@ -717,10 +716,14 @@ def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
     ddf = dd.from_pandas(df, npartitions=10)
     ds = ray.data.from_dask(ddf)
-
+    # `ds.take_all()` triggers execution with new backend, which is
+    # needed for checking operator usage below.
+    assert len(ds.take_all()) == len(df)
     dfds = ds.to_pandas()
     assert df.equals(dfds)
+
     # Underlying implementation uses `FromPandasRefs` operator
+    assert "FromPandasRefs" in ds.stats()
     assert ds._plan._logical_plan.dag.name == "FromDask"
     _check_usage_record(["FromDask"])
 
@@ -762,14 +765,18 @@ def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
     )
     modf = mopd.DataFrame(df)
     ds = ray.data.from_modin(modf)
+    # `ds.take_all()` triggers execution with new backend, which is
+    # needed for checking operator usage below.
+    assert len(ds.take_all()) == len(df)
+    # `ds.to_pandas()` does not use the new backend.
     dfds = ds.to_pandas()
 
     assert df.equals(dfds)
-    # Check that metadata fetch is included in stats.
+    # Check that metadata fetch is included in stats. This is `FromPandasRefs`
+    # instead of `FromModin` because `from_modin` reduces to `from_pandas_refs`.
     assert "FromPandasRefs" in ds.stats()
-    # Underlying implementation uses `FromPandasRefs` operator
     assert ds._plan._logical_plan.dag.name == "FromModin"
-    _check_usage_record(["FromPandasRefs"])
+    _check_usage_record(["FromModin"])
 
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
@@ -973,18 +980,22 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     for ds in ray_datasets.values():
         assert isinstance(ds, ray.data.Dataset)
         ds.fully_executed()
+        # `ds.take_all()` triggers execution with new backend, which is
+        # needed for checking operator usage below.
+        assert len(ds.take_all()) > 0
         assert "FromArrowRefs" in ds.stats()
-        assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
+        assert ds._plan._logical_plan.dag.name == "FromHuggingFace"
 
     ray_dataset = ray.data.from_huggingface(data["train"]).fully_executed()
     assert isinstance(ray_dataset, ray.data.Dataset)
     assert ray.get(ray_dataset.to_arrow_refs())[0].equals(data["train"].data.table)
+    assert len(ray_dataset.take_all()) > 0
 
     # Check that metadata fetch is included in stats.
     assert "FromArrowRefs" in ray_dataset.stats()
     # Underlying implementation uses `FromArrowRefs` operator
-    assert ray_dataset._plan._logical_plan.dag.name == "FromArrowRefs"
-    _check_usage_record(["FromArrowRefs"])
+    assert ray_dataset._plan._logical_plan.dag.name == "FromHuggingFace"
+    _check_usage_record(["FromHuggingFace"])
 
 
 def test_from_tf_operator(ray_start_regular_shared, enable_optimizer):

@@ -1,5 +1,6 @@
 import pytest
 import ray
+from ray.data.tests.test_execution_optimizer import _check_usage_record
 import torch
 from ray.data.tests.conftest import *  # noqa
 import pandas
@@ -45,6 +46,7 @@ def test_from_spark_e2e(enable_optimizer, spark):
 
     rows = [(r.one, r.two) for r in spark_df.take(3)]
     ds = ray.data.from_spark(spark_df)
+    assert len(ds.take_all()) == len(rows)
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     assert values == rows
 
@@ -52,6 +54,7 @@ def test_from_spark_e2e(enable_optimizer, spark):
     assert "FromArrowRefs" in ds.stats()
     # Underlying implementation uses `FromArrowRefs` operator
     assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
+    _check_usage_record(["FromArrowRefs"])
 
 
 def test_raydp_to_torch_iter(spark):

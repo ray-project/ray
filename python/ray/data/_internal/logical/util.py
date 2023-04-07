@@ -29,6 +29,7 @@ _op_name_white_list = [
     # From
     "FromItems",
     "FromPandasRefs",
+    "FromHuggingFace",
     "FromDask",
     "FromModin",
     "FromMars",

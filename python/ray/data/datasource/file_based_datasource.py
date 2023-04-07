@@ -781,6 +781,7 @@ def _unwrap_arrow_serialization_workaround(kwargs: dict) -> dict:
 def _resolve_kwargs(
     kwargs_fn: Callable[[], Dict[str, Any]], **kwargs
 ) -> Dict[str, Any]:
+
     if kwargs_fn:
         kwarg_overrides = kwargs_fn()
         kwargs.update(kwarg_overrides)
