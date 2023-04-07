@@ -26,6 +26,9 @@ ProgressBarState = Dict[str, Any]
 # Magic token used to identify Ray TQDM log lines.
 RAY_TQDM_MAGIC = "__ray_tqdm_magic_token__"
 
+# Whether we are in Jupyter.
+IN_JUPYTER = ray.widgets.util.in_notebook()
+
 # Global manager singleton.
 _manager: Optional["_BarManager"] = None
 _print = builtins.print
@@ -265,20 +268,26 @@ class _BarManager:
             if state["pid"] == self.pid:
                 prefix = ""
             else:
-                prefix = "{}{}(pid={}){} ".format(
-                    colorama.Style.DIM,
-                    colorama.Fore.CYAN,
-                    state.get("pid"),
-                    colorama.Style.RESET_ALL,
-                )
+                prefix = "(pid={}) ".format(state.get("pid"))
+                if not IN_JUPYTER:
+                    prefix = "{}{}{}{}".format(
+                        colorama.Style.DIM,
+                        colorama.Fore.CYAN,
+                        prefix,
+                        colorama.Style.RESET_ALL,
+                    )
         else:
-            prefix = "{}{}(pid={}, ip={}){} ".format(
-                colorama.Style.DIM,
-                colorama.Fore.CYAN,
+            prefix = "(pid={}, ip={}) ".format(
                 state.get("pid"),
                 state.get("ip"),
-                colorama.Style.RESET_ALL,
             )
+            if not IN_JUPYTER:
+                prefix = "{}{}{}{}".format(
+                    colorama.Style.DIM,
+                    colorama.Fore.CYAN,
+                    prefix,
+                    colorama.Style.RESET_ALL,
+                )
         state["desc"] = prefix + state["desc"]
         process = self._get_or_allocate_bar_group(state)
         if process.has_bar(state["uuid"]):
