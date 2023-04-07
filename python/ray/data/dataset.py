@@ -2898,7 +2898,7 @@ class Datastream(Generic[T]):
             try:
                 self._write_ds = Datastream(
                     plan, self._epoch, self._lazy, logical_plan
-                ).materialized()
+                ).materialize()
                 blocks = ray.get(self._write_ds._plan.execute().get_blocks())
                 assert all(
                     isinstance(block, list) and len(block) == 1 for block in blocks
@@ -4053,10 +4053,10 @@ class Datastream(Generic[T]):
             )
         return pipe
 
-    @Deprecated(message="Use `Datastream.materialized()` instead.")
+    @Deprecated(message="Use `Datastream.materialize()` instead.")
     def fully_executed(self) -> "MaterializedDatastream[T]":
         logger.warning(
-            "Deprecation warning: use Datastream.materialized() instead of "
+            "Deprecation warning: use Datastream.materialize() instead of "
             "fully_executed()."
         )
         self._plan.execute(force_read=True)
@@ -4074,7 +4074,7 @@ class Datastream(Generic[T]):
         return self._plan.has_computed_output()
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
-    def materialized(self) -> "MaterializedDatastream[T]":
+    def materialize(self) -> "MaterializedDatastream[T]":
         """Execute and materialize this datastream into object store memory.
 
         This can be used to read all blocks into memory. By default, Datastream
@@ -4133,7 +4133,7 @@ class Datastream(Generic[T]):
         The returned datastream is a lazy datastream, where all subsequent operations
         on the stream won't be executed until the datastream is consumed
         (e.g. ``.take()``, ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.)
-        or execution is manually triggered via ``.materialized()``.
+        or execution is manually triggered via ``.materialize()``.
         """
         ds = Datastream(
             self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
@@ -4588,7 +4588,7 @@ Dataset = Datastream
 
 @PublicAPI
 class MaterializedDatastream(Datastream, Generic[T]):
-    """A Datastream materialized in Ray memory, e.g., via `.materialized()`.
+    """A Datastream materialized in Ray memory, e.g., via `.materialize()`.
 
     The blocks of a MaterializedDatastream object are materialized into Ray object store
     memory, which means that this class can be shared or iterated over by multiple Ray
