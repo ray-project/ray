@@ -1613,7 +1613,7 @@ def start_raylet(
 
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
-    command.append("--num_prestart_python_workers={}".format(resource_spec.num_cpus))
+    command.append("--num_prestart_python_workers={}".format(int(resource_spec.num_cpus)))
     command.append("--agent_command={}".format(subprocess.list2cmdline(agent_command)))
     if huge_pages:
         command.append("--huge_pages")
