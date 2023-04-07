@@ -1,0 +1,20 @@
+
+04/07
+
+- I realized the RLlib API does not allow us to initialize our models easily. This should be super intuitive to do. This feature is absolutely necessary for any fine-tuning or RL on top of a pre-trained network. 
+
+- For PPO-ptx, learner needs to be customized, we should make it super easy, especially when we have custom kwargs.
+
+- There is another complication regarding running multiple parallel envs on separate machines. Each env owns a few LLMs (SFT and RM). Each env replica should independently download their own weights and load them up. The optimization we can do here is that these models are only needed for inference, so we can do inference optimization to make them faster / smaller (e.g. 4 bit quantization, etc.)
+
+04/06
+
+- I got the RLHF env working. 
+- The tricky part is getting observation / action spaces to correspond to what is expected. There is not much value in this except that when using RLlib obs and action space are the things that gets passed to the model constructor (which is ignored in case of LLMs)
+- Another tricky that required some thinking was formulating the env as bandit in LLMs.
+You want the env to read the dataset and accept a completion and then call the episode done. This type of env can be massively batched and should run on gpus, and we should not necessarily adhere to RLlib's assumption on sequential decision making envs, and also keeping things in numpy land. 
+
+The complication is that I have to go back and forth between numpy to torch tensors and back. 
+
+
+

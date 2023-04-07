@@ -11,7 +11,7 @@ import gymnasium.spaces as sp
 
 
 def generate_response(
-    model:torch.nn.Module, 
+    model: torch.nn.Module, 
     *, 
     input_ids: torch.tensor, 
     max_length:int, 
@@ -106,24 +106,29 @@ class RLHFEnv(gym.Env):
         
         # the KL coefficient
         self.kl_coeff = config["kl_coeff"]
+        # The maximum length of the generated text
+        # This is just something that we use to normalize the reward for this 
+        # particular reward function which minimizes the length of the generated text.
         self.max_generation_length = config["max_generation_length"]
 
         # This is the base tokenizer
-        self.tokenizer = transformers.AutoTokenizer.from_pretrained(config["tokenizer_path"])
+        self.tokenizer = transformers.AutoTokenizer.from_pretrained(
+            config["tokenizer_path"]
+        )
 
-        # This is the SFT model 
+        # This is the SFT model, used for computing the kl-divergence penalties.
         self.sft_model = transformers.GPT2LMHeadModel.from_pretrained(
             config["sft_model_path"]
         )
 
-        # This is the reward model, it's either a neural network or a callable function 
+        # This is the reward model, it's either a LLM or a callable function 
         # that takes in a batch of generated text tokens + response mask and returns a 
         # batch of rewards.
         # TODO(Kourosh): Later allow users to pass in their own reward model factory.
         self.reward_model = ShortestAnswerRM(max_length=self.max_generation_length)
 
         # Prompt dataset
-        # We need to load the prompt dataset loader and randomly sample a prompt from 
+        # We need to load the prompt dataset and randomly sample a prompt from 
         # it upon reset.
         # TODO (Kourosh): Assuming we only support HF datasets for now:
         self.prompt_dataset = datasets.load_dataset(
@@ -136,9 +141,14 @@ class RLHFEnv(gym.Env):
         vocab_size = self.tokenizer.vocab_size
         model_max_length = self.tokenizer.model_max_length
 
-        self.action_space = sp.Box(
-            0.0, 1.0, shape=(vocab_size,), dtype=np.float16
-        )
+        self.action_space = sp.Dict({
+            "sequence": Repeated(sp.Discrete(vocab_size), max_len=model_max_length),
+            "attention_mask": Repeated(sp.Discrete(2), max_len=model_max_length),
+            "response_mask": Repeated(sp.Discrete(2), max_len=model_max_length),
+            "probs": Repeated(
+                sp.Box(0, 1, shape=(vocab_size,)), max_len=model_max_length
+            ),
+        })
 
         self.observation_space = sp.Dict({
             "input_ids": Repeated(sp.Discrete(vocab_size), max_len=model_max_length),
@@ -157,26 +167,26 @@ class RLHFEnv(gym.Env):
 
     def step(self, action):
         # action is a dict with the following keys:
-        # input_ids: [b, NP+NR], prompt + generated response from the actor LLM
+        # sequence: [b, NP+NR], prompt + generated response from the actor LLM
         # response_mask: [b, NP+NR], [0] * NP + [1] * NR To separate response from prompt
         # attention_mask: [b, NP+NR]
         # probs: [b, NR, vocab_size], the probabilities of each token in the vocab for each token in the input
 
-        input_ids= action["input_ids"]
+        sequence = action["sequence"]
         response_mask = action["response_mask"]
         attention_mask = action["attention_mask"]
         probs = action["probs"]
 
         n_response_tokens = probs.shape[1]
 
-        r_align = self.reward_model(input_ids, attention_mask, response_mask)
+        r_align = self.reward_model(sequence, attention_mask, response_mask)
         r_align = r_align.item()
 
-        # compute the probs from the sft model for the same number of tokens
-        input_ids = torch.tensor(input_ids, dtype=torch.long)
+        # Compute the probs from the sft model for the same number of tokens
+        sequence = torch.tensor(sequence, dtype=torch.long)
         sft_output = generate_response(
             self.sft_model, 
-            input_ids=input_ids, 
+            input_ids=sequence, 
             max_length=n_response_tokens, 
             eos_token_id=self.tokenizer.eos_token_id
         )
@@ -186,5 +196,11 @@ class RLHFEnv(gym.Env):
 
         reward = r_align - self.kl_coeff * r_kl
 
+        info = {
+            "r_align": r_align, 
+            "r_kl": r_kl, 
+            "n_response_tokens": n_response_tokens
+        }
+
         # Produce a random reward when we reach the goal.
-        return self.observation_space.sample(), reward, True, False, {"r_align": r_align, "r_kl": r_kl, "n_response_tokens": n_response_tokens}
+        return self.observation_space.sample(), reward, True, False, info
