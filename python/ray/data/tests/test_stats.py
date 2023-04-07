@@ -54,7 +54,7 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
         )
     with patch.object(logger, "info") as mock_logger:
         ds = ray.data.range(1000, parallelism=10)
-        ds = ds.map_batches(dummy_map_batches).cache()
+        ds = ds.map_batches(dummy_map_batches).materialize()
 
         if enable_auto_log_stats:
             logger_args, logger_kwargs = mock_logger.call_args
@@ -86,7 +86,7 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
 """
                 )
 
-        ds = ds.map(dummy_map_batches).cache()
+        ds = ds.map(dummy_map_batches).materialize()
         if enable_auto_log_stats:
             logger_args, logger_kwargs = mock_logger.call_args
 
@@ -118,7 +118,7 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
                 )
     for batch in ds.iter_batches():
         pass
-    stats = canonicalize(ds.cache().stats())
+    stats = canonicalize(ds.materialize().stats())
 
     if context.new_execution_backend:
         if context.use_streaming_executor:
@@ -264,7 +264,7 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     context.optimize_fuse_stages = True
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.random_shuffle().repartition(1, shuffle=True)
-    stats = canonicalize(ds.cache().stats())
+    stats = canonicalize(ds.materialize().stats())
     assert (
         stats
         == """Stage N ReadRange->RandomShuffle: executed in T
@@ -309,35 +309,35 @@ Stage N Repartition: executed in T
 def test_dataset_stats_repartition(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.repartition(1, shuffle=False)
-    stats = ds.cache().stats()
+    stats = ds.materialize().stats()
     assert "Repartition" in stats, stats
 
 
 def test_dataset_stats_union(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.union(ds)
-    stats = ds.cache().stats()
+    stats = ds.materialize().stats()
     assert "Union" in stats, stats
 
 
 def test_dataset_stats_zip(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.zip(ds)
-    stats = ds.cache().stats()
+    stats = ds.materialize().stats()
     assert "Zip" in stats, stats
 
 
 def test_dataset_stats_sort(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.sort()
-    stats = ds.cache().stats()
+    stats = ds.materialize().stats()
     assert "SortMap" in stats, stats
     assert "SortReduce" in stats, stats
 
 
 def test_dataset_stats_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(range(10))
-    stats = ds.cache().stats()
+    stats = ds.materialize().stats()
     assert "FromItems" in stats, stats
 
 
@@ -347,7 +347,7 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
     ds = ray.data.range(1000, parallelism=10)
     ds.write_parquet(str(tmp_path))
     ds = ray.data.read_parquet(str(tmp_path)).map(lambda x: x)
-    stats = canonicalize(ds.cache().stats())
+    stats = canonicalize(ds.materialize().stats())
     if context.new_execution_backend:
         assert (
             stats
@@ -382,7 +382,7 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
     dses = ds.split_at_indices([49])
     dses = [ds.map(lambda x: x + 1) for ds in dses]
     for ds_ in dses:
-        stats = canonicalize(ds_.cache().stats())
+        stats = canonicalize(ds_.materialize().stats())
 
         if context.new_execution_backend:
             assert (
@@ -470,7 +470,7 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_
 
     with patch.object(logger, "info") as mock_logger:
         ds = ray.data.range(1000, parallelism=10)
-        ds = ds.map_batches(dummy_map_batches).cache()
+        ds = ds.map_batches(dummy_map_batches).materialize()
 
         if enable_auto_log_stats:
             logger_args, logger_kwargs = mock_logger.call_args
@@ -702,7 +702,7 @@ def test_dataset_pipeline_cache_cases(ray_start_regular_shared):
     assert "[execution cached]" not in stats
 
     # CACHED (called cache()).
-    ds = ray.data.range(10).cache().repeat(2).map_batches(lambda x: x)
+    ds = ray.data.range(10).materialize().repeat(2).map_batches(lambda x: x)
     ds.take(999)
     stats = ds.stats()
     assert "[execution cached]" in stats

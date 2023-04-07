@@ -2906,7 +2906,7 @@ class Dataset(Generic[T]):
             try:
                 self._write_ds = Dataset(
                     plan, self._epoch, self._lazy, logical_plan
-                ).cache()
+                ).materialize()
                 blocks = ray.get(self._write_ds._plan.execute().get_blocks())
                 assert all(
                     isinstance(block, list) and len(block) == 1 for block in blocks
@@ -4061,37 +4061,31 @@ class Dataset(Generic[T]):
             )
         return pipe
 
-    @Deprecated(message="Use `Dataset.cache()` instead.")
+    @Deprecated(message="Use `Dataset.materialize()` instead.")
     def fully_executed(self) -> "Dataset[T]":
         logger.warning(
-            "The 'fully_executed' call has been renamed to 'cache'.",
+            "Deprecation warning: use Dataset.materialize() instead of "
+            "fully_executed()."
         )
-        return self.cache()
+        self._plan.execute(force_read=True)
+        return self
 
-    @Deprecated(message="Use `Dataset.is_cached()` instead.")
+    # Note: will be deprecated in 2.5.
     def is_fully_executed(self) -> bool:
-        logger.warning(
-            "The 'is_fully_executed' call has been renamed to 'is_cached'.",
-        )
-        return self.is_cached()
-
-    def is_cached(self) -> bool:
-        """Returns whether this Dataset has been cached in memory.
-
-        This will return False if the output of its final stage hasn't been computed
-        yet.
-        """
         return self._plan.has_computed_output()
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
-    def cache(self) -> "Dataset[T]":
-        """Evaluate and cache the blocks of this Dataset in object store memory.
+    def materialize(self) -> "Dataset[T]":
+        """Execute and materialize this dataset into object store memory.
 
-        This can be used to read all blocks into memory. By default, Datasets
+        This can be used to read all blocks into memory. By default, Dataset
         doesn't read blocks from the datasource until the first transform.
 
+        Note that this does not mutate the original Dataset. Only the blocks of the
+        returned Dataset class are pinned in memory.
+
         Returns:
-            A Dataset with all blocks fully materialized in memory.
+            A Dataset holding the materialized data blocks.
         """
         self._plan.execute(force_read=True)
         return self
@@ -4138,7 +4132,7 @@ class Dataset(Generic[T]):
         The returned dataset is a lazy dataset, where all subsequent operations on the
         dataset won't be executed until the dataset is consumed (e.g. ``.take()``,
         ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.) or execution is
-        manually triggered via ``.cache()``.
+        manually triggered via ``.materialize()``.
         """
         ds = Dataset(
             self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
