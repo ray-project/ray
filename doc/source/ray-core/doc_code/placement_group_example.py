@@ -48,7 +48,7 @@ except Exception as e:
 
 
 # __schedule_pg_start__
-@ray.remote
+@ray.remote(num_cpus=1)
 class Actor:
     def __init__(self):
         pass
@@ -69,28 +69,6 @@ ray.get(actor.ready.remote(), timeout=10)
 # __schedule_pg_end__
 
 
-# __schedule_pg_2_start__
-@ray.remote(num_cpus=1)
-class Actor:
-    def __init__(self):
-        pass
-
-    def ready(self):
-        pass
-
-
-# Create an actor with 1 CPU to a placement group.
-actor2 = Actor.options(
-    scheduling_strategy=PlacementGroupSchedulingStrategy(
-        placement_group=pg,
-    )
-).remote()
-
-# Verify the actor is scheduled.
-ray.get(actor2.ready.remote(), timeout=10)
-# __schedule_pg_2_end__
-
-
 # __schedule_pg_3_start__
 @ray.remote(num_cpus=0, num_gpus=1)
 class Actor:
@@ -102,7 +80,7 @@ class Actor:
 
 
 # Create a GPU actor on the first bundle of index 0.
-actor = Actor.options(
+actor2 = Actor.options(
     scheduling_strategy=PlacementGroupSchedulingStrategy(
         placement_group=pg,
         placement_group_bundle_index=0,
@@ -110,7 +88,7 @@ actor = Actor.options(
 ).remote()
 
 # Verify gpu actor is scheduled.
-ray.get(actor.ready.remote(), timeout=10)
+ray.get(actor2.ready.remote(), timeout=10)
 # __schedule_pg_3_end__
 
 # __remove_pg_start__

@@ -9,8 +9,8 @@ They can be then used to schedule Ray tasks and actors packed as close as possib
 
 Here are some real-world use cases:
 
-- **Distributed Machine Learning Training**: Distributed Training (e.g., :ref:`Ray Train <train-docs>`) uses the placement group APIs enables gang scheduling by reserving a group of resources across Ray cluster. Gang scheduling is a critical technique to enable all-or-nothing scheduling for deep learning training. 
-- **Hyperparameter Tuning**: Hyperparameter tuning (e.g., :ref:`Ray Tune <tune-main>`) uses the placement group APIs to reserve a group of resources for each trial, which mitigates the risk of resource deadlock among trials (In a given machine learning training task, each trial only has a partial schedule of training workers allocated to it. As a result, none of the trials can fully schedule all of the available workers for training).
+- **Distributed Machine Learning Training**: Distributed Training (e.g., :ref:`Ray Train <train-docs>` and :ref:`Ray Tune <tune-main>`) uses the placement group APIs to enable gang scheduling. In these settings, all resources for a trial must be available at the same time. Gang scheduling is a critical technique to enable all-or-nothing scheduling for deep learning training. 
+- **Fault tolerance in distributed training**: Placement groups can be used to configure fault tolerance. In Ray Tune, it can be beneficial to pack related resources from a single trial together, so that a node failure impacts a low number of trials. In libraries that support elastic training (e.g. XGBoost-Ray), spreading the resources across multiple nodes can help to ensure training can be continued even when a node dies.
 
 Key Concepts
 ------------
@@ -93,7 +93,7 @@ Placement group scheduling is asynchronous. The `ray.util.placement_group` retur
 
       ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
 
-You can block your program until the placement group is ready using the `ready` (compatible with ``ray.get``) or `wait` (block the program until the placement group is ready) API. 
+You can block your program until the placement group is ready using the :func:`ready <ray.util.placement_group.PlacementGroup.ready>`.  (compatible with ``ray.get``) or :func:`ready <ray.util.placement_group.PlacementGroup.wait>` (block the program until the placement group is ready) API. 
 **It is recommended to verify placement groups are ready** before using them to schedule tasks and actors. 
 
 .. tabbed:: Python
@@ -131,14 +131,35 @@ You can block your program until the placement group is ready using the `ready` 
         std::cout << group.GetName() << std::endl;
       }
 
-SANG-TODO image 1
+Let's verify the placement group is successfully created.
+
+.. code-block:: bash
+
+  # This API is only available when you download ray via `pip install "ray[default]"`
+  ray list placement-groups
+
+.. code-block:: bash
+
+  ======== List: 2023-04-07 01:15:05.682519 ========
+  Stats:
+  ------------------------------
+  Total: 1
+
+  Table:
+  ------------------------------
+      PLACEMENT_GROUP_ID                    NAME      CREATOR_JOB_ID  STATE
+  0  3cd6174711f47c14132155039c0501000000                  01000000  CREATED
+
+Now the placement group is successfully created! This means out of ``{"CPU": 2, "GPU": 2}`` resources, the placement group reserves ``{"CPU": 1, "GPU": 1}``. 
+The reserved resources cannot be used unless tasks or actors are scheduled with a placement group.
+The diagram below demonstrates 1 CPU and 1 GPU bundle has been reserved by the placement group.
+
+.. image:: ../images/pg_image_1.png
+    :align: center
 
 Placement groups are atomically created - meaning that if there exists a bundle that cannot fit in any of the current nodes, 
 then the entire placement group will not be ready and no resources are reserved.
-To see what this means, let's create another placement group that requires ``{"CPU":1}, {"GPU": 2}`` (2 bundles). The current cluster has 
-``{"CPU": 2, "GPU": 2}``. We already created a ``{"CPU": 1, "GPU": 1}`` bundle, so there's only ``{"CPU": 1, "GPU": 1}`` left in the cluster.
-If we create 2 bundles ``{"CPU": 1}, {"GPU": 2}``, we can create a first bundle successfully, but can't schedule the second bundle.
-Since we cannot create every bundle to the cluster, placement group won't be created including the ``{"CPU": 1}`` bundle.
+To see what this means, let's create another placement group that requires ``{"CPU":1}, {"GPU": 2}`` (2 bundles).
 
 .. tabbed:: Python
 
@@ -147,9 +168,51 @@ Since we cannot create every bundle to the cluster, placement group won't be cre
         :start-after: __create_pg_failed_start__
         :end-before: __create_pg_failed_end__
 
-SANG-TODO images 2
+You can verify the new placement group is pending creation.
 
-If there are not enough resources to create a placement group, it is in the pending state.
+.. code-block:: bash
+
+  # This API is only available when you download ray via `pip install "ray[default]"`
+  ray list placement-groups
+
+.. code-block:: bash
+
+  ======== List: 2023-04-07 01:16:23.733410 ========
+  Stats:
+  ------------------------------
+  Total: 2
+
+  Table:
+  ------------------------------
+      PLACEMENT_GROUP_ID                    NAME      CREATOR_JOB_ID  STATE
+  0  3cd6174711f47c14132155039c0501000000                  01000000  CREATED
+  1  e1b043bebc751c3081bddc24834d01000000                  01000000  PENDING <---- the new placement group.
+
+You can also verify ``{"CPU": 1, "GPU": 2}`` bundles cannot be allocated from ``ray status`` CLI command.
+
+.. code-block:: bash
+
+  ray status
+
+.. code-block:: bash
+
+  Resources
+  ---------------------------------------------------------------
+  Usage:
+  0.0/2.0 CPU (0.0 used of 1.0 reserved in placement groups)
+  0.0/2.0 GPU (0.0 used of 1.0 reserved in placement groups)
+  0B/3.46GiB memory
+  0B/1.73GiB object_store_memory
+
+  Demands:
+  {'CPU': 1.0} * 1, {'GPU': 2.0} * 1 (PACK): 1+ pending placement groups <--- 1 placement group is pending creation.
+
+The current cluster has ``{"CPU": 2, "GPU": 2}``. We already created a ``{"CPU": 1, "GPU": 1}`` bundle, so there's only ``{"CPU": 1, "GPU": 1}`` left in the cluster.
+If we create 2 bundles ``{"CPU": 1}, {"GPU": 2}``, we can create a first bundle successfully, but can't schedule the second bundle.
+Since we cannot create every bundle to the cluster, placement group won't be created including the ``{"CPU": 1}`` bundle.
+
+.. image:: ../images/pg_image_2.png
+    :align: center
 
 When the placement group cannot be scheduled in any way, it is called "infeasible". 
 Imagine you schedule ``{"CPU": 4}`` bundle, but you only have a single node with 2 CPUs. There's no way to create this bundle in your cluster.
@@ -232,21 +295,24 @@ You can schedule actors/tasks to the placement group using
           .Remote(1);
       }
 
-In Ray, actor requires 1 CPU to be scheduled, and once it is created, it occupies 0 CPU.
-Since the placement group has a reserved ``{"CPU": 1, "GPU" 1}`` bundle, the actor can be scheduled onto this bundle.
-After the previous actor is created, we have remaining ``{"CPU": 1, "GPU": 1}`` from this bundle because the actor uses 0 CPU.
-Let's create another actor to this bundle. This time we explicitly specify actor requires 1 CPU.
+.. note::
 
-.. tabbed:: Python
+  When you use an actor with a placement group, make sure to always specify ``num_cpus``.
 
-    .. literalinclude:: ../doc_code/placement_group_example.py
-        :language: python
-        :start-after: __schedule_pg_2_start__
-        :end-before: __schedule_pg_2_end__
+  When you specify no resources (e.g., ``num_cpus=0``), a placement group option will be ignored,
+  meaning the task and actor won't use the reserved resources.
+  
+  Note that by default (without any argument to ``ray.remote``),
 
-Actor is scheduled now! Each bundle can be used by multiple tasks and actors. 
-In this case, since the actor uses 1 CPU, there's remaining 1 GPU from the bundle. 
-You can verify this from the CLI command ``ray status``.
+  - Ray task requires 1 CPU
+  - Ray actor requires 1 CPU when it is scheduled. But after it is created, it occupies 0 CPU.
+
+  This means when scheduling an actor without resource requirements and a placement group, the placement group has to be created (since it requires 1 CPU to be scheduled).
+  However, when the actor is created, it will ignore the placement group.
+
+The actor is scheduled now! One bundle can be used by multiple tasks and actors (i.e., bundle to task/actor is one to many relationships). 
+In this case, since the actor uses 1 CPU, there's a remaining 1 GPU from the bundle. 
+You can verify this from the CLI command ``ray status``. You can see the 1 CPU is reserved by the placement group, and 1.0 is used (by the actor we created).
 
 .. code-block:: bash
 
@@ -254,7 +320,41 @@ You can verify this from the CLI command ``ray status``.
 
 .. code-block:: bash
 
-  SANG-TODO.
+  Resources
+  ---------------------------------------------------------------
+  Usage:
+  1.0/2.0 CPU (1.0 used of 1.0 reserved in placement groups) <---
+  0.0/2.0 GPU (0.0 used of 1.0 reserved in placement groups)
+  0B/4.29GiB memory
+  0B/2.00GiB object_store_memory
+
+  Demands:
+  (no resource demands)
+
+You can also verify the actor is created using ``ray list actors``
+
+.. code-block:: bash
+
+  # This API is only available when you download ray via `pip install "ray[default]"`
+  ray list actors --detail
+
+.. code-block:: bash
+
+  -   actor_id: b5c990f135a7b32bfbb05e1701000000
+      class_name: Actor
+      death_cause: null
+      is_detached: false
+      job_id: '01000000'
+      name: ''
+      node_id: b552ca3009081c9de857a31e529d248ba051a4d3aeece7135dde8427
+      pid: 8795
+      placement_group_id: d2e660ac256db230dbe516127c4a01000000 <------
+      ray_namespace: e5b19111-306c-4cd8-9e4f-4b13d42dff86
+      repr_name: ''
+      required_resources:
+          CPU_group_d2e660ac256db230dbe516127c4a01000000: 1.0
+      serialized_runtime_env: '{}'
+      state: ALIVE
 
 Since we have a remaining 1 GPU, let's create a new actor that requires 1 GPU.
 This time, we will also specify the ``placement_group_bundle_index``. Each bundle is given an "index" within the placement group.
@@ -269,9 +369,10 @@ will be scheduled on a random bundle that have the unallocated reserved resource
         :start-after: __schedule_pg_3_start__
         :end-before: __schedule_pg_3_end__
 
-We succeed to schedule the GPU actor! The below image describes 3 actors scheduled into the placement group. 
+We succeed to schedule the GPU actor! The below image describes 2 actors scheduled into the placement group. 
 
-SANG-TODO image 3
+.. image:: ../images/pg_image_3.png
+    :align: center
 
 You can also verify the reserved resources are all used from the ``ray status`` command.
 
@@ -281,11 +382,63 @@ You can also verify the reserved resources are all used from the ``ray status`` 
 
 .. code-block:: bash
 
-  SANG-TODO.
+  Resources
+  ---------------------------------------------------------------
+  Usage:
+  1.0/2.0 CPU (1.0 used of 1.0 reserved in placement groups)
+  1.0/2.0 GPU (1.0 used of 1.0 reserved in placement groups) <----
+  0B/4.29GiB memory
+  0B/2.00GiB object_store_memory
 
-.. note::
+.. _pgroup-strategy:
 
-  By default, Ray task requires 1 CPU and Ray actor uses 0 CPU. But an actor temporarily uses 1 CPU to be "placed", meaning it uses 1 CPU until it is scheduled.
+Placement Strategy
+------------------
+
+One of the features the placement group provides is to add placement constraints among bundles.
+
+For example, you'd like to pack your bundles to the same
+node or spread out to multiple nodes as much as possible. You can specify the strategy via ``strategy`` argument.
+This way, you can make sure your actors and tasks can be scheduled with certain placement constraints.
+
+The below example create a placement group with 2 bundles with a STRICT_PACK strategy,
+meaning both bundle has to be created in the same node, otherwise, the placement group cannot be created.
+
+.. literalinclude:: ../doc_code/placement_group_example.py
+    :language: python
+    :start-after: __strategy_pg_start__
+    :end-before: __strategy_pg_end__
+
+To make it easy to understand, let's see the image examples.
+The below image demonstrates the PACK policy. You can see 3 of ``{"CPU": 2}`` bundles are located in the same node.
+
+.. image:: ../images/pg_image_4.png
+    :align: center
+
+The below image demonstrates the PACK policy. You can see 3 of ``{"CPU": 2}`` bundles are located in 3 different nodes.
+
+.. image:: ../images/pg_image_5.png
+    :align: center
+
+Ray currently supports the following placement group strategies. The default scheduling policy is ``PACK``:
+
+**STRICT_PACK**
+
+All bundles must be placed into a single node on the cluster. It is useful when you want to maximize the locality.
+
+**PACK**
+
+All provided bundles are packed onto a single node on a best-effort basis.
+If strict packing is not feasible (i.e., some bundles do not fit on the node), bundles can be placed onto other nodes nodes.
+
+**STRICT_SPREAD**
+
+Each bundle must be scheduled in a separate node.
+
+**SPREAD**
+
+Each bundle will be spread onto separate nodes on a best effort basis.
+If strict spreading is not feasible, bundles can be placed overlapping nodes.
 
 Remove Placement Groups (Free Reserved Resources)
 -------------------------------------------------
@@ -329,43 +482,6 @@ group using :func:`remove_placement_group <ray.util.remove_placement_group>` API
       ray::PlacementGroup removed_placement_group = ray::GetPlacementGroup(placement_group.GetID());
       assert(removed_placement_group.GetState(), ray::PlacementGroupState::REMOVED);
 
-.. _pgroup-strategy:
-
-Placement Strategy
-------------------
-
-Often, you'd like to reserve bundles with placement constraints. For example, you'd like to pack your bundles to the same
-node or spread out to multiple nodes as much as possible. You can specify the strategy via ``strategy`` argument. The below
-example create a placement group with 2 bundles with a STRICT_PACK strategy, meaning both bundle has to be created in the
-same node, otherwise the placement group cannot be created.
-
-.. tabbed:: Python
-
-    .. literalinclude:: ../doc_code/placement_group_example.py
-        :language: python
-        :start-after: __strategy_pg_start__
-        :end-before: __strategy_pg_end__
-
-Ray currently supports the following placement group strategies. The default scheduling policy is ``PACK``:
-
-**STRICT_PACK**
-
-All bundles must be placed into a single node on the cluster. It is useful when you want to maximize the locality.
-
-**PACK**
-
-All provided bundles are packed onto a single node on a best-effort basis.
-If strict packing is not feasible (i.e., some bundles do not fit on the node), bundles can be placed onto other nodes nodes.
-
-**STRICT_SPREAD**
-
-Each bundle must be scheduled in a separate node.
-
-**SPREAD**
-
-Each bundle will be spread onto separate nodes on a best effort basis.
-If strict spreading is not feasible, bundles can be placed overlapping nodes.
-
 .. _ray-placement-group-observability-ref:
 
 Observe and Debug Placement Groups
@@ -382,7 +498,15 @@ Ray provides several useful tools to inspect the placement group states and reso
   The CLI command ``ray status`` provides the autoscaling status of the cluster. 
   It provides the "resource demands" from unscheduled placement groups as well as the resource reservation status.
 
-  SANG-TODO images
+  .. code-block:: bash
+
+    Resources
+    ---------------------------------------------------------------
+    Usage:
+    1.0/2.0 CPU (1.0 used of 1.0 reserved in placement groups)
+    0.0/2.0 GPU (0.0 used of 1.0 reserved in placement groups)
+    0B/4.29GiB memory
+    0B/2.00GiB object_store_memory
 
 .. tabbed:: Dashboard
 
@@ -411,7 +535,8 @@ From the above tools, you can see the state of the placement group. The definiti
 - `High level state <https://github.com/ray-project/ray/blob/03a9d2166988b16b7cbf51dac0e6e586455b28d8/src/ray/protobuf/gcs.proto#L579>`_
 - `Details <https://github.com/ray-project/ray/blob/03a9d2166988b16b7cbf51dac0e6e586455b28d8/src/ray/protobuf/gcs.proto#L524>`_
 
-SANG-TODO Diagrams
+.. image:: ../images/pg_image_6.png
+    :align: center
 
 [Advanced] Child Tasks and Actors
 ---------------------------------
