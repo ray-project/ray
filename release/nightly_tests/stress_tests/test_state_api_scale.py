@@ -313,7 +313,7 @@ def no_resource_leaks():
 @click.option(
     "--num-tasks",
     required=False,
-    default="1,100,1000,10000",
+    default="1,100,1000,10000,100000",
     type=str,
     help="Number of tasks to launch.",
 )

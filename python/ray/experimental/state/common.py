@@ -36,8 +36,8 @@ RAY_MAX_LIMIT_FROM_API_SERVER = env_integer(
 # Max number of entries from data sources (rest will be truncated at the
 # data source, e.g. raylet)
 RAY_MAX_LIMIT_FROM_DATA_SOURCE = env_integer(
-    "RAY_MAX_LIMIT_FROM_DATA_SOURCE", 10 * 1000
-)  # 10k
+    "RAY_MAX_LIMIT_FROM_DATA_SOURCE", 100 * 1000
+)  # 100k
 
 STATE_OBS_ALPHA_FEEDBACK_MSG = [
     "\n==========ALPHA, FEEDBACK NEEDED ===============",
