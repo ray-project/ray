@@ -1,10 +1,8 @@
 # isort: skip_file
-from ray._private import log  # isort: skip # noqa: F401
 import logging
 import os
 import sys
 
-log.generate_logging_config()
 logger = logging.getLogger(__name__)
 
 
