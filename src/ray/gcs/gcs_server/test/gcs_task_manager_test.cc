@@ -48,6 +48,14 @@ class GcsTaskManagerTest : public ::testing::Test {
     return task_ids;
   }
 
+  std::vector<WorkerID> GenWorkerIDs(size_t num_workers) {
+    std::vector<WorkerID> worker_ids;
+    for (size_t i = 0; i < num_workers; ++i) {
+      worker_ids.push_back(WorkerID::FromRandom());
+    }
+    return worker_ids;
+  }
+
   void ExpectTaskEventsEq(google::protobuf::RepeatedPtrField<rpc::TaskEvents> *expected,
                           google::protobuf::RepeatedPtrField<rpc::TaskEvents> *actual) {
     std::sort(expected->begin(), expected->end(), SortByTaskAttempt);
@@ -154,10 +162,14 @@ class GcsTaskManagerTest : public ::testing::Test {
   }
 
   static rpc::TaskStateUpdate GenStateUpdate(
-      std::vector<std::pair<rpc::TaskStatus, int64_t>> status_timestamps) {
+      std::vector<std::pair<rpc::TaskStatus, int64_t>> status_timestamps,
+      const WorkerID &worker_id = WorkerID::Nil()) {
     rpc::TaskStateUpdate state_update;
     for (auto status_ts : status_timestamps) {
       FillTaskStatusUpdateTime(status_ts.first, status_ts.second, &state_update);
+    }
+    if (!worker_id.IsNil()) {
+      state_update.set_worker_id(worker_id.Binary());
     }
     return state_update;
   }
@@ -548,34 +560,20 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
   std::vector<TaskID> task_ids = GenTaskIDs(200);
   std::vector<int64_t> attempt_numbers{0, 1, 2, 3, 4};
   std::vector<int> job_ids{1, 2, 3};
+  std::vector<WorkerID> worker_ids = GenWorkerIDs(10);
 
-  // 10 random parent task ids
-  std::vector<TaskID> parent_task_ids = GenTaskIDs(10);
-  // 50 task ids from the task ids to form chain.
-  parent_task_ids.insert(parent_task_ids.end(), task_ids.begin(), task_ids.begin() + 50);
-
-  // Helper data structures to keep track of child->parent to ensure no cycle.
-  absl::flat_hash_map<TaskID, TaskID> child_to_parent;
-
-  // Add task attempts from different jobs, different task id, with different parent task
-  // id
+  // Add task attempts from different jobs, different task id, with different worker ids.
   for (size_t i = 0; i < num_total; i++) {
     auto task_id = task_ids[i % task_ids.size()];
-    auto parent_task_id = parent_task_ids[i % parent_task_ids.size()];
-    if (child_to_parent[parent_task_id] == task_id) {
-      // Just use another random one.
-      parent_task_id = GenTaskIDs(1)[0];
-    }
-
-    child_to_parent[task_id] = parent_task_id;
     auto job_id = job_ids[i % job_ids.size()];
     auto attempt_number = attempt_numbers[i % attempt_numbers.size()];
+    auto worker_id = worker_ids[i % worker_ids.size()];
     auto events = GenTaskEvents({task_id},
                                 /* attempt_number */ attempt_number,
                                 job_id,
                                 GenProfileEvents("event", 1, 1),
-                                GenStateUpdate(),
-                                GenTaskInfo(JobID::FromInt(job_id), parent_task_id));
+                                GenStateUpdate({}, worker_id),
+                                GenTaskInfo(JobID::FromInt(job_id)));
     auto events_data = Mocker::GenTaskEventsData(events);
     SyncAddTaskEventData(events_data);
   }
@@ -585,10 +583,9 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
               task_ids.size());
   }
 
-  // Evict all of them with tasks with single attempt, no parent, same job.
+  // Evict all of them with tasks with single attempt, no parent, same job, no worker id.
   {
     auto task_ids = GenTaskIDs(num_limit);
-    auto parent_task_id = TaskID::Nil();
     auto job_id = 0;
     auto attempt_number = 0;
     for (size_t i = 0; i < num_limit; i++) {
@@ -597,7 +594,7 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
                                   job_id,
                                   GenProfileEvents("event", 1, 1),
                                   GenStateUpdate(),
-                                  GenTaskInfo(JobID::FromInt(job_id), parent_task_id));
+                                  GenTaskInfo(JobID::FromInt(job_id)));
       auto events_data = Mocker::GenTaskEventsData(events);
       SyncAddTaskEventData(events_data);
     }
@@ -613,6 +610,7 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
               num_limit);
     EXPECT_EQ(task_manager->task_event_storage_->job_to_task_attempt_index_.size(), 1);
     EXPECT_EQ(task_manager->task_event_storage_->task_attempt_index_.size(), num_limit);
+    EXPECT_EQ(task_manager->task_event_storage_->worker_to_task_attempt_index_.size(), 0);
   }
 }
 
@@ -730,11 +728,12 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitReturnRecentTasksWhenGetAll) {
     // Add a task event
     {
       inserted++;
-      auto events = GenTaskEvents({task_ids[i]},
-                                  /* attempt_number */ 0,
-                                  /* job_id */ 0,
-                                  /* profile event */ absl::nullopt,
-                                  GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}));
+      auto events =
+          GenTaskEvents({task_ids[i]},
+                        /* attempt_number */ 0,
+                        /* job_id */ 0,
+                        /* profile event */ absl::nullopt,
+                        GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, WorkerID::Nil()));
       auto events_data = Mocker::GenTaskEventsData(events);
       SyncAddTaskEventData(events_data);
     }
