@@ -60,18 +60,18 @@ Then, once the cluster is running, it deploys the Serve application to the clust
 The controller also creates a Kubernetes Service that can be used to route traffic to the Serve application.
 
 Let's see this in action by deploying the [`FruitStand` example](serve-in-production-example).
-The Serve config for the example is embedded into [this example `RayService` CR](https://github.com/ray-project/kuberay/blob/release-0.3/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml).
-To follow along, save this CR locally in a file named `ray_v1alpha1_rayservice.yaml`:
+The Serve config for the example is embedded into [this example `RayService` CR](https://github.com/ray-project/kuberay/blob/release-0.5/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml).
+To follow along, save this CR locally in a file named `ray_v1alpha1_rayservice.yaml` by running the following command:
+
+```console
+$ curl -o ray_v1alpha1_rayservice.yaml https://raw.githubusercontent.com/ray-project/kuberay/release-0.5/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml
+```
 
 :::{note}
 The example `RayService` uses very small resource requests because it's only for demonstration.
 In production, you'll want to provide more resources to the cluster.
 Learn more about how to configure KubeRay clusters [here](kuberay-config).
 :::
-
-```console
-$ curl -o ray_v1alpha1_rayservice.yaml https://raw.githubusercontent.com/ray-project/kuberay/release-0.3/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml
-```
 
 To deploy the example, we simply `kubectl apply` the CR.
 This creates the underlying Ray cluster, consisting of a head and worker node pod (see [Ray Clusters Key Concepts](../../cluster/key-concepts.rst) for more details on Ray clusters), as well as the service that can be used to query our application:
@@ -107,9 +107,14 @@ Once the `RayService` is running, we can query it over HTTP using the service cr
 This service can be queried directly from inside the cluster, but to access it from your laptop you'll need to configure a [Kubernetes ingress](kuberay-networking) or use port forwarding as below:
 
 ```console
+# Run this in a separate terminal.
 $ kubectl port-forward service/rayservice-sample-serve-svc 8000
+```
+
+Now we can send queries to the application using `curl`:
+```console
 $ curl -X POST -H 'Content-Type: application/json' localhost:8000 -d '["MANGO", 2]'
-6
+# 6
 ```
 
 ## Getting the status of the application
