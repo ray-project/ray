@@ -44,7 +44,6 @@ else:
     from typing_extensions import Literal, Protocol
 
 import ray
-from ray._private import log  # isort: skip # noqa: F401
 import ray._private.gcs_utils as gcs_utils
 import ray._private.import_thread as import_thread
 import ray._private.node
@@ -1278,7 +1277,6 @@ def init(
             arguments is passed in.
     """
     if configure_logging:
-        log.generate_logging_config()
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
     else:
         logging.getLogger("ray").handlers.clear()

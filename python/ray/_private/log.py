@@ -2,6 +2,7 @@ import logging
 import re
 from logging.config import dictConfig
 import threading
+from ray._private.ray_constants import LOGGER_FORMAT
 
 
 class ContextFilter(logging.Filter):
@@ -96,7 +97,7 @@ def generate_logging_config():
         formatters = {
             "plain": {
                 "datefmt": "[%Y-%m-%d %H:%M:%S]",
-                "format": "%(asctime)s %(package)s %(levelname)s %(name)s::%(message)s",
+                "format": LOGGER_FORMAT,
             },
         }
         filters = {"context_filter": {"()": ContextFilter}}
