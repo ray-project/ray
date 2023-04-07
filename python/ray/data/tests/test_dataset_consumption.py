@@ -18,7 +18,7 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.pandas_block import PandasRow
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DatasetContext
-from ray.data.dataset import Dataset, _sliding_window
+from ray.data.dataset import Dataset, MaterializedDatastream, _sliding_window
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.row import TableRow
@@ -164,19 +164,22 @@ def test_empty_dataset(ray_start_regular_shared):
 
     ds = ray.data.range(1)
     ds = ds.filter(lambda x: x > 1)
-    ds.cache()
-    assert str(ds) == "Dataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
+    ds = ds.cache()
+    assert (
+        str(ds)
+        == "MaterializedDatastream(num_blocks=1, num_rows=0, schema=Unknown schema)"
+    )
 
     # Test map on empty dataset.
     ds = ray.data.from_items([])
     ds = ds.map(lambda x: x)
-    ds.cache()
+    ds = ds.cache()
     assert ds.count() == 0
 
     # Test filter on empty dataset.
     ds = ray.data.from_items([])
     ds = ds.filter(lambda: True)
-    ds.cache()
+    ds = ds.cache()
     assert ds.count() == 0
 
 
@@ -199,10 +202,15 @@ def test_cache_dataset(ray_start_regular_shared):
 
     ds = ray.data.range(1)
     ds = ds.map(inc)
-    ds = ds.cache()
+    assert not ds.is_cached()
+    assert not isinstance(ds, MaterializedDatastream)
+    ds2 = ds.cache()
+    assert ds2.is_cached()
+    assert isinstance(ds2, MaterializedDatastream)
+    assert not ds.is_cached()
 
     for _ in range(10):
-        ds.take_all()
+        ds2.take_all()
 
     assert ray.get(c.inc.remote()) == 2
 
@@ -211,14 +219,18 @@ def test_schema(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
     ds2 = ray.data.range_table(10, parallelism=10)
     ds3 = ds2.repartition(5)
-    ds3.cache()
+    ds3 = ds3.cache()
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
-    ds4.cache()
-    assert str(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
-    assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
-    assert str(ds3) == "Dataset(num_blocks=5, num_rows=10, schema={value: int64})"
+    ds4 = ds4.cache()
+    assert str(ds) == "Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    assert str(ds2) == "Datastream(num_blocks=10, num_rows=10, schema={value: int64})"
     assert (
-        str(ds4) == "Dataset(num_blocks=1, num_rows=5, schema={a: string, b: double})"
+        str(ds3)
+        == "MaterializedDatastream(num_blocks=5, num_rows=10, schema={value: int64})"
+    )
+    assert (
+        str(ds4) == "MaterializedDatastream(num_blocks=1, num_rows=5, "
+        "schema={a: string, b: double})"
     )
 
 
@@ -269,46 +281,49 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
 
 def test_dataset_repr(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
-    assert repr(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    assert repr(ds) == "Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
         "MapBatches(<lambda>)\n"
-        "+- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+        "+- Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     )
     ds = ds.filter(lambda x: x > 0)
     assert repr(ds) == (
         "Filter\n"
         "+- MapBatches(<lambda>)\n"
-        "   +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+        "   +- Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     )
     ds = ds.random_shuffle()
     assert repr(ds) == (
         "RandomShuffle\n"
         "+- Filter\n"
         "   +- MapBatches(<lambda>)\n"
-        "      +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+        "      +- Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     )
-    ds.cache()
-    assert repr(ds) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    ds = ds.cache()
+    assert (
+        repr(ds)
+        == "MaterializedDatastream(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    )
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
         "MapBatches(<lambda>)\n"
-        "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+        "+- Datastream(num_blocks=10, num_rows=9, schema=<class 'int'>)"
     )
     ds1, ds2 = ds.split(2)
     assert (
-        repr(ds1)
-        == f"Dataset(num_blocks=5, num_rows={ds1.count()}, schema=<class 'int'>)"
+        repr(ds1) == f"MaterializedDatastream(num_blocks=5, num_rows={ds1.count()}, "
+        "schema=<class 'int'>)"
     )
     assert (
-        repr(ds2)
-        == f"Dataset(num_blocks=5, num_rows={ds2.count()}, schema=<class 'int'>)"
+        repr(ds2) == f"MaterializedDatastream(num_blocks=5, num_rows={ds2.count()}, "
+        "schema=<class 'int'>)"
     )
     ds3 = ds1.union(ds2)
-    assert repr(ds3) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    assert repr(ds3) == "Datastream(num_blocks=10, num_rows=9, schema=<class 'int'>)"
     ds = ds.zip(ds3)
     assert repr(ds) == (
-        "Zip\n" "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+        "Zip\n" "+- Datastream(num_blocks=10, num_rows=9, schema=<class 'int'>)"
     )
 
     def my_dummy_fn(x):
@@ -318,7 +333,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ds.map_batches(my_dummy_fn)
     assert repr(ds) == (
         "MapBatches(my_dummy_fn)\n"
-        "+- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+        "+- Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     )
 
 
@@ -424,6 +439,14 @@ def test_convert_types(ray_start_regular_shared):
 def test_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(["hello", "world"])
     assert ds.take() == ["hello", "world"]
+    assert isinstance(next(ds.iter_batches(batch_format=None)), list)
+
+    with pytest.raises(ValueError):
+        ds = ray.data.from_items(["hello", "world"], output_arrow_format=True)
+
+    ds = ray.data.from_items([{"hello": "world"}], output_arrow_format=True)
+    assert ds.take() == [{"hello": "world"}]
+    assert isinstance(next(ds.iter_batches(batch_format=None)), pa.Table)
 
 
 @pytest.mark.parametrize("parallelism", list(range(1, 21)))
@@ -1270,7 +1293,13 @@ def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
-    expected_str = "Dataset(num_blocks=1, num_rows=10, schema={1: float64, a: float64})"
+    expected_str = (
+        "MaterializedDatastream(\n"
+        "   num_blocks=1,\n"
+        "   num_rows=10,\n"
+        "   schema={1: float64, a: float64}\n"
+        ")"
+    )
     assert str(ds) == expected_str, str(ds)
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):
@@ -1638,8 +1667,8 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
 
 def test_dataset_plan_as_string(ray_start_cluster):
     ds = ray.data.read_parquet("example://iris.parquet")
-    assert ds._plan.get_plan_as_string() == (
-        "Dataset(\n"
+    assert ds._plan.get_plan_as_string("Datastream") == (
+        "Datastream(\n"
         "   num_blocks=1,\n"
         "   num_rows=150,\n"
         "   schema={\n"
@@ -1653,13 +1682,13 @@ def test_dataset_plan_as_string(ray_start_cluster):
     )
     for _ in range(5):
         ds = ds.map_batches(lambda x: x)
-    assert ds._plan.get_plan_as_string() == (
+    assert ds._plan.get_plan_as_string("Datastream") == (
         "MapBatches(<lambda>)\n"
         "+- MapBatches(<lambda>)\n"
         "   +- MapBatches(<lambda>)\n"
         "      +- MapBatches(<lambda>)\n"
         "         +- MapBatches(<lambda>)\n"
-        "            +- Dataset(\n"
+        "            +- Datastream(\n"
         "                  num_blocks=1,\n"
         "                  num_rows=150,\n"
         "                  schema={\n"
