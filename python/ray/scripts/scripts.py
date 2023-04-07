@@ -756,22 +756,11 @@ def start(
                 # of the cluster. Please be careful when updating this line.
                 cli_logger.print(
                     cf.bold(" {} ray start --address='{}'"),
-                    f"{ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
+                    f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
                     if ray_constants.IS_WINDOWS_OR_OSX
                     else "",
                     bootstrap_address,
                 )
-                if bootstrap_address.startswith("127.0.0.1:"):
-                    cli_logger.print(
-                        "This Ray runtime only accepts connections from local host."
-                    )
-                    cli_logger.print(
-                        "To accept connections from remote hosts, "
-                        "specify a public ip when starting"
-                    )
-                    cli_logger.print(
-                        "the head node: ray start --head --node-ip-address=<public-ip>."
-                    )
 
             cli_logger.newline()
             cli_logger.print("To connect to this Ray cluster:")
@@ -802,7 +791,9 @@ def start(
                 cli_logger.print(
                     "See https://docs.ray.io/en/latest/cluster/running-applications"
                     "/job-submission/index.html "
-                    "for more information on submitting Ray jobs to the Ray cluster"
+                )
+                cli_logger.print(
+                    "for more information on submitting Ray jobs to the Ray cluster."
                 )
 
             cli_logger.newline()
