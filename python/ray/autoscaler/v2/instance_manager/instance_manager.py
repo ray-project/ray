@@ -1,11 +1,11 @@
-import abc
 import logging
 import uuid
-from abc import abstractmethod
+from abc import ABCMeta, abstractmethod
 from typing import Dict, List, Optional, Tuple
 
 from ray.autoscaler.v2.instance_manager.storage import Storage
 from ray.core.generated.instance_manager_pb2 import (
+    AvailableInstanceTypes,
     GetAvailableInstanceTypesResponse,
     GetInstanceManagerStateReply,
     Instance,
@@ -17,7 +17,7 @@ from ray.core.generated.instance_manager_pb2 import (
 logger = logging.getLogger(__name__)
 
 
-class InstanceManager(metaclass=abc.ABCMeta):
+class InstanceManager(metaclass=ABCMeta):
     @abstractmethod
     def get_available_instance_types(self) -> GetAvailableInstanceTypesResponse:
         pass
@@ -34,14 +34,17 @@ class InstanceManager(metaclass=abc.ABCMeta):
 
 
 class SimpleInstanceManager(InstanceManager):
-    def __init__(self, cluster_id: str, storage: Storage) -> None:
+    def __init__(
+        self, cluster_id: str, storage: Storage, instance_types: AvailableInstanceTypes
+    ) -> None:
         super().__init__()
         self._storage = storage
         self._cluster_id = cluster_id
         self._table_name = f"instance_table@{cluster_id}"
+        self._instance_types = instance_types
 
     def get_available_instance_types(self) -> GetAvailableInstanceTypesResponse:
-        pass
+        return GetAvailableInstanceTypesResponse(instance_types=self._instance_types)
 
     def update_instance_manager_state(
         self, request: UpdateInstanceManagerStateRequest
@@ -63,8 +66,10 @@ class SimpleInstanceManager(InstanceManager):
                 reply = UpdateInstanceManagerStateReply()
                 reply.success = False
                 reply.version = version
-                reply.error_message = f"Failed to transition instance "\
+                reply.error_message = (
+                    f"Failed to transition instance "
                     "{instance.instance_id} from {instance.instance_state} to TERMINATING"
+                )
                 return reply
             mutations[instance.instance_id] = instance.SerializeToString()
 

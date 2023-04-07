@@ -1,11 +1,10 @@
-import abc
 import copy
-from abc import abstractmethod
+from abc import ABCMeta, abstractmethod
 from threading import Lock
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
-class Storage(metaclass=abc.ABCMeta):
+class Storage(metaclass=ABCMeta):
     @abstractmethod
     def update(
         self,
