@@ -203,6 +203,9 @@ class ExecutionOptions:
         actor_locality_enabled: Whether to enable locality-aware task dispatch to
             actors (on by default). This applies to both ActorPoolStrategy map and
             streaming_split operations.
+        verbose_progress: Whether to report progress individually per operator. By
+            default, only AllToAll operators and global progress is reported. This
+            option is useful for performance debugging, and is off by default.
     """
 
     resource_limits: ExecutionResources = ExecutionResources()
