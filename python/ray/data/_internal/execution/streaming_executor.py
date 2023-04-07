@@ -86,11 +86,14 @@ class StreamingExecutor(Executor, threading.Thread):
         if not isinstance(dag, InputDataBuffer):
             logger.get_logger().info("Executing DAG %s", dag)
             logger.get_logger().info("Execution config: %s", self._options)
-            self._global_info = ProgressBar("Running", dag.num_outputs_total() or 1)
 
         # Setup the streaming DAG topology and start the runner thread.
         _validate_dag(dag, self._get_or_refresh_resource_limits())
         self._topology, _ = build_streaming_topology(dag, self._options)
+
+        if not isinstance(dag, InputDataBuffer):
+            # Note: DAG must be initialized in order to query num_outputs_total.
+            self._global_info = ProgressBar("Running", dag.num_outputs_total() or 1)
 
         self._output_node: OpState = self._topology[dag]
         self.start()
