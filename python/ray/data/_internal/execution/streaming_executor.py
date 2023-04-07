@@ -113,7 +113,8 @@ class StreamingExecutor(Executor, threading.Thread):
                         raise item
                     else:
                         # Otherwise return a concrete RefBundle.
-                        self._outer._global_info.update(1)
+                        if self._outer._global_info:
+                            self._outer._global_info.update(1)
                         return item
                 except Exception:
                     self._outer.shutdown()
