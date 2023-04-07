@@ -388,6 +388,8 @@ class Catalog:
                 raise ValueError(
                     f"No default encoder config for obs space={observation_space},"
                     f" lstm={use_lstm} and attention={use_attention} found."
+                    "You should either define a custom "
+                    "RLModule or custom Catalog to handle this case."
                 )
 
         return encoder_config
