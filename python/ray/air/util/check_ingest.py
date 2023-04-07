@@ -67,11 +67,11 @@ class DummyTrainer(DataParallelTrainer):
         print("Starting dataset preprocessing")
         super().preprocess_datasets()
         if self.time_preprocessing_separately:
-            for dataset_name, ds in self.datasets.items():
+            for dataset_name, ds in list(self.datasets.items()):
                 start = time.perf_counter()
                 # Force execution to time preprocessing since Datasets are lazy by
                 # default.
-                ds.materialize()
+                self.datasets[dataset_name] = ds.materialize()
                 print(
                     f"Preprocessed {dataset_name} in",
                     time.perf_counter() - start,
