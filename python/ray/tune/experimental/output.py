@@ -82,7 +82,7 @@ class AirVerbosity(IntEnum):
     VERBOSE = 2
 
 
-IS_NOTEBOOK = ray.util.widgets.in_notebook()
+IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
 
 def get_air_verbosity() -> Optional[AirVerbosity]:

@@ -58,7 +58,7 @@ except ImportError:
         "'pip install ray[rllib]'."
     )
 
-IS_NOTEBOOK = ray.util.widgets.in_notebook()
+IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
 SKIP_RESULTS_IN_REPORT = {"config", TRIAL_ID, EXPERIMENT_TAG, DONE}
 
