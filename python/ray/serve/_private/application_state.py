@@ -162,7 +162,7 @@ class ApplicationState:
                     return
                 try:
                     ray.get(finished[0])
-                    logger.info("Deploy task for app {self.name} ran successfully.")
+                    logger.info(f"Deploy task for app '{self.name}' ran successfully.")
                 except RayTaskError as e:
                     self.status = ApplicationStatus.DEPLOY_FAILED
                     # NOTE(zcin): we should use str(e) instead of traceback.format_exc()

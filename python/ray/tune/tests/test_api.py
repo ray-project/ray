@@ -1820,7 +1820,9 @@ class ApiTestFast(unittest.TestCase):
                     **kwargs,
                 )
 
-        with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
+        with patch("ray.tune.tune.TrialRunner", MockTrialRunner), patch(
+            "os.environ", {"TUNE_NEW_EXECUTION": "0"}
+        ):
             tune.run(
                 lambda config: tune.report(metric=1),
                 search_alg="random",
@@ -1867,7 +1869,9 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                     **kwargs,
                 )
 
-        with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
+        with patch("ray.tune.tune.TrialRunner", MockTrialRunner), patch(
+            "os.environ", {"TUNE_NEW_EXECUTION": "0"}
+        ):
             tune.run(
                 train,
                 config={"a": tune.randint(0, 2)},

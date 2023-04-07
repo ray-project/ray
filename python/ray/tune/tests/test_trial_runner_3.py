@@ -15,7 +15,6 @@ from freezegun import freeze_time
 import ray
 from ray.air import CheckpointConfig
 from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
-from ray.exceptions import OwnerDiedError
 from ray.rllib import _register_all
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
@@ -994,7 +993,7 @@ class TrialRunnerTest3(unittest.TestCase):
             local_checkpoint_dir=self.tmpdir,
             checkpoint_period="auto",
             sync_config=SyncConfig(
-                upload_dir="fake", syncer=CustomSyncer(), sync_period=0
+                upload_dir="fake://somewhere", syncer=CustomSyncer(), sync_period=0
             ),
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
@@ -1040,7 +1039,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
+            sync_config=SyncConfig(upload_dir="fake://somewhere", syncer=syncer),
             trial_checkpoint_config=checkpoint_config,
             checkpoint_period=100,  # Only rely on forced syncing
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
@@ -1107,7 +1106,7 @@ class TrialRunnerTest3(unittest.TestCase):
         syncer = self.getHangingSyncer(sync_period=60, sync_timeout=0.5)
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
+            sync_config=SyncConfig(upload_dir="fake://somewhere", syncer=syncer),
         )
         # Checkpoint for the first time starts the first sync in the background
         runner.checkpoint(force=True)
@@ -1134,7 +1133,7 @@ class TrialRunnerTest3(unittest.TestCase):
         syncer = self.getHangingSyncer(sync_period=sync_period, sync_timeout=0.5)
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
+            sync_config=SyncConfig(upload_dir="fake://somewhere", syncer=syncer),
         )
 
         with freeze_time() as frozen:
@@ -1207,9 +1206,6 @@ class TrialRunnerTest3(unittest.TestCase):
         assert [el["x"] for el in loaded_datasets["with_lineage"].take()] == list(
             range(10)
         )
-        # Req: The deserialized dataset (w/o lineage) should NOT be usable.
-        with self.assertRaises(OwnerDiedError):
-            loaded_datasets["no_lineage"].take()
 
         replaced_resolvers = create_resolvers_map()
         inject_placeholders(create_trial_config(), replaced_resolvers)

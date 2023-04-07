@@ -129,6 +129,7 @@ tuner = Tuner(
 )
 # __tune_preprocess_end__
 
+
 # __tune_dataset_start__
 def get_dataset():
     return ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
@@ -240,6 +241,8 @@ tune_config = TuneConfig(
 # __tune_config_end__
 
 # __tune_restore_start__
-tuner = Tuner.restore("~/ray_results/test_tuner", restart_errored=True)
+tuner = Tuner.restore(
+    path="~/ray_results/test_tuner", trainable=trainer, restart_errored=True
+)
 tuner.fit()
 # __tune_restore_end__

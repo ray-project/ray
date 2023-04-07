@@ -103,18 +103,6 @@ class TestActorPool:
         # Check that the 3rd pick doesn't return the actor.
         assert pool.pick_actor() is None
 
-    def test_pick_max_tasks_in_flight_with_rampup(self, ray_start_regular_shared):
-        # Test that max_tasks_in_flight starts at 1, and ramps up after meeting
-        # the threshold.
-        pool = _ActorPool(max_tasks_in_flight=2, max_tasks_rampup_threshold=2)
-        actor = self._add_ready_worker(pool)
-        assert pool.pick_actor() == actor
-        assert pool.pick_actor() is None
-        actor2 = self._add_ready_worker(pool)
-        # Actors can be selected again after ramping up.
-        assert pool.pick_actor() == actor2
-        assert pool.pick_actor() in [actor, actor2]
-
     def test_pick_ordering_lone_idle(self, ray_start_regular_shared):
         # Test that a lone idle actor is the one that's picked.
         pool = _ActorPool()
@@ -553,6 +541,14 @@ class TestAutoscalingPolicy:
         config = AutoscalingConfig(min_workers=1, max_workers=4)
         policy = AutoscalingPolicy(config)
         assert policy.max_workers == 4
+
+    def test_should_scale_up_over_min_workers(self):
+        config = AutoscalingConfig(min_workers=1, max_workers=4)
+        policy = AutoscalingPolicy(config)
+        num_total_workers = 0
+        num_running_workers = 0
+        # Should scale up since under pool min workers.
+        assert policy.should_scale_up(num_total_workers, num_running_workers)
 
     def test_should_scale_up_over_max_workers(self):
         # Test that scale-up is blocked if the pool would go over the configured max

@@ -72,6 +72,9 @@ if __name__ == "__main__":
             "framework": args.framework,
             # Run with tracing enabled for tf2?
             "eager_tracing": args.eager_tracing,
+            # TODO (Kourosh): Enable when LSTMs are supported.
+            "_enable_learner_api": False,
+            "_enable_rl_module_api": False,
         }
     )
 

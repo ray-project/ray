@@ -19,8 +19,8 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 
-from ray.rllib.models.specs.typing import SpecType
-from ray.rllib.models.specs.checker import (
+from ray.rllib.core.models.specs.typing import SpecType
+from ray.rllib.core.models.specs.checker import (
     check_input_specs,
     check_output_specs,
     convert_to_canonical_format,
@@ -54,7 +54,10 @@ class SingleAgentRLModuleSpec:
 
     Args:
         module_class: The RLModule class to use.
-        observation_space: The observation space of the RLModule.
+        observation_space: The observation space of the RLModule. This may differ
+            from the observation space of the environment. For example, a discrete
+            observation space of an environment, would usually correspond to a
+            one-hot encoded observation space of the RLModule because of preprocessing.
         action_space: The action space of the RLModule.
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
@@ -426,19 +429,17 @@ class RLModule(abc.ABC):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
 
-    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
-        """Saves the weights of this RLmodule to path.
+    def save_state(self, path: Union[str, pathlib.Path]) -> None:
+        """Saves the weights of this RLModule to path.
 
         Args:
             path: The file path to save the checkpoint to.
 
-        Returns:
-            The path to the saved checkpoint.
         """
         raise NotImplementedError
 
-    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
-        """Loads the weights of an RLmodule from path.
+    def load_state(self, path: Union[str, pathlib.Path]) -> None:
+        """Loads the weights of an RLModule from path.
 
         Args:
             path: The directory to load the checkpoint from.
@@ -551,7 +552,7 @@ class RLModule(abc.ABC):
         path.mkdir(parents=True, exist_ok=True)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
         module_state_dir.mkdir(parents=True, exist_ok=True)
-        self.save_state_to_file(module_state_dir / self._module_state_file_name())
+        self.save_state(module_state_dir / self._module_state_file_name())
         self._save_module_metadata(path, SingleAgentRLModuleSpec)
 
     @classmethod
@@ -576,16 +577,8 @@ class RLModule(abc.ABC):
         module = cls._from_metadata_file(metadata_path)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
         state_path = module_state_dir / module._module_state_file_name()
-        module.load_state_from_file(state_path)
+        module.load_state(state_path)
         return module
-
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        """Reserved API, Makes the module distributed."""
-        raise NotImplementedError
-
-    def is_distributed(self) -> bool:
-        """Reserved API, Returns True if the module is distributed."""
-        raise NotImplementedError
 
     def as_multi_agent(self) -> "MultiAgentRLModule":
         """Returns a multi-agent wrapper around this module."""

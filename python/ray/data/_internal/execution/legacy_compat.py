@@ -41,14 +41,14 @@ def execute_to_legacy_block_iterator(
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
-) -> Iterator[ObjectRef[Block]]:
-    """Same as execute_to_legacy_bundle_iterator but returning blocks."""
+) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+    """Same as execute_to_legacy_bundle_iterator but returning blocks and metadata."""
     bundle_iter = execute_to_legacy_bundle_iterator(
         executor, plan, allow_clear_input_blocks, dataset_uuid
     )
     for bundle in bundle_iter:
-        for block, _ in bundle.blocks:
-            yield block
+        for block, metadata in bundle.blocks:
+            yield block, metadata
 
 
 def execute_to_legacy_bundle_iterator(
@@ -250,8 +250,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
                     raise ValueError(
                         "``compute`` must be specified when using a callable class, "
                         "and must specify the actor compute strategy. "
-                        'For example, use ``compute="actors"`` or '
-                        "``compute=ActorPoolStrategy(min, max)``."
+                        "For example, use ``compute=ActorPoolStrategy(size=n)``."
                     )
                 assert isinstance(compute, ActorPoolStrategy)
 

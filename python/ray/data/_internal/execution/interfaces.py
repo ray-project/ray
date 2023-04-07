@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
 
 import ray
+from ray.util.annotations import DeveloperAPI
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.progress_bar import ProgressBar
@@ -130,10 +132,8 @@ class ExecutionResources:
         """Returns a human-readable string for the object store memory field."""
         if self.object_store_memory is None:
             return "None"
-        elif self.object_store_memory >= 1024 * 1024 * 1024:
-            return f"{round(self.object_store_memory / (1024 * 1024 * 1024), 2)} GiB"
         else:
-            return f"{round(self.object_store_memory / (1024 * 1024), 2)} MiB"
+            return memory_string(self.object_store_memory)
 
     def add(self, other: "ExecutionResources") -> "ExecutionResources":
         """Adds execution resources.
@@ -184,28 +184,33 @@ class ExecutionResources:
         )
 
 
+@DeveloperAPI
 @dataclass
 class ExecutionOptions:
     """Common options for execution.
 
     Some options may not be supported on all executors (e.g., resource limits).
+
+    Attributes:
+        resource_limits: Set a soft limit on the resource usage during execution.
+            This is not supported in bulk execution mode. Autodetected by default.
+        locality_with_output: Set this to prefer running tasks on the same node as the
+            output node (node driving the execution). It can also be set to a list of
+            node ids to spread the outputs across those nodes. Off by default.
+        preserve_order: Set this to preserve the ordering between blocks processed by
+            operators under the streaming executor. The bulk executor always preserves
+            order. Off by default.
+        actor_locality_enabled: Whether to enable locality-aware task dispatch to
+            actors (on by default). This applies to both ActorPoolStrategy map and
+            streaming_split operations.
     """
 
-    # Set a soft limit on the resource usage during execution. This is not supported
-    # in bulk execution mode.
     resource_limits: ExecutionResources = ExecutionResources()
 
-    # Set this to prefer running tasks on the same node as the output
-    # node (node driving the execution). It can also be set to a list of node ids
-    # to spread the outputs across those nodes.
     locality_with_output: Union[bool, List[NodeIdStr]] = False
 
-    # Set this to preserve the ordering between blocks processed by operators under the
-    # streaming executor. The bulk executor always preserves order.
     preserve_order: bool = False
 
-    # Whether to enable locality-aware task dispatch to actors (on by default). This
-    # applies to both ActorPoolStrategy map and streaming_split operations.
     actor_locality_enabled: bool = True
 
 

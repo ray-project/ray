@@ -15,8 +15,6 @@ from abc import abstractmethod
 from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple
 
-import numpy as np
-
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
     AUTOSCALER_CONSERVE_GPU_NODES,
@@ -854,7 +852,8 @@ def _resource_based_utilization_scorer(
         gpu_ok,
         num_matching_resource_types,
         min(util_by_resources),
-        np.mean(util_by_resources),
+        # util_by_resources should be non empty
+        float(sum(util_by_resources)) / len(util_by_resources),
     )
 
 

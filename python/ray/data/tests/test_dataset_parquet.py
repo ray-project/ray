@@ -145,18 +145,18 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     check_num_computed(ds, 1, 1)
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take_all()]
-    check_num_computed(ds, 2, 1)
+    check_num_computed(ds, 2, 2)
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -223,11 +223,11 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     check_num_computed(ds, 2, 2)
@@ -300,11 +300,11 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     check_num_computed(ds, 2, 2)
@@ -390,11 +390,11 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     check_num_computed(ds, 2, 2)
@@ -447,7 +447,7 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert str(ds) == (
-        "Dataset(\n"
+        "Datastream(\n"
         "   num_blocks=2,\n"
         "   num_rows=6,\n"
         "   schema={two: string, "
@@ -455,7 +455,7 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
         ")"
     ), ds
     assert repr(ds) == (
-        "Dataset(\n"
+        "Datastream(\n"
         "   num_blocks=2,\n"
         "   num_rows=6,\n"
         "   schema={two: string, "
@@ -466,7 +466,7 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    check_num_computed(ds, 2, 1)
+    check_num_computed(ds, 2, 2)
     assert sorted(values) == [
         [1, "a"],
         [1, "b"],
@@ -539,18 +539,18 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
         "schema={two: string, one: int32})"
     ), ds
     assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
         "schema={two: string, one: int32})"
     ), ds
     check_num_computed(ds, 1, 1)
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    check_num_computed(ds, 2, 1)
+    check_num_computed(ds, 2, 2)
     assert sorted(values) == [
         [1, "a"],
         [1, "b"],
@@ -640,7 +640,7 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
 
     # Forces a data read.
     values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
-    check_num_computed(ds, parallelism, 1)
+    check_num_computed(ds, parallelism, parallelism)
     assert sorted(values) == list(range(3 * num_dfs))
 
 

@@ -15,8 +15,10 @@ from unittest.mock import patch
 
 
 def canonicalize(stats: str) -> str:
+    # Dataset UUID expression.
+    s0 = re.sub("([a-f\d]{32})", "U", stats)
     # Time expressions.
-    s1 = re.sub("[0-9\.]+(ms|us|s)", "T", stats)
+    s1 = re.sub("[0-9\.]+(ms|us|s)", "T", s0)
     # Handle zero values specially so we can check for missing values.
     s2 = re.sub(" [0]+(\.[0]+)?", " Z", s1)
     # Other numerics.
@@ -124,7 +126,7 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
         if context.use_streaming_executor:
             assert (
                 stats
-                == """Stage N ReadRange->MapBatches(dummy_map_batches)->Map: N/N blocks executed in T
+                == """Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
@@ -133,6 +135,28 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
 'obj_store_mem_peak': N}
+
+Stage N Map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
+'obj_store_mem_peak': N}
+
+Dataset iterator time breakdown:
+* Total time user code is blocked: T
+* Total time in user code: T
+* Total time overall: T
+* Num blocks local: Z
+* Num blocks remote: Z
+* Num blocks unknown location: N
+* Batch iteration time breakdown (summed across prefetch threads):
+    * In ray.get(): T min, T max, T avg, T total
+    * In batch creation: T min, T max, T avg, T total
+    * In batch formatting: T min, T max, T avg, T total
 """
             )
         else:
@@ -171,9 +195,46 @@ Dataset iterator time breakdown:
 """
             )
     else:
-        assert (
-            stats
-            == """Stage N Read->MapBatches(dummy_map_batches): N/N blocks executed in T
+        if context.use_streaming_executor:
+            assert (
+                stats
+                == """Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
+'obj_store_mem_peak': N}
+
+Stage N Map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
+'obj_store_mem_peak': N}
+
+Dataset iterator time breakdown:
+* Total time user code is blocked: T
+* Total time in user code: T
+* Total time overall: T
+* Num blocks local: Z
+* Num blocks remote: Z
+* Num blocks unknown location: N
+* Batch iteration time breakdown (summed across prefetch threads):
+    * In ray.get(): T min, T max, T avg, T total
+    * In batch creation: T min, T max, T avg, T total
+    * In batch formatting: T min, T max, T avg, T total
+"""
+            )
+        else:
+            assert (
+                stats
+                == """Stage N Read->MapBatches(dummy_map_batches): N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
@@ -197,7 +258,123 @@ Dataset iterator time breakdown:
 * In user code: T
 * Total time: T
 """
-        )
+            )
+
+
+def test_dataset__repr__(ray_start_regular_shared):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+
+    ds = ray.data.range(10, parallelism=1).cache()
+    ss = ds._plan.stats().to_summary()
+
+    ds2 = ds.map_batches(lambda x: x).cache()
+    ss2 = ds2._plan.stats().to_summary()
+    assert canonicalize(repr(ss)) == (
+        "DatasetStatsSummary(\n"
+        "   dataset_uuid=U,\n"
+        "   base_name=None,\n"
+        "   number=N,\n"
+        "   extra_metrics={},\n"
+        "   stage_stats=[\n"
+        "      StageStatsSummary(\n"
+        "         stage_name='Read',\n"
+        "         is_substage=False,\n"
+        "         time_total_s=T,\n"
+        "         block_execution_summary_str=N/N blocks split from parent in T\n"
+        "         wall_time=None,\n"
+        "         cpu_time=None,\n"
+        "         memory=None,\n"
+        "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "         node_count=None,\n"
+        "      ),\n"
+        "   ],\n"
+        "   iter_stats=IterStatsSummary(\n"
+        "      wait_time=T,\n"
+        "      get_time=T,\n"
+        "      iter_blocks_local=None,\n"
+        "      iter_blocks_remote=None,\n"
+        "      iter_unknown_location=None,\n"
+        "      next_time=T,\n"
+        "      format_time=T,\n"
+        "      user_time=T,\n"
+        "      total_time=T,\n"
+        "   ),\n"
+        "   parents=[],\n"
+        ")"
+    )
+    assert canonicalize(repr(ss2)) == (
+        "DatasetStatsSummary(\n"
+        "   dataset_uuid=U,\n"
+        "   base_name=MapBatches(<lambda>),\n"
+        "   number=N,\n"
+        "   extra_metrics={\n"
+        "      obj_store_mem_alloc: N,\n"
+        "      obj_store_mem_freed: N,\n"
+        "      obj_store_mem_peak: N,\n"
+        "   },\n"
+        "   stage_stats=[\n"
+        "      StageStatsSummary(\n"
+        "         stage_name='MapBatches(<lambda>)',\n"
+        "         is_substage=False,\n"
+        "         time_total_s=T,\n"
+        "         block_execution_summary_str=N/N blocks executed in T\n"
+        "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
+        "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
+        "      ),\n"
+        "   ],\n"
+        "   iter_stats=IterStatsSummary(\n"
+        "      wait_time=T,\n"
+        "      get_time=T,\n"
+        "      iter_blocks_local=None,\n"
+        "      iter_blocks_remote=None,\n"
+        "      iter_unknown_location=None,\n"
+        "      next_time=T,\n"
+        "      format_time=T,\n"
+        "      user_time=T,\n"
+        "      total_time=T,\n"
+        "   ),\n"
+        "   parents=[\n"
+        "      DatasetStatsSummary(\n"
+        "         dataset_uuid=U,\n"
+        "         base_name=None,\n"
+        "         number=N,\n"
+        "         extra_metrics={},\n"
+        "         stage_stats=[\n"
+        "            StageStatsSummary(\n"
+        "               stage_name='Read',\n"
+        "               is_substage=False,\n"
+        "               time_total_s=T,\n"
+        "               block_execution_summary_str=N/N blocks split from parent in T\n"
+        "               wall_time=None,\n"
+        "               cpu_time=None,\n"
+        "               memory=None,\n"
+        "               output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "               output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "               node_count=None,\n"
+        "            ),\n"
+        "         ],\n"
+        "         iter_stats=IterStatsSummary(\n"
+        "            wait_time=T,\n"
+        "            get_time=T,\n"
+        "            iter_blocks_local=None,\n"
+        "            iter_blocks_remote=None,\n"
+        "            iter_unknown_location=None,\n"
+        "            next_time=T,\n"
+        "            format_time=T,\n"
+        "            user_time=T,\n"
+        "            total_time=T,\n"
+        "         ),\n"
+        "         parents=[],\n"
+        "      ),\n"
+        "   ],\n"
+        ")"
+    )
 
 
 def test_dataset_stats_shuffle(ray_start_regular_shared):
@@ -914,15 +1091,16 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_dataset_context)
 {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, 'obj_store_mem_peak': N}
 
 Dataset iterator time breakdown:
-* In ray.wait(): T
-* In ray.get(): T
+* Total time user code is blocked: T
+* Total time in user code: T
+* Total time overall: T
 * Num blocks local: Z
 * Num blocks remote: Z
 * Num blocks unknown location: N
-* In next_batch(): T
-* In format_batch(): T
-* In user code: T
-* Total time: T
+* Batch iteration time breakdown (summed across prefetch threads):
+    * In ray.get(): T min, T max, T avg, T total
+    * In batch creation: T min, T max, T avg, T total
+    * In batch formatting: T min, T max, T avg, T total
 """
     )
 

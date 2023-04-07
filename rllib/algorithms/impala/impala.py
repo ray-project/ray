@@ -141,11 +141,21 @@ class ImpalaConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with ARS-specific values.
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
+        self.minibatch_size = self.train_batch_size
         self.num_rollout_workers = 2
         self.num_gpus = 1
         self.lr = 0.0005
         self.min_time_s_per_iteration = 10
         self._tf_policy_handles_more_than_one_loss = True
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
@@ -163,6 +173,7 @@ class ImpalaConfig(AlgorithmConfig):
         gamma: Optional[float] = NotProvided,
         num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
         minibatch_buffer_size: Optional[int] = NotProvided,
+        minibatch_size: Optional[int] = NotProvided,
         num_sgd_iter: Optional[int] = NotProvided,
         replay_proportion: Optional[float] = NotProvided,
         replay_buffer_num_slots: Optional[int] = NotProvided,
@@ -215,6 +226,11 @@ class ImpalaConfig(AlgorithmConfig):
                 is performing gradient calculations.
             minibatch_buffer_size: How many train batches should be retained for
                 minibatching. This conf only has an effect if `num_sgd_iter > 1`.
+            minibatch_size: The size of minibatches that are trained over during
+                each SGD iteration. Note this only has an effect if
+                `_enable_learner_api` == True.
+                Note: minibatch_size must be a multiple of rollout_fragment_length or
+                sequence_length and smaller than or equal to train_batch_size.
             num_sgd_iter: Number of passes to make over each train batch.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
                 be replayed with a p:1 proportion to new data samples.
@@ -329,6 +345,8 @@ class ImpalaConfig(AlgorithmConfig):
             self.after_train_step = after_train_step
         if gamma is not NotProvided:
             self.gamma = gamma
+        if minibatch_size is not NotProvided:
+            self.minibatch_size = minibatch_size
 
         return self
 
@@ -376,6 +394,18 @@ class ImpalaConfig(AlgorithmConfig):
                     "True, for TFPolicy to support more than one loss "
                     "term/optimizer! Try setting config.training("
                     "_tf_policy_handles_more_than_one_loss=True)."
+                )
+        if self._enable_learner_api:
+            if not (
+                (self.minibatch_size % self.rollout_fragment_length == 0)
+                and self.minibatch_size <= self.train_batch_size
+            ):
+                raise ValueError(
+                    "minibatch_size must be a multiple of rollout_fragment_length and "
+                    "must be smaller than or equal to train_batch_size. Got"
+                    f" minibatch_size={self.minibatch_size}, train_batch_size="
+                    f"{self.train_batch_size}, and rollout_fragment_length="
+                    f"{self.get_rollout_fragment_length()}"
                 )
         # learner hps need to be updated inside of config.validate in order to have
         # the correct values for when a user starts an experiment from a dict. This is
@@ -622,6 +652,9 @@ class Impala(Algorithm):
             )
             self._aggregator_actor_manager = None
 
+        # This variable is used to keep track of the statistics from the most recent
+        # update of the learner group
+        self._results = {}
         self._timeout_s_sampler_manager = self.config.timeout_s_sampler_manager
 
         if not self.config._enable_learner_api:
@@ -703,7 +736,17 @@ class Impala(Algorithm):
                 timeout_seconds=self.config.worker_health_probe_timeout_s,
                 mark_healthy=True,
             )
-        return train_results
+
+        if self.config._enable_learner_api:
+            if train_results:
+                # store the most recent result and return it if no new result is
+                # available. This keeps backwards compatibility with the old
+                # training stack / results reporting stack. This is necessary
+                # any time we develop an asynchronous algorithm.
+                self._results = train_results
+            return self._results
+        else:
+            return train_results
 
     @classmethod
     @override(Algorithm)
@@ -879,6 +922,7 @@ class Impala(Algorithm):
                 reduce_fn=_reduce_impala_results,
                 block=blocking,
                 num_iters=self.config.num_sgd_iter,
+                minibatch_size=self.config.minibatch_size,
             )
         else:
             lg_results = None
@@ -1062,7 +1106,6 @@ class Impala(Algorithm):
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
             weights = self.learner_group.get_weights(policy_ids)
-
             if self.config.num_rollout_workers == 0:
                 worker = self.workers.local_worker()
                 worker.set_weights(weights)

@@ -9,7 +9,11 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
       value={{
         metricsContextLoaded: true,
         grafanaHost: "localhost:3000",
-        grafanaDefaultDashboardUid: "rayDefaultDashboard",
+        dashboardUids: {
+          default: "rayDefaultDashboard",
+          serve: "rayServeDashboard",
+          serveDeployment: "rayServeDeploymentDashboard",
+        },
         prometheusHealth: true,
         sessionName: "session-name",
         ipLogMap: {},
@@ -29,7 +33,11 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
       value={{
         metricsContextLoaded: true,
         grafanaHost: undefined,
-        grafanaDefaultDashboardUid: undefined,
+        dashboardUids: {
+          default: "rayDefaultDashboard",
+          serve: "rayServeDashboard",
+          serveDeployment: "rayServeDeploymentDashboard",
+        },
         prometheusHealth: false,
         sessionName: undefined,
         ipLogMap: {},
