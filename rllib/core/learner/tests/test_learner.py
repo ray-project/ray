@@ -1,7 +1,8 @@
 import gymnasium as gym
-import unittest
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
+import tempfile
+import unittest
 
 import ray
 
@@ -15,7 +16,7 @@ from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 
-def get_learner() -> Learner:
+def get_learner(learning_rate=1e-3) -> Learner:
     env = gym.make("CartPole-v1")
 
     learner = BCTfLearner(
@@ -25,7 +26,9 @@ def get_learner() -> Learner:
             action_space=env.action_space,
             model_config_dict={"fcnet_hiddens": [32]},
         ),
-        optimizer_config={"lr": 1e-3},
+        # made this a configurable hparam to avoid information leakage in tests where we
+        # need to know what the learning rate is.
+        optimizer_config={"lr": learning_rate},
         learner_scaling_config=LearnerGroupScalingConfig(),
         framework_hyperparameters=FrameworkHPs(eager_tracing=True),
     )
@@ -112,15 +115,8 @@ class TestLearner(unittest.TestCase):
         all variables the updated parameters follow the SGD update rule.
         """
         env = gym.make("CartPole-v1")
-        learner = get_learner()
-
-        # add a test module with SGD optimizer with a known lr
-        lr = 1e-4
-
-        def set_optimizer_fn(module):
-            return [
-                (module.trainable_variables, tf.keras.optimizers.SGD(learning_rate=lr))
-            ]
+        lr = 1e-3
+        learner = get_learner(lr)
 
         learner.add_module(
             module_id="test",
@@ -130,7 +126,6 @@ class TestLearner(unittest.TestCase):
                 action_space=env.action_space,
                 model_config_dict={"fcnet_hiddens": [16]},
             ),
-            set_optimizer_fn=set_optimizer_fn,
         )
 
         learner.remove_module(DEFAULT_POLICY_ID)
@@ -149,6 +144,86 @@ class TestLearner(unittest.TestCase):
                 learner.apply_gradients(gradients)
 
         check(params, expected)
+
+    def test_save_load_state(self):
+        env = gym.make("CartPole-v1")
+
+        learner1 = BCTfLearner(
+            module_spec=SingleAgentRLModuleSpec(
+                module_class=DiscreteBCTFModule,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                model_config_dict={"fcnet_hiddens": [64]},
+            ),
+            optimizer_config={"lr": 2e-3},
+            learner_scaling_config=LearnerGroupScalingConfig(),
+            framework_hyperparameters=FrameworkHPs(eager_tracing=True),
+        )
+
+        learner1.build()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            learner1.save_state(tmpdir)
+
+            learner2 = BCTfLearner(
+                module_spec=SingleAgentRLModuleSpec(
+                    module_class=DiscreteBCTFModule,
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    model_config_dict={"fcnet_hiddens": [32]},
+                ),
+                optimizer_config={"lr": 1e-3},
+                learner_scaling_config=LearnerGroupScalingConfig(),
+                framework_hyperparameters=FrameworkHPs(eager_tracing=True),
+            )
+            learner2.build()
+            learner2.load_state(tmpdir)
+            self._check_learner_states(learner1, learner2)
+
+        # add a module then save/load and check states
+        with tempfile.TemporaryDirectory() as tmpdir:
+            learner1.add_module(
+                module_id="test",
+                module_spec=SingleAgentRLModuleSpec(
+                    module_class=DiscreteBCTFModule,
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    model_config_dict={"fcnet_hiddens": [32]},
+                ),
+            )
+            learner1.save_state(tmpdir)
+            learner2.load_state(tmpdir)
+            self._check_learner_states(learner1, learner2)
+
+        # remove a module then save/load and check states
+        with tempfile.TemporaryDirectory() as tmpdir:
+            learner1.remove_module(module_id=DEFAULT_POLICY_ID)
+            learner1.save_state(tmpdir)
+            learner2.load_state(tmpdir)
+            self._check_learner_states(learner1, learner2)
+
+    def _check_learner_states(self, learner1, learner2):
+        check(learner1.get_weights(), learner2.get_weights())
+
+        # check all internal optimizer state dictionaries have been updated
+        learner_1_optims_serialized = {
+            name: optim.get_config()
+            for name, optim in learner1._named_optimizers.items()
+        }
+        learner_2_optims_serialized = {
+            name: optim.get_config()
+            for name, optim in learner2._named_optimizers.items()
+        }
+        check(learner_1_optims_serialized, learner_2_optims_serialized)
+
+        learner_1_optims_serialized = [
+            optim.get_config() for optim in learner1._optimizer_parameters.keys()
+        ]
+        learner_2_optims_serialized = [
+            optim.get_config() for optim in learner2._optimizer_parameters.keys()
+        ]
+        check(learner_1_optims_serialized, learner_2_optims_serialized)
+
+        check(learner1._module_optimizers, learner2._module_optimizers)
 
 
 if __name__ == "__main__":
