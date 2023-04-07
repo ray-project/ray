@@ -578,7 +578,7 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     EXPECT_EQ(reply.events_by_task_size(), 10);
     for (const auto &task_event : reply.events_by_task()) {
       EXPECT_EQ(task_event.state_updates().failed_ts(), /* 5 ms to ns */ 5 * 1000 * 1000);
-      EXPECT_TRUE(task_event.state_updates().has_error_info())
+      EXPECT_TRUE(task_event.state_updates().has_error_info());
       EXPECT_TRUE(task_event.state_updates().error_info().error_type() ==
                   rpc::ErrorType::WORKER_DIED);
       EXPECT_TRUE(task_event.state_updates().error_info().error_message().find(
