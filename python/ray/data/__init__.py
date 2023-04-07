@@ -47,6 +47,7 @@ from ray.data.read_api import (  # noqa: F401
     read_mongo,
     read_tfrecords,
     read_webdataset,
+    read_iceberg,
 )
 
 
@@ -96,6 +97,7 @@ __all__ = [
     "read_sql",
     "read_tfrecords",
     "read_webdataset",
+    "read_iceberg",
     "set_progress_bars",
     "Preprocessor",
 ]
