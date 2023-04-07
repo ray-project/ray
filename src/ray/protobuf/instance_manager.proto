@@ -25,7 +25,7 @@ enum RayNodeKind {
 
 // A node type that's available for the cluster.
 message InstanceType {
-  bytes node_type = 1;
+  bytes type_name = 1;
   RayNodeKind node_kind = 2;
   map<string, double> resources = 3;
 }
@@ -67,7 +67,7 @@ message Instance {
       TERMINATING = 8;
     }
     bytes instance_id = 1;
-    bytes istance_type = 2;
+    bytes instance_type= 2;
     InstanceState instance_state = 3; 
 }
 
@@ -89,7 +89,7 @@ message InstanceManagerState {
     // the state is updated (either by successful adjusting request,
     // or instance state change).
     int64 version = 1;
-    repeated Instance instances = 3;
+    repeated Instance instances = 2;
 }
 
 message GetInstanceManagerStateRequest {}

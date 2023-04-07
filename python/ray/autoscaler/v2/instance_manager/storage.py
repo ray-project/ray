@@ -2,7 +2,7 @@ import abc
 import copy
 from abc import abstractmethod
 from threading import Lock
-from typing import Dict, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 
 class Storage(metaclass=abc.ABCMeta):
@@ -11,7 +11,7 @@ class Storage(metaclass=abc.ABCMeta):
         self,
         table: str,
         mutation: Dict[str, str],
-        deletion: Set[str],
+        deletion: List[str],
         expected_version: Optional[int],
     ) -> Tuple[bool, int]:
         raise NotImplementedError("put() has to be implemented")
@@ -21,7 +21,7 @@ class Storage(metaclass=abc.ABCMeta):
         raise NotImplementedError("put() has to be implemented")
 
     @abstractmethod
-    def get(self, table: str, key: str) -> Tuple[Optional[str], int]:
+    def get(self, table: str, keys: List[str]) -> Tuple[Dict[str, str], int]:
         raise NotImplementedError("get() has to be implemented")
 
     @abstractmethod
@@ -39,7 +39,7 @@ class InMemoryStorage(Storage):
         self,
         table: str,
         mutation: Dict[str, str],
-        deletion: Set[str],
+        deletion: List[str],
         expected_version: Optional[int],
     ) -> bool:
         with self._lock:
@@ -55,10 +55,13 @@ class InMemoryStorage(Storage):
         with self._lock:
             return (copy.deepcopy(self._tables.get(table, {})), self._version)
 
-    def get(self, table: str, key: str) -> Tuple[Optional[str], int]:
+    def get(self, table: str, keys: List[str]) -> Tuple[Dict[str, str], int]:
         with self._lock:
-            return (self._tables.get(table, {}).get(key, None), self._version)
+            result = {}
+            for key in keys:
+                if key in self._tables.get(table, {}):
+                    result[key] = self._tables[table][key]
+            return (result, self._version)
 
     def get_version(self) -> int:
         return self._version
-
