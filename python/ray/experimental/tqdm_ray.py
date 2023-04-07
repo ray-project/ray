@@ -14,7 +14,7 @@ from ray._private.ray_constants import env_bool
 from ray.util.debug import log_once
 
 try:
-    import tqdm as real_tqdm
+    import tqdm.auto as real_tqdm
 except ImportError:
     real_tqdm = None
 

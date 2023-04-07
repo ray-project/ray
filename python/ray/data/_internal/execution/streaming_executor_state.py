@@ -122,17 +122,23 @@ class OpState:
         self.num_completed_tasks = 0
         self.inputs_done_called = False
 
-    def initialize_progress_bars(self, index: int) -> int:
+    def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
         """Create progress bars at the given index (line offset in console).
 
         For AllToAllOperator, zero or more sub progress bar would be created.
         Return the number of progress bars created for this operator.
         """
+        is_all_to_all = isinstance(self.op, AllToAllOperator)
+        # Only show 1:1 ops when in verbose progress mode.
+        enabled = verbose_progress or is_all_to_all
         self.progress_bar = ProgressBar(
-            self.op.name, self.op.num_outputs_total() or 1, index
+            self.op.name,
+            self.op.num_outputs_total() or 1,
+            index,
+            enabled=enabled,
         )
         num_bars = 1
-        if isinstance(self.op, AllToAllOperator):
+        if is_all_to_all:
             num_bars += self.op.initialize_sub_progress_bars(index + 1)
         return num_bars
 
@@ -275,7 +281,7 @@ def build_streaming_topology(
     i = 1
     for op_state in list(topology.values()):
         if not isinstance(op_state.op, InputDataBuffer):
-            i += op_state.initialize_progress_bars(i)
+            i += op_state.initialize_progress_bars(i, options.verbose_progress)
 
     return (topology, i)
 

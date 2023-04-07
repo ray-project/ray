@@ -207,6 +207,8 @@ class ExecutionOptions:
     # applies to both ActorPoolStrategy map and streaming_split operations.
     actor_locality_enabled: bool = True
 
+    verbose_progress: bool = False
+
 
 @dataclass
 class TaskContext:
