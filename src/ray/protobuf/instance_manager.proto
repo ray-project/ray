@@ -1,0 +1,105 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+option cc_enable_arenas = true;
+
+package ray.autoscaler;
+
+enum RayNodeKind {
+  HEAD = 0;
+  WORKER = 1;
+  UNKNOWN = 2;
+}
+
+// A node type that's available for the cluster.
+message InstanceType {
+  bytes node_type = 1;
+  RayNodeKind node_kind = 2;
+  map<string, double> resources = 3;
+}
+
+message GetAvailableInstanceTypesRequest {}
+
+message GetAvailableInstanceTypesResponse {
+  repeated InstanceType instance_types = 1;
+  repeated int64 available_instances = 2;
+}
+
+// Represents the state of a launched instance.
+// An instance is considered launched as long as
+// it has a unique instance_id associated with it.
+//
+// Note a launched instance may be DEAD. In this case,
+// the state will be garbage collected after some timeout
+// period (by default 30 minutes).
+message Instance {
+    enum InstanceState {
+      // Instances that are queued to be launched.
+      QUEUED = 0;
+      // Instances that are being launched.
+      REQUESTED = 2;
+      // Instances's resources are allocated.
+      RESOURCES_ALLOCATED = 3;
+      // The instance is known to have finished booststrapping and
+      // should join the cluster soon/or have already
+      // joined the cluster.
+      // The node has being allocated but envirnoment is not ready yet.
+      BOOSTRAPPING = 4;
+      // 
+      ALIVE = 5;
+      // The instance is known to be dead. 
+      DEAD = 6; 
+      // The node is going to be preempted by the node manager.
+      PREEMEPTING = 7;
+      // The node is being terminated by the node provider.
+      TERMINATING = 8;
+    }
+    bytes instance_id = 1;
+    bytes istance_type = 2;
+    InstanceState instance_state = 3; 
+}
+
+message UpdateInstanceManagerStateRequest {
+  int64 expected_version = 1;
+  repeated InstanceType new_nodes_to_start = 2; 
+  repeated bytes nodes_to_terminate = 3;
+}
+
+message UpdateInstanceManagerStateReply {
+  bool success = 1;
+  string error_message = 2;
+  int64 version = 3;
+}
+
+message InstanceManagerState {
+    // a monotonically increasing version number.
+    // the version number is incremented whenever
+    // the state is updated (either by successful adjusting request,
+    // or instance state change).
+    int64 version = 1;
+    repeated Instance instances = 3;
+}
+
+message GetInstanceManagerStateRequest {}
+
+message GetInstanceManagerStateReply {
+  InstanceManagerState state = 1; 
+}
+
+service InstanceManagerService {
+  rpc GetInstanceManagerState(GetInstanceManagerStateRequest) returns (GetInstanceManagerStateReply);
+  rpc UpdateInstanceManagerState(UpdateInstanceManagerStateRequest) returns (UpdateInstanceManagerStateReply);
+  rpc GetAvailableInstanceTypes(GetAvailableInstanceTypesRequest) returns (GetAvailableInstanceTypesResponse);
+}
