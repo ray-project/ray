@@ -60,6 +60,11 @@ class PlainRayHandler(logging.StreamHandler):
         self.plain_handler = logging._StderrHandler()
         self.plain_handler.level = self.level
         self.plain_handler.formatter = logging.Formatter(fmt="%(message)s")
+        self.driver_handler = logging._StderrHandler()
+        self.driver_handler.level = self.level
+        self.driver_handler.formatter = logging.Formatter(
+            fmt="%(asctime)s %(package)s %(levelname)s %(name)s::%(message)s"
+        )
 
     def emit(self, record: logging.LogRecord):
         """Emit the log message.
@@ -79,7 +84,7 @@ class PlainRayHandler(logging.StreamHandler):
         ):
             self.plain_handler.emit(record)
         else:
-            logging._StderrHandler.emit(self, record)
+            self.driver_handler.emit(record)
 
 
 logger_initialized = False
@@ -97,7 +102,7 @@ def generate_logging_config():
         formatters = {
             "plain": {
                 "datefmt": "[%Y-%m-%d %H:%M:%S]",
-                "format": LOGGER_FORMAT,
+                "format": "%(asctime)s %(package)s %(levelname)s %(name)s::%(message)s",
             },
         }
         filters = {"context_filter": {"()": ContextFilter}}
