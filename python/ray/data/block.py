@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-    from ray.data import Dataset
+    from ray.data import Datastream
     from ray.data._internal.block_builder import BlockBuilder
     from ray.data.aggregate import AggregateFn
 
@@ -50,25 +50,25 @@ U = TypeVar("U", covariant=True)
 KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
 
-# A function that extracts a concrete value from a record in a Dataset, used
+# A function that extracts a concrete value from a record in a Datastream, used
 # in ``sort(value_fns...)``, ``groupby(value_fn).agg(Agg(value_fn), ...)``.
 # It can either be None (intepreted as the identity function), the name
-# of a Dataset column, or a lambda function that extracts the desired value
+# of a Datastream column, or a lambda function that extracts the desired value
 # from the object.
 KeyFn = Union[None, str, Callable[[T], Any]]
 
 
-def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
-    """Check the key function is valid on the given dataset."""
+def _validate_key_fn(ds: "Datastream", key: KeyFn) -> None:
+    """Check the key function is valid on the given datastream."""
     schema = ds.schema(fetch_if_missing=True)
     if schema is None:
-        # Dataset is empty/cleared, validation not possible.
+        # Datastream is empty/cleared, validation not possible.
         return
     is_simple_format = isinstance(schema, type)
     if isinstance(key, str):
         if is_simple_format:
             raise ValueError(
-                "String key '{}' requires dataset format to be "
+                "String key '{}' requires datastream format to be "
                 "'arrow' or 'pandas', was 'simple'.".format(key)
             )
         if len(schema.names) > 0 and key not in schema.names:
@@ -79,13 +79,13 @@ def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
     elif key is None:
         if not is_simple_format:
             raise ValueError(
-                "The `None` key '{}' requires dataset format to be "
+                "The `None` key '{}' requires datastream format to be "
                 "'simple'.".format(key)
             )
     elif callable(key):
         if not is_simple_format:
             raise ValueError(
-                "Callable key '{}' requires dataset format to be "
+                "Callable key '{}' requires datastream format to be "
                 "'simple'".format(key)
             )
     else:
