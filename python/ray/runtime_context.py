@@ -368,7 +368,6 @@ def get_runtime_context():
         .. testcode::
 
             import ray
-            ray.init()
             # Get the job id.
             ray.get_runtime_context().get_job_id()
 
