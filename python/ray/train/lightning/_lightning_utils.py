@@ -6,8 +6,13 @@ import pytorch_lightning as pl
 
 from typing import Any, Dict, Optional
 from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.plugins.environments import LightningEnvironment
+from pytorch_lightning.strategies import DDPStrategy
+
+try:
+    from pytorch_lightning.strategies import FSDPStrategy
+except ImportError:
+    from pytorch_lightning.strategies import DDPFullyShardedStrateg as FSDPStrategy
 
 import ray
 from ray.air import session
@@ -23,6 +28,21 @@ LIGHTNING_REPORT_STAGE_KEY = "_report_on"
 
 class RayDDPStrategy(DDPStrategy):
     """Subclass of DDPStrategy to ensure compatibility with Ray orchestration."""
+
+    @property
+    def root_device(self) -> torch.device:
+        return ray.train.torch.get_device()
+
+    @property
+    def distributed_sampler_kwargs(self) -> Dict[str, Any]:
+        return dict(
+            num_replicas=self.world_size,
+            rank=self.global_rank,
+        )
+
+
+class RayFSDPStrategy(FSDPStrategy):
+    """Subclass of FSDPStrategy to ensure compatibility with Ray orchestration."""
 
     @property
     def root_device(self) -> torch.device:

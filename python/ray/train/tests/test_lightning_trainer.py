@@ -53,10 +53,11 @@ def test_config_builder():
     assert not config["_model_checkpoint_config"]
 
 
+@pytest.mark.parametrize("strategy", ["ddp", "fsdp"])
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
 @pytest.mark.parametrize("datasource", ["dataloader", "datamodule"])
 def test_trainer_with_native_dataloader(
-    ray_start_6_cpus_2_gpus, accelerator, datasource
+    ray_start_6_cpus_2_gpus, strategy, accelerator, datasource
 ):
     num_epochs = 4
     batch_size = 8
@@ -67,6 +68,7 @@ def test_trainer_with_native_dataloader(
         LightningConfigBuilder()
         .module(LinearModule, input_dim=32, output_dim=4)
         .trainer(max_epochs=num_epochs, accelerator=accelerator)
+        .strategy(strategy)
     )
 
     datamodule = DummyDataModule(batch_size, dataset_size)
