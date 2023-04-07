@@ -104,7 +104,7 @@ Streaming Execution
 ~~~~~~~~~~~~~~~~~~~
 
 The following code is a hello world example which invokes the execution with
-:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` consumption. We will also enable verbose progress reporting (otherwise the progress is collapsed into a single bar):
+:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` consumption. We will also enable verbose progress reporting, which shows per-operator progress in addition to overall progress.
 
 .. code-block::
 
@@ -150,7 +150,7 @@ This line tells you how many resources are currently being used by the streaming
    MapBatches(sleep): 7 active, 2 queued, 25.64 MiB objects, 2 actors [all objects local] 3:  71%|▋| 142/
    MapBatches(sleep): 2 active, 0 queued, 7.32 MiB objects 4:  70%|██▊ | 139/200 [00:08<00:02, 23.16it/s]
 
-Lines like the above show progress for each stage. The `active` count indicates the number of running tasks for the operator. The `queued` count is the number of input blocks for the operator that are computed but are not yet submitted for execution. For operators that use actor-pool execution, the number of running actors is shown as `actors`.
+These lines are only shown when verbose progress reporting is enabled. The `active` count indicates the number of running tasks for the operator. The `queued` count is the number of input blocks for the operator that are computed but are not yet submitted for execution. For operators that use actor-pool execution, the number of running actors is shown as `actors`.
 
 .. tip::
 
