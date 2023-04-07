@@ -2,7 +2,6 @@ import logging
 import re
 from logging.config import dictConfig
 import threading
-from ray._private.ray_constants import LOGGER_FORMAT
 
 
 class ContextFilter(logging.Filter):
