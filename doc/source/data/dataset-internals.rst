@@ -104,12 +104,16 @@ Streaming Execution
 ~~~~~~~~~~~~~~~~~~~
 
 The following code is a hello world example which invokes the execution with
-:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` consumption:
+:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` consumption. We will also enable verbose progress reporting (otherwise the progress is collapsed into a single bar):
 
 .. code-block::
 
    import ray
    import time
+
+   # Enable verbose reporting. This can also be toggled on by setting
+   # the environment variable RAY_DATA_VERBOSE_PROGRESS=1.
+   ray.data.DatasetContext.get_current().execution_options.verbose_progress = True
 
    def sleep(x):
        time.sleep(0.1)
@@ -134,7 +138,7 @@ The next few lines will show execution progress. Here is how to interpret the ou
 
 .. code-block::
 
-   Resource usage vs limits: 7.0/16.0 CPU, 0.0/0.0 GPU, 76.91 MiB/2.25 GiB object_store_memory
+   Running: 7.0/16.0 CPU, 0.0/0.0 GPU, 76.91 MiB/2.25 GiB object_store_memory
 
 This line tells you how many resources are currently being used by the streaming executor out of the limits. The streaming executor will attempt to keep resource usage under the printed limits by throttling task executions.
 
