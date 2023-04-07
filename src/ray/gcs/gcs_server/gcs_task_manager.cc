@@ -163,6 +163,29 @@ absl::optional<int64_t> GcsTaskManager::GcsTaskManagerStorage::GetTaskStatusUpda
              : absl::nullopt;
 }
 
+void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
+    const JobID &job_id, int64_t job_finish_time_ns) {
+  auto task_attempts_itr = job_to_task_attempt_index_.find(job_id);
+  if (task_attempts_itr == job_to_task_attempt_index_.end()) {
+    // No tasks in the job.
+    return;
+  }
+
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
+  std::stringstream error_message;
+  error_message << "Job finishes (" << job_id.Hex()
+                << ") as driver exits. Marking all non-terminal tasks as failed.";
+  error_info.set_error_message(error_message.str());
+
+  // Iterate all task attempts from the job.
+  for (const auto &task_attempt : task_attempts_itr->second) {
+    if (!IsTaskTerminated(task_attempt.first)) {
+      MarkTaskAttemptFailed(task_attempt, job_finish_time_ns, error_info);
+    }
+  }
+}
+
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
     const WorkerID &worker_id, const rpc::WorkerTableData &worker_failure_data) {
   auto task_attempts_itr = worker_to_task_attempt_index_.find(worker_id);
@@ -183,29 +206,6 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
     if (!IsTaskTerminated(task_attempt.first)) {
       MarkTaskAttemptFailed(
           task_attempt, worker_failure_data.end_time_ms() * 1000, error_info);
-    }
-  }
-}
-
-void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
-    const JobID &job_id, int64_t job_finish_time_ns) {
-  auto task_attempts_itr = job_to_task_attempt_index_.find(job_id);
-  if (task_attempts_itr == job_to_task_attempt_index_.end()) {
-    // No tasks in the job.
-    return;
-  }
-
-  rpc::RayErrorInfo error_info;
-  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
-  std::stringstream error_message;
-  error_message << "Job finishes (" << job_id.Hex()
-                << ") as driver exits. Marking all non-terminal tasks as failed.";
-  error_info.set_error_message(error_message.str());
-
-  // Iterate all task attempts from the job.
-  for (const auto &task_attempt : task_attempts_itr->second) {
-    if (!IsTaskTerminated(task_attempt.first)) {
-      MarkTaskAttemptFailed(task_attempt, job_finish_time_ns, error_info);
     }
   }
 }

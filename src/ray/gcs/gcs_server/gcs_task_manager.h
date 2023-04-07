@@ -103,6 +103,11 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// \param job_finish_time_ms Job finish time in ms.
   void OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms);
 
+  /// Handler to be called when a worker is dead. This marks all non-terminated tasks
+  /// of the worker as failed.
+  ///
+  /// \param worker_id Worker Id
+  /// \param worker_failure_data Worker failure data.
   void OnWorkerDead(const WorkerID &worker_id,
                     const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data);
 
@@ -190,6 +195,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// failed time.
     void MarkTasksFailedOnJobEnds(const JobID &job_id, int64_t job_finish_time_ns);
 
+    /// Mark tasks from a worker as failed as worker dies.
+    ///
+    /// \param worker_id Worker ID
+    /// \param worker_failure_data Worker failure data.
     void MarkTasksFailedOnWorkerDead(const WorkerID &worker_id,
                                      const rpc::WorkerTableData &worker_failure_data);
 
@@ -265,7 +274,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     absl::flat_hash_map<JobID, absl::flat_hash_set<TaskAttempt>>
         job_to_task_attempt_index_;
 
-    /// Secondary index from worker id to task attempts of the job.
+    /// Secondary index from worker id to task attempts of the worker.
     absl::flat_hash_map<WorkerID, absl::flat_hash_set<TaskAttempt>>
         worker_to_task_attempt_index_;
 
