@@ -113,7 +113,8 @@ The following code is a hello world example which invokes the execution with
 
    # Enable verbose reporting. This can also be toggled on by setting
    # the environment variable RAY_DATA_VERBOSE_PROGRESS=1.
-   ray.data.DatasetContext.get_current().execution_options.verbose_progress = True
+   ctx = ray.data.DatasetContext.get_current()
+   ctx.execution_options.verbose_progress = True
 
    def sleep(x):
        time.sleep(0.1)
@@ -172,7 +173,7 @@ Execution options can be configured via the global DatasetContext. The options w
 
 .. code-block::
 
-   ctx = ray.data.context.DatasetContext.get_current()
+   ctx = ray.data.DatasetContext.get_current()
    ctx.execution_options.resource_limits.cpu = 10
    ctx.execution_options.resource_limits.gpu = 5
    ctx.execution_options.resource_limits.object_store_memory = 10e9
