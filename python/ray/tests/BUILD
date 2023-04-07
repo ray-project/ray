@@ -60,10 +60,18 @@ py_test_module_list(
     "test_healthcheck.py",
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
-    "test_protobuf_compatibility.py"
   ],
   size = "medium",
   tags = ["medium_size_python_tests_a_to_j", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+      "test_protobuf_compatibility.py",
+  ],
+  size = "medium",
+  tags = ["medium_size_python_tests_a_to_j", "team:core", "requires-network"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

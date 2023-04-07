@@ -477,8 +477,7 @@ def call_ray_start(request):
 def call_ray_start_context(request):
     free_port = find_free_port()
     default_cmd = (
-        "ray start --head --num-cpus=1 --min-worker-port=0 "
-        f"--max-worker-port=0 --port {free_port}"
+        "ray start --head --num-cpus=1 --min-worker-port=0 " f"--max-worker-port=0"
     )
     parameter = getattr(request, "param", default_cmd)
     env = None
@@ -488,8 +487,9 @@ def call_ray_start_context(request):
             env = {**os.environ, **parameter.get("env")}
 
         parameter = parameter.get("cmd", default_cmd)
-        assert " --port" not in parameter, "port is not allowed"
-        parameter += f" --port {free_port}"
+
+    assert " --port" not in parameter, "port is not allowed"
+    parameter += f" --port {free_port}"
     command_args = parameter.split(" ")
 
     try:
