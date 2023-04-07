@@ -4,10 +4,10 @@ GCS Fault Tolerance
 ===================
 
 Global Control Service (GCS) is a server that manages cluster-level metadata.
-It also provides a handful of cluster-level operations including :ref:`actor <ray-remote-classes>`, :ref:`placement group <ray-placement-group-doc-ref>` and node management.
-By default, GCS is not fault tolerant since all the data is stored in-memory and its failure means that the entire Ray cluster fails.
-To make GCS fault tolerant, HA Redis is required.
-Then, when GCS restarts, it loads all the data from the Redis instance and resumes regular functions.
+It also provides a handful of cluster-level operations including :ref:`actor <ray-remote-classes>`, :ref:`placement groups <ray-placement-group-doc-ref>` and node management.
+By default, the GCS is not fault tolerant since all the data is stored in-memory and its failure means that the entire Ray cluster fails.
+To make the GCS fault tolerant, HA Redis is required.
+Then, when the GCS restarts, it loads all the data from the Redis instance and resumes regular functions.
 
 During the recovery period, the following functions are not available:
 
@@ -17,7 +17,7 @@ During the recovery period, the following functions are not available:
 - Worker node registration.
 - Worker process creation.
 
-But the running Ray tasks and actors remain alive and any existing objects will continue to be available.
+However, running Ray tasks and actors remain alive and any existing objects will continue to be available.
 
 Setting up Redis
 ----------------
@@ -51,7 +51,7 @@ Setting up Redis
     If you are using Kubernetes but not :ref:`KubeRay <kuberay-index>`, please refer to :ref:`this doc <deploy-a-static-ray-cluster-without-kuberay>`.
 
 
-Once GCS is backed by Redis, when it restarts, it'll recover the
+Once the GCS is backed by Redis, when it restarts, it'll recover the
 state by reading from Redis. When the GCS is recovering from its failed state, the raylet
 will try to reconnect to the GCS.
 If the raylet fails to reconnect to the GCS for more than 60 seconds,

@@ -5,9 +5,9 @@ Node Fault Tolerance
 
 A Ray cluster consists of one or more worker nodes,
 each of which consists of worker processes and system processes (e.g. raylet).
-One of the worker nodes is designated as the head node and has extra processes like GCS.
+One of the worker nodes is designated as the head node and has extra processes like the GCS.
 
-Here, we describe node failures and the impact on tasks, actors and objects.
+Here, we describe node failures and their impact on tasks, actors, and objects.
 
 Worker node failure
 -------------------
