@@ -585,9 +585,9 @@ class ExecutionPlan:
                     preserve_order=preserve_order,
                 )
                 # TODO(ekl) we shouldn't need to set this in the future once we move
-                # to a fully lazy execution model, unless .cache() is used. The reason
-                # we need it right now is since the user may iterate over a Dataset
-                # multiple times after fully executing it once.
+                # to a fully lazy execution model, unless .materialize() is used. Th
+                # reason we need it right now is since the user may iterate over a
+                # Dataset multiple times after fully executing it once.
                 if not self._run_by_consumer:
                     blocks._owned_by_consumer = False
                 stats = executor.get_stats()

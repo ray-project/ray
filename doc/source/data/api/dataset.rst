@@ -138,8 +138,7 @@ Execution
 .. autosummary::
    :toctree: doc/
 
-   Dataset.cache
-   Dataset.is_cached
+   Dataset.materialize
 
 Serialization
 -------------

@@ -68,7 +68,7 @@ The Datasets execution by default is:
 
 - **Lazy**: This means that transformations on Dataset are not executed until a
   consumption operation (e.g. :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`)
-  or :meth:`Dataset.cache() <ray.data.Dataset.cache>` is called. This creates
+  or :meth:`Dataset.materialize() <ray.data.Dataset.materialize>` is called. This creates
   opportunities for optimizing the execution plan (e.g. :ref:`stage fusion <datasets_stage_fusion>`).
 - **Pipelined**: This means that Dataset transformations will be executed in a
   streaming way, incrementally on the base data, instead of on all of the data
@@ -88,7 +88,7 @@ to stage fusion optimizations and aggressive garbage collection of intermediate 
 Dataset creation and transformation APIs are lazy, with execution only triggered via "sink"
 APIs, such as consuming (:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`),
 writing (:meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`), or manually triggering via
-:meth:`ds.cache() <ray.data.Dataset.cache>`. There are a few
+:meth:`ds.materialize() <ray.data.Dataset.materialize>`. There are a few
 exceptions to this rule, where transformations such as :meth:`ds.union()
 <ray.data.Dataset.union>` and
 :meth:`ds.limit() <ray.data.Dataset.limit>` trigger execution; we plan to make these
