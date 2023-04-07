@@ -73,11 +73,7 @@ def _plan_udf_map_op(
 
     else:
         fn = op._fn
-
-        def _empty_init():
-            pass
-
-        init_fn = _empty_init
+        init_fn = None
     fn_args = (fn,)
     if op._fn_args:
         fn_args += op._fn_args
@@ -88,8 +84,8 @@ def _plan_udf_map_op(
 
     return MapOperator.create(
         do_map,
-        init_fn,
         input_physical_dag,
+        init_fn=init_fn,
         name=op.name,
         compute_strategy=compute,
         min_rows_per_bundle=op._target_block_size,

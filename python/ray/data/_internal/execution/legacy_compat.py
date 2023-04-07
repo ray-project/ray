@@ -243,9 +243,6 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
     if isinstance(stage, OneToOneStage):
         compute = get_compute(stage.compute)
 
-        def _empty_init():
-            pass
-
         block_fn = stage.block_fn
         if stage.fn:
             if isinstance(stage.fn, CallableClass):
@@ -276,11 +273,11 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
             else:
                 fn = stage.fn
-                init_fn = _empty_init
+                init_fn = None
             fn_args = (fn,)
         else:
             fn_args = ()
-            init_fn = _empty_init
+            init_fn = None
         if stage.fn_args:
             fn_args += stage.fn_args
         fn_kwargs = stage.fn_kwargs or {}
@@ -290,8 +287,8 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
         return MapOperator.create(
             do_map,
-            init_fn,
             input_op,
+            init_fn=init_fn,
             name=stage.name,
             compute_strategy=compute,
             min_rows_per_bundle=stage.target_block_size,

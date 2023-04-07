@@ -70,8 +70,8 @@ class MapOperator(PhysicalOperator, ABC):
     def create(
         cls,
         transform_fn: MapTransformFn,
-        init_fn: Callable[[], None],
         input_op: PhysicalOperator,
+        init_fn: Optional[Callable[[], None]] = None,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
@@ -124,6 +124,12 @@ class MapOperator(PhysicalOperator, ABC):
                 compute_strategy
             )
             autoscaling_policy = AutoscalingPolicy(autoscaling_config)
+
+            if init_fn is None:
+
+                def init_fn():
+                    pass
+
             return ActorPoolMapOperator(
                 transform_fn,
                 init_fn,
