@@ -363,10 +363,13 @@ class Catalog:
 
                 encoder_config = CNNEncoderConfig(
                     input_dims=observation_space.shape,
-                    filter_specifiers=model_config_dict["conv_filters"],
-                    filter_layer_activation=activation,
-                    output_activation=output_activation,
+                    cnn_filter_specifiers=model_config_dict["conv_filters"],
+                    cnn_activation=activation,
+                    cnn_use_layernorm=model_config_dict.get(
+                        "conv_use_layernorm", False
+                    ),
                     output_dims=[encoder_latent_dim],
+                    output_activation=output_activation,
                 )
             # input_space is a 2D Box
             elif (
