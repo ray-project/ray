@@ -47,43 +47,43 @@ class ContextFilter(logging.Filter):
         return True
 
 
-class PlainRayHandler(logging.StreamHandler):
-    """A plain log handler.
+# class PlainRayHandler(logging.StreamHandler):
+#     """A plain log handler.
 
-    This handler writes to whatever sys.stderr points to at emit-time,
-    not at instantiation time. See docs for logging._StderrHandler.
-    """
+#     This handler writes to whatever sys.stderr points to at emit-time,
+#     not at instantiation time. See docs for logging._StderrHandler.
+#     """
 
-    def __init__(self):
-        super().__init__()
-        self.plain_handler = logging._StderrHandler()
-        self.plain_handler.level = self.level
-        self.plain_handler.formatter = logging.Formatter(fmt="%(message)s")
-        self.driver_handler = logging._StderrHandler()
-        self.driver_handler.level = self.level
-        self.driver_handler.formatter = logging.Formatter(
-            fmt="%(asctime)s %(package)s %(levelname)s %(name)s::%(message)s"
-        )
+#     def __init__(self):
+#         super().__init__()
+#         self.plain_handler = logging._StderrHandler()
+#         self.plain_handler.level = self.level
+#         self.plain_handler.formatter = logging.Formatter(fmt="%(message)s")
+#         self.driver_handler = logging._StderrHandler()
+#         self.driver_handler.level = self.level
+#         self.driver_handler.formatter = logging.Formatter(
+#             fmt="%(asctime)s %(package)s %(levelname)s %(name)s::%(message)s"
+#         )
 
-    def emit(self, record: logging.LogRecord):
-        """Emit the log message.
+#     def emit(self, record: logging.LogRecord):
+#         """Emit the log message.
 
-        If this is a worker, bypass fancy logging and just emit the log record.
-        If this is the driver, emit the message using the appropriate console handler.
+#         If this is a worker, bypass fancy logging and just emit the log record.
+#         If this is the driver, emit the message using the appropriate console handler.
 
-        Args:
-            record: Log record to be emitted
-        """
-        import ray
+#         Args:
+#             record: Log record to be emitted
+#         """
+#         import ray
 
-        if (
-            hasattr(ray, "_private")
-            and ray._private.worker.global_worker.mode
-            == ray._private.worker.WORKER_MODE
-        ):
-            self.plain_handler.emit(record)
-        else:
-            self.driver_handler.emit(record)
+#         if (
+#             hasattr(ray, "_private")
+#             and ray._private.worker.global_worker.mode
+#             == ray._private.worker.WORKER_MODE
+#         ):
+#             self.plain_handler.emit(record)
+#         else:
+#             self.driver_handler.emit(record)
 
 
 logger_initialized = False
@@ -107,7 +107,7 @@ def generate_logging_config():
         filters = {"context_filter": {"()": ContextFilter}}
         handlers = {
             "default": {
-                "()": PlainRayHandler,
+                "()": logging._StderrHandler,
                 "formatter": "plain",
                 "filters": ["context_filter"],
             }
