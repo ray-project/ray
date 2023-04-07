@@ -63,7 +63,8 @@ class SimpleInstanceManager(InstanceManager):
                 reply = UpdateInstanceManagerStateReply()
                 reply.success = False
                 reply.version = version
-                reply.error_message = f"Failed to transition instance {instance.instance_id} from {instance.instance_state} to TERMINATING"
+                reply.error_message = f"Failed to transition instance "\
+                    "{instance.instance_id} from {instance.instance_state} to TERMINATING"
                 return reply
             mutations[instance.instance_id] = instance.SerializeToString()
 
