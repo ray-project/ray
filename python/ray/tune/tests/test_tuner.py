@@ -379,16 +379,13 @@ def test_tuner_fn_trainable_checkpoint_at_end_none(shutdown_only):
     tuner.fit()
 
 
-def test_nonserializable_trainable(capsys):
+def test_nonserializable_trainable():
     import threading
 
     lock = threading.Lock()
-    with pytest.raises(TypeError):
-        Tuner(lambda config: print(lock))
-
     # Check that the `inspect_serializability` trace was printed
-    out, _ = capsys.readouterr()
-    assert "was found to be non-serializable." in out
+    with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
+        Tuner(lambda config: print(lock))
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])

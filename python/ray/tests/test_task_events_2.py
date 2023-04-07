@@ -410,10 +410,9 @@ class Actor:
     def child_actor(self, pid_actor):
         ray.get(pid_actor.report_pid.remote("child_actor", os.getpid(), "FAILED"))
         a = ChildActor.remote()
-        try:
-            ray.get(a.children.options(name="children").remote(pid_actor), timeout=2)
-        except ray.exceptions.GetTimeoutError:
-            pass
+        a.children.options(name="children").remote(pid_actor)
+        # Wait til child tasks run.
+        wait_for_condition(lambda: ray.get(pid_actor.get_pids.remote()).get("task_sleep_child") is not None)
         raise ValueError("expected to fail.")
 
     def ready(self):
@@ -441,12 +440,12 @@ def test_fault_tolerance_actor_tasks_failed(shutdown_only):
 def test_fault_tolerance_nested_actors_failed(shutdown_only):
     ray.init(_system_config=_SYSTEM_CONFIG)
     pid_actor = PidActor.remote()
-
     # Test nested actor tasks
     with pytest.raises(ray.exceptions.RayTaskError):
         a = Actor.remote()
         ray.get(a.ready.remote())
         ray.get(a.child_actor.options(name="child_actor").remote(pid_actor))
+
     # Wait for all tasks to finish:
     # 4 = child_actor + children + task_finish_child + task_sleep_child
     wait_for_condition(
@@ -717,7 +716,8 @@ def check_file(type, task_name, expected_log, expect_no_end=False):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Failing on Windows. we should fix it asap"
+    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    reason="Skipping if not recording task logs offsets.",
 )
 def test_task_logs_info_basic(shutdown_only):
     """Test tasks (normal tasks/actor tasks) execution logging
@@ -774,6 +774,10 @@ def test_task_logs_info_basic(shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.skipif(
+    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    reason="Skipping if not recording task logs offsets.",
+)
 def test_task_logs_info_disabled(shutdown_only, monkeypatch):
     """Test when redirect disabled, no task log info is available
     due to missing log file
@@ -799,6 +803,10 @@ def test_task_logs_info_disabled(shutdown_only, monkeypatch):
         wait_for_condition(verify)
 
 
+@pytest.mark.skipif(
+    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    reason="Skipping if not recording task logs offsets.",
+)
 def test_task_logs_info_running_task(shutdown_only):
     ray.init(num_cpus=1)
 

@@ -86,7 +86,7 @@ def create_policy_for_framework(
     session_creator: Optional[Callable[[], "tf1.Session"]] = None,
     seed: Optional[int] = None,
 ):
-    """Frame specific policy creation logics.
+    """Framework-specific policy creation logics.
 
     Args:
         policy_id: Policy ID.

@@ -72,7 +72,7 @@ def test_predictor(
         model_class=LightningMNISTClassifier,
         use_gpu=use_gpu,
         preprocessor=preprocessor,
-        load_from_checkpoint_kwargs=model_config,
+        **model_config,
     )
 
     # Create synthetic input data
@@ -116,7 +116,7 @@ def test_batch_predictor(tmpdir, use_gpu: bool):
         predictor_cls=LightningPredictor,
         use_gpu=use_gpu,
         model_class=LightningMNISTClassifier,
-        load_from_checkpoint_kwargs=model_config,
+        **model_config,
     )
 
     predictions = batch_predictor.predict(

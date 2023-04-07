@@ -34,6 +34,11 @@ from ray.tune.tuner import Tuner
 
 from terminate_node_aws import create_instance_killer
 
+import faulthandler
+
+faulthandler.enable()
+
+
 MAX_ITERS = 40
 ITER_TIME_BOUNDS = (60, 90)
 WARMUP_TIME_S = 45
@@ -64,7 +69,7 @@ def main(bucket_uri: str):
         param_space={"start_time": time.monotonic(), "warmup_time_s": WARMUP_TIME_S},
         tune_config=TuneConfig(num_samples=num_samples, metric="iteration", mode="max"),
         run_config=RunConfig(
-            verbose=1,
+            verbose=2,
             failure_config=FailureConfig(max_failures=-1),
             sync_config=tune.SyncConfig(upload_dir=bucket_uri),
             checkpoint_config=CheckpointConfig(num_to_keep=2),
