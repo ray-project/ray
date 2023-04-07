@@ -1,4 +1,3 @@
-import sys
 from typing import Any, Dict, Iterable, Optional, Union
 
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -8,12 +7,6 @@ from ray.data._internal.compute import (
 )
 from ray.data.block import BatchUDF, RowUDF
 from ray.data.context import DEFAULT_BATCH_SIZE
-
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
 
 
 class AbstractMap(LogicalOperator):
@@ -93,8 +86,7 @@ class MapBatches(AbstractUDFMap):
         input_op: LogicalOperator,
         fn: BatchUDF,
         batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
-        batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
-        prefetch_batches: int = 0,
+        batch_format: Optional[str] = "default",
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -118,7 +110,6 @@ class MapBatches(AbstractUDFMap):
         )
         self._batch_size = batch_size
         self._batch_format = batch_format
-        self._prefetch_batches = prefetch_batches
         self._zero_copy_batch = zero_copy_batch
 
 

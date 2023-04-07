@@ -49,7 +49,6 @@ import ray
 from ray.exceptions import RayActorError
 from ray.tune import Trainable
 from ray.tune.integration.wandb import WandbTrainableMixin
-from ray.tune.trainable import wrap_function
 from ray.tune.integration.wandb import wandb_mixin
 from ray.air.integrations.wandb import (
     WandbLoggerCallback,
@@ -63,8 +62,6 @@ from ray.air.integrations.wandb import (
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
 )
-from ray.tune.result import TRIAL_INFO
-from ray.tune.experiment.trial import _TrialInfo
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 from ray.air.tests.mocked_wandb_integration import (
@@ -74,14 +71,6 @@ from ray.air.tests.mocked_wandb_integration import (
     WandbTestExperimentLogger,
     get_mock_wandb_logger,
 )
-
-
-class _MockWandbTrainableMixin(WandbTrainableMixin):
-    _wandb = _MockWandbAPI()
-
-
-class WandbTestTrainable(_MockWandbTrainableMixin, Trainable):
-    pass
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -103,17 +92,6 @@ def trial():
         "/tmp",
     )
     yield trial
-
-
-@pytest.fixture
-def train_fn():
-    @wandb_mixin
-    def train_fn(config):
-        return 1
-
-    train_fn.__mixins__ = (_MockWandbTrainableMixin,)
-
-    yield train_fn
 
 
 @pytest.fixture(autouse=True)
@@ -334,7 +312,7 @@ class TestWandbLogger:
             trial_name="trial_0",
             experiment_dir_name="trainable",
             placement_group_factory=PlacementGroupFactory([{"CPU": 1}]),
-            logdir=tempfile.gettempdir(),
+            local_path=tempfile.gettempdir(),
         )
         logger = WandbTestExperimentLogger(
             project="test_project",
@@ -476,120 +454,22 @@ class TestWandbLogger:
 
 
 class TestWandbClassMixin:
-    def test_wandb_mixin_config(self):
-        # Needs at least a project
-        config = {}
-        with pytest.raises(ValueError):
-            WandbTestTrainable(config)
-
-        # No API key
-        config = {"wandb": {"project": "test_project"}}
-        with pytest.raises(ValueError):
-            WandbTestTrainable(config)
-
-        # API Key in config
-        config = {"wandb": {"project": "test_project", "api_key": "1234"}}
-        WandbTestTrainable(config)
-        assert os.environ[WANDB_ENV_VAR] == "1234"
-
-        del os.environ[WANDB_ENV_VAR]
-
-    def test_wandb_mixin_api_key_file(self):
-        # API Key file
-        with tempfile.NamedTemporaryFile("wt") as fp:
-            fp.write("5678")
-            fp.flush()
-
-            config = {"wandb": {"project": "test_project", "api_key_file": fp.name}}
-
-            WandbTestTrainable(config)
-            assert os.environ[WANDB_ENV_VAR] == "5678"
-
-    def test_wandb_mixin_init(self, trial, monkeypatch):
-        # API Key in env
-        monkeypatch.setenv(WANDB_ENV_VAR, "9012")
-        config = {"wandb": {"project": "test_project"}}
-        trainable = WandbTestTrainable(config)
-
-        # From now on, the API key is in the env variable.
-
-        # Default configuration
-        config = {"wandb": {"project": "test_project"}}
-        trial_info = _TrialInfo(trial)
-        config[TRIAL_INFO] = trial_info
-
-        trainable = WandbTestTrainable(config)
-        assert trainable.wandb.kwargs["project"] == "test_project"
-        assert trainable.wandb.kwargs["id"] == trial.trial_id
-        assert trainable.wandb.kwargs["name"] == trial.trial_name
-        assert trainable.wandb.kwargs["group"] == "WandbTestTrainable"
-
-    def test_wandb_mixin_rllib(self):
-        """Test compatibility with RLlib configuration dicts"""
-        # Local import to avoid tune dependency on rllib
-        try:
-            from ray.rllib.algorithms.ppo import PPO
-        except ImportError:
-            pytest.skip("ray[rllib] not available")
-
-        class WandbPPOTrainer(_MockWandbTrainableMixin, PPO):
+    def test_wandb_mixin(self):
+        class WandbTestTrainable(WandbTrainableMixin, Trainable):
             pass
 
-        config = {
-            "env": "CartPole-v0",
-            "wandb": {"project": "test_project", "api_key": "1234"},
-        }
-
-        # Test that trainer object can be initialized
-        WandbPPOTrainer(config)
+        config = {}
+        with pytest.raises(DeprecationWarning):
+            WandbTestTrainable(config)
 
 
 class TestWandbMixinDecorator:
-    def test_wandb_decorator_config(self, train_fn):
-        # Needs at least a project
-        config = {}
-        with pytest.raises(ValueError):
-            wrap_function(train_fn)(config)
+    def test_wandb_decorator(self):
+        with pytest.raises(DeprecationWarning):
 
-        # No API key
-        config = {"wandb": {"project": "test_project"}}
-        with pytest.raises(ValueError):
-            wrap_function(train_fn)(config)
-
-        # API Key in config
-        config = {"wandb": {"project": "test_project", "api_key": "1234"}}
-        wrap_function(train_fn)(config)
-        assert os.environ[WANDB_ENV_VAR] == "1234"
-
-    def test_wandb_decorator_api_key_file(self, train_fn):
-        # API Key file
-        with tempfile.NamedTemporaryFile("wt") as fp:
-            fp.write("5678")
-            fp.flush()
-
-            config = {"wandb": {"project": "test_project", "api_key_file": fp.name}}
-
-            wrap_function(train_fn)(config)
-            assert os.environ[WANDB_ENV_VAR] == "5678"
-
-    def test_wandb_decorator_init(self, trial, train_fn, monkeypatch):
-        trial_info = _TrialInfo(trial)
-
-        # API Key in env
-        monkeypatch.setenv(WANDB_ENV_VAR, "9012")
-        config = {"wandb": {"project": "test_project"}}
-        wrapped = wrap_function(train_fn)(config)
-
-        # From now on, the API key is in the env variable.
-
-        # Default configuration
-        config = {"wandb": {"project": "test_project"}}
-        config[TRIAL_INFO] = trial_info
-
-        wrapped = wrap_function(train_fn)(config)
-        assert wrapped.wandb.kwargs["project"] == "test_project"
-        assert wrapped.wandb.kwargs["id"] == trial.trial_id
-        assert wrapped.wandb.kwargs["name"] == trial.trial_name
+            @wandb_mixin
+            def train_fn(config):
+                return 1
 
 
 def test_wandb_logging_process_run_info_hook(monkeypatch):

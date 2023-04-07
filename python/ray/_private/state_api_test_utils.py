@@ -8,10 +8,11 @@ import numpy as np
 import pprint
 import time
 import traceback
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Union
 from ray.experimental.state.api import list_tasks
 import ray
 from ray.actor import ActorHandle
+from ray.experimental.state.api import list_workers
 
 
 @dataclass
@@ -309,13 +310,55 @@ def periodic_invoke_state_apis_with_actor(*args, **kwargs) -> ActorHandle:
     return actor
 
 
-def verify_failed_task(name: str, error_type: str) -> bool:
+def summarize_worker_startup_time():
+    workers = list_workers(
+        detail=True,
+        filters=[("worker_type", "=", "WORKER")],
+        limit=10000,
+        raise_on_missing_output=False,
+    )
+    time_to_launch = []
+    time_to_initialize = []
+    for worker in workers:
+        launch_time = worker.get("worker_launch_time_ms")
+        launched_time = worker.get("worker_launched_time_ms")
+        start_time = worker.get("start_time_ms")
+
+        if launched_time > 0:
+            time_to_launch.append(launched_time - launch_time)
+        if start_time:
+            time_to_initialize.append(start_time - launched_time)
+    time_to_launch.sort()
+    time_to_initialize.sort()
+
+    def print_latencies(latencies):
+        print(f"Avg: {round(sum(latencies) / len(latencies), 2)} ms")
+        print(f"P25: {round(latencies[int(len(latencies) * 0.25)], 2)} ms")
+        print(f"P50: {round(latencies[int(len(latencies) * 0.5)], 2)} ms")
+        print(f"P95: {round(latencies[int(len(latencies) * 0.95)], 2)} ms")
+        print(f"P99: {round(latencies[int(len(latencies) * 0.99)], 2)} ms")
+
+    print("Time to launch workers")
+    print_latencies(time_to_launch)
+    print("=======================")
+    print("Time to initialize workers")
+    print_latencies(time_to_initialize)
+
+
+def verify_failed_task(
+    name: str, error_type: str, error_message: Union[str, List[str]]
+) -> bool:
     """
     Check if a task with 'name' has failed with the exact error type 'error_type'
+    and 'error_message' in the error message.
     """
-    tasks = list_tasks(filters=[("name", "=", name)])
+    tasks = list_tasks(filters=[("name", "=", name)], detail=True)
     assert len(tasks) == 1, tasks
     t = tasks[0]
     assert t["state"] == "FAILED", t
     assert t["error_type"] == error_type, t
+    if isinstance(error_message, str):
+        error_message = [error_message]
+    for msg in error_message:
+        assert msg in t.get("error_message", None), t
     return True

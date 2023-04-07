@@ -5,6 +5,8 @@ Ray Use Cases
 
 This page indexes common Ray use cases for scaling ML. It contains highlighted references to blogs, examples, and tutorials also located elsewhere in the Ray documentation.
 
+.. _ref-use-cases-batch-infer:
+
 Batch Inference
 ---------------
 
@@ -81,7 +83,7 @@ To train multiple independent models, use the Ray Tune (:ref:`Tutorial <mmt-tune
 
 You can use Tune with your current data preprocessing pipeline if your data source fits into the memory of a single machine (node). 
 If you need to scale your data, or you want to plan for future scaling, use the :ref:`Ray Data <datasets>` library.
-Your data must be a :ref:`supported format <data-compatibility>`, to use Ray Data. 
+Your data must be a :ref:`supported format <input-output>`, to use Ray Data. 
 
 Alternative solutions exist for less common cases: 
 

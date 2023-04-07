@@ -9,8 +9,10 @@ from ray.serve._private.common import (
     DeploymentStatus,
     StatusOverview,
     DeploymentInfo,
+    ReplicaState,
+    ServeDeployMode,
 )
-from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
+from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -441,49 +443,9 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         return config
 
-    def prepend_app_name_to_deployment_names(self):
-        """Prepend the app name to all deployment names listed in the config."""
-        app_config = self.dict(exclude_unset=True)
-
-        if "deployments" in app_config and not self.name == "":
-            for idx, deployment in enumerate(app_config["deployments"]):
-                deployment["name"] = (
-                    self.name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment["name"]
-                )
-                app_config["deployments"][idx] = deployment
-
-        return ServeApplicationSchema.parse_obj(app_config)
-
-    def remove_app_name_from_deployment_names(self):
-        """Remove the app name prefix from all deployment names listed in the config.
-
-        This method should only be called on configs that have been processed internally
-        through prepend_app_name_to_deployment_names, which appends the app name prefix
-        to every deployment name.
-        """
-        app_config = self.dict(exclude_unset=True)
-        if "deployments" in app_config and not self.name == "":
-            for idx, deployment in enumerate(app_config["deployments"]):
-                prefix = self.name + DEPLOYMENT_NAME_PREFIX_SEPARATOR
-                # This method should not be called on any config that's not processed
-                # internally & returned by prepend_app_name_to_deployment_names
-                assert deployment["name"].startswith(prefix)
-
-                deployment["name"] = deployment["name"][len(prefix) :]
-                app_config["deployments"][idx] = deployment
-
-        return ServeApplicationSchema.parse_obj(app_config)
-
-    def to_deploy_schema(self):
-        return ServeDeploySchema(
-            host=self.host,
-            port=self.port,
-            applications=[self],
-        )
-
 
 @PublicAPI(stability="alpha")
-class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
     host: str = Field(
         default="0.0.0.0",
         description=(
@@ -500,6 +462,29 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
             "Serve has started running. Serve must be shut down and restarted "
             "with the new port instead."
         ),
+    )
+    root_path: str = Field(
+        default="",
+        description=(
+            'Root path to mount the serve application (for example, "/serve"). All '
+            'deployment routes will be prefixed with this path. Defaults to "".'
+        ),
+    )
+
+
+@PublicAPI(stability="alpha")
+class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+    proxy_location: DeploymentMode = Field(
+        default=DeploymentMode.EveryNode,
+        description=(
+            "The location of HTTP servers.\n"
+            '- "EveryNode" (default): start one HTTP server per node.\n'
+            '- "HeadOnly": start one HTTP server on the head node.\n'
+            '- "NoServer": disable HTTP server.'
+        ),
+    )
+    http_options: HTTPOptionsSchema = Field(
+        default=HTTPOptionsSchema(), description="Options to start the HTTP Proxy with."
     )
     applications: List[ServeApplicationSchema] = Field(
         default=[],
@@ -535,6 +520,34 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
             )
         return v
 
+    @validator("applications")
+    def application_names_nonempty(cls, v):
+        for app in v:
+            if len(app.name) == 0:
+                raise ValueError("Application names must be nonempty.")
+        return v
+
+    @root_validator
+    def nested_host_and_port(cls, values):
+        # TODO (zcin): ServeApplicationSchema still needs to have host and port
+        # fields to support single-app mode, but in multi-app mode the host and port
+        # fields at the top-level deploy config is used instead. Eventually, after
+        # migration, we should remove these fields from ServeApplicationSchema.
+        for app_config in values.get("applications"):
+            if "host" in app_config.dict(exclude_unset=True):
+                raise ValueError(
+                    f'Host "{app_config.host}" is set in the config for application '
+                    f"`{app_config.name}`. Please remove it and set host in the top "
+                    "level deploy config only."
+                )
+            if "port" in app_config.dict(exclude_unset=True):
+                raise ValueError(
+                    f"Port {app_config.port} is set in the config for application "
+                    f"`{app_config.name}`. Please remove it and set port in the top "
+                    "level deploy config only."
+                )
+        return values
+
     @staticmethod
     def get_empty_schema_dict() -> Dict:
         """Returns an empty deploy schema dictionary.
@@ -546,7 +559,35 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class DeploymentDetails(BaseModel, extra=Extra.forbid):
+class ReplicaDetails(BaseModel, extra=Extra.forbid, frozen=True):
+    replica_id: str = Field(
+        description=(
+            "Unique ID for the replica. By default, this will be "
+            '"<deployment name>#<replica suffix>", where the replica suffix is a '
+            "randomly generated unique string."
+        )
+    )
+    state: ReplicaState = Field(description="Current state of the replica.")
+    pid: Optional[int] = Field(description="PID of the replica actor process.")
+    actor_name: str = Field(description="Name of the replica actor.")
+    actor_id: Optional[str] = Field(description="ID of the replica actor.")
+    node_id: Optional[str] = Field(
+        description="ID of the node that the replica actor is running on."
+    )
+    node_ip: Optional[str] = Field(
+        description="IP address of the node that the replica actor is running on."
+    )
+    start_time_s: float = Field(
+        description=(
+            "The time at which the replica actor was started. If the controller dies, "
+            "this is the time at which the controller recovers and retrieves replica "
+            "state from the running replica actor."
+        )
+    )
+
+
+@PublicAPI(stability="alpha")
+class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     name: str = Field(description="Deployment name.")
     status: DeploymentStatus = Field(
         description="The current status of the deployment."
@@ -564,6 +605,9 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid):
             "options, or Serve default values."
         )
     )
+    replicas: List[ReplicaDetails] = Field(
+        description="Details about the live replicas of this deployment."
+    )
 
     @validator("deployment_config")
     def deployment_route_prefix_not_set(cls, v: DeploymentSchema):
@@ -580,7 +624,7 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class ApplicationDetails(BaseModel, extra=Extra.forbid):
+class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     name: str = Field(description="Application name.")
     route_prefix: Optional[str] = Field(
         ...,
@@ -613,7 +657,7 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
     last_deployed_time_s: float = Field(
         description="The time at which the application was deployed."
     )
-    deployed_app_config: ServeApplicationSchema = Field(
+    deployed_app_config: Optional[ServeApplicationSchema] = Field(
         description=(
             "The exact copy of the application config that was submitted to the "
             "cluster. This will include all of, and only, the options that were "
@@ -634,14 +678,46 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
         "route_prefix", allow_reuse=True
     )(_route_prefix_format)
 
+    def get_status_dict(self) -> Dict:
+        # NOTE(zcin): We use json.loads(model.json()) since model.dict() doesn't expand
+        # dataclasses (ApplicationStatusInfo and DeploymentStatusInfo are dataclasses)
+        # See https://github.com/pydantic/pydantic/issues/3764.
+        return json.loads(
+            ServeStatusSchema(
+                name=self.name,
+                app_status=ApplicationStatusInfo(
+                    status=self.status,
+                    message=self.message,
+                    deployment_timestamp=self.last_deployed_time_s,
+                ),
+                deployment_statuses=[
+                    DeploymentStatusInfo(
+                        name=name,
+                        status=d.status,
+                        message=d.message,
+                    )
+                    for name, d in self.deployments.items()
+                ],
+            ).json()
+        )
+
 
 @PublicAPI(stability="alpha")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
-    host: Optional[str] = Field(
-        description="The host on which the HTTP server is listening for requests."
+    proxy_location: Optional[DeploymentMode] = Field(
+        description=(
+            "The location of HTTP servers.\n"
+            '- "EveryNode": start one HTTP server per node.\n'
+            '- "HeadOnly": start one HTTP server on the head node.\n'
+            '- "NoServer": disable HTTP server.'
+        ),
     )
-    port: Optional[int] = Field(
-        description="The port on which the HTTP server is listening for requests."
+    http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
+    deploy_mode: ServeDeployMode = Field(
+        description=(
+            "Whether a single-app config of format ServeApplicationSchema or multi-app "
+            "config of format ServeDeploySchema was deployed to the cluster."
+        )
     )
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
@@ -654,7 +730,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         Represents no Serve instance running on the cluster.
         """
 
-        return {"applications": {}}
+        return {"deploy_mode": "UNSET", "applications": {}}
 
 
 @PublicAPI(stability="beta")

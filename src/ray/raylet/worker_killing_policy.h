@@ -28,6 +28,7 @@ namespace raylet {
 
 constexpr char kLifoPolicy[] = "retriable_lifo";
 constexpr char kGroupByOwner[] = "group_by_owner";
+constexpr char kFifoPolicy[] = "retriable_fifo";
 
 /// Provides the policy on which worker to prioritize killing.
 class WorkerKillingPolicy {

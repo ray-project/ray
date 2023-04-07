@@ -48,6 +48,10 @@ def scrub_traceback(ex):
     )
     # Clean up object address.
     ex = re.sub("object at .*?>", "object at ADDRESS>", ex)
+    # This is from ray.util.inspect_serializability()
+    ex = re.sub(
+        "=[\s\S]*Checking Serializability of[\s\S]*=", "INSPECT_SERIALIZABILITY", ex
+    )
     return ex
 
 
@@ -327,10 +331,11 @@ RuntimeError: Failed to unpickle serialized exception"""
 
 
 def test_serialization_error_message(shutdown_only):
-    expected_output_task = """Could not serialize the argument <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.task_with_unserializable_arg. Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting for more information."""  # noqa
-    expected_output_actor = """Could not serialize the argument <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.A.__init__. Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting for more information."""  # noqa
-    expected_capture_output_task = """Could not serialize the function test_traceback.test_serialization_error_message.<locals>.capture_lock. Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting for more information."""  # noqa
-    expected_capture_output_actor = """Could not serialize the actor class test_traceback.test_serialization_error_message.<locals>.B.__init__. Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting for more information."""  # noqa
+    expected_output_ray_put = """Could not serialize the put value <unlocked _thread.lock object at ADDRESS>:\nINSPECT_SERIALIZABILITY"""  # noqa
+    expected_output_task = """Could not serialize the argument <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.task_with_unserializable_arg:\nINSPECT_SERIALIZABILITY"""  # noqa
+    expected_output_actor = """Could not serialize the argument <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.A.__init__:\nINSPECT_SERIALIZABILITY"""  # noqa
+    expected_capture_output_task = """Could not serialize the function test_traceback.test_serialization_error_message.<locals>.capture_lock:\nINSPECT_SERIALIZABILITY"""  # noqa
+    expected_capture_output_actor = """Could not serialize the actor class test_traceback.test_serialization_error_message.<locals>.B.__init__:\nINSPECT_SERIALIZABILITY"""  # noqa
     ray.init(num_cpus=1)
     lock = threading.Lock()
 
@@ -352,6 +357,13 @@ def test_serialization_error_message(shutdown_only):
         def __init__(self):
             print(lock)
 
+    """
+    Test ray.put() an unserializable object.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        ray.put(lock)
+
+    assert clean_noqa(expected_output_ray_put) == scrub_traceback(str(excinfo.value))
     """
     Test a task with an unserializable object.
     """

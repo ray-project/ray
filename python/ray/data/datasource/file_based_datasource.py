@@ -374,6 +374,7 @@ class _FileBasedDatasourceReader(Reader):
         partitioning: Partitioning = None,
         # TODO(ekl) deprecate this once read fusion is available.
         _block_udf: Optional[Callable[[Block], Block]] = None,
+        ignore_missing_paths: bool = False,
         **reader_args,
     ):
         _check_pyarrow_version()
@@ -384,12 +385,27 @@ class _FileBasedDatasourceReader(Reader):
         self._partition_filter = partition_filter
         self._partitioning = partitioning
         self._block_udf = _block_udf
+        self._ignore_missing_paths = ignore_missing_paths
         self._reader_args = reader_args
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         self._paths, self._file_sizes = map(
             list,
-            zip(*meta_provider.expand_paths(paths, self._filesystem, partitioning)),
+            zip(
+                *meta_provider.expand_paths(
+                    paths,
+                    self._filesystem,
+                    partitioning,
+                    ignore_missing_paths=ignore_missing_paths,
+                )
+            ),
         )
+
+        if ignore_missing_paths and len(self._paths) == 0:
+            raise ValueError(
+                "None of the provided paths exist. "
+                "The 'ignore_missing_paths' field is set to True."
+            )
+
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
             path_to_size = dict(zip(self._paths, self._file_sizes))

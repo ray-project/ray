@@ -17,6 +17,9 @@ Ray Datasets Glossary
         .. doctest::
 
             >>> import ray
+            >>> # Dataset is executed by streaming executor by default, which doesn't
+            >>> # preserve the order, so we explicitly set it here.
+            >>> ray.data.context.DatasetContext.get_current().execution_options.preserve_order = True
             >>> dataset = ray.data.range_table(10)
             >>> next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5)))
             {'value': array([0, 1, 2, 3, 4])}

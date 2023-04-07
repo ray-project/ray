@@ -207,7 +207,14 @@ ray_files += [
     for dirpath, dirnames, filenames in os.walk("ray/dashboard/modules/metrics/export")
     for filename in filenames
 ]
-ray_files += ["ray/dashboard/modules/metrics/grafana_dashboard_base.json"]
+ray_files += [
+    os.path.join(dirpath, filename)
+    for dirpath, dirnames, filenames in os.walk(
+        "ray/dashboard/modules/metrics/dashboards"
+    )
+    for filename in filenames
+    if filename.endswith(".json")
+]
 
 # html templates for notebook integration
 ray_files += [
@@ -312,10 +319,11 @@ if setup_spec.type == SetupType.RAY:
         "dataclasses; python_version < '3.7'",
         "filelock",
         # Tracking issue: https://github.com/ray-project/ray/issues/30984
-        "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa
-        "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'",  # noqa
-        "grpcio >= 1.32.0; python_version < '3.10' and sys_platform != 'darwin'",
-        "grpcio >= 1.42.0; python_version >= '3.10' and sys_platform != 'darwin'",
+        "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa:E501
+        "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'",  # noqa:E501
+        # Original issue: https://github.com/ray-project/ray/issues/33833
+        "grpcio >= 1.32.0, <= 1.51.3; python_version < '3.10' and sys_platform != 'darwin'",  # noqa:E501
+        "grpcio >= 1.42.0, <= 1.51.3; python_version >= '3.10' and sys_platform != 'darwin'",  # noqa:E501
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",

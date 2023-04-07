@@ -16,6 +16,7 @@ from ray.air._internal.remote_storage import (
     is_non_local_path_uri,
     list_at_uri,
 )
+from ray.air._internal import usage as air_usage
 from ray.air.checkpoint import Checkpoint
 from ray.air import session
 from ray.air.config import RunConfig, ScalingConfig
@@ -45,7 +46,21 @@ logger = logging.getLogger(__name__)
 class TrainingFailedError(RuntimeError):
     """An error indicating that training has failed."""
 
-    pass
+    _RESTORE_MSG = (
+        "The Ray Train run failed. Please inspect the previous error messages for a "
+        "cause. After fixing the issue (assuming that the error is not caused by "
+        "your own application logic, but rather an error such as OOM), you can restart "
+        "the run from scratch or continue this run.\n"
+        "To continue this run, you can use: "
+        '`trainer = {trainer_cls_name}.restore("{path}")`.'
+    )
+
+    _FAILURE_CONFIG_MSG = (
+        "To start a new run that will retry on training failures, set "
+        "`air.RunConfig(failure_config=air.FailureConfig(max_failures))` "
+        "in the Trainer's `run_config` with `max_failures > 0`, or `max_failures = -1` "
+        "for unlimited retries."
+    )
 
 
 @DeveloperAPI
@@ -54,6 +69,9 @@ class BaseTrainer(abc.ABC):
 
     Note: The base ``BaseTrainer`` class cannot be instantiated directly. Only
     one of its subclasses can be used.
+
+    Note to AIR developers: If a new AIR trainer is added, please update
+    `air/_internal/usage.py`.
 
     **How does a trainer work?**
 
@@ -168,7 +186,6 @@ class BaseTrainer(abc.ABC):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-
         self.scaling_config = (
             scaling_config if scaling_config is not None else ScalingConfig()
         )
@@ -181,6 +198,8 @@ class BaseTrainer(abc.ABC):
         self._restore_path = None
 
         self._validate_attributes()
+
+        air_usage.tag_air_trainer(self)
 
     @PublicAPI(stability="alpha")
     @classmethod
@@ -543,7 +562,7 @@ class BaseTrainer(abc.ABC):
 
         Raises:
             TrainingFailedError: If any failures during the execution of
-            ``self.as_trainable()``.
+            ``self.as_trainable()``, or during the Tune execution loop.
         """
         from ray.tune.tuner import Tuner, TunerInternal
         from ray.tune import TuneError
@@ -571,14 +590,30 @@ class BaseTrainer(abc.ABC):
         )
         self._save(experiment_path)
 
-        result_grid = tuner.fit()
-        assert len(result_grid) == 1
+        restore_msg = TrainingFailedError._RESTORE_MSG.format(
+            trainer_cls_name=self.__class__.__name__,
+            path=str(experiment_path),
+        )
+
         try:
-            result = result_grid[0]
-            if result.error:
-                raise result.error
+            result_grid = tuner.fit()
         except TuneError as e:
-            raise TrainingFailedError from e
+            # Catch any `TuneError`s raised by the `Tuner.fit` call.
+            # Unwrap the `TuneError` if needed.
+            parent_error = e.__cause__ or e
+
+            # Raise it to the user as a `TrainingFailedError` with a message to restore.
+            raise TrainingFailedError(restore_msg) from parent_error
+        # Other exceptions get passed through directly (ex: on `fail_fast='raise'`)
+
+        assert len(result_grid) == 1
+        result = result_grid[0]
+        if result.error:
+            # Raise trainable errors to the user with a message to restore
+            # or configure `FailureConfig` in a new run.
+            raise TrainingFailedError(
+                "\n".join([restore_msg, TrainingFailedError._FAILURE_CONFIG_MSG])
+            ) from result.error
         return result
 
     def _save(self, experiment_path: Union[str, Path]):

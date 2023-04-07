@@ -1,4 +1,5 @@
 import itertools
+import random
 import pytest
 import threading
 import time
@@ -6,6 +7,7 @@ import time
 from typing import List, Any
 
 import ray
+from ray import cloudpickle
 from ray.data.context import DatasetContext
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -92,15 +94,29 @@ def test_output_split_e2e(ray_start_10_cpus_shared):
 def test_streaming_split_e2e(ray_start_10_cpus_shared):
     def get_lengths(*iterators, use_iter_batches=True):
         lengths = []
-        for it in iterators:
-            x = 0
-            if use_iter_batches:
-                for batch in it.iter_batches():
-                    x += len(batch)
-            else:
-                for _ in it.iter_rows():
-                    x += 1
-            lengths.append(x)
+
+        class Runner(threading.Thread):
+            def __init__(self, it):
+                self.it = it
+                super().__init__()
+
+            def run(self):
+                it = self.it
+                x = 0
+                if use_iter_batches:
+                    for batch in it.iter_batches():
+                        x += len(batch)
+                else:
+                    for _ in it.iter_rows():
+                        x += 1
+                lengths.append(x)
+
+        runners = [Runner(it) for it in iterators]
+        for r in runners:
+            r.start()
+        for r in runners:
+            r.join()
+
         lengths.sort()
         return lengths
 
@@ -109,35 +125,91 @@ def test_streaming_split_e2e(ray_start_10_cpus_shared):
         i1,
         i2,
     ) = ds.streaming_split(2, equal=True)
-    lengths = get_lengths(i1, i2)
-    assert lengths == [500, 500], lengths
+    for _ in range(2):
+        lengths = get_lengths(i1, i2)
+        assert lengths == [500, 500], lengths
 
     ds = ray.data.range(1)
     (
         i1,
         i2,
     ) = ds.streaming_split(2, equal=True)
-    lengths = get_lengths(i1, i2)
-    assert lengths == [0, 0], lengths
+    for _ in range(2):
+        lengths = get_lengths(i1, i2)
+        assert lengths == [0, 0], lengths
 
     ds = ray.data.range(1)
     (
         i1,
         i2,
     ) = ds.streaming_split(2, equal=False)
-    lengths = get_lengths(i1, i2)
-    assert lengths == [0, 1], lengths
+    for _ in range(2):
+        lengths = get_lengths(i1, i2)
+        assert lengths == [0, 1], lengths
 
     ds = ray.data.range(1000, parallelism=10)
     for equal_split, use_iter_batches in itertools.product(
         [True, False], [True, False]
     ):
         i1, i2, i3 = ds.streaming_split(3, equal=equal_split)
-        lengths = get_lengths(i1, i2, i3, use_iter_batches=use_iter_batches)
-        if equal_split:
-            assert lengths == [333, 333, 333], lengths
-        else:
-            assert lengths == [300, 300, 400], lengths
+        for _ in range(2):
+            lengths = get_lengths(i1, i2, i3, use_iter_batches=use_iter_batches)
+            if equal_split:
+                assert lengths == [333, 333, 333], lengths
+            else:
+                assert lengths == [300, 300, 400], lengths
+
+
+def test_streaming_split_barrier(ray_start_10_cpus_shared):
+    ds = ray.data.range(20, parallelism=20)
+    (
+        i1,
+        i2,
+    ) = ds.streaming_split(2, equal=True)
+
+    @ray.remote
+    def consume(x, times):
+        i = 0
+        for _ in range(times):
+            for _ in x.iter_rows():
+                i += 1
+        return i
+
+    # Succeeds.
+    ray.get([consume.remote(i1, 2), consume.remote(i2, 2)])
+    ray.get([consume.remote(i1, 2), consume.remote(i2, 2)])
+    ray.get([consume.remote(i1, 2), consume.remote(i2, 2)])
+
+    # Blocks forever since one reader is stalled.
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get([consume.remote(i1, 2), consume.remote(i2, 1)], timeout=3)
+
+
+def test_streaming_split_invalid_iterator(ray_start_10_cpus_shared):
+    ds = ray.data.range(20, parallelism=20)
+    (
+        i1,
+        i2,
+    ) = ds.streaming_split(2, equal=True)
+
+    @ray.remote
+    def consume(x, times):
+        i = 0
+        for _ in range(times):
+            for _ in x.iter_rows():
+                i += 1
+        return i
+
+    # InvalidIterator error from too many concurrent readers.
+    with pytest.raises(ValueError):
+        ray.get(
+            [
+                consume.remote(i1, 4),
+                consume.remote(i2, 4),
+                consume.remote(i1, 4),
+                consume.remote(i2, 4),
+            ]
+        )
 
 
 def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_dataset_context):
@@ -146,7 +218,7 @@ def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_dataset_contex
 
     def run():
         ray.data.range(5, parallelism=5).map(
-            lambda x: x, compute=ray.data.ActorPoolStrategy(2, 2)
+            lambda x: x, compute=ray.data.ActorPoolStrategy(size=2)
         ).take_all()
 
     DatasetContext.get_current().execution_options.resource_limits = (
@@ -313,7 +385,9 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_dataset_context):
     # 6 tasks + 1 tasks in flight per actor => need at least 6 actors to run.
     ray.data.range(6, parallelism=6).map_batches(
         barrier1,
-        compute=ray.data.ActorPoolStrategy(1, 6, max_tasks_in_flight_per_actor=1),
+        compute=ray.data.ActorPoolStrategy(
+            min_size=1, max_size=6, max_tasks_in_flight_per_actor=1
+        ),
         batch_size=None,
     ).take_all()
     assert ray.get(b1.get_max_waiters.remote()) == 6
@@ -328,7 +402,9 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_dataset_context):
     # 6 tasks + 2 tasks in flight per actor => only scale up to 3 actors
     ray.data.range(6, parallelism=6).map_batches(
         barrier2,
-        compute=ray.data.ActorPoolStrategy(1, 3, max_tasks_in_flight_per_actor=2),
+        compute=ray.data.ActorPoolStrategy(
+            min_size=1, max_size=3, max_tasks_in_flight_per_actor=2
+        ),
         batch_size=None,
     ).take_all()
     assert ray.get(b2.get_max_waiters.remote()) == 3
@@ -343,7 +419,7 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_dataset_context):
     # This will hang, since the actor pool is too small.
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.data.range(6, parallelism=6).map(
-            barrier3, compute=ray.data.ActorPoolStrategy(1, 2)
+            barrier3, compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2)
         ).take_all()
 
 
@@ -360,9 +436,47 @@ def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_dataset_context)
     DatasetContext.get_current().execution_options.resource_limits.cpu = 2
     ray.data.range(5, parallelism=5).map_batches(
         f,
-        compute=ray.data.ActorPoolStrategy(1, 2),
+        compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
         batch_size=None,
     ).map_batches(lambda x: x, batch_size=None, num_cpus=2).take_all()
+
+
+def test_can_pickle(ray_start_10_cpus_shared, restore_dataset_context):
+    DatasetContext.get_current().new_execution_backend = True
+    DatasetContext.get_current().use_streaming_executor = True
+
+    ds = ray.data.range(1000000)
+    it = ds.iter_batches()
+    next(it)
+
+    # Should work even if a streaming exec is in progress.
+    ds2 = cloudpickle.loads(cloudpickle.dumps(ds))
+    assert ds2.count() == 1000000
+
+
+def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_dataset_context):
+    DatasetContext.get_current().new_execution_backend = True
+    DatasetContext.get_current().use_streaming_executor = True
+
+    def f(x):
+        import os
+
+        if random.random() > 0.9:
+            print("force exit")
+            os._exit(1)
+        return x
+
+    # Test recover.
+    base = ray.data.range(1000, parallelism=100)
+    ds1 = base.map_batches(
+        f, compute=ray.data.ActorPoolStrategy(4, 4), max_task_retries=999
+    )
+    ds1.take_all()
+
+    # Test disabling fault tolerance.
+    ds2 = base.map_batches(f, compute=ray.data.ActorPoolStrategy(4, 4), max_restarts=0)
+    with pytest.raises(ray.exceptions.RayActorError):
+        ds2.take_all()
 
 
 if __name__ == "__main__":

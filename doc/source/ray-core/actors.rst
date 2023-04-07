@@ -373,4 +373,3 @@ More about Ray Actors
     actors/actor-utils.rst
     actors/out-of-band-communication.rst
     actors/task-orders.rst
-    actors/patterns/index.rst

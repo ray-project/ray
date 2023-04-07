@@ -27,6 +27,7 @@ from ray._private.utils import (
     ensure_str,
     format_error_message,
 )
+from ray._private.serialization import pickle_dumps
 from ray._raylet import JobID, PythonFunctionDescriptor
 
 FunctionExecutionInfo = namedtuple(
@@ -457,16 +458,11 @@ class FunctionActorManager:
             job_id,
             actor_creation_function_descriptor.function_id.binary(),
         )
-        try:
-            serialized_actor_class = pickle.dumps(Class)
-        except TypeError as e:
-            msg = (
-                "Could not serialize the actor class "
-                f"{actor_creation_function_descriptor.repr}. "
-                "Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting "  # noqa
-                "for more information."
-            )
-            raise TypeError(msg) from e
+        serialized_actor_class = pickle_dumps(
+            Class,
+            f"Could not serialize the actor class "
+            f"{actor_creation_function_descriptor.repr}",
+        )
         actor_class_info = {
             "class_name": actor_creation_function_descriptor.class_name.split(".")[-1],
             "module": actor_creation_function_descriptor.module_name,

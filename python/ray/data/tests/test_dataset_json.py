@@ -198,6 +198,28 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         fs.delete_dir(_unwrap_protocol(path))
 
 
+@pytest.mark.parametrize("ignore_missing_paths", [True, False])
+def test_read_json_ignore_missing_paths(
+    ray_start_regular_shared, local_path, ignore_missing_paths
+):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(local_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True)
+
+    paths = [
+        path1,
+        "missing.json",
+    ]
+
+    if ignore_missing_paths:
+        ds = ray.data.read_json(paths, ignore_missing_paths=ignore_missing_paths)
+        assert ds.input_files() == [path1]
+    else:
+        with pytest.raises(FileNotFoundError):
+            ds = ray.data.read_json(paths, ignore_missing_paths=ignore_missing_paths)
+            ds.fully_executed()
+
+
 def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     # Single file.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})

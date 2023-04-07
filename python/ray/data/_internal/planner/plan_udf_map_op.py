@@ -34,7 +34,6 @@ def _plan_udf_map_op(
         transform_fn = generate_map_batches_fn(
             batch_size=op._batch_size,
             batch_format=op._batch_format,
-            prefetch_batches=op._prefetch_batches,
             zero_copy_batch=op._zero_copy_batch,
         )
     elif isinstance(op, MapRows):
@@ -53,8 +52,7 @@ def _plan_udf_map_op(
             raise ValueError(
                 "``compute`` must be specified when using a callable class, "
                 "and must specify the actor compute strategy. "
-                'For example, use ``compute="actors"`` or '
-                "``compute=ActorPoolStrategy(min, max)``."
+                "For example, use ``compute=ActorPoolStrategy(size=n)``."
             )
         assert isinstance(compute, ActorPoolStrategy)
 

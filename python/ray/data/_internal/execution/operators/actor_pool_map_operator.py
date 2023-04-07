@@ -6,6 +6,7 @@ import ray
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
@@ -14,6 +15,7 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
     NodeIdStr,
 )
+from ray.data._internal.execution.util import locality_string
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _map_task,
@@ -21,6 +23,8 @@ from ray.data._internal.execution.operators.map_operator import (
 )
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
+
+logger = DatasetLogger(__name__)
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
@@ -86,6 +90,16 @@ class ActorPoolMapOperator(MapOperator):
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
         for _ in range(self._autoscaling_policy.min_workers):
             self._start_actor()
+        refs = self._actor_pool.get_pending_actor_refs()
+
+        # We synchronously wait for the initial number of actors to start. This avoids
+        # situations where the scheduler is unable to schedule downstream operators
+        # due to lack of available actors, causing an initial "pileup" of objects on
+        # upstream operators, leading to a spike in memory usage prior to steady state.
+        logger.get_logger().info(
+            f"{self._name}: Waiting for {len(refs)} pool actors to start..."
+        )
+        ray.get(refs)
 
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
@@ -219,8 +233,9 @@ class ActorPoolMapOperator(MapOperator):
         if pending:
             base += f" ({pending} pending)"
         if self._actor_locality_enabled:
-            base += f" [{self._actor_pool._locality_hits} locality hits,"
-            base += f" {self._actor_pool._locality_misses} misses]"
+            base += " " + locality_string(
+                self._actor_pool._locality_hits, self._actor_pool._locality_misses
+            )
         else:
             base += " [locality off]"
         return base
@@ -276,6 +291,16 @@ class ActorPoolMapOperator(MapOperator):
                 ray_remote_args["scheduling_strategy"] = "SPREAD"
             else:
                 ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+        # Enable actor fault tolerance by default, with infinite actor recreations and
+        # up to N retries per task. The user can customize this in map_batches via
+        # extra kwargs (e.g., map_batches(..., max_restarts=0) to disable).
+        if "max_restarts" not in ray_remote_args:
+            ray_remote_args["max_restarts"] = -1
+        if (
+            "max_task_retries" not in ray_remote_args
+            and ray_remote_args.get("max_restarts") != 0
+        ):
+            ray_remote_args["max_task_retries"] = 5
         return ray_remote_args
 
 
@@ -379,24 +404,30 @@ class AutoscalingPolicy:
         Returns:
             Whether the actor pool should be scaled up by one actor.
         """
-        # TODO(Clark): Replace the ready-to-total-ratio heuristic with a a work queue
+        # TODO: Replace the ready-to-total-ratio heuristic with a a work queue
         # heuristic such that scale-up is only triggered if the current pool doesn't
         # have enough worker slots to process the work queue.
-        # TODO(Clark): Use profiling of the bundle arrival rate, worker startup
+        # TODO: Use profiling of the bundle arrival rate, worker startup
         # time, and task execution time to tailor the work queue heuristic to the
         # running workload and observed Ray performance. E.g. this could be done via an
         # augmented EMA using a queueing model
-        return (
-            # 1. The actor pool will not exceed the configured maximum size.
-            num_total_workers < self._config.max_workers
-            # TODO(Clark): Remove this once we have a good work queue heuristic and our
-            # resource-based backpressure is working well.
-            # 2. At least 80% of the workers in the pool have already started. This will
-            # ensure that workers will be launched in parallel while bounding the worker
-            # pool to requesting 125% of the cluster's available resources.
-            and num_running_workers / num_total_workers
-            > self._config.ready_to_total_workers_ratio
-        )
+        if num_total_workers < self._config.min_workers:
+            # The actor pool does not reach the configured minimum size.
+            return True
+        else:
+            return (
+                # 1. The actor pool will not exceed the configured maximum size.
+                num_total_workers < self._config.max_workers
+                # TODO: Remove this once we have a good work queue heuristic and our
+                # resource-based backpressure is working well.
+                # 2. At least 80% of the workers in the pool have already started.
+                # This will ensure that workers will be launched in parallel while
+                # bounding the worker pool to requesting 125% of the cluster's
+                # available resources.
+                and num_total_workers > 0
+                and num_running_workers / num_total_workers
+                > self._config.ready_to_total_workers_ratio
+            )
 
     def should_scale_down(
         self,

@@ -10,7 +10,6 @@ import {
   TableRow,
 } from "@material-ui/core";
 import { KeyboardArrowDown, KeyboardArrowRight } from "@material-ui/icons";
-import dayjs from "dayjs";
 import React, {
   PropsWithChildren,
   ReactNode,
@@ -20,6 +19,7 @@ import React, {
 } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
+import { formatDateFromTimeMs } from "../common/formatUtils";
 import { Actor } from "../type/actor";
 import { CoreWorkerStats, Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
@@ -86,11 +86,9 @@ export const ExpandableTableRow = ({
 const WorkerDetailTable = ({
   actorMap,
   coreWorkerStats,
-  newIA = false,
 }: {
   actorMap: { [actorId: string]: Actor };
   coreWorkerStats: CoreWorkerStats[];
-  newIA?: boolean;
 }) => {
   const actors = {} as { [actorId: string]: Actor };
   (coreWorkerStats || [])
@@ -103,7 +101,7 @@ const WorkerDetailTable = ({
 
   return (
     <TableContainer>
-      <ActorTable actors={actors} newIA={newIA} />
+      <ActorTable actors={actors} detailPathPrefix="/actors" />
     </TableContainer>
   );
 };
@@ -112,12 +110,10 @@ const RayletWorkerTable = ({
   workers = [],
   actorMap,
   mini,
-  newIA = false,
 }: {
   workers: Worker[];
   actorMap: { [actorId: string]: Actor };
   mini?: boolean;
-  newIA?: boolean;
 }) => {
   const { changeFilter, filterFunc } = useFilter();
   const [key, setKey] = useState("");
@@ -190,7 +186,6 @@ const RayletWorkerTable = ({
                     <WorkerDetailTable
                       actorMap={actorMap}
                       coreWorkerStats={coreWorkerStats}
-                      newIA={newIA}
                     />
                   }
                   length={
@@ -228,7 +223,7 @@ const RayletWorkerTable = ({
                     {cmdline && longTextCut(cmdline.filter((e) => e).join(" "))}
                   </TableCell>
                   <TableCell align="center">
-                    {dayjs(createTime * 1000).format("YYYY/MM/DD HH:mm:ss")}
+                    {formatDateFromTimeMs(createTime * 1000)}
                   </TableCell>
                   <TableCell align="center">
                     <Grid container spacing={2}>
@@ -236,19 +231,11 @@ const RayletWorkerTable = ({
                         <Grid item>
                           <Link
                             target="_blank"
-                            to={
-                              newIA
-                                ? `/new/logs/${encodeURIComponent(
-                                    ipLogMap[coreWorkerStats[0]?.ipAddress],
-                                  )}?fileName=${
-                                    coreWorkerStats[0].jobId || ""
-                                  }-${pid}`
-                                : `/log/${encodeURIComponent(
-                                    ipLogMap[coreWorkerStats[0]?.ipAddress],
-                                  )}?fileName=${
-                                    coreWorkerStats[0].jobId || ""
-                                  }-${pid}`
-                            }
+                            to={`/logs/${encodeURIComponent(
+                              ipLogMap[coreWorkerStats[0]?.ipAddress],
+                            )}?fileName=${
+                              coreWorkerStats[0].jobId || ""
+                            }-${pid}`}
                           >
                             Log
                           </Link>
