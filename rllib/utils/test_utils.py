@@ -1206,6 +1206,7 @@ class ModelChecker:
 
         # Pass a B=1 observation through the model.
         from ray.rllib.core.models.specs.specs_dict import SpecDict
+
         if isinstance(model.input_specs, SpecDict):
             inputs = {}
             for key, spec in model.input_specs.items():
