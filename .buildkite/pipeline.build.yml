@@ -377,16 +377,11 @@
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - mount -t proc -o nodev,noexec,nosuid proc /proc
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      -j $(grep -c processor /proc/cpuinfo)
-      --sandbox_fake_username=true
-      --sandbox_fake_hostname=true
-      --sandbox_default_allow_network=false
-      --spawn_strategy=linux-sandbox
+    - bazel test --config=ci $(./ci/run/bazel_export_options) $(./ci/run/bazel_sandbox_options)
       --test_tag_filters=client_tests,small_size_python_tests
       -- python/ray/tests/...
     - bash ./ci/ci.sh prepare_docker
-    - bazel test --config=ci -j $(grep -c processor /proc/cpuinfo) $(./ci/run/bazel_export_options)
+    - bazel test --config=ci$(./ci/run/bazel_export_options)
       --test_tag_filters=ray_ha
       --test_env=DOCKER_HOST=tcp://docker:2376
       --test_env=DOCKER_TLS_VERIFY=1
@@ -411,12 +406,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
     - mount -t proc -o nodev,noexec,nosuid proc /proc
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      -j $(grep -c processor /proc/cpuinfo)
-      --sandbox_fake_username=true
-      --sandbox_fake_hostname=true
-      --sandbox_default_allow_network=false
-      --spawn_strategy=linux-sandbox
+    - bazel test --config=ci $(./ci/run/bazel_export_options) $(./ci/run/bazel_sandbox_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       python/ray/tests/...
 
@@ -427,12 +417,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - mount -t proc -o nodev,noexec,nosuid proc /proc
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      -j $(grep -c processor /proc/cpuinfo)
-      --sandbox_fake_username=true
-      --sandbox_fake_hostname=true
-      --sandbox_default_allow_network=false
-      --spawn_strategy=linux-sandbox
+    - bazel test --config=ci $(./ci/run/bazel_export_options) $(./ci/run/bazel_sandbox_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       python/ray/tests/...
 
@@ -444,15 +429,9 @@
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - mount -t proc -o nodev,noexec,nosuid proc /proc
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      -j $(grep -c processor /proc/cpuinfo)
-      --sandbox_fake_username=true
-      --sandbox_fake_hostname=true
-      --sandbox_default_allow_network=false
-      --spawn_strategy=linux-sandbox
+    - bazel test --config=ci $(./scripts/bazel_export_options) $(./ci/run/bazel_sandbox_options)
       --test_tag_filters=client_tests,small_size_python_tests
       --test_env=TEST_EXTERNAL_REDIS=1
-      --sandbox_fake_username=true --sandbox_fake_hostname=true --sandbox_default_allow_network=false --spawn_strategy=linux-sandbox
       -- python/ray/tests/...
 
 - label: ":redis: (External Redis) (Large)"
@@ -472,12 +451,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
     - mount -t proc -o nodev,noexec,nosuid proc /proc
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      -j $(grep -c processor /proc/cpuinfo)
-      --sandbox_fake_username=true
-      --sandbox_fake_hostname=true
-      --sandbox_default_allow_network=false
-      --spawn_strategy=linux-sandbox
+    - bazel test --config=ci $(./scripts/bazel_export_options) $(./ci/run/bazel_sandbox_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       --test_env=TEST_EXTERNAL_REDIS=1
       -- //python/ray/tests/...
@@ -490,12 +464,7 @@
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - mount -t proc -o nodev,noexec,nosuid proc /proc
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      -j $(grep -c processor /proc/cpuinfo)
-      --sandbox_fake_username=true
-      --sandbox_fake_hostname=true
-      --sandbox_default_allow_network=false
-      --spawn_strategy=linux-sandbox
+    - bazel test --config=ci $(./scripts/bazel_export_options) $(./ci/run/bazel_sandbox_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       --test_env=TEST_EXTERNAL_REDIS=1
       -- //python/ray/tests/...
