@@ -503,24 +503,9 @@ class AttentionWrapper(TFModelV2):
             # n most recent actions together.
             else:
                 encoded = []
-                if isinstance(self.action_space, Discrete):
+                if isinstance(self.action_space, (Discrete, MultiDiscrete)):
                     for i in range(self.use_n_prev_actions):
                         encoded.append(one_hot(prev_n_actions[:, i], self.action_space))
-                elif isinstance(self.action_space, MultiDiscrete):
-                    for i in range(
-                        0, self.use_n_prev_actions, self.action_space.shape[0]
-                    ):
-                        encoded.append(
-                            one_hot(
-                                tf.cast(
-                                    prev_n_actions[
-                                        :, i : i + self.action_space.shape[0]
-                                    ],
-                                    tf.int32,
-                                ),
-                                space=self.action_space,
-                            )
-                        )
                 else:
                     encoded = prev_n_actions
 

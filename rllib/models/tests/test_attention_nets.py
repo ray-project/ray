@@ -54,7 +54,7 @@ class TestAttentionNets(unittest.TestCase):
 
     def test_attention_nets_multidiscrete_w_prev_actions_and_prev_rewards(self):
         self._run_attention_nets(
-            action_space=MultiDiscrete([2, 3]), prev_n_actions=3, prev_n_rewards=2
+            action_space=MultiDiscrete([2, 3, 7]), prev_n_actions=3, prev_n_rewards=2
         )
 
     def _run_attention_nets(self, action_space, prev_n_actions, prev_n_rewards):
