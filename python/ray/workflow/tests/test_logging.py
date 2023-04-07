@@ -1,8 +1,11 @@
 import pytest
-from ray._private.test_utils import run_string_as_driver_nonblocking
+import ray
+from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 
 
 def test_basic_workflow_logs(workflow_start_regular):
+    wait_for_condition(ray.is_initialized)()
+
     script = """
 import ray
 from ray import workflow
@@ -28,6 +31,8 @@ workflow.run(f.bind(), workflow_id="wid")
 
 
 def test_chained_workflow_logs(workflow_start_regular):
+    wait_for_condition(ray.is_initialized)()
+
     script = """
 import ray
 from ray import workflow
@@ -59,6 +64,8 @@ workflow.run(f2.bind(f1.bind()), workflow_id="wid1")
 
 
 def test_dynamic_workflow_logs(workflow_start_regular):
+    wait_for_condition(ray.is_initialized)()
+
     script = """
 import ray
 from ray import workflow
