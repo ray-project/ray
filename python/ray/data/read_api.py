@@ -1471,11 +1471,12 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
             )
 
     ds = from_pandas_refs(
-        [to_ref(next(iter(part.dask.values()))) for part in persisted_partitions]
+        [to_ref(next(iter(part.dask.values()))) for part in persisted_partitions],
+        FromDask(df),
     )
 
-    from_dask_op = FromDask(df)
-    ds._logical_plan = LogicalPlan(from_dask_op)
+    # from_dask_op = FromDask(df)
+    # ds._logical_plan = LogicalPlan(from_dask_op)
     return ds
 
 
@@ -1511,10 +1512,8 @@ def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
     from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
     parts = unwrap_partitions(df, axis=0)
-    ds = from_pandas_refs(parts)
+    ds = from_pandas_refs(parts, FromModin(df))
 
-    from_modin_op = FromModin(df)
-    ds._logical_plan = LogicalPlan(from_modin_op)
     return ds
 
 
@@ -1547,7 +1546,8 @@ def from_pandas(
 
 @DeveloperAPI
 def from_pandas_refs(
-    dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]]
+    dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]],
+    logical_op: Optional[FromPandasRefs] = None,
 ) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Ray object references to Pandas
     dataframes.
@@ -1573,8 +1573,9 @@ def from_pandas_refs(
             "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
         )
 
-    from_pandas_refs_op = FromPandasRefs(dfs)
-    logical_plan = LogicalPlan(from_pandas_refs_op)
+    if logical_op is None:
+        logical_op = FromPandasRefs(dfs)
+    logical_plan = LogicalPlan(logical_op)
 
     context = DatasetContext.get_current()
     if context.enable_pandas_block:

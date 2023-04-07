@@ -25,7 +25,10 @@ from ray.data._internal.planner.plan_all_to_all_op import _plan_all_to_all_op
 from ray.data._internal.planner.plan_from_arrow_op import _plan_from_arrow_refs_op
 from ray.data._internal.planner.plan_from_items_op import _plan_from_items_op
 from ray.data._internal.planner.plan_from_numpy_op import _plan_from_numpy_refs_op
-from ray.data._internal.planner.plan_from_pandas_op import _plan_from_pandas_refs_op
+from ray.data._internal.planner.plan_from_pandas_op import (
+    FromPandasRefsOperators,
+    _plan_from_pandas_refs_op,
+)
 from ray.data._internal.planner.plan_udf_map_op import _plan_udf_map_op
 from ray.data._internal.planner.plan_read_op import _plan_read_op
 from ray.data._internal.planner.plan_write_op import _plan_write_op
@@ -61,7 +64,9 @@ class Planner:
         elif isinstance(logical_op, FromItems):
             assert not physical_children
             physical_op = _plan_from_items_op(logical_op)
-        elif isinstance(logical_op, (FromPandasRefs, FromDask, FromModin, FromMars)):
+        # Use __args__ because isinstance() check doesn't work with subscripted generics.
+        # https://stackoverflow.com/a/45959000
+        elif isinstance(logical_op, FromPandasRefsOperators.__args__):
             assert not physical_children
             physical_op = _plan_from_pandas_refs_op(logical_op)
         elif isinstance(logical_op, FromNumpyRefs):

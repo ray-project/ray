@@ -14,10 +14,10 @@ from ray.data._internal.logical.operators.from_pandas_operator import (
 )
 from ray.data.context import DatasetContext
 
+FromPandasRefsOperators = Union[FromPandasRefs, FromDask, FromModin, FromMars]
 
-def _plan_from_pandas_refs_op(
-    op: Union[FromPandasRefs, FromDask, FromModin, FromMars]
-) -> PhysicalOperator:
+
+def _plan_from_pandas_refs_op(op: FromPandasRefsOperators) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for FromPandasRefs.
 
     Note this method only converts the given `op`, but not its input dependencies.

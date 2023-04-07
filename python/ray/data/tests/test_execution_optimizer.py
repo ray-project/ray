@@ -15,10 +15,12 @@ from ray.data._internal.logical.operators.from_arrow_operator import (
 )
 from ray.data._internal.logical.operators.from_items_operator import (
     FromItems,
-    FromTF,
     FromTorch,
 )
-from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
+from ray.data._internal.logical.operators.from_numpy_operator import (
+    FromNumpyRefs,
+    FromTF,
+)
 from ray.data._internal.logical.operators.from_pandas_operator import (
     FromDask,
     FromModin,
@@ -56,8 +58,9 @@ from ray.tests.conftest import *  # noqa
 def _check_usage_record(op_names: List[str]):
     for op_name in op_names:
         assert op_name in _op_name_white_list
+        print("===> ops list:", str(_recorded_operators))
         with _recorded_operators_lock:
-            assert _recorded_operators.get(op_name, 0) > 0
+            assert _recorded_operators.get(op_name, 0) > 0, _recorded_operators
 
 
 def test_read_operator(ray_start_regular_shared, enable_optimizer):
@@ -91,6 +94,7 @@ def test_from_items_e2e(ray_start_regular_shared, enable_optimizer):
     # Check that metadata fetch is included in stats.
     assert "FromItems" in ds.stats()
     assert ds._plan._logical_plan.dag.name == "FromItems"
+    _check_usage_record(["FromItems"])
 
 
 def test_map_batches_operator(ray_start_regular_shared, enable_optimizer):
@@ -713,10 +717,12 @@ def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
     ddf = dd.from_pandas(df, npartitions=10)
     ds = ray.data.from_dask(ddf)
+
     dfds = ds.to_pandas()
     assert df.equals(dfds)
     # Underlying implementation uses `FromPandasRefs` operator
-    assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
+    assert ds._plan._logical_plan.dag.name == "FromDask"
+    _check_usage_record(["FromDask"])
 
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
@@ -762,7 +768,8 @@ def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
     # Check that metadata fetch is included in stats.
     assert "FromPandasRefs" in ds.stats()
     # Underlying implementation uses `FromPandasRefs` operator
-    assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
+    assert ds._plan._logical_plan.dag.name == "FromModin"
+    _check_usage_record(["FromPandasRefs"])
 
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
@@ -824,6 +831,7 @@ def test_from_pandas_refs_e2e(
         # Check that metadata fetch is included in stats.
         assert "FromPandasRefs" in ds.stats()
         assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
+        _check_usage_record(["FromPandasRefs"])
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
 
@@ -859,6 +867,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
     # Check that conversion task is included in stats.
     assert "FromNumpyRefs" in ds.stats()
     assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
+    _check_usage_record(["FromNumpyRefs"])
 
     # Test chaining multiple operations
     ds2 = ds.map_batches(lambda x: x)
@@ -867,6 +876,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
     assert "MapBatches" in ds2.stats()
     assert "FromNumpyRefs" in ds2.stats()
     assert ds2._plan._logical_plan.dag.name == "MapBatches"
+    _check_usage_record(["FromNumpyRefs", "MapBatches"])
 
     # Test from single NumPy ndarray.
     ds = ray.data.from_numpy_refs(ray.put(arr1))
@@ -875,6 +885,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
     # Check that conversion task is included in stats.
     assert "FromNumpyRefs" in ds.stats()
     assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
+    _check_usage_record(["FromNumpyRefs"])
 
 
 def test_from_arrow_refs_operator(
@@ -916,6 +927,7 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
     # Check that metadata fetch is included in stats.
     assert "FromArrowRefs" in ds.stats()
     assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
+    _check_usage_record(["FromArrowRefs"])
 
     # test from single pyarrow table ref
     ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
@@ -925,6 +937,7 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
     # Check that conversion task is included in stats.
     assert "FromArrowRefs" in ds.stats()
     assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
+    _check_usage_record(["FromArrowRefs"])
 
 
 def test_from_huggingface_operator(
@@ -971,6 +984,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     assert "FromArrowRefs" in ray_dataset.stats()
     # Underlying implementation uses `FromArrowRefs` operator
     assert ray_dataset._plan._logical_plan.dag.name == "FromArrowRefs"
+    _check_usage_record(["FromArrowRefs"])
 
 
 def test_from_tf_operator(ray_start_regular_shared, enable_optimizer):
@@ -1011,6 +1025,7 @@ def test_from_tf_e2e(ray_start_regular_shared, enable_optimizer):
     assert "FromItems" in ray_dataset.stats()
     # Underlying implementation uses `FromItems` operator
     assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
+    _check_usage_record(["FromItems"])
 
 
 def test_from_torch_operator(ray_start_regular_shared, enable_optimizer, tmp_path):
@@ -1043,6 +1058,7 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
     assert "FromItems" in ray_dataset.stats()
     # Underlying implementation uses `FromItems` operator
     assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
+    _check_usage_record(["FromItems"])
 
 
 def test_execute_to_legacy_block_list(
