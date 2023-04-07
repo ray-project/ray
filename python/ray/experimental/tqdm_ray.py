@@ -26,9 +26,6 @@ ProgressBarState = Dict[str, Any]
 # Magic token used to identify Ray TQDM log lines.
 RAY_TQDM_MAGIC = "__ray_tqdm_magic_token__"
 
-# Whether we are in Jupyter.
-IN_JUPYTER = ray.widgets.util.in_notebook()
-
 # Global manager singleton.
 _manager: Optional["_BarManager"] = None
 _print = builtins.print
@@ -248,6 +245,7 @@ class _BarManager:
         self.in_hidden_state = False
         self.num_hides = 0
         self.lock = threading.RLock()
+        self.in_notebook = ray.widgets.util.in_notebook()
 
     def process_state_update(self, state: ProgressBarState) -> None:
         """Apply the remote progress bar state update.
@@ -269,7 +267,9 @@ class _BarManager:
                 prefix = ""
             else:
                 prefix = "(pid={}) ".format(state.get("pid"))
-                if not IN_JUPYTER:
+                # Avoid colorizing Jupyter output, since the tqdm bar is rendered in
+                # ipywidgets instead of in the console.
+                if not self.in_jupyter:
                     prefix = "{}{}{}{}".format(
                         colorama.Style.DIM,
                         colorama.Fore.CYAN,
@@ -281,7 +281,7 @@ class _BarManager:
                 state.get("pid"),
                 state.get("ip"),
             )
-            if not IN_JUPYTER:
+            if not self.in_jupyter:
                 prefix = "{}{}{}{}".format(
                     colorama.Style.DIM,
                     colorama.Fore.CYAN,
