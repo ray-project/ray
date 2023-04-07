@@ -111,26 +111,6 @@ absl::optional<TaskAttempt> GcsTaskManager::GcsTaskManagerStorage::GetLatestTask
   return latest_task_attempt;
 }
 
-rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
-    const TaskAttempt &task_attempt) {
-  auto idx_itr = task_attempt_index_.find(task_attempt);
-  RAY_CHECK(idx_itr != task_attempt_index_.end())
-      << "Task attempt of task: " << task_attempt.first
-      << ", attempt_number: " << task_attempt.second
-      << " should have task events in the buffer but missing.";
-  return task_events_.at(idx_itr->second);
-}
-
-const rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
-    const TaskAttempt &task_attempt) const {
-  auto idx_itr = task_attempt_index_.find(task_attempt);
-  RAY_CHECK(idx_itr != task_attempt_index_.end())
-      << "Task attempt of task: " << task_attempt.first
-      << ", attempt_number: " << task_attempt.second
-      << " should have task events in the buffer but missing.";
-  return task_events_.at(idx_itr->second);
-}
-
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
     const WorkerID &worker_id, const rpc::WorkerTableData &worker_failure_data) {
   auto task_attempts_itr = worker_to_task_attempt_index_.find(worker_id);
@@ -153,6 +133,26 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
           task_attempt, worker_failure_data.end_time_ms() * 1000, error_info);
     }
   }
+}
+
+rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
+    const TaskAttempt &task_attempt) {
+  auto idx_itr = task_attempt_index_.find(task_attempt);
+  RAY_CHECK(idx_itr != task_attempt_index_.end())
+      << "Task attempt of task: " << task_attempt.first
+      << ", attempt_number: " << task_attempt.second
+      << " should have task events in the buffer but missing.";
+  return task_events_.at(idx_itr->second);
+}
+
+const rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
+    const TaskAttempt &task_attempt) const {
+  auto idx_itr = task_attempt_index_.find(task_attempt);
+  RAY_CHECK(idx_itr != task_attempt_index_.end())
+      << "Task attempt of task: " << task_attempt.first
+      << ", attempt_number: " << task_attempt.second
+      << " should have task events in the buffer but missing.";
+  return task_events_.at(idx_itr->second);
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailed(
