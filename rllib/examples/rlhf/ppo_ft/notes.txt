@@ -7,6 +7,11 @@
 
 - There is another complication regarding running multiple parallel envs on separate machines. Each env owns a few LLMs (SFT and RM). Each env replica should independently download their own weights and load them up. The optimization we can do here is that these models are only needed for inference, so we can do inference optimization to make them faster / smaller (e.g. 4 bit quantization, etc.)
 
+- I realized our implementation of PPORLModule is not fully extendible. This is a bad implementation on PPORLModule not the base classes. --> I fixed the base classes so that it becomes super easy to by-pass the catalog logic. Catalog should remained an RLLib specific thing so that we can programatically cover various action/obs spaces, while still allowing for spaces we haven't covered. 
+
+- _initialize_loss_from_dummy_batch() is a stupid logic that we should get rid off experimentally. I have added an experimental flag to disable it upon request. We should later get rid of this thing.
+
+
 04/06
 
 - I got the RLHF env working. 

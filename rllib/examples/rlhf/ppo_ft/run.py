@@ -5,11 +5,11 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.rlhf.ppo_ft.rlhf_env import RLHFEnv
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
-from ray.rllib.examples.rlhf.ppo_ft.rlhf_ppo_torch_rl_module import RLHFPPOTorchRLModule
+from ray.rllib.examples.rlhf.ppo_ft.rlhf_ppo_module import RLHFPPOTorchRLModule
 
 ray.init(local_mode=True)
 
-class Callbacks(DefaultCallbacks):
+class ValueFunctionInitializerCallback(DefaultCallbacks):
 
     def on_algorithm_init(self, *, algorithm, **kwargs) -> None:
         learner_group = algorithm.learner_group
@@ -41,10 +41,10 @@ config = (
     PPOConfig()
     .framework("torch")
     .environment(
-        # "RLHFEnv", 
-        # env_config=env_config,
-        observation_space=env.observation_space,
-        action_space=env.action_space,
+        "RLHFEnv", 
+        env_config=env_config,
+        # observation_space=env.observation_space,
+        # action_space=env.action_space,
         disable_env_checking=True,
     )
     .rl_module(
@@ -62,7 +62,10 @@ config = (
     )
     .experimental(
         _disable_preprocessor_api=True,
+        _disable_initialize_loss_from_dummy_batch=True,
     )
 )
 
 algo = config.build()
+breakpoint()
+algo.train()
