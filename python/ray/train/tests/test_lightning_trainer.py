@@ -49,7 +49,7 @@ def test_config_builder():
     )
     assert config["_module_init_config"]["input_dim"] == 10
     assert config["_trainer_init_config"]["log_every_n_steps"] == 100
-    assert not config["_ddp_strategy_config"]
+    assert not config["_strategy_config"]
     assert not config["_model_checkpoint_config"]
 
 

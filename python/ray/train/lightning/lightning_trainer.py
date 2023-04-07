@@ -148,7 +148,8 @@ class LightningConfigBuilder:
         """Set up the configurations of ``pytorch_lightning.strategies.DDPStrategy``.
 
         Args:
-            name: The name of your distributed strategy. You can choose from "ddp" and "fsdp".
+            name: The name of your distributed strategy. You can choose
+                from "ddp" and "fsdp".
             kwargs: For valid arguments to pass, please refer to:
                 https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DDPStrategy.html
                 and
@@ -526,7 +527,7 @@ def _lightning_train_loop_per_worker(config):
         logger.warning(
             "`strategy` specified in `LightningConfig.trainer_init_config` "
             "will be ignored. LightningTrainer will create a RayDDPStrategy "
-            "object based on `LightningConfig.ddp_strategy_config`."
+            "or RayFSDPStrategy object based on `LightningConfigBuilder.strategy()`."
         )
 
     assert strategy_name in [
