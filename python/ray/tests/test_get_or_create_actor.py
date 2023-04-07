@@ -96,7 +96,7 @@ print("DONE")
         if "local Ray instance" not in line and "The object store" not in line:
             out.append(line)
     valid = "".join(out)
-    assert "DONE" in valid, out_str
+    assert valid.strip() == "DONE", out_str
 
 
 if __name__ == "__main__":

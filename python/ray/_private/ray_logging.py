@@ -20,6 +20,8 @@ from ray._private.ray_constants import (
 from ray._private.utils import binary_to_hex
 from ray.util.debug import log_once
 
+_default_handler = None
+
 
 def setup_logger(
     logging_level: int,
@@ -30,6 +32,14 @@ def setup_logger(
     if type(logging_level) is str:
         logging_level = logging.getLevelName(logging_level.upper())
     logger.setLevel(logging_level)
+    global _default_handler
+    if _default_handler is None:
+        _default_handler = logging._StderrHandler()
+        logger.addHandler(_default_handler)
+    _default_handler.setFormatter(logging.Formatter(logging_format))
+    # Setting this will avoid the message
+    # being propagated to the parent logger.
+    logger.propagate = False
 
 
 def setup_component_logger(

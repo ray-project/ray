@@ -156,30 +156,6 @@ def test_disable_access_log(serve_instance):
             assert replica_tag not in f.getvalue()
 
 
-def test_deprecated_deployment_logger(serve_instance, capfd):
-    # NOTE(edoakes): using this logger is no longer recommended as of Ray 1.13.
-    # The test is maintained for backwards compatibility.
-    logger = logging.getLogger("ray")
-
-    @serve.deployment(name="counter")
-    class Counter:
-        def __init__(self):
-            self.count = 0
-
-        def __call__(self, request):
-            self.count += 1
-            logger.info(f"count: {self.count}")
-
-    serve.run(Counter.bind())
-    requests.get("http://127.0.0.1:8000/counter/")
-
-    def counter_log_success():
-        err = capfd.readouterr().err
-        return "deployment" in err and "replica" in err and "count" in err
-
-    wait_for_condition(counter_log_success)
-
-
 def test_context_information_in_logging(serve_instance):
     """Make sure all context information exist in the log message"""
 

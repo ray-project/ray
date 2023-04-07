@@ -24,6 +24,7 @@ from ray._private.utils import detect_fate_sharing_support
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
+
     # Test that we can call ray start with various command line
     # parameters.
 
@@ -199,6 +200,7 @@ for i in range(0, 5):
 
 
 def test_ray_start_non_head(call_ray_stop_only, monkeypatch):
+
     # Test that we can call ray start to connect to an existing cluster.
 
     # Test starting Ray with a port specified.
@@ -431,7 +433,8 @@ print("success")
 
 
 def test_multi_driver_logging(ray_start_regular):
-    address = ray_start_regular["address"]
+    address_info = ray_start_regular
+    address = address_info["address"]
 
     # ray.init(address=address)
     driver1_wait = Semaphore.options(name="driver1_wait").remote(value=0)
@@ -476,10 +479,10 @@ ray.get(main_wait.release.remote())
     """
 
     p1 = run_string_as_driver_nonblocking(
-        driver_script_template.format(address, "driver1_wait", "message1", "message2")
+        driver_script_template.format(address, "driver1_wait", "1", "2")
     )
     p2 = run_string_as_driver_nonblocking(
-        driver_script_template.format(address, "driver2_wait", "message3", "message4")
+        driver_script_template.format(address, "driver2_wait", "3", "4")
     )
 
     ray.get(main_wait.acquire.remote())
@@ -489,24 +492,29 @@ ray.get(main_wait.release.remote())
     ray.get(driver1_wait.release.remote())
     ray.get(driver2_wait.release.remote())
 
-    # At this point driver1 should receive 'message1' and driver2 'message3'
+    # At this point driver1 should receive '1' and driver2 '3'
     ray.get(main_wait.acquire.remote())
     ray.get(main_wait.acquire.remote())
 
     ray.get(driver1_wait.release.remote())
     ray.get(driver2_wait.release.remote())
 
-    # At this point driver1 should receive 'message2' and driver2 'message4'
+    # At this point driver1 should receive '2' and driver2 '4'
     ray.get(main_wait.acquire.remote())
     ray.get(main_wait.acquire.remote())
 
     driver1_out = p1.stdout.read().decode("ascii")
     driver2_out = p2.stdout.read().decode("ascii")
+    if sys.platform == "win32":
+        driver1_out = driver1_out.replace("\r", "")
+        driver2_out = driver2_out.replace("\r", "")
+    driver1_out_split = driver1_out.split("\n")
+    driver2_out_split = driver2_out.split("\n")
 
-    assert "message1" in driver1_out
-    assert "message2" in driver1_out
-    assert "message3" in driver2_out
-    assert "message4" in driver2_out
+    assert driver1_out_split[0][-1] == "1", driver1_out_split
+    assert driver1_out_split[1][-1] == "2", driver1_out_split
+    assert driver2_out_split[0][-1] == "3", driver2_out_split
+    assert driver2_out_split[1][-1] == "4", driver2_out_split
 
 
 @pytest.fixture
