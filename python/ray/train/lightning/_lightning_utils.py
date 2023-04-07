@@ -2,17 +2,18 @@ import logging
 import shutil
 import torch
 import tempfile
-import pytorch_lightning as pl
-
+from packaging.version import Version
 from typing import Any, Dict, Optional
+
+import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.plugins.environments import LightningEnvironment
 from pytorch_lightning.strategies import DDPStrategy
 
-try:
+if Version(pl.__version__) >= Version("2.0.0"):
     from pytorch_lightning.strategies import FSDPStrategy
-except ImportError:
-    from pytorch_lightning.strategies import DDPFullyShardedStrateg as FSDPStrategy
+else:
+    from pytorch_lightning.strategies import DDPFullyShardedStrategy as FSDPStrategy
 
 import ray
 from ray.air import session
