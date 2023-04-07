@@ -69,7 +69,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Number of hidden layers to be used.
     "fcnet_hiddens": [256, 256],
     # Activation function descriptor.
-    # Supported values are: "tanh", "relu", "swish" (or "silu"),
+    # Supported values are: "tanh", "relu", "swish" (or "silu", which is the same),
     # "linear" (or None).
     "fcnet_activation": "tanh",
 
@@ -81,7 +81,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # observation space.
     "conv_filters": None,
     # Activation function descriptor.
-    # Supported values are: "tanh", "relu", "swish" (or "silu"),
+    # Supported values are: "tanh", "relu", "swish" (or "silu", which is the same),
     # "linear" (or None).
     "conv_activation": "relu",
 
