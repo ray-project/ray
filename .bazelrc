@@ -10,6 +10,7 @@ build --compilation_mode=opt
 # Using C++ 17 on all platforms.
 build:linux --cxxopt="-std=c++17"
 build:macos --cxxopt="-std=c++17"
+build:macos --copt="-Wno-error=implicit-function-declaration"
 build:clang-cl --cxxopt="-std=c++17"
 build:msvc-cl --cxxopt="/std:c++17"
 build:windows --cxxopt="/std:c++17"
