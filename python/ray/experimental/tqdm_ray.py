@@ -245,7 +245,9 @@ class _BarManager:
         self.in_hidden_state = False
         self.num_hides = 0
         self.lock = threading.RLock()
-        self.in_notebook = ray.widgets.util.in_notebook()
+        # Avoid colorizing Jupyter output, since the tqdm bar is rendered in
+        # ipywidgets instead of in the console.
+        self.should_colorize = not ray.widgets.util.in_notebook()
 
     def process_state_update(self, state: ProgressBarState) -> None:
         """Apply the remote progress bar state update.
@@ -267,9 +269,7 @@ class _BarManager:
                 prefix = ""
             else:
                 prefix = "(pid={}) ".format(state.get("pid"))
-                # Avoid colorizing Jupyter output, since the tqdm bar is rendered in
-                # ipywidgets instead of in the console.
-                if not self.in_jupyter:
+                if self.should_colorize:
                     prefix = "{}{}{}{}".format(
                         colorama.Style.DIM,
                         colorama.Fore.CYAN,
@@ -281,7 +281,7 @@ class _BarManager:
                 state.get("pid"),
                 state.get("ip"),
             )
-            if not self.in_jupyter:
+            if self.should_colorize:
                 prefix = "{}{}{}{}".format(
                     colorama.Style.DIM,
                     colorama.Fore.CYAN,

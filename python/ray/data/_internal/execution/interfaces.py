@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import os
 from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
 
 import ray
@@ -216,7 +217,7 @@ class ExecutionOptions:
 
     actor_locality_enabled: bool = True
 
-    verbose_progress: bool = False
+    verbose_progress: bool = bool(int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "0")))
 
 
 @dataclass
