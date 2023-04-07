@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import ExecutionOptions
 
 # The context singleton on this process.
-_default_context: "Optional[DatasetContext]" = None
+_default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
 
 # An estimate of what fraction of the object store a Datastream can use without too high
@@ -120,11 +120,11 @@ DEFAULT_BATCH_SIZE = 4096
 
 
 @DeveloperAPI
-class DatasetContext:
+class DataContext:
     """Singleton for shared Datastream resources and configurations.
 
     This object is automatically propagated to workers and can be retrieved
-    from the driver and remote workers via DatasetContext.get_current().
+    from the driver and remote workers via DataContext.get_current().
     """
 
     def __init__(
@@ -188,7 +188,7 @@ class DatasetContext:
         self.use_legacy_iter_batches = use_legacy_iter_batches
 
     @staticmethod
-    def get_current() -> "DatasetContext":
+    def get_current() -> "DataContext":
         """Get or create a singleton context.
 
         If the context has not yet been created in this process, it will be
@@ -201,7 +201,7 @@ class DatasetContext:
         with _context_lock:
 
             if _default_context is None:
-                _default_context = DatasetContext(
+                _default_context = DataContext(
                     block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
                     target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
@@ -238,7 +238,7 @@ class DatasetContext:
             return _default_context
 
     @staticmethod
-    def _set_current(context: "DatasetContext") -> None:
+    def _set_current(context: "DataContext") -> None:
         """Set the current context in a remote worker.
 
         This is used internally by Datastream to propagate the driver context to

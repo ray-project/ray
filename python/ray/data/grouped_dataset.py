@@ -118,7 +118,7 @@ class PushBasedGroupbyOp(_GroupbyOp, PushBasedShufflePlan):
 
 
 @PublicAPI
-class GroupedDataset(Generic[T]):
+class GroupedDatastream(Generic[T]):
     """Represents a grouped dataset created by calling ``Dataset.groupby()``.
 
     The actual groupby is deferred until an aggregation is applied.
