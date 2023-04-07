@@ -61,7 +61,7 @@ def test_trainer_with_native_dataloader(
 ):
     if accelerator == "cpu" and strategy == "fsdp":
         return
-    
+
     num_epochs = 4
     batch_size = 8
     num_workers = 2
