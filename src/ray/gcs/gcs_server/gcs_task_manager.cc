@@ -131,6 +131,30 @@ const rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
   return task_events_.at(idx_itr->second);
 }
 
+void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
+    const WorkerID &worker_id, const rpc::WorkerTableData &worker_failure_data) {
+  auto task_attempts_itr = worker_to_task_attempt_index_.find(worker_id);
+  if (task_attempts_itr == worker_to_task_attempt_index_.end()) {
+    // No tasks by the worker.
+    return;
+  }
+
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
+  std::stringstream error_message;
+  error_message << "Worker running the task (" << worker_id.Hex()
+                << ") died with exit_type: " << worker_failure_data.exit_type()
+                << " with error_message: " << worker_failure_data.exit_detail();
+  error_info.set_error_message(error_message.str());
+
+  for (const auto &task_attempt : task_attempts_itr->second) {
+    if (!IsTaskTerminated(task_attempt.first)) {
+      MarkTaskAttemptFailed(
+          task_attempt, worker_failure_data.end_time_ms() * 1000, error_info);
+    }
+  }
+}
+
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailed(
     const TaskAttempt &task_attempt,
     int64_t failed_ts,
@@ -182,30 +206,6 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
   for (const auto &task_attempt : task_attempts_itr->second) {
     if (!IsTaskTerminated(task_attempt.first)) {
       MarkTaskAttemptFailed(task_attempt, job_finish_time_ns, error_info);
-    }
-  }
-}
-
-void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
-    const WorkerID &worker_id, const rpc::WorkerTableData &worker_failure_data) {
-  auto task_attempts_itr = worker_to_task_attempt_index_.find(worker_id);
-  if (task_attempts_itr == worker_to_task_attempt_index_.end()) {
-    // No tasks by the worker.
-    return;
-  }
-
-  rpc::RayErrorInfo error_info;
-  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
-  std::stringstream error_message;
-  error_message << "Worker running the task (" << worker_id.Hex()
-                << ") died with exit_type: " << worker_failure_data.exit_type()
-                << " with error_message: " << worker_failure_data.exit_detail();
-  error_info.set_error_message(error_message.str());
-
-  for (const auto &task_attempt : task_attempts_itr->second) {
-    if (!IsTaskTerminated(task_attempt.first)) {
-      MarkTaskAttemptFailed(
-          task_attempt, worker_failure_data.end_time_ms() * 1000, error_info);
     }
   }
 }
