@@ -492,11 +492,11 @@ def call_ray_start_context(request):
     port = None
     for i in range(len(command_args)):
         if command_args[i] == "--port":
-            if int(command_args[i+1]) == 0:
+            if int(command_args[i + 1]) == 0:
                 port = str(find_free_port())
-                command_args[i+1] = port
+                command_args[i + 1] = port
             else:
-                port = command_args[i+1]
+                port = command_args[i + 1]
     if port is None:
         port = str(find_free_port())
         command_args += ["--port", port]
