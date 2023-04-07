@@ -46,7 +46,7 @@ First, follow the [quickstart guide](kuberay-quickstart) to create an autoscalin
 # Optionally use kind to run the examples locally.
 # $ kind create cluster
 
-# Create the KubeRay operator. Make sure your Kubernetes cluster and Kubectl are both at version at least 1.19.
+# Create the KubeRay operator. Make sure your Kubernetes cluster and Kubectl are both at version at least 1.22.
 $ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.5.0&timeout=90s"
 # Create an autoscaling Ray cluster.
 $ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml
