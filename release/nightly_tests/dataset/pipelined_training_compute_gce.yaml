@@ -17,7 +17,7 @@ worker_node_types:
       max_workers: 10
       use_spot: false
     - name: gpu_node
-      instance_type: n2-standard-32-nvidia-tesla-v100-4 # p3.8xlarge
+      instance_type: n1-standard-32-nvidia-tesla-v100-4 # p3.8xlarge
       min_workers: 4
       max_workers: 4
       use_spot: false
