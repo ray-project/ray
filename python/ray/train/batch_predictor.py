@@ -190,7 +190,7 @@ class BatchPredictor:
             .. testoutput::
 
                 MapBatches(ScoringWrapper)
-                +- Dataset(num_blocks=1, num_rows=3, schema={feature_1: int64, label: int64})
+                +- Datastream(num_blocks=1, num_rows=3, schema={feature_1: int64, label: int64})
                 Final accuracy: 1.0
         """  # noqa: E501
         if num_gpus_per_worker is None:
