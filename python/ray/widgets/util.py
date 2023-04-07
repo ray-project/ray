@@ -188,6 +188,7 @@ def fallback_if_colab(func: F) -> Callable[[F], F]:
     return wrapped
 
 
+@DeveloperAPI
 def in_notebook() -> bool:
     """Return whether we are in a Jupyter notebook."""
     try:
