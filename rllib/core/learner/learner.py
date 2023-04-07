@@ -1,8 +1,10 @@
 import abc
 from collections import defaultdict
 from dataclasses import dataclass, field
+import json
 import logging
 import numpy as np
+import pathlib
 from typing import (
     Any,
     Callable,
@@ -18,6 +20,7 @@ from typing import (
     Union,
 )
 
+import ray
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
@@ -37,6 +40,7 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
 )
+from ray.rllib.utils.serialization import serialize_type
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.utils.annotations import (
@@ -51,7 +55,9 @@ logger = logging.getLogger(__name__)
 
 Optimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
 ParamType = Union["torch.Tensor", "tf.Variable"]
-ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
+ParamOptimizerPair = Tuple[Sequence[ParamType], Optimizer]
+ParamOptimizerPairs = List[ParamOptimizerPair]
+NamedParamOptimizerPairs = Dict[str, ParamOptimizerPair]
 ParamRef = Hashable
 ParamDictType = Dict[ParamRef, ParamType]
 
@@ -235,12 +241,16 @@ class Learner:
         # if we are using gpu but we are not distributed, use this gpu for training
         self._local_gpu_idx = learner_scaling_config.local_gpu_idx
 
+        # whether self.build has already been called
+        self._is_built = False
+
         # These are the attributes that are set during build
         self._module: MultiAgentRLModule = None
         # These are set for properly applying optimizers and adding or removing modules.
-        self._optim_to_param: Dict[Optimizer, List[ParamRef]] = {}
-        self._param_to_optim: Dict[ParamRef, Optimizer] = {}
+        self._optimizer_parameters: Dict[Optimizer, List[ParamRef]] = {}
+        self._named_optimizers: Dict[str, Optimizer] = {}
         self._params: ParamDictType = {}
+        self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
 
     @property
     def distributed(self) -> bool:
@@ -257,7 +267,6 @@ class Learner:
         """The hyper-parameters for the learner."""
         return self._hps
 
-    @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
         """Configures the optimizers for the Learner.
 
@@ -275,6 +284,126 @@ class Learner:
             A list of tuples (parameters, optimizer), where parameters is a list of
             model parameters and optimizer is a deep learning optimizer.
         """
+        param_optimizer_pairs = []
+        name_to_optim = {}
+        for module_id in self._module.keys():
+            if self._is_module_compatible_with_learner(self._module[module_id]):
+                (
+                    module_param_optimizer_pairs,
+                    module_named_optims,
+                ) = self._configure_optimizers_per_module_helper(module_id)
+                param_optimizer_pairs.extend(module_param_optimizer_pairs)
+                name_to_optim.update(module_named_optims)
+                self._module_optimizers[module_id].extend(
+                    list(module_named_optims.keys())
+                )
+        self._named_optimizers = name_to_optim
+        return param_optimizer_pairs
+
+    def _configure_optimizers_per_module_helper(
+        self, module_id: ModuleID
+    ) -> Tuple[ParamOptimizerPairs, Dict[str, Optimizer]]:
+        """Configures the optimizers for the given module_id.
+
+        This method is a helper method for processing the output of
+        configure_optimizer_per_module into a dictionary of names mapping to optimizers
+        and a list of ParamOptimizerPairs. Developers should call this method
+        instead of configure_optimizer_per_module, but users should still override
+        configure_optimizer_per_module.
+
+        Args:
+            module_id: The module_id of the module to configure optimizers for.
+
+        Returns:
+            A tuple of a list of ParamOptimizerPairs and a dictionary of names mapping
+            from optimizer names to optimizers.
+
+        """
+        pairs = []
+        name_to_optim = {}
+        pair_or_pairs: Union[
+            ParamOptimizerPair, NamedParamOptimizerPairs
+        ] = self.configure_optimizer_per_module(module_id)
+        if isinstance(pair_or_pairs, tuple):
+            # pair_or_pairs is a single ParamOptimizerPair
+            pair = pair_or_pairs
+            self._check_structure_param_optim_pair(pair)
+            _, optim = pair
+            name_to_optim[f"{module_id}"] = optim
+            pairs.append(pair)
+        elif isinstance(pair_or_pairs, dict):
+            # pair_or_pairs is a NamedParamOptimizerPairs
+            for name, pair in pairs.items():
+                self._check_structure_param_optim_pair(pair)
+                _, optim = pair
+                if not isinstance(name, str):
+                    raise ValueError(
+                        "The output of configure_optimizer_per_module must be a "
+                        "NamedParamOptimizerPairs. The key of a "
+                        "NamedParamOptimizerPairs must be a string."
+                    )
+                name_to_optim[f"{module_id}_{name}"] = optim
+                pairs.append(pair)
+        else:
+            raise ValueError(
+                "The output of configure_optimizer_per_module must be a "
+                "ParamOptimizerPair or NamedParamOptimizerPairs."
+            )
+        return pairs, name_to_optim
+
+    def _check_structure_param_optim_pair(self, param_optim_pair: Any) -> None:
+        """Checks that the given param_optim_pair is a valid ParamOptimizerPair.
+
+        Args:
+            param_optim_pair: The param_optim_pair to check.
+
+        """
+        if not isinstance(param_optim_pair, tuple):
+            raise ValueError(
+                "ParamOptimizerPair must be a tuple of (parameters, optim)."
+                f"Got a {type(param_optim_pair)} instead."
+            )
+        if len(param_optim_pair) != 2:
+            raise ValueError(
+                "ParamOptimizerPair must be a tuple of length 2 (parameters, optim)."
+                f"This tuple has a length of {len(param_optim_pair)}."
+            )
+        params, _ = param_optim_pair
+        if not isinstance(params, list):
+            raise ValueError(
+                "The first element of a ParamOptimizerPair must be a list of "
+                "parameters."
+            )
+
+    @OverrideToImplementCustomLogic
+    def configure_optimizer_per_module(
+        self, module_id: ModuleID
+    ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
+        """Configures an optimizer for the given module_id.
+
+        This method is called for each RLModule in the Multi-Agent RLModule being
+        trained by the Learner, as well as any new module added during training via
+        add_module. It should construct a ParamOptimizerPair or
+        NamedParamOptimizerPairs.
+
+        In order to construct one optimizer for the entire RLModule, it should return a
+        ParamOptimizerPair. A ParamOptimzierPair is a tuple (parameters, optimizer),
+        where parameters is a list of model parameters and optimizer is a deep learning
+        framework optimizer The parameter module_id can be used to determine which
+        module to configure the optimizer for.
+
+        Alternatively, for a module with different optimizers for policy and value
+        networks, it should return a NamedParamOptimizerPairs, which is a dictionary
+        mapping from optimizer name to a ParamOptimizerPair. e.g.
+        {"policy_optim" : policy_param_optim_pair, "value_optim" : ...}
+
+        Args:
+            module_id: The module_id of the RLModule that is being configured.
+
+        Returns:
+            A ParamOptimizerPair or NamedParamOptimizerPairs for this module_id.
+        """
+        raise NotImplementedError
 
     @abc.abstractmethod
     def compute_gradients(self, loss: Mapping[str, Any]) -> ParamDictType:
@@ -346,23 +475,6 @@ class Learner:
         """
 
     @abc.abstractmethod
-    def get_optimizer_obj(
-        self, module: RLModule, optimizer_cls: Type[Optimizer]
-    ) -> Optimizer:
-        """Returns the optimizer instance of type optimizer_cls given the module.
-
-        In torch this is the optimizer object initialize with module parameters. In tf
-        this is initialized without module parameters.
-
-        Args:
-            module: The module of type RLModule to get the optimizer from.
-            optimizer_cls: The optimizer class to use.
-
-        Returns:
-            The optimizer object.
-        """
-
-    @abc.abstractmethod
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
         """Converts a MultiAgentBatch to a NestedDict of Tensors.
 
@@ -429,48 +541,31 @@ class Learner:
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
-        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
-        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         """Add a module to the underlying MultiAgentRLModule and the Learner.
 
         Args:
             module_id: The id of the module to add.
             module_spec: The module spec of the module to add.
-            set_optimizer_fn: A function that takes in the module and returns a list of
-                (param, optimizer) pairs. Each element in the tuple describes a
-                parameter group that share the same optimizer object, if None, the
-                default optimizer_cls will be used with all the parameters from the
-                module.
-            optimizer_cls: The optimizer class to use. If None, the optimizer_cls of the
-                first parameter in the current list of parameters will be used.
         """
-        self.__check_if_build_called()
+        self._check_is_built()
         module = module_spec.build()
 
-        # construct a default set_optimizer_fn if not provided
-        if set_optimizer_fn is None:
-            if optimizer_cls is None:
-                # by default, use the optimizer_cls of the first parameter
-                optimizer_cls = next(iter(self._param_to_optim.values())).__class__
+        self._module.add_module(module_id, module)
 
-            def set_optimizer_fn(module):
-                param_optims = []
-                if self._is_module_compatible_with_learner(module):
-                    optimizer = self.get_optimizer_obj(module, optimizer_cls)
-                    parameters = self.get_parameters(module)
-                    param_optims = [(parameters, optimizer)]
-                return param_optims
+        (
+            param_optimizer_pair,
+            name_to_optimizer,
+        ) = self._configure_optimizers_per_module_helper(module_id)
 
-        for param_seq, optimizer in set_optimizer_fn(module):
-            self._optim_to_param[optimizer] = []
+        for (param_seq, optimizer) in param_optimizer_pair:
+            self._optimizer_parameters[optimizer] = []
             for param in param_seq:
                 param_ref = self.get_param_ref(param)
-                self._optim_to_param[optimizer].append(param_ref)
+                self._optimizer_parameters[optimizer].append(param_ref)
                 self._params[param_ref] = param
-                self._param_to_optim[param_ref] = optimizer
-
-        self._module.add_module(module_id, module)
+        self._named_optimizers.update(name_to_optimizer)
+        self._module_optimizers[module_id].extend(list(name_to_optimizer.keys()))
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def remove_module(self, module_id: ModuleID) -> None:
@@ -479,7 +574,7 @@ class Learner:
         Args:
             module_id: The id of the module to remove.
         """
-        self.__check_if_build_called()
+        self._check_is_built()
         module = self._module[module_id]
 
         if self._is_module_compatible_with_learner(module):
@@ -488,11 +583,12 @@ class Learner:
                 param_ref = self.get_param_ref(param)
                 if param_ref in self._params:
                     del self._params[param_ref]
-                if param_ref in self._param_to_optim:
-                    optimizer = self._param_to_optim[param_ref]
-                    if optimizer in self._optim_to_param:
-                        del self._optim_to_param[optimizer]
-                    del self._param_to_optim[param_ref]
+            optim_names = self._module_optimizers[module_id]
+            for optim_name in optim_names:
+                optim = self._named_optimizers[optim_name]
+                del self._optimizer_parameters[optim]
+                del self._named_optimizers[optim_name]
+            del self._module_optimizers[module_id]
 
         self._module.remove_module(module_id)
 
@@ -503,14 +599,17 @@ class Learner:
         This method should be called before the learner is used. It is responsible for
         setting up the module and optimizers.
         """
+        if self._is_built:
+            logger.debug("Learner already built. Skipping build.")
+            return
+        self._is_built = True
         self._module = self._make_module()
         for param_seq, optimizer in self.configure_optimizers():
-            self._optim_to_param[optimizer] = []
+            self._optimizer_parameters[optimizer] = []
             for param in param_seq:
                 param_ref = self.get_param_ref(param)
-                self._optim_to_param[optimizer].append(param_ref)
+                self._optimizer_parameters[optimizer].append(param_ref)
                 self._params[param_ref] = param
-                self._param_to_optim[param_ref] = optimizer
 
     @OverrideToImplementCustomLogic
     def compute_loss(
@@ -537,7 +636,7 @@ class Learner:
             batch: The data that was used to compute fwd_out.
 
         Returns:
-            A dictionary of losses. NOTE that the dictionary
+            A dictionary of losses. The dictionary
             must contain one protected key "total_loss" which will be used for
             computing gradients through.
         """
@@ -578,7 +677,7 @@ class Learner:
             fwd_out: The output of the forward pass for this particular module.
 
         Returns:
-            A dictionary of losses. NOTE that the dictionary
+            A dictionary of losses. The dictionary
             must contain one protected key "total_loss" which will be used for
             computing gradients through.
         """
@@ -700,7 +799,7 @@ class Learner:
         Returns:
             A dictionary of results, in numpy format.
         """
-        self.__check_if_build_called()
+        self._check_is_built()
 
         missing_module_ids = set(batch.policy_batches.keys()) - set(self._module.keys())
         if len(missing_module_ids) > 0:
@@ -751,7 +850,7 @@ class Learner:
         """
         # TODO (Kourosh): We have both get(set)_state and get(set)_weights. I think
         # having both can become confusing. Can we simplify this API requirement?
-        self.__check_if_build_called()
+        self._check_is_built()
         # TODO: once we figure out the optimizer format, we can set/get the state
         self._module.set_state(state.get("module_state", {}))
 
@@ -762,9 +861,81 @@ class Learner:
             The state of the optimizer and module.
 
         """
-        self.__check_if_build_called()
+        self._check_is_built()
         # TODO: once we figure out the optimizer format, we can set/get the state
         return {"module_state": self._module.get_state()}
+
+    def _get_metadata(self) -> Dict[str, Any]:
+        metadata = {
+            "learner_class": serialize_type(self.__class__),
+            "ray_version": ray.__version__,
+            "ray_commit": ray.__commit__,
+            "module_state_dir": "module_state",
+            "optimizer_state_dir": "optimizer_state",
+        }
+        return metadata
+
+    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        """Save the state of the optimizer to path
+
+        NOTE: if path doesn't exist, then a new directory will be created. otherwise, it
+        will be appended to.
+
+        Args:
+            path: The path to the directory to save the state to.
+
+        """
+        pass
+
+    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        """Load the state of the optimizer from path
+
+        Args:
+            path: The path to the directory to load the state from.
+
+        """
+        pass
+
+    def save_state(self, path: Union[str, pathlib.Path]) -> None:
+        """Save the state of the learner to path
+
+        NOTE: if path doesn't exist, then a new directory will be created. otherwise, it
+        will be appended to.
+
+
+        Args:
+            path: The path to the directory to save the state to.
+
+        """
+        self._check_is_built()
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        self._module.save_to_checkpoint(path / "module_state")
+        self._save_optimizers(path / "optimizer_state")
+        with open(path / "learner_state.json", "w") as f:
+            metadata = self._get_metadata()
+            json.dump(metadata, f)
+
+    def load_state(
+        self,
+        path: Union[str, pathlib.Path],
+    ) -> None:
+        """Load the state of the learner from path
+
+        Note: The learner must be constructed ahead of time before its state is loaded.
+
+        Args:
+            path: The path to the directory to load the state from.
+        """
+        self._check_is_built()
+        path = pathlib.Path(path)
+        del self._module
+        # TODO(avnishn) from checkpoint doesn't currently support modules_to_load,
+        # but it should, so we will add it later.
+        self._module_obj = MultiAgentRLModule.from_checkpoint(path / "module_state")
+        self._reset()
+        self.build()
+        self._load_optimizers(path / "optimizer_state")
 
     @abc.abstractmethod
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
@@ -843,6 +1014,7 @@ class Learner:
         tensorbatch = self._convert_batch_type(batch)
         fwd_out = self._module.forward_train(tensorbatch)
         loss = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
+
         gradients = self.compute_gradients(loss)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
@@ -850,12 +1022,19 @@ class Learner:
         self._check_result(result)
         return convert_to_numpy(result)
 
-    def __check_if_build_called(self):
+    def _check_is_built(self):
         if self._module is None:
             raise ValueError(
                 "Learner.build() must be called after constructing a "
                 "Learner and before calling any methods on it."
             )
+
+    def _reset(self):
+        self._params = {}
+        self._optimizer_parameters = {}
+        self._named_optimizers = {}
+        self._module_optimizers = defaultdict(list)
+        self._is_built = False
 
     def apply(self, func, *_args, **_kwargs):
         return func(self, *_args, **_kwargs)

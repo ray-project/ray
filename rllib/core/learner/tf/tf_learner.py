@@ -1,11 +1,12 @@
+import json
 import logging
 import numpy as np
+import pathlib
 import tree  # pip install dm-tree
 from typing import (
     Any,
     Mapping,
     Union,
-    Type,
     Optional,
     Callable,
     Sequence,
@@ -15,8 +16,8 @@ from typing import (
 from ray.rllib.core.learner.learner import (
     FrameworkHPs,
     Learner,
-    ParamOptimizerPairs,
-    Optimizer,
+    ParamOptimizerPair,
+    NamedParamOptimizerPairs,
     ParamType,
     ParamDictType,
 )
@@ -35,6 +36,7 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchCyclicIterator,
 )
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
 
 
 tf1, tf, tfv = try_import_tf()
@@ -71,22 +73,16 @@ class TfLearner(Learner):
         self._strategy = tf.distribute.get_strategy()
 
     @override(Learner)
-    def configure_optimizers(self) -> ParamOptimizerPairs:
-        """Configures the optimizers for the Learner.
-
-        By default it sets up a single Adam optimizer for each sub-module in module
-        accessible via `moduel.keys()`.
-        """
-        # TODO (Kourosh): convert optimizer_config to dataclass later.
+    def configure_optimizer_per_module(
+        self, module_id: ModuleID
+    ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
+        module = self._module[module_id]
         lr = self._optimizer_config["lr"]
-        return [
-            (
-                self.get_parameters(self._module[key]),
-                tf.keras.optimizers.Adam(learning_rate=lr),
-            )
-            for key in self._module.keys()
-            if self._is_module_compatible_with_learner(self._module[key])
-        ]
+        pair: ParamOptimizerPair = (
+            self.get_parameters(module),
+            tf.keras.optimizers.Adam(learning_rate=lr),
+        )
+        return pair
 
     @override(Learner)
     def compute_gradients(
@@ -101,7 +97,7 @@ class TfLearner(Learner):
         # only some agents have a sample batch that is passed but not others.
         # This is probably because of the way that we are iterating over the
         # parameters in the optim_to_param_dictionary
-        for optim, param_ref_seq in self._optim_to_param.items():
+        for optim, param_ref_seq in self._optimizer_parameters.items():
             variable_list = [
                 self._params[param_ref]
                 for param_ref in param_ref_seq
@@ -129,6 +125,45 @@ class TfLearner(Learner):
         return gradients_dict
 
     @override(Learner)
+    def load_state(
+        self,
+        path: Union[str, pathlib.Path],
+    ) -> None:
+        # This operation is potentially very costly because a MARL Module is created at
+        # build time, destroyed, and then a new one is created from a checkpoint.
+        # However, it is necessary due to complications with the way that Ray Tune
+        # restores failed trials. When Tune restores a failed trial, it reconstructs the
+        # entire experiment from the initial config. Therefore, to reflect any changes
+        # made to the learner's modules, the module created by Tune is destroyed and
+        # then rebuilt from the checkpoint.
+        with self._strategy.scope():
+            super().load_state(path)
+
+    @override(Learner)
+    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        for name, optim in self._named_optimizers.items():
+            state = tf.keras.optimizers.serialize(optim)
+            state = tf.nest.map_structure(convert_numpy_to_python_primitives, state)
+            with open(path / f"{name}.json", "w") as f:
+                json.dump(state, f)
+
+    @override(Learner)
+    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        path = pathlib.Path(path)
+        for name in self._named_optimizers.keys():
+            with open(path / f"{name}.json", "r") as f:
+                state = json.load(f)
+            new_optim = tf.keras.optimizers.deserialize(state)
+            old_optim = self._named_optimizers[name]
+            self._named_optimizers[name] = new_optim
+            param_seq = self._optimizer_parameters.pop(old_optim)
+            self._optimizer_parameters[new_optim] = []
+            for param_ref in param_seq:
+                self._optimizer_parameters[new_optim].append(param_ref)
+
+    @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
         self._module.set_state(weights)
 
@@ -140,15 +175,26 @@ class TfLearner(Learner):
     def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
         return list(module.trainable_variables)
 
-    @override(Learner)
-    def get_optimizer_obj(
-        self, module: RLModule, optimizer_cls: Type[Optimizer]
-    ) -> Optimizer:
-        lr = self._optimizer_config["lr"]
-        return optimizer_cls(learning_rate=lr)
-
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
         return isinstance(module, TfRLModule)
+
+    @override(Learner)
+    def _check_structure_param_optim_pair(self, param_optim_pair: Any) -> None:
+        super()._check_structure_param_optim_pair(param_optim_pair)
+        params, optim = param_optim_pair
+        if not isinstance(optim, tf.keras.optimizers.Optimizer):
+            raise ValueError(
+                f"The optimizer in {param_optim_pair} is not a tf keras optimizer. "
+                "Please use a tf.keras.optimizers.Optimizer for TfLearner."
+            )
+        for param in params:
+            if not isinstance(param, tf.Variable):
+                raise ValueError(
+                    f"One of the parameters {param} in this ParamOptimizerPair "
+                    f"{param_optim_pair} is not a tf.Variable. Please use a "
+                    "tf.Variable for TfLearner. You can retrieve the param with a call "
+                    "to learner.get_param_ref(tensor)."
+                )
 
     @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
@@ -180,8 +226,6 @@ class TfLearner(Learner):
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
-        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
-        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         # TODO(Avnishn):
         # WARNING:tensorflow:Using MirroredStrategy eagerly has significant overhead
@@ -195,8 +239,6 @@ class TfLearner(Learner):
             super().add_module(
                 module_id=module_id,
                 module_spec=module_spec,
-                set_optimizer_fn=set_optimizer_fn,
-                optimizer_cls=optimizer_cls,
             )
         if self._enable_tf_function:
             self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
