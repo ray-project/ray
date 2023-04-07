@@ -5,7 +5,7 @@ multi-agent-cartpole-crashing-appo:
         evaluation/episode_reward_mean: 300.0
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
 
         env_config:
             config:

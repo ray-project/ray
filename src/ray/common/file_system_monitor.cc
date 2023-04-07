@@ -102,11 +102,13 @@ bool FileSystemMonitor::OverCapacityImpl(
     return false;
   }
 
-  RAY_LOG_EVERY_MS(ERROR, 10 * 1000)
-      << path << " is over " << capacity_threshold_ * 100
-      << "\% full, available space: " << space_info->available
-      << "; capacity: " << space_info->capacity
-      << ". Object creation will fail if spilling is required.";
+  std::ostringstream ostr;
+  ostr << path << " is over " << capacity_threshold_ * 100
+       << "\% full, available space: " << space_info->available
+       << "; capacity: " << space_info->capacity
+       << ". Object creation will fail if spilling is required.";
+  RAY_EVENT_EVERY_MS(ERROR, "Out of Disk", 10 * 1000) << ostr.str();
+  RAY_LOG_EVERY_MS(ERROR, 10 * 1000) << ostr.str();
   return true;
 }
 

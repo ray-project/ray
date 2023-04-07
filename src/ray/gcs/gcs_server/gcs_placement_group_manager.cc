@@ -160,6 +160,10 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
   Tick();
 }
 
+GcsPlacementGroupManager::GcsPlacementGroupManager(
+    instrumented_io_context &io_context, GcsResourceManager &gcs_resource_manager)
+    : io_context_(io_context), gcs_resource_manager_(gcs_resource_manager) {}
+
 void GcsPlacementGroupManager::RegisterPlacementGroup(
     const std::shared_ptr<GcsPlacementGroup> &placement_group, StatusCallback callback) {
   // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
@@ -968,6 +972,18 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
     }
   }
   return false;
+}
+
+const absl::btree_multimap<
+    int64_t,
+    std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
+    &GcsPlacementGroupManager::GetPendingPlacementGroups() const {
+  return pending_placement_groups_;
+}
+
+const std::deque<std::shared_ptr<GcsPlacementGroup>>
+    &GcsPlacementGroupManager::GetInfeasiblePlacementGroups() const {
+  return infeasible_placement_groups_;
 }
 
 }  // namespace gcs

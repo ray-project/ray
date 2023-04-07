@@ -7,24 +7,38 @@ class Barrier:
     A barrier can be used to collect multiple results and process them in bulk once
     a certain count or a timeout is reached.
 
-    For instance, if ``max_results=N``, the :meth:`on_completion` callback will be
+    For instance, if ``max_results=N``, the ``on_completion`` callback will be
     invoked once :meth:`arrive` has been called ``N`` times.
 
-    ``max_results`` can be ``None``, in which case an infinite amount of results
-    will be collected. In this case, the :meth:`on_completion` callback
-    will not be invoked on successful task resolution.
+    The completion callback will only be invoked once, even if more results
+    arrive after completion. The collected results can be resetted
+    with :meth:`reset`, after which the callback may be invoked again.
+
+    The completion callback should expect one argument, which is the barrier
+    object that completed.
 
     Args:
         max_results: Maximum number of results to collect before a call to
             :meth:`wait` resolves or the :meth:`on_completion` callback is invoked.
-            If ``None``, will collect an infinite number of results.
+        on_completion: Callback to invoke when ``max_results`` results
+            arrived at the barrier.
 
     """
 
     def __init__(
-        self, max_results: Optional[int] = None, complete_on_first_error: bool = False
+        self,
+        max_results: int,
+        *,
+        on_completion: Optional[Callable[["Barrier"], None]] = None,
     ):
-        raise NotImplementedError
+        self._max_results = max_results
+
+        # on_completion callback
+        self._completed = False
+        self._on_completion = on_completion
+
+        # Collect received results
+        self._results: List[Tuple[Any]] = []
 
     def arrive(self, *data):
         """Notify barrier that a result successfully arrived.
@@ -36,97 +50,44 @@ class Barrier:
             *data: Result data to be cached. Can be obtained via :meth:`get_results`.
 
         """
-        raise NotImplementedError
+        if len(data) == 1:
+            data = data[0]
 
-    def error(self, *data):
-        """Notify barrier that an error arrived.
+        self._results.append(data)
+        self._check_completion()
 
-        This will count against the ``max_results`` limit. The received arguments
-        will be included in a call to :meth:`get_errors`.
+    def _check_completion(self):
+        if self._completed:
+            # Already fired completion callback
+            return
 
-        If ``Barrier.complete_on_first_error`` is set, this will immediately trigger
-        the completion callback.
+        if self.num_results >= self._max_results:
+            # Barrier is complete
+            self._completed = True
 
-        Args:
-            *data: Error data to be cached. Can be obtained via :meth:`get_errors`.
-        """
-        raise NotImplementedError
-
-    def on_completion(self, callback: Callable[["Barrier"], None]) -> "Barrier":
-        """Define callback to be invoked when the barrier is full.
-
-        Whenever ``max_results`` results and errors arrived at the barrier,
-        the completion callback is invoked.
-
-        The completion callback should expect one argument, which is the barrier
-        object that completed.
-
-        The completion callback will only be invoked once, even if more results
-        arrive after completion. The collected results and errors can be flushed
-        with :meth:`flush`, after which the callback may be invoked again.
-
-        If ``max_results=None``, an infinite number of events are collected. In this
-        case, the ``on_completion`` callback will never be invoked.
-
-        Args:
-            callback: Callback to invoke when ``max_results`` results and errors
-            arrived at the barrier.
-
-        """
-        raise NotImplementedError
-
-    def on_first_error(self, callback: Callable[["Barrier"], None]) -> "Barrier":
-        """Define callback to be invoked when the first error arrived.
-
-        When :meth:`error` is called the first time, the first error callback is
-        invoked.
-
-        The first error callback should expect one argument, which is the barrier
-        object that received the error.
-
-        The first error callback will only be invoked once, even if more errors
-        arrive afterwards. The collected results and errors can be flushed
-        with :meth:`flush`, after which the callback may be invoked again.
-
-        Args:
-            callback: Callback to invoke when meth:`error` was invoked for the
-                first time.
-
-        """
-        raise NotImplementedError
+            if self._on_completion:
+                self._on_completion(self)
 
     @property
     def completed(self) -> bool:
         """Returns True if the barrier is completed."""
-        raise NotImplementedError
+        return self._completed
 
     @property
     def num_results(self) -> int:
         """Number of received (successful) results."""
-        raise NotImplementedError
-
-    @property
-    def num_errors(self) -> int:
-        """Number of received errors."""
-        raise NotImplementedError
+        return len(self._results)
 
     def get_results(self) -> List[Tuple[Any]]:
         """Return list of received results."""
-        raise NotImplementedError
+        return self._results
 
-    def get_errors(self) -> List[Tuple[Any]]:
-        """Return list of received errors."""
-        raise NotImplementedError
+    def reset(self) -> None:
+        """Reset barrier, removing all received results.
 
-    def flush(self) -> None:
-        """Reset barrier, removing all received results and errors.
-
-        This method can be used for a persistent barrier that can receive more
-        results than ``max_results``. In that case, the received results can be
-        flushed after processing so that new results can be received.
-
-        Flushing the barrier will reset the completion status. When ``max_results``
-        is set and enough new events arrive after flushing, the
+        Resetting the barrier will reset the completion status. When ``max_results``
+        is set and enough new events arrive after resetting, the
         :meth:`on_completion` callback will be invoked again.
         """
-        raise NotImplementedError
+        self._completed = False
+        self._results = []

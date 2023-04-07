@@ -9,17 +9,26 @@ import requests
 import pytest
 
 from ray._private.profiling import chrome_tracing_dump
-from ray.experimental.state.api import list_tasks, list_actors, list_workers, list_nodes
+from ray.experimental.state.api import (
+    get_actor,
+    list_tasks,
+    list_actors,
+    list_workers,
+    list_nodes,
+)
 from ray._private.test_utils import wait_for_condition
 
 
 def test_timeline(shutdown_only):
-    ray.init()
+    ray.init(num_cpus=8)
     job_id = ray.get_runtime_context().get_job_id()
+    TASK_SLEEP_TIME_S = 1
 
     @ray.remote
     def f():
-        pass
+        import time
+
+        time.sleep(TASK_SLEEP_TIME_S)
 
     @ray.remote
     class Actor:
@@ -125,11 +134,25 @@ def test_timeline(shutdown_only):
                 event["args"]["func_or_class_name"]
                 == tasks[task_id]["func_or_class_name"]
             )  # noqa
+            # Make sure the duration is correct.
+            # duration is in microseconds.
+            # Since the task sleeps for TASK_SLEEP_TIME_S,
+            # task:execute should have a similar sleep time.
+            if event["cat"] == "task:execute":
+                assert (
+                    TASK_SLEEP_TIME_S * 1e6 * 0.9
+                    < event["dur"]
+                    < TASK_SLEEP_TIME_S * 1e6 * 1.1
+                )  # noqa
         # Make sure the worker id is correct.
         worker_id_from_event = index_to_workers[event["tid"]].split(":")[1]
         node_id_from_event = index_to_nodes[event["pid"]].split(" ")[1]
         assert tasks[task_id]["worker_id"] == worker_id_from_event
         assert tasks[task_id]["node_id"] == nodes[node_id_from_event]["node_id"]
+
+    # Verify the number of metadata events are correct.
+    metadata_events = list(filter(lambda e: e["ph"] == "M", result))
+    assert len(metadata_events) == len(index_to_workers) + len(index_to_nodes)
 
 
 def test_timeline_request(shutdown_only):
@@ -150,6 +173,83 @@ def test_timeline_request(shutdown_only):
         return True
 
     wait_for_condition(verify, timeout=10)
+
+
+def test_actor_repr_name(shutdown_only):
+    def _verify_repr_name(id, name):
+        actor = get_actor(id=id)
+        assert actor is not None
+        assert actor["repr_name"] == name
+        return True
+
+    # Assert simple actor repr name
+    @ray.remote
+    class ReprActor:
+        def __init__(self, x) -> None:
+            self.x = x
+
+        def __repr__(self) -> str:
+            return self.x
+
+        def ready(self):
+            pass
+
+    a = ReprActor.remote(x="repr-name-a")
+    b = ReprActor.remote(x="repr-name-b")
+
+    wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="repr-name-a")
+    wait_for_condition(_verify_repr_name, id=b._actor_id.hex(), name="repr-name-b")
+
+    # Assert when no __repr__ defined. repr_name should be empty
+    @ray.remote
+    class Actor:
+        pass
+
+    a = Actor.remote()
+    wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="")
+
+    # Assert special actors (async actor, threaded actor, detached actor, named actor)
+    @ray.remote
+    class AsyncActor:
+        def __init__(self, x) -> None:
+            self.x = x
+
+        def __repr__(self) -> str:
+            return self.x
+
+        async def ready(self):
+            pass
+
+    a = AsyncActor.remote(x="async-x")
+    wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="async-x")
+
+    a = ReprActor.options(max_concurrency=3).remote(x="x")
+    wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="x")
+
+    a = ReprActor.options(name="named-actor").remote(x="repr-name")
+    wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="repr-name")
+
+    a = ReprActor.options(name="detached-actor", lifetime="detached").remote(
+        x="repr-name"
+    )
+    wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="repr-name")
+    ray.kill(a)
+
+    # Assert nested actor class.
+    class OutClass:
+        @ray.remote
+        class InnerActor:
+            def __init__(self, name) -> None:
+                self.name = name
+
+            def __repr__(self) -> str:
+                return self.name
+
+        def get_actor(self, name):
+            return OutClass.InnerActor.remote(name=name)
+
+    a = OutClass().get_actor(name="inner")
+    wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="inner")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ cartpole-ppo-fake-gpus:
         training_iteration: 400
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         gamma: 0.99
         lr: 0.0003
         num_workers: 1
@@ -27,3 +27,6 @@ cartpole-ppo-fake-gpus:
         # Fake 2 GPUs.
         num_gpus: 2
         _fake_gpus: true
+        # TODO (Kourosh): Enable RLModule once LSTM is supported
+        _enable_rl_module_api: false
+        _enable_learner_api: false

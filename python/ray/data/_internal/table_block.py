@@ -29,6 +29,14 @@ class TableBlockBuilder(BlockBuilder[T]):
         self._column_names = None
         # The set of compacted tables we have built so far.
         self._tables: List[Any] = []
+        # Cursor into tables indicating up to which table we've accumulated table sizes.
+        # This is used to defer table size calculation, which can be expensive for e.g.
+        # Pandas DataFrames.
+        # This cursor points to the first table for which we haven't accumulated a table
+        # size.
+        self._tables_size_cursor = 0
+        # Accumulated table sizes, up to the table in _tables pointed to by
+        # _tables_size_cursor.
         self._tables_size_bytes = 0
         # Size estimator for un-compacted table values.
         self._uncompacted_size = SizeEstimator()
@@ -76,7 +84,6 @@ class TableBlockBuilder(BlockBuilder[T]):
             )
         accessor = BlockAccessor.for_block(block)
         self._tables.append(block)
-        self._tables_size_bytes += accessor.size_bytes()
         self._num_rows += accessor.num_rows()
 
     @staticmethod
@@ -90,6 +97,16 @@ class TableBlockBuilder(BlockBuilder[T]):
     @staticmethod
     def _empty_table() -> Any:
         raise NotImplementedError
+
+    @staticmethod
+    def _concat_would_copy() -> bool:
+        raise NotImplementedError
+
+    def will_build_yield_copy(self) -> bool:
+        if self._columns:
+            # Building a table from a dict of list columns always creates a copy.
+            return True
+        return self._concat_would_copy() and len(self._tables) > 1
 
     def build(self) -> Block:
         if self._columns:
@@ -108,6 +125,9 @@ class TableBlockBuilder(BlockBuilder[T]):
     def get_estimated_memory_usage(self) -> int:
         if self._num_rows == 0:
             return 0
+        for table in self._tables[self._tables_size_cursor :]:
+            self._tables_size_bytes += BlockAccessor.for_block(table).size_bytes()
+        self._tables_size_cursor = len(self._tables)
         return self._tables_size_bytes + self._uncompacted_size.size_bytes()
 
     def _compact_if_needed(self) -> None:

@@ -140,7 +140,7 @@ void AgentManager::StartAgent() {
            "Agent can segfault with the incorrect `grpcio` version. "
            "Check the grpcio version `pip freeze | grep grpcio`.\n"
            "- The agent failed to start because of unexpected error or port conflict. "
-           "Read the log `cat /tmp/ray/session_latest/dashboard_agent.log`. "
+           "Read the log `cat /tmp/ray/session_latest/logs/dashboard_agent.log`. "
            "You can find the log file structure here "
            "https://docs.ray.io/en/master/ray-observability/"
            "ray-logging.html#logging-directory-structure.\n"

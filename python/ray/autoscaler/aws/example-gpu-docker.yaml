@@ -65,7 +65,7 @@ available_node_types:
             BlockDeviceMappings:
                 - DeviceName: /dev/sda1
                   Ebs:
-                      VolumeSize: 100
+                      VolumeSize: 140
             # Additional options in the boto docs.
     # CPU workers.
     ray.worker.default:

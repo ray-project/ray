@@ -26,6 +26,8 @@ namespace ray {
 namespace gcs {
 
 using ContextCase = rpc::ActorDeathCause::ContextCase;
+// Forward declaration.
+std::string GenErrorMessageFromDeathCause(const rpc::ActorDeathCause &death_cause);
 
 /// Helper function to produce job table data (for newly created job or updated job).
 ///
@@ -138,22 +140,6 @@ inline const rpc::RayException *GetCreationTaskExceptionFromDeathCause(
   return &(death_cause->creation_task_failure_context());
 }
 
-/// Generate object error type from ActorDeathCause.
-inline rpc::ErrorType GenErrorTypeFromDeathCause(
-    const rpc::ActorDeathCause &death_cause) {
-  if (death_cause.context_case() == ContextCase::kCreationTaskFailureContext) {
-    return rpc::ErrorType::ACTOR_DIED;
-  } else if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext) {
-    return rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
-  } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
-    return rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR;
-  } else if (death_cause.context_case() == ContextCase::kOomContext) {
-    return rpc::ErrorType::OUT_OF_MEMORY;
-  } else {
-    return rpc::ErrorType::ACTOR_DIED;
-  }
-}
-
 inline const std::string &GetActorDeathCauseString(
     const rpc::ActorDeathCause &death_cause) {
   static absl::flat_hash_map<ContextCase, std::string> death_cause_string{
@@ -179,18 +165,21 @@ inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
   if (death_cause.context_case() == ContextCase::kActorDiedErrorContext ||
       death_cause.context_case() == ContextCase::kCreationTaskFailureContext) {
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
+    error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
   } else if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext) {
     error_info.mutable_runtime_env_setup_failed_error()->CopyFrom(
         death_cause.runtime_env_failed_context());
+    error_info.set_error_type(rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED);
   } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
-    *(error_info.mutable_error_message()) =
-        death_cause.actor_unschedulable_context().error_message();
+    error_info.set_error_type(rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR);
   } else if (death_cause.context_case() == ContextCase::kOomContext) {
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
-    *(error_info.mutable_error_message()) = death_cause.oom_context().error_message();
+    error_info.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
+    error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
   }
+  error_info.set_error_message(GenErrorMessageFromDeathCause(death_cause));
   return error_info;
 }
 
@@ -205,6 +194,8 @@ inline std::string GenErrorMessageFromDeathCause(
     return death_cause.actor_unschedulable_context().error_message();
   } else if (death_cause.context_case() == ContextCase::kActorDiedErrorContext) {
     return death_cause.actor_died_error_context().error_message();
+  } else if (death_cause.context_case() == ContextCase::kOomContext) {
+    return death_cause.oom_context().error_message();
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
     return "Death cause not recorded.";
@@ -228,6 +219,55 @@ inline TaskID GetParentTaskId(const rpc::TaskEvents &task_event) {
     return TaskID::FromBinary(task_event.task_info().parent_task_id());
   }
   return TaskID::Nil();
+}
+
+inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
+                         const TaskSpecification &task_spec) {
+  rpc::TaskType type;
+  if (task_spec.IsNormalTask()) {
+    type = rpc::TaskType::NORMAL_TASK;
+  } else if (task_spec.IsDriverTask()) {
+    type = rpc::TaskType::DRIVER_TASK;
+  } else if (task_spec.IsActorCreationTask()) {
+    type = rpc::TaskType::ACTOR_CREATION_TASK;
+    task_info->set_actor_id(task_spec.ActorCreationId().Binary());
+  } else {
+    RAY_CHECK(task_spec.IsActorTask());
+    type = rpc::TaskType::ACTOR_TASK;
+    task_info->set_actor_id(task_spec.ActorId().Binary());
+  }
+  task_info->set_type(type);
+  task_info->set_name(task_spec.GetName());
+  task_info->set_language(task_spec.GetLanguage());
+  task_info->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
+  // NOTE(rickyx): we will have scheduling states recorded in the events list.
+  task_info->set_scheduling_state(rpc::TaskStatus::NIL);
+  task_info->set_job_id(task_spec.JobId().Binary());
+
+  task_info->set_task_id(task_spec.TaskId().Binary());
+  // NOTE: we set the parent task id of a task to be submitter's task id, where
+  // the submitter depends on the owner coreworker's:
+  // - if the owner coreworker runs a normal task, the submitter's task id is the task id.
+  // - if the owner coreworker runs an actor, the submitter's task id will be the actor's
+  // creation task id.
+  task_info->set_parent_task_id(task_spec.SubmitterTaskId().Binary());
+  const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
+  task_info->mutable_required_resources()->insert(resources_map.begin(),
+                                                  resources_map.end());
+  task_info->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
+  const auto &pg_id = task_spec.PlacementGroupBundleId().first;
+  if (!pg_id.IsNil()) {
+    task_info->set_placement_group_id(pg_id.Binary());
+  }
+}
+
+/// Generate a RayErrorInfo from ErrorType
+inline rpc::RayErrorInfo GetRayErrorInfo(const rpc::ErrorType &error_type,
+                                         const std::string &error_msg = "") {
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(error_type);
+  error_info.set_error_message(error_msg);
+  return error_info;
 }
 
 /// Get the timestamp of the task status if available.
@@ -312,6 +352,10 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
   }
   case rpc::TaskStatus::RUNNING: {
     state_updates->set_running_ts(timestamp);
+    break;
+  }
+  case rpc::TaskStatus::NIL: {
+    // Not status change.
     break;
   }
   default: {

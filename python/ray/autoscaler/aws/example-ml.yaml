@@ -72,7 +72,7 @@ available_node_types:
         BlockDeviceMappings:
             - DeviceName: /dev/sda1
               Ebs:
-                  VolumeSize: 100
+                  VolumeSize: 140
 
     ray.worker.default:
       node_config:

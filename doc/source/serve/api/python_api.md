@@ -26,6 +26,10 @@
    :toctree: doc/
 
    serve.handle.RayServeHandle
+
+.. autosummary::
+   :toctree: doc/
+
    serve.handle.RayServeHandle.remote
    serve.handle.RayServeHandle.options
 ```

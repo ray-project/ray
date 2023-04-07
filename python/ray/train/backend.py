@@ -1,5 +1,4 @@
 import logging
-import warnings
 from typing import Type, TypeVar, Dict
 
 from ray.air.checkpoint import Checkpoint
@@ -17,8 +16,7 @@ _encode_decode_deprecation_message = (
     "``encode_data`` and ``decode_data`` are deprecated in favor of "
     "framework-specific ``ray.air.Checkpoint`` subclasses (reported "
     "using ``ray.air.session.report()``) which can implement "
-    "encoding and decoding logic. In the future, ``encode_data`` and "
-    "``decode_data`` will throw an exception if overriden."
+    "encoding and decoding logic."
 )
 
 
@@ -73,34 +71,26 @@ class Backend(metaclass=Singleton):
         """Logic for shutting down the backend."""
         pass
 
+    def on_training_start(
+        self, worker_group: WorkerGroup, backend_config: BackendConfig
+    ):
+        """Logic ran right before training is started.
+
+        Session API is available at this point."""
+        pass
+
     @classmethod
     def _encode_data(cls, checkpoint: Checkpoint) -> Checkpoint:
         """Temporary method until ``encode_data`` is deprecated."""
         if cls.encode_data != Backend.encode_data:
-            warnings.warn(
-                _encode_decode_deprecation_message, DeprecationWarning, stacklevel=2
-            )
-            # We wrap the return of encode_data in dict in case it is
-            # not a dict itself.
-            checkpoint = checkpoint.from_dict(
-                {"encoded_data": cls.encode_data(checkpoint.to_dict())}
-            )
+            raise DeprecationWarning(_encode_decode_deprecation_message)
         return checkpoint
 
     @classmethod
     def _decode_data(cls, checkpoint: Checkpoint) -> Checkpoint:
         """Temporary method until ``decode_data`` is deprecated."""
         if cls.decode_data != Backend.decode_data:
-            warnings.warn(
-                _encode_decode_deprecation_message, DeprecationWarning, stacklevel=2
-            )
-            checkpoint_dict = checkpoint.to_dict()
-            # If "encoded_data" is not in the dict, then the data was
-            # not encoded, but the user may want to just do decoding
-            # anyway.
-            checkpoint = checkpoint.from_dict(
-                cls.decode_data(checkpoint_dict.get("encoded_data", checkpoint_dict))
-            )
+            raise DeprecationWarning(_encode_decode_deprecation_message)
         return checkpoint
 
     @Deprecated(message=_encode_decode_deprecation_message)

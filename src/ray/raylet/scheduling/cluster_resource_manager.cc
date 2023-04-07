@@ -156,10 +156,6 @@ std::string ClusterResourceManager::GetNodeResourceViewString(
   return node.GetLocalView().DictString();
 }
 
-std::string ClusterResourceManager::GetResourceNameFromIndex(int64_t res_idx) {
-  return scheduling::ResourceID(res_idx).Binary();
-}
-
 const absl::flat_hash_map<scheduling::NodeID, Node>
     &ClusterResourceManager::GetResourceView() const {
   return nodes_;

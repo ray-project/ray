@@ -12,6 +12,7 @@ import threading
 import time
 from typing import List
 import unittest
+from unittest import mock
 
 import ray
 from ray import tune
@@ -314,10 +315,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         )
         assert len(analysis.trials) == 27
 
-    # Unfinished trials' resources should be updated.
+    @mock.patch.dict(os.environ, {"TUNE_MAX_PENDING_TRIALS_PG": "1"})
     def testConfigUpdateInResume(self):
-        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
-
         class FakeDataset:
             def __init__(self, name):
                 self.name = name
@@ -404,6 +403,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 **config,
             )
 
+        print("---- RESTARTING RUN ----")
+
         analysis = tune.run(
             "trainable",
             resume=True,
@@ -445,6 +446,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 search_alg=search_alg,
                 **config,
             )
+
+        print("---- RESTARTING RUN ----")
 
         analysis = tune.run(
             "trainable",

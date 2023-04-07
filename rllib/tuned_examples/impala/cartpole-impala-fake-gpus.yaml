@@ -6,7 +6,7 @@ cartpole-impala-fake-gpus:
         training_iteration: 400
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
 
         # Double batch size (2 GPUs).
         train_batch_size: 1000

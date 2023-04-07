@@ -28,7 +28,7 @@ def test_load_env_invalid():
 def test_load_env_changes():
     old_val = str(DEFAULT_ANYSCALE_PROJECT)
 
-    env_dict = load_environment("staging")
+    env_dict = load_environment("staging_v2")
     populate_os_env(env_dict)
 
     new_val = str(DEFAULT_ANYSCALE_PROJECT)

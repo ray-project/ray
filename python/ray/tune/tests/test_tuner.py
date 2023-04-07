@@ -13,7 +13,7 @@ from sklearn.utils import shuffle
 
 from ray import tune
 from ray.air import session
-from ray.air.config import RunConfig, ScalingConfig, FailureConfig
+from ray.air.config import RunConfig, ScalingConfig
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
@@ -213,67 +213,11 @@ class TunerTest(unittest.TestCase):
 
         # Test resume
         restore_path = os.path.join(DEFAULT_RESULTS_DIR, "test_tuner_driver_fail")
-        tuner = Tuner.restore(restore_path)
+        tuner = Tuner.restore(restore_path, trainable=trainer)
         # A hack before we figure out RunConfig semantics across resumes.
         tuner._local_tuner._run_config.callbacks = None
         results = tuner.fit()
         assert len(results) == 4
-
-    def test_tuner_trainer_fail(self):
-        trainer = FailingTrainer()
-        param_space = {
-            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2]))
-        }
-        tuner = Tuner(
-            trainable=trainer,
-            run_config=RunConfig(name="test_tuner_trainer_fail"),
-            param_space=param_space,
-            tune_config=TuneConfig(mode="max", metric="iteration"),
-        )
-        results = tuner.fit()
-        assert len(results) == 2
-        for i in range(2):
-            assert results[i].error
-
-    def test_tuner_fail_fast_true(self):
-        trainer = FailingTrainer()
-        param_space = {
-            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2]))
-        }
-
-        failure_config = FailureConfig(fail_fast=True)
-
-        tuner = Tuner(
-            trainable=trainer,
-            run_config=RunConfig(
-                name="test_tuner_trainer_fail", failure_config=failure_config
-            ),
-            param_space=param_space,
-            tune_config=TuneConfig(mode="max", metric="iteration"),
-        )
-
-        results = tuner.fit()
-        errors = [result.error for result in results if result.error]
-        assert len(errors) == 1
-
-    def test_tuner_fail_fast_raise(self):
-        trainer = FailingTrainer()
-        param_space = {
-            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2]))
-        }
-
-        failure_config = FailureConfig(fail_fast="raise")
-
-        tuner = Tuner(
-            trainable=trainer,
-            run_config=RunConfig(
-                name="test_tuner_trainer_fail", failure_config=failure_config
-            ),
-            param_space=param_space,
-            tune_config=TuneConfig(mode="max", metric="iteration"),
-        )
-        with self.assertRaises(RuntimeError):
-            tuner.fit()
 
     def test_tuner_with_torch_trainer(self):
         """Test a successful run using torch trainer."""
@@ -435,16 +379,13 @@ def test_tuner_fn_trainable_checkpoint_at_end_none(shutdown_only):
     tuner.fit()
 
 
-def test_nonserializable_trainable(capsys):
+def test_nonserializable_trainable():
     import threading
 
     lock = threading.Lock()
-    with pytest.raises(TypeError):
-        Tuner(lambda config: print(lock))
-
     # Check that the `inspect_serializability` trace was printed
-    out, _ = capsys.readouterr()
-    assert "was found to be non-serializable." in out
+    with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
+        Tuner(lambda config: print(lock))
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
@@ -529,6 +470,33 @@ def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runti
     for result in results:
         artifact_data = open(result.log_dir / "write.txt", "r").read()
         assert artifact_data == f"{result.config['id']}"
+
+
+def test_invalid_param_space(shutdown_only):
+    """Check that Tune raises an error on invalid param_space types."""
+
+    def trainable(config):
+        return {"metric": 1}
+
+    with pytest.raises(ValueError):
+        Tuner(trainable, param_space="not allowed")
+
+    from ray.tune.tune import _Config
+
+    class CustomConfig(_Config):
+        def to_dict(self) -> dict:
+            return {"hparam": 1}
+
+    with pytest.raises(ValueError):
+        Tuner(trainable, param_space="not allowed").fit()
+
+    with pytest.raises(ValueError):
+        tune.run(trainable, config="not allowed")
+
+    # Dict and custom _Config subclasses are fine
+    Tuner(trainable, param_space={}).fit()
+    Tuner(trainable, param_space=CustomConfig()).fit()
+    tune.run(trainable, config=CustomConfig())
 
 
 if __name__ == "__main__":

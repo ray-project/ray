@@ -59,8 +59,6 @@ To use this feature, set ``num_returns="dynamic"`` in the ``@ray.remote`` decora
 Then, when invoking the remote function, Ray will return a *single* ``ObjectRef`` that will get populated with an ``ObjectRefGenerator`` when the task completes.
 The ``ObjectRefGenerator`` can be used to iterate over a list of ``ObjectRefs`` containing the actual values returned by the task.
 
-.. note:: ``num_returns="dynamic"`` is currently an experimental API in v2.1+.
-
 .. literalinclude:: ../doc_code/generator.py
     :language: python
     :start-after: __dynamic_generator_start__
@@ -100,5 +98,3 @@ Limitations
 -----------
 
 Although a generator function creates ``ObjectRefs`` one at a time, currently Ray will not schedule dependent tasks until the entire task is complete and all values have been created. This is similar to the semantics used by tasks that return multiple values as a list.
-
-``num_returns="dynamic"`` is not yet supported for :ref:`Ray Client <ray-client-ref>`.

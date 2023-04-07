@@ -57,6 +57,24 @@ def test_kv_basic(ray_start_regular, monkeypatch):
     assert gcs_utils._called_freq["internal_kv_get"] == 4
     assert gcs_utils._called_freq["internal_kv_put"] == 5
 
+    # Test internal_kv_multi_get
+    assert gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {}
+    assert gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
+    assert gcs_client.internal_kv_put(b"B", b"C", False, b"NS") == 1
+    assert gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {
+        b"A": b"B",
+        b"B": b"C",
+    }
+    assert gcs_client.internal_kv_multi_get([b"A", b"B"], b"NSS") == {}
+
+    # Test internal_kv_multi_get where some keys don't exist
+    assert gcs_client.internal_kv_multi_get([b"A", b"B", b"C"], b"NS") == {
+        b"A": b"B",
+        b"B": b"C",
+    }
+
+    assert gcs_utils._called_freq["internal_kv_multi_get"] == 4
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")
 def test_kv_timeout(ray_start_regular):
@@ -103,6 +121,23 @@ async def test_kv_basic_aio(ray_start_regular):
     assert await gcs_client.internal_kv_del(b"A", True, b"NS") == 2
     assert await gcs_client.internal_kv_keys(b"A", b"NS") == []
     assert await gcs_client.internal_kv_del(b"A", False, b"NSS") == 0
+
+    # Test internal_kv_multi_get
+    assert await gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {}
+    assert await gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
+    assert await gcs_client.internal_kv_put(b"B", b"C", False, b"NS") == 1
+    assert await gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {
+        b"A": b"B",
+        b"B": b"C",
+    }
+
+    # Test internal_kv_multi_get where some keys don't exist
+    assert await gcs_client.internal_kv_multi_get([b"A", b"B", b"C"], b"NS") == {
+        b"A": b"B",
+        b"B": b"C",
+    }
+
+    assert await gcs_client.internal_kv_multi_get([b"A", b"B"], b"NSS") == {}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")

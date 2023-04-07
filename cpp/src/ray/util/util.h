@@ -31,5 +31,8 @@ namespace internal {
 /// you care about.
 /// \return The IP address by which the local node can be reached from the address.
 std::string GetNodeIpAddress(const std::string &address = "8.8.8.8:53");
+
+std::string getLibraryPathEnv();
+
 }  // namespace internal
 }  // namespace ray

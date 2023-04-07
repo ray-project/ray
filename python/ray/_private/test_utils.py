@@ -19,6 +19,7 @@ from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any, Callable, Dict, List, Optional
 import uuid
+from dataclasses import dataclass
 
 import requests
 from ray._raylet import Config
@@ -62,8 +63,10 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 try:
-    from prometheus_client.parser import text_string_to_metric_families
+    from prometheus_client.parser import text_string_to_metric_families, Sample
 except (ImportError, ModuleNotFoundError):
+
+    Sample = None
 
     def text_string_to_metric_families(*args, **kwargs):
         raise ModuleNotFoundError("`prometheus_client` not found")
@@ -588,20 +591,43 @@ async def async_wait_for_condition_async_predicate(
     raise RuntimeError(message)
 
 
+@dataclass
+class MetricSamplePattern:
+    name: Optional[str] = None
+    value: Optional[str] = None
+    partial_label_match: Optional[Dict[str, str]] = None
+
+    def matches(self, sample: Sample):
+        if self.name is not None:
+            if self.name != sample.name:
+                return False
+
+        if self.value is not None:
+            if self.value != sample.value:
+                return False
+
+        if self.partial_label_match is not None:
+            for label, value in self.partial_label_match.items():
+                if sample.labels.get(label) != value:
+                    return False
+
+        return True
+
+
 def get_metric_check_condition(
-    metrics_to_check: Dict[str, Optional[float]], export_addr: Optional[str] = None
+    metrics_to_check: List[MetricSamplePattern], export_addr: Optional[str] = None
 ) -> Callable[[], bool]:
     """A condition to check if a prometheus metrics reach a certain value.
     This is a blocking check that can be passed into a `wait_for_condition`
     style function.
 
     Args:
-      metrics_to_check: A map of metric lable to values to check, to ensure
-        that certain conditions have been reached. If a value is None, just check
-        that the metric was emitted with any value.
+      metrics_to_check: A list of MetricSamplePattern. The fields that
+      aren't `None` will be matched.
 
     Returns:
       A function that returns True if all the metrics are emitted.
+
     """
     node_info = ray.nodes()[0]
     metrics_export_port = node_info["MetricsExportPort"]
@@ -609,23 +635,15 @@ def get_metric_check_condition(
     prom_addr = export_addr or f"{addr}:{metrics_export_port}"
 
     def f():
-        for metric_name, metric_value in metrics_to_check.items():
+        for metric_pattern in metrics_to_check:
             _, metric_names, metric_samples = fetch_prometheus([prom_addr])
-            found_metric = False
-            if metric_name in metric_names:
-                for sample in metric_samples:
-                    if sample.name != metric_name:
-                        continue
-
-                    if metric_value is None:
-                        found_metric = True
-                    elif metric_value == sample.value:
-                        found_metric = True
-            if not found_metric:
+            for metric_sample in metric_samples:
+                if metric_pattern.matches(metric_sample):
+                    break
+            else:
                 print(
-                    "Didn't find metric, all metric names: ",
-                    metric_names,
-                    "all values",
+                    f"Didn't find {metric_pattern}",
+                    "all samples",
                     metric_samples,
                 )
                 return False
@@ -1572,7 +1590,20 @@ def no_resource_leaks_excluding_node_resources():
 
 
 @contextmanager
-def simulate_storage(storage_type, root=None):
+def simulate_storage(
+    storage_type: str,
+    root: Optional[str] = None,
+    port: int = 5002,
+    region: str = "us-west-2",
+):
+    """Context that simulates a given storage type and yields the URI.
+
+    Args:
+        storage_type: The storage type to simiulate ("fs" or "s3")
+        root: Root directory of the URI to return (e.g., s3 bucket name)
+        port: The port of the localhost endpoint where s3 is being served (s3 only)
+        region: The s3 region (s3 only)
+    """
     if storage_type == "fs":
         if root is None:
             with tempfile.TemporaryDirectory() as d:
@@ -1580,38 +1611,26 @@ def simulate_storage(storage_type, root=None):
         else:
             yield "file://" + root
     elif storage_type == "s3":
-        import uuid
+        from moto.server import ThreadedMotoServer
 
-        from moto import mock_s3
+        old_env = os.environ
+        os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+        os.environ["AWS_SECURITY_TOKEN"] = "testing"
+        os.environ["AWS_SESSION_TOKEN"] = "testing"
 
-        from ray.tests.mock_s3_server import start_service, stop_process
+        root = root or uuid.uuid4().hex
+        s3_server = f"http://localhost:{port}"
+        server = ThreadedMotoServer(port=port)
+        server.start()
+        url = f"s3://{root}?region={region}&endpoint_override={s3_server}"
+        yield url
+        server.stop()
 
-        @contextmanager
-        def aws_credentials():
-            old_env = os.environ
-            os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-            os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-            os.environ["AWS_SECURITY_TOKEN"] = "testing"
-            os.environ["AWS_SESSION_TOKEN"] = "testing"
-            yield
-            os.environ = old_env
+        os.environ = old_env
 
-        @contextmanager
-        def moto_s3_server():
-            host = "localhost"
-            port = 5002
-            url = f"http://{host}:{port}"
-            process = start_service("s3", host, port)
-            yield url
-            stop_process(process)
-
-        if root is None:
-            root = uuid.uuid4().hex
-        with moto_s3_server() as s3_server, aws_credentials(), mock_s3():
-            url = f"s3://{root}?region=us-west-2&endpoint_override={s3_server}"
-            yield url
     else:
-        raise ValueError(f"Unknown storage type: {storage_type}")
+        raise NotImplementedError(f"Unknown storage type: {storage_type}")
 
 
 def job_hook(**kwargs):
@@ -1805,7 +1824,7 @@ def wandb_populate_run_location_hook():
 
 
 def safe_write_to_results_json(
-    result: str,
+    result: dict,
     default_file_name: str = "/tmp/release_test_output.json",
     env_var: Optional[str] = "TEST_OUTPUT_JSON",
 ):
@@ -1818,3 +1837,56 @@ def safe_write_to_results_json(
     with open(test_output_json_tmp, "wt") as f:
         json.dump(result, f)
     os.replace(test_output_json_tmp, test_output_json)
+    logger.info(f"Wrote results to {test_output_json}")
+    logger.info(json.dumps(result))
+
+
+def get_current_unused_port():
+    """
+    Returns a port number that is not currently in use.
+
+    This is useful for testing when we need to bind to a port but don't
+    care which one.
+
+    Returns:
+        A port number that is not currently in use. (Note that this port
+        might become used by the time you try to bind to it.)
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    # Bind the socket to a local address with a random port number
+    sock.bind(("localhost", 0))
+
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+def search_words(string: str, words: str):
+    """Check whether each word is in the given string.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return [word in string for word in words.split(" ")]
+
+
+def has_all_words(string: str, words: str):
+    """Check that string has all of the given words.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return all(search_words(string, words))
+
+
+def has_no_words(string, words):
+    """Check that string has none of the given words.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return not any(search_words(string, words))
