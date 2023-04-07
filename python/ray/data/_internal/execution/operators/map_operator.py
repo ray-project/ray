@@ -70,8 +70,8 @@ class MapOperator(PhysicalOperator, ABC):
     def create(
         cls,
         transform_fn: MapTransformFn,
-        input_op: PhysicalOperator,
         init_fn: Callable[[], None],
+        input_op: PhysicalOperator,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
