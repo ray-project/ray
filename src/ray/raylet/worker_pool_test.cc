@@ -755,7 +755,7 @@ TEST_P(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   expected_command.push_back("MainClass");
   expected_command.push_back("--language=JAVA");
   if (one_log_per_workerpool_worker_) {
-    expected_command.push_back("--worker-index=0");   
+    expected_command.push_back("--worker-index=0");
   }
   ASSERT_EQ(real_command, expected_command);
   worker_pool_->HandleJobFinished(job_id);

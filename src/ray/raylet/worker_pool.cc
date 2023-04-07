@@ -398,7 +398,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     worker_command_args.push_back("--worker-index=" +
                                   std::to_string(workers_same_type_count));
   }
-                              
+
   if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER &&
       RayConfig::instance().preload_python_modules().size() > 0) {
     std::string serialized_preload_python_modules =

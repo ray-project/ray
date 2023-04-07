@@ -94,6 +94,9 @@ Execution mode
 Most transformations are lazy. They don't execute until you consume a dataset or call
 :meth:`Dataset.cache() <ray.data.Dataset.cache>`.
 
+The transformations are executed in a streaming way, incrementally on the data and
+with operators processed in parallel, see :ref:`Streaming Execution <datasets_streaming_execution>`.
+
 For an in-depth guide on Datasets execution, read :ref:`Execution <datasets_execution>`.
 
 Fault tolerance
@@ -105,4 +108,4 @@ system failure occurs, Datasets recreates lost blocks by re-executing tasks.
 Fault tolerance isn't supported in two cases:
 
 * If the original worker process that created the Dataset dies. This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Dataset.
-* If  you specify ``compute=ActorPoolStrategy()`` for transformations. This is because Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>`.
+* If  you specify ``compute=ActorPoolStrategy(size=n)`` for transformations. This is because Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>`.
