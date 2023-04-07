@@ -4,8 +4,9 @@ import concurrent.futures
 import logging
 
 import ray
+from ray.data.block import T
 from ray.data.context import DatasetContext
-from ray.data.dataset import Dataset, T
+from ray.data.dataset import Dataset
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal import progress_bar
 

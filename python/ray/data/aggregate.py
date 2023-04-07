@@ -21,7 +21,7 @@ from ray.data._internal.null_aggregate import (
 )
 
 if TYPE_CHECKING:
-    from ray.data import Dataset
+    from ray.data import Datastream
 
 
 @PublicAPI
@@ -59,7 +59,7 @@ class AggregateFn(object):
             finalize: This is called once to compute the final aggregation
                 result from the fully merged accumulator.
             name: The name of the aggregation. This will be used as the output
-                column name in the case of Arrow dataset.
+                column name in the case of Arrow datastream.
         """
         if (accumulate_row is None and accumulate_block is None) or (
             accumulate_row is not None and accumulate_block is not None
@@ -81,8 +81,8 @@ class AggregateFn(object):
         self.finalize = finalize
         self.name = name
 
-    def _validate(self, ds: "Dataset") -> None:
-        """Raise an error if this cannot be applied to the given dataset."""
+    def _validate(self, ds: "Datastream") -> None:
+        """Raise an error if this cannot be applied to the given datastream."""
         pass
 
 
@@ -90,7 +90,7 @@ class _AggregateOnKeyBase(AggregateFn):
     def _set_key_fn(self, on: KeyFn):
         self._key_fn = on
 
-    def _validate(self, ds: "Dataset") -> None:
+    def _validate(self, ds: "Datastream") -> None:
         _validate_key_fn(ds, self._key_fn)
 
 

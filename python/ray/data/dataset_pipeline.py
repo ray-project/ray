@@ -33,9 +33,9 @@ from ray.data._internal.dataset_iterator.pipelined_dataset_iterator import (
 )
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
-from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF
+from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF, T, U
 from ray.data.context import DatasetContext
-from ray.data.dataset import Dataset, T, U
+from ray.data.dataset import Dataset
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data.datasource import Datasource
 from ray.data.datasource.file_based_datasource import (

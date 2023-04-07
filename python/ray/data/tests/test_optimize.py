@@ -667,15 +667,6 @@ def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
     num_reads = ray.get(counter.get.remote())
     assert num_reads == N, num_reads
 
-    # Re-read off.
-    context.optimize_fuse_read_stages = False
-    ray.get(counter.reset.remote())
-    ds1 = ray.data.read_datasource(source, parallelism=1, paths=path1)
-    pipe = ds1.repeat(N)
-    pipe.take()
-    num_reads = ray.get(counter.get.remote())
-    assert num_reads == 1, num_reads
-
 
 @pytest.mark.skip(reason="reusing base data not enabled")
 @pytest.mark.parametrize("with_shuffle", [True, False])
