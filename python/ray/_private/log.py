@@ -120,6 +120,9 @@ def generate_logging_config():
             "ray.rllib": {
                 "level": "WARN",
             },
+            "ray.data": {
+                "level": "WARN",
+            },
         }
 
         dictConfig(
