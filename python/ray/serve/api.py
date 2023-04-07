@@ -615,3 +615,4 @@ def delete(name: str, _blocking: bool = True):
     """
     client = get_global_client()
     client.delete_apps([name], blocking=_blocking)
+
