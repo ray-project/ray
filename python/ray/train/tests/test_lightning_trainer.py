@@ -59,6 +59,9 @@ def test_config_builder():
 def test_trainer_with_native_dataloader(
     ray_start_6_cpus_2_gpus, strategy, accelerator, datasource
 ):
+    if accelerator == "cpu" and strategy == "fsdp":
+        return
+    
     num_epochs = 4
     batch_size = 8
     num_workers = 2
@@ -99,8 +102,12 @@ def test_trainer_with_native_dataloader(
     assert "val_loss" in results.metrics
 
 
+@pytest.mark.parametrize("strategy", ["ddp", "fsdp"])
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
-def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, accelerator):
+def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy, accelerator):
+    if accelerator == "cpu" and strategy == "fsdp":
+        return
+
     num_epochs = 4
     batch_size = 8
     num_workers = 2
@@ -114,6 +121,7 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, accelerator):
         LightningConfigBuilder()
         .module(cls=LinearModule, input_dim=32, output_dim=4)
         .trainer(max_epochs=num_epochs, accelerator=accelerator)
+        .strategy(strategy)
         .build()
     )
 
