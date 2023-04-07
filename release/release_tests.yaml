@@ -3580,23 +3580,6 @@
         cluster_compute: tpl_64_gce.yaml
 
 
-- name: microbenchmark_staging
-  group: core-daily-test
-  team: core
-  frequency: nightly
-  working_dir: microbenchmark
-
-  python: "3.7"
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_64.yaml
-
-  run:
-    timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
-
-
 - name: microbenchmark_38
   group: core-daily-test
   team: core
