@@ -43,6 +43,17 @@ class DatasetLogger:
         for writing to the Dataset log file. Not intended (nor should it be necessary)
         to call explicitly. Assumes that `ray.init()` has already been called prior
         to calling this method; otherwise raises a `ValueError`."""
+        stdout_logger = logging.getLogger(self.log_name)
+
+        # Add stderr handler.
+        formatter = logging.Formatter(fmt=LOGGER_FORMAT)
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        handler.setLevel(LOGGER_LEVEL.upper())
+        stdout_logger.addHandler(handler)
+        stdout_logger.propagate = False
+        stdout_logger.setLevel(LOGGER_LEVEL.upper())
+
         logger = logging.getLogger(f"{self.log_name}.logfile")
         logger.setLevel(LOGGER_LEVEL.upper())
 
