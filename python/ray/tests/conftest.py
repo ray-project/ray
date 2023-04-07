@@ -477,7 +477,7 @@ def call_ray_start(request):
 def call_ray_start_context(request):
     free_port = find_free_port()
     default_cmd = (
-        "ray start --head --num-cpus=1 --min-worker-port=0 " f"--max-worker-port=0"
+        "ray start --head --num-cpus=1 --min-worker-port=0 --max-worker-port=0"
     )
     parameter = getattr(request, "param", default_cmd)
     env = None

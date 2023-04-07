@@ -1,8 +1,10 @@
 import os
+import pytest
 from ray._private.test_utils import (
     client_test_enabled,
     run_string_as_driver,
 )
+
 
 # https://github.com/ray-project/ray/issues/6662
 @pytest.mark.skipif(client_test_enabled(), reason="interferes with grpc")
@@ -24,3 +26,9 @@ assert ray.get(f.remote()) == 1
 
     env = start_http_proxy
     run_string_as_driver(script, dict(os.environ, **env))
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-sv", __file__]))

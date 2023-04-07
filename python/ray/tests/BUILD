@@ -69,6 +69,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
       "test_protobuf_compatibility.py",
+      "test_proxy.py",
   ],
   size = "medium",
   tags = ["medium_size_python_tests_a_to_j", "team:core", "requires-network"],
