@@ -131,12 +131,15 @@ const rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailed(
-    const TaskAttempt &task_attempt, int64_t failed_ts) {
+    const TaskAttempt &task_attempt,
+    int64_t failed_ts,
+    const rpc::RayErrorInfo &error_info) {
   auto &task_event = GetTaskEvent(task_attempt);
-  if (!task_event.has_state_updates()) {
-    return;
-  }
-  task_event.mutable_state_updates()->set_failed_ts(failed_ts);
+  // We could mark the task as failed even if might not have state updates yet (i.e. only
+  // profiling events are reported).
+  auto state_updates = task_event.mutable_state_updates();
+  state_updates->set_failed_ts(failed_ts);
+  state_updates->mutable_error_info()->CopyFrom(error_info);
 }
 
 bool GcsTaskManager::GcsTaskManagerStorage::IsTaskTerminated(
@@ -188,7 +191,8 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskFailed(const TaskID &task_id
   if (!latest_task_attempt.has_value()) {
     return;
   }
-  MarkTaskAttemptFailed(*latest_task_attempt, failed_ts);
+  // TODO(rickyx): we will fix it in the next PR.
+  MarkTaskAttemptFailed(*latest_task_attempt, failed_ts, rpc::RayErrorInfo());
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailedIfNeeded(

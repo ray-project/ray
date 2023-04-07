@@ -254,7 +254,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     ///
     /// \param task_attempt Task attempt.
     /// \param failed_ts The failure timestamp.
-    void MarkTaskAttemptFailed(const TaskAttempt &task_attempt, int64_t failed_ts);
+    /// \param error_info The error info.
+    void MarkTaskAttemptFailed(const TaskAttempt &task_attempt,
+                               int64_t failed_ts,
+                               const rpc::RayErrorInfo &error_info);
 
     /// Get the latest task attempt for the task.
     ///
