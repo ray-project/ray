@@ -1,7 +1,7 @@
-from abc import ABC
+from abc import ABCMeta, abstractmethod
 
 
-class Instruction(ABC):
+class Instruction(metaclass=ABCMeta):
     """An instruction represents a single step in the execution schedule."""
 
     pass
@@ -37,9 +37,10 @@ class LoadBatch(Instruction):
         self.count = count
 
 
-class Schedule(ABC):
+class Schedule(metaclass=ABCMeta):
     """A schedule represents the execution schedule of a stage replica."""
 
+    @abstractmethod
     def steps(self):
         """Yield a list of :class:`Instructions` for each step in the schedule."""
         pass

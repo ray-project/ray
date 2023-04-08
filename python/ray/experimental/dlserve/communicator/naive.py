@@ -38,8 +38,7 @@ class NaiveCommunicator(Communicator):
         self._communication_registry = CommunicationRegistry.options(
             name=group_name, get_if_exists=True
         ).remote()
-        self._world_size = world_size
-        self._rank = rank
+        super().__init__(world_size, rank)
 
     def send(self, tensor: torch.Tensor, dest_rank: int, async_op: bool = False):
         obj_ref = ray.put(tensor)
