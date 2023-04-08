@@ -109,11 +109,11 @@ class TorchCNNTransposeHead(TorchModel):
         )
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return TorchTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return TorchTensorSpec(
             "b, w, h, c",
             w=self.config.output_dims[0],
@@ -125,9 +125,7 @@ class TorchCNNTransposeHead(TorchModel):
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         out = self.initial_dense(inputs)
         # Reshape to initial 3D (image-like) format to enter CNN transpose stack.
-        out = out.reshape((-1,) + tuple(
-            self.config.initial_image_dims)
-        )
+        out = out.reshape((-1,) + tuple(self.config.initial_image_dims))
         out = self.cnn_transpose_net(out)
         # Add 0.5 to center (always non-activated, non-normalized) outputs more
         # around 0.0.

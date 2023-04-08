@@ -1,7 +1,6 @@
 import itertools
 import unittest
 
-from ray.rllib.core.models.base import ENCODER_OUT, STATE_OUT
 from ray.rllib.core.models.configs import CNNTransposeHeadConfig
 from ray.rllib.core.models.utils import ModelChecker
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -12,7 +11,6 @@ torch, _ = try_import_torch()
 
 
 class TestCNNTransposeHeads(unittest.TestCase):
-
     def test_cnn_transpose_heads(self):
         """Tests building DeConv heads properly and checks for correct architecture."""
 
@@ -51,7 +49,8 @@ class TestCNNTransposeHeads(unittest.TestCase):
                 expected_output_dims = [12, 12, 1]
             else:
                 expected_output_dims = (
-                    [32, 32, 3] if cnn_transpose_filter_specifiers[-1][0] == 3
+                    [32, 32, 3]
+                    if cnn_transpose_filter_specifiers[-1][0] == 3
                     else [32, 32, 1]
                 )
 
