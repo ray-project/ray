@@ -3,10 +3,11 @@ import gymnasium as gym
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
+tfp = try_import_tfp()
 
 
 class OnlineLinearRegression(tf.Module if tf else object):
@@ -38,7 +39,6 @@ class OnlineLinearRegression(tf.Module if tf else object):
 
     def _make_dist(self):
         """Create a multivariate normal distribution with the current parameters"""
-        import tensorflow_probability as tfp
 
         dist = tfp.distributions.MultivariateNormalTriL(
             self.theta, scale_tril=tf.linalg.cholesky(self.covariance)
