@@ -10,6 +10,7 @@ from anyscale.sdk.anyscale_client.models import (
     HaJobStates,
 )
 from anyscale.controllers.job_controller import JobController, terminal_state
+from anyscale.client.openapi_client.models.log_filter import LogFilter
 
 from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -42,6 +43,7 @@ class AnyscaleJobManager:
         self.cluster_manager = cluster_manager
         self._last_job_result = None
         self._last_logs = None
+        self._last_ray_logs = None
         self.cluster_startup_timeout = 600
 
     def _run_job(
@@ -259,6 +261,39 @@ class AnyscaleJobManager:
         )
         return self._wait_job(timeout)
 
+    def get_last_ray_logs(self) -> Optional[str]:
+        if not self.cluster_manager.cluster_id:
+            return None
+        if self._last_ray_logs:
+            return self._last_ray_logs
+        globs = [
+            'dashboard',
+            'gcs_server',
+            'runtime_env_agent',
+        ]
+        for glob in globs:
+            last_ray_logs = self._get_last_ray_logs(glob)
+            if not last_ray_logs:
+              continue
+            self._last_ray_logs = last_ray_logs
+            break
+        return self._last_ray_logs
+
+    def _get_last_ray_logs(self, glob: str) -> Optional[str]:
+        buf = io.StringIO()
+        with open(os.devnull, "w") as devnull:
+            with redirect_stdout(buf), redirect_stderr(devnull):
+                JobController().logs_controller.download_logs(
+                    filter=LogFilter(
+                        cluster_id=self.cluster_manager.cluster_id,
+                        glob=glob,
+                    ),
+                    write_to_stdout=True,
+                )
+                print("", flush=True)
+        output = buf.getvalue().strip()
+        return "\n".join(output.splitlines()[-LAST_LOGS_LENGTH * 3 :])
+
     def get_last_logs(self):
         if not self.job_id:
             raise RuntimeError(
@@ -267,6 +302,8 @@ class AnyscaleJobManager:
 
         if self._last_logs:
             return self._last_logs
+
+        return self.get_last_ray_logs()
 
         # TODO: replace with an actual API call.
         def _get_logs():
