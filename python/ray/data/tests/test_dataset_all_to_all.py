@@ -22,7 +22,7 @@ def test_zip(ray_start_regular_shared):
     assert ds.schema() == tuple
     assert ds.take() == [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
     with pytest.raises(ValueError):
-        ds.zip(ray.data.range(3)).cache()
+        ds.zip(ray.data.range(3)).materialize()
 
 
 @pytest.mark.parametrize(
@@ -66,7 +66,7 @@ def test_zip_different_num_blocks_split_smallest(
         [{str(i): i for i in range(num_cols1, num_cols1 + num_cols2)}] * n,
         parallelism=num_blocks2,
     )
-    ds = ds1.zip(ds2).cache()
+    ds = ds1.zip(ds2).materialize()
     num_blocks = ds._plan._snapshot_blocks.executed_num_blocks()
     assert ds.take() == [{str(i): i for i in range(num_cols1 + num_cols2)}] * n
     if should_invert:
@@ -765,38 +765,38 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs, "C": [2 * x for x in xs]})
     # Wrong type.
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).groupby("A").mean(5).cache()
+        ray.data.from_pandas(df).groupby("A").mean(5).materialize()
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).groupby("A").mean([5]).cache()
+        ray.data.from_pandas(df).groupby("A").mean([5]).materialize()
     # Empty list.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).groupby("A").mean([]).cache()
+        ray.data.from_pandas(df).groupby("A").mean([]).materialize()
     # Nonexistent column.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).groupby("A").mean("D").cache()
+        ray.data.from_pandas(df).groupby("A").mean("D").materialize()
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).groupby("A").mean(["B", "D"]).cache()
+        ray.data.from_pandas(df).groupby("A").mean(["B", "D"]).materialize()
     # Columns for simple Dataset.
     with pytest.raises(ValueError):
-        ray.data.from_items(xs).groupby(lambda x: x % 3 == 0).mean("A").cache()
+        ray.data.from_items(xs).groupby(lambda x: x % 3 == 0).mean("A").materialize()
 
     # Test bad on for global aggregation
     # Wrong type.
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).mean(5).cache()
+        ray.data.from_pandas(df).mean(5).materialize()
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).mean([5]).cache()
+        ray.data.from_pandas(df).mean([5]).materialize()
     # Empty list.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).mean([]).cache()
+        ray.data.from_pandas(df).mean([]).materialize()
     # Nonexistent column.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).mean("D").cache()
+        ray.data.from_pandas(df).mean("D").materialize()
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).mean(["B", "D"]).cache()
+        ray.data.from_pandas(df).mean(["B", "D"]).materialize()
     # Columns for simple Dataset.
     with pytest.raises(ValueError):
-        ray.data.from_items(xs).mean("A").cache()
+        ray.data.from_items(xs).mean("A").materialize()
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -1016,7 +1016,7 @@ def test_groupby_map_groups_merging_invalid_result(ray_start_regular_shared):
 
     # The UDF returns None, which is invalid.
     with pytest.raises(TypeError):
-        grouped.map_groups(lambda x: None if x == [1] else x).cache()
+        grouped.map_groups(lambda x: None if x == [1] else x).materialize()
 
 
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
@@ -1676,7 +1676,7 @@ def test_random_shuffle_with_custom_resource(ray_start_cluster):
         parallelism=2,
         ray_remote_args={"resources": {"bar": 1}},
     )
-    ds = ds.random_shuffle(resources={"bar": 1}).cache()
+    ds = ds.random_shuffle(resources={"bar": 1}).materialize()
     assert "1 nodes used" in ds.stats()
     assert "2 nodes used" not in ds.stats()
 
