@@ -636,6 +636,87 @@ bool IsProcessAlive(pid_t pid) {
 #endif
 }
 
+#if defined(__linux__)
+static inline std::error_code KillProcLinux(pid_t pid) {
+  std::error_code error;
+  if (kill(pid, SIGKILL) != 0) {
+    error = std::error_code(errno, std::system_category());
+  }
+  return error;
+}
+#endif
+
+std::optional<std::error_code> KillProc(pid_t pid) {
+#if defined(__linux__)
+  return {KillProcLinux(pid)};
+#else
+  return std::nullopt;
+#endif
+}
+
+#if defined(__linux__)
+static inline std::vector<pid_t> GetAllProcsWithPpidLinux(pid_t parent_pid) {
+  std::vector<pid_t> child_pids;
+
+  // Iterate over all files in the /proc directory, looking for directories.
+  // See `man proc` for information on the directory structure.
+  // Directories with only digits in their name correspond to processes in the process
+  // table. We read in the status of each such process and parse the parent PID. If the
+  // process parent PID is equal to parent_pid, then we add it to the vector to be
+  // returned. Ideally, we use a library for this, but at the time of writing one is not
+  // available in Ray C++.
+
+  std::filesystem::directory_iterator dir(kProcDirectory);
+  for (const auto &file : dir) {
+    if (!file.is_directory()) {
+      continue;
+    }
+
+    // Determine if the directory name consists of only digits (means it's a PID).
+    const auto filename = file.path().filename().string();
+    bool file_name_is_only_digit =
+        std::all_of(filename.begin(), filename.end(), ::isdigit);
+    if (!file_name_is_only_digit) {
+      continue;
+    }
+
+    // If so, open the status file for reading.
+    pid_t pid = std::stoi(filename);
+    std::ifstream status_file(file.path() / "status");
+    if (!status_file.is_open()) {
+      continue;
+    }
+
+    // Scan for the line that starts with the ppid key.
+    std::string line;
+    const std::string key = "PPid:";
+    while (std::getline(status_file, line)) {
+      const auto substr = line.substr(0, key.size());
+      if (substr != key) {
+        continue;
+      }
+
+      // We found it, read and parse the PPID.
+      pid_t ppid = std::stoi(line.substr(substr.size()));
+      if (ppid == parent_pid) {
+        child_pids.push_back(pid);
+      }
+      break;
+    }
+  }
+
+  return child_pids;
+}
+#endif
+
+std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid) {
+#if defined(__linux__)
+  return {GetAllProcsWithPpidLinux(parent_pid)};
+#else
+  return std::nullopt;
+#endif
+}
+
 }  // namespace ray
 
 namespace std {

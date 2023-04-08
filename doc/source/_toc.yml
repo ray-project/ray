@@ -24,7 +24,6 @@ parts:
           - file: ray-core/examples/overview
             title: "Examples"
             sections:
-              - file: ray-core/examples/gentle_walkthrough
               - file: ray-core/examples/monte_carlo_pi
               - file: ray-core/examples/plot_example-a3c
               - file: ray-core/examples/plot_example-lm
@@ -302,6 +301,7 @@ parts:
               - file: rllib/rllib-replay-buffers
               - file: rllib/rllib-offline
               - file: rllib/rllib-connector
+              - file: rllib/rllib-rlmodule
               - file: rllib/rllib-fault-tolerance
               - file: rllib/rllib-dev
               - file: rllib/rllib-cli
