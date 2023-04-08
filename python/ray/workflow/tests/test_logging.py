@@ -1,6 +1,6 @@
 import pytest
 import ray
-from ray._private.test_utils import run_string_as_driver_nonblocking 
+from ray._private.test_utils import run_string_as_driver_nonblocking
 
 
 def test_basic_workflow_logs(workflow_start_regular):
@@ -15,10 +15,6 @@ def f():
     return 10
 
 workflow.run(f.bind(), workflow_id="wid")
-
-# Sleeping so that the workflow logs could be sent to the driver.
-import time
-time.sleep(3)
     """
     proc = run_string_as_driver_nonblocking(script)
     logs = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
@@ -48,10 +44,6 @@ def f2(x):
     return x+1
 
 workflow.run(f2.bind(f1.bind()), workflow_id="wid1")
-
-# Sleeping so that the workflow logs could be sent to the driver.
-import time
-time.sleep(3)
     """
     proc = run_string_as_driver_nonblocking(script)
     logs = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
@@ -83,10 +75,6 @@ def f4(x):
     return f3.bind(x*2)
 
 workflow.run(f4.bind(10), workflow_id="wid2")
-
-# Sleeping so that the workflow logs could be sent to the driver.
-import time
-time.sleep(3)
     """
     proc = run_string_as_driver_nonblocking(script)
     logs = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
