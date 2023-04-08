@@ -267,9 +267,9 @@ class AnyscaleJobManager:
         if self._last_ray_logs:
             return self._last_ray_logs
         globs = [
-            'dashboard',
-            'gcs_server',
-            'runtime_env_agent',
+            '/dashboard',
+            '/gcs_server',
+            '/runtime_env_agent',
         ]
         for glob in globs:
             last_ray_logs = self._get_last_ray_logs(glob)
