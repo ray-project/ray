@@ -9,6 +9,7 @@ import ray
 from ray._private.utils import get_or_create_event_loop
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
+from ray._private import ray_constants
 from ray._private.test_utils import (
     convert_actor_state,
     generate_system_config_map,
@@ -798,25 +799,15 @@ def test_redis_data_loss_no_leak(ray_start_regular_with_external_redis):
     ip, port = redis_addr.split(":")
     cli = redis.Redis(ip, port)
     cli.flushall()
-
-    from grpc_health.v1 import health_pb2
-    from grpc_health.v1 import health_pb2_grpc
-    import grpc
-
-    raylet_channel = grpc.insecure_channel(
-        f"localhost:{ray._private.worker._global_node.node_manager_port}"
-    )
-    health_stub = health_pb2_grpc.HealthStub(raylet_channel)
+    raylet_proc = ray._private.worker._global_node.all_processes[
+        ray_constants.PROCESS_TYPE_RAYLET
+    ][0].process
 
     def check_raylet_healthy():
-        request = health_pb2.HealthCheckRequest()
-        try:
-            reply = health_stub.Check(request)
-            return health_pb2.HealthCheckResponse.SERVING == reply.status
-        except Exception:
-            return False
+        return raylet_proc.poll() is None
 
     wait_for_condition(lambda: check_raylet_healthy())
+
     # Start GCS
     ray._private.worker._global_node.start_gcs_server()
 

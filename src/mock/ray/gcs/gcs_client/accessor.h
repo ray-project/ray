@@ -134,7 +134,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (override));
   MOCK_METHOD(Status,
               AsyncCheckSelfAlive,
-              (const std::function<void(Status, bool)> &callback),
+              (const std::function<void(Status, bool)> &callback, int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status,
               AsyncGetAll,

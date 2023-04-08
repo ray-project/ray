@@ -471,7 +471,7 @@ Status NodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
 }
 
 Status NodeInfoAccessor::AsyncCheckSelfAlive(
-    const std::function<void(Status, bool)> &callback, int64_t timeout = -1) {
+    const std::function<void(Status, bool)> &callback, int64_t timeout_ms = -1) {
   rpc::CheckAliveRequest request;
   auto node_addr = local_node_info_.node_manager_address() + ":" +
                    std::to_string(local_node_info_.node_manager_port());
@@ -487,7 +487,7 @@ Status NodeInfoAccessor::AsyncCheckSelfAlive(
           callback(status, true);
         }
       },
-      timeout);
+      timeout_ms);
   return Status::OK();
 }
 
