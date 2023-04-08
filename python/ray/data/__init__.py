@@ -11,7 +11,7 @@ from ray.data._internal.progress_bar import set_progress_bars
 from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
 from ray.data.dataset import Dataset, Datastream
 from ray.data.context import DatasetContext, DataContext
-from ray.data.dataset_iterator import DataIterator, DataIterator
+from ray.data.dataset_iterator import DatasetIterator, DataIterator
 from ray.data.dataset_pipeline import DatasetPipeline
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.preprocessor import Preprocessor
@@ -62,7 +62,7 @@ __all__ = [
     "DataContext",
     "DatasetContext",  # Backwards compatibility alias.
     "DataIterator",
-    "DataIterator",  # Backwards compatibility alias.
+    "DatasetIterator",  # Backwards compatibility alias.
     "DatasetPipeline",
     "Datasource",
     "ExecutionOptions",
