@@ -214,7 +214,7 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
 
 def test_grouped_dataset_repr(ray_start_regular_shared):
     ds = ray.data.from_items([{"key": "spam"}, {"key": "ham"}, {"key": "spam"}])
-    assert repr(ds.groupby("key")) == f"GroupedDataset(dataset={ds!r}, key='key')"
+    assert repr(ds.groupby("key")) == f"GroupedDatastream(dataset={ds!r}, key='key')"
 
 
 def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):

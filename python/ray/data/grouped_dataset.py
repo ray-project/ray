@@ -127,7 +127,7 @@ class GroupedDatastream(Generic[T]):
     def __init__(self, dataset: Datastream[T], key: KeyFn):
         """Construct a dataset grouped by key (internal API).
 
-        The constructor is not part of the GroupedDataset API.
+        The constructor is not part of the GroupedDatastream API.
         Use the ``Dataset.groupby()`` method to construct one.
         """
         self._dataset = dataset
@@ -273,7 +273,7 @@ class GroupedDatastream(Generic[T]):
         batch_format: Optional[str] = "default",
         **ray_remote_args,
     ) -> "Datastream[Any]":
-        # TODO AttributeError: 'GroupedDataset' object has no attribute 'map_groups'
+        # TODO AttributeError: 'GroupedDatastream' object has no attribute 'map_groups'
         #  in the example below.
         """Apply the given function to each group of records of this dataset.
 

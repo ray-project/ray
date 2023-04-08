@@ -150,7 +150,7 @@ if TYPE_CHECKING:
     import torch.utils.data
 
     from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedDataset
+    from ray.data.grouped_dataset import GroupedDatastream
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
     from tensorflow_metadata.proto.v0 import schema_pb2
@@ -1684,7 +1684,7 @@ class Datastream(Generic[T]):
             self._lazy,
         )
 
-    def groupby(self, key: Optional[KeyFn]) -> "GroupedDataset[T]":
+    def groupby(self, key: Optional[KeyFn]) -> "GroupedDatastream[T]":
         """Group the datastream by the key function or column name.
 
         Examples:
@@ -1707,16 +1707,16 @@ class Datastream(Generic[T]):
                 grouping is global.
 
         Returns:
-            A lazy GroupedDataset that can be aggregated later.
+            A lazy GroupedDatastream that can be aggregated later.
         """
-        from ray.data.grouped_dataset import GroupedDataset
+        from ray.data.grouped_dataset import GroupedDatastream
 
         # Always allow None since groupby interprets that as grouping all
         # records into a single global group.
         if key is not None:
             _validate_key_fn(self, key)
 
-        return GroupedDataset(self, key)
+        return GroupedDatastream(self, key)
 
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> U:

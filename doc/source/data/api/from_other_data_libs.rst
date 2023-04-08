@@ -42,7 +42,7 @@ For Pandas Users
    * - df.groupby()
      - :meth:`ds.groupby() <ray.data.Dataset.groupby>`
    * - df.groupby().apply()
-     - :meth:`ds.groupby().map_groups() <ray.data.grouped_dataset.GroupedDataset.map_groups>`
+     - :meth:`ds.groupby().map_groups() <ray.data.grouped_dataset.GroupedDatastream.map_groups>`
    * - df.sample()
      - :meth:`ds.random_sample() <ray.data.Dataset.random_sample>`
    * - df.sort_values()
