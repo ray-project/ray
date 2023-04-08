@@ -262,6 +262,7 @@ class AnyscaleJobManager:
         return self._wait_job(timeout)
 
     def get_last_ray_logs(self) -> Optional[str]:
+        logger.log(f'Cluster id {self.cluster_manager.cluster_id}')
         if not self.cluster_manager.cluster_id:
             return None
         if self._last_ray_logs:
