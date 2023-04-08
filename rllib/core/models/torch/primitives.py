@@ -1,7 +1,10 @@
 from typing import Callable, List, Optional, Union, Tuple
 
 from ray.rllib.core.models.torch.utils import Stride2D
-from ray.rllib.models.torch.misc import same_padding, same_padding_transpose_after_stride
+from ray.rllib.models.torch.misc import (
+    same_padding,
+    same_padding_transpose_after_stride,
+)
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.framework import try_import_torch
 

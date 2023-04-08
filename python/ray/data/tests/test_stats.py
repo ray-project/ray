@@ -15,8 +15,10 @@ from unittest.mock import patch
 
 
 def canonicalize(stats: str) -> str:
+    # Dataset UUID expression.
+    s0 = re.sub("([a-f\d]{32})", "U", stats)
     # Time expressions.
-    s1 = re.sub("[0-9\.]+(ms|us|s)", "T", stats)
+    s1 = re.sub("[0-9\.]+(ms|us|s)", "T", s0)
     # Handle zero values specially so we can check for missing values.
     s2 = re.sub(" [0]+(\.[0]+)?", " Z", s1)
     # Other numerics.
@@ -257,6 +259,122 @@ Dataset iterator time breakdown:
 * Total time: T
 """
             )
+
+
+def test_dataset__repr__(ray_start_regular_shared):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+
+    ds = ray.data.range(10, parallelism=1).cache()
+    ss = ds._plan.stats().to_summary()
+
+    ds2 = ds.map_batches(lambda x: x).cache()
+    ss2 = ds2._plan.stats().to_summary()
+    assert canonicalize(repr(ss)) == (
+        "DatasetStatsSummary(\n"
+        "   dataset_uuid=U,\n"
+        "   base_name=None,\n"
+        "   number=N,\n"
+        "   extra_metrics={},\n"
+        "   stage_stats=[\n"
+        "      StageStatsSummary(\n"
+        "         stage_name='Read',\n"
+        "         is_substage=False,\n"
+        "         time_total_s=T,\n"
+        "         block_execution_summary_str=N/N blocks split from parent in T\n"
+        "         wall_time=None,\n"
+        "         cpu_time=None,\n"
+        "         memory=None,\n"
+        "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "         node_count=None,\n"
+        "      ),\n"
+        "   ],\n"
+        "   iter_stats=IterStatsSummary(\n"
+        "      wait_time=T,\n"
+        "      get_time=T,\n"
+        "      iter_blocks_local=None,\n"
+        "      iter_blocks_remote=None,\n"
+        "      iter_unknown_location=None,\n"
+        "      next_time=T,\n"
+        "      format_time=T,\n"
+        "      user_time=T,\n"
+        "      total_time=T,\n"
+        "   ),\n"
+        "   parents=[],\n"
+        ")"
+    )
+    assert canonicalize(repr(ss2)) == (
+        "DatasetStatsSummary(\n"
+        "   dataset_uuid=U,\n"
+        "   base_name=MapBatches(<lambda>),\n"
+        "   number=N,\n"
+        "   extra_metrics={\n"
+        "      obj_store_mem_alloc: N,\n"
+        "      obj_store_mem_freed: N,\n"
+        "      obj_store_mem_peak: N,\n"
+        "   },\n"
+        "   stage_stats=[\n"
+        "      StageStatsSummary(\n"
+        "         stage_name='MapBatches(<lambda>)',\n"
+        "         is_substage=False,\n"
+        "         time_total_s=T,\n"
+        "         block_execution_summary_str=N/N blocks executed in T\n"
+        "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
+        "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
+        "      ),\n"
+        "   ],\n"
+        "   iter_stats=IterStatsSummary(\n"
+        "      wait_time=T,\n"
+        "      get_time=T,\n"
+        "      iter_blocks_local=None,\n"
+        "      iter_blocks_remote=None,\n"
+        "      iter_unknown_location=None,\n"
+        "      next_time=T,\n"
+        "      format_time=T,\n"
+        "      user_time=T,\n"
+        "      total_time=T,\n"
+        "   ),\n"
+        "   parents=[\n"
+        "      DatasetStatsSummary(\n"
+        "         dataset_uuid=U,\n"
+        "         base_name=None,\n"
+        "         number=N,\n"
+        "         extra_metrics={},\n"
+        "         stage_stats=[\n"
+        "            StageStatsSummary(\n"
+        "               stage_name='Read',\n"
+        "               is_substage=False,\n"
+        "               time_total_s=T,\n"
+        "               block_execution_summary_str=N/N blocks split from parent in T\n"
+        "               wall_time=None,\n"
+        "               cpu_time=None,\n"
+        "               memory=None,\n"
+        "               output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "               output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "               node_count=None,\n"
+        "            ),\n"
+        "         ],\n"
+        "         iter_stats=IterStatsSummary(\n"
+        "            wait_time=T,\n"
+        "            get_time=T,\n"
+        "            iter_blocks_local=None,\n"
+        "            iter_blocks_remote=None,\n"
+        "            iter_unknown_location=None,\n"
+        "            next_time=T,\n"
+        "            format_time=T,\n"
+        "            user_time=T,\n"
+        "            total_time=T,\n"
+        "         ),\n"
+        "         parents=[],\n"
+        "      ),\n"
+        "   ],\n"
+        ")"
+    )
 
 
 def test_dataset_stats_shuffle(ray_start_regular_shared):
