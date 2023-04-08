@@ -412,7 +412,10 @@ class Actor:
         a = ChildActor.remote()
         a.children.options(name="children").remote(pid_actor)
         # Wait til child tasks run.
-        wait_for_condition(lambda: ray.get(pid_actor.get_pids.remote()).get("task_sleep_child") is not None)
+        wait_for_condition(
+            lambda: ray.get(pid_actor.get_pids.remote()).get("task_sleep_child")
+            is not None
+        )
         raise ValueError("expected to fail.")
 
     def ready(self):
