@@ -58,12 +58,7 @@ except ImportError:
         "'pip install ray[rllib]'."
     )
 
-try:
-    class_name = get_ipython().__class__.__name__
-    IS_NOTEBOOK = True if "Terminal" not in class_name else False
-except NameError:
-    IS_NOTEBOOK = False
-
+IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
 SKIP_RESULTS_IN_REPORT = {"config", TRIAL_ID, EXPERIMENT_TAG, DONE}
 

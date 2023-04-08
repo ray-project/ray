@@ -122,18 +122,27 @@ class OpState:
         self.num_completed_tasks = 0
         self.inputs_done_called = False
 
-    def initialize_progress_bars(self, index: int) -> int:
+    def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
         """Create progress bars at the given index (line offset in console).
 
         For AllToAllOperator, zero or more sub progress bar would be created.
         Return the number of progress bars created for this operator.
         """
+        is_all_to_all = isinstance(self.op, AllToAllOperator)
+        # Only show 1:1 ops when in verbose progress mode.
+        enabled = verbose_progress or is_all_to_all
         self.progress_bar = ProgressBar(
-            self.op.name, self.op.num_outputs_total() or 1, index
+            "- " + self.op.name,
+            self.op.num_outputs_total() or 1,
+            index,
+            enabled=enabled,
         )
-        num_bars = 1
-        if isinstance(self.op, AllToAllOperator):
-            num_bars += self.op.initialize_sub_progress_bars(index + 1)
+        if enabled:
+            num_bars = 1
+            if is_all_to_all:
+                num_bars += self.op.initialize_sub_progress_bars(index + 1)
+        else:
+            num_bars = 0
         return num_bars
 
     def close_progress_bars(self):
@@ -166,7 +175,7 @@ class OpState:
     def summary_str(self) -> str:
         queued = self.num_queued() + self.op.internal_queue_size()
         active = self.op.num_active_work_refs()
-        desc = f"{self.op.name}: {active} active, {queued} queued"
+        desc = f"- {self.op.name}: {active} active, {queued} queued"
         mem = memory_string(self.op.current_resource_usage().object_store_memory or 0)
         desc += f", {mem} objects"
         suffix = self.op.progress_str()
@@ -275,7 +284,7 @@ def build_streaming_topology(
     i = 1
     for op_state in list(topology.values()):
         if not isinstance(op_state.op, InputDataBuffer):
-            i += op_state.initialize_progress_bars(i)
+            i += op_state.initialize_progress_bars(i, options.verbose_progress)
 
     return (topology, i)
 

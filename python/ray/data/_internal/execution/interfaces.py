@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import os
 from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
 
 import ray
@@ -203,6 +204,9 @@ class ExecutionOptions:
         actor_locality_enabled: Whether to enable locality-aware task dispatch to
             actors (on by default). This applies to both ActorPoolStrategy map and
             streaming_split operations.
+        verbose_progress: Whether to report progress individually per operator. By
+            default, only AllToAll operators and global progress is reported. This
+            option is useful for performance debugging. Off by default.
     """
 
     resource_limits: ExecutionResources = ExecutionResources()
@@ -212,6 +216,8 @@ class ExecutionOptions:
     preserve_order: bool = False
 
     actor_locality_enabled: bool = True
+
+    verbose_progress: bool = bool(int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "0")))
 
 
 @dataclass
