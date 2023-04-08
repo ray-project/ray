@@ -1156,22 +1156,13 @@ def enable_syncer_test(request, monkeypatch):
     ray._raylet.Config.initialize("")
 
 
-# The following functions are copied from:
+# Referenced
 #     https://github.com/AdamGleave/pytest-shard/blob/master/pytest_shard
-def sha256hash(x):
+# for how to do sharding in pytest
+def md5hash(x):
     import hashlib
 
     return int.from_bytes(hashlib.md5(x.encode()).digest(), "little")
-
-
-def filter_items_by_shard(items, shard_id, num_shards):
-    shards = [sha256hash(item.nodeid) % num_shards for item in items]
-
-    new_items = []
-    for shard, item in zip(shards, items):
-        if shard == shard_id:
-            new_items.append(item)
-    return new_items
 
 
 def pytest_collection_modifyitems(config, items):
@@ -1182,7 +1173,16 @@ def pytest_collection_modifyitems(config, items):
         raise ValueError(
             "shard_num = f{shard_num} must be less than shard_total = f{shard_total}"
         )
+
     if shard_total == 1:
         return items
 
-    items[:] = filter_items_by_shard(items, shard_id, shard_total)
+    items[:] = [
+        item for item in items if md5hash(item.nodeid) % shard_total == shard_id
+    ]
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if exitstatus == 5:
+        # Suppress the error when no test to run
+        session.exitstatus = 0
