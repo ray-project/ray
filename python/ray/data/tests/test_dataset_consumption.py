@@ -164,19 +164,19 @@ def test_empty_dataset(ray_start_regular_shared):
 
     ds = ray.data.range(1)
     ds = ds.filter(lambda x: x > 1)
-    ds.cache()
+    ds = ds.materialize()
     assert str(ds) == "Dataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
 
     # Test map on empty dataset.
     ds = ray.data.from_items([])
     ds = ds.map(lambda x: x)
-    ds.cache()
+    ds = ds.materialize()
     assert ds.count() == 0
 
     # Test filter on empty dataset.
     ds = ray.data.from_items([])
     ds = ds.filter(lambda: True)
-    ds.cache()
+    ds = ds.materialize()
     assert ds.count() == 0
 
 
@@ -199,7 +199,7 @@ def test_cache_dataset(ray_start_regular_shared):
 
     ds = ray.data.range(1)
     ds = ds.map(inc)
-    ds = ds.cache()
+    ds = ds.materialize()
 
     for _ in range(10):
         ds.take_all()
@@ -211,9 +211,9 @@ def test_schema(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
     ds2 = ray.data.range_table(10, parallelism=10)
     ds3 = ds2.repartition(5)
-    ds3.cache()
+    ds3 = ds3.materialize()
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
-    ds4.cache()
+    ds4 = ds4.materialize()
     assert str(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
     assert str(ds3) == "Dataset(num_blocks=5, num_rows=10, schema={value: int64})"
@@ -288,7 +288,7 @@ def test_dataset_repr(ray_start_regular_shared):
         "   +- MapBatches(<lambda>)\n"
         "      +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     )
-    ds.cache()
+    ds = ds.materialize()
     assert repr(ds) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
@@ -326,7 +326,7 @@ def test_dataset_repr(ray_start_regular_shared):
 def test_limit(ray_start_regular_shared, lazy):
     ds = ray.data.range(100, parallelism=20)
     if not lazy:
-        ds = ds.cache()
+        ds = ds.materialize()
     for i in range(100):
         assert ds.limit(i).take(200) == list(range(i))
 
@@ -1397,15 +1397,15 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
     # Read/write from Ray Client will result in error.
     ray.init(address)
     with pytest.raises(ValueError):
-        ds = ray.data.read_parquet("local://" + path).cache()
+        ds = ray.data.read_parquet("local://" + path).materialize()
     ds = ray.data.from_pandas(df)
     with pytest.raises(ValueError):
-        ds.write_parquet("local://" + data_path).cache()
+        ds.write_parquet("local://" + data_path).materialize()
 
 
 def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplog):
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
-        ray.data.range(5000, parallelism=5000).cache()
+        ray.data.range(5000, parallelism=5000).materialize()
     assert (
         "The requested parallelism of 5000 is "
         "more than 4x the number of available CPU slots in the cluster" in caplog.text
@@ -1451,17 +1451,17 @@ def test_read_write_local_node(ray_start_cluster):
 
     local_path = "local://" + data_path
     # Plain read.
-    ds = ray.data.read_parquet(local_path).cache()
+    ds = ray.data.read_parquet(local_path).materialize()
     check_dataset_is_local(ds)
 
     # SPREAD scheduling got overridden when read local scheme.
     ds = ray.data.read_parquet(
         local_path, ray_remote_args={"scheduling_strategy": "SPREAD"}
-    ).cache()
+    ).materialize()
     check_dataset_is_local(ds)
 
     # With fusion.
-    ds = ray.data.read_parquet(local_path).map(lambda x: x).cache()
+    ds = ray.data.read_parquet(local_path).map(lambda x: x).materialize()
     check_dataset_is_local(ds)
 
     # Write back to local scheme.
@@ -1474,15 +1474,15 @@ def test_read_write_local_node(ray_start_cluster):
     with pytest.raises(ValueError):
         ds = ray.data.read_parquet(
             [local_path + "/test1.parquet", data_path + "/test2.parquet"]
-        ).cache()
+        ).materialize()
     with pytest.raises(ValueError):
         ds = ray.data.read_parquet(
             [local_path + "/test1.parquet", "example://iris.parquet"]
-        ).cache()
+        ).materialize()
     with pytest.raises(ValueError):
         ds = ray.data.read_parquet(
             ["example://iris.parquet", local_path + "/test1.parquet"]
-        ).cache()
+        ).materialize()
 
 
 @ray.remote
@@ -1588,7 +1588,7 @@ def test_polars_lazy_import(shutdown_only):
             ray.data.from_pandas(dfs)
             .map_batches(lambda t: t, batch_format="pyarrow", batch_size=None)
             .sort(key="a")
-            .cache()
+            .materialize()
         )
         assert any(ray.get([f.remote(True) for _ in range(parallelism)]))
 
