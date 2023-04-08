@@ -16,6 +16,10 @@ parts:
 
       - file: batch-inference/getting-started
         title: "Scalable Offline Batch Inference"
+        sections:
+          - file: data/creating-datasets
+          - file: batch-inference/preprocessing.rst
+          - file: batch-inference/inference.rst
 
       - file: ray-core/walkthrough
         title: "Ray Core"
