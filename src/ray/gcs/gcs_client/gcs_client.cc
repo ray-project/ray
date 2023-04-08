@@ -142,7 +142,7 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
 GcsSyncClient::GcsSyncClient(const GcsClientOptions &options) : options_(options) {}
 
 Status GcsSyncClient::Connect() {
-  grpc::ChannelArguments arguments = CreateDefaultChannelArguments();
+  grpc::ChannelArguments arguments;
   arguments.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, 512 * 1024 * 1024);
   arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 60 * 1000);
   arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 60 * 1000);
