@@ -19,7 +19,7 @@ from ray.data.block import (
     CallableClass,
     RowUDF,
 )
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -75,7 +75,7 @@ class TaskPoolStrategy(ComputeStrategy):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
         assert (
-            not DatasetContext.get_current().new_execution_backend
+            not DataContext.get_current().new_execution_backend
         ), "Legacy backend off"
         assert fn_constructor_args is None and fn_constructor_kwargs is None
         if fn_args is None:
@@ -83,7 +83,7 @@ class TaskPoolStrategy(ComputeStrategy):
         if fn_kwargs is None:
             fn_kwargs = {}
 
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
 
         # Handle empty datasets.
         if block_list.initial_num_blocks() == 0:
@@ -280,7 +280,7 @@ class ActorPoolStrategy(ComputeStrategy):
     ) -> BlockList:
         """Note: this is not part of the Dataset public API."""
         assert (
-            not DatasetContext.get_current().new_execution_backend
+            not DataContext.get_current().new_execution_backend
         ), "Legacy backend off"
         if fn_args is None:
             fn_args = tuple()
@@ -388,7 +388,7 @@ class ActorPoolStrategy(ComputeStrategy):
             remote_args["num_cpus"] = 1
 
         if "scheduling_strategy" not in remote_args:
-            ctx = DatasetContext.get_current()
+            ctx = DataContext.get_current()
             if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
                 remote_args["scheduling_strategy"] = "SPREAD"
             else:
@@ -614,7 +614,7 @@ def _check_batch_size(
         if meta.num_rows and meta.size_bytes:
             batch_size_bytes = math.ceil(batch_size * (meta.size_bytes / meta.num_rows))
             break
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     if (
         batch_size_bytes is not None
         and batch_size_bytes > context.target_max_block_size
@@ -626,6 +626,6 @@ def _check_batch_size(
             "may result in out-of-memory errors for certain workloads, and you may "
             "want to decrease your batch size or increase the configured target max "
             "block size, e.g.: "
-            "from ray.data.context import DatasetContext; "
-            "DatasetContext.get_current().target_max_block_size = 4_000_000_000"
+            "from ray.data.context import DataContext; "
+            "DataContext.get_current().target_max_block_size = 4_000_000_000"
         )

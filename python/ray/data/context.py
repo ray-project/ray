@@ -246,3 +246,7 @@ class DataContext:
         """
         global _default_context
         _default_context = context
+
+
+# Backwards compatibility alias.
+DatasetContext = DataContext

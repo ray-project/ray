@@ -4,7 +4,7 @@ from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
 
 import ray
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
+from ray.data.context import DataContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
@@ -104,7 +104,7 @@ class ActorPoolMapOperator(MapOperator):
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         actor = self._cls.remote(ctx, src_fn_name=self.name)
         self._actor_pool.add_pending_actor(actor, actor.get_location.remote())
 
@@ -286,7 +286,7 @@ class ActorPoolMapOperator(MapOperator):
         """Apply defaults to the actor creation remote args."""
         ray_remote_args = ray_remote_args.copy()
         if "scheduling_strategy" not in ray_remote_args:
-            ctx = DatasetContext.get_current()
+            ctx = DataContext.get_current()
             if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
                 ray_remote_args["scheduling_strategy"] = "SPREAD"
             else:
@@ -307,8 +307,8 @@ class ActorPoolMapOperator(MapOperator):
 class _MapWorker:
     """An actor worker for MapOperator."""
 
-    def __init__(self, ctx: DatasetContext, src_fn_name: str):
-        DatasetContext._set_current(ctx)
+    def __init__(self, ctx: DataContext, src_fn_name: str):
+        DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
 
     def get_location(self) -> NodeIdStr:

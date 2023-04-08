@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -1522,7 +1522,7 @@ def test_random_block_order_schema(ray_start_regular_shared):
 
 
 def test_random_block_order(ray_start_regular_shared, restore_dataset_context):
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
     # Test BlockList.randomize_block_order.
@@ -1534,7 +1534,7 @@ def test_random_block_order(ray_start_regular_shared, restore_dataset_context):
     assert results == expected
 
     # Test LazyBlockList.randomize_block_order.
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     try:
         original_optimize_fuse_read_stages = context.optimize_fuse_read_stages
         context.optimize_fuse_read_stages = False

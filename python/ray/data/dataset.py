@@ -48,13 +48,13 @@ from ray.data._internal.planner.flat_map import generate_flat_map_fn
 from ray.data._internal.planner.map_batches import generate_map_batches_fn
 from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
-from ray.data.dataset_iterator import DatasetIterator
+from ray.data.dataset_iterator import DataIterator
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.dataset_iterator.dataset_iterator_impl import (
-    DatasetIteratorImpl,
+    DataIteratorImpl,
 )
 from ray.data._internal.dataset_iterator.stream_split_dataset_iterator import (
-    StreamSplitDatasetIterator,
+    StreamSplitDataIterator,
 )
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -103,7 +103,7 @@ from ray.data.block import (
     _validate_key_fn,
 )
 from ray.data.context import (
-    DatasetContext,
+    DataContext,
     WARN_PREFIX,
     OK_PREFIX,
     ESTIMATED_SAFE_MEMORY_FRACTION,
@@ -1137,8 +1137,8 @@ class Datastream(Generic[T]):
         *,
         equal: bool = False,
         locality_hints: Optional[List["NodeIdStr"]] = None,
-    ) -> List[DatasetIterator]:
-        """Returns ``n`` :class:`DatasetIterators <ray.data.DatasetIterator>` that can
+    ) -> List[DataIterator]:
+        """Returns ``n`` :class:`DataIterators <ray.data.DataIterator>` that can
         be used to read disjoint subsets of the datastream in parallel.
 
         This method is the recommended way to consume Datastreams from multiple
@@ -1197,7 +1197,7 @@ class Datastream(Generic[T]):
             The output iterator splits. These iterators are Ray-serializable and can
             be freely passed to any Ray task or actor.
         """
-        return StreamSplitDatasetIterator.create(self, n, equal, locality_hints)
+        return StreamSplitDataIterator.create(self, n, equal, locality_hints)
 
     @ConsumptionAPI
     def split(
@@ -2915,7 +2915,7 @@ class Datastream(Generic[T]):
                 "Datasource.write() instead."
             )
 
-            ctx = DatasetContext.get_current()
+            ctx = DataContext.get_current()
             blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
             # Prepare write in a remote task so that in Ray client mode, we
             # don't do metadata resolution from the client machine.
@@ -2943,11 +2943,11 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI(
         delegate=(
-            "Calling any of the consumption methods on the returned ``DatasetIterator``"
+            "Calling any of the consumption methods on the returned ``DataIterator``"
         )
     )
-    def iterator(self) -> DatasetIterator:
-        """Return a :class:`~ray.data.DatasetIterator` that
+    def iterator(self) -> DataIterator:
+        """Return a :class:`~ray.data.DataIterator` that
         can be used to repeatedly iterate over the datastream.
 
         Examples:
@@ -2958,10 +2958,10 @@ class Datastream(Generic[T]):
             ...     print(batch) # doctest: +SKIP
 
         .. note::
-            It is recommended to use ``DatasetIterator`` methods over directly
+            It is recommended to use ``DataIterator`` methods over directly
             calling methods such as ``iter_batches()``.
         """
-        return DatasetIteratorImpl(self)
+        return DataIteratorImpl(self)
 
     @ConsumptionAPI
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
@@ -3801,7 +3801,7 @@ class Datastream(Generic[T]):
         from ray.data._internal.plan import _rewrite_read_stage
         from ray.data.dataset_pipeline import DatasetPipeline
 
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
             blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
@@ -3923,7 +3923,7 @@ class Datastream(Generic[T]):
         if blocks_per_window is None:
             blocks_per_window = 10
 
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
             blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
@@ -4344,12 +4344,12 @@ class Datastream(Generic[T]):
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
         """
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         if context.use_streaming_executor:
             raise DeprecationWarning(
                 "`dataset_format` is deprecated for streaming execution. To use "
                 "`dataset_format`, you must explicitly enable bulk execution by "
-                "setting `use_streaming_executor` to False in the `DatasetContext`"
+                "setting `use_streaming_executor` to False in the `DataContext`"
             )
 
         # We need schema to properly validate, so synchronously
@@ -4648,12 +4648,12 @@ def _sliding_window(iterable: Iterable, n: int):
 
 def _do_write(
     ds: Datasource,
-    ctx: DatasetContext,
+    ctx: DataContext,
     blocks: List[Block],
     meta: List[BlockMetadata],
     ray_remote_args: Dict[str, Any],
     write_args: Dict[str, Any],
 ) -> List[ObjectRef[WriteResult]]:
     write_args = _unwrap_arrow_serialization_workaround(write_args)
-    DatasetContext._set_current(ctx)
+    DataContext._set_current(ctx)
     return ds.do_write(blocks, meta, ray_remote_args=ray_remote_args, **write_args)

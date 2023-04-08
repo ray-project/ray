@@ -30,7 +30,7 @@ from ray.data.block import (
     T,
     U,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.dataset import DataBatch, Datastream
 from ray.util.annotations import PublicAPI
 
@@ -206,7 +206,7 @@ class GroupedDatastream(Generic[T]):
                     num_reducers,
                     task_ctx,
                 )
-            ctx = DatasetContext.get_current()
+            ctx = DataContext.get_current()
             if ctx.use_push_based_shuffle:
                 shuffle_op_cls = PushBasedGroupbyOp
             else:

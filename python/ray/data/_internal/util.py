@@ -9,7 +9,7 @@ import numpy as np
 
 import ray
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray._private.utils import _get_pyarrow_version
 
 if TYPE_CHECKING:
@@ -80,7 +80,7 @@ def _check_pyarrow_version():
 def _autodetect_parallelism(
     parallelism: int,
     cur_pg: Optional["PlacementGroup"],
-    ctx: DatasetContext,
+    ctx: DataContext,
     reader: Optional["Reader"] = None,
     avail_cpus: Optional[int] = None,
 ) -> (int, int):

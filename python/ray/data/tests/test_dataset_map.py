@@ -13,7 +13,7 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data.block import BlockAccessor
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -235,7 +235,7 @@ def test_select_columns(ray_start_regular_shared):
 
 
 def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_dataset_context):
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
     # Test input validation
@@ -307,7 +307,7 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
 
     def put(x):
         # We only support automatic deref in the legacy backend.
-        if DatasetContext.get_current().new_execution_backend:
+        if DataContext.get_current().new_execution_backend:
             return x
         else:
             return ray.put(x)
@@ -590,7 +590,7 @@ def test_map_batches_actors_preserves_order(shutdown_only):
 def test_map_batches_batch_mutation(
     ray_start_regular_shared, num_rows, num_blocks, batch_size, restore_dataset_context
 ):
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
     # Test that batch mutation works without encountering a read-only error (e.g. if the
@@ -845,7 +845,7 @@ def test_actor_pool_strategy_apply_interrupt(shutdown_only):
                 return block
 
     # No need to test ActorPoolStrategy in new execution backend.
-    if not DatasetContext.get_current().new_execution_backend:
+    if not DataContext.get_current().new_execution_backend:
         with pytest.raises(ray.exceptions.RayTaskError):
             aps._apply(test_func, {}, blocks, False)
 
@@ -871,7 +871,7 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
     # the hood, so the expectation here applies only to the old backend.
     # TODO(https://github.com/ray-project/ray/issues/31723): we should check
     # the num of workers once we have autoscaling in new execution backend.
-    if not DatasetContext.get_current().new_execution_backend:
+    if not DataContext.get_current().new_execution_backend:
         expected_max_num_workers = math.ceil(
             num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
         )
@@ -897,7 +897,7 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
 
     # TODO(https://github.com/ray-project/ray/issues/31723): implement the feature
     # of capping bundle size by actor pool size, and then re-enable this test.
-    if not DatasetContext.get_current().new_execution_backend:
+    if not DataContext.get_current().new_execution_backend:
         assert f"{max_size}/{max_size} blocks" in ds.stats()
 
     # Check batch size is still respected.
