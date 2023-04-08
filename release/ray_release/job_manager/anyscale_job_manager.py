@@ -45,6 +45,7 @@ class AnyscaleJobManager:
         self.cluster_manager = cluster_manager
         self._last_job_result = None
         self._last_logs = None
+        self._last_ray_logs = None
         self.cluster_startup_timeout = 600
 
     def _run_job(
@@ -319,6 +320,8 @@ class AnyscaleJobManager:
 
         if self._last_logs:
             return self._last_logs
+
+        return self.get_last_ray_logs()
 
         # TODO: replace with an actual API call.
         def _get_logs():
