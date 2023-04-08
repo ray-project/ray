@@ -512,6 +512,9 @@ class JobManager:
         except Exception:
             self.event_logger = None
 
+        self.wait_for_submit_job = asyncio.Event()
+        self.wait_for_recover = asyncio.Event()
+
         run_background_task(self._recover_running_jobs())
 
     async def _recover_running_jobs(self):
@@ -520,10 +523,14 @@ class JobManager:
         For each job, we will spawn a coroutine to monitor it.
         Each will be added to self._running_jobs and reconciled.
         """
+        logger.info(f"waiting _recover_running_jobs")
+        await self.wait_for_submit_job.wait()
+        logger.info(f"finished waiting _recover_running_jobs")
         all_jobs = await self._job_info_client.get_all_jobs()
         for job_id, job_info in all_jobs.items():
             if not job_info.status.is_terminal():
                 run_background_task(self._monitor_job(job_id))
+        self.wait_for_recover.set()
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
@@ -802,6 +809,8 @@ class JobManager:
         new_key_added = await self._job_info_client.put_info(
             submission_id, job_info, overwrite=False
         )
+        self.wait_for_submit_job.set()
+        await self.wait_for_recover.wait()
         if not new_key_added:
             raise ValueError(
                 f"Job with submission_id {submission_id} already exists. "
