@@ -293,6 +293,7 @@ class AnyscaleJobManager:
                 )
                 print("", flush=True)
         output = buf.getvalue().strip()
+        logger.info(f'Log output {output}')
         return "\n".join(output.splitlines()[-LAST_LOGS_LENGTH * 3 :])
 
     def get_last_logs(self):
