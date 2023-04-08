@@ -790,15 +790,19 @@ class SampleBatch(dict):
         return self
 
     @ExperimentalAPI
-    def to_device(self, device, framework="torch"):
+    def to_device(self, device, framework="torch", copy=False):
         """TODO: transfer batch to given device as framework tensor."""
         if framework == "torch":
             assert torch is not None
+            if copy:
+                target = SampleBatch()
+            else:
+                target = self
             for k, v in self.items():
-                self[k] = convert_to_torch_tensor(v, device)
+                target[k] = convert_to_torch_tensor(v, device)
         else:
             raise NotImplementedError
-        return self
+        return target
 
     @PublicAPI
     def size_bytes(self) -> int:

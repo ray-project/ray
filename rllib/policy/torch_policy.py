@@ -604,8 +604,18 @@ class TorchPolicy(Policy):
             )
             batch_fetches[f"tower_{i}"] = {"custom_metrics": custom_metrics}
 
+        # We determine whether we need to copy the batch to the device still
+        # We usually do this before putting the batch into a buffer, but can't do it
+        # if the whole batch is too large to fit on the device.
+        if next(iter(next(iter(device_batches)).values())).device != self.device:
+            copy_batch_to_device = True
+        else:
+            copy_batch_to_device = False
+
         # Do the (maybe parallelized) gradient calculation step.
-        tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
+        tower_outputs = self._multi_gpu_parallel_grad_calc(
+            device_batches, copy_batch_to_device
+        )
 
         # Mean-reduce gradients over GPU-towers (do this on CPU: self.device).
         all_grads = []
@@ -1061,7 +1071,9 @@ class TorchPolicy(Policy):
         return postprocessed_batch
 
     def _multi_gpu_parallel_grad_calc(
-        self, sample_batches: List[SampleBatch]
+        self,
+        sample_batches: List[SampleBatch],
+        copy_batch_to_device: bool = False,
     ) -> List[Tuple[List[TensorType], GradInfoDict]]:
         """Performs a parallelized loss and gradient calculation over the batch.
 
@@ -1073,6 +1085,10 @@ class TorchPolicy(Policy):
         Args:
             sample_batches: A list of SampleBatch shards to
                 calculate loss and gradients for.
+            copy_batch_to_device: Whether to create a copy of the batch that is then
+                moved to GPU. This is useful if we don't want to move the original
+                batch to the device. In case of a large batch, we can thereby only move
+                mini-batches to GPU one by one and free them after each step.
 
         Returns:
             A list (one item per device) of 2-tuples, each with 1) gradient
@@ -1082,6 +1098,11 @@ class TorchPolicy(Policy):
         lock = threading.Lock()
         results = {}
         grad_enabled = torch.is_grad_enabled()
+
+        if copy_batch_to_device:
+            sample_batches = [
+                batch.to_device(i, copy=True) for i, batch in enumerate(sample_batches)
+            ]
 
         def _worker(shard_idx, model, sample_batch, device):
             torch.set_grad_enabled(grad_enabled)
