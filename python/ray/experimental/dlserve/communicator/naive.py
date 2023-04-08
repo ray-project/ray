@@ -1,10 +1,13 @@
 import asyncio
-
-import torch
-import ray
-from ray.experimental.dlserve.communicator.communicator import (Communicator, FULLFILLED_FUTURE)
-from collections import deque, defaultdict
+from collections import defaultdict, deque
 from typing import List
+
+import ray
+import torch
+from ray.experimental.dlserve.communicator.communicator import (
+    FULLFILLED_FUTURE,
+    Communicator,
+)
 from ray.types import ObjectRef
 
 
@@ -13,7 +16,9 @@ class CommunicationRegistry(object):
     def __init__(self):
         self._sending_queue = defaultdict(deque)
 
-    async def send(self, obj_refs: List[ObjectRef], from_rank: int, to_rank: int) -> None:
+    async def send(
+        self, obj_refs: List[ObjectRef], from_rank: int, to_rank: int
+    ) -> None:
         self._get_queue(from_rank, to_rank).extend(obj_refs)
 
     async def recv(self, from_rank: int, to_rank: int) -> List[ObjectRef]:
@@ -29,14 +34,18 @@ class CommunicationRegistry(object):
 class NaiveCommunicator(Communicator):
     """A naive communicator that uses ray.put and ray.get to send and receive tensors."""
 
-    def __init__(self, world_size: int, rank: int, group_name: str="default_group"):
-        self._communication_registry = CommunicationRegistry.options(name=group_name, get_if_exists=True).remote()
+    def __init__(self, world_size: int, rank: int, group_name: str = "default_group"):
+        self._communication_registry = CommunicationRegistry.options(
+            name=group_name, get_if_exists=True
+        ).remote()
         self._world_size = world_size
         self._rank = rank
 
     def send(self, tensor: torch.Tensor, dest_rank: int, async_op: bool = False):
         obj_ref = ray.put(tensor)
-        send_ref = self._communication_registry.send.remote([obj_ref], self._rank, dest_rank)
+        send_ref = self._communication_registry.send.remote(
+            [obj_ref], self._rank, dest_rank
+        )
         if async_op:
             pass
         else:

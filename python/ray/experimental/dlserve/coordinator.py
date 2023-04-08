@@ -1,4 +1,3 @@
-
 class Coordinator:
     def __init__(self) -> None:
         self.num_stages = []

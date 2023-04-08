@@ -1,6 +1,8 @@
 from abc import ABC
+
 from ray.dag import DAGNode
 from ray.util.placement_group import PlacementGroup
+
 
 class PhysicalPlan:
     def __init__(self) -> None:

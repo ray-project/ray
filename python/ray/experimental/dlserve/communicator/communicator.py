@@ -2,6 +2,7 @@ from abc import ABC
 
 import torch
 
+
 class Communicator(ABC):
     """Provides MPI style communication primitives."""
 
@@ -27,5 +28,6 @@ class _FullfiledFuture:
 
     def wait(self):
         pass
+
 
 FULLFILLED_FUTURE = _FullfiledFuture()

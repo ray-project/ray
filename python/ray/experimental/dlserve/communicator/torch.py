@@ -1,7 +1,6 @@
-
 import torch
-
 from ray.experimental.dlserve.communicator.communicator import Communicator
+
 
 class _FullfiledFuture:
     """A future that is already fullfilled."""
@@ -11,6 +10,7 @@ class _FullfiledFuture:
 
     def wait(self):
         pass
+
 
 FULLFILLED_FUTURE = _FullfiledFuture()
 
