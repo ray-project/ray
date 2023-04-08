@@ -84,6 +84,7 @@ class AnyscaleJobManager:
                     ),
                 ),
             )
+            logger.info(f'JOB RESPONSE {job_response}')
         except Exception as e:
             raise JobStartupFailed(
                 "Error starting job with name "
