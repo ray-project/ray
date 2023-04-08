@@ -734,7 +734,7 @@ def test_from_modin_operator(
     enable_optimizer,
     enable_pandas_block,
 ):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     old_enable_pandas_block = ctx.enable_pandas_block
     ctx.enable_pandas_block = enable_pandas_block
     try:
@@ -783,7 +783,7 @@ def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
 def test_from_pandas_refs_operator(
     ray_start_regular_shared, enable_optimizer, enable_pandas_block
 ):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     old_enable_pandas_block = ctx.enable_pandas_block
     ctx.enable_pandas_block = enable_pandas_block
     try:
@@ -806,7 +806,7 @@ def test_from_pandas_refs_operator(
 def test_from_pandas_refs_e2e(
     ray_start_regular_shared, enable_optimizer, enable_pandas_block
 ):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     old_enable_pandas_block = ctx.enable_pandas_block
     ctx.enable_pandas_block = enable_pandas_block
 
