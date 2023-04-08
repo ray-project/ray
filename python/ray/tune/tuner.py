@@ -150,7 +150,7 @@ class Tuner:
         """Configure and construct a tune run."""
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
-        if self._is_ray_client and get_air_verbosity():
+        if self._is_ray_client and get_air_verbosity() is not None:
             logger.warning(
                 "Ignoring AIR_VERBOSITY setting, "
                 "as it doesn't support ray client mode yet."

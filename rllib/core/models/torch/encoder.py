@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Optional
 
 import tree
 
@@ -9,12 +9,17 @@ from ray.rllib.core.models.base import (
     STATE_OUT,
     ENCODER_OUT,
 )
-from ray.rllib.core.models.base import ModelConfig, Model
+from ray.rllib.core.models.base import Model
+from ray.rllib.core.models.configs import (
+    CNNEncoderConfig,
+    MLPEncoderConfig,
+    ModelConfig,
+)
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
-from ray.rllib.models.specs.specs_base import Spec
-from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.specs_torch import TorchTensorSpec
+from ray.rllib.core.models.specs.specs_base import Spec
+from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -26,33 +31,36 @@ torch, nn = try_import_torch()
 
 
 class TorchMLPEncoder(TorchModel, Encoder):
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(self, config: MLPEncoderConfig) -> None:
         TorchModel.__init__(self, config)
         Encoder.__init__(self, config)
 
-        # Create the neural networks
+        # Create the neural network.
         self.net = TorchMLP(
             input_dim=config.input_dims[0],
             hidden_layer_dims=config.hidden_layer_dims,
-            output_dim=config.output_dims[0],
             hidden_layer_activation=config.hidden_layer_activation,
+            hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
+            output_dim=config.output_dims[0],
+            output_activation=config.output_activation,
+            use_bias=config.use_bias,
         )
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.input_dims[0]),
+                SampleBatch.OBS: TorchTensorSpec("b, d", d=self.config.input_dims[0]),
                 STATE_IN: None,
                 SampleBatch.SEQ_LENS: None,
             }
         )
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dims[0]),
+                ENCODER_OUT: TorchTensorSpec("b, d", d=self.config.output_dims[0]),
                 STATE_OUT: None,
             }
         )
@@ -68,46 +76,50 @@ class TorchMLPEncoder(TorchModel, Encoder):
 
 
 class TorchCNNEncoder(TorchModel, Encoder):
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(self, config: CNNEncoderConfig) -> None:
         TorchModel.__init__(self, config)
         Encoder.__init__(self, config)
 
-        output_activation = get_activation_fn(
-            config.output_activation, framework="torch"
-        )
-
         layers = []
+        # The bare-bones CNN (no flatten, no succeeding dense).
         cnn = TorchCNN(
             input_dims=config.input_dims,
-            filter_specifiers=config.filter_specifiers,
-            filter_layer_activation=config.filter_layer_activation,
-            output_activation=config.filter_layer_activation,
+            cnn_filter_specifiers=config.cnn_filter_specifiers,
+            cnn_activation=config.cnn_activation,
+            cnn_use_layernorm=config.cnn_use_layernorm,
+            use_bias=config.use_bias,
         )
         layers.append(cnn)
 
+        # Add a flatten operation to move from 2/3D into 1D space.
         layers.append(nn.Flatten())
 
         # Add a final linear layer to make sure that the outputs have the correct
-        # dimensionality.
+        # dimensionality (output_dims).
         layers.append(
             nn.Linear(
-                int(cnn.output_width) * int(cnn.output_height), config.output_dims[0]
+                int(cnn.output_width) * int(cnn.output_height) * int(cnn.output_depth),
+                config.output_dims[0],
             )
+        )
+        output_activation = get_activation_fn(
+            config.output_activation, framework="torch"
         )
         if output_activation is not None:
             layers.append(output_activation())
 
+        # Create the network from gathered layers.
         self.net = nn.Sequential(*layers)
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 SampleBatch.OBS: TorchTensorSpec(
-                    "b, w, h, d",
+                    "b, w, h, c",
                     w=self.config.input_dims[0],
                     h=self.config.input_dims[1],
-                    d=self.config.input_dims[2],
+                    c=self.config.input_dims[2],
                 ),
                 STATE_IN: None,
                 SampleBatch.SEQ_LENS: None,
@@ -115,19 +127,20 @@ class TorchCNNEncoder(TorchModel, Encoder):
         )
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dims[0]),
+                ENCODER_OUT: TorchTensorSpec("b, d", d=self.config.output_dims[0]),
                 STATE_OUT: None,
             }
         )
 
-    def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
+    @override(Model)
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
         return NestedDict(
             {
-                ENCODER_OUT: self.net(input_dict[SampleBatch.OBS]),
-                STATE_OUT: input_dict[STATE_IN],
+                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
+                STATE_OUT: inputs[STATE_IN],
             }
         )
 
@@ -149,10 +162,10 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         self.linear = nn.Linear(config.hidden_dim, config.output_dims[0])
 
     @override(Model)
-    def get_input_spec(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                # bxt is just a name for better readability to indicated padded batch
+                # `bxt` is just a name for better readability to indicate padded batch.
                 SampleBatch.OBS: TorchTensorSpec("bxt, h", h=self.config.input_dims[0]),
                 STATE_IN: {
                     "h": TorchTensorSpec(
@@ -167,7 +180,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         )
 
     @override(Model)
-    def get_output_spec(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
                 ENCODER_OUT: TorchTensorSpec("bxt, h", h=self.config.output_dims[0]),
