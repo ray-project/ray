@@ -405,6 +405,11 @@ class Actor:
         ray.get(pid_actor.report_pid.remote("fail_parent", os.getpid(), "FAILED"))
         ray.get(task_finish_child.options(name="task_finish_child").remote(pid_actor))
         task_sleep_child.options(name="task_sleep_child").remote(pid_actor)
+        # Wait til child tasks run.
+        wait_for_condition(
+            lambda: ray.get(pid_actor.get_pids.remote()).get("task_sleep_child")
+            is not None
+        )
         raise ValueError("expected to fail.")
 
     def child_actor(self, pid_actor):
