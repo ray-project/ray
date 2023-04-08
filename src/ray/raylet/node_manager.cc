@@ -554,7 +554,7 @@ ray::Status NodeManager::RegisterGcs() {
         }
         checking = true;
         RAY_CHECK_OK(gcs_client_->Nodes().AsyncCheckSelfAlive(
-            [this](auto status, auto alive) mutable {
+            [](auto status, auto alive) mutable {
               if (status.ok()) {
                 if (!alive) {
                   // GCS think this raylet is dead. Fail the node
