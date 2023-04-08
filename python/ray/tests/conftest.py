@@ -1154,3 +1154,35 @@ def enable_syncer_test(request, monkeypatch):
     yield
     monkeypatch.delenv("RAY_use_ray_syncer")
     ray._raylet.Config.initialize("")
+
+
+# The following functions are copied from:
+#     https://github.com/AdamGleave/pytest-shard/blob/master/pytest_shard
+def sha256hash(x):
+    import hashlib
+
+    return int.from_bytes(hashlib.md5(x.encode()).digest(), "little")
+
+
+def filter_items_by_shard(items, shard_id, num_shards):
+    shards = [sha256hash(item.nodeid) % num_shards for item in items]
+
+    new_items = []
+    for shard, item in zip(shards, items):
+        if shard == shard_id:
+            new_items.append(item)
+    return new_items
+
+
+def pytest_collection_modifyitems(config, items):
+    """Mutate the collection to consist of just items to be tested in this shard."""
+    shard_id = int(os.environ.get("RAY_CI_PYTEST_SHARD_ID", "0"))
+    shard_total = int(os.environ.get("RAY_CI_PYTEST_SHARD_NUM", "1"))
+    if shard_id >= shard_total:
+        raise ValueError(
+            "shard_num = f{shard_num} must be less than shard_total = f{shard_total}"
+        )
+    if shard_total == 1:
+        return items
+
+    items[:] = filter_items_by_shard(items, shard_id, shard_total)
