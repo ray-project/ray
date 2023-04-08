@@ -1,5 +1,7 @@
 import fnmatch
 import os
+import pathlib
+import sys
 import urllib.parse
 from pathlib import Path
 from pkg_resources import packaging
@@ -100,11 +102,40 @@ def is_non_local_path_uri(uri: str) -> bool:
 _cached_fs = {}
 
 
+def _is_local_path(uri: str) -> bool:
+    """Check if the path points to the local filesystem."""
+    if len(uri) >= 1 and uri[0] == "/":
+        return True
+
+    if sys.platform == "win32":
+        return _is_local_windows_path(uri)
+    return False
+
+
+def _is_local_windows_path(uri: str) -> bool:
+    """Determines if path is a Windows file-system location."""
+    if len(uri) >= 1 and uri[0] == "\\":
+        return True
+    if (
+        len(uri) >= 3
+        and uri[1] == ":"
+        and (uri[2] == "/" or uri[2] == "\\")
+        and uri[0].isalpha()
+    ):
+        return True
+    return False
+
+
 def get_fs_and_path(
     uri: str,
 ) -> Tuple[Optional["pyarrow.fs.FileSystem"], Optional[str]]:
     if not pyarrow:
         return None, None
+
+    if _is_local_path(uri):
+        # Append protocol such that the downstream operations work
+        # properly on Linux and Windows.
+        uri = "file://" + pathlib.Path(uri).as_posix()
 
     parsed = urllib.parse.urlparse(uri)
     # for uri="hdfs://48bb8ca83706:8020/test":
