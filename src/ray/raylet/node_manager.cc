@@ -1905,10 +1905,6 @@ void NodeManager::HandleCommitBundleResources(
   RAY_LOG(DEBUG) << "Request to commit resources for bundles: "
                  << GetDebugStringForBundles(bundle_specs);
   placement_group_resource_manager_->CommitBundles(bundle_specs);
-  if (RayConfig::instance().use_ray_syncer()) {
-    // To reduce the lag, we trigger a broadcasting immediately.
-    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_VIEW));
-  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   cluster_task_manager_->ScheduleAndDispatchTasks();
@@ -1949,10 +1945,6 @@ void NodeManager::HandleCancelResourceReserve(
 
   // Return bundle resources.
   placement_group_resource_manager_->ReturnBundle(bundle_spec);
-  if (RayConfig::instance().use_ray_syncer()) {
-    // To reduce the lag, we trigger a broadcasting immediately.
-    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_VIEW));
-  }
   cluster_task_manager_->ScheduleAndDispatchTasks();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
