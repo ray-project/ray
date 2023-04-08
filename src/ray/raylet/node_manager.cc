@@ -554,7 +554,8 @@ ray::Status NodeManager::RegisterGcs() {
         }
         checking = true;
         RAY_CHECK_OK(gcs_client_->Nodes().AsyncCheckSelfAlive(
-            [](auto status, auto alive) mutable {
+            // capture checking ptr here because vs17 fail to compile
+            [checking_ptr = &checking](auto status, auto alive) mutable {
               if (status.ok()) {
                 if (!alive) {
                   // GCS think this raylet is dead. Fail the node
@@ -563,7 +564,7 @@ ray::Status NodeManager::RegisterGcs() {
                       << "GCS is not backed by a DB and restarted or there is data loss "
                       << "in the DB.";
                 }
-                checking = false;
+                *checking_ptr = false;
               }
             },
             /* timeout_ms = */ 30000));
