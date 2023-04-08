@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-echo "-j $(grep -c processor /proc/cpuinfo) --sandbox_fake_hostname=true --sandbox_default_allow_network=false --sandbox_writable_path=/artifact-mount --sandbox_writable_path=/dev/shm --spawn_strategy=linux-sandbox"
+echo "-j $(grep -c processor /proc/cpuinfo) --sandbox_fake_hostname=true --sandbox_default_allow_network=false --sandbox_writable_path=/artifact-mount --sandbox_writable_path=/ --sandbox_writable_path=/dev/shm --spawn_strategy=linux-sandbox"
