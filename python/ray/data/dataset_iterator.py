@@ -828,4 +828,4 @@ class DataIterator(abc.ABC):
 
 
 # Backwards compatibility alias.
-DataIterator = DataIterator
+DatasetIterator = DataIterator
