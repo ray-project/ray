@@ -1,11 +1,11 @@
-from typing import Union
+from typing import Optional
 
 from ray.rllib.core.models.base import Model
-from ray.rllib.core.models.base import ModelConfig
-from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.core.models.torch.primitives import TorchMLP
+from ray.rllib.core.models.configs import FreeLogStdMLPHeadConfig, MLPHeadConfig
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
+from ray.rllib.core.models.torch.base import TorchModel
+from ray.rllib.core.models.torch.primitives import TorchMLP
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 
@@ -13,25 +13,27 @@ torch, nn = try_import_torch()
 
 
 class TorchMLPHead(TorchModel, nn.Module):
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(self, config: MLPHeadConfig) -> None:
         nn.Module.__init__(self)
         TorchModel.__init__(self, config)
 
         self.net = TorchMLP(
             input_dim=config.input_dims[0],
             hidden_layer_dims=config.hidden_layer_dims,
-            output_dim=config.output_dims[0],
             hidden_layer_activation=config.hidden_layer_activation,
+            hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
+            output_dim=config.output_dims[0],
             output_activation=config.output_activation,
+            use_bias=config.use_bias,
         )
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
-        return TorchTensorSpec("b, h", h=self.config.input_dims[0])
+    def get_input_specs(self) -> Optional[Spec]:
+        return TorchTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
-        return TorchTensorSpec("b, h", h=self.config.output_dims[0])
+    def get_output_specs(self) -> Optional[Spec]:
+        return TorchTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
@@ -41,23 +43,21 @@ class TorchMLPHead(TorchModel, nn.Module):
 class TorchFreeLogStdMLPHead(TorchModel, nn.Module):
     """An MLPHead that implements floating log stds for Gaussian distributions."""
 
-    def __init__(self, config: ModelConfig) -> None:
-        mlp_head_config = config.mlp_head_config
-
+    def __init__(self, config: FreeLogStdMLPHeadConfig) -> None:
         nn.Module.__init__(self)
-        TorchModel.__init__(self, mlp_head_config)
+        TorchModel.__init__(self, config)
 
-        assert (
-            mlp_head_config.output_dims[0] % 2 == 0
-        ), "output_dims must be even for free std!"
-        self._half_output_dim = mlp_head_config.output_dims[0] // 2
+        assert config.output_dims[0] % 2 == 0, "output_dims must be even for free std!"
+        self._half_output_dim = config.output_dims[0] // 2
 
         self.net = TorchMLP(
-            input_dim=mlp_head_config.input_dims[0],
-            hidden_layer_dims=mlp_head_config.hidden_layer_dims,
+            input_dim=config.input_dims[0],
+            hidden_layer_dims=config.hidden_layer_dims,
+            hidden_layer_activation=config.hidden_layer_activation,
+            hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             output_dim=self._half_output_dim,
-            hidden_layer_activation=mlp_head_config.hidden_layer_activation,
-            output_activation=mlp_head_config.output_activation,
+            output_activation=config.output_activation,
+            use_bias=config.use_bias,
         )
 
         self.log_std = torch.nn.Parameter(
@@ -65,12 +65,12 @@ class TorchFreeLogStdMLPHead(TorchModel, nn.Module):
         )
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
-        return TorchTensorSpec("b, h", h=self.config.input_dims[0])
+    def get_input_specs(self) -> Optional[Spec]:
+        return TorchTensorSpec("b, d", d=self.config.input_dims[0])
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
-        return TorchTensorSpec("b, h", h=self.config.output_dims[0])
+    def get_output_specs(self) -> Optional[Spec]:
+        return TorchTensorSpec("b, d", d=self.config.output_dims[0])
 
     @override(Model)
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
