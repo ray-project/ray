@@ -93,10 +93,5 @@ def _plan_from_pandas_refs_op(op: FromPandasRefsOperators) -> PhysicalOperator:
             RefBundle([(block, block_metadata)], owns_blocks=owns_blocks)
             for block, block_metadata in zip(blocks, metadata)
         ]
-        #     block, block_metadata = df_to_block.remote(df_ref)
-        # ref_bundles.append(
-        #     RefBundle([(block, ray.get(block_metadata))], owns_blocks=owns_blocks)
-        # )
-        # return ref_bundles
 
     return InputDataBuffer(input_data_factory=get_input_data)

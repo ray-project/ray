@@ -1477,10 +1477,13 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDatastream[ArrowRow]:
                 "Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}"
             )
 
-    return from_pandas_refs(
+    ds = from_pandas_refs(
         [to_ref(next(iter(part.dask.values()))) for part in persisted_partitions],
-        FromDask(df),
     )
+    logical_plan = LogicalPlan(FromDask(df))
+    ds._logical_plan = logical_plan
+    ds._plan.link_logical_plan(logical_plan)
+    return ds
 
 
 @PublicAPI
@@ -1495,10 +1498,11 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDatastream[ArrowRow]:
     """
     import mars.dataframe as md
 
-    ds = md.to_ray_dataset(df)
+    ds: Datastream = md.to_ray_dataset(df)
 
-    from_mars_op = FromMars(df)
-    ds._logical_plan = LogicalPlan(from_mars_op)
+    logical_plan = LogicalPlan(FromMars(ds.dataframe))
+    ds._logical_plan = logical_plan
+    ds._plan.link_logical_plan(logical_plan)
     return ds
 
 
@@ -1515,7 +1519,12 @@ def from_modin(df: "modin.DataFrame") -> MaterializedDatastream[ArrowRow]:
     from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
     parts = unwrap_partitions(df, axis=0)
-    return from_pandas_refs(parts, FromModin(df))
+    ds = from_pandas_refs(parts)
+
+    logical_plan = LogicalPlan(FromModin(df))
+    ds._logical_plan = logical_plan
+    ds._plan.link_logical_plan(logical_plan)
+    return ds
 
 
 @PublicAPI
@@ -1548,7 +1557,6 @@ def from_pandas(
 @DeveloperAPI
 def from_pandas_refs(
     dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]],
-    logical_op: Optional[FromPandasRefs] = None,
 ) -> MaterializedDatastream[ArrowRow]:
     """Create a datastream from a list of Ray object references to Pandas
     dataframes.
@@ -1574,10 +1582,7 @@ def from_pandas_refs(
             "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
         )
 
-    if logical_op is None:
-        logical_op = FromPandasRefs(dfs)
-    logical_plan = LogicalPlan(logical_op)
-
+    logical_plan = LogicalPlan(FromPandasRefs(dfs))
     context = DatasetContext.get_current()
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(get_table_block_metadata)
@@ -1679,7 +1684,6 @@ def from_numpy_refs(
 @PublicAPI
 def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]],
-    logical_op: Optional[FromArrowRefs] = None,
 ) -> MaterializedDatastream[ArrowRow]:
     """Create a datastream from a list of Arrow tables.
 
@@ -1694,7 +1698,7 @@ def from_arrow(
 
     if isinstance(tables, (pa.Table, bytes)):
         tables = [tables]
-    return from_arrow_refs([ray.put(t) for t in tables], logical_op)
+    return from_arrow_refs([ray.put(t) for t in tables])
 
 
 @DeveloperAPI
@@ -1703,7 +1707,6 @@ def from_arrow_refs(
         ObjectRef[Union["pyarrow.Table", bytes]],
         List[ObjectRef[Union["pyarrow.Table", bytes]]],
     ],
-    logical_op: Optional[FromArrowRefs] = None,
 ) -> MaterializedDatastream[ArrowRow]:
     """Create a datastream from a set of Arrow tables.
 
@@ -1719,10 +1722,7 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
-
-    if not logical_op:
-        logical_op = FromArrowRefs(tables)
-    logical_plan = LogicalPlan(logical_op)
+    logical_plan = LogicalPlan(FromArrowRefs(tables))
 
     return MaterializedDatastream(
         ExecutionPlan(
@@ -1780,7 +1780,11 @@ def from_huggingface(
     import datasets
 
     def convert(ds: "datasets.Dataset") -> Datastream[ArrowRow]:
-        return from_arrow(ds.data.table, FromHuggingFace(ds))
+        ray_ds = from_arrow(ds.data.table)
+        logical_plan = LogicalPlan(FromHuggingFace(ds))
+        ray_ds._logical_plan = logical_plan
+        ray_ds._plan.link_logical_plan(logical_plan)
+        return ray_ds
 
     if isinstance(dataset, datasets.DatasetDict):
         return {k: convert(ds) for k, ds in dataset.items()}

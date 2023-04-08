@@ -64,14 +64,14 @@ def test_from_mars_e2e(ray_start_regular, enable_optimizer):
     ds = ray.data.from_mars(df)
     # `ds.take_all()` triggers execution with new backend, which is
     # needed for checking operator usage below.
-    assert len(ds.take_all()) == n
+    assert len(ds.take_all()) == len(df)
     pd.testing.assert_frame_equal(ds.to_pandas(), df.to_pandas())
 
     # Check that metadata fetch is included in stats.
     assert "FromPandasRefs" in ds.stats()
     # Underlying Mars implementation uses `FromPandasRefs` operator
-    assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
-    _check_usage_record(["FromPandasRefs"])
+    assert ds._plan._logical_plan.dag.name == "FromMars"
+    _check_usage_record(["FromMars"])
 
     ds2 = ds.filter(lambda row: row["a"] % 2 == 0)
     assert ds2.take(5) == [{"a": 2 * i, "b": n + 2 * i} for i in range(5)]
@@ -84,7 +84,7 @@ def test_from_mars_e2e(ray_start_regular, enable_optimizer):
         df2.head(5).to_pandas(),
         pd.DataFrame({"a": list(range(0, 10, 2)), "b": list(range(n, n + 10, 2))}),
     )
-    _check_usage_record(["Filter", "FromPandasRefs"])
+    _check_usage_record(["Filter", "FromMars"])
 
     # Test Arrow Dataset
     pdf2 = pd.DataFrame({c: range(5) for c in "abc"})
