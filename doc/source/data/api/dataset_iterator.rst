@@ -1,7 +1,7 @@
 .. _dataset-iterator-api:
 
 DataIterator API
-===================
+================
 
 .. currentmodule:: ray.data
 
