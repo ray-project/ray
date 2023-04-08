@@ -395,11 +395,9 @@ def test_redis_full(ray_start_cluster_head):
     # Set the max memory to 10MB
     cli.config_set("maxmemory", 5 * 1024 * 1024)
 
-    gcs_cli = ray._private.gcs_utils.GcsClient(address=gcs_address)
+    gcs_cli = ray._raylet.GcsClient(address=gcs_address)
     # GCS should fail
-    import grpc
-
-    with pytest.raises(grpc.RpcError):
+    with pytest.raises(ray.exceptions.RpcError):
         gcs_cli.internal_kv_put(b"A", b"A" * 6 * 1024 * 1024, True, None)
     logs_dir = ray_start_cluster_head.head_node._logs_dir
 
