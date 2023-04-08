@@ -104,12 +104,17 @@ Streaming Execution
 ~~~~~~~~~~~~~~~~~~~
 
 The following code is a hello world example which invokes the execution with
-:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` consumption:
+:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` consumption. We will also enable verbose progress reporting, which shows per-operator progress in addition to overall progress.
 
 .. code-block::
 
    import ray
    import time
+
+   # Enable verbose reporting. This can also be toggled on by setting
+   # the environment variable RAY_DATA_VERBOSE_PROGRESS=1.
+   ctx = ray.data.DatasetContext.get_current()
+   ctx.execution_options.verbose_progress = True
 
    def sleep(x):
        time.sleep(0.1)
@@ -134,9 +139,9 @@ The next few lines will show execution progress. Here is how to interpret the ou
 
 .. code-block::
 
-   Resource usage vs limits: 7.0/16.0 CPU, 0.0/0.0 GPU, 76.91 MiB/2.25 GiB object_store_memory
+   Running: 7.0/16.0 CPU, 0.0/0.0 GPU, 76.91 MiB/2.25 GiB object_store_memory 65%|██▊ | 130/200 [00:08<00:02, 22.52it/s]
 
-This line tells you how many resources are currently being used by the streaming executor out of the limits. The streaming executor will attempt to keep resource usage under the printed limits by throttling task executions.
+This line tells you how many resources are currently being used by the streaming executor out of the limits, as well as the number of completed output blocks. The streaming executor will attempt to keep resource usage under the printed limits by throttling task executions.
 
 .. code-block::
 
@@ -144,11 +149,8 @@ This line tells you how many resources are currently being used by the streaming
    MapBatches(sleep): 5 active, 5 queued, 18.31 MiB objects 2:  76%|██▎| 151/200 [00:08<00:02, 19.93it/s]
    MapBatches(sleep): 7 active, 2 queued, 25.64 MiB objects, 2 actors [all objects local] 3:  71%|▋| 142/
    MapBatches(sleep): 2 active, 0 queued, 7.32 MiB objects 4:  70%|██▊ | 139/200 [00:08<00:02, 23.16it/s]
-   output: 2 queued 5:  70%|█████████████████████████████▉             | 139/200 [00:08<00:02, 22.76it/s]
 
-Lines like the above show progress for each stage. The `active` count indicates the number of running tasks for the operator. The `queued` count is the number of input blocks for the operator that are computed but are not yet submitted for execution. For operators that use actor-pool execution, the number of running actors is shown as `actors`.
-
-The final line shows how much of the stream output has been consumed by the driver program. This value can fall behind the stream execution if your program doesn't pull data from `iter_batches()` fast enough, which may lead to execution throttling.
+These lines are only shown when verbose progress reporting is enabled. The `active` count indicates the number of running tasks for the operator. The `queued` count is the number of input blocks for the operator that are computed but are not yet submitted for execution. For operators that use actor-pool execution, the number of running actors is shown as `actors`.
 
 .. tip::
 
@@ -168,7 +170,7 @@ Execution options can be configured via the global DataContext. The options will
 
 .. code-block::
 
-   ctx = ray.data.context.DataContext.get_current()
+   ctx = ray.data.DataContext.get_current()
    ctx.execution_options.resource_limits.cpu = 10
    ctx.execution_options.resource_limits.gpu = 5
    ctx.execution_options.resource_limits.object_store_memory = 10e9
