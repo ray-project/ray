@@ -10,6 +10,8 @@ from anyscale.sdk.anyscale_client.models import (
     HaJobStates,
 )
 from anyscale.controllers.job_controller import JobController, terminal_state
+from anyscale.controllers.logs_controller import LogsController
+from anyscale.client.openapi_client.models.node_type import NodeType
 from anyscale.client.openapi_client.models.log_filter import LogFilter
 
 from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_cluster_name
@@ -262,39 +264,45 @@ class AnyscaleJobManager:
         return self._wait_job(timeout)
 
     def get_last_ray_logs(self) -> Optional[str]:
-        logger.log(f'Cluster id {self.cluster_manager.cluster_id}')
+        logger.info(f'Cluster id {self.cluster_manager.cluster_id}')
         if not self.cluster_manager.cluster_id:
             return None
         if self._last_ray_logs:
             return self._last_ray_logs
         globs = [
-            '/dashboard',
-            '/gcs_server',
-            '/runtime_env_agent',
+            'gcs_server.err',
+            'ray_client_server.err',
+            'raylet.err',
         ]
         for glob in globs:
-            last_ray_logs = self._get_last_ray_logs(glob)
+            last_ray_logs = self._get_last_ray_logs(
+                self.cluster_manager.cluster_id, 
+                glob,
+            )
             if not last_ray_logs:
               continue
             self._last_ray_logs = last_ray_logs
             break
         return self._last_ray_logs
 
-    def _get_last_ray_logs(self, glob: str) -> Optional[str]:
+    def _get_last_ray_logs(self, cluster_id: int, glob: str) -> Optional[str]:
+        logs_controller = LogsController()
+        filter = LogFilter(  
+            cluster_id=cluster_id,
+            glob=glob,
+            node_type=NodeType.HEAD_NODE,
+        )
         buf = io.StringIO()
         with open(os.devnull, "w") as devnull:
             with redirect_stdout(buf), redirect_stderr(devnull):
-                JobController().logs_controller.download_logs(
-                    filter=LogFilter(
-                        cluster_id=self.cluster_manager.cluster_id,
-                        glob=glob,
-                    ),
-                    write_to_stdout=True,
+                logs_controller.render_logs(
+                    log_group=logs_controller.get_log_group(filter=filter),
+                    tail=LAST_LOGS_LENGTH * 3,
                 )
                 print("", flush=True)
         output = buf.getvalue().strip()
         logger.info(f'Log output {output}')
-        return "\n".join(output.splitlines()[-LAST_LOGS_LENGTH * 3 :])
+        return output
 
     def get_last_logs(self):
         if not self.job_id:
