@@ -56,6 +56,7 @@ class ClusterManager(abc.ABC):
         self.cluster_env.setdefault("env_vars", {})
         self.cluster_env["env_vars"]["MATCH_AUTOSCALER_AND_RAY_IMAGES"] = "1"
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_ENABLED"] = "1"
+        self.cluster_env["env_vars"]["RAY_LOG_TO_STDERR"] = "1"
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
         self.cluster_env["env_vars"][
             "RAY_USAGE_STATS_EXTRA_TAGS"
