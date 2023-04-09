@@ -275,6 +275,7 @@ class AnyscaleJobManager:
         logger.info(f'Cluster id {self.cluster_manager.cluster_id}')
         if self._last_ray_logs:
             return self._last_ray_logs
+        time.sleep(30)
         globs = [
             'gcs_server.err',
             'ray_client_server.err',
@@ -303,7 +304,7 @@ class AnyscaleJobManager:
             filter=filter,
             page_size=DEFAULT_PAGE_SIZE,
             timeout=timedelta(seconds=DEFAULT_TIMEOUT),
-           ttl_seconds=DEFAULT_TTL,
+            ttl_seconds=DEFAULT_TTL,
         )
         logger.info(f'List of files: {log_group.get_files()}')
         with open(os.devnull, "w") as devnull:
