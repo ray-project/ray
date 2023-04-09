@@ -127,6 +127,14 @@ MongoDB
    read_mongo
    Dataset.write_mongo
 
+Iceberg
+-------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_iceberg
+
 SQL Databases
 -------------
 
