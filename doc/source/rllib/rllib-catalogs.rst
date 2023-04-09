@@ -84,7 +84,7 @@ Catalogs are also similar to what was called ModelCatalog in earlier versions of
 
 .. tabbed:: Catalogs vs RLModules
 
-    The following, broken down, diagram shows the general flow of information towards models and distributions.
+    The following diagram shows the break down of the information flow towards models and distributions within RLModules.
     RLModules create an instance of the Catalog class they receive as part of their constructor.
     They then create their internal models and action distributions with the help of this Catalog.
 
