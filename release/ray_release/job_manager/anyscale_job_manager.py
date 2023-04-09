@@ -275,7 +275,6 @@ class AnyscaleJobManager:
         logger.info(f'Cluster id {self.cluster_manager.cluster_id}')
         if self._last_ray_logs:
             return self._last_ray_logs
-        time.sleep(30)
         globs = [
             'gcs_server.err',
             'ray_client_server.err',
@@ -293,6 +292,7 @@ class AnyscaleJobManager:
         return self._last_ray_logs
 
     def _get_last_ray_logs(self, cluster_id: int, glob: str) -> Optional[str]:
+        time.sleep(30)
         logs_controller = LogsController()
         filter = LogFilter(  
             cluster_id=cluster_id,
