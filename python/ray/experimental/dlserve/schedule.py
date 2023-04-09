@@ -44,3 +44,24 @@ class Schedule(metaclass=ABCMeta):
     def steps(self):
         """Yield a list of :class:`Instructions` for each step in the schedule."""
         pass
+
+
+class InputSchedule(Schedule):
+    def steps(self):
+        """Yield a list of :class:`Instructions` for each step in the schedule."""
+        while True:
+            yield [LoadBatch(1), Forward(1), Send(1)]
+
+
+class ExecuteSchedule(Schedule):
+    def steps(self):
+        """Yield a list of :class:`Instructions` for each step in the schedule."""
+        while True:
+            yield [Receive(1), Forward(1), Send(1)]
+
+
+class OutputSchedule(Schedule):
+    def steps(self):
+        """Yield a list of :class:`Instructions` for each step in the schedule."""
+        while True:
+            yield [Receive(1), Forward(1)]

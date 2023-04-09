@@ -3,7 +3,7 @@ from threading import Lock, Thread
 from typing import Any, Callable
 
 import torch
-from ray.experimental.dlserve.communicator import (
+from ray.experimental.dlserve.communicator.communicator import (
     FULLFILLED_FUTURE,
     TorchBasedCommunicator,
 )
@@ -26,7 +26,7 @@ class Config:
         rank: int,
         input_tensor_shape: Any,
         input_tensor_dtype: torch.type,
-        device_name: str,
+        device_name_builder: Callable[[], str],
         model_builder: Callable[[], torch.nn.Module],
         data_loader_builder: Callable[[], torch.utils.data.DataLoader],
     ) -> None:
@@ -34,7 +34,7 @@ class Config:
         self.rank = rank
         self.input_tensor_shape = input_tensor_shape
         self.input_tensor_dtype = input_tensor_dtype
-        self.device_name = device_name
+        self.device_name_builder = device_name_builder
         self.model_builder = model_builder
         self.data_loader_builder = data_loader_builder
 
@@ -56,9 +56,9 @@ class ExecutionEngine:
     def _initialize_config(self, config: Config):
         self.input_tensor_shape = config.input_tensor_shape
         self.input_tensor_dtype = config.input_tensor_dtype
-        self.cuda = torch.device(config.device_name)
+        self.cuda = torch.device(config.device_name_builder())
         self.dist = TorchBasedCommunicator(config.world_size, config.rank)
-        self.model = config.model_builder().to(self.cuda)
+        self.model = config.model_builder().to(self.cuda).eval()
         self.data_loader = config.data_loader_builder()
 
     def start(self):
