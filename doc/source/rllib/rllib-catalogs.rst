@@ -45,7 +45,7 @@ The following three examples illustrate three basic usage patterns of RLLib’s 
 
 .. tabbed:: Basic interaction
 
-    In this example, we showcase the general API for interacting with Catalogs.
+    In this example, you can see how to construct a catalog object and use it build sub-components of an RLModule:
 
     .. literalinclude:: ../../../rllib/examples/catalog/basics/basic_interaction.py
        :language: python
