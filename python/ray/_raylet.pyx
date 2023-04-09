@@ -821,6 +821,7 @@ cdef void execute_task(
             return function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
+        task_exception = False
         try:
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 if c_args.empty():
