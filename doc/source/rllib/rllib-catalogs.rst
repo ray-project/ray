@@ -43,7 +43,7 @@ Instantiate and interact with a Catalog
 
 The following three examples illustrate three basic usage patterns of RLLib’s Catalogs.
 
-.. tabbed:: Basic interaction
+.. tabbed:: Basic API
 
     In this example, you can see how to construct a catalog object and use it build sub-components of an RLModule:
 
