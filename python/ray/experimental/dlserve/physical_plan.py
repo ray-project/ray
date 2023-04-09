@@ -1,7 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
-from typing import List, Tuple
 from dataclasses import dataclass
+from typing import List, Tuple
 
 import ray
 from ray.dag import DAGNode
