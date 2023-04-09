@@ -286,8 +286,9 @@ class AnyscaleJobManager:
                 self.cluster_manager.cluster_id, 
                 glob,
             )
-            if not last_ray_logs:
+            if last_ray_logs:
               return last_ray_logs
+        return None
 
     def _get_last_ray_error_logs(self, cluster_id: int, glob: str) -> Optional[str]:
         logs_controller = LogsController()
@@ -312,7 +313,7 @@ class AnyscaleJobManager:
                 )
                 print("", flush=True)
         output = "\n".join(buf.getvalue().strip().splitlines()[-LAST_LOGS_LENGTH * 3:])
-        if 'ERROR' in output:
+        if 'ERROR' in output or 'Traceback (most recent call last)' in output:
           return output
         return None
 
