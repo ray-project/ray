@@ -273,8 +273,6 @@ class AnyscaleJobManager:
 
     def get_last_ray_logs(self) -> Optional[str]:
         logger.info(f'Cluster id {self.cluster_manager.cluster_id}')
-        if not self.cluster_manager.cluster_id:
-            return None
         if self._last_ray_logs:
             return self._last_ray_logs
         globs = [
@@ -301,15 +299,17 @@ class AnyscaleJobManager:
             node_type=NodeType.HEAD_NODE,
         )
         buf = io.StringIO()
+        log_group = logs_controller.get_log_group(
+            filter=filter,
+            page_size=DEFAULT_PAGE_SIZE,
+            timeout=timedelta(seconds=DEFAULT_TIMEOUT),
+           ttl_seconds=DEFAULT_TTL,
+        )
+        logger.info(f'List of files: {log_group.get_files()}')
         with open(os.devnull, "w") as devnull:
             with redirect_stdout(buf), redirect_stderr(devnull):
                 logs_controller.render_logs(
-                    log_group=logs_controller.get_log_group(
-                        filter=filter,
-                        page_size=DEFAULT_PAGE_SIZE,
-                        timeout=timedelta(seconds=DEFAULT_TIMEOUT),
-                        ttl_seconds=DEFAULT_TTL,
-                    ),
+                    log_group=log_group,
                     parallelism=DEFAULT_PARALLELISM,
                     read_timeout=timedelta(seconds=DEFAULT_READ_TIMEOUT),
                     tail=LAST_LOGS_LENGTH * 3,
