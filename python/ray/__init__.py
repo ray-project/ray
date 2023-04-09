@@ -233,6 +233,7 @@ __all__ = [
 __all__ += [
     "data",
     "workflow",
+    "autoscaler",
 ]
 
 # ID types
@@ -253,6 +254,7 @@ __all__ += [
 
 if sys.version_info < (3, 7):
     # TODO(Clark): Remove this one we drop Python 3.6 support.
+    # Lazy import is not supported in Python 3.6.
     from ray import data  # noqa: F401
     from ray import workflow  # noqa: F401
     from ray import autoscaler  # noqa: E402,F401
