@@ -53,7 +53,6 @@ class AnyscaleJobManager:
         self.cluster_manager = cluster_manager
         self._last_job_result = None
         self._last_logs = None
-        self._last_ray_logs = None
         self.cluster_startup_timeout = 600
 
     def _run_job(
@@ -271,54 +270,51 @@ class AnyscaleJobManager:
         )
         return self._wait_job(timeout)
 
-    def get_last_ray_logs(self) -> Optional[str]:
-        logger.info(f'Cluster id {self.cluster_manager.cluster_id}')
-        if self._last_ray_logs:
-            return self._last_ray_logs
+    def get_last_ray_error_logs(self) -> Optional[str]:
         globs = [
+            'dashboard.log',
+            'dashboard.err',
+            'dashboard_agent.log',
+            'gcs_server.out',
             'gcs_server.err',
-            'ray_client_server.err',
+            'raylet.out',
             'raylet.err',
+            'runtime_env_agent.log',
         ]
         for glob in globs:
-            last_ray_logs = self._get_last_ray_logs(
+            last_ray_logs = self._get_last_ray_error_logs(
                 self.cluster_manager.cluster_id, 
                 glob,
             )
             if not last_ray_logs:
-              continue
-            self._last_ray_logs = last_ray_logs
-            break
-        return self._last_ray_logs
+              return last_ray_logs
 
-    def _get_last_ray_logs(self, cluster_id: int, glob: str) -> Optional[str]:
-        time.sleep(30)
+    def _get_last_ray_error_logs(self, cluster_id: int, glob: str) -> Optional[str]:
         logs_controller = LogsController()
         filter = LogFilter(  
             cluster_id=cluster_id,
             glob=glob,
             node_type=NodeType.HEAD_NODE,
         )
-        buf = io.StringIO()
         log_group = logs_controller.get_log_group(
             filter=filter,
             page_size=DEFAULT_PAGE_SIZE,
             timeout=timedelta(seconds=DEFAULT_TIMEOUT),
             ttl_seconds=DEFAULT_TTL,
         )
-        logger.info(f'List of files: {log_group.get_files()}')
+        buf = io.StringIO()
         with open(os.devnull, "w") as devnull:
             with redirect_stdout(buf), redirect_stderr(devnull):
                 logs_controller.render_logs(
                     log_group=log_group,
                     parallelism=DEFAULT_PARALLELISM,
                     read_timeout=timedelta(seconds=DEFAULT_READ_TIMEOUT),
-                    tail=LAST_LOGS_LENGTH * 3,
                 )
                 print("", flush=True)
-        output = buf.getvalue().strip()
-        logger.info(f'Log output {output}')
-        return output
+        output = "\n".join(buf.getvalue().strip().splitlines()[-LAST_LOGS_LENGTH * 3:])
+        if 'ERROR' in output:
+          return output
+        return None
 
     def get_last_logs(self):
         if not self.job_id:
@@ -328,8 +324,6 @@ class AnyscaleJobManager:
 
         if self._last_logs:
             return self._last_logs
-
-        return self.get_last_ray_logs()
 
         # TODO: replace with an actual API call.
         def _get_logs():
@@ -352,6 +346,8 @@ class AnyscaleJobManager:
             initial_retry_delay_s=30,
             max_retries=3,
         )
+        if not ret:
+          ret = self.get_last_ray_error_logs()
         if ret and not self.in_progress:
             self._last_logs = ret
         return ret
