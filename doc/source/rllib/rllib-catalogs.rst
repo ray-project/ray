@@ -79,7 +79,7 @@ What are Catalogs
 
 Catalogs have two primary roles: Choosing the right model and choosing the right action distribution.
 By default, all catalogs implement decision trees that choose these based on a range of inputs.
-These include mainly the observation- and action-space of the RLModule, the model config dict and the tensor backend.
+These mainly include the observation and action spaces of the RLModule, the model config dict and the deep learning framework backend.
 Catalogs are also similar to what was called ModelCatalog in earlier versions of RLlib, but are more flexible.
 
 .. tabbed:: Catalogs vs RLModules
