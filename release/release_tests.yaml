@@ -2530,18 +2530,6 @@
     script: python workloads/autoscaling_single_deployment.py
 
   alert: default
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      smoke_test:
-        frequency: manual
-        run:
-          timeout: 7200
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_1_c5_gce.yaml
 
 - name: serve_autoscaling_multi_deployment
   group: Serve tests
