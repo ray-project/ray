@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from typing import List, Tuple
+from dataclasses import dataclass
 
 import ray
 from ray.dag import DAGNode
@@ -15,22 +16,12 @@ from ray.experimental.dlserve.schedule import (
 from ray.util.placement_group import PlacementGroup
 
 
+@dataclass
 class PhysicalPlan(object):
-    def __init__(
-        self,
-        pg: PlacementGroup,
-        num_stages: int,
-        schedules: List[Schedule],
-        configs: List[Config],
-        placements: List[Tuple(PlacementGroup, int)],
-    ) -> None:
-        self.num_stages = 0
-        self.replica_schedules = []
-        self.replica_configs = []
-        self.replica_placements = []
-
-    def deploy(self):
-        pass
+    num_stages: int
+    replica_schedules: List[Schedule]
+    replica_configs: List[Config]
+    replica_placements: List[Tuple(PlacementGroup, int)]
 
 
 class PhysicalPlanner(metaclass=ABCMeta):
