@@ -107,7 +107,6 @@ class AnyscaleJobManager:
 
     @last_job_result.setter
     def last_job_result(self, value):
-        logger.info(f'last job result: {value}')
         cluster_id = value.state.cluster_id
         # Set this only once.
         if self.cluster_manager.cluster_id is None and cluster_id:
