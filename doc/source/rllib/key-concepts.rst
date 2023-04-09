@@ -217,7 +217,7 @@ Catalogs
 
 Catalogs are where RL Modules primarily get their models and action distributions from.
 They are called Catalogs because they can output a variety of models and distributions,
-depending on inputs such as action- and observation space.
+depending on configurations such as action and observation spaces.
 Each RLModule has its own default Catalog - PPORLModule has the PPOCatalog.
 Many methods of Catalogs can be overridden to alter the behavior of existing RLModules.
 
