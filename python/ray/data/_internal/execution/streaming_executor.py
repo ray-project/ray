@@ -37,6 +37,10 @@ logger = DatasetLogger(__name__)
 # Set this environment variable for detailed scheduler debugging logs.
 DEBUG_TRACE_SCHEDULING = "RAY_DATASET_TRACE_SCHEDULING" in os.environ
 
+# Force a progress bar update after this many events processed . This avoids the
+# progress bar seeming to stall for very large scale workloads.
+PROGRESS_BAR_UPDATE_INTERVAL = 50
+
 
 class StreamingExecutor(Executor, threading.Thread):
     """A streaming Dataset executor.
@@ -51,7 +55,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
-        self._output_info: Optional[ProgressBar] = None
 
         self._execution_id = uuid.uuid4().hex
         self._autoscaling_state = AutoscalingState()
@@ -79,18 +82,18 @@ class StreamingExecutor(Executor, threading.Thread):
         """
         self._initial_stats = initial_stats
         self._start_time = time.perf_counter()
+
         if not isinstance(dag, InputDataBuffer):
             logger.get_logger().info("Executing DAG %s", dag)
-            self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
+            logger.get_logger().info("Execution config: %s", self._options)
 
         # Setup the streaming DAG topology and start the runner thread.
         _validate_dag(dag, self._get_or_refresh_resource_limits())
-        self._topology, progress_bar_position = build_streaming_topology(
-            dag, self._options
-        )
-        self._output_info = ProgressBar(
-            "Output", dag.num_outputs_total() or 1, progress_bar_position
-        )
+        self._topology, _ = build_streaming_topology(dag, self._options)
+
+        if not isinstance(dag, InputDataBuffer):
+            # Note: DAG must be initialized in order to query num_outputs_total.
+            self._global_info = ProgressBar("Running", dag.num_outputs_total() or 1)
 
         self._output_node: OpState = self._topology[dag]
         self.start()
@@ -112,7 +115,8 @@ class StreamingExecutor(Executor, threading.Thread):
                         raise item
                     else:
                         # Otherwise return a concrete RefBundle.
-                        self._outer._output_info.update(1)
+                        if self._outer._global_info:
+                            self._outer._global_info.update(1)
                         return item
                 except Exception:
                     self._outer.shutdown()
@@ -143,8 +147,6 @@ class StreamingExecutor(Executor, threading.Thread):
             for op, state in self._topology.items():
                 op.shutdown()
                 state.close_progress_bars()
-            if self._output_info:
-                self._output_info.close()
             # Make request for zero resources to autoscaler for this execution.
             actor = get_or_create_autoscaling_requester_actor()
             actor.request_resources.remote({}, self._execution_id)
@@ -218,7 +220,11 @@ class StreamingExecutor(Executor, threading.Thread):
             execution_id=self._execution_id,
             autoscaling_state=self._autoscaling_state,
         )
+        i = 0
         while op is not None:
+            i += 1
+            if i > PROGRESS_BAR_UPDATE_INTERVAL:
+                break
             if DEBUG_TRACE_SCHEDULING:
                 _debug_dump_topology(topology)
             topology[op].dispatch_next_task()
@@ -266,18 +272,15 @@ class StreamingExecutor(Executor, threading.Thread):
     def _report_current_usage(
         self, cur_usage: TopologyResourceUsage, limits: ExecutionResources
     ) -> None:
+        resources_status = (
+            "Running: "
+            f"{cur_usage.overall.cpu}/{limits.cpu} CPU, "
+            f"{cur_usage.overall.gpu}/{limits.gpu} GPU, "
+            f"{cur_usage.overall.object_store_memory_str()}/"
+            f"{limits.object_store_memory_str()} object_store_memory"
+        )
         if self._global_info:
-            self._global_info.set_description(
-                "Resource usage vs limits: "
-                f"{cur_usage.overall.cpu}/{limits.cpu} CPU, "
-                f"{cur_usage.overall.gpu}/{limits.gpu} GPU, "
-                f"{cur_usage.overall.object_store_memory_str()}/"
-                f"{limits.object_store_memory_str()} object_store_memory"
-            )
-        if self._output_info:
-            self._output_info.set_description(
-                f"output: {len(self._output_node.outqueue)} queued"
-            )
+            self._global_info.set_description(resources_status)
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
