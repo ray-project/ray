@@ -9,6 +9,7 @@ class Coordinator(object):
     """The coordinator is responsible for scheduling the execution of the physical plan.
     It also responsible for reconfiguring the physical plan when necessary.
     """
+
     def __init__(
         self, logical_plan: DAGNode, pg: PlacementGroup, planner: PhysicalPlanner
     ) -> None:
