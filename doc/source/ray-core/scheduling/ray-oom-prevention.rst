@@ -11,6 +11,8 @@ In this section we will go over:
 
 - How to use the memory monitor to detect and resolve memory issues
 
+.. _ray-oom-monitor:
+
 What is the memory monitor?
 ---------------------------
 
