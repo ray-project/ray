@@ -211,27 +211,6 @@ sample batches are collected separately for each individual policy.
 These batches are wrapped up together in a ``MultiAgentBatch``,
 serving as a container for the individual agents' sample batches.
 
-
-Catalogs
---------------
-
-Catalogs are where RL Modules primarily get their models and action distributions from.
-They are called Catalogs because they can output a variety of models and distributions,
-depending on configurations such as action and observation spaces.
-Each RLModule has its own default Catalog. For example, PPORLModule has the PPOCatalog.
-Public methods of Catalogs can be overridden to alter the behavior of existing RLModules.
-
-.. image:: images/catalog_rlm_diagram.svg
-    :align: center
-
-Examples use cases:
-- Use your custom Model without modifying an RLModule.
-- Use your custom action distribution.
-- Extend RLlib’s selection of Models and distributions with your own.
-- Extend RLlib with your Algorithm.
-
-
-
 Training Step Method (``Algorithm.training_step()``)
 ----------------------------------------------------
 

@@ -13,7 +13,7 @@ You interact with Catalogs when making deeper customization to what models and d
 Interacting with Catalogs mainly covers advanced use cases.
 
 .. note::
-    If you simply want to modify RLlib’s by configuring its default models, have a look at the model config dict:
+    If you simply want to modify RLlib’s models by configuring its default models, have a look at the model config dict:
 
     .. dropdown:: **MODEL_DEFAULTS dict**
         :animate: fade-in-slide-down
@@ -38,6 +38,22 @@ After reading this user guide you will be able to…
 - Extend RLlib’s selection of Models and distributions with your own
 - Write a Catalog from scratch
 
+Catalog and AlgorithmConfig
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Since Catalogs effectively control what models and distributions RLlib uses under the hood,
+they are also part of RLlib’s configurations. As the primary entry point for configuring RLlib,
+AlgorithmConfig is the place where you can configure the Catalogs of the RLModules that are created.
+The following example shows how to configure the Catalogs of the RLModules that are created by PPO.
+
+.. literalinclude:: ../../../rllib/examples/catalog/basics/catalogs_in_algo_configs.py
+    :language: python
+    :start-after: __sphinx_doc_begin__
+    :end-before: __sphinx_doc_end__
+
+.. image:: images/catalog/catalog_rlmspecs_diagram.svg
+    :align: center
+
 Basic Usage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -52,7 +68,7 @@ The following three examples illustrate three basic usage patterns of RLLib’s 
        :start-after: __sphinx_doc_begin__
        :end-before: __sphinx_doc_end__
 
-.. tabbed:: PPOCatalog + CartPole
+.. tabbed:: Use catalog-generated NNs
 
     In this example, we showcase how to use the PPOCatalog to create models and an action distribution.
     This is more similar to what RLlib does internally.
@@ -62,7 +78,7 @@ The following three examples illustrate three basic usage patterns of RLLib’s 
        :start-after: __sphinx_doc_begin__
        :end-before: __sphinx_doc_end__
 
-.. tabbed:: Catalog + Custom Model + CartPole
+.. tabbed:: Customize a policy head
 
     In this example, we showcase how to use the base Catalog to create an encoder and an action distribution.
     Besides these, we create a head network that fits these two by hand to show how you can combine RLLib's
@@ -78,7 +94,7 @@ What are Catalogs
 ~~~~~~~~~~~~~~~~~
 
 Catalogs have two primary roles: Choosing the right model and choosing the right action distribution.
-By default, all catalogs implement decision trees that decide model architecture based on a combination of input configurations. 
+By default, all catalogs implement decision trees that decide model architecture based on a combination of input configurations.
 These mainly include the observation and action spaces of the RLModule, the model config dict and the deep learning framework backend.
 
 .. tabbed:: Catalogs vs RLModules
@@ -104,22 +120,6 @@ These mainly include the observation and action spaces of the RLModule, the mode
 
     .. image:: images/catalog/ppo_catalog_and_rlm_diagram.svg
         :align: center
-
-Catalogs and AlgorithmConfig
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Since Catalogs effectively control what models and distributions RLlib uses under the hood,
-they are also part of RLlib’s configurations. As the primary entry point for configuring RLlib,
-AlgorithmConfig is the place where you can configure the Catalogs of the RLModules that are created.
-The following example shows how to configure the Catalogs of the RLModules that are created by PPO.
-
-.. literalinclude:: ../../../rllib/examples/catalog/basics/catalogs_in_algo_configs.py
-    :language: python
-    :start-after: __sphinx_doc_begin__
-    :end-before: __sphinx_doc_end__
-
-.. image:: images/catalog/catalog_rlmspecs_diagram.svg
-    :align: center
 
 
 Inject your custom models into RLModules
