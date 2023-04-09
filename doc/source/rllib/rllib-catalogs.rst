@@ -42,7 +42,6 @@ Instantiate and interact with a Catalog
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following three examples illustrate three basic usage patterns of RLLib’s Catalogs.
-We create models as well as distributions and step through an environment with them.
 
 .. tabbed:: Basic interaction
 
