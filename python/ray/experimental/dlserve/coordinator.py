@@ -1,11 +1,14 @@
 import ray
 from ray.dag import DAGNode
 from ray.experimental.dlserve.engine import ExecutionEngine
-from ray.experimental.dlserve.physical_plan import PhysicalPlan, PhysicalPlanner
+from ray.experimental.dlserve.physical_plan import PhysicalPlanner
 from ray.util.placement_group import PlacementGroup, PlacementGroupSchedulingStrategy
 
 
 class Coordinator(object):
+    """The coordinator is responsible for scheduling the execution of the physical plan.
+    It also responsible for reconfiguring the physical plan when necessary.
+    """
     def __init__(
         self, logical_plan: DAGNode, pg: PlacementGroup, planner: PhysicalPlanner
     ) -> None:
