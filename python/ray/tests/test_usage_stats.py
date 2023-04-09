@@ -11,6 +11,7 @@ import pytest
 from jsonschema import validate
 
 import ray
+from ray.job_submission import JobSubmissionClient
 import ray._private.usage.usage_constants as usage_constants
 import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private import gcs_utils
@@ -748,9 +749,7 @@ with joblib.parallel_backend("ray"):
     run_string_as_driver(driver)
 
     if sys.platform != "win32":
-        job_submission_client = ray.job_submission.JobSubmissionClient(
-            "http://127.0.0.1:8265"
-        )
+        job_submission_client = JobSubmissionClient("http://127.0.0.1:8265")
         job_id = job_submission_client.submit_job(entrypoint="ls")
         wait_for_condition(
             lambda: job_submission_client.get_job_status(job_id)
