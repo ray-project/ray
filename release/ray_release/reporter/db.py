@@ -1,4 +1,5 @@
 import time
+import re
 import json
 import boto3
 from typing import Optional, List
@@ -14,18 +15,32 @@ class DBReporter(Reporter):
     def __init__(self):
         self.firehose = boto3.client("firehose", config=Config(region_name="us-west-2"))
 
-    def compute_stack_pattern(self, result: Result) -> Optional[str]:
-        stack_trace = self.compute_stack_trace(result)
-        return self.compute_unique_pattern(stack_trace)
+    def compute_crash_pattern(self, logs: str) -> str:
+        stack_trace = self._compute_stack_trace(logs.splitlines())
+        return self._compute_unique_pattern(stack_trace)
 
-    def compute_unique_pattern(stack_trace: List(str)) -> Optional[str]:
-        return None
+    def _compute_unique_pattern(self, stack_trace: List[str]) -> str:
+        """
+        Compute unique pattern from stack trace, by remove factors such as date, time,
+        temp directory, line numbers, etc. This help to aggregate similar logs into 
+        same bug patterns
+        """
+        massaged_trace = []
+        for line in stack_trace:
+            line = re.sub(r'\d', '', line.strip())
+            if line == 'Traceback (most recent call last):':
+                continue
+            file_line = re.search(r'File "(.*)", (.*)', line)
+            if file_line:
+                line = f'{file_line.group(1).split("/")[-1]}{file_line.group(2)}'
+            massaged_trace.append(line)
+        return ''.join(massaged_trace)
 
-    def compute_stack_trace(self, result: Result) -> List(str):
+    def _compute_stack_trace(self, logs: List[str]) -> List[str]:
         """
         Extract stack trace pattern from the logs. Stack trace pattern often matches 
         the following:
-        ERROR
+        ERROR ...
         Traceback (most recent call last):
             File "...", line ..., in ...
             ...
@@ -33,7 +48,6 @@ class DBReporter(Reporter):
         """
         error_stacktrace = []
         stacktrace = []
-        logs = result.last_logs.split("\n")
         i = 0
         while i < len(logs):
             stack = []
@@ -55,16 +69,18 @@ class DBReporter(Reporter):
                 if logs[next].startswith((' ', '\t')):
                     stack.append(logs[next])
                     next = next + 1
+                else:
+                    break
             if next < len(logs):
                 stack.append(logs[next])
             if stack:
                 trace.append(stack)
             i = next + 1
 
-        if not error_stacktrace:
+        if error_stacktrace:
             return error_stacktrace[-1]
 
-        if not stacktrace:
+        if stacktrace:
             return stacktrace[-1]
 
         return []
@@ -96,6 +112,7 @@ class DBReporter(Reporter):
             "return_code": result.return_code,
             "smoke_test": result.smoke_test,
             "extra_tags": result.extra_tags or {},
+            "crash_pattern": self.compute_crash_pattern(result.last_logs or "")
         }
 
         logger.debug(f"Result json: {json.dumps(result_json)}")
