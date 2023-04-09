@@ -32,11 +32,11 @@ Therefore, this doc also includes examples around PPO from which you can extrapo
 Prerequisites for this user guide is a rough understanding of RLModules.
 After reading this user guide you will be able to…
 
-    - Instantiate and interact with a Catalog
-    - Inject your custom models into RLModules
-    - Inject your custom action distributions into RLModules
-    - Extend RLlib’s selection of Models and distributions with your own
-    - Write a Catalog from scratch
+- Instantiate and interact with a Catalog
+- Inject your custom models into RLModules
+- Inject your custom action distributions into RLModules
+- Extend RLlib’s selection of Models and distributions with your own
+- Write a Catalog from scratch
 
 Instantiate and interact with a Catalog
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
