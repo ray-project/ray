@@ -310,6 +310,8 @@ class AnyscaleJobManager:
                         timeout=timedelta(seconds=DEFAULT_TIMEOUT),
                         ttl_seconds=DEFAULT_TTL,
                     ),
+                    parallelism=DEFAULT_PARALLELISM,
+                    read_timeout=timedelta(seconds=DEFAULT_READ_TIMEOUT),
                     tail=LAST_LOGS_LENGTH * 3,
                 )
                 print("", flush=True)
