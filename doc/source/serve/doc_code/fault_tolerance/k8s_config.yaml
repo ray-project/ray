@@ -117,8 +117,8 @@ spec:
                 - containerPort: 8000
                   name: serve
     workerGroupSpecs:
-      - replicas: 1
-        minReplicas: 1
+      - replicas: 2
+        minReplicas: 2
         maxReplicas: 2
         groupName: small-group
         rayStartParams:
