@@ -1,6 +1,7 @@
 import io
 import os
 import time
+from datetime import timedelta
 from contextlib import redirect_stdout, redirect_stderr, contextmanager
 from typing import Any, Dict, Optional, Tuple
 
@@ -10,7 +11,14 @@ from anyscale.sdk.anyscale_client.models import (
     HaJobStates,
 )
 from anyscale.controllers.job_controller import JobController, terminal_state
-from anyscale.controllers.logs_controller import LogsController
+from anyscale.controllers.logs_controller import (
+    DEFAULT_PAGE_SIZE,
+    DEFAULT_PARALLELISM,
+    DEFAULT_READ_TIMEOUT,
+    DEFAULT_TIMEOUT,
+    DEFAULT_TTL,
+    LogsController,
+)
 from anyscale.client.openapi_client.models.node_type import NodeType
 from anyscale.client.openapi_client.models.log_filter import LogFilter
 
@@ -107,7 +115,6 @@ class AnyscaleJobManager:
 
     @last_job_result.setter
     def last_job_result(self, value):
-        logger.info(f'last job result: {value}')
         cluster_id = value.state.cluster_id
         # Set this only once.
         if self.cluster_manager.cluster_id is None and cluster_id:
@@ -297,7 +304,10 @@ class AnyscaleJobManager:
         with open(os.devnull, "w") as devnull:
             with redirect_stdout(buf), redirect_stderr(devnull):
                 logs_controller.render_logs(
-                    log_group=logs_controller.get_log_group(filter=filter),
+                    log_group=logs_controller.get_log_group(
+                        filter=filter,
+                        timeout=timedelta(seconds=DEFAULT_TIMEOUT),
+                    ),
                     tail=LAST_LOGS_LENGTH * 3,
                 )
                 print("", flush=True)
