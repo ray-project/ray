@@ -10,6 +10,7 @@ from ray_release.result import Result
 from ray_release.config import Test
 from ray_release.logger import logger
 
+CRASH_PATTERN_MAX_LENGTH = 4000
 
 class DBReporter(Reporter):
     def __init__(self):
@@ -17,7 +18,7 @@ class DBReporter(Reporter):
 
     def compute_crash_pattern(self, logs: str) -> str:
         stack_trace = self._compute_stack_trace(logs.splitlines())
-        return self._compute_unique_pattern(stack_trace)
+        return self._compute_unique_pattern(stack_trace)[:CRASH_PATTERN_MAX_LENGTH]
 
     def _compute_unique_pattern(self, stack_trace: List[str]) -> str:
         """
