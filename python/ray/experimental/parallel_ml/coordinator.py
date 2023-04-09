@@ -1,7 +1,7 @@
 import ray
 from ray.dag import DAGNode
-from ray.experimental.dlserve.engine import ExecutionEngine
-from ray.experimental.dlserve.physical_plan import PhysicalPlanner
+from ray.experimental.parallel_ml.engine import ExecutionEngine
+from ray.experimental.parallel_ml.physical_plan import PhysicalPlanner
 from ray.util.placement_group import PlacementGroup, PlacementGroupSchedulingStrategy
 
 

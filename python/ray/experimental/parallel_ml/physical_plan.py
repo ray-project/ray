@@ -5,9 +5,9 @@ from typing import List, Tuple
 
 import ray
 from ray.dag import DAGNode
-from ray.experimental.dlserve.dag.nn_module_node import NNModuleNode
-from ray.experimental.dlserve.engine import Config
-from ray.experimental.dlserve.schedule import (
+from ray.experimental.parallel_ml.dag.nn_module_node import NNModuleNode
+from ray.experimental.parallel_ml.engine import Config
+from ray.experimental.parallel_ml.schedule import (
     ExecuteSchedule,
     InputSchedule,
     OutputSchedule,

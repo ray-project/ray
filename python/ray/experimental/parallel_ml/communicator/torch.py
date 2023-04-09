@@ -1,18 +1,7 @@
+
 import torch
-from ray.experimental.dlserve.communicator.communicator import Communicator
 
-
-class _FullfiledFuture:
-    """A future that is already fullfilled."""
-
-    def is_completed(self):
-        return True
-
-    def wait(self):
-        pass
-
-
-FULLFILLED_FUTURE = _FullfiledFuture()
+from ray.experimental.parallel_ml.communicator.communicator import (Communicator, FULLFILLED_FUTURE)
 
 
 class TorchBasedCommunicator(Communicator):

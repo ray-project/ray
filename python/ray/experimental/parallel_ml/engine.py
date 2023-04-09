@@ -3,11 +3,11 @@ from threading import Lock, Thread
 from typing import Any, Callable
 
 import torch
-from ray.experimental.dlserve.communicator.communicator import (
+from ray.experimental.parallel_ml.communicator.communicator import (
     FULLFILLED_FUTURE,
     TorchBasedCommunicator,
 )
-from ray.experimental.dlserve.schedule import (
+from ray.experimental.parallel_ml.schedule import (
     Forward,
     Instruction,
     LoadBatch,

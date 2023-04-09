@@ -4,7 +4,7 @@ from typing import List
 
 import ray
 import torch
-from ray.experimental.dlserve.communicator.communicator import (
+from ray.experimental.parallel_ml.communicator.communicator import (
     FULLFILLED_FUTURE,
     Communicator,
 )
@@ -49,7 +49,7 @@ class NaiveCommunicator(Communicator):
             pass
         else:
             ray.get(send_ref)
-            return FULLFILLED_FUTURE
+        return FULLFILLED_FUTURE
 
     def recv(self, tensor: torch.Tensor, src_rank: int, async_op: bool = False):
         receive_ref = self._communication_registry.recv.remote(src_rank, self._rank)
