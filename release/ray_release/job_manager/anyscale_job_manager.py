@@ -306,7 +306,9 @@ class AnyscaleJobManager:
                 logs_controller.render_logs(
                     log_group=logs_controller.get_log_group(
                         filter=filter,
+                        page_size=DEFAULT_PAGE_SIZE,
                         timeout=timedelta(seconds=DEFAULT_TIMEOUT),
+                        ttl_seconds=DEFAULT_TTL,
                     ),
                     tail=LAST_LOGS_LENGTH * 3,
                 )
