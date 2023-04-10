@@ -14,9 +14,8 @@ Retrieving a limited set of rows
 ================================
 
 A limited set of rows can be retried from a ``Dataset`` via the
-:meth:`ds.take() <ray.data.Dataset.take>` API, along with its sibling helper APIs
-:meth:`ds.take_all() <ray.data.Dataset.take_all>`, for retrieving **all** rows, and
-:meth:`ds.show() <ray.data.Dataset.show>`, for printing a limited set of rows. These
+:meth:`ds.take_batch() <ray.data.Dataset.take_batch>` API, for retrieving a limited-size batch of rows,
+and :meth:`ds.show() <ray.data.Dataset.show>`, for printing a limited set of rows. These
 methods are convenient for quickly inspecting a subset (prefix) of rows. They have the
 benefit that, if used right after reading, they will only trigger more files to be
 read if needed to retrieve rows from that file; if inspecting a small prefix of rows,

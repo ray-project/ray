@@ -6,11 +6,18 @@ import ray
 
 ds = ray.data.range(10000)
 
-print(ds.take(5))
+# Take up to five records as a batch.
+print(ds.take_batch(5))
 # -> [0, 1, 2, 3, 4]
 
-# Warning: This will print all of the rows!
-print(ds.take_all())
+# Similar to above but coercing into Pandas format.
+print(ds.take_batch(5, batch_format="pandas"))
+# -> value
+# 0      0
+# 1      1
+# 2      2
+# 3      3
+# 4      4
 
 ds.show(5)
 # -> 0

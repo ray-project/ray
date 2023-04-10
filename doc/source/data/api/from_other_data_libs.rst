@@ -26,7 +26,8 @@ For Pandas Users
    * - Pandas DataFrame API
      - Ray Datasets API
    * - df.head()
-     - :meth:`ds.show() <ray.data.Dataset.show>` or :meth:`ds.take() <ray.data.Dataset.take>`
+     - :meth:`ds.show() <ray.data.Dataset.show>` or :meth:`ds.take_batch() <ray.data.Dataset.take_batch>`
+
    * - df.dtypes
      - :meth:`ds.schema() <ray.data.Dataset.schema>`
    * - len(df) or df.shape[0]
