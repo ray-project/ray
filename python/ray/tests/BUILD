@@ -314,7 +314,7 @@ py_test_module_list(
     "test_placement_group_5.py",
   ],
   size = "large",
-  tags = ["exclusive", "large_size_python_tests_shard_0"],
+  tags = ["large_size_python_tests_shard_0", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -323,7 +323,7 @@ py_test(
   srcs = ["test_cli.py"],
   data = glob(["test_cli_patterns/*.txt", "test_cli_patterns/*.yaml"]),
   size = "large",
-  tags = ["exclusive", "large_size_python_tests_shard_0"],
+  tags = ["large_size_python_tests_shard_0", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

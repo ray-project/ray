@@ -9,9 +9,11 @@ def py_test_module_list(files, size, deps, env = {}, extra_srcs=[], name_suffix=
     if size == "large":
         shard_num = 8
 
-
     if size == "medium":
         shard_num = 4
+
+    if size == "small":
+        shard_num = 2
 
     env_items = env.items() + [("RAY_CI_PYTEST_SHARD_NUM", str(shard_num))]
 
