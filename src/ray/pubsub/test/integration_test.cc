@@ -177,6 +177,8 @@ class IntegrationTest : public ::testing::Test {
     server_ = builder.BuildAndStart();
   }
 
+  void RestartServer() { SetupServer(); }
+
   std::unique_ptr<Subscriber> CreateSubscriber() {
     return std::make_unique<Subscriber>(
         UniqueID::FromRandom(),
@@ -293,6 +295,118 @@ TEST_F(IntegrationTest, SubscribersToOneIDAndAllIDs) {
   // logic below.
   int wait_count = 0;
   while (!(subscriber_1->CheckNoLeaks() && subscriber_2->CheckNoLeaks())) {
+    ASSERT_LT(wait_count, 60) << "Subscribers still have inflight operations after 60s";
+    ++wait_count;
+    absl::SleepFor(absl::Seconds(1));
+  }
+}
+
+TEST_F(IntegrationTest, GcsFailsOver) {
+  const std::string subscribed_actor =
+      ActorID::FromHex("f4ce02420592ca68c1738a0d01000000").Binary();
+  absl::BlockingCounter counter(1);
+  absl::Mutex mu;
+
+  std::vector<rpc::ActorTableData> actors_1;
+  auto subscriber_1 = CreateSubscriber();
+  subscriber_1->Subscribe(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_ACTOR_CHANNEL,
+      address_proto_,
+      subscribed_actor,
+      /*subscribe_done_callback=*/
+      [&counter](Status status) {
+        RAY_CHECK_OK(status);
+        counter.DecrementCount();
+      },
+      /*subscribe_item_callback=*/
+      [&mu, &actors_1](const rpc::PubMessage &msg) {
+        absl::MutexLock lock(&mu);
+        actors_1.push_back(msg.actor_message());
+      },
+      /*subscription_failure_callback=*/
+      [](const std::string &, const Status &status) {});
+
+  // Wait for subscriptions done before trying to publish.
+  counter.Wait();
+
+  rpc::ActorTableData actor_data;
+  actor_data.set_actor_id(subscribed_actor);
+  actor_data.set_state(rpc::ActorTableData::ALIVE);
+  actor_data.set_name("test actor");
+  rpc::PubMessage msg;
+  msg.set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
+  msg.set_key_id(subscribed_actor);
+  *msg.mutable_actor_message() = actor_data;
+
+  subscriber_service_->GetPublisher().Publish(msg);
+
+  {
+    absl::MutexLock lock(&mu);
+
+    auto received_id = [&mu, &actors_1]() {
+      mu.AssertReaderHeld();  // For annotalysis.
+      return actors_1.size() == 1;
+    };
+    if (!mu.AwaitWithTimeout(absl::Condition(&received_id), absl::Seconds(10))) {
+      FAIL() << "Subscriber for actor ID did not receive the published message.";
+    }
+  }
+
+  EXPECT_EQ(actors_1[0].actor_id(), actor_data.actor_id());
+
+  // simulate GCS failure.
+  RestartServer();
+
+  absl::BlockingCounter counter1(1);
+  subscriber_1->Subscribe(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_ACTOR_CHANNEL,
+      address_proto_,
+      subscribed_actor,
+      /*subscribe_done_callback=*/
+      [&counter1](Status status) {
+        RAY_CHECK_OK(status);
+        counter1.DecrementCount();
+      },
+      /*subscribe_item_callback=*/
+      [&mu, &actors_1](const rpc::PubMessage &msg) {
+        absl::MutexLock lock(&mu);
+        actors_1.push_back(msg.actor_message());
+      },
+      /*subscription_failure_callback=*/
+      [](const std::string &, const Status &status) {});
+
+  counter1.Wait();
+
+  actor_data.set_actor_id(subscribed_actor);
+  actor_data.set_state(rpc::ActorTableData::ALIVE);
+  actor_data.set_name("test actor");
+  msg.set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
+  msg.set_key_id(subscribed_actor);
+  *msg.mutable_actor_message() = actor_data;
+
+  subscriber_service_->GetPublisher().Publish(msg);
+
+  {
+    absl::MutexLock lock(&mu);
+    auto received_id = [&actors_1]() { return actors_1.size() == 2; };
+    if (!mu.AwaitWithTimeout(absl::Condition(&received_id), absl::Seconds(10))) {
+      FAIL() << "Subscriber for actor ID did not receive the published message.";
+    }
+  }
+
+  subscriber_1->Unsubscribe(
+      rpc::ChannelType::GCS_ACTOR_CHANNEL, address_proto_, subscribed_actor);
+
+  // Flush all the inflight long polling.
+  subscriber_service_->GetPublisher().UnregisterAll();
+
+  // Waiting here is necessary to avoid invalid memory access during shutdown.
+  // TODO(mwtian): cancel inflight polls during subscriber shutdown, and remove the
+  // logic below.
+  int wait_count = 0;
+  while (!(subscriber_1->CheckNoLeaks())) {
     ASSERT_LT(wait_count, 60) << "Subscribers still have inflight operations after 60s";
     ++wait_count;
     absl::SleepFor(absl::Seconds(1));

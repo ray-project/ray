@@ -391,6 +391,7 @@ class Subscriber : public SubscriberInterface {
   ///
 
   FRIEND_TEST(IntegrationTest, SubscribersToOneIDAndAllIDs);
+  FRIEND_TEST(IntegrationTest, GcsFailsOver);
   FRIEND_TEST(SubscriberTest, TestBasicSubscription);
   FRIEND_TEST(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions);
   FRIEND_TEST(SubscriberTest, TestMultiLongPollingWithTheSameSubscription);
