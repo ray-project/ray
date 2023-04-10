@@ -2595,6 +2595,19 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 7200
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_32_cpu_autoscaling_gce.yaml
+
 # - name: serve_serve_micro_benchmark_k8s
 #   group: Serve tests
 #   working_dir: serve_tests
