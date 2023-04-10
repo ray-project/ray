@@ -1453,9 +1453,24 @@ class DeploymentState:
         target_version = self._target_state.version
         target_replica_count = self._target_state.num_replicas
 
+        logger.info(
+            f"_check_curr_status: {self._name}, {target_version}, {target_replica_count}, {self.curr_status_info.status}"
+        )
+
         all_running_replica_cnt = self._replicas.count(states=[ReplicaState.RUNNING])
         running_at_target_version_replica_cnt = self._replicas.count(
             states=[ReplicaState.RUNNING], version=target_version
+        )
+        pending_replicas = self._replicas.count(
+            states=[
+                ReplicaState.STARTING,
+                ReplicaState.UPDATING,
+                ReplicaState.RECOVERING,
+                ReplicaState.STOPPING,
+            ]
+        )
+        logger.info(
+            f"_check_curr_status: {self._name}, {all_running_replica_cnt}, {running_at_target_version_replica_cnt}, {pending_replicas}"
         )
 
         failed_to_start_count = self._replica_constructor_retry_counter
@@ -1843,6 +1858,9 @@ class DriverDeploymentState(DeploymentState):
             if self._target_state.deleting:
                 running_replicas_changed = self._stop_all_replicas()
             else:
+                num_nodes = len(self._get_all_node_ids())
+                if self._target_state.num_replicas != num_nodes:
+                    self._target_state.num_replicas = num_nodes
                 max_to_stop = self._calculate_max_replicas_to_stop()
                 running_replicas_changed = self._stop_wrong_version_replicas(
                     max_to_stop
