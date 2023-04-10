@@ -1,8 +1,10 @@
 import os
 
 import torch
-
-from parallel_ml.communicator.communicator import FULLFILLED_FUTURE, Communicator
+from ray.experimental.parallel_ml.communicator.communicator import (
+    FULLFILLED_FUTURE,
+    Communicator,
+)
 
 
 class TorchBasedCommunicator(Communicator):
