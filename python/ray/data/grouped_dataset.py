@@ -118,7 +118,7 @@ class PushBasedGroupbyOp(_GroupbyOp, PushBasedShufflePlan):
 
 
 @PublicAPI
-class GroupedDatastream(Generic[T]):
+class GroupedData(Generic[T]):
     """Represents a grouped dataset created by calling ``Dataset.groupby()``.
 
     The actual groupby is deferred until an aggregation is applied.
@@ -127,7 +127,7 @@ class GroupedDatastream(Generic[T]):
     def __init__(self, dataset: Datastream[T], key: KeyFn):
         """Construct a dataset grouped by key (internal API).
 
-        The constructor is not part of the GroupedDatastream API.
+        The constructor is not part of the GroupedData API.
         Use the ``Dataset.groupby()`` method to construct one.
         """
         self._dataset = dataset
@@ -273,7 +273,7 @@ class GroupedDatastream(Generic[T]):
         batch_format: Optional[str] = "default",
         **ray_remote_args,
     ) -> "Datastream[Any]":
-        # TODO AttributeError: 'GroupedDatastream' object has no attribute 'map_groups'
+        # TODO AttributeError: 'GroupedData' object has no attribute 'map_groups'
         #  in the example below.
         """Apply the given function to each group of records of this dataset.
 
