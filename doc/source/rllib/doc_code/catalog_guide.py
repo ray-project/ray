@@ -1,3 +1,4 @@
+# flake8: noqa
 """
 This file holds several examples for the Catalogs API that are used in the catalog
 guide.
