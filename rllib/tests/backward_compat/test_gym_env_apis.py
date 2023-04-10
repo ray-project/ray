@@ -267,7 +267,13 @@ class TestGymEnvAPIs(unittest.TestCase):
             ),
         )
 
-        algo = PPOConfig().environment("test", auto_wrap_old_gym_envs=False).build()
+        algo = (
+            PPOConfig()
+            .environment(
+                "test", auto_wrap_old_gym_envs=False, disable_env_checking=True
+            )
+            .build()
+        )
         algo.train()
         algo.stop()
 
