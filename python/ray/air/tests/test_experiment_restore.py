@@ -9,21 +9,19 @@ Test setup:
 - Each round of 2 trials should take 4 seconds
 - Without any interrupts/restoration:
     - Minimum runtime: 4 rounds * 4 seconds / round = 16 seconds
-    - Actually running it without any interrupts = ~24 seconds
 - The test will stop the script with a SIGINT at a random time between
   4-8 iterations each restore.
 (For Trainer.restore)
 - 1 trial with 4 workers
 - Each iteration takes 0.5 seconds
 - Runs for 32 iterations --> Minimum runtime = 16 seconds
-    - Actually running it without any interrupts = ~24 seconds
 - The test will stop the script with a SIGINT at a random time between
   4-8 iterations after each restore.
 
 
 Requirements:
 - Req 1: Reasonable runtime
-    - The experiment should finish within 1.5 * 24 = 36 seconds.
+    - The experiment should finish within 1.5 * 16 = 24 seconds.
     - 1.5x is the passing threshold.
 - Req 2: Training progress persisted
     - The experiment should progress monotonically.
@@ -37,6 +35,7 @@ import numpy as np
 from pathlib import Path
 import pytest
 import time
+import shutil
 import signal
 import subprocess
 import sys
@@ -74,7 +73,6 @@ def print_message(message):
     print("\n")
 
 
-# TODO(ml-team): "trainer" doesn't work
 @pytest.mark.parametrize("runner_type", ["tuner", "trainer"])
 def test_air_experiment_restore(tmp_path, runner_type):
     np.random.seed(2023)
@@ -86,8 +84,6 @@ def test_air_experiment_restore(tmp_path, runner_type):
     callback_dump_file = tmp_path / f"{runner_type}-callback_dump_file.json"
     storage_path = tmp_path / "ray_results"
     if storage_path.exists():
-        import shutil
-
         shutil.rmtree(storage_path)
 
     run_started_marker = tmp_path / "run_started_marker"
@@ -117,10 +113,13 @@ def test_air_experiment_restore(tmp_path, runner_type):
     }
 
     # Pass criteria
-    no_interrupts_runtime = 24.0
+    no_interrupts_runtime = 16.0
     passing_factor = 1.5
     passing_runtime = no_interrupts_runtime * passing_factor
-    print(f"Experiment should finish with a total runtime <= {passing_runtime}.")
+    print(
+        "\n\nExperiment should finish with a total runtime <= "
+        f"{passing_runtime} seconds."
+    )
 
     # Variables used in the loop
     return_code = None
@@ -212,12 +211,14 @@ def test_air_experiment_restore(tmp_path, runner_type):
 
     # Req 3: searcher state
     results = ResultGrid(ExperimentAnalysis(str(storage_path / exp_name)))
-    # Check that all trials have unique ids assigned by the searcher
-    ids = [result.config["id"] for result in results]
-    assert sorted(ids) == list(range(1, num_trials + 1)), (
-        "Expected the searcher to assign increasing id for each trial, but got:"
-        f"{ids}"
-    )
+    # Check that all trials have unique ids assigned by the searcher (if applicable)
+    ids = [result.config.get("id", -1) for result in results]
+    ids = [id for id in ids if id >= 0]
+    if ids:
+        assert sorted(ids) == list(range(1, num_trials + 1)), (
+            "Expected the searcher to assign increasing id for each trial, but got:"
+            f"{ids}"
+        )
 
     # Req 4: callback state
     with open(callback_dump_file, "r") as f:

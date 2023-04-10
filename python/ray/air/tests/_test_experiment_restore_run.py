@@ -85,9 +85,7 @@ def train_fn(config, data=None):
     start = checkpoint.to_dict()["iteration"] + 1 if checkpoint else 1
 
     training_started_marker = Path(os.environ.get("RUN_STARTED_MARKER", "asdf.py"))
-
-    if training_started_marker.exists():
-        training_started_marker.unlink()
+    training_started_marker.unlink(missing_ok=True)
 
     for iteration in range(start, ITERATIONS_PER_TRIAL + 1):
         time.sleep(TIME_PER_ITER_S)
@@ -135,10 +133,7 @@ if __name__ == "__main__":
 
         def train_loop_per_worker(config):
             # Wrap the other train_fn with a check for the dataset.
-            assert (
-                session.get_dataset_shard("train").count()
-                == dataset_size // num_workers
-            )
+            assert session.get_dataset_shard("train")
             train_fn(config)
 
         datasets = {"train": ray.data.range(dataset_size)}

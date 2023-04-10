@@ -293,19 +293,16 @@ class BaseTrainer(abc.ABC):
         assert trainer_state_path.exists()
 
         with open(trainer_state_path, "rb") as fp:
-            original_trainer = pickle.load(fp)
-        if type(original_trainer) is not cls:
+            trainer_cls, param_dict = pickle.load(fp)
+        if trainer_cls is not cls:
             warnings.warn(
                 f"Invalid trainer type. You are attempting to restore a trainer of type"
-                f" {type(original_trainer)} with `{cls.__name__}.restore`, "
+                f" {trainer_cls} with `{cls.__name__}.restore`, "
                 "which will most likely fail. "
-                f"Use `{type(original_trainer).__name__}.restore` instead."
+                f"Use `{trainer_cls.__name__}.restore` instead."
             )
 
-        # Get the param dict used to initialize the original trainer
-        param_dict = original_trainer._param_dict
-
-        original_datasets = original_trainer.datasets or {}
+        original_datasets = param_dict.pop("datasets", {})
         if original_datasets and not datasets:
             raise ValueError(
                 "The following datasets need to be provided again on restore: "
@@ -624,9 +621,22 @@ class BaseTrainer(abc.ABC):
         set of parameters can be passed in again), the argument will be loaded
         from this saved one.
         """
+        param_dict = self._param_dict.copy()
+        datasets = param_dict.pop("datasets", {})
+
+        def raise_fn():
+            raise RuntimeError
+
+        if datasets:
+            param_dict["datasets"] = {
+                dataset_name: raise_fn for dataset_name in datasets
+            }
+
+        cls_and_param_dict = (self.__class__, param_dict)
+
         experiment_path = Path(experiment_path)
         with open(experiment_path / _TRAINER_PKL, "wb") as fp:
-            pickle.dump(self, fp)
+            pickle.dump(cls_and_param_dict, fp)
 
     def _extract_fields_for_tuner_param_space(self) -> Dict:
         """Extracts fields to be included in `Tuner.param_space`.
