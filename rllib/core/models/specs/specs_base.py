@@ -66,7 +66,7 @@ class TensorSpec(Spec):
     Args:
         shape: A string representing einops notation of the shape of the tensor.
             For example, "B, C" represents a tensor with two dimensions, the first
-            of which has size B and the second of which has size C. shape should
+            of which has size B and the second of which has size C. shape must
             consist of unique dimension names. For example having "B B" is invalid.
         dtype: The dtype of the tensor. If None, the dtype is not checked during
             validation. Also during Sampling the dtype is set the default dtype of
@@ -77,7 +77,7 @@ class TensorSpec(Spec):
             run-time but C is fixed to 3.
 
     Examples:
-        >>> spec = TensorSpec("b,h", h=128, dtype=tf.float32)
+        >>> spec = TensorSpec("b, d", d=128, dtype=tf.float32)
         >>> spec.shape  # ('b', 128)
         >>> spec.validate(torch.rand(32, 128, dtype=torch.float32))  # passes
         >>> spec.validate(torch.rand(32, 64, dtype=torch.float32))   # raises ValueError
@@ -98,7 +98,11 @@ class TensorSpec(Spec):
     """
 
     def __init__(
-        self, shape: str, *, dtype: Optional[Any] = None, **shape_vals: Dict[str, int]
+        self,
+        shape: str,
+        *,
+        dtype: Optional[Any] = None,
+        **shape_vals: int,
     ) -> None:
         self._expected_shape = self._parse_expected_shape(shape, shape_vals)
         self._full_shape = self._get_full_shape()
@@ -228,8 +232,10 @@ class TensorSpec(Spec):
 
     @abc.abstractmethod
     def _full(self, shape: Tuple[int], fill_value: Union[float, int] = 0) -> TensorType:
-        """Creates a tensor with the given shape filled with `fill_value`. The tensor
-        dtype is inferred from `fill_value`. This is equivalent to np.full(shape, val).
+        """Creates a tensor with the given shape filled with `fill_value`.
+
+        The tensor dtype is inferred from `fill_value`. This is equivalent to
+        np.full(shape, val).
 
         Args:
             shape: The shape of the tensor to be sampled.
