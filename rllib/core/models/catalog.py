@@ -251,7 +251,7 @@ class Catalog:
         return self.encoder_config.build(framework=framework)
 
     def get_action_dist_cls(self, framework: str):
-        """Gets the action distribution class.
+        """Get the action distribution class.
 
         The default behavior is to get the action distribution from the
         `Catalog.action_dist_class_fn`. This can be overridden to build a custom action
