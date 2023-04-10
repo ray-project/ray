@@ -13,7 +13,7 @@ Basic usage
 Use the following basic API to get a default ``encoder`` or ``action distribution``
 out of Catalog. You can inherit from Catalog and modify the following methods to
 directly inject custom components into a given RLModule.
-Algorithm-specific implementations of Catalog have additional methods.
+Algorithm-specific implementations of Catalog have additional methods,
 For example for building ``heads``.
 
 .. currentmodule:: ray.rllib.core.models.catalog
