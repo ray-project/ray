@@ -79,9 +79,13 @@ export const NodeRow = ({
       </TableCell>
       <TableCell align="center">
         <Tooltip title={raylet.nodeId} arrow interactive>
-          <Link to={`nodes/${raylet.nodeId}`} className={classes.idCol}>
-            {raylet.nodeId}
-          </Link>
+          <div>
+            <NodeLink
+              nodeId={raylet.nodeId}
+              to={`nodes/${raylet.nodeId}`}
+              className={classes.idCol}
+            />
+          </div>
         </Tooltip>
       </TableCell>
       <TableCell align="center">
