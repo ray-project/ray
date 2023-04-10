@@ -156,9 +156,9 @@ Have a look at these lines from the constructor of the :py:class:`~ray.rllib.alg
 Consequently, in order to build a custom :py:class:`~ray.rllib.core.models.Model` compatible with a PPORLModule,
 you can override methods by inheriting from :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`
 or write a :py:class:`~ray.rllib.core.models.catalog.Catalog` that implements them from scratch.
-The following shows such modifications.
+The following showcases such modifications.
 
-The follwing example shows two things:
+This example shows two things:
 
 - How to write a custom :py:class:`~ray.rllib.models.distributions.Distribution`
 - How to inject a custom action distribution into a :py:class:`~ray.rllib.core.models.catalog.Catalog`
