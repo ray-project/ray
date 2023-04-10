@@ -120,9 +120,9 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
                     parse_uri(uri)
                 except ValueError as e:
                     raise ValueError(
-                        "Serve runtime_envs only support remote URIs in the "
-                        "working_dir and py_modules. Got error when parsing "
-                        f"URI: {e}"
+                        "runtime_envs in the Serve config only support "
+                        "remote URIs in working_dir and py_modules. Got "
+                        f"error when parsing URI: {e}"
                     )
 
         return v
@@ -372,9 +372,9 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
                     parse_uri(uri)
                 except ValueError as e:
                     raise ValueError(
-                        "Serve runtime_envs only support remote URIs in the "
-                        "working_dir and py_modules. Got error when parsing "
-                        f"URI: {e}"
+                        "runtime_envs in the Serve config only support "
+                        "remote URIs in working_dir and py_modules. Got "
+                        f"error when parsing URI: {e}"
                     )
 
         return v
