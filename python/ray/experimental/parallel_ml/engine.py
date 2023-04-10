@@ -1,4 +1,5 @@
 from collections import deque
+from dataclasses import dataclass
 from threading import Lock, Thread
 from typing import Any, Callable
 
@@ -18,27 +19,18 @@ from ray.experimental.parallel_ml.schedule import (
 )
 
 
-class Config:
+@dataclass
+class Config(object):
     """A config represents the configuration of a stage replica."""
 
-    def __init__(
-        self,
-        world_size: int,
-        rank: int,
-        input_tensor_shape: Any,
-        input_tensor_dtype: torch.type,
-        device_name_builder: Callable[[], str],
-        communicator_builder: Callable[[], Communicator],
-        model_builder: Callable[[], torch.nn.Module],
-        data_loader_builder: Callable[[], torch.utils.data.DataLoader],
-    ) -> None:
-        self.world_size = world_size
-        self.rank = rank
-        self.input_tensor_shape = input_tensor_shape
-        self.input_tensor_dtype = input_tensor_dtype
-        self.device_name_builder = device_name_builder
-        self.model_builder = model_builder
-        self.data_loader_builder = data_loader_builder
+    world_size: int
+    rank: int
+    input_tensor_shape: Any
+    input_tensor_dtype: torch.Tensor.dtype
+    device_name_builder: Callable[[], str]
+    communicator_builder: Callable[[], Communicator]
+    model_builder: Callable[[], torch.nn.Module]
+    data_loader_builder: Callable[[], torch.utils.data.DataLoader]
 
 
 class ExecutionEngine:
