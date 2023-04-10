@@ -51,12 +51,19 @@ class SchedulingPolicyTest : public ::testing::Test {
       float spread,
       bool avoid_local_node,
       bool require_node_available,
-      bool avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes()) {
+      bool avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes(),
+      int schedule_top_k_absolute = 1,
+      float scheduler_top_k_fraction = 0) {
     return SchedulingOptions(SchedulingType::HYBRID,
                              RayConfig::instance().scheduler_spread_threshold(),
                              avoid_local_node,
                              require_node_available,
-                             avoid_gpu_nodes);
+                             avoid_gpu_nodes,
+                             /*max_cpu_fraction_per_node*/ 1.0,
+                             /*scheduling_context*/ nullptr,
+                             /*preferred node*/ "",
+                             schedule_top_k_absolute,
+                             scheduler_top_k_fraction);
   }
 
   ClusterResourceManager MockClusterResourceManager(
@@ -92,8 +99,8 @@ TEST_F(SchedulingPolicyTest, NodeAffinityPolicyTest) {
 
   to_schedule = scheduling_policy.Schedule(
       req, SchedulingOptions::NodeAffinity(false, false, "unavailable", true));
-  // Prefer the specified node even if it's not available right now.
-  ASSERT_EQ(to_schedule, scheduling::NodeID("unavailable"));
+  // Choose a different node if it's not available right now.
+  ASSERT_NE(to_schedule, scheduling::NodeID("unavailable"));
 
   to_schedule = scheduling_policy.Schedule(
       req, SchedulingOptions::NodeAffinity(false, false, "infeasible", false));

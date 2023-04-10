@@ -523,6 +523,10 @@ def _create_blocklist(blocks):
     return BlockList(block_refs, meta, owned_by_consumer=True)
 
 
+def _create_blocks_with_metadata(blocks):
+    return _create_blocklist(blocks).get_blocks_with_metadata()
+
+
 def test_split_single_block(ray_start_regular_shared):
     block = [1, 2, 3]
     metadata = _create_meta(3)
@@ -618,35 +622,35 @@ def test_generate_global_split_results(ray_start_regular_shared):
 
 
 def test_private_split_at_indices(ray_start_regular_shared):
-    inputs = _create_blocklist([])
+    inputs = _create_blocks_with_metadata([])
     splits = list(zip(*_split_at_indices(inputs, [0])))
     verify_splits(splits, [[], []])
 
     splits = list(zip(*_split_at_indices(inputs, [])))
     verify_splits(splits, [[]])
 
-    inputs = _create_blocklist([[1], [2, 3], [4]])
+    inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
 
     splits = list(zip(*_split_at_indices(inputs, [1])))
     verify_splits(splits, [[[1]], [[2, 3], [4]]])
 
-    inputs = _create_blocklist([[1], [2, 3], [4]])
+    inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
     splits = list(zip(*_split_at_indices(inputs, [2])))
     verify_splits(splits, [[[1], [2]], [[3], [4]]])
 
-    inputs = _create_blocklist([[1], [2, 3], [4]])
+    inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
     splits = list(zip(*_split_at_indices(inputs, [1])))
     verify_splits(splits, [[[1]], [[2, 3], [4]]])
 
-    inputs = _create_blocklist([[1], [2, 3], [4]])
+    inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
     splits = list(zip(*_split_at_indices(inputs, [2, 2])))
     verify_splits(splits, [[[1], [2]], [], [[3], [4]]])
 
-    inputs = _create_blocklist([[1], [2, 3], [4]])
+    inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
     splits = list(zip(*_split_at_indices(inputs, [])))
     verify_splits(splits, [[[1], [2, 3], [4]]])
 
-    inputs = _create_blocklist([[1], [2, 3], [4]])
+    inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
     splits = list(zip(*_split_at_indices(inputs, [0, 4])))
     verify_splits(splits, [[], [[1], [2, 3], [4]], []])
 
@@ -773,6 +777,31 @@ def test_train_test_split(ray_start_regular_shared):
 
     with pytest.raises(ValueError):
         ds.train_test_split(test_size=9)
+
+
+def test_split_is_not_disruptive(ray_start_cluster):
+    ray.shutdown()
+    ds = ray.data.range(100, parallelism=10).map_batches(lambda x: x).lazy()
+
+    def verify_integrity(splits):
+        for dss in splits:
+            for batch in dss.iter_batches():
+                pass
+        for batch in ds.iter_batches():
+            pass
+
+    # No block splitting invovled: split 10 even blocks into 2 groups.
+    verify_integrity(ds.split(2, equal=True))
+    # Block splitting invovled: split 10 even blocks into 3 groups.
+    verify_integrity(ds.split(3, equal=True))
+
+    # Same as above but having tranforms post converting to lazy.
+    verify_integrity(ds.map_batches(lambda x: x).split(2, equal=True))
+    verify_integrity(ds.map_batches(lambda x: x).split(3, equal=True))
+
+    # Same as above but having in-place tranforms post converting to lazy.
+    verify_integrity(ds.randomize_block_order().split(2, equal=True))
+    verify_integrity(ds.randomize_block_order().split(3, equal=True))
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ This has the python-level dependencies for `Ray` and the `Ray Autoscaler`. The `
 
 ## Tags
 
-Images are `tagged` with the format `{Ray version}[-{Python version}][-{Platform}]`. `Ray version` tag can be one of the following:
+Images are `tagged` with the format `{Ray version}[-{Python version}][-{Platform}][-{Architecture}]`. `Ray version` tag can be one of the following:
 
 | Ray version tag | Description |
 | --------------- | ----------- |
@@ -24,6 +24,17 @@ The optional `Platform` tag specifies the platform where the image is intended f
 | `-cuXX` | These are based off of an NVIDIA CUDA image with the specified CUDA version `xx`. They require the Nvidia Docker Runtime. |
 | `-gpu`  | Aliases to a specific `-cuXX` tagged image. |
 | no tag  | Aliases to `-cpu` tagged images for `ray`, and aliases to ``-gpu`` tagged images for `ray-ml`. |
+
+The optional `Architecture` tag can be used to specify images for different CPU architectures.
+Currently, we support the `x86_64` (`amd64`) and `aarch64` (`arm64`) architectures.
+
+Please note that suffixes are only used to specify `aarch64` images. No suffix means
+`x86_64`/`amd64`-compatible images.
+
+| Platform tag | Description             |
+|--------------|-------------------------|
+| `-aarch64`   | arm64-compatible images |
+| no tag       | Defaults to `amd64`     |
 
 ## Other Images
 * [`rayproject/ray`](https://hub.docker.com/repository/docker/rayproject/ray) - Ray and all of its dependencies.

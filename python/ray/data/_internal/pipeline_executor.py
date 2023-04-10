@@ -4,8 +4,9 @@ import concurrent.futures
 import logging
 
 import ray
+from ray.data.block import T
 from ray.data.context import DatasetContext
-from ray.data.dataset import Dataset, T
+from ray.data.dataset import Dataset
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal import progress_bar
 
@@ -19,7 +20,7 @@ def pipeline_stage(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
     # Force eager evaluation of all blocks in the pipeline stage. This
     # prevents resource deadlocks due to overlapping stage execution (e.g.,
     # task -> actor stage).
-    return fn().fully_executed()
+    return fn().materialize()
 
 
 class PipelineExecutor:

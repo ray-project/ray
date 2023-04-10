@@ -1,10 +1,11 @@
 import os
+import pytest
 import shutil
 import sys
 import tempfile
 import time
+from typing import Type, Callable, Optional
 import unittest
-from typing import Type, Callable
 from unittest.mock import patch
 
 from ray_release.alerts.handle import result_to_handle_map
@@ -33,7 +34,7 @@ from ray_release.exception import (
     PrepareCommandTimeout,
     TestCommandError,
     TestCommandTimeout,
-    ResultsError,
+    FetchResultError,
     LogsError,
     ResultsAlert,
     ClusterNodesWaitTimeout,
@@ -44,6 +45,7 @@ from ray_release.glue import (
     type_str_to_command_runner,
     command_runner_to_cluster_manager,
     command_runner_to_file_manager,
+    TIMEOUT_BUFFER_MINUTES,
 )
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
@@ -136,7 +138,9 @@ class GlueTest(unittest.TestCase):
                 self,
                 cluster_manager: ClusterManager,
                 file_manager: FileManager,
-                working_dir: str,
+                working_dir,
+                sdk=None,
+                artifact_path: Optional[str] = None,
             ):
                 super(MockCommandRunner, self).__init__(
                     cluster_manager, file_manager, this_tempdir
@@ -153,7 +157,7 @@ class GlueTest(unittest.TestCase):
         def mock_alerter(test: Test, result: Result):
             return self.mock_alert_return
 
-        result_to_handle_map["unit_test_alerter"] = mock_alerter
+        result_to_handle_map["unit_test_alerter"] = (mock_alerter, False)
 
         type_str_to_command_runner["unit_test"] = MockCommandRunner
         command_runner_to_cluster_manager[MockCommandRunner] = MockClusterManager
@@ -325,13 +329,22 @@ class GlueTest(unittest.TestCase):
         cluster_manager = self.instances["cluster_manager"]
 
         command_timeout = self.test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT)
+        prepare_cmd = self.test["run"].get("prepare", None)
+        if prepare_cmd:
+            prepare_timeout = self.test["run"].get("prepare_timeout", command_timeout)
+        else:
+            prepare_timeout = 0
+        command_and_prepare_timeout = command_timeout + prepare_timeout
+
         wait_timeout = self.test["run"]["wait_for_nodes"].get(
             "timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT
         )
 
-        expected_idle_termination_minutes = int(command_timeout / 60 + 10)
+        expected_idle_termination_minutes = int(
+            command_and_prepare_timeout / 60 + TIMEOUT_BUFFER_MINUTES
+        )
         expected_maximum_uptime_minutes = int(
-            expected_idle_termination_minutes + wait_timeout + 10
+            expected_idle_termination_minutes + wait_timeout + TIMEOUT_BUFFER_MINUTES
         )
 
         self.assertEqual(
@@ -583,7 +596,7 @@ class GlueTest(unittest.TestCase):
 
         self._succeed_until("test_command")
 
-        self.command_runner_return["fetch_results"] = _fail_on_call(ResultsError)
+        self.command_runner_return["fetch_results"] = _fail_on_call(FetchResultError)
         with self.assertLogs(logger, "ERROR") as cm:
             self._run(result)
             self.assertTrue(any("Could not fetch results" in o for o in cm.output))
@@ -591,6 +604,26 @@ class GlueTest(unittest.TestCase):
         self.assertEqual(result.status, "finished")
 
         # Ensure cluster was terminated
+        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
+
+    def testFetchResultFailsReqNonEmptyResult(self):
+        # set `require_result` bit.
+        new_handler = (result_to_handle_map["unit_test_alerter"], True)
+        result_to_handle_map["unit_test_alerter"] = new_handler
+
+        result = Result()
+
+        self._succeed_until("test_command")
+
+        self.command_runner_return["fetch_results"] = _fail_on_call(FetchResultError)
+        with self.assertRaisesRegex(FetchResultError, "Fail"):
+            with self.assertLogs(logger, "ERROR") as cm:
+                self._run(result)
+                self.assertTrue(any("Could not fetch results" in o for o in cm.output))
+        self.assertEqual(result.return_code, ExitCode.FETCH_RESULT_ERROR.value)
+        self.assertEqual(result.status, "infra_error")
+
+        # Ensure cluster was terminated, no matter what
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
 
     def testLastLogsFails(self):
@@ -647,6 +680,4 @@ class GlueTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))

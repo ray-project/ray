@@ -165,7 +165,7 @@ class TestActorManager(unittest.TestCase):
 
         results1 = []
         for _ in range(10):
-            manager.probe_unhealthy_actors()
+            manager.probe_unhealthy_actors(mark_healthy=True)
             results1.extend(
                 manager.foreach_actor(lambda w: w.call(), timeout_seconds=0)
             )
@@ -230,13 +230,32 @@ class TestActorManager(unittest.TestCase):
 
         results = []
         for _ in range(10):
-            manager.probe_unhealthy_actors()
+            manager.probe_unhealthy_actors(mark_healthy=True)
             results.extend(manager.foreach_actor(lambda w: w.call()))
             # Wait for actors to recover.
             wait_for_restore()
 
         # Some calls did error out.
         self.assertTrue(any([not r.ok for r in results]))
+
+        manager.clear()
+
+    def test_sync_call_not_bringing_back_actors(self):
+        """Test successful remote calls will not bring back actors unless told to."""
+        actors = [Actor.remote(i) for i in range(4)]
+        manager = FaultTolerantActorManager(actors=actors)
+
+        results = manager.foreach_actor(lambda w: w.call())
+        # Some calls did error out.
+        self.assertTrue(any([not r.ok for r in results]))
+
+        # Wait for actors to recover.
+        wait_for_restore()
+        manager.probe_unhealthy_actors()
+
+        # Restored actors are not marked healthy if we just do probing.
+        # Only 2 healthy actors.
+        self.assertEqual(manager.num_healthy_actors(), 2)
 
         manager.clear()
 
@@ -336,9 +355,88 @@ class TestActorManager(unittest.TestCase):
         manager.set_actor_state(2, False)
 
         # These actors are actually healthy.
-        manager.probe_unhealthy_actors()
+        manager.probe_unhealthy_actors(mark_healthy=True)
         # Both actors are now healthy.
         self.assertEqual(len(manager.healthy_actor_ids()), 4)
+
+    def test_tags(self):
+        """Test that tags work for async calls."""
+        actors = [Actor.remote(i, maybe_crash=False) for i in range(4)]
+        manager = FaultTolerantActorManager(actors=actors)
+
+        manager.foreach_actor_async(lambda w: w.ping(), tag="pingpong")
+        manager.foreach_actor_async(lambda w: w.call(), tag="call")
+        time.sleep(1)
+        results_ping_pong = manager.fetch_ready_async_reqs(
+            tags="pingpong", timeout_seconds=5
+        )
+        results_call = manager.fetch_ready_async_reqs(tags="call", timeout_seconds=5)
+        self.assertEquals(len(list(results_ping_pong)), 4)
+        self.assertEquals(len(list(results_call)), 4)
+        for result in results_ping_pong:
+            data = result.get()
+            self.assertEqual(data, "pong")
+            self.assertEqual(result.tag, "pingpong")
+        for result in results_call:
+            data = result.get()
+            self.assertEqual(data, 1)
+            self.assertEqual(result.tag, "call")
+
+        # test with default tag
+        manager.foreach_actor_async(lambda w: w.ping())
+        manager.foreach_actor_async(lambda w: w.call())
+        time.sleep(1)
+        results = manager.fetch_ready_async_reqs(timeout_seconds=5)
+        self.assertEquals(len(list(results)), 8)
+        for result in results:
+            data = result.get()
+            self.assertEqual(result.tag, None)
+            if isinstance(data, str):
+                self.assertEqual(data, "pong")
+            elif isinstance(data, int):
+                self.assertEqual(data, 2)
+            else:
+                raise ValueError("data is not str or int")
+
+        # test with custom tags
+        manager.foreach_actor_async(lambda w: w.ping(), tag="pingpong")
+        manager.foreach_actor_async(lambda w: w.call(), tag="call")
+        time.sleep(1)
+        results = manager.fetch_ready_async_reqs(
+            timeout_seconds=5, tags=["pingpong", "call"]
+        )
+        self.assertEquals(len(list(results)), 8)
+        for result in results:
+            data = result.get()
+            if isinstance(data, str):
+                self.assertEqual(data, "pong")
+                self.assertEqual(result.tag, "pingpong")
+            elif isinstance(data, int):
+                self.assertEqual(data, 3)
+                self.assertEqual(result.tag, "call")
+            else:
+                raise ValueError("data is not str or int")
+
+        # test with incorrect tags
+        manager.foreach_actor_async(lambda w: w.ping(), tag="pingpong")
+        manager.foreach_actor_async(lambda w: w.call(), tag="call")
+        time.sleep(1)
+        results = manager.fetch_ready_async_reqs(timeout_seconds=5, tags=["incorrect"])
+        self.assertEquals(len(list(results)), 0)
+
+        # now test that passing no tags still gives back all of the results
+        results = manager.fetch_ready_async_reqs(timeout_seconds=5)
+        self.assertEquals(len(list(results)), 8)
+        for result in results:
+            data = result.get()
+            if isinstance(data, str):
+                self.assertEqual(data, "pong")
+                self.assertEqual(result.tag, "pingpong")
+            elif isinstance(data, int):
+                self.assertEqual(data, 4)
+                self.assertEqual(result.tag, "call")
+            else:
+                raise ValueError("result is not str or int")
 
 
 if __name__ == "__main__":

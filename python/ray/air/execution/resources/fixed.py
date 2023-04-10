@@ -73,7 +73,7 @@ class FixedResourceManager(ResourceManager):
 
         if not total_resources:
             if rtc.worker.mode in {None, SCRIPT_MODE, LOCAL_MODE}:
-                total_resources = ray.available_resources()
+                total_resources = ray.cluster_resources()
             else:
                 total_resources = rtc.get_assigned_resources()
 
@@ -124,7 +124,7 @@ class FixedResourceManager(ResourceManager):
         available_resources = self._available_resources
         all_resources = resource_request.required_resources
         for k, v in all_resources.items():
-            if available_resources[k] < v:
+            if available_resources.get(k, 0.0) < v:
                 return False
         return True
 
@@ -145,4 +145,5 @@ class FixedResourceManager(ResourceManager):
 
     def clear(self):
         # Reset internal state
-        self.__init__(total_resources=self._total_resources)
+        self._requested_resources = []
+        self._used_resources = []

@@ -375,6 +375,7 @@ class TorchPolicy(Policy):
             Union[List[TensorStructType], TensorStructType]
         ] = None,
         actions_normalized: bool = True,
+        **kwargs,
     ) -> TensorType:
 
         if self.action_sampler_fn and self.action_distribution_fn is None:
@@ -760,7 +761,10 @@ class TorchPolicy(Policy):
             optim_state_dict = convert_to_numpy(o.state_dict())
             state["_optimizer_variables"].append(optim_state_dict)
         # Add exploration state.
-        state["_exploration_state"] = self.exploration.get_state()
+        if not self.config.get("_enable_rl_module_api", False) and self.exploration:
+            # This is not compatible with RLModules, which have a method
+            # `forward_exploration` to specify custom exploration behavior.
+            state["_exploration_state"] = self.exploration.get_state()
         return state
 
     @override(Policy)
@@ -863,7 +867,7 @@ class TorchPolicy(Policy):
             ]
         else:
             optimizers = [torch.optim.Adam(self.model.parameters())]
-        if getattr(self, "exploration", None):
+        if self.exploration:
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
         return optimizers
 

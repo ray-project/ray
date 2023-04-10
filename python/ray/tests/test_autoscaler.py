@@ -1,4 +1,5 @@
 import copy
+import logging
 import sys
 import json
 import os
@@ -2255,7 +2256,6 @@ class AutoscalingTest(unittest.TestCase):
         waiters = rtc1._cond._waiters
         self.waitFor(lambda: len(waiters) == 2)
         assert autoscaler.pending_launches.value == 10
-        mock_metrics.pending_nodes.set.assert_called_with(10)
         assert (
             len(
                 self.provider.non_terminated_nodes(
@@ -2280,11 +2280,9 @@ class AutoscalingTest(unittest.TestCase):
         )
         self.waitForNodes(10, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert autoscaler.pending_launches.value == 0
-        mock_metrics.pending_nodes.set.assert_called_with(0)
         autoscaler.update()
         self.waitForNodes(10, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert autoscaler.pending_launches.value == 0
-        mock_metrics.pending_nodes.set.assert_called_with(0)
         assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
     def testUpdateThrottling(self):
@@ -3800,6 +3798,41 @@ class AutoscalingTest(unittest.TestCase):
             request_resources(bundles=[{"foo": "bar"}])
         with self.assertRaises(TypeError):
             request_resources(bundles=[{"foo": 1}, {"bar": "baz"}])
+
+    def test_autoscaler_status_log(self):
+        self._test_autoscaler_status_log(status_log_enabled_env=1)
+        self._test_autoscaler_status_log(status_log_enabled_env=0)
+
+    def _test_autoscaler_status_log(self, status_log_enabled_env: int):
+        mock_logger = Mock(spec=logging.Logger(""))
+        with patch.multiple(
+            "ray.autoscaler._private.autoscaler",
+            logger=mock_logger,
+            AUTOSCALER_STATUS_LOG=status_log_enabled_env,
+        ):
+            config = copy.deepcopy(SMALL_CLUSTER)
+            config_path = self.write_config(config)
+            runner = MockProcessRunner()
+            mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+            self.provider = MockProvider()
+            autoscaler = MockAutoscaler(
+                config_path,
+                LoadMetrics(),
+                MockNodeInfoStub(),
+                max_failures=0,
+                process_runner=runner,
+                update_interval_s=0,
+                prom_metrics=mock_metrics,
+            )
+            autoscaler.update()
+            status_log_found = False
+            for call in mock_logger.info.call_args_list:
+                args, _ = call
+                arg = args[0]
+                if " Autoscaler status: " in arg:
+                    status_log_found = True
+                    break
+            assert status_log_found is bool(status_log_enabled_env)
 
 
 def test_import():

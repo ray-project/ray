@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
+import ray.cloudpickle as cloudpickle
 import ray.util.client.server.server as ray_client_server
 from ray._private.client_mode_hook import (
     client_mode_should_convert,
@@ -850,6 +851,55 @@ def test_ignore_reinit(call_ray_start_shared, shutdown_only):
     ctx1 = ray.init(SHARED_CLIENT_SERVER_ADDRESS)
     ctx2 = ray.init(SHARED_CLIENT_SERVER_ADDRESS, ignore_reinit_error=True)
     assert ctx1 == ctx2
+
+
+def test_client_actor_missing_field(call_ray_start_shared):
+    """
+    Tests that trying to access methods that don't exist for an actor
+    raises the correct exception.
+    """
+
+    class SomeSuperClass:
+        def parent_func(self):
+            return 24
+
+    with ray_start_client_server_for_address(call_ray_start_shared) as ray:
+
+        @ray.remote
+        class SomeClass(SomeSuperClass):
+            def child_func(self):
+                return 42
+
+        handle = SomeClass.remote()
+        assert ray.get(handle.parent_func.remote()) == 24
+        assert ray.get(handle.child_func.remote()) == 42
+        with pytest.raises(AttributeError):
+            # We should raise attribute error when accessing a non-existent func
+            SomeClass.nonexistent_func
+
+
+def test_serialize_client_actor_handle(call_ray_start_shared):
+    """
+    Test that client actor handles can be serialized. This is needed since
+    some objects like datasets keep a handle to actors.
+
+    See https://github.com/ray-project/ray/issues/31581 for more context
+    """
+
+    with ray_start_client_server_for_address(call_ray_start_shared) as ray:
+
+        @ray.remote
+        class SomeClass:
+            def __init__(self, value):
+                self.value = value
+
+            def get_value(self):
+                return self.value
+
+        handle = SomeClass.remote(1234)
+        serialized = cloudpickle.dumps(handle)
+        deserialized = cloudpickle.loads(serialized)
+        assert ray.get(deserialized.get_value.remote()) == 1234
 
 
 if __name__ == "__main__":

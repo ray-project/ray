@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
+from pathlib import Path
 from typing import Callable, Dict, Optional, Type, Union
 
 import ray
@@ -17,16 +18,15 @@ from ray.air.constants import _RESULT_FETCH_TIMEOUT, _ERROR_FETCH_TIMEOUT
 from ray.data import Dataset, DatasetPipeline
 from ray.train._internal.accelerator import Accelerator
 from ray.train.constants import (
-    DATE,
     DETAILED_AUTOFILLED_KEYS,
-    HOSTNAME,
-    NODE_IP,
-    PID,
+    WORKER_HOSTNAME,
+    WORKER_NODE_IP,
+    WORKER_PID,
     TIME_THIS_ITER_S,
     TIME_TOTAL_S,
     TIMESTAMP,
-    TRAINING_ITERATION,
     CHECKPOINT_METADATA_KEY,
+    LAZY_CHECKPOINT_MARKER_FILE,
 )
 from ray.train.error import SessionMisuseError
 from ray.train.session import _TrainSessionImpl
@@ -229,14 +229,11 @@ class _TrainSession:
         self.last_report_time = current_time
 
         auto_filled_metrics = {
-            DATE: current_datetime.strftime("%Y-%m-%d_%H-%M-%S"),
             TIMESTAMP: int(time.mktime(current_datetime.timetuple())),
-            TIME_THIS_ITER_S: time_this_iter,
             TIME_TOTAL_S: self.time_total,
-            PID: os.getpid(),
-            HOSTNAME: platform.node(),
-            NODE_IP: self.local_ip,
-            TRAINING_ITERATION: self.iteration,
+            WORKER_PID: os.getpid(),
+            WORKER_HOSTNAME: platform.node(),
+            WORKER_NODE_IP: self.local_ip,
         }
 
         if not self.detailed_autofilled_metrics:
@@ -305,7 +302,7 @@ class _TrainSession:
             checkpoint
             and self.enable_lazy_checkpointing
             and checkpoint._local_path
-            and self.get_current_ip() == self.trial_info.driver_ip
+            and (Path(self.trial_info.logdir) / LAZY_CHECKPOINT_MARKER_FILE).exists()
         ):
             metadata.update({CHECKPOINT_METADATA_KEY: checkpoint._metadata})
             checkpoint = str(checkpoint._local_path)

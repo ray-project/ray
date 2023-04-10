@@ -27,6 +27,7 @@ from ray.experimental.state.common import (
     StateResource,
     StateSchema,
     SupportedFilterType,
+    TaskState,
     resource_to_schema,
 )
 from ray.experimental.state.exception import RayStateApiException
@@ -282,6 +283,7 @@ def format_get_api_output(
     schema: StateSchema,
     format: AvailableFormat = AvailableFormat.YAML,
 ) -> str:
+
     if not state_data or len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
 
@@ -296,6 +298,13 @@ def format_list_api_output(
 ) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
+    if schema == TaskState and format == AvailableFormat.YAML:
+        augmented_task_state_data = [
+            {("task_id: " + state["task_id"]): state} for state in state_data
+        ]
+        return output_with_format(
+            augmented_task_state_data, schema=schema, format=format
+        )
     return output_with_format(state_data, schema=schema, format=format)
 
 
@@ -353,7 +362,7 @@ def ray_get(
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray get tasks <task-id>` is
-    :ref:`ray.experimental.state.common.TaskState <state-api-schema-task>`.
+    :class:`~ray.experimental.state.common.TaskState`.
 
     Usage:
 
@@ -378,9 +387,9 @@ def ray_get(
         id: The id of the resource.
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-    """
+    """  # noqa: E501
     # All resource names use '_' rather than '-'. But users options have '-'
     resource = StateResource(resource.replace("-", "_"))
 
@@ -466,7 +475,7 @@ def ray_list(
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray list tasks` is
-    :ref:`ray.experimental.state.common.TaskState <state-api-schema-task>`.
+    :class:`~ray.experimental.state.common.TaskState`.
 
     Usage:
 
@@ -517,9 +526,9 @@ def ray_list(
         resource: The type of the resource to query.
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-    """
+    """  # noqa: E501
     # All resource names use '_' rather than '-'. But users options have '-'
     resource = StateResource(resource.replace("-", "_"))
     format = AvailableFormat(format)
@@ -581,12 +590,12 @@ def task_summary(ctx, timeout: float, address: str):
     task function names.
 
     The output schema is
-    :ref:`ray.experimental.state.common.TaskSummaries <state-api-schema-task-summary>`.
+    :class:`~ray.experimental.state.common.TaskSummaries`.
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-    """
+    """  # noqa: E501
     print(
         format_summary_output(
             summarize_tasks(
@@ -612,13 +621,13 @@ def actor_summary(ctx, timeout: float, address: str):
     actor class names.
 
     The output schema is
-    :ref:`ray.experimental.state.common.ActorSummaries
-    <state-api-schema-actor-summary>`.
+    :class:`ray.experimental.state.common.ActorSummaries
+    <ray.experimental.state.common.ActorSummaries>`.
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-    """
+    """  # noqa: E501
     print(
         format_summary_output(
             summarize_actors(
@@ -663,13 +672,13 @@ def object_summary(ctx, timeout: float, address: str):
         ```
 
     The output schema is
-    :ref:`ray.experimental.state.common.ObjectSummaries
-    <state-api-schema-object-summary>`.
+    :class:`ray.experimental.state.common.ObjectSummaries
+    <ray.experimental.state.common.ObjectSummaries>`.
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
-    """
+    """  # noqa: E501
     print(
         format_object_summary_output(
             summarize_objects(
@@ -696,7 +705,7 @@ log_tail_option = click.option(
     required=False,
     type=int,
     default=DEFAULT_LOG_LIMIT,
-    help="Number of lines to tail from log. -1 indicates fetching the whole file.",
+    help="Number of lines to tail from log. Use -1 to fetch the whole file.",
 )
 
 log_interval_option = click.option(
@@ -747,6 +756,27 @@ log_suffix_option = click.option(
     ),
 )
 
+log_encoding_option = click.option(
+    "--encoding",
+    required=False,
+    default="utf-8",
+    help=(
+        "The encoding use to decode the log file. Accepts any encoding "
+        "supported by Python's `codecs` module. Defaults to utf-8."
+    ),
+)
+
+log_encoding_errors_option = click.option(
+    "--encoding-errors",
+    required=False,
+    default="strict",
+    help=(
+        "The error handling scheme to use for decoding errors. "
+        "Accepts any error handling scheme supported by Python's `codecs`"
+        "module. Defaults to strict."
+    ),
+)
+
 
 def _get_head_node_ip(address: Optional[str] = None):
     """Get the head node ip from the ray address if possible
@@ -777,6 +807,8 @@ def _print_log(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     interval: Optional[float] = None,
     suffix: Optional[str] = None,
+    encoding: str = "utf-8",
+    encoding_errors: str = "strict",
 ):
     """Wrapper around `get_log()` that prints the preamble and the log lines"""
     if tail > 0:
@@ -801,6 +833,8 @@ def _print_log(
         _interval=interval,
         timeout=timeout,
         suffix=suffix,
+        encoding=encoding,
+        errors=encoding_errors,
     ):
         print(chunk, end="", flush=True)
 
@@ -875,6 +909,8 @@ logs_state_cli_group = LogCommandGroup(help=LOG_CLI_HELP_MSG)
 @log_tail_option
 @log_interval_option
 @log_timeout_option
+@log_encoding_option
+@log_encoding_errors_option
 @click.pass_context
 @PublicAPI(stability="alpha")
 def log_cluster(
@@ -887,6 +923,8 @@ def log_cluster(
     tail: int,
     interval: float,
     timeout: int,
+    encoding: str,
+    encoding_errors: str,
 ):
     """Get/List logs that matches the GLOB_FILTER in the cluster.
     By default, it prints a list of log files that match the filter.
@@ -920,9 +958,9 @@ def log_cluster(
         ```
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             is failed to query the data.
-    """
+    """  # noqa: E501
 
     if node_id is None and node_ip is None:
         node_ip = _get_head_node_ip(address)
@@ -961,6 +999,8 @@ def log_cluster(
         follow=follow,
         interval=interval,
         timeout=timeout,
+        encoding=encoding,
+        encoding_errors=encoding_errors,
     )
 
 
@@ -1029,10 +1069,10 @@ def log_actor(
         ```
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
         MissingParameter if inputs are missing.
-    """
+    """  # noqa: E501
 
     if pid is None and id is None:
         raise click.MissingParameter(
@@ -1102,10 +1142,10 @@ def log_worker(
         ```
 
     Raises:
-        :ref:`RayStateApiException <state-api-exceptions>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
         MissingParameter if inputs are missing.
-    """
+    """  # noqa: E501
 
     _print_log(
         address=address,

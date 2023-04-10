@@ -2,6 +2,7 @@ import time
 from collections import Counter
 import logging
 import os
+import pandas as pd
 import pickle
 import shutil
 import sys
@@ -17,21 +18,24 @@ from ray.air.execution import PlacementGroupResourceManager, FixedResourceManage
 from ray.rllib import _register_all
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
-from ray.tune import TuneError
+from ray.tune import TuneError, PlacementGroupFactory
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
+from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
 from ray.tune.search import BasicVariantGenerator
+from ray.tune.search.sample import sample_from
+from ray.tune.search.variant_generator import grid_search
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
-from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.search.repeater import Repeater
 from ray.tune.search._mock import _MockSuggestionAlgorithm
 from ray.tune.search import Searcher, ConcurrencyLimiter
 from ray.tune.search.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig, Syncer
 from ray.tune.tests.tune_test_util import TrialResultObserver
+from ray.tune.tests.test_callbacks import StatefulCallback
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -75,7 +79,7 @@ class TrialRunnerTest3(unittest.TestCase):
             cnt = self.pre_step if hasattr(self, "pre_step") else 0
             self.pre_step = cnt + 1
 
-        def on_step_end(self):
+        def on_step_end(self, search_ended: bool = False):
             cnt = self.pre_step if hasattr(self, "post_step") else 0
             self.post_step = 1 + cnt
 
@@ -90,7 +94,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         kwargs = {
             "stopping_criterion": {"training_iteration": 5},
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
         }
         runner.add_trial(Trial("__fake", **kwargs))
         runner.step()
@@ -104,7 +108,7 @@ class TrialRunnerTest3(unittest.TestCase):
         )
         kwargs = {
             "stopping_criterion": {"training_iteration": 5},
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
         }
         trials = [
             Trial("__fake", **kwargs),
@@ -402,6 +406,92 @@ class TrialRunnerTest3(unittest.TestCase):
         count = Counter(evaluated)
         assert all(v <= 3 for v in count.values())
 
+    def testCallbackSaveRestore(self):
+        """Check that experiment state save + restore handles stateful callbacks."""
+        ray.init(num_cpus=2)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            callbacks=[StatefulCallback()],
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
+        runner.add_trial(Trial("__fake", stub=True))
+        for i in range(3):
+            runner._callbacks.on_trial_result(
+                iteration=i, trials=None, trial=None, result=None
+            )
+        runner.checkpoint(force=True)
+        callback = StatefulCallback()
+        runner2 = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            callbacks=[callback],
+        )
+        assert callback.counter == 0
+        runner2.resume()
+        assert callback.counter == 3
+
+    def testSearcherCorrectReferencesAfterRestore(self):
+        class FakeDataset:
+            def __init__(self, name):
+                self.name = name
+
+        ray.init(num_cpus=8)
+
+        config = {
+            "param1": {
+                "param2": grid_search(
+                    [FakeDataset("1"), FakeDataset("2"), FakeDataset("3")]
+                ),
+            },
+            "param4": sample_from(lambda: 1),
+            "param5": sample_from(lambda spec: spec.config["param1"]["param2"]),
+        }
+        resolvers = create_resolvers_map()
+        config = inject_placeholders(config, resolvers)
+
+        def create_searcher():
+            search_alg = BasicVariantGenerator()
+            experiment_spec = {
+                "run": "__fake",
+                "stop": {"training_iteration": 2},
+                "config": config,
+            }
+            experiments = [Experiment.from_json("test", experiment_spec)]
+            search_alg.add_configurations(experiments)
+            return search_alg
+
+        searcher = create_searcher()
+
+        restored_config = {
+            "param1": {
+                "param2": grid_search(
+                    [FakeDataset("4"), FakeDataset("5"), FakeDataset("6")]
+                ),
+            },
+            "param4": sample_from(lambda: 8),
+            "param5": sample_from(lambda spec: spec["config"]["param1"]["param2"]),
+        }
+        replaced_resolvers = create_resolvers_map()
+        restored_config = inject_placeholders(restored_config, replaced_resolvers)
+
+        runner = TrialRunner(
+            search_alg=searcher,
+            # Use the new ref map to construct the TrailRunner.
+            placeholder_resolvers=replaced_resolvers,
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period=-1,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
+
+        for _ in range(3):
+            runner.step()
+
+        assert len(runner.get_trials()) == 3, [t.config for t in runner.get_trials()]
+        for t in runner.get_trials():
+            # Make sure that all the trials carry updated config values.
+            assert t.config["param1"]["param2"].name in ["4", "5", "6"]
+            assert t.config["param4"] == 8
+            assert t.config["param5"].name in ["4", "5", "6"]
+
     def testTrialErrorResumeFalse(self):
         ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
         runner = TrialRunner(
@@ -410,7 +500,7 @@ class TrialRunnerTest3(unittest.TestCase):
         )
         kwargs = {
             "stopping_criterion": {"training_iteration": 4},
-            "resources": Resources(cpu=1, gpu=0),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 0}]),
         }
         trials = [
             Trial("__fake", config={"mock_error": True}, **kwargs),
@@ -444,7 +534,7 @@ class TrialRunnerTest3(unittest.TestCase):
         )
         kwargs = {
             "stopping_criterion": {"training_iteration": 4},
-            "resources": Resources(cpu=1, gpu=0),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 0}]),
         }
         trials = [
             Trial("__fake", config={"mock_error": True}, **kwargs),
@@ -695,7 +785,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         def num_checkpoints(trial):
             return sum(
-                item.startswith("checkpoint_") for item in os.listdir(trial.logdir)
+                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
             )
 
         ray.init(num_cpus=2)
@@ -710,8 +800,8 @@ class TrialRunnerTest3(unittest.TestCase):
         )
         runner.add_trial(trial)
 
-        runner.step()  # start trial
-        runner.step()  # run iteration 1-3
+        while not trial._last_result:
+            runner.step()  # start and run until first result
         runner.step()  # process save
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 3)
         self.assertEqual(num_checkpoints(trial), 1)
@@ -732,7 +822,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         def num_checkpoints(trial):
             return sum(
-                item.startswith("checkpoint_") for item in os.listdir(trial.logdir)
+                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
             )
 
         ray.init(num_cpus=2)
@@ -829,7 +919,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         def num_checkpoints(trial):
             return sum(
-                item.startswith("checkpoint_") for item in os.listdir(trial.logdir)
+                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
             )
 
         ray.init(num_cpus=3)
@@ -903,9 +993,8 @@ class TrialRunnerTest3(unittest.TestCase):
             local_checkpoint_dir=self.tmpdir,
             checkpoint_period="auto",
             sync_config=SyncConfig(
-                upload_dir="fake", syncer=CustomSyncer(), sync_period=0
+                upload_dir="fake://somewhere", syncer=CustomSyncer(), sync_period=0
             ),
-            remote_checkpoint_dir="fake",
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
@@ -950,8 +1039,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
-            remote_checkpoint_dir="fake",
+            sync_config=SyncConfig(upload_dir="fake://somewhere", syncer=syncer),
             trial_checkpoint_config=checkpoint_config,
             checkpoint_period=100,  # Only rely on forced syncing
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
@@ -970,7 +1058,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         # also check if the warning is printed
         buffer = []
-        from ray.tune.execution.trial_runner import logger
+        from ray.tune.execution.experiment_state import logger
 
         with patch.object(logger, "warning", lambda x: buffer.append(x)):
             while not runner.is_finished():
@@ -1018,15 +1106,14 @@ class TrialRunnerTest3(unittest.TestCase):
         syncer = self.getHangingSyncer(sync_period=60, sync_timeout=0.5)
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
-            remote_checkpoint_dir="fake",
+            sync_config=SyncConfig(upload_dir="fake://somewhere", syncer=syncer),
         )
         # Checkpoint for the first time starts the first sync in the background
         runner.checkpoint(force=True)
         assert syncer.sync_up_counter == 1
 
         buffer = []
-        logger = logging.getLogger("ray.tune.execution.trial_runner")
+        logger = logging.getLogger("ray.tune.execution.experiment_state")
         with patch.object(logger, "warning", lambda x: buffer.append(x)):
             # The second checkpoint will log a warning about the previous sync
             # timing out. Then, it will launch a new sync process in the background.
@@ -1046,8 +1133,7 @@ class TrialRunnerTest3(unittest.TestCase):
         syncer = self.getHangingSyncer(sync_period=sync_period, sync_timeout=0.5)
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
-            remote_checkpoint_dir="fake",
+            sync_config=SyncConfig(upload_dir="fake://somewhere", syncer=syncer),
         )
 
         with freeze_time() as frozen:
@@ -1069,6 +1155,71 @@ class TrialRunnerTest3(unittest.TestCase):
                 runner.checkpoint()
             assert any("did not finish running within the timeout" in x for x in buffer)
             assert syncer.sync_up_counter == 2
+
+    def testExperimentCheckpointWithDatasets(self):
+        """Test trial runner checkpointing where trials contain Ray Datasets.
+        When possible, a dataset plan should be saved (for read_* APIs).
+        See `Dataset.serialize_lineage` for more information.
+
+        If a dataset cannot be serialized, an experiment checkpoint
+        should still be created. Users can pass in the dataset again by
+        re-specifying the `param_space`.
+        """
+        ray.init(num_cpus=2)
+        # Save some test data to load
+        data_filepath = os.path.join(self.tmpdir, "test.csv")
+        pd.DataFrame({"x": list(range(10))}).to_csv(data_filepath)
+
+        def create_trial_config():
+            return {
+                "datasets": {
+                    "with_lineage": ray.data.read_csv(data_filepath),
+                    "no_lineage": ray.data.from_items([{"x": i} for i in range(10)]),
+                }
+            }
+
+        resolvers = create_resolvers_map()
+        config_with_placeholders = inject_placeholders(create_trial_config(), resolvers)
+        trial = Trial(
+            "__fake",
+            experiment_path=self.tmpdir,
+            config=config_with_placeholders,
+        )
+        trial.init_local_path()
+        runner = TrialRunner(
+            experiment_path=self.tmpdir, placeholder_resolvers=resolvers
+        )
+        runner.add_trial(trial)
+        # Req: TrialRunner checkpointing shouldn't error
+        runner.checkpoint(force=True)
+
+        # Manually clear all block refs that may have been created
+        ray.shutdown()
+        ray.init(num_cpus=2)
+
+        new_runner = TrialRunner(experiment_path=self.tmpdir)
+        new_runner.resume()
+        [loaded_trial] = new_runner.get_trials()
+        loaded_datasets = loaded_trial.config["datasets"]
+
+        # Req: The deserialized dataset (w/ lineage) should be usable.
+        assert [el["x"] for el in loaded_datasets["with_lineage"].take()] == list(
+            range(10)
+        )
+
+        replaced_resolvers = create_resolvers_map()
+        inject_placeholders(create_trial_config(), replaced_resolvers)
+
+        respecified_config_runner = TrialRunner(
+            placeholder_resolvers=replaced_resolvers,
+            local_checkpoint_dir=self.tmpdir,
+        )
+        respecified_config_runner.resume()
+        [loaded_trial] = respecified_config_runner.get_trials()
+        ray_ds_no_lineage = loaded_trial.config["datasets"]["no_lineage"]
+
+        # Req: The dataset (w/o lineage) can be re-specified and is usable after.
+        assert [el["x"] for el in ray_ds_no_lineage.take()] == list(range(10))
 
 
 class FixedResourceTrialRunnerTest3(TrialRunnerTest3):
@@ -1367,51 +1518,6 @@ class SearchAlgorithmTest(unittest.TestCase):
         assert limiter.suggest("test_1")["score"] == 1
         assert limiter.suggest("test_2")["score"] == 2
         assert limiter.suggest("test_3")["score"] == 3
-
-
-class ResourcesTest(unittest.TestCase):
-    def testSubtraction(self):
-        resource_1 = Resources(
-            1,
-            0,
-            0,
-            1,
-            custom_resources={"a": 1, "b": 2},
-            extra_custom_resources={"a": 1, "b": 1},
-        )
-        resource_2 = Resources(
-            1,
-            0,
-            0,
-            1,
-            custom_resources={"a": 1, "b": 2},
-            extra_custom_resources={"a": 1, "b": 1},
-        )
-        new_res = Resources.subtract(resource_1, resource_2)
-        self.assertTrue(new_res.cpu == 0)
-        self.assertTrue(new_res.gpu == 0)
-        self.assertTrue(new_res.extra_cpu == 0)
-        self.assertTrue(new_res.extra_gpu == 0)
-        self.assertTrue(all(k == 0 for k in new_res.custom_resources.values()))
-        self.assertTrue(all(k == 0 for k in new_res.extra_custom_resources.values()))
-
-    def testDifferentResources(self):
-        resource_1 = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
-        resource_2 = Resources(1, 0, 0, 1, custom_resources={"a": 1, "c": 2})
-        new_res = Resources.subtract(resource_1, resource_2)
-        assert "c" in new_res.custom_resources
-        assert "b" in new_res.custom_resources
-        self.assertTrue(new_res.cpu == 0)
-        self.assertTrue(new_res.gpu == 0)
-        self.assertTrue(new_res.extra_cpu == 0)
-        self.assertTrue(new_res.extra_gpu == 0)
-        self.assertTrue(new_res.get("a") == 0)
-
-    def testSerialization(self):
-        original = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
-        jsoned = resources_to_json(original)
-        new_resource = json_to_resources(jsoned)
-        self.assertEqual(original, new_resource)
 
 
 if __name__ == "__main__":

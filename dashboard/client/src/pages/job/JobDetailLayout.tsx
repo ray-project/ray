@@ -1,5 +1,9 @@
 import React from "react";
-import { RiInformationLine, RiLineChartLine } from "react-icons/ri";
+import {
+  RiGradienterLine,
+  RiInformationLine,
+  RiLineChartLine,
+} from "react-icons/ri";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { SideTabLayout, SideTabRouteLink } from "../layout/SideTabLayout";
 import { useJobDetail } from "./hook/useJobDetail";
@@ -11,7 +15,7 @@ export const JobDetailLayout = () => {
     ? {
         title: job.job_id ?? "Job details",
         id: "job-detail",
-        path: job.job_id ? `/new/jobs/${job.job_id}` : undefined,
+        path: job.job_id ? `/jobs/${job.job_id}` : undefined,
       }
     : {
         title: "Job details",
@@ -28,6 +32,12 @@ export const JobDetailLayout = () => {
         tabId="charts"
         title="Charts"
         Icon={RiLineChartLine}
+      />
+      <SideTabRouteLink
+        to="actors"
+        tabId="actors"
+        title="Actors"
+        Icon={RiGradienterLine}
       />
     </SideTabLayout>
   );

@@ -53,6 +53,7 @@ void GcsHealthCheckManager::RemoveNode(const NodeID &node_id) {
         if (iter == health_check_contexts_.end()) {
           return;
         }
+        iter->second->Stop();
         health_check_contexts_.erase(iter);
       },
       "GcsHealthCheckManager::RemoveNode");
@@ -60,8 +61,11 @@ void GcsHealthCheckManager::RemoveNode(const NodeID &node_id) {
 
 void GcsHealthCheckManager::FailNode(const NodeID &node_id) {
   RAY_LOG(WARNING) << "Node " << node_id << " is dead because the health check failed.";
-  on_node_death_callback_(node_id);
-  health_check_contexts_.erase(node_id);
+  auto iter = health_check_contexts_.find(node_id);
+  if (iter != health_check_contexts_.end()) {
+    on_node_death_callback_(node_id);
+    health_check_contexts_.erase(iter);
+  }
 }
 
 std::vector<NodeID> GcsHealthCheckManager::GetAllNodes() const {
@@ -75,27 +79,23 @@ std::vector<NodeID> GcsHealthCheckManager::GetAllNodes() const {
 void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   using ::grpc::health::v1::HealthCheckResponse;
 
-  context_ = std::make_shared<grpc::ClientContext>();
+  // Reset the context/request/response for the next request.
+  context_.~ClientContext();
+  new (&context_) grpc::ClientContext();
+  response_.Clear();
 
   auto deadline =
       std::chrono::system_clock::now() + std::chrono::milliseconds(manager_->timeout_ms_);
-  context_->set_deadline(deadline);
+  context_.set_deadline(deadline);
   stub_->async()->Check(
-      context_.get(),
-      &request_,
-      &response_,
-      [this, stopped = this->stopped_, context = this->context_, now = absl::Now()](
-          ::grpc::Status status) {
+      &context_, &request_, &response_, [this, now = absl::Now()](::grpc::Status status) {
         // This callback is done in gRPC's thread pool.
         STATS_health_check_rpc_latency_ms.Record(
             absl::ToInt64Milliseconds(absl::Now() - now));
-        if (status.error_code() == ::grpc::StatusCode::CANCELLED) {
-          return;
-        }
         manager_->io_service_.post(
-            [this, stopped, status]() {
-              // Stopped has to be read in the same thread where it's updated.
-              if (*stopped) {
+            [this, status]() {
+              if (stopped_) {
+                delete this;
                 return;
               }
               RAY_LOG(DEBUG) << "Health check status: " << int(response_.status());
@@ -110,32 +110,28 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
               }
 
               if (health_check_remaining_ == 0) {
-                manager_->io_service_.post([this]() { manager_->FailNode(node_id_); },
-                                           "");
+                manager_->FailNode(node_id_);
+                delete this;
               } else {
                 // Do another health check.
                 timer_.expires_from_now(
                     boost::posix_time::milliseconds(manager_->period_ms_));
-                timer_.async_wait([this, stopped](auto ec) {
-                  // We need to check stopped here as well since cancel
-                  // won't impact the queued tasks.
-                  if (ec != boost::asio::error::operation_aborted && !*stopped) {
-                    StartHealthCheck();
-                  }
-                });
+                timer_.async_wait([this](auto) { StartHealthCheck(); });
               }
             },
             "HealthCheck");
       });
 }
 
+void GcsHealthCheckManager::HealthCheckContext::Stop() { stopped_ = true; }
+
 void GcsHealthCheckManager::AddNode(const NodeID &node_id,
                                     std::shared_ptr<grpc::Channel> channel) {
   io_service_.dispatch(
       [this, channel, node_id]() {
         RAY_CHECK(health_check_contexts_.count(node_id) == 0);
-        auto context = std::make_unique<HealthCheckContext>(this, channel, node_id);
-        health_check_contexts_.emplace(std::make_pair(node_id, std::move(context)));
+        auto context = new HealthCheckContext(this, channel, node_id);
+        health_check_contexts_.emplace(std::make_pair(node_id, context));
       },
       "GcsHealthCheckManager::AddNode");
 }

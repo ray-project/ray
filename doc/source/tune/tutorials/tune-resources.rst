@@ -1,7 +1,7 @@
 .. _tune-parallelism:
 
-A Guide To Parallelism and Resources
-------------------------------------
+A Guide To Parallelism and Resources for Ray Tune
+-------------------------------------------------
 
 Parallelism is determined by per trial resources (defaulting to 1 CPU, 0 GPU per trial)
 and the resources available to Tune (``ray.cluster_resources()``).
@@ -18,7 +18,7 @@ of CPUs (cores) on your machine.
     )
     results = tuner.fit()
 
-You can override this per trial resources with :ref:`tune-with-resources`. Here you can
+You can override this per trial resources with :func:`tune.with_resources <ray.tune.with_resources>`. Here you can
 specify your resource requests using either a dictionary, a :class:`~ray.air.config.ScalingConfig`, or a
 :class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>`
 object. In any case, Ray Tune will try to start a placement group for each trial.
@@ -83,8 +83,8 @@ Failure to set resources correctly may result in a deadlock, "hanging" the clust
     You will have to make sure your trainable has enough resources to run (e.g. by setting ``n_jobs`` for a
     scikit-learn model accordingly).
 
-How to leverage GPUs?
-~~~~~~~~~~~~~~~~~~~~~
+How to leverage GPUs in Tune?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To leverage GPUs, you must set ``gpu`` in ``tune.with_resources(trainable, resources_per_trial)``.
 This will automatically set ``CUDA_VISIBLE_DEVICES`` for each trial.
@@ -144,8 +144,8 @@ How to run distributed training with Tune?
 To tune distributed training jobs, you should use :ref:`Ray AI Runtime (Ray AIR) <air>` to use Ray Tune and Ray Train in conjunction with
 each other. Ray Tune will run multiple trials in parallel, with each trial running distributed training with Ray Train.
 
-How to limit concurrency?
-~~~~~~~~~~~~~~~~~~~~~~~~~
+How to limit concurrency in Tune?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If using a :ref:`search algorithm <tune-search-alg>`, you may want to limit the number of trials that are being evaluated.
 For example, you may want to serialize the evaluation of trials to do sequential optimization.

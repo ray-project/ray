@@ -353,6 +353,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
                        int64_t backlog_size,
                        int64_t num_available_cpus);
 
+  /// Try to prestart a number of CPU workers with the given language.
+  ///
+  void PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed);
+
   /// Return the current size of the worker pool for the requested language. Counts only
   /// idle workers.
   ///
@@ -509,9 +513,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;
     /// All drivers that have registered and are still connected.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_drivers;
-    /// All workers that have registered but is about to disconnect. They shouldn't be
-    /// popped anymore.
-    std::unordered_set<std::shared_ptr<WorkerInterface>> pending_disconnection_workers;
     /// A map from the startup tokens of worker processes, assigned by the raylet, to
     /// the extra information of the process. Note that the shim process PID is the
     /// same with worker process PID, except worker process in container.

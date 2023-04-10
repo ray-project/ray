@@ -31,14 +31,24 @@ If all nodes are infeasible, the task or actor cannot be scheduled until feasibl
 Scheduling Strategies
 ---------------------
 
-Tasks or actors support a :ref:`scheduling_strategy <ray-remote-ref>` option to specify the strategy used to decide the best node among feasible nodes.
+Tasks or actors support a :func:`scheduling_strategy <ray.remote>` option to specify the strategy used to decide the best node among feasible nodes.
 Currently the supported strategies are the followings.
 
 "DEFAULT"
 ~~~~~~~~~
 
-``"DEFAULT"`` is the default strategy used by Ray. With the current implementation, Ray will try to pack tasks or actors on nodes
-until the resource utilization is beyond a certain threshold and spread them afterwards.
+``"DEFAULT"`` is the default strategy used by Ray.
+Ray schedules tasks or actors onto a group of the top k nodes.
+Specifically, the nodes are sorted to first favor those that already have tasks or actors scheduled (for locality),
+then to favor those that have low resource utilization (for load balancing).
+Within the top k group, nodes are chosen randomly to further improve load-balancing and mitigate delays from cold-start in large clusters.
+
+Implementation-wise, Ray calculates a score for each node in a cluster based on the utilization of its logical resources.
+If the utilization is below a threshold (controlled by the OS environment variable ``RAY_scheduler_spread_threshold``, default is 0.5), the score is 0,
+otherwise it is the resource utilization itself (score 1 means the node is fully utilized).
+Ray selects the best node for scheduling by randomly picking from the top k nodes with the lowest scores.
+The value of ``k`` is the max of (number of nodes in the cluster * ``RAY_scheduler_top_k_fraction`` environment variable) and ``RAY_scheduler_top_k_absolute`` environment variable.
+By default, it's 20% of the total number of nodes.
 
 Currently Ray handles actors that don't require any resources (i.e., ``num_cpus=0`` with no other resources) specially by randomly choosing a node in the cluster without considering resource utilization.
 Since nodes are randomly chosen, actors that don't require any resources are effectively SPREAD across the cluster.
@@ -68,13 +78,10 @@ NodeAffinitySchedulingStrategy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :py:class:`~ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy` is a low-level strategy that allows a task or actor to be scheduled onto a particular node specified by its node id.
-The ``soft`` flag specifies whether the task or actor is allowed to run somewhere else if the specified node doesn't exist (e.g. if the node dies)
-or is infeasible because it does not have the resources required to run the task or actor.
-In these cases, if ``soft`` is True, the task or actor will be scheduled onto a different feasible node.
-Otherwise, the task or actor will fail with :py:class:`~ray.exceptions.TaskUnschedulableError` or :py:class:`~ray.exceptions.ActorUnschedulableError`.
-As long as the specified node is alive and feasible, the task or actor will only run there
-regardless of the ``soft`` flag. This means if the node currently has no available resources, the task or actor will wait until resources
-become available.
+The ``soft`` flag specifies whether the task or actor is allowed to run somewhere else. If ``soft`` is True, the task or actor will be scheduled onto the node if it is alive, feasible, and has
+sufficient resources at the time of scheduling. Otherwise, it will find a different node using the default scheduling strategy. If ``soft`` is False, the task or actor will be scheduled
+onto the node if it is alive and feasible. It may be queued and wait on the node until it has resources to execute. If the node is infeasible, the task or actor will fail with the
+:py:class:`~ray.exceptions.TaskUnschedulableError` or :py:class:`~ray.exceptions.ActorUnschedulableError`.
 This strategy should *only* be used if other high level scheduling strategies (e.g. :ref:`placement group <ray-placement-group-doc-ref>`) cannot give the
 desired task or actor placements. It has the following known limitations:
 

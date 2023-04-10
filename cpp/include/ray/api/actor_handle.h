@@ -88,4 +88,5 @@ class ActorHandle {
   std::string id_;
 };
 
+typedef ActorHandle<void, true> ActorHandleXlang;
 }  // namespace ray

@@ -25,6 +25,7 @@ from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, RAY_GCS_RPC_TIMEOUT
 from ray.serve._private.http_util import HTTPRequestWrapper, build_starlette_request
 from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 import __main__
 
@@ -205,22 +206,6 @@ def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
         {k: old_dict[k] for k in removed_keys},
         {k: new_dict[k] for k in updated_keys},
     )
-
-
-def get_current_node_resource_key() -> str:
-    """Get the Ray resource key for current node.
-
-    It can be used for actor placement.
-    """
-    current_node_id = ray.get_runtime_context().node_id.hex()
-    for node in ray.nodes():
-        if node["NodeID"] == current_node_id:
-            # Found the node.
-            for key in node["Resources"].keys():
-                if key.startswith("node:"):
-                    return key
-    else:
-        raise ValueError("Cannot found the node dictionary for current node.")
 
 
 def ensure_serialization_context():
@@ -497,3 +482,43 @@ def dict_keys_snake_to_camel_case(snake_dict: dict) -> dict:
             camel_dict[key] = val
 
     return camel_dict
+
+
+serve_telemetry_tag_map = {
+    "SERVE_API_VERSION": TagKey.SERVE_API_VERSION,
+    "SERVE_NUM_DEPLOYMENTS": TagKey.SERVE_NUM_DEPLOYMENTS,
+    "GCS_STORAGE": TagKey.GCS_STORAGE,
+    "SERVE_NUM_GPU_DEPLOYMENTS": TagKey.SERVE_NUM_GPU_DEPLOYMENTS,
+    "SERVE_FASTAPI_USED": TagKey.SERVE_FASTAPI_USED,
+    "SERVE_DAG_DRIVER_USED": TagKey.SERVE_DAG_DRIVER_USED,
+    "SERVE_HTTP_ADAPTER_USED": TagKey.SERVE_HTTP_ADAPTER_USED,
+    "SERVE_GRPC_INGRESS_USED": TagKey.SERVE_GRPC_INGRESS_USED,
+    "SERVE_REST_API_VERSION": TagKey.SERVE_REST_API_VERSION,
+    "SERVE_NUM_APPS": TagKey.SERVE_NUM_APPS,
+    "SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED": (
+        TagKey.SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED
+    ),
+    "SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED": (
+        TagKey.SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED
+    ),
+    "SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED": (
+        TagKey.SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED
+    ),
+}
+
+
+def record_serve_tag(key: str, value: str):
+    """Record telemetry.
+
+    TagKey objects cannot be pickled, so deployments can't directly record
+    telemetry using record_extra_usage_tag. They can instead call this function
+    which records telemetry for them.
+    """
+
+    if key not in serve_telemetry_tag_map:
+        raise ValueError(
+            f'The TagKey "{key}" does not exist. Expected a key from: '
+            f"{list(serve_telemetry_tag_map.keys())}."
+        )
+
+    record_extra_usage_tag(serve_telemetry_tag_map[key], value)

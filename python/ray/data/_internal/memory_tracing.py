@@ -1,5 +1,9 @@
 """Utility for debugging object store memory eager deletion in Datasets.
 
+NOTE: the performance overhead of tracing object allocation is fairly substantial.
+This is meant to use in unit test for debugging. Please do not enable in production,
+without performance optimization.
+
 Enable with RAY_DATASET_TRACE_ALLOCATIONS=1.
 
 Basic usage is to call `trace_allocation` each time a new object is created, and call
@@ -95,6 +99,9 @@ class _MemActor:
                 self.cur_mem -= size_bytes
                 self.deallocated[ref] = self.allocated.pop(ref)
                 self.deallocated[ref]["dealloc_loc"] = loc
+            if ref in self.deallocated:
+                # This object reference is already deallocated.
+                pass
             else:
                 print(f"[mem_tracing] WARNING: allocation of {ref} was not traced!")
         else:

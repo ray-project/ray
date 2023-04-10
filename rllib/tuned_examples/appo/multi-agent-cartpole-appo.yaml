@@ -6,7 +6,7 @@ multi-agent-cartpole-appo:
         timesteps_total: 200000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
 
         # 4-agent MA cartpole.
         env_config:

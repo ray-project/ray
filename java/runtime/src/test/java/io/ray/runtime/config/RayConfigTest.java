@@ -15,4 +15,14 @@ public class RayConfigTest {
     Assert.assertEquals(
         Collections.singletonList("path/to/ray/job/resource/path"), rayConfig.codeSearchPath);
   }
+
+  @Test
+  public void testGetLogFilePrefix() {
+    String key = "ray.logging.file-prefix";
+    RayConfig rayConfig = RayConfig.create();
+    Assert.assertEquals("java-worker", rayConfig.getInternalConfig().getString(key));
+    System.setProperty(key, "raydp-java-worker");
+    rayConfig = RayConfig.create();
+    Assert.assertEquals("raydp-java-worker", rayConfig.getInternalConfig().getString(key));
+  }
 }

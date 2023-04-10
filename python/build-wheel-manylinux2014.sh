@@ -16,22 +16,25 @@ PYTHONS=("cp36-cp36m"
          "cp37-cp37m"
          "cp38-cp38"
          "cp39-cp39"
-         "cp310-cp310")
+         "cp310-cp310"
+         "cp311-cp311")
 
 NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.14.5"
                 "1.19.3"
+                "1.22.0"
                 "1.22.0")
 
 yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
 yum -y install openssl
-yum install libasan-4.8.5-44.el7.x86_64 -y
-yum install libubsan-7.3.1-5.10.el7.x86_64 -y
-yum install devtoolset-8-libasan-devel.x86_64 -y
 
-
+if [ "${HOSTTYPE-}" = "x86_64" ]; then
+  yum install "libasan-4.8.5-44.el7.${HOSTTYPE}" -y
+  yum install "libubsan-7.3.1-5.10.el7.${HOSTTYPE}" -y
+  yum install "devtoolset-8-libasan-devel.${HOSTTYPE}" -y
+fi
 
 java -version
 java_bin=$(readlink -f "$(command -v java)")
@@ -87,7 +90,7 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    /opt/python/"${PYTHON}"/bin/pip install -q numpy=="${NUMPY_VERSION}" cython==0.29.26
+    /opt/python/"${PYTHON}"/bin/pip install -q numpy=="${NUMPY_VERSION}" cython==0.29.32
     # Set the commit SHA in __init__.py.
     if [ -n "$TRAVIS_COMMIT" ]; then
       sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak

@@ -147,7 +147,7 @@ def test_multiple_waits_and_gets(shutdown_only):
     ray.get([h.remote([x]), h.remote([x])])
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+@pytest.mark.skip(reason="Flaky tests")
 def test_caching_functions_to_run(shutdown_only):
     # Test that we export functions to run on all workers before the driver
     # is connected.

@@ -4,12 +4,15 @@ import copy
 import gymnasium as gym
 import numpy as np
 import os
+import shutil
+import tempfile
 import pandas as pd
 from pathlib import Path
 import unittest
 
 import ray
 from ray.data import read_json
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.examples.env.cliff_walking_wall_env import CliffWalkingWallEnv
 from ray.rllib.examples.policy.cliff_walking_wall_policy import CliffWalkingWallPolicy
@@ -273,6 +276,13 @@ class TestOPE(unittest.TestCase):
     def test_dr_on_estimate_on_dataset(self):
         # TODO (Kourosh): How can we unittest this without querying into the model?
         pass
+
+    def test_algo_with_ope_from_checkpoint(self):
+        algo = self.config_dqn_on_cartpole.build()
+        tmpdir = tempfile.mkdtemp()
+        checkpoint = algo.save_checkpoint(tmpdir)
+        algo = Algorithm.from_checkpoint(checkpoint)
+        shutil.rmtree(tmpdir)
 
 
 class TestFQE(unittest.TestCase):

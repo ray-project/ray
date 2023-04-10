@@ -91,6 +91,7 @@ Raylet::Raylet(instrumented_io_context &main_service,
   auto resource_map = node_manager_config.resource_config.ToResourceMap();
   self_node_info_.mutable_resources_total()->insert(resource_map.begin(),
                                                     resource_map.end());
+  self_node_info_.set_start_time_ms(current_sys_time_ms());
 }
 
 Raylet::~Raylet() {}
@@ -117,7 +118,7 @@ ray::Status Raylet::RegisterGcs() {
                   << ":" << self_node_info_.node_manager_port()
                   << " object_manager address: " << self_node_info_.node_manager_address()
                   << ":" << self_node_info_.object_manager_port()
-                  << " hostname: " << self_node_info_.node_manager_address();
+                  << " hostname: " << self_node_info_.node_manager_hostname();
     RAY_CHECK_OK(node_manager_.RegisterGcs());
   };
 

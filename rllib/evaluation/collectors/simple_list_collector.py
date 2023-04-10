@@ -102,9 +102,7 @@ class _PolicyCollector:
 
 class _PolicyCollectorGroup:
     def __init__(self, policy_map):
-        self.policy_collectors = {
-            pid: _PolicyCollector(policy) for pid, policy in policy_map.items()
-        }
+        self.policy_collectors = {}
         # Total env-steps (1 env-step=up to N agents stepped).
         self.env_steps = 0
         # Total agent steps (1 agent-step=1 individual agent (out of N)

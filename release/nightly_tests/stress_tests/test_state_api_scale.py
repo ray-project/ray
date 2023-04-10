@@ -1,7 +1,7 @@
 import click
 import json
 import ray
-from ray._private.ray_constants import LOG_PREFIX_ACTOR_NAME
+from ray._private.ray_constants import LOG_PREFIX_ACTOR_NAME, LOG_PREFIX_JOB_ID
 from ray._private.state_api_test_utils import (
     STATE_LIST_LIMIT,
     StateAPIMetric,
@@ -62,7 +62,7 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api_n(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
+        filters=[("name", "=", "pi4_sample"), ("state", "=", "RUNNING")],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
         err_msg="Expect 0 running tasks.",
@@ -97,7 +97,7 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api_n(
         lambda res: len(res) == num_tasks,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "!=", "FINISHED")],
+        filters=[("name", "=", "pi4_sample"), ("state", "!=", "FINISHED")],
         key_suffix=f"{num_tasks}",
         limit=STATE_LIST_LIMIT,
         err_msg=f"Expect {num_tasks} non finished tasks.",
@@ -112,7 +112,7 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api_n(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
+        filters=[("name", "=", "pi4_sample"), ("state", "=", "RUNNING")],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
         err_msg="Expect 0 running tasks",
@@ -251,7 +251,8 @@ def test_large_log_file(log_file_size_byte: int):
     class LogActor:
         def write_log(self, log_file_size_byte: int):
             ctx = hashlib.md5()
-            prefix = f"{LOG_PREFIX_ACTOR_NAME}LogActor\n"
+            job_id = ray.get_runtime_context().get_job_id()
+            prefix = f"{LOG_PREFIX_JOB_ID}{job_id}\n{LOG_PREFIX_ACTOR_NAME}LogActor\n"
             ctx.update(prefix.encode())
             while log_file_size_byte > 0:
                 n = min(log_file_size_byte, 4 * MiB)

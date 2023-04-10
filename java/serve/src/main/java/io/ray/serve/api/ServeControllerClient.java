@@ -369,19 +369,13 @@ public class ServeControllerClient {
   }
 
   private DeploymentStatusInfo getDeploymentStatus(String name) {
-    StatusOverview statusOverview = getServeStatus();
-    if (statusOverview == null
-        || statusOverview.getDeploymentStatuses() == null
-        || statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList() == null) {
-      return null;
-    }
-    for (DeploymentStatusInfo deploymentStatusInfo :
-        statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList()) {
-      if (StringUtils.equals(name, deploymentStatusInfo.getName())) {
-        return deploymentStatusInfo;
-      }
-    }
-    return null;
+    return ServeProtoUtil.bytesToProto(
+        (byte[])
+            ((PyActorHandle) controller)
+                .task(PyActorMethod.of("get_deployment_status"), name)
+                .remote()
+                .get(),
+        DeploymentStatusInfo::parseFrom);
   }
 
   public BaseActorHandle getController() {

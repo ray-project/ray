@@ -21,6 +21,7 @@ from ray._private.test_utils import (
     object_memory_usage,
     get_metric_check_condition,
     wait_for_condition,
+    MetricSamplePattern,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,12 +63,21 @@ def test_load_balancing(ray_start_cluster):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Times out on Windows")
 def test_hybrid_policy(ray_start_cluster):
-
     cluster = ray_start_cluster
-    num_nodes = 2
+
     num_cpus = 10
-    for _ in range(num_nodes):
-        cluster.add_node(num_cpus=num_cpus, memory=num_cpus)
+    cluster.add_node(
+        num_cpus=num_cpus,
+        memory=num_cpus,
+        _system_config={
+            "scheduler_top_k_absolute": 1,
+            "scheduler_top_k_fraction": 0,
+        },
+    )
+    cluster.add_node(
+        num_cpus=num_cpus,
+        memory=num_cpus,
+    )
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
@@ -720,11 +730,20 @@ def test_scheduling_class_depth(ray_start_regular):
     metric_name = "ray_internal_num_infeasible_scheduling_classes"
 
     # timeout=60 necessary to pass on windows debug/asan builds.
-    wait_for_condition(get_metric_check_condition({metric_name: 2}), timeout=60)
+    wait_for_condition(
+        get_metric_check_condition([MetricSamplePattern(name=metric_name, value=2)]),
+        timeout=60,
+    )
     start_infeasible.remote(2)
-    wait_for_condition(get_metric_check_condition({metric_name: 3}), timeout=60)
+    wait_for_condition(
+        get_metric_check_condition([MetricSamplePattern(name=metric_name, value=3)]),
+        timeout=60,
+    )
     start_infeasible.remote(4)
-    wait_for_condition(get_metric_check_condition({metric_name: 4}), timeout=60)
+    wait_for_condition(
+        get_metric_check_condition([MetricSamplePattern(name=metric_name, value=4)]),
+        timeout=60,
+    )
 
 
 if __name__ == "__main__":

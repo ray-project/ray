@@ -8,6 +8,7 @@ import subprocess
 import ray
 from ray.air import session
 from ray.air.config import ScalingConfig, RunConfig
+from ray.air.util.node import _force_on_current_node
 from ray.tune.tune_config import TuneConfig
 import requests
 import torch
@@ -15,7 +16,6 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from filelock import FileLock
 from ray import serve, tune, train
-from ray.tune.utils.node import _force_on_current_node
 from ray.train.torch import TorchTrainer, TorchCheckpoint
 from ray.tune import Tuner
 from torch.utils.data import DataLoader, Subset

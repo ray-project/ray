@@ -29,6 +29,9 @@ test --test_env=PYENV_VERSION
 test --test_env=PYENV_SHELL
 # Do not send usage stats to the server for tests
 test --test_env=RAY_USAGE_STATS_REPORT_URL="http://127.0.0.1:8000"
+# Enable cluster mode for OSX and Windows. By default, Ray
+# will not allow multinode OSX and Windows clusters.
+test --test_env=RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1"
 # This is needed for some core tests to run correctly
 build:windows --enable_runfiles
 # TODO(mehrdadn): Revert the "-\\.(asm|S)$" exclusion when this Bazel bug
@@ -97,6 +100,7 @@ build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --copt -Wno-uninitialized
 build:tsan --linkopt -fsanitize=thread
+build:tsan --cxxopt="-D_RAY_TSAN_BUILD"
 # This config is only for running TSAN with LLVM toolchain on Linux.
 build:tsan-clang --config=tsan
 build:tsan-clang --config=llvm

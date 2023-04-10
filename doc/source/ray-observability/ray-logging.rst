@@ -14,6 +14,8 @@ Job logs
 Logs for jobs submitted via the :ref:`Ray Jobs API <jobs-overview>` can be retrieved using the ``ray job logs`` :ref:`CLI command <ray-job-logs-doc>` or using ``JobSubmissionClient.get_logs()`` or ``JobSubmissionClient.tail_job_logs()`` via the :ref:`Python SDK <ray-job-submission-sdk-ref>`.
 The log file consists of the stdout of the entrypoint command of the job.  For the location of the log file on disk, see :ref:`Logging directory structure <logging-directory-structure>`.
 
+.. _ray-worker-logs:
+
 Worker logs
 ~~~~~~~~~~~
 Ray's tasks or actors are executed remotely within Ray's worker processes. Ray has special support to improve the visibility of logs produced by workers.
@@ -49,6 +51,38 @@ Actor log messages look like the following by default.
 
     (MyActor pid=480956) actor log message
 
+Log deduplication
+~~~~~~~~~~~~~~~~~
+
+By default, Ray will deduplicate logs that appear redundantly across multiple processes. The first instance of each log message will always be immediately printed. However, subsequent log messages of the same pattern (ignoring words with numeric components) will be buffered for up to five seconds and printed in batch. For example, for the following code snippet:
+
+.. code-block:: python
+
+    import ray
+    import random
+
+    @ray.remote
+    def task():
+        print("Hello there, I am a task", random.random())
+
+    ray.get([task.remote() for _ in range(100)])
+
+The output will be as follows:
+
+.. code-block:: bash
+
+    2023-03-27 15:08:34,195	INFO worker.py:1603 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
+    (task pid=534172) Hello there, I am a task 0.20583517821231412
+    (task pid=534174) Hello there, I am a task 0.17536720316370757 [repeated 99x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication)
+
+This feature is especially useful when importing libraries such as `tensorflow` or `numpy`, which may emit many verbose warning messages when imported. You can configure this feature as follows:
+
+1. Set ``RAY_DEDUP_LOGS=0`` to disable this feature entirely.
+2. Set ``RAY_DEDUP_LOGS_AGG_WINDOW_S=<int>`` to change the agggregation window.
+3. Set ``RAY_DEDUP_LOGS_ALLOW_REGEX=<string>`` to specify log messages to never deduplicate.
+4. Set ``RAY_DEDUP_LOGS_SKIP_REGEX=<string>`` to specify log messages to skip printing.
+
+
 Disabling logging to the driver
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -74,6 +108,27 @@ This produces the following output:
 
     (MyActor(index=2) pid=482120) hello there
     (MyActor(index=1) pid=482119) hello there
+
+Distributed progress bars (tqdm)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When using `tqdm <https://tqdm.github.io>`__ in Ray remote tasks or actors, you may notice that the progress bar output is corrupted. To avoid this problem, you can use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
+
+.. literalinclude:: /ray-core/doc_code/tqdm.py
+
+This tqdm implementation works as follows:
+
+1. The ``tqdm_ray`` module translates TQDM calls into special json log messages written to worker stdout.
+2. The Ray log monitor, instead of copying these log messages directly to the driver stdout, routes these messages to a tqdm singleton.
+3. The tqdm singleton determines the positions of progress bars from various Ray tasks / actors, ensuring they don't collide or conflict with each other.
+
+Limitations:
+
+- Only a subset of tqdm functionality is supported. Refer to the ray_tqdm `implementation <https://github.com/ray-project/ray/blob/master/python/ray/experimental/tqdm_ray.py>`__ for more details.
+- Performance may be poor if there are more than a couple thousand updates per second (updates are not batched).
+
+By default, the builtin print will also be patched to use `ray.experimental.tqdm_ray.safe_print` when `tqdm_ray` is used.
+This avoids progress bar corruption on driver print statements. To disable this, set `RAY_TQDM_PATCH_PRINT=0`.
 
 How to set up loggers
 ~~~~~~~~~~~~~~~~~~~~~
@@ -173,8 +228,11 @@ Here's a Ray log directory structure. Note that ``.out`` is logs from stdout/std
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing :ref:`runtime environments <runtime-environments>` for a job when connecting via :ref:`Ray Client <ray-client-ref>`.
 - ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python/Java part of Ray drivers and workers. All of stdout and stderr from tasks/actors are streamed here. Note that job_id is an id of the driver.- 
 
+.. _ray-log-rotation:
+
 Log rotation
 ------------
+
 Ray supports log rotation of log files. Note that not all components are currently supporting log rotation. (Raylet and Python/Java worker logs are not rotating).
 
 By default, logs are rotating when it reaches to 512MB (maxBytes), and there could be up to 5 backup files (backupCount). Indexes are appended to all backup files (e.g., `raylet.out.1`)

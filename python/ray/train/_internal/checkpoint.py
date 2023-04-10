@@ -1,8 +1,9 @@
+import os
 import logging
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Type, Union
 
-from ray.air import Checkpoint, CheckpointConfig
+from ray.air import Checkpoint, CheckpointConfig, session
 from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.air._internal.checkpoint_manager import (
     _CheckpointManager as CommonCheckpointManager,
@@ -16,6 +17,7 @@ from ray.train.constants import (
     TUNE_CHECKPOINT_ID,
     TUNE_INSTALLED,
     CHECKPOINT_METADATA_KEY,
+    LAZY_CHECKPOINT_MARKER_FILE,
 )
 
 if TUNE_INSTALLED:
@@ -209,12 +211,35 @@ class CheckpointManager(CommonCheckpointManager):
 
 
 class TuneCheckpointManager(CheckpointManager):
+    def __init__(
+        self,
+        run_dir: Optional[Path] = None,
+        checkpoint_strategy: Optional[CheckpointConfig] = None,
+    ):
+        super().__init__(run_dir, checkpoint_strategy)
+
+        # Name of the marker dropped by the Trainable. If a worker detects
+        # the presence of the marker in the trial dir, it will use lazy
+        # checkpointing.
+        self._lazy_marker_path = None
+        if tune.is_session_enabled():
+            self._lazy_marker_path = (
+                Path(session.get_trial_dir()) / LAZY_CHECKPOINT_MARKER_FILE
+            )
+            with open(self._lazy_marker_path, "w"):
+                pass
+
     def _load_checkpoint(
         self, checkpoint_to_load: Optional[Union[Dict, str, Path, Checkpoint]]
     ) -> Optional[Union[Dict, Checkpoint]]:
         loaded_checkpoint = super()._load_checkpoint(checkpoint_to_load)
         assert not loaded_checkpoint or isinstance(loaded_checkpoint, Checkpoint)
-        self._latest_checkpoint_id = getattr(loaded_checkpoint, TUNE_CHECKPOINT_ID, 0)
+        # `latest_checkpoint_id` will be the id assigned to the next checkpoint,
+        # which should be one more than the loaded checkpoint's id
+        # If no checkpoint is loaded, initialize this to 0
+        self._latest_checkpoint_id = (
+            getattr(loaded_checkpoint, TUNE_CHECKPOINT_ID, -1) + 1
+        )
         return loaded_checkpoint
 
     def add_tune_checkpoint_id(self, checkpoint: Checkpoint):
@@ -241,6 +266,14 @@ class TuneCheckpointManager(CheckpointManager):
 
     def _get_next_checkpoint_path(self) -> Optional[Path]:
         return None
+
+    def __del__(self):
+        try:
+            assert self._lazy_marker_path
+            os.remove(str(self._lazy_marker_path))
+        except Exception:
+            pass
+        return super().__del__()
 
 
 def _construct_checkpoint_path_name(checkpoint_id: int) -> str:

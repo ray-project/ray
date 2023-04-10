@@ -272,6 +272,12 @@ class InvalidValuesTest(unittest.TestCase):
             )
         self.assertCorrectExperimentOutput(out)
 
+    def testNevergradWithRequiredOptimizerKwargs(self):
+        from ray.tune.search.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        NevergradSearch(optimizer=ng.optimizers.CM, optimizer_kwargs=dict(budget=16))
+
     def testOptuna(self):
         from ray.tune.search.optuna import OptunaSearch
         from optuna.samplers import RandomSampler
@@ -327,18 +333,24 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertCorrectExperimentOutput(out)
 
     def testZOOpt(self):
+        self.skipTest(
+            "Recent ZOOpt versions fail handling invalid values gracefully. "
+            "Skipping until a fix is added in a future ZOOpt release."
+        )
         from ray.tune.search.zoopt import ZOOptSearch
 
-        np.random.seed(1000)  # At least one nan, inf, -inf and float
+        # This seed tests that a nan result doesn't cause an error if it shows
+        # up after the initial data collection phase.
+        np.random.seed(1002)  # At least one nan, inf, -inf and float
 
         with self.check_searcher_checkpoint_errors_scope():
             out = tune.run(
                 _invalid_objective,
-                search_alg=ZOOptSearch(budget=100, parallel_num=4),
+                search_alg=ZOOptSearch(budget=25, parallel_num=4),
                 config=self.config,
                 metric="_metric",
                 mode="max",
-                num_samples=8,
+                num_samples=16,
                 reuse_actors=False,
             )
         self.assertCorrectExperimentOutput(out)

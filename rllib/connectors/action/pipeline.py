@@ -1,5 +1,6 @@
 import logging
 from typing import Any, List
+from collections import defaultdict
 
 from ray.rllib.connectors.connector import (
     ActionConnector,
@@ -10,6 +11,7 @@ from ray.rllib.connectors.connector import (
 from ray.rllib.connectors.registry import get_connector, register_connector
 from ray.rllib.utils.typing import ActionConnectorDataType
 from ray.util.annotations import PublicAPI
+from ray.util.timer import _Timer
 
 
 logger = logging.getLogger(__name__)
@@ -19,10 +21,13 @@ logger = logging.getLogger(__name__)
 class ActionConnectorPipeline(ConnectorPipeline, ActionConnector):
     def __init__(self, ctx: ConnectorContext, connectors: List[Connector]):
         super().__init__(ctx, connectors)
+        self.timers = defaultdict(_Timer)
 
     def __call__(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
         for c in self.connectors:
-            ac_data = c(ac_data)
+            timer = self.timers[str(c)]
+            with timer:
+                ac_data = c(ac_data)
         return ac_data
 
     def to_state(self):

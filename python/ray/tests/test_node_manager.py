@@ -8,6 +8,8 @@ from ray._private.test_utils import (
 )
 import pytest
 import os
+from ray.experimental.state.api import list_objects
+import subprocess
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
@@ -112,6 +114,145 @@ ray.get(refs)
     wait_for_condition(
         check_backlog, timeout=10, retry_interval_ms=1000, expect_backlog=False
     )
+
+
+def get_infeasible_queued(ray_ctx):
+    resources_batch = get_resource_usage(
+        gcs_address=ray_ctx.address_info["gcs_address"]
+    )
+
+    infeasible_queued = (
+        resources_batch.resource_load_by_shape.resource_demands[
+            0
+        ].num_infeasible_requests_queued
+        if len(resources_batch.resource_load_by_shape.resource_demands) > 0
+        and hasattr(
+            resources_batch.resource_load_by_shape.resource_demands[0],
+            "num_infeasible_requests_queued",
+        )
+        else 0
+    )
+
+    return infeasible_queued
+
+
+def check_infeasible(expect_infeasible, ray_ctx) -> bool:
+    infeasible_queued = get_infeasible_queued(ray_ctx)
+    if expect_infeasible:
+        return infeasible_queued > 0
+    else:
+        return infeasible_queued == 0
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head"""],
+    indirect=True,
+)
+def test_kill_driver_clears_infeasible(call_ray_start):
+    driver = """
+import ray
+
+@ray.remote
+def f():
+    pass
+
+ray.get(f.options(num_cpus=99999999).remote())
+  """
+    proc = run_string_as_driver_nonblocking(driver)
+    ctx = ray.init(address=call_ray_start)
+
+    wait_for_condition(
+        check_infeasible,
+        timeout=10,
+        retry_interval_ms=1000,
+        expect_infeasible=True,
+        ray_ctx=ctx,
+    )
+
+    os.kill(proc.pid, 9)
+
+    wait_for_condition(
+        check_infeasible,
+        timeout=10,
+        retry_interval_ms=1000,
+        expect_infeasible=False,
+        ray_ctx=ctx,
+    )
+
+
+def test_kill_driver_keep_infeasible_detached_actor(ray_start_cluster):
+    cluster = ray_start_cluster
+    address = cluster.address
+
+    cluster.add_node(num_cpus=1)
+
+    driver_script = """
+import ray
+
+@ray.remote
+class A:
+    def fn(self):
+        pass
+
+ray.init(address="{}", namespace="test_det")
+
+ray.get(A.options(num_cpus=123, name="det", lifetime="detached").remote())
+""".format(
+        cluster.address
+    )
+
+    proc = run_string_as_driver_nonblocking(driver_script)
+
+    ctx = ray.init(address=address, namespace="test_det")
+
+    wait_for_condition(
+        check_infeasible,
+        timeout=10,
+        retry_interval_ms=1000,
+        expect_infeasible=True,
+        ray_ctx=ctx,
+    )
+
+    os.kill(proc.pid, 9)
+
+    cluster.add_node(num_cpus=200)
+
+    det_actor = ray.get_actor("det")
+
+    ray.get(det_actor.fn.remote())
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head"""],
+    indirect=True,
+)
+def test_reference_global_import_does_not_leak_worker_upon_driver_exit(call_ray_start):
+    driver = """
+import ray
+import numpy as np
+import tensorflow
+
+def leak_repro(obj):
+    tensorflow
+    return []
+
+ds = ray.data.from_numpy(np.ones((100_000)))
+ds.map(leak_repro, max_retries=0)
+  """
+    try:
+        run_string_as_driver(driver)
+    except subprocess.CalledProcessError:
+        pass
+
+    ray.init(address=call_ray_start)
+
+    def no_object_leaks():
+        objects = list_objects(_explain=True, timeout=3)
+        return len(objects) == 0
+
+    wait_for_condition(no_object_leaks, timeout=10, retry_interval_ms=1000)
 
 
 if __name__ == "__main__":
