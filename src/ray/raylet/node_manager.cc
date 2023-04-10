@@ -541,6 +541,36 @@ ray::Status NodeManager::RegisterGcs() {
         RayConfig::instance().raylet_check_gc_period_milliseconds(),
         "NodeManager.CheckGC");
   }
+  // Raylet periodically check whether it's alive in GCS.
+  // For failure cases, GCS might think this raylet dead, but this
+  // raylet still think it's alive. This could happen when the cluster setup is wrong,
+  // for example, there is data loss in the DB.
+  periodical_runner_.RunFnPeriodically(
+      [this] {
+        // Flag to see whether a request is running.
+        static bool checking = false;
+        if (checking) {
+          return;
+        }
+        checking = true;
+        RAY_CHECK_OK(gcs_client_->Nodes().AsyncCheckSelfAlive(
+            // capture checking ptr here because vs17 fail to compile
+            [checking_ptr = &checking](auto status, auto alive) mutable {
+              if (status.ok()) {
+                if (!alive) {
+                  // GCS think this raylet is dead. Fail the node
+                  RAY_LOG(FATAL)
+                      << "GCS consider this node to be dead. This may happen when "
+                      << "GCS is not backed by a DB and restarted or there is data loss "
+                      << "in the DB.";
+                }
+                *checking_ptr = false;
+              }
+            },
+            /* timeout_ms = */ 30000));
+      },
+      RayConfig::instance().raylet_liveness_self_check_interval_ms(),
+      "NodeManager.GcsCheckAlive");
   return ray::Status::OK();
 }
 

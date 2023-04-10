@@ -1,6 +1,6 @@
-from typing import Optional
-from ray.rllib.core.models.specs.specs_base import TensorSpec
+from typing import Callable, Optional, Union
 
+from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
@@ -76,12 +76,15 @@ def input_to_output_specs(
 
 
 @DeveloperAPI
-def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
+def get_activation_fn(
+    name: Optional[Union[Callable, str]] = None,
+    framework: str = "tf",
+):
     """Returns a framework specific activation function, given a name string.
 
     Args:
-        name (Optional[str]): One of "relu" (default), "tanh", "elu",
-            "swish", or "linear" (same as None).
+        name: One of "relu" (default), "tanh", "elu",
+            "swish" (or "silu", which is the same), or "linear" (same as None).
         framework: One of "jax", "tf|tf2" or "torch".
 
     Returns:
@@ -95,41 +98,53 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     if callable(name):
         return name
 
+    name_lower = name.lower() if isinstance(name, str) else name
+
     # Infer the correct activation function from the string specifier.
     if framework == "torch":
-        if name in ["linear", None]:
+        if name_lower in ["linear", None]:
             return None
-        if name == "swish":
-            from ray.rllib.utils.torch_utils import Swish
 
-            return Swish
         _, nn = try_import_torch()
-        if name == "relu":
+        # First try getting the correct activation function from nn directly.
+        # Note that torch activation functions are not all lower case.
+        fn = getattr(nn, name, None)
+        if fn is not None:
+            return fn
+
+        if name_lower in ["swish", "silu"]:
+            return nn.SiLU
+        elif name_lower == "relu":
             return nn.ReLU
-        elif name == "tanh":
+        elif name_lower == "tanh":
             return nn.Tanh
-        elif name == "elu":
+        elif name_lower == "elu":
             return nn.ELU
     elif framework == "jax":
-        if name in ["linear", None]:
+        if name_lower in ["linear", None]:
             return None
         jax, _ = try_import_jax()
-        if name == "swish":
+        if name_lower in ["swish", "silu"]:
             return jax.nn.swish
-        if name == "relu":
+        if name_lower == "relu":
             return jax.nn.relu
-        elif name == "tanh":
+        elif name_lower == "tanh":
             return jax.nn.hard_tanh
-        elif name == "elu":
+        elif name_lower == "elu":
             return jax.nn.elu
     else:
         assert framework in ["tf", "tf2"], "Unsupported framework `{}`!".format(
             framework
         )
-        if name in ["linear", None]:
+        if name_lower in ["linear", None]:
             return None
+
         tf1, tf, tfv = try_import_tf()
-        fn = getattr(tf.nn, name, None)
+        # Try getting the correct activation function from tf.nn directly.
+        # Note that tf activation functions are all lower case, so this should always
+        # work.
+        fn = getattr(tf.nn, name_lower, None)
+
         if fn is not None:
             return fn
 
@@ -173,6 +188,13 @@ def get_filter_config(shape):
         [32, [4, 4], 2],
         [256, [11, 11], 1],
     ]
+    # Dreamer-style (S-sized model) Atari or DM Control Suite.
+    filters_64x64 = [
+        [32, [4, 4], 2],
+        [64, [4, 4], 2],
+        [128, [4, 4], 2],
+        [256, [4, 4], 2],
+    ]
     # Small (1/2) Atari.
     filters_42x42 = [
         [16, [4, 4], 2],
@@ -194,6 +216,8 @@ def get_filter_config(shape):
         return filters_96x96
     elif len(shape) in [2, 3] and (shape[:2] == [84, 84] or shape[1:] == [84, 84]):
         return filters_84x84
+    elif len(shape) in [2, 3] and (shape[:2] == [64, 64] or shape[1:] == [64, 64]):
+        return filters_64x64
     elif len(shape) in [2, 3] and (shape[:2] == [42, 42] or shape[1:] == [42, 42]):
         return filters_42x42
     elif len(shape) in [2, 3] and (shape[:2] == [10, 10] or shape[1:] == [10, 10]):
@@ -203,10 +227,8 @@ def get_filter_config(shape):
             "No default configuration for obs shape {}".format(shape)
             + ", you must specify `conv_filters` manually as a model option. "
             "Default configurations are only available for inputs of the following "
-            "shapes: [42, 42, K], [84, 84, K], [10, 10, K], [240, 320, K] and "
-            " [480, 640, K]. You may "
-            "alternatively "
-            "want "
+            "shapes: [42, 42, K], [84, 84, K], [64, 64, K], [10, 10, K], "
+            "[240, 320, K], and [480, 640, K]. You may alternatively want "
             "to use a custom model or preprocessor."
         )
 

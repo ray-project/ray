@@ -9,6 +9,8 @@ torch, nn = try_import_torch()
 
 
 class TorchRLModule(nn.Module, RLModule):
+    framwork: str = "torch"
+
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
@@ -33,11 +35,11 @@ class TorchRLModule(nn.Module, RLModule):
         return pathlib.Path("module_state.pt")
 
     @override(RLModule)
-    def save_state_to_file(self, path: Union[str, pathlib.Path]):
+    def save_state(self, path: Union[str, pathlib.Path]) -> None:
         torch.save(self.state_dict(), str(path))
 
     @override(RLModule)
-    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
+    def load_state(self, path: Union[str, pathlib.Path]) -> None:
         self.set_state(torch.load(str(path)))
 
 
@@ -68,9 +70,9 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         self.module.set_state(*args, **kwargs)
 
     @override(RLModule)
-    def save_state_to_file(self, *args, **kwargs) -> str:
-        return self.module.save_state_to_file(*args, **kwargs)
+    def save_state(self, *args, **kwargs):
+        self.module.save_state(*args, **kwargs)
 
     @override(RLModule)
-    def load_state_from_file(self, *args, **kwargs):
-        self.module.load_state_from_file(*args, **kwargs)
+    def load_state(self, *args, **kwargs):
+        self.module.load_state(*args, **kwargs)

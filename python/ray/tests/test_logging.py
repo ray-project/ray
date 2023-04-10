@@ -227,12 +227,7 @@ def test_log_rotation(shutdown_only, monkeypatch):
     # Create a runtime env to make sure dashboard agent is alive.
     ray.get(f.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote())
 
-    # Filter out only paths that end in .log, .log.1, etc.
-    # These paths are handled by the logger; the others (.out, .err) are not.
-    paths = []
-    for path in log_dir_path.iterdir():
-        if re.search(r".*\.log(\.\d+)?", str(path)):
-            paths.append(path)
+    paths = list(log_dir_path.iterdir())
 
     def component_exist(component, paths):
         for path in paths:
@@ -399,11 +394,11 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
     assert msgs[0][0] == "done"
 
 
-def test_log_redirect_to_stderr(shutdown_only):
+def test_log_redirect_to_stderr(shutdown_only, capfd):
 
     log_components = {
         ray_constants.PROCESS_TYPE_DASHBOARD: "Dashboard head grpc address",
-        ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "",
+        ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "Dashboard agent grpc address",
         ray_constants.PROCESS_TYPE_GCS_SERVER: "Loading job table data",
         # No log monitor output if all components are writing to stderr.
         ray_constants.PROCESS_TYPE_LOG_MONITOR: "",
@@ -457,6 +452,7 @@ assert set(log_component_names).isdisjoint(set(paths)), paths
 
     # Make sure that the expected startup log records for each of the
     # components appears in the stderr stream.
+    # stderr = capfd.readouterr().err
     for component, canonical_record in log_components.items():
         if not canonical_record:
             # Process not run or doesn't generate logs; skip.
