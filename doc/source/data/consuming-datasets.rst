@@ -13,7 +13,7 @@ The data underlying a ``Dataset`` can be consumed in several ways:
 Retrieving a limited set of rows
 ================================
 
-A limited set of rows can be retried from a ``Dataset`` via the
+A limited set of rows can be retrieved from a ``Dataset`` via the
 :meth:`ds.take() <ray.data.Dataset.take>` or :meth:`ds.take_batch() <ray.data.Dataset.take_batch>`
 APIs, and :meth:`ds.show() <ray.data.Dataset.show>`, for printing a limited set of rows. These
 methods are convenient for quickly inspecting a subset (prefix) of rows. They have the
