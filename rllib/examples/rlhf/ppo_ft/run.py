@@ -1,11 +1,12 @@
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.rlhf.ppo_ft.rlhf_env import RLHFEnv
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 from ray.rllib.examples.rlhf.ppo_ft.rlhf_ppo_module import RLHFPPOTorchRLModule
+from ray.rllib.examples.rlhf.ppo_ft.ppo_rlhf import PPORLHF
 
 ray.init(local_mode=True)
 
@@ -20,6 +21,8 @@ class ValueFunctionInitializerCallback(DefaultCallbacks):
         #   lambda learner, **kwargs: 
         #       learner.module.value_fn.load_state_dict(rm.state_dict())
         # )
+
+
 
 env_config = {
     "tokenizer_path": "gpt2",
@@ -38,7 +41,7 @@ tune.register_env("RLHFEnv", env_creator)
 env = RLHFEnv(env_config)
 
 config = (
-    PPOConfig()
+    PPOConfig(algo_class=PPORLHF)
     .framework("torch")
     .environment(
         "RLHFEnv", 
@@ -64,8 +67,12 @@ config = (
         _disable_preprocessor_api=True,
         _disable_initialize_loss_from_dummy_batch=True,
     )
+    .callbacks(
+        callbacks_class=make_multi_callbacks([
+            ValueFunctionInitializerCallback,
+        ])
+    )
 )
 
 algo = config.build()
-breakpoint()
 algo.train()

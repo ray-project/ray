@@ -1,4 +1,13 @@
 
+04/10
+
+
+04/09
+
+- I created a RLHF sampler that I can use to collect samples, but it only works for one sample at a time right now. I need to extend it to produce batches of experiences. 
+
+- In order to share the module between learner and Sampler I assumed the learner is running in local mode, but we need to generalize this requirement. 
+
 04/07
 
 - I realized the RLlib API does not allow us to initialize our models easily. This should be super intuitive to do. This feature is absolutely necessary for any fine-tuning or RL on top of a pre-trained network. 
@@ -11,6 +20,7 @@
 
 - _initialize_loss_from_dummy_batch() is a stupid logic that we should get rid off experimentally. I have added an experimental flag to disable it upon request. We should later get rid of this thing.
 
+- RLlib's sampler is so limiting. In this env I need an action space that is of Repeated nature. The only supported action spaces are implicitly Box, Discrete, and MultiDiscrete. The error message also doesn't help much, since it gets raised very late in the agent_collector's .get_dummy_values() method. agent_collector wants to run this on actions and it fails to produce dummy values. 
 
 04/06
 

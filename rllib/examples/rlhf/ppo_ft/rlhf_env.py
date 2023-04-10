@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from ray.rllib.utils.spaces.repeated import Repeated
 import gymnasium.spaces as sp
+import tree
 
 
 def generate_response(
@@ -32,12 +33,16 @@ def generate_response(
             # Apply a softmax function to the logits to get the probabilities
             probs = next_token_logits.softmax(dim=-1)
 
+            # if not probs_list:
+            #     prev_probs = logits[:, :-1, :].softmax(dim=-1)
+            #     probs_list.extend(prev_probs.unbind(1))
+
             # Sample the next token from the probability distribution
             next_token = torch.multinomial(probs, num_samples=1)
 
             # Append the probabilities and the generated token
             generated_sequence.append(next_token)
-            probs_list.append(probs)
+            # probs_list.append(probs)
 
             # Update the input_ids with the generated token
             model_in = torch.cat([model_in, next_token], dim=-1)
@@ -48,12 +53,14 @@ def generate_response(
         # Decode and print the generated sequence
         generated_tokens = torch.cat(generated_sequence, dim=-1)
 
-    # Stack the probabilities tensor
-    probs_tensor = torch.concat(probs_list, dim=0)
+    # Stack the probabilities tensor --> this resulted in N - 1 probs missing the last one, to get that we have to do another forward pass, so we may as well do one round in the end to compute all the probs.
+    # probs_tensor = torch.concat(probs_list, dim=0)
+
+    probs_tensor = model(model_in).logits.softmax(dim=-1)
 
     return {
         "sequence": torch.cat([input_ids, generated_tokens], dim=-1),
-        "probs": probs_tensor[None],
+        "probs": probs_tensor,
         "n_input_tokens": input_ids.shape[-1],
         "n_generated_tokens": generated_tokens.shape[-1],
     }
@@ -162,6 +169,9 @@ class RLHFEnv(gym.Env):
         index = np.random.randint(self.dsize)
         prompt = self.prompt_dataset[index]["prompt"]
         prompt_tokens = self.tokenizer(prompt, return_tensors="np")
+        # remove the batch dimension since we can only do one sentence generation at a 
+        # time.
+        prompt_tokens = tree.map_structure(lambda x: x[0], prompt_tokens)
 
         return prompt_tokens, {}
 
@@ -177,13 +187,13 @@ class RLHFEnv(gym.Env):
         attention_mask = action["attention_mask"]
         probs = action["probs"]
 
-        n_response_tokens = probs.shape[1]
+        n_response_tokens = response_mask.sum()
 
         r_align = self.reward_model(sequence, attention_mask, response_mask)
         r_align = r_align.item()
 
         # Compute the probs from the sft model for the same number of tokens
-        sequence = torch.tensor(sequence, dtype=torch.long)
+        sequence = torch.tensor(sequence, dtype=torch.long)[None] # add batch dim
         sft_output = generate_response(
             self.sft_model, 
             input_ids=sequence, 
@@ -191,8 +201,12 @@ class RLHFEnv(gym.Env):
             eos_token_id=self.tokenizer.eos_token_id
         )
         
-        probs = torch.tensor(probs, dtype=torch.float32)
-        r_kl = compute_approx_kl(probs, sft_output["probs"]).item()
+        probs = torch.tensor(probs, dtype=torch.float32)[None] # add batch dim
+        # only compute kl on the response tokens
+        r_kl = compute_approx_kl(
+            probs[:, -n_response_tokens:], 
+            sft_output["probs"][:, -n_response_tokens:]
+        ).item()
 
         reward = r_align - self.kl_coeff * r_kl
 
