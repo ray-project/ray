@@ -569,6 +569,8 @@ class JobManager:
                     job_status = await self._job_info_client.get_status(job_id)
 
                     if job_status != JobStatus.PENDING:
+                        # If the job is not pending, it means the job supervisor
+                        # actor has been created.
                         job_supervisor = self._get_actor_for_job(job_id)
 
                         if job_supervisor is None:
