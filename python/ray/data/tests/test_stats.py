@@ -265,11 +265,14 @@ def test_dataset__repr__(ray_start_regular_shared):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
 
-    ds = ray.data.range(10, parallelism=1).materialize()
-    ss = ds._plan.stats().to_summary()
-
+    ds = ray.data.range(4).materialize()
+    assert len(ds.take_all()) == 4
     ds2 = ds.map_batches(lambda x: x).materialize()
+    assert len(ds2.take_all()) == 4
+
+    ss = ds._plan.stats().to_summary()
     ss2 = ds2._plan.stats().to_summary()
+
     assert canonicalize(repr(ss)) == (
         "DatasetStatsSummary(\n"
         "   dataset_uuid=U,\n"
@@ -295,7 +298,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      get_time=T,\n"
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
-        "      iter_unknown_location=None,\n"
+        "      iter_unknown_location=N,\n"
         "      next_time=T,\n"
         "      format_time=T,\n"
         "      user_time=T,\n"
@@ -333,7 +336,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      get_time=T,\n"
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
-        "      iter_unknown_location=None,\n"
+        "      iter_unknown_location=N,\n"
         "      next_time=T,\n"
         "      format_time=T,\n"
         "      user_time=T,\n"
@@ -364,7 +367,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "            get_time=T,\n"
         "            iter_blocks_local=None,\n"
         "            iter_blocks_remote=None,\n"
-        "            iter_unknown_location=None,\n"
+        "            iter_unknown_location=N,\n"
         "            next_time=T,\n"
         "            format_time=T,\n"
         "            user_time=T,\n"
