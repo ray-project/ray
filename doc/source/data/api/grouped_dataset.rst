@@ -1,7 +1,7 @@
 .. _grouped-dataset-api:
 
 GroupedData API
-=====================
+===============
 
 .. currentmodule:: ray.data
 
