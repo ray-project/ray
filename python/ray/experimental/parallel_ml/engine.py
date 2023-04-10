@@ -78,10 +78,12 @@ class ExecutionEngine:
         with self.execution_lock:
             if self.stop:
                 return
-        for instruction in self.schedule.steps():
-            self._execute_step(instruction)
+        for instructions in self.schedule.steps():
+            for instruction in instructions:
+                self._execute_step(instruction)
 
     def _execute_step(self, instruction: Instruction):
+        print(f"Executing instruction {instruction}")
         if isinstance(instruction, Send):
             for _ in range(instruction.count):
                 self.dist.send(
@@ -90,7 +92,7 @@ class ExecutionEngine:
                 # TODO: do we need to wait for the future to be completed?
         elif isinstance(instruction, Receive):
             for _ in range(instruction.count):
-                tensor = torch.new_empty(
+                tensor = torch.ones(()).new_empty(
                     size=self.input_tensor_shape,
                     dtype=self.input_tensor_dtype,
                     device=self.device,
