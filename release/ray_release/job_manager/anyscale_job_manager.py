@@ -276,10 +276,10 @@ class AnyscaleJobManager:
             'dashboard.err',
             'dashboard_agent.log',
             'runtime_env_agent.log',
-            'gcs_server.out',
-            'gcs_server.err',
             'raylet.out',
             'raylet.err',
+            'gcs_server.out',
+            'gcs_server.err',
         ]
         for glob in globs:
             last_ray_logs = self._get_last_ray_error_logs(
