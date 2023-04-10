@@ -1864,31 +1864,24 @@ py_test(
 
 # Default Models
 py_test(
-    name = "test_tf_mlp_head",
+    name = "test_cnn_encoders",
     tags = ["team:rllib", "core", "models"],
     size = "medium",
-    srcs = ["core/models/tf/tests/test_tf_mlp_head.py"]
+    srcs = ["core/models/tests/test_cnn_encoders.py"]
 )
 
 py_test(
-    name = "test_torch_cnn_encoder",
+    name = "test_mlp_encoders",
     tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_cnn_encoder.py"]
+    size = "medium",
+    srcs = ["core/models/tests/test_mlp_encoders.py"]
 )
 
 py_test(
-    name = "test_torch_mlp_encoder",
+    name = "test_mlp_heads",
     tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_mlp_encoder.py"]
-)
-
-py_test(
-    name = "test_torch_mlp_head",
-    tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_mlp_head.py"]
+    size = "medium",
+    srcs = ["core/models/tests/test_mlp_heads.py"]
 )
 
 # Specs
@@ -4135,7 +4128,7 @@ py_test(
     name = "examples/documentation/saving_and_loading_algos_and_policies",
     main = "examples/documentation/saving_and_loading_algos_and_policies.py",
     tags = ["team:rllib", "documentation", "no_main"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/documentation/saving_and_loading_algos_and_policies.py"],
 )
 

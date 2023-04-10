@@ -312,12 +312,11 @@ class Actor:
         task_sleep_child.remote()
         raise ValueError("expected to fail.")
 
-    def child_actor(self):
+    def child_actor(self, wait_fn):
         a = ChildActor.remote()
-        try:
-            ray.get(a.children.remote(), timeout=2)
-        except ray.exceptions.GetTimeoutError:
-            pass
+        a.children.remote()
+        wait_for_condition(wait_fn)
+        # Fail the child actor
         raise ValueError("expected to fail.")
 
 
@@ -348,23 +347,20 @@ def test_fault_tolerance_actor_tasks_failed(shutdown_only):
     )
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="Failing on Windows. we should fix it asap"
-)
 def test_fault_tolerance_nested_actors_failed(shutdown_only):
     ray.init(_system_config=_SYSTEM_CONFIG)
+    # 2 creation task + 1 parent actor task + 1 child actor task +
+    # 2 normal tasks run by child actors
+    expected_task_num = 6
 
     # Test nested actor tasks
     with pytest.raises(ray.exceptions.RayTaskError):
         a = Actor.remote()
-        ray.get(a.child_actor.remote())
+        ray.get(a.child_actor.remote(lambda: len(list_tasks() == expected_task_num)))
 
     def verify():
         tasks = list_tasks(detail=True)
-        assert len(tasks) == 6, (
-            "2 creation task + 1 parent actor task + 1 child actor task "
-            " + 2 normal tasks run by child actor"
-        )
+        assert len(tasks) == expected_task_num
         for task in tasks:
             if "finish" in task["name"] or "__init__" in task["name"]:
                 assert task["state"] == "FINISHED", task
@@ -537,7 +533,8 @@ def check_file(type, task_name, expected_log, expect_no_end=False):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Failing on Windows. we should fix it asap"
+    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    reason="Skipping if not recording task logs offsets.",
 )
 def test_task_logs_info_basic(shutdown_only):
     """Test tasks (normal tasks/actor tasks) execution logging
@@ -594,6 +591,10 @@ def test_task_logs_info_basic(shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.skipif(
+    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    reason="Skipping if not recording task logs offsets.",
+)
 def test_task_logs_info_disabled(shutdown_only, monkeypatch):
     """Test when redirect disabled, no task log info is available
     due to missing log file
@@ -619,6 +620,10 @@ def test_task_logs_info_disabled(shutdown_only, monkeypatch):
         wait_for_condition(verify)
 
 
+@pytest.mark.skipif(
+    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    reason="Skipping if not recording task logs offsets.",
+)
 def test_task_logs_info_running_task(shutdown_only):
     ray.init(num_cpus=1)
 
