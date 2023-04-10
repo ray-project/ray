@@ -1,3 +1,10 @@
+"""This file is modeled after ray/python/ray/train/torch/config.py
+
+The logics are duplicated right now to allow maximum flexibility for
+setting up PyTorch DDP process groups outside the context of Ray Train.
+Eventually, these use cases should be consolidated.
+"""
+
 from abc import ABC
 from datetime import timedelta
 import os
