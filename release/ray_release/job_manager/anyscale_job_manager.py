@@ -293,7 +293,7 @@ class AnyscaleJobManager:
                 if file in ignored_ray_files:
                     continue
                 with open(os.path.join(root, file)) as lines:
-                    output = "\n".join(deque(lines, maxlen=3 * LAST_LOGS_LENGTH))
+                    output = "".join(deque(lines, maxlen=3 * LAST_LOGS_LENGTH))
                     if any([error in output for error in error_log_patterns]):
                         return output
         return None
