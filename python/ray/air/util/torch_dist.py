@@ -41,6 +41,7 @@ def _init_torch_distributed(
     local_world_size: int,
     master_addr: str,
     master_port: str,
+    gpu_ids: List[int],
 ):
     """Initialize torch distributed backend"""
     if init_method == "env":
@@ -59,12 +60,9 @@ def _init_torch_distributed(
     if backend == "nccl":
         # Same as in Ray Train
         os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
-        # This is not really robust, as multiple process groups on
-        # one node will overlap.
-        # TODO: (antoni, jungong) : Fix this.
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-            [str(x) for x in range(local_world_size)]
-        )
+        # All workers on a same node should share the same set of
+        # visible GPUs. Otherwise they can't talk among themselves.
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(gpu_ids))
         if "NCCL_SOCKET_IFNAME" not in os.environ:
             os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_NCCL_SOCKET_IFNAME
 
@@ -82,25 +80,41 @@ def _init_torch_distributed(
     os.environ["LOCAL_WORLD_SIZE"] = str(local_world_size)
 
 
+def _get_node_and_gpu_ids():
+    """Returns the node_id and gpu_ids for this worker."""
+    node_id = ray.get_runtime_context().get_node_id()
+    gpu_ids = ray.get_gpu_ids()
+    return node_id, gpu_ids
+
+
 def init_torch_dist_process_group(
     workers: List[ActorHandle],
     backend: str = "gloo",
     init_method: str = "env",
 ):
-    """Initialize a torch distributed process group."""
+    """Initialize a torch distributed process group.
+
+    Args:
+        workers: A list of TorchDistributedWorker actors.
+        backend: The torch distributed backend to use,
+            possible choices are "gloo" or "nccl".
+        init_method: The initialization method to use,
+            possible choices are "env" or "tcp".
+    """
     if not dist.is_available():
         raise RuntimeError("Distributed torch is not available.")
 
     # Build a map from node_id to workers on that node.
-    node_ids = ray.get(
-        [
-            w.execute.remote(lambda: ray.get_runtime_context().get_node_id())
-            for w in workers
-        ]
+    node_and_gpu_ids = ray.get(
+        [w.execute.remote(_get_node_and_gpu_ids) for w in workers]
     )
+    # All the workers on a specific node.
     node_to_workers = {}
-    for i, node_id in enumerate(node_ids):
+    # All the gpu ids visible to all the workers on a specific node.
+    node_to_gpu_ids = {}
+    for i, (node_id, gpu_ids) in enumerate(node_and_gpu_ids):
         node_to_workers.setdefault(node_id, []).append(i)
+        node_to_gpu_ids.setdefault(node_id, []).extend(gpu_ids)
 
     # Assume the first worker is the master.
     master_addr, master_port = ray.get(workers[0].execute.remote(get_address_and_port))
@@ -108,9 +122,7 @@ def init_torch_dist_process_group(
     setup_futures = []
     world_size = len(workers)
     for rank, worker in enumerate(workers):
-        node_id = node_ids[rank]
-        local_rank = node_to_workers[node_id].index(i)
-        local_world_size = len(node_to_workers[node_id])
+        node_id = node_and_gpu_ids[rank][0]
         setup_futures.append(
             worker.execute.remote(
                 _init_torch_distributed,
@@ -118,10 +130,11 @@ def init_torch_dist_process_group(
                 backend=backend,
                 rank=rank,
                 world_size=world_size,
-                local_rank=local_rank,
-                local_world_size=local_world_size,
+                local_rank=node_to_workers[node_id].index(i),
+                local_world_size=len(node_to_workers[node_id]),
                 master_addr=master_addr,
                 master_port=master_port,
+                gpu_ids=node_to_gpu_ids[node_id],
             )
         )
     ray.get(setup_futures)
