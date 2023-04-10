@@ -11,7 +11,6 @@ from ray.rllib.core.models.base import ActorCriticEncoder
 
 @ExperimentalAPI
 class PPORLModuleBase(RLModule, abc.ABC):
-    framework = None
 
     def __init__(self, config: RLModuleConfig):
         super().__init__(config)
