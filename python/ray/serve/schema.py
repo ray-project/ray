@@ -116,7 +116,14 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
 
         for uri in uris:
             if uri is not None:
-                parse_uri(uri)
+                try:
+                    parse_uri(uri)
+                except ValueError as e:
+                    raise ValueError(
+                        "Serve runtime_envs only support remote URIs in the "
+                        "working_dir and py_modules. Got error when parsing "
+                        f"URI: {e}"
+                    )
 
         return v
 
@@ -361,7 +368,14 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         for uri in uris:
             if uri is not None:
-                parse_uri(uri)
+                try:
+                    parse_uri(uri)
+                except ValueError as e:
+                    raise ValueError(
+                        "Serve runtime_envs only support remote URIs in the "
+                        "working_dir and py_modules. Got error when parsing "
+                        f"URI: {e}"
+                    )
 
         return v
 
