@@ -30,7 +30,6 @@ def get_ppo_loss(fwd_in, fwd_out):
 
 
 class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
-    framework = "torch"
 
     def __init__(self, *args, **kwargs):
         TorchRLModule.__init__(self, *args, **kwargs)

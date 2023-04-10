@@ -15,6 +15,8 @@ class PPORLModuleBase(RLModule, abc.ABC):
 
     def __init__(self, config: RLModuleConfig):
         super().__init__(config)
+
+    def build(self):
         catalog = self.config.get_catalog()
 
         # Build models from catalog
