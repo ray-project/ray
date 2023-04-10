@@ -45,7 +45,7 @@ class NaiveCommunicator(Communicator):
     def send(self, tensor: torch.Tensor, dest_rank: int, async_op: bool = False):
         obj_ref = ray.put(tensor)
         send_ref = self._communication_registry.send.remote(
-            [obj_ref], self._rank, dest_rank
+            [obj_ref], self.rank, dest_rank
         )
         if async_op:
             pass
@@ -56,7 +56,8 @@ class NaiveCommunicator(Communicator):
     def recv(self, tensor: torch.Tensor, src_rank: int, async_op: bool = False):
         receive_ref = self._communication_registry.recv.remote(src_rank, self.rank)
         # TODO: can we really do async_op?
-        received_tensor = ray.get(receive_ref)
+        received_tensor = ray.get(ray.get(receive_ref)[0])
+        print(f"received_tensor: {received_tensor}")
         tensor.copy_(received_tensor)
         return FULLFILLED_FUTURE
 
