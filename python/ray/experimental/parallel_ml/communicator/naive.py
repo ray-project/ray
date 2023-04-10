@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections import defaultdict, deque
 from typing import List
 
@@ -10,6 +11,8 @@ from ray.experimental.parallel_ml.communicator.communicator import (
 )
 from ray.types import ObjectRef
 
+logger = logging.getLogger(__name__)
+
 
 @ray.remote
 class CommunicationRegistry(object):
@@ -19,7 +22,7 @@ class CommunicationRegistry(object):
     async def send(
         self, obj_refs: List[ObjectRef], from_rank: int, to_rank: int
     ) -> None:
-        print(f"send {obj_refs} from {from_rank} to {to_rank}")
+        logger.info(f"send {obj_refs} from {from_rank} to {to_rank}")
         self._get_queue(from_rank, to_rank).extend(obj_refs)
 
     async def recv(self, from_rank: int, to_rank: int) -> List[ObjectRef]:

@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 import pytest
@@ -6,6 +7,8 @@ import torch
 from ray.experimental.parallel_ml.communicator.naive import NaiveCommunicator
 from ray.experimental.parallel_ml.communicator.torch import TorchBasedCommunicator
 from torch import nn
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -35,7 +38,7 @@ class Actor:
         self.rank = rank
         self.master_addr = master_addr
         gpu_ids = ray.get_gpu_ids()
-        print(f"gpu {gpu_ids}")
+        logger.info(f"gpu {gpu_ids}")
         if len(gpu_ids) == 1:
             self.device = f"cuda:{gpu_ids[0]}"
         else:
@@ -46,7 +49,7 @@ class Actor:
 
     def receive(self, src_rank: int, shape: Any, dtype: torch.Tensor.dtype):
         tensor = torch.ones(()).new_empty(size=shape, dtype=dtype, device=self.device)
-        print(f"tensor: {tensor}, device: {self.device}")
+        logger.info(f"tensor: {tensor}, device: {self.device}")
         self._communicator.recv(tensor, src_rank, True).wait()
         return tensor.to("cpu")
 

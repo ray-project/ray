@@ -1,3 +1,4 @@
+import logging
 from collections import deque
 from dataclasses import dataclass
 from threading import Lock, Thread
@@ -17,6 +18,8 @@ from ray.experimental.parallel_ml.schedule import (
     Schedule,
     Send,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -83,7 +86,7 @@ class ExecutionEngine:
                 self._execute_step(instruction)
 
     def _execute_step(self, instruction: Instruction):
-        print(f"Executing instruction {instruction}")
+        logger.info(f"Executing instruction {instruction}")
         if isinstance(instruction, Send):
             for _ in range(instruction.count):
                 self.dist.send(
@@ -114,4 +117,4 @@ class ExecutionEngine:
                 self.data_loader.next_batch(tensor)
                 self.input_queue.append((tensor, FULLFILLED_FUTURE))
         elif isinstance(instruction, PrintOutput):
-            print(self.output_queue.popleft())
+            logger.info(self.output_queue.popleft())
