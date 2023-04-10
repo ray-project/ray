@@ -70,7 +70,7 @@ created by PPO.
     :start-after: __sphinx_doc_algo_configs_begin__
     :end-before: __sphinx_doc_algo_configs_end__
 
-Basic Usage
+Basic usage
 ~~~~~~~~~~~
 
 The following three examples illustrate three basic usage patterns of Catalogs.
