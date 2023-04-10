@@ -415,7 +415,8 @@ class ExecutionPlan:
         # Only trigger the execution of first block in case it's a lazy block list.
         # Don't trigger full execution for a schema read.
         if isinstance(blocks, LazyBlockList):
-            blocks.compute_first_block()
+            # TODO(Scott)
+            # blocks.compute_first_block()
             blocks.ensure_metadata_for_first_block()
 
         metadata = blocks.get_metadata(fetch_if_missing=False)
