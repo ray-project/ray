@@ -31,7 +31,7 @@ class Config(object):
     input_tensor_shape: Any
     input_tensor_dtype: torch.Tensor.dtype
     device_name_builder: Callable[[], str]
-    communicator_builder: Callable[[], Communicator]
+    communicator_builder: Callable[[int, int, str], Communicator]
     model_builder: Callable[[], torch.nn.Module]
     data_loader_builder: Callable[[], torch.utils.data.DataLoader]
 
@@ -48,18 +48,28 @@ class ExecutionEngine:
         self.execution_lock = Lock()
         self.stop = False
         self.config = config
-        self._initialize_config(config)
+        self.communicator_master_address = None
 
     def _initialize_config(self, config: Config):
         self.input_tensor_shape = config.input_tensor_shape
         self.input_tensor_dtype = config.input_tensor_dtype
         self.device = torch.device(config.device_name_builder())
-        self.dist = config.communicator_builder(config.world_size, config.rank)
+        self.dist = config.communicator_builder(
+            config.world_size, config.rank, self.communicator_master_address
+        )
         self.model = config.model_builder().to(self.device).eval()
         self.data_loader = config.data_loader_builder()
 
-    def start(self):
+    def get_address(self):
+        """Get the address of the engine."""
+        import socket
+
+        return socket.gethostname()
+
+    def start(self, master_address: str):
         """Start the engine execution"""
+        self.communicator_master_address = master_address
+        self._initialize_config(self.config)
         self.thread = Thread(target=self._execute)
         self.thread.start()
 

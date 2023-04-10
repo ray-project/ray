@@ -68,11 +68,11 @@ class SimplePhysicalPlanner(PhysicalPlanner):
         pgs = []
 
         for rank, partition in enumerate(logical_plan):
-            schedule = ExecuteSchedule()
+            schedule = ExecuteSchedule(rank - 1, rank + 1)
             if rank == 0:
-                schedule = InputSchedule()
+                schedule = InputSchedule(rank + 1)
             elif rank == world_size - 1:
-                schedule = OutputSchedule()
+                schedule = OutputSchedule(rank - 1)
             schedules.append(schedule)
 
             config = Config(
