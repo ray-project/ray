@@ -136,8 +136,7 @@ The following diagram shows a concrete case in more detail.
     The model config dicts and the view requirements are only of interest in special cases, such as
     recurrent networks or attention networks. A PPORLModule has four components that are created by the
     :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`:
-    ``Encoder``, ``value function head``, ``policy head``, and ``action distribution``. Find out more about this
-    distinction between these components in our section on Models.
+    ``Encoder``, ``value function head``, ``policy head``, and ``action distribution``.
 
     .. image:: images/catalog/ppo_catalog_and_rlm_diagram.svg
         :align: center
