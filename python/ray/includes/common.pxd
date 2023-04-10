@@ -309,8 +309,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &gcs_address)
 
-    cdef cppclass CGcsSyncClient "ray::gcs::GcsSyncClient":
-        CGcsSyncClient(const CGcsClientOptions &options)
+    cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
+        CPythonGcsClient(const CGcsClientOptions &options)
 
         CRayStatus Connect()
 

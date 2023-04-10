@@ -185,9 +185,9 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 };
 
 // This client is only supposed to be used from Cython / Python
-class RAY_EXPORT GcsSyncClient {
+class RAY_EXPORT PythonGcsClient {
  public:
-  explicit GcsSyncClient(const GcsClientOptions &options);
+  explicit PythonGcsClient(const GcsClientOptions &options);
   Status Connect();
 
   Status InternalKVGet(const std::string &ns,

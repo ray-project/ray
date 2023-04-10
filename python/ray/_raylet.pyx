@@ -1564,13 +1564,13 @@ def _auto_reconnect(f):
 cdef class GcsClient:
     """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
     cdef:
-        shared_ptr[CGcsSyncClient] inner
+        shared_ptr[CPythonGcsClient] inner
         object address
         object _nums_reconnect_retry
 
     def __cinit__(self, address, nums_reconnect_retry=5):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
-        self.inner.reset(new CGcsSyncClient(dereference(gcs_options.native())))
+        self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
         self._nums_reconnect_retry = nums_reconnect_retry
         self._connect()

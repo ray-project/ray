@@ -139,9 +139,9 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
   return gcs_rpc_client_->GetAddress();
 }
 
-GcsSyncClient::GcsSyncClient(const GcsClientOptions &options) : options_(options) {}
+PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}
 
-Status GcsSyncClient::Connect() {
+Status PythonGcsClient::Connect() {
   grpc::ChannelArguments arguments;
   arguments.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, 512 * 1024 * 1024);
   arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 60 * 1000);
@@ -172,10 +172,10 @@ void GrpcClientContextWithTimeoutMs(grpc::ClientContext &context, int64_t timeou
   }
 }
 
-Status GcsSyncClient::InternalKVGet(const std::string &ns,
-                                    const std::string &key,
-                                    int64_t timeout_ms,
-                                    std::string &value) {
+Status PythonGcsClient::InternalKVGet(const std::string &ns,
+                                      const std::string &key,
+                                      int64_t timeout_ms,
+                                      std::string &value) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -198,7 +198,7 @@ Status GcsSyncClient::InternalKVGet(const std::string &ns,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
-Status GcsSyncClient::InternalKVMultiGet(
+Status PythonGcsClient::InternalKVMultiGet(
     const std::string &ns,
     const std::vector<std::string> &keys,
     int64_t timeout_ms,
@@ -229,12 +229,12 @@ Status GcsSyncClient::InternalKVMultiGet(
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
-Status GcsSyncClient::InternalKVPut(const std::string &ns,
-                                    const std::string &key,
-                                    const std::string &value,
-                                    bool overwrite,
-                                    int64_t timeout_ms,
-                                    int &added_num) {
+Status PythonGcsClient::InternalKVPut(const std::string &ns,
+                                      const std::string &key,
+                                      const std::string &value,
+                                      bool overwrite,
+                                      int64_t timeout_ms,
+                                      int &added_num) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -257,11 +257,11 @@ Status GcsSyncClient::InternalKVPut(const std::string &ns,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
-Status GcsSyncClient::InternalKVDel(const std::string &ns,
-                                    const std::string &key,
-                                    bool del_by_prefix,
-                                    int64_t timeout_ms,
-                                    int &deleted_num) {
+Status PythonGcsClient::InternalKVDel(const std::string &ns,
+                                      const std::string &key,
+                                      bool del_by_prefix,
+                                      int64_t timeout_ms,
+                                      int &deleted_num) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -283,10 +283,10 @@ Status GcsSyncClient::InternalKVDel(const std::string &ns,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
-Status GcsSyncClient::InternalKVKeys(const std::string &ns,
-                                     const std::string &prefix,
-                                     int64_t timeout_ms,
-                                     std::vector<std::string> &results) {
+Status PythonGcsClient::InternalKVKeys(const std::string &ns,
+                                       const std::string &prefix,
+                                       int64_t timeout_ms,
+                                       std::vector<std::string> &results) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -307,10 +307,10 @@ Status GcsSyncClient::InternalKVKeys(const std::string &ns,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
-Status GcsSyncClient::InternalKVExists(const std::string &ns,
-                                       const std::string &key,
-                                       int64_t timeout_ms,
-                                       bool &exists) {
+Status PythonGcsClient::InternalKVExists(const std::string &ns,
+                                         const std::string &key,
+                                         int64_t timeout_ms,
+                                         bool &exists) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -331,9 +331,9 @@ Status GcsSyncClient::InternalKVExists(const std::string &ns,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
-Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri,
-                                       int expiration_s,
-                                       int64_t timeout_ms) {
+Status PythonGcsClient::PinRuntimeEnvUri(const std::string &uri,
+                                         int expiration_s,
+                                         int64_t timeout_ms) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -360,8 +360,8 @@ Status GcsSyncClient::PinRuntimeEnvUri(const std::string &uri,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
-Status GcsSyncClient::GetAllNodeInfo(int64_t timeout_ms,
-                                     std::vector<rpc::GcsNodeInfo> &result) {
+Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
+                                       std::vector<rpc::GcsNodeInfo> &result) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
@@ -380,8 +380,8 @@ Status GcsSyncClient::GetAllNodeInfo(int64_t timeout_ms,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
-Status GcsSyncClient::GetAllJobInfo(int64_t timeout_ms,
-                                    std::vector<rpc::JobTableData> &result) {
+Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
+                                      std::vector<rpc::JobTableData> &result) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
