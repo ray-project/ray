@@ -2227,21 +2227,21 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI(pattern="Time complexity:")
     def take_batch(
-        self, limit: int = 20, *, batch_format: Optional[str] = "default"
+        self, batch_size: int, *, batch_format: Optional[str] = "default"
     ) -> DataBatch:
-        """Return up to ``limit`` records from the datastream in a batch.
+        """Return up to ``batch_size`` records from the datastream in a batch.
 
         Unlike take(), the records are returned in the same format as used for
         `iter_batches` and `map_batches`.
 
-        This will move up to ``limit`` records to the caller's machine; if
-        ``limit`` is very large, this can result in an OutOfMemory crash on
+        This will move up to ``batch_size`` records to the caller's machine; if
+        ``batch_size`` is very large, this can result in an OutOfMemory crash on
         the caller.
 
-        Time complexity: O(limit specified)
+        Time complexity: O(batch_size specified)
 
         Args:
-            limit: The max number of records to return.
+            batch_size: The max number of records to return.
             batch_format: Specify ``"default"`` to use the default block format
                 (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
@@ -2255,7 +2255,7 @@ class Datastream(Generic[T]):
         """
         res = next(
             self.iter_batches(
-                batch_size=limit, prefetch_batches=0, batch_format=batch_format
+                batch_size=batch_size, prefetch_batches=0, batch_format=batch_format
             )
         )
         self._synchronize_progress_bar()

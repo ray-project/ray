@@ -472,6 +472,19 @@ def test_from_items_parallelism_truncated(ray_start_regular_shared):
     assert ds.num_blocks() == n
 
 
+def test_take_batch(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=2)
+    assert ds.take_batch(3) == [0, 1, 2]
+    assert ds.take_batch(6) == [0, 1, 2, 3, 4, 5]
+    assert isinstance(ds.take_batch(3, batch_format="pandas"), pd.DataFrame)
+    assert isinstance(ds.take_batch(3, batch_format="numpy"), np.ndarray)
+
+    ds = ray.data.range_tensor(10, parallelism=2)
+    assert np.all(ds.take_batch(3) == np.array([[0], [1], [2]]))
+    assert isinstance(ds.take_batch(3, batch_format="pandas"), pd.DataFrame)
+    assert isinstance(ds.take_batch(3, batch_format="numpy"), np.ndarray)
+
+
 def test_take_all(ray_start_regular_shared):
     assert ray.data.range(5).take_all() == [0, 1, 2, 3, 4]
 
