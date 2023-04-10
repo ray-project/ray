@@ -74,6 +74,7 @@ Basic Usage
 ~~~~~~~~~~~
 
 The following three examples illustrate three basic usage patterns of Catalogs.
+
 The first example showcases the general API for interacting with Catalogs.
 
 .. literalinclude:: doc_code/catalog_guide.py
