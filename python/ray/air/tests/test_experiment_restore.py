@@ -121,8 +121,8 @@ def test_experiment_restore(tmp_path, runner_type):
     passing_factor = 1.5
     passing_runtime = no_interrupts_runtime * passing_factor
     print_message(
-        "\n\nExperiment should finish with a total runtime <= "
-        f"{passing_runtime} seconds."
+        "Experiment should finish with a total runtime of\n"
+        f"<= {passing_runtime} seconds."
     )
 
     # Variables used in the loop

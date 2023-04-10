@@ -88,7 +88,12 @@ def train_fn(config: dict, data: Optional[dict] = None):
     training_started_marker = Path(
         os.environ.get("RUN_STARTED_MARKER", "/tmp/does-not-exist")
     )
-    training_started_marker.unlink(missing_ok=True)
+    if training_started_marker.exists():
+        # Multiple workers may be trying to delete the same marker
+        try:
+            training_started_marker.unlink()
+        except:
+            pass
 
     for iteration in range(start, ITERATIONS_PER_TRIAL + 1):
         time.sleep(TIME_PER_ITER_S)
