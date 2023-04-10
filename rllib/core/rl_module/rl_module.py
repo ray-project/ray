@@ -153,17 +153,6 @@ class SingleAgentRLModuleSpec:
 @ExperimentalAPI
 @dataclass
 class RLModuleConfig:
-    """A utility config class to make it constructing RLModules easier.
-    
-    Args:
-        observation_space: The observation space of the RLModule. This may differ
-            from the observation space of the environment. For example, a discrete
-            observation space of an environment, would usually correspond to a
-            one-hot encoded observation space of the RLModule because of preprocessing.
-        action_space: The action space of the RLModule.
-        model_config_dict: The model config dict to use.
-        catalog_class: The Catalog class to use.
-    """
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
@@ -215,6 +204,7 @@ class RLModuleConfig:
 class RLModule(abc.ABC):
     """Base class for RLlib modules.
 
+    Subclasses should call super().__init__(config) in their __init__ method.
     Here is the pseudocode for how the forward methods are called:
 
     During Training (acting in env from each rollout worker):
@@ -255,8 +245,7 @@ class RLModule(abc.ABC):
             obs, reward, terminated, truncated, info = env.step(action)
 
     Args:
-        *args: Arguments for constructing the RLModule.
-        **kwargs: Keyword args for constructing the RLModule.
+        config: The config for the RLModule.
 
     Abstract Methods:
         :py:meth:`~forward_train`: Forward pass during training.
@@ -274,11 +263,9 @@ class RLModule(abc.ABC):
         `__getattr__` which will give a confusing error about the attribute not found.
         More details here: https://github.com/pytorch/pytorch/issues/49726.
     """
-    framework: str = None
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
-        self.build()
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
@@ -319,12 +306,6 @@ class RLModule(abc.ABC):
         self._output_specs_inference = convert_to_canonical_format(
             self.output_specs_inference()
         )
-
-    def build(self):
-        """Builds the components of the module.
-
-        This is called automatically during the __init__ method of the subclass. This abstraction can be used to create any component that you RLModule needs.
-        """
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.

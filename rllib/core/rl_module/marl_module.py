@@ -55,8 +55,8 @@ class MultiAgentRLModule(RLModule):
 
         super().__init__(config)
 
-    def build(self):
-        """Builds the underlying RLModules."""
+    def setup(self):
+        """Sets up the underlying RLModules."""
         self._rl_modules = {}
         self.__check_module_configs(self.config.modules)
         for module_id, module_spec in self.config.modules.items():
