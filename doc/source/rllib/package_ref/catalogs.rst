@@ -10,7 +10,7 @@ Catalog API
 Basic usage
 -----------
 
-The follwing basic API can be used to get a default ``encoder`` or ``action distribution``
+Use the following basic API to get a default ``encoder`` or ``action distribution``
 out of Catalog. You can inherit from Catalog and modify the following methods to
 directly inject custom components into a given RLModule.
 Algorithm-specific implementations of Catalog have additional methods.
