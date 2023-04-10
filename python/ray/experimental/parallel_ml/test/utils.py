@@ -4,8 +4,6 @@ from typing import Any
 import pytest
 import ray
 import torch
-from ray.experimental.parallel_ml.communicator.naive import NaiveCommunicator
-from ray.experimental.parallel_ml.communicator.torch import TorchBasedCommunicator
 from torch import nn
 
 logger = logging.getLogger(__name__)
