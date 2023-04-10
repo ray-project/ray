@@ -131,7 +131,8 @@ def _to_json_dict(batch: SampleBatchType, compress_columns: List[str]) -> Dict:
                 )
             # INFOS aren't compatible with Arrow since they are dicts with non-string
             # keys.
-            del policy_batches[policy_id][SampleBatch.INFOS]
+            if SampleBatch.INFOS in policy_batches[policy_id]:
+                del policy_batches[policy_id][SampleBatch.INFOS]
         out["policy_batches"] = policy_batches
     else:
         out["type"] = "SampleBatch"
