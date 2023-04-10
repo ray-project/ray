@@ -114,6 +114,8 @@ struct hash<ray::rpc::SchedulingStrategy> {
       // soft returns a bool
       hash ^= static_cast<size_t>(
           scheduling_strategy.node_affinity_scheduling_strategy().soft());
+      hash ^= static_cast<size_t>(
+          scheduling_strategy.node_affinity_scheduling_strategy().spill_on_unavailable());
     } else if (scheduling_strategy.scheduling_strategy_case() ==
                ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
       hash ^= std::hash<std::string>()(
