@@ -381,13 +381,7 @@ class PB2(PopulationBasedTraining):
         self._hyperparam_bounds_flat = flatten_dict(
             hyperparam_bounds, prevent_delimiter=True
         )
-        for key, value in self._hyperparam_bounds_flat.items():
-            if not isinstance(value, (list, tuple)) or len(value) != 2:
-                raise ValueError(
-                    "`hyperparam_bounds` values must either be "
-                    f"a list or tuple of size 2, but got {value} "
-                    f"instead for the param '{key}'"
-                )
+        self._validate_hyperparam_bounds(self._hyperparam_bounds_flat)
 
         # Current = trials running that have already re-started after reaching
         #           the checkpoint. When exploring we care if these trials
@@ -399,6 +393,22 @@ class PB2(PopulationBasedTraining):
         # Make sure that the params we sampled show up in the CLI output
         trial.evaluated_params.update(flatten_dict(filled_hyperparams))
         super().on_trial_add(trial_runner, trial)
+
+    def _validate_hyperparam_bounds(self, hyperparam_bounds: dict):
+        """Check that each hyperparam bound is of the form [low, high]."""
+        for key, value in hyperparam_bounds.items():
+            if not isinstance(value, (list, tuple)) or len(value) != 2:
+                raise ValueError(
+                    "`hyperparam_bounds` values must either be "
+                    f"a list or tuple of size 2, but got {value} "
+                    f"instead for the param '{key}'"
+                )
+            low, high = value
+            if low > high:
+                raise ValueError(
+                    "`hyperparam_bounds` values must be of the form [low, high] "
+                    f"where low <= high, but got {value} instead for param '{key}'."
+                )
 
     def _save_trial_state(self, state, time, result, trial):
 
