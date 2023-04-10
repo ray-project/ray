@@ -27,7 +27,7 @@ for example, for building ``heads``.
     Catalog.get_preprocessor
 
 
-Advanced Usage
+Advanced usage
 --------------
 
 The following methods are used internally by the Catalog to build the default models.
