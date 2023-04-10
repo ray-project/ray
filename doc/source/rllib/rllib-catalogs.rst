@@ -38,7 +38,7 @@ After reading this user guide you will be able to…
 - Extend RLlib’s selection of Models and distributions with your own
 - Write a Catalog from scratch
 
-Instantiate and interact with a Catalog
+Basic Usage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following three examples illustrate three basic usage patterns of RLLib’s Catalogs.
