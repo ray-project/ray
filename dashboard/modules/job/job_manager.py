@@ -359,9 +359,16 @@ class JobSupervisor:
             variables.
         3) Handle concurrent events of driver execution and
         """
-        curr_info = await self._job_info_client.get_info(self._job_id) or {}
-        curr_status = curr_info.get("status", None)
-        curr_message = curr_info.get("message", "")
+        curr_info = await self._job_info_client.get_info(self._job_id)
+        if curr_info is None:
+            raise RuntimeError(f"Status could not be retrieved for job {self._job_id}.")
+        curr_status = curr_info.status
+        curr_message = curr_info.message
+        if curr_status == JobStatus.RUNNING:
+            raise RuntimeError(
+                f"Job {self._job_id} is already in RUNNING state. "
+                f"JobSupervisor.run() should only be called once. "
+            )
         if curr_status != JobStatus.PENDING:
             raise RuntimeError(
                 f"Job {self._job_id} is not in PENDING state. "
