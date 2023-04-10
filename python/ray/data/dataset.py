@@ -2227,7 +2227,7 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI(pattern="Time complexity:")
     def take_batch(
-        self, batch_size: int, *, batch_format: Optional[str] = "default"
+        self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
     ) -> DataBatch:
         """Return up to ``batch_size`` records from the datastream in a batch.
 
