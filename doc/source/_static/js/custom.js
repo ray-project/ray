@@ -57,12 +57,13 @@ document.addEventListener("DOMContentLoaded", function() {
             if (navItem.classList.contains('toctree-l1')) {
                 navItem.style.fontWeight = "bold";
             }
+            const href = navItem.querySelector("a").getAttribute("href");
             navItem.innerHTML +=
-                '<input checked="" class="toctree-checkbox" id="toctree-checkbox-'
-                + i + '" name="toctree-checkbox-1" type="checkbox">'
-            navItem.innerHTML +=
-                '<label htmlFor="toctree-checkbox-'
-                + i + '"><i class="fas fa-chevron-up"></i></label>'
+                '<a href="'+ href +'" style="display: none">'
+                + '<input checked="" class="toctree-checkbox" id="toctree-checkbox-'
+                + i + '" name="toctree-checkbox-' + i + '" type="button"></a>'
+                + '<label for="toctree-checkbox-' + i + '">' +
+                '<i class="fas fa-chevron-down"></i></label>'
         }
     }
 });
