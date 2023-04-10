@@ -10,7 +10,6 @@ build --compilation_mode=opt
 # Using C++ 17 on all platforms.
 build:linux --cxxopt="-std=c++17"
 build:macos --cxxopt="-std=c++17"
-build:macos --copt="-Wno-error=implicit-function-declaration"
 build:clang-cl --cxxopt="-std=c++17"
 build:msvc-cl --cxxopt="/std:c++17"
 build:windows --cxxopt="/std:c++17"
@@ -45,8 +44,7 @@ build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
 build:msvc-cl     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
-build --per_file_copt="-\\.(asm|S)$,external/.*@-w"
-#build --per_file_copt="external/.*@-Wno-unused-result"
+build --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration"
 # Ignore minor warnings for host tools, which we generally can't control
 build:clang-cl --host_copt="-Wno-inconsistent-missing-override"
 build:clang-cl --host_copt="-Wno-microsoft-unqualified-friend"
