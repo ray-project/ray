@@ -4327,15 +4327,6 @@ class Datastream(Generic[T]):
     )
     @Deprecated(message="`dataset_format` is deprecated for streaming execution.")
     def dataset_format(self) -> BlockFormat:
-<<<<<<< Updated upstream
-        """The format of the datastream's underlying data blocks. Possible values
-        are: "arrow", "pandas" and "simple".
-
-        This may block; if the schema is unknown, this will synchronously fetch
-        the schema for the first block.
-        """
-=======
->>>>>>> Stashed changes
         context = DatasetContext.get_current()
         if context.use_streaming_executor:
             raise DeprecationWarning(
