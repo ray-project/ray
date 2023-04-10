@@ -19,6 +19,7 @@ EXP_NAME = os.environ.get("EXP_NAME", "restore_integration_test")
 CALLBACK_DUMP_FILE = os.environ.get(
     "CALLBACK_DUMP_FILE", "/tmp/callback_dump_file.json"
 )
+CSV_DATA_FILE = os.environ.get("CSV_DATA_FILE", "/tmp/dummy.csv")
 
 TIME_PER_ITER_S = float(os.environ.get("TIME_PER_ITER_S", "0.5"))
 NUM_TRIALS = int(os.environ.get("NUM_TRIALS", "1"))
@@ -138,7 +139,10 @@ if __name__ == "__main__":
             assert session.get_dataset_shard("train")
             train_fn(config)
 
-        datasets = {"train": ray.data.range(dataset_size)}
+        datasets = {
+            "train": ray.data.range(dataset_size),
+            "valid": ray.data.read_csv(CSV_DATA_FILE),
+        }
 
         if DataParallelTrainer.can_restore(experiment_path):
             trainer = DataParallelTrainer.restore(

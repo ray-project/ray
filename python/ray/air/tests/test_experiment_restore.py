@@ -36,6 +36,7 @@ Requirements:
 
 import json
 import numpy as np
+import pandas as pd
 from pathlib import Path
 import pytest
 import time
@@ -84,6 +85,10 @@ def test_experiment_restore(tmp_path, runner_type):
     if storage_path.exists():
         shutil.rmtree(storage_path)
 
+    csv_file = str(tmp_path / "dummy_data.csv")
+    dummy_df = pd.DataFrame({"x": np.arange(128), "y": 2 * np.arange(128)})
+    dummy_df.to_csv(csv_file)
+
     run_started_marker = tmp_path / "run_started_marker"
 
     time_per_iter_s = 0.5
@@ -108,13 +113,14 @@ def test_experiment_restore(tmp_path, runner_type):
         "ITERATIONS_PER_TRIAL": str(iters_per_trial),
         "NUM_TRIALS": str(num_trials),
         "MAX_CONCURRENT_TRIALS": str(max_concurrent),
+        "CSV_DATA_FILE": csv_file,
     }
 
     # Pass criteria
     no_interrupts_runtime = 16.0
     passing_factor = 1.5
     passing_runtime = no_interrupts_runtime * passing_factor
-    print(
+    print_message(
         "\n\nExperiment should finish with a total runtime <= "
         f"{passing_runtime} seconds."
     )
