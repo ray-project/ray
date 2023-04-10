@@ -583,7 +583,7 @@ def read_parquet(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def read_iceberg(
     table_identifier: Union[str, Tuple[str, ...]],
     *,
@@ -637,15 +637,37 @@ def read_iceberg(
     Returns:
         Datastream producing Arrow records read from the specified paths.
     """
-    # TODO: in pyiceberg0.4.0, we can have a default-catalog option:
-    #  https://github.com/apache/iceberg/pull/6864
+    import pyarrow as pa
     from pyiceberg.catalog import load_catalog
+    from pyiceberg.schema import Schema
+    from pyiceberg.io.pyarrow import schema_to_pyarrow
 
     catalog_properties = catalog_properties or {}
+    # in pyiceberg0.4.0, we can have a default-catalog option:
+    # https://github.com/apache/iceberg/pull/6864
     catalog = load_catalog(catalog_name, **catalog_properties)
     table = catalog.load_table(table_identifier)
-    table_scan = table.scan(snapshot_id=snapshot_id)
-    planned_files = [file_task.file.file_path for file_task in table_scan.plan_files()]
+    partition_spec = table.spec()
+
+    planned_files = [
+        file_task.file.file_path
+        for file_task in table.scan(snapshot_id=snapshot_id).plan_files()
+    ]
+
+    partitioning = None
+    if partition_spec.fields:
+        iceberg_partition_schema = Schema(
+            *[
+                table.schema().find_field(field.source_id)
+                for field in partition_spec.fields
+            ]
+        )
+        # timestamp casting issue fixed in pyiceberg0.4.0:
+        # https://github.com/apache/iceberg/pull/6946
+        partitioning = pa.dataset.partitioning(
+            schema=schema_to_pyarrow(iceberg_partition_schema),
+            flavor="hive",
+        )
 
     return read_parquet(
         paths=planned_files,
@@ -656,7 +678,7 @@ def read_iceberg(
         tensor_column_schema=tensor_column_schema,
         meta_provider=meta_provider,
         dataset_kwargs=dict(
-            partitioning=None
+            partitioning=partitioning
         ),  # required since https://github.com/ray-project/ray/issues/21957
         **arrow_parquet_args,
     )
