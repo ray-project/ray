@@ -4,7 +4,6 @@ import time
 import subprocess
 import tempfile
 from collections import deque
-from datetime import timedelta
 from contextlib import redirect_stdout, redirect_stderr, contextmanager
 from typing import Any, Dict, Optional, Tuple
 
@@ -14,10 +13,6 @@ from anyscale.sdk.anyscale_client.models import (
     HaJobStates,
 )
 from anyscale.controllers.job_controller import JobController, terminal_state
-from anyscale.controllers.logs_controller import LogsController
-from anyscale.client.openapi_client.models.node_type import NodeType
-from anyscale.client.openapi_client.models.log_filter import LogFilter
-
 from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
@@ -40,6 +35,7 @@ job_status_to_return_code = {
     HaJobStates.BROKEN: -2,
     HaJobStates.TERMINATED: -3,
 }
+
 
 class AnyscaleJobManager:
     def __init__(self, cluster_manager: ClusterManager):
@@ -273,31 +269,31 @@ class AnyscaleJobManager:
         tmpdir = tempfile.mktemp()
         try:
             subprocess.check_output(
-                f'anyscale logs cluster --id {self.cluster_manager.cluster_id} '
-                f'--head-only --download --download-dir {tmpdir}',
+                f"anyscale logs cluster --id {self.cluster_manager.cluster_id} "
+                f"--head-only --download --download-dir {tmpdir}",
                 shell=True,
             )
         except Exception as e:
-            logger.log(f'Failed to download logs from anyscale {e}')
+            logger.log(f"Failed to download logs from anyscale {e}")
             return None
         # Ignored some ray files that do not crash ray despite having exceptions
         ignored_ray_files = [
-            'monitor.log',
-            'event_AUTOSCALER.log',
-            'event_JOBS.log',
+            "monitor.log",
+            "event_AUTOSCALER.log",
+            "event_JOBS.log",
         ]
         # Logs that can indicate there are exception thrown
         error_log_patterns = [
-            'ERROR',
-            'Traceback (most recent call last)',
+            "ERROR",
+            "Traceback (most recent call last)",
         ]
         for root, _, files in os.walk(tmpdir):
             for file in files:
-                logger.info(f'Ray log: {os.path.join(root, file)}')
+                logger.info(f"Ray log: {os.path.join(root, file)}")
                 if file in ignored_ray_files:
                     continue
                 with open(os.path.join(root, file)) as lines:
-                    output = "\n".join(deque(lines, maxlen=3*LAST_LOGS_LENGTH))
+                    output = "\n".join(deque(lines, maxlen=3 * LAST_LOGS_LENGTH))
                     if any([error in output for error in error_log_patterns]):
                         return output
         return None
