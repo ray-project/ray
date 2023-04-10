@@ -268,7 +268,7 @@ def test_reconstruction_suppression(ray_start_cluster_head):
 
 
 @pytest.fixture
-def setup_queue_actor():
+def setup_queue_actor(shutdown_only):
     ray.init(num_cpus=1, object_store_memory=int(150 * 1024 * 1024))
 
     @ray.remote
@@ -287,9 +287,6 @@ def setup_queue_actor():
     ray.get(queue.read.remote())
 
     yield queue
-
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
 
 
 def test_fork(setup_queue_actor):
@@ -841,7 +838,7 @@ def test_pending_actor_removed_by_owner(ray_start_regular):
     assert ray.get(f.remote())
 
 
-def test_pickling_actor_handle(ray_start_regular_shared):
+def test_pickling_actor_handle(ray_start_regular):
     @ray.remote
     class Foo:
         def method(self):
@@ -854,7 +851,7 @@ def test_pickling_actor_handle(ray_start_regular_shared):
     ray.get(new_f.method.remote())
 
 
-def test_pickled_actor_handle_call_in_method_twice(ray_start_regular_shared):
+def test_pickled_actor_handle_call_in_method_twice(ray_start_regular):
     @ray.remote
     class Actor1:
         def f(self):
@@ -876,7 +873,7 @@ def test_pickled_actor_handle_call_in_method_twice(ray_start_regular_shared):
     ray.get(b.step.remote())
 
 
-def test_kill(ray_start_regular_shared):
+def test_kill(ray_start_regular):
     @ray.remote
     class Actor:
         def hang(self):
@@ -896,14 +893,13 @@ def test_kill(ray_start_regular_shared):
         ray.kill("not_an_actor_handle")
 
 
-def test_get_actor_no_input(ray_start_regular_shared):
+def test_get_actor_no_input(ray_start_regular):
     for bad_name in [None, "", "    "]:
         with pytest.raises(ValueError):
             ray.get_actor(bad_name)
 
 
 def test_actor_resource_demand(shutdown_only):
-    ray.shutdown()
     cluster = ray.init(num_cpus=3)
     global_state_accessor = make_global_state_accessor(cluster)
 
@@ -961,7 +957,7 @@ def test_actor_resource_demand(shutdown_only):
     global_state_accessor.disconnect()
 
 
-def test_kill_pending_actor_with_no_restart_true():
+def test_kill_pending_actor_with_no_restart_true(shutdown_only):
     cluster = ray.init()
     global_state_accessor = make_global_state_accessor(cluster)
 
@@ -990,10 +986,9 @@ def test_kill_pending_actor_with_no_restart_true():
     wait_for_condition(condition1, timeout=10)
 
     global_state_accessor.disconnect()
-    ray.shutdown()
 
 
-def test_kill_pending_actor_with_no_restart_false():
+def test_kill_pending_actor_with_no_restart_false(shutdown_only):
     cluster = ray.init()
     global_state_accessor = make_global_state_accessor(cluster)
 
@@ -1035,7 +1030,6 @@ def test_kill_pending_actor_with_no_restart_false():
     wait_for_condition(condition2, timeout=10)
 
     global_state_accessor.disconnect()
-    ray.shutdown()
 
 
 def test_actor_timestamps(ray_start_regular):
