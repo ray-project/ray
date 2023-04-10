@@ -14,10 +14,6 @@ from ray.util.placement_group import PlacementGroup
 from torch import Tensor, nn
 
 
-def noop_data_loader_builder():
-    return None
-
-
 @dataclass
 class ModuleParition(object):
     partition_index: int
@@ -81,7 +77,7 @@ class SimplePhysicalPlanner(PhysicalPlanner):
                 partition.input_tensor_dtype,
                 _get_device_name,
                 partition.module_loader,
-                noop_data_loader_builder,
+                lambda: None,
             )
             configs.append(config)
             pgs.append((pg, rank))
