@@ -37,6 +37,13 @@ class LoadBatch(Instruction):
         self.count = count
 
 
+class PrintOutput(Instruction):
+    """Print the output."""
+
+    def __init__(self, count: int = 1):
+        self.count = count
+
+
 class Schedule(metaclass=ABCMeta):
     """A schedule represents the execution schedule of a stage replica."""
 
@@ -64,4 +71,4 @@ class OutputSchedule(Schedule):
     def steps(self):
         """Yield a list of :class:`Instructions` for each step in the schedule."""
         while True:
-            yield [Receive(1), Forward(1)]
+            yield [Receive(1), Forward(1), PrintOutput(1)]

@@ -11,6 +11,7 @@ from ray.experimental.parallel_ml.schedule import (
     Forward,
     Instruction,
     LoadBatch,
+    PrintOutput,
     Receive,
     Schedule,
     Send,
@@ -110,10 +111,12 @@ class ExecutionEngine:
                 self.output_queue.append(self.model.forward(tensor))
         elif isinstance(instruction, LoadBatch):
             for _ in range(instruction.count):
-                tensor = torch.new_empty(
+                tensor = torch.ones(()).new_empty(
                     size=self.input_tensor_shape,
                     dtype=self.input_tensor_dtype,
                     device=self.cuda,
                 )
                 self.data_loader.next_batch(tensor)
                 self.input_queue.append((tensor, FULLFILLED_FUTURE))
+        elif isinstance(instruction, PrintOutput):
+            print(self.output_queue.popleft())
