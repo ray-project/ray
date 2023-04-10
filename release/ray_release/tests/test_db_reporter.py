@@ -16,8 +16,8 @@ hehe
     )
 
 
-def test_compute_unique_pattern():
-    assert (DBReporter())._compute_unique_pattern(
+def test_compute_signature():
+    assert (DBReporter())._compute_signature(
         [
             "Traceback (most recent call last):",
             '   File "/tmp/something", line 584',

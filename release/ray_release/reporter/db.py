@@ -19,13 +19,13 @@ class DBReporter(Reporter):
 
     def compute_crash_pattern(self, logs: str) -> str:
         stack_trace = self._compute_stack_trace(logs.splitlines())
-        return self._compute_unique_pattern(stack_trace)[:CRASH_PATTERN_MAX_LENGTH]
+        return self._compute_signature(stack_trace)[:CRASH_PATTERN_MAX_LENGTH]
 
-    def _compute_unique_pattern(self, stack_trace: List[str]) -> str:
+    def _compute_signature(self, stack_trace: List[str]) -> str:
         """
-        Compute unique pattern from stack trace, by remove factors such as date, time,
-        temp directory, line numbers, etc. This help to aggregate similar logs into
-        same bug patterns
+        Compute signature pattern from stack trace, by remove factors such as date, 
+        time, temp directory, line numbers, etc. This help to aggregate similar logs 
+        into same bug patterns
         """
         massaged_trace = []
         for line in stack_trace:
@@ -54,34 +54,48 @@ class DBReporter(Reporter):
         while i < len(logs):
             stack = []
             trace = error_stacktrace
+            # Search for lines that are either
+            # ... ERROR ...
+            # or
+            # ... ERROR ...
+            # Traceback (most recent call last):
             if "ERROR" in logs[i]:
                 stack.append(logs[i])
                 next = i + 1
                 if i + 1 < len(logs) and logs[i + 1].startswith("Traceback"):
                     stack.append(logs[i + 1])
                     next = i + 2
+            # Or if the line with ERROR does not exist, just search for the line with
+            # Traceback (most recent call last):
             elif logs[i].startswith("Traceback"):
                 stack.append(logs[i])
                 trace = stacktrace
                 next = i + 1
+            # Or else, skip this line and continue
             else:
                 i = i + 1
                 continue
+            # If the line that contains ERROR, Traceback, etc. is found, scan the logs
+            # until the line no longer has indentation. This is because stack trace
+            # is always indented, and stops when the line is no longer indented
             while next < len(logs):
                 if logs[next].startswith((" ", "\t")):
                     stack.append(logs[next])
                     next = next + 1
                 else:
                     break
+            # Finished capturing the entire stack trace
             if next < len(logs):
                 stack.append(logs[next])
             if stack:
                 trace.append(stack)
             i = next + 1
 
+        # Favor stack trace that contains the ERROR keyword
         if error_stacktrace:
             return error_stacktrace[-1]
 
+        # Otherwise any stack trace is fine
         if stacktrace:
             return stacktrace[-1]
 
