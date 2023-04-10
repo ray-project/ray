@@ -11,10 +11,10 @@ from ray.rllib.core.models.base import ActorCriticEncoder
 
 @ExperimentalAPI
 class PPORLModuleBase(RLModule, abc.ABC):
-    framework = None
-
     def __init__(self, config: RLModuleConfig):
         super().__init__(config)
+
+    def setup(self):
         # __sphinx_doc_begin__
         catalog = self.config.get_catalog()
 
