@@ -4450,8 +4450,8 @@ class Datastream(Generic[T]):
             "num_blocks": self._plan.initial_num_blocks(),
             "num_rows": self._meta_count(),
         }
-
-        schema = self.schema()
+        # Show metadata if available, but don't trigger execution.
+        schema = self.schema(fetch_if_missing=False)
         if schema is None:
             schema_repr = Template("rendered_html_common.html.j2").render(
                 content="<h5>Unknown schema</h5>"
