@@ -561,9 +561,6 @@ def run_release_test(
             if not result.last_logs:
                 result.last_logs = traceback.format_exc()
 
-    logger.info(
-        f'Crash pattern: {(DBReporter().compute_crash_pattern(result.last_logs))}')
-
     buildkite_group(":memo: Reporting results", open=True)
     reporters = reporters or []
     for reporter in reporters:
