@@ -71,7 +71,7 @@ If a task is hanging, you may want to cancel the task to continue to make
 progress. You can do this by calling ``ray.cancel`` on an ``ObjectRef``
 returned by the task. By default, this will send a KeyboardInterrupt to the
 task's worker if it is mid-execution.  Passing ``force=True`` to ``ray.cancel``
-will force-exit the worker. See :ref:`the API reference <ray-cancel-ref>` for
+will force-exit the worker. See :func:`the API reference <ray.cancel>` for
 ``ray.cancel`` for more details.
 
 Note that currently, Ray will not automatically retry tasks that have been

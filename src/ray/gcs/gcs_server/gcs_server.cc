@@ -183,6 +183,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
 
   RecordMetrics();
 
@@ -221,10 +222,12 @@ void GcsServer::Stop() {
 
     gcs_task_manager_->Stop();
 
+    pubsub_handler_->Stop();
+    pubsub_handler_.reset();
+
     // Shutdown the rpc server
     rpc_server_.Shutdown();
 
-    pubsub_handler_->Stop();
     kv_manager_.reset();
 
     is_stopped_ = true;
@@ -405,20 +408,6 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
-      [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
-        boost::asio::deadline_timer timer(main_service_);
-        timer.expires_from_now(delay);
-        timer.async_wait([fn](const boost::system::error_code &error) {
-          if (error != boost::asio::error::operation_aborted) {
-            fn();
-          } else {
-            RAY_LOG(WARNING)
-                << "The GCS actor metadata garbage collector timer failed to fire. This "
-                   "could old actor metadata not being properly cleaned up. For more "
-                   "information, check logs/gcs_server.err and logs/gcs_server.out";
-          }
-        });
-      },
       [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
@@ -593,7 +582,11 @@ void GcsServer::InitGcsTaskManager() {
 }
 
 void GcsServer::InitMonitorServer() {
-  monitor_server_ = std::make_unique<GcsMonitorServer>(gcs_node_manager_);
+  monitor_server_ = std::make_unique<GcsMonitorServer>(
+      gcs_node_manager_,
+      cluster_resource_scheduler_->GetClusterResourceManager(),
+      gcs_resource_manager_,
+      gcs_placement_group_manager_);
   monitor_grpc_service_.reset(
       new rpc::MonitorGrpcService(main_service_, *monitor_server_));
   rpc_server_.RegisterService(*monitor_grpc_service_);
@@ -638,6 +631,7 @@ void GcsServer::InstallEventListeners() {
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);
+        pubsub_handler_->RemoveSubscriberFrom(node_id.Binary());
 
         if (!RayConfig::instance().use_ray_syncer()) {
           gcs_ray_syncer_->RemoveNode(*node);
@@ -662,12 +656,12 @@ void GcsServer::InstallEventListeners() {
                                          worker_failure_data->exit_detail(),
                                          creation_task_exception);
         gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
+        pubsub_handler_->RemoveSubscriberFrom(worker_id.Binary());
       });
 
   // Install job event listeners.
   gcs_job_manager_->AddJobFinishedListener([this](const rpc::JobTableData &job_data) {
     const auto job_id = JobID::FromBinary(job_data.job_id());
-    gcs_actor_manager_->OnJobFinished(job_id);
     gcs_task_manager_->OnJobFinished(job_id, job_data.end_time());
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
   });
@@ -741,7 +735,7 @@ std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
     // Init redis failure detector.
     gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
         main_service_, redis_client_->GetPrimaryContext(), []() {
-          RAY_LOG(FATAL) << "Redis failed. Shutdown GCS.";
+          RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
         });
     gcs_redis_failure_detector_->Start();
   }
@@ -754,6 +748,8 @@ void GcsServer::PrintAsioStats() {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.stats().StatsString() << "\n\n";
+    RAY_LOG(INFO) << "GcsTaskManager Event stats:\n\n"
+                  << gcs_task_manager_->GetIoContext().stats().StatsString() << "\n\n";
   }
 }
 

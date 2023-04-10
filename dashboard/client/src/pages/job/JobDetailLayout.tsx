@@ -15,7 +15,7 @@ export const JobDetailLayout = () => {
     ? {
         title: job.job_id ?? "Job details",
         id: "job-detail",
-        path: job.job_id ? `/new/jobs/${job.job_id}` : undefined,
+        path: job.job_id ? `/jobs/${job.job_id}` : undefined,
       }
     : {
         title: "Job details",

@@ -17,6 +17,9 @@ class RuntimeContext(object):
         assert worker is not None
         self.worker = worker
 
+    @Deprecated(
+        message="Use get_xxx_id() methods to get relevant ids instead", warning=True
+    )
     def get(self) -> Dict[str, Any]:
         """Get a dictionary of the current context.
 
@@ -362,11 +365,11 @@ def get_runtime_context():
 
     Example:
 
-        >>> import ray
-        >>> # Get the job id.
-        >>> ray.get_runtime_context().job_id # doctest: +SKIP
-        >>> # Get all the metadata.
-        >>> ray.get_runtime_context().get() # doctest: +SKIP
+        .. testcode::
+
+            import ray
+            # Get the job id.
+            ray.get_runtime_context().get_job_id()
 
     """
     global _runtime_context

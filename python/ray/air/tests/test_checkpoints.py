@@ -736,6 +736,11 @@ class PreprocessorCheckpointTest(unittest.TestCase):
         preprocessor = checkpoint.get_preprocessor()
         assert preprocessor.multiplier == 1
 
+        # Check that we can set it to None
+        checkpoint.set_preprocessor(None)
+        preprocessor = checkpoint.get_preprocessor()
+        assert preprocessor is None
+
     def testDictCheckpointSetPreprocessorAsDir(self):
         preprocessor = DummyPreprocessor(1)
         data = {"metric": 5}
@@ -756,6 +761,13 @@ class PreprocessorCheckpointTest(unittest.TestCase):
                 pickle.dump(data, fp)
             checkpoint = Checkpoint.from_directory(checkpoint_dir)
             checkpoint.set_preprocessor(preprocessor)
+            preprocessor = checkpoint.get_preprocessor()
+            assert preprocessor.multiplier == 1
+
+            # Also check that loading from dir works
+            new_checkpoint_dir = os.path.join(tmpdir, "new_checkpoint")
+            checkpoint.to_directory(new_checkpoint_dir)
+            checkpoint = Checkpoint.from_directory(new_checkpoint_dir)
             preprocessor = checkpoint.get_preprocessor()
             assert preprocessor.multiplier == 1
 

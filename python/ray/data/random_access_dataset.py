@@ -13,42 +13,47 @@ from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.util.annotations import PublicAPI
 
+try:
+    import pyarrow as pa
+except ImportError:
+    pa = None
+
 if TYPE_CHECKING:
-    from ray.data import Dataset
+    from ray.data import Datastream
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class RandomAccessDataset(Generic[T]):
-    """A class that provides distributed, random access to a Dataset.
+    """A class that provides distributed, random access to a Datastream.
 
-    See: ``Dataset.to_random_access_dataset()``.
+    See: ``Datastream.to_random_access_dataset()``.
     """
 
     def __init__(
         self,
-        dataset: "Dataset[T]",
+        ds: "Datastream[T]",
         key: str,
         num_workers: int,
     ):
         """Construct a RandomAccessDataset (internal API).
 
-        The constructor is a private API. Use ``dataset.to_random_access_dataset()``
+        The constructor is a private API. Use ``ds.to_random_access_dataset()``
         to construct a RandomAccessDataset.
         """
-        self._format = dataset.dataset_format()
-        if self._format not in ["arrow", "pandas"]:
-            raise ValueError("RandomAccessDataset only supports Arrow-format datasets.")
+        schema = ds.schema(fetch_if_missing=True)
+        if schema is None or isinstance(schema, type):
+            raise ValueError("RandomAccessDataset only supports Arrow-format blocks.")
 
         start = time.perf_counter()
-        logger.info("[setup] Indexing dataset by sort key.")
-        sorted_ds = dataset.sort(key)
+        logger.info("[setup] Indexing datastream by sort key.")
+        sorted_ds = ds.sort(key)
         get_bounds = cached_remote_fn(_get_bounds)
         blocks = sorted_ds.get_internal_block_refs()
 
         logger.info("[setup] Computing block range bounds.")
-        bounds = ray.get([get_bounds.remote(b, key, self._format) for b in blocks])
+        bounds = ray.get([get_bounds.remote(b, key) for b in blocks])
         self._non_empty_blocks = []
         self._lower_bound = None
         self._upper_bounds = []
@@ -67,7 +72,7 @@ class RandomAccessDataset(Generic[T]):
             scheduling_strategy = "SPREAD"
         self._workers = [
             _RandomAccessWorker.options(scheduling_strategy=scheduling_strategy).remote(
-                key, self._format
+                key
             )
             for _ in range(num_workers)
         ]
@@ -199,10 +204,9 @@ class RandomAccessDataset(Generic[T]):
 
 @ray.remote(num_cpus=0)
 class _RandomAccessWorker:
-    def __init__(self, key_field, dataset_format):
+    def __init__(self, key_field):
         self.blocks = None
         self.key_field = key_field
-        self.dataset_format = dataset_format
         self.num_accesses = 0
         self.total_time = 0
 
@@ -218,7 +222,10 @@ class _RandomAccessWorker:
 
     def multiget(self, block_indices, keys):
         start = time.perf_counter()
-        if self.dataset_format == "arrow" and len(set(block_indices)) == 1:
+        block = self.blocks[block_indices[0]]
+        if len(set(block_indices)) == 1 and isinstance(
+            self.blocks[block_indices[0]], pa.Table
+        ):
             # Fast path: use np.searchsorted for vectorized search on a single block.
             # This is ~3x faster than the naive case.
             block = self.blocks[block_indices[0]]
@@ -248,7 +255,7 @@ class _RandomAccessWorker:
             return None
         block = self.blocks[block_index]
         column = block[self.key_field]
-        if self.dataset_format == "arrow":
+        if isinstance(block, pa.Table):
             column = _ArrowListWrapper(column)
         i = _binary_search_find(column, key)
         if i is None:
@@ -275,10 +282,10 @@ class _ArrowListWrapper:
         return len(self.arrow_col)
 
 
-def _get_bounds(block, key, dataset_format):
+def _get_bounds(block, key):
     if len(block) == 0:
         return None
     b = (block[key][0], block[key][len(block) - 1])
-    if dataset_format == "arrow":
+    if isinstance(block, pa.Table):
         b = (b[0].as_py(), b[1].as_py())
     return b

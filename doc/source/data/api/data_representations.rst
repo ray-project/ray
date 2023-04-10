@@ -23,7 +23,7 @@ Batch API
 
 .. autosummary::
    :toctree: doc/
-   
+
    block.DataBatch
 
 Row API
@@ -41,6 +41,12 @@ Tensor Column Extension API
 
 .. autosummary::
    :toctree: doc/
+
+   extensions.tensor_extension.create_ragged_ndarray
+
+.. autosummary::
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    extensions.tensor_extension.TensorDtype
    extensions.tensor_extension.TensorArray

@@ -9,7 +9,6 @@ Often, you will find yourself needing to pass data into Tune [Trainables](tune_6
 
 Let's start by defining a simple Trainable function. We'll be expanding this function with different functionality as we go.
 
-
 ```python
 import random
 import time
@@ -36,7 +35,6 @@ Our `training_function` function requires a pandas DataFrame, a model with some 
 
 We will run hyperparameter optimization using the [Tuner API](tune-run-ref).
 
-
 ```python
 from ray.tune import Tuner
 from ray import tune
@@ -62,7 +60,7 @@ Objects from the outer scope of the `training_function` will also be automatical
 TL;DR - use the `param_space` argument to specify small, serializable constants and variables.
 ```
 
-The first way of passing inputs into Trainables is the [*search space*](tune-key-concepts-search-spaces) (it may also be called *parameter space* or *config*). In the Trainable itself, it maps to the `config` dict passed in as an argument to the function. You define the search space using the `param_space` argument of the `Tuner`. The search space is a dict and may be composed of [*distributions*](<tune-sample-docs>), which will sample a different value for each Trial, or of constant values. The search space may be composed of nested dictionaries, and those in turn can have distributions as well.
+The first way of passing inputs into Trainables is the [*search space*](tune-key-concepts-search-spaces) (it may also be called *parameter space* or *config*). In the Trainable itself, it maps to the `config` dict passed in as an argument to the function. You define the search space using the `param_space` argument of the `Tuner`. The search space is a dict and may be composed of [*distributions*](<tune-search-space>), which will sample a different value for each Trial, or of constant values. The search space may be composed of nested dictionaries, and those in turn can have distributions as well.
 
 ```{warning}
 Each value in the search space will be saved directly in the Trial metadata. This means that every value in the search space **must** be serializable and take up a small amount of memory.
@@ -77,7 +75,6 @@ Instead, use strings or other identifiers as your values, and initialize/load th
 ```
 
 In our example, we want to tune the two model hyperparameters. We also want to set the number of epochs, so that we can easily tweak it later. For the hyperparameters, we will use the `tune.uniform` distribution. We will also modify the `training_function` to obtain those values from the `config` dictionary.
-
 
 ```python
 def training_function(config):
@@ -116,7 +113,7 @@ tuner = Tuner(
 TL;DR - use the `tune.with_parameters` util function to specify large constant parameters.
 ```
 
-If we have large objects that are constant across Trials, we can use the [`tune.with_parameters`](tune-with-parameters) utility to pass them into the Trainable directly. The objects will be stored in the [Ray object store](serialization-guide) so that each Trial worker may access them to obtain a local copy to use in its process.
+If we have large objects that are constant across Trials, we can use the {func}`tune.with_parameters <ray.tune.with_parameters>` utility to pass them into the Trainable directly. The objects will be stored in the [Ray object store](serialization-guide) so that each Trial worker may access them to obtain a local copy to use in its process.
 
 ```{tip}
 Objects put into the Ray object store must be serializable.
@@ -125,7 +122,6 @@ Objects put into the Ray object store must be serializable.
 Note that the serialization (once) and deserialization (for each Trial) of large objects may incur a performance overhead.
 
 In our example, we will pass the `data` DataFrame using `tune.with_parameters`. In order to do that, we need to modify our function signature to include `data` as an argument.
-
 
 ```python
 def training_function(config, data):
@@ -157,7 +153,6 @@ tuner = Tuner(
 
 Next step is to wrap the `training_function` using `tune.with_parameters` before passing it into the `Tuner`. Every keyword argument of the `tune.with_parameters` call will be mapped to the keyword arguments in the Trainable signature.
 
-
 ```python
 data = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
 
@@ -184,14 +179,11 @@ A common use-case is to load the dataset from S3 or any other cloud storage with
 
 The working directory of the Trainable worker will be automatically changed to the corresponding Trial directory. For more details, see {ref}`tune-working-dir`.
 
-
 Our tuning run can now be run, though we will not yet obtain any meaningful outputs back.
-
 
 ```python
 results = tuner.fit()
 ```
-
 
 ## Getting data out of Ray Tune
 
@@ -212,7 +204,6 @@ Tune will automatically include some metrics, such as the training iteration, ti
 ```
 
 In our example, we want to maximize the `metric`. We will report it each epoch to Tune, and set the `metric` and `mode` arguments in `tune.TuneConfig` to let Tune know that it should use it as the optimization objective.
-
 
 ```python
 from ray.air import session
@@ -254,7 +245,6 @@ Every metric logged using `session.report` can be accessed during the tuning run
 Callbacks are passed in the `callback` argument of the `Tuner`'s `RunConfig`.
 
 In our example, we'll use the MLFlow callback to track the progress of our tuning run and the changing value of the `metric` (requires `mlflow` to be installed).
-
 
 ```python
 from ray.air import RunConfig
@@ -309,7 +299,6 @@ The experiment state itself is checkpointed separately. See {ref}`tune-persisted
 
 In our example, we want to be able to resume the training from the latest checkpoint, and to save the `trained_model` in a checkpoint every iteration. To accomplish this, we will use the `session` and `Checkpoint` APIs.
 
-
 ```python
 from ray.air import Checkpoint
 
@@ -358,19 +347,12 @@ tuner = Tuner(
 
 With all of those changes implemented, we can now run our tuning and obtain meaningful metrics and artifacts.
 
-
 ```python
 results = tuner.fit()
 results.get_dataframe()
 ```
 
-
-
-    2022-11-30 17:40:28,839	INFO tune.py:762 -- Total run time: 15.79 seconds (15.65 seconds for the tuning loop).
-
-
-
-
+    2022-11-30 17:40:28,839 INFO tune.py:762 -- Total run time: 15.79 seconds (15.65 seconds for the tuning loop).
 
 <div>
 <style scoped>
@@ -515,13 +497,10 @@ results.get_dataframe()
 <p>4 rows × 23 columns</p>
 </div>
 
-
-
 Checkpoints, metrics, and the log directory for each trial can be accessed through the `ResultGrid` output of a Tune experiment. For more information on how to interact with the returned `ResultGrid`, see {doc}`/tune/examples/tune_analyze_results`.
-
 
 ### How do I access Tune results after I am finished?
 
 After you have finished running the Python session, you can still access the results and checkpoints. By default, Tune will save the experiment results to the `~/ray_results` local directory. You can configure Tune to persist results in the cloud as well. See {ref}`tune-storage-options` for more information on how to configure storage options for persisting experiment results.
 
-You can restore the Tune experiment by calling `Tuner.restore(path_or_cloud_uri)`, where `path_or_cloud_uri` points to a location either on the filesystem or cloud where the experiment was saved to. After the `Tuner` has been restored, you can access the results and checkpoints by calling `Tuner.get_results()` to receive the `ResultGrid` object, and then proceeding as outlined in the previous section.
+You can restore the Tune experiment by calling {meth}`Tuner.restore(path_or_cloud_uri, trainable) <ray.tune.Tuner.restore>`, where `path_or_cloud_uri` points to a location either on the filesystem or cloud where the experiment was saved to. After the `Tuner` has been restored, you can access the results and checkpoints by calling `Tuner.get_results()` to receive the `ResultGrid` object, and then proceeding as outlined in the previous section.

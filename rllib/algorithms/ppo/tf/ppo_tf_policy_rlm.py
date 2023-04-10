@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, List, Union
 
-import ray
 from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
@@ -52,25 +51,25 @@ class PPOTfPolicyWithRLModule(
     # TODO: In the future we will deprecate doing all phases of training, exploration,
     # and inference via one policy abstraction. Instead, we will use separate
     # abstractions for each phase. For training (i.e. gradient updates, given the
-    # sample that have been collected) we will use RLTrainer which will own one or
+    # sample that have been collected) we will use Learner which will own one or
     # possibly many RLModules, and RLOptimizer. For exploration, we will use RLSampler
     # which will own RLModule, and RLTrajectoryProcessor. The exploration and inference
     # phase details are TBD but the whole point is to make rllib extremely modular.
     """
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
         # TODO: Move into Policy API, if needed at all here. Why not move this into
         #  `PPOConfig`?.
-        validate_config(config)
+        self.framework = "tf2"
         EagerTFPolicyV2.enable_eager_execution_if_necessary()
-        EagerTFPolicyV2.__init__(self, observation_space, action_space, config)
+        validate_config(config)
         # Initialize MixIns.
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
         )
         KLCoeffMixin.__init__(self, config)
+        EagerTFPolicyV2.__init__(self, observation_space, action_space, config)
 
         self.maybe_initialize_optimizer_and_loss()
 
@@ -81,20 +80,17 @@ class PPOTfPolicyWithRLModule(
         dist_class,
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
-        del dist_class
+
         fwd_out = model.forward_train(train_batch)
-
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
-        dist_class = curr_action_dist.__class__
-        value_fn_out = fwd_out[SampleBatch.VF_PREDS]
 
-        prev_action_dist = dist_class(
-            train_batch[SampleBatch.ACTION_DIST_INPUTS], model
+        action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
+        prev_action_dist = action_dist_class.from_logits(
+            train_batch[SampleBatch.ACTION_DIST_INPUTS]
         )
 
         logp_ratio = tf.exp(
-            curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])
-            - train_batch[SampleBatch.ACTION_LOGP]
+            fwd_out[SampleBatch.ACTION_LOGP] - train_batch[SampleBatch.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -105,7 +101,7 @@ class PPOTfPolicyWithRLModule(
         else:
             mean_kl_loss = tf.constant(0.0)
 
-        curr_entropy = curr_action_dist.entropy()
+        curr_entropy = fwd_out["entropy"]
         mean_entropy = tf.reduce_mean(curr_entropy)
 
         surrogate_loss = tf.minimum(
@@ -120,6 +116,7 @@ class PPOTfPolicyWithRLModule(
 
         # Compute a value function loss.
         if self.config["use_critic"]:
+            value_fn_out = fwd_out[SampleBatch.VF_PREDS]
             vf_loss = tf.math.square(
                 value_fn_out - train_batch[Postprocessing.VALUE_TARGETS]
             )
@@ -132,7 +129,8 @@ class PPOTfPolicyWithRLModule(
             mean_vf_unclipped_loss = tf.reduce_mean(vf_loss)
         # Ignore the value function.
         else:
-            vf_loss_clipped = mean_vf_loss = tf.constant(0.0)
+            mean_vf_unclipped_loss = tf.constant(0.0)
+            value_fn_out = vf_loss_clipped = mean_vf_loss = tf.constant(0.0)
 
         total_loss = tf.reduce_mean(
             -surrogate_loss

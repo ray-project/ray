@@ -1,8 +1,11 @@
-from typing import Any, Callable, Generic, List, Tuple, Union
+from typing import Any, Callable, Generic, List, Tuple, Union, Optional
 
 from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
 from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
@@ -28,7 +31,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DatasetContext
-from ray.data.dataset import DataBatch, Dataset
+from ray.data.dataset import DataBatch, Datastream
 from ray.util.annotations import PublicAPI
 
 
@@ -121,7 +124,7 @@ class GroupedDataset(Generic[T]):
     The actual groupby is deferred until an aggregation is applied.
     """
 
-    def __init__(self, dataset: Dataset[T], key: KeyFn):
+    def __init__(self, dataset: Datastream[T], key: KeyFn):
         """Construct a dataset grouped by key (internal API).
 
         The constructor is not part of the GroupedDataset API.
@@ -135,10 +138,8 @@ class GroupedDataset(Generic[T]):
             f"{self.__class__.__name__}(dataset={self._dataset}, " f"key={self._key!r})"
         )
 
-    def aggregate(self, *aggs: AggregateFn) -> Dataset[U]:
+    def aggregate(self, *aggs: AggregateFn) -> Datastream[U]:
         """Implements an accumulator-based aggregation.
-
-        This is a blocking operation.
 
         Examples:
 
@@ -152,7 +153,7 @@ class GroupedDataset(Generic[T]):
                     init=lambda k: [],
                     accumulate_row=lambda a, r: a + [r],
                     merge=lambda a1, a2: a1 + a2,
-                    finalize=lambda a: a
+                    finalize=lambda a: sorted(a)
                 ))
                 result.show()
 
@@ -180,7 +181,7 @@ class GroupedDataset(Generic[T]):
             If groupby key is ``None`` then the key part of return is omitted.
         """
 
-        def do_agg(blocks, clear_input_blocks: bool, *_):
+        def do_agg(blocks, task_ctx: TaskContext, clear_input_blocks: bool, *_):
             # TODO: implement clear_input_blocks
             stage_info = {}
             if len(aggs) == 0:
@@ -203,6 +204,7 @@ class GroupedDataset(Generic[T]):
                     if isinstance(self._key, str)
                     else self._key,
                     num_reducers,
+                    task_ctx,
                 )
             ctx = DatasetContext.get_current()
             if ctx.use_push_based_shuffle:
@@ -216,13 +218,31 @@ class GroupedDataset(Generic[T]):
                 blocks,
                 num_reducers,
                 clear_input_blocks,
+                ctx=task_ctx,
             )
 
-        plan = self._dataset._plan.with_stage(AllToAllStage("aggregate", None, do_agg))
-        return Dataset(
+        plan = self._dataset._plan.with_stage(
+            AllToAllStage(
+                "Aggregate",
+                None,
+                do_agg,
+                sub_stage_names=["SortSample", "ShuffleMap", "ShuffleReduce"],
+            )
+        )
+
+        logical_plan = self._dataset._logical_plan
+        if logical_plan is not None:
+            op = Aggregate(
+                logical_plan.dag,
+                key=self._key,
+                aggs=aggs,
+            )
+            logical_plan = LogicalPlan(op)
+        return Datastream(
             plan,
             self._dataset._epoch,
             self._dataset._lazy,
+            logical_plan,
         )
 
     def _aggregate_on(
@@ -250,9 +270,9 @@ class GroupedDataset(Generic[T]):
         fn: Union[CallableClass, Callable[[DataBatch], DataBatch]],
         *,
         compute: Union[str, ComputeStrategy] = None,
-        batch_format: str = "default",
+        batch_format: Optional[str] = "default",
         **ray_remote_args,
-    ) -> "Dataset[Any]":
+    ) -> "Datastream[Any]":
         # TODO AttributeError: 'GroupedDataset' object has no attribute 'map_groups'
         #  in the example below.
         """Apply the given function to each group of records of this dataset.
@@ -262,8 +282,6 @@ class GroupedDataset(Generic[T]):
             * It requires that each group fits in memory on a single node.
 
         In general, prefer to use aggregate() instead of map_groups().
-
-        This is a blocking operation.
 
         Examples:
             >>> # Return a single record per group (list of multiple records in,
@@ -303,11 +321,16 @@ class GroupedDataset(Generic[T]):
                 input a batch of all records from a single group, and returns a
                 batch of zero or more records, similar to map_batches().
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
-            batch_format: Specify "default" to use the default block format
-                (promotes Arrow to pandas), "pandas" to select
-                ``pandas.DataFrame`` as the batch format,
-                or "pyarrow" to select ``pyarrow.Table``.
+                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
+                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
+                autoscaling actor pool.
+            batch_format: Specify ``"default"`` to use the default block format
+                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
+                ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
+                ``Dict[str, numpy.ndarray]`` for tabular datasets, or None
+                to return the underlying block exactly as is with no additional
+                formatting. The default is "default".
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
@@ -371,10 +394,8 @@ class GroupedDataset(Generic[T]):
             **ray_remote_args,
         )
 
-    def count(self) -> Dataset[U]:
+    def count(self) -> Datastream[U]:
         """Compute count aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -393,10 +414,8 @@ class GroupedDataset(Generic[T]):
 
     def sum(
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
-    ) -> Dataset[U]:
+    ) -> Datastream[U]:
         r"""Compute grouped sum aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -454,10 +473,8 @@ class GroupedDataset(Generic[T]):
 
     def min(
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
-    ) -> Dataset[U]:
+    ) -> Datastream[U]:
         """Compute grouped min aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -515,10 +532,8 @@ class GroupedDataset(Generic[T]):
 
     def max(
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
-    ) -> Dataset[U]:
+    ) -> Datastream[U]:
         """Compute grouped max aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -576,10 +591,8 @@ class GroupedDataset(Generic[T]):
 
     def mean(
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
-    ) -> Dataset[U]:
+    ) -> Datastream[U]:
         """Compute grouped mean aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray
@@ -641,10 +654,8 @@ class GroupedDataset(Generic[T]):
         on: Union[KeyFn, List[KeyFn]] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
-    ) -> Dataset[U]:
+    ) -> Datastream[U]:
         """Compute grouped standard deviation aggregation.
-
-        This is a blocking operation.
 
         Examples:
             >>> import ray

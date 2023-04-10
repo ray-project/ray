@@ -166,8 +166,10 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     // Internal KV keys for jobs that were submitted via the Ray Job API.
     std::vector<std::string> job_api_data_keys;
 
-    // Maps job data keys to the index of the job in the table.
-    std::unordered_map<std::string, int> job_data_key_to_index;
+    // Maps a Job API data key to the indices of the corresponding jobs in the table. Note
+    // that multiple jobs can come from the same Ray Job API submission (e.g. if the
+    // entrypoint script calls ray.init() multiple times).
+    std::unordered_map<std::string, std::vector<int>> job_data_key_to_indices;
 
     // Load the job table data into the reply.
     int i = 0;
@@ -183,15 +185,14 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         std::string job_submission_id = iter->second;
         std::string job_data_key = JobDataKey(job_submission_id);
         job_api_data_keys.push_back(job_data_key);
-        job_data_key_to_index[job_data_key] = i;
+        job_data_key_to_indices[job_data_key].push_back(i);
       }
       i++;
     }
 
-    RAY_CHECK(job_api_data_keys.size() == job_data_key_to_index.size());
-
+    // Load the JobInfo for jobs submitted via the Ray Job API.
     auto kv_multi_get_callback =
-        [reply, send_reply_callback, job_data_key_to_index](
+        [reply, send_reply_callback, job_data_key_to_indices](
             std::unordered_map<std::string, std::string> result) {
           for (auto &data : result) {
             std::string job_data_key = data.first;
@@ -207,10 +208,11 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                     << "Failed to parse JobInfo JSON into JobsAPIInfo protobuf. JSON: "
                     << job_info_json << " Error: " << status.message();
               }
-              // Add the JobInfo to the correct index in the reply.
-              reply->mutable_job_info_list(job_data_key_to_index.at(job_data_key))
-                  ->mutable_job_info()
-                  ->CopyFrom(std::move(jobs_api_info));
+              // Add the JobInfo to the correct indices in the reply.
+              for (int i : job_data_key_to_indices.at(job_data_key)) {
+                reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(
+                    std::move(jobs_api_info));
+              }
             }
           }
           RAY_LOG(INFO) << "Finished getting all job info.";

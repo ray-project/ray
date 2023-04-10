@@ -1,31 +1,65 @@
-import os
+from typing import List
+import itertools
 import pytest
 import pandas as pd
 
 import ray
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
+from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.from_arrow_operator import (
+    FromArrowRefs,
+    FromHuggingFace,
+)
+from ray.data._internal.logical.operators.from_items_operator import (
+    FromItems,
+    FromTorch,
+)
+from ray.data._internal.logical.operators.from_numpy_operator import (
+    FromNumpyRefs,
+    FromTF,
+)
+from ray.data._internal.logical.operators.from_pandas_operator import (
+    FromDask,
+    FromModin,
+    FromPandasRefs,
+)
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.logical.operators.all_to_all_operator import (
+    Aggregate,
     RandomShuffle,
-    RandomizeBlocks,
     Repartition,
     Sort,
 )
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.operators.map_operator import (
     MapRows,
     MapBatches,
     Filter,
     FlatMap,
 )
+from ray.data._internal.logical.operators.n_ary_operator import Zip
+from ray.data._internal.logical.util import (
+    _recorded_operators,
+    _recorded_operators_lock,
+    _op_name_white_list,
+)
 from ray.data._internal.planner.planner import Planner
+from ray.data.aggregate import Count
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+def _check_usage_record(op_names: List[str]):
+    for op_name in op_names:
+        assert op_name in _op_name_white_list
+        with _recorded_operators_lock:
+            assert _recorded_operators.get(op_name, 0) > 0, _recorded_operators
 
 
 def test_read_operator(ray_start_regular_shared, enable_optimizer):
@@ -38,6 +72,28 @@ def test_read_operator(ray_start_regular_shared, enable_optimizer):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+
+
+def test_from_items_operator(ray_start_regular_shared, enable_optimizer):
+    planner = Planner()
+    from_items_op = FromItems(["Hello", "World"])
+    plan = LogicalPlan(from_items_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_items_op.name == "FromItems"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_items_e2e(ray_start_regular_shared, enable_optimizer):
+    data = ["Hello", "World"]
+    ds = ray.data.from_items(data)
+    assert ds.take_all() == data, ds
+
+    # Check that metadata fetch is included in stats.
+    assert "FromItems" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromItems"
+    _check_usage_record(["FromItems"])
 
 
 def test_map_batches_operator(ray_start_regular_shared, enable_optimizer):
@@ -60,6 +116,7 @@ def test_map_batches_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(5)
     ds = ds.map_batches(lambda x: x)
     assert ds.take_all() == list(range(5)), ds
+    _check_usage_record(["ReadRange", "MapBatches"])
 
 
 def test_map_rows_operator(ray_start_regular_shared, enable_optimizer):
@@ -82,6 +139,7 @@ def test_map_rows_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(5)
     ds = ds.map(lambda x: x + 1)
     assert ds.take_all() == [1, 2, 3, 4, 5], ds
+    _check_usage_record(["ReadRange", "MapRows"])
 
 
 def test_filter_operator(ray_start_regular_shared, enable_optimizer):
@@ -104,6 +162,7 @@ def test_filter_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(5)
     ds = ds.filter(fn=lambda x: x % 2 == 0)
     assert ds.take_all() == [0, 2, 4], ds
+    _check_usage_record(["ReadRange", "Filter"])
 
 
 def test_flat_map(ray_start_regular_shared, enable_optimizer):
@@ -126,18 +185,22 @@ def test_flat_map_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(2)
     ds = ds.flat_map(fn=lambda x: [x, x])
     assert ds.take_all() == [0, 0, 1, 1], ds
+    _check_usage_record(["ReadRange", "FlatMap"])
 
 
 def test_column_ops_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(2)
     ds = ds.add_column(fn=lambda df: df.iloc[:, 0], col="new_col")
     assert ds.take_all() == [{"value": 0, "new_col": 0}, {"value": 1, "new_col": 1}], ds
+    _check_usage_record(["ReadRange", "MapBatches"])
 
     select_ds = ds.select_columns(cols=["new_col"])
     assert select_ds.take_all() == [{"new_col": 0}, {"new_col": 1}]
+    _check_usage_record(["ReadRange", "MapBatches"])
 
     ds = ds.drop_columns(cols=["new_col"])
     assert ds.take_all() == [{"value": 0}, {"value": 1}], ds
+    _check_usage_record(["ReadRange", "MapBatches"])
 
 
 def test_random_sample_e2e(ray_start_regular_shared, enable_optimizer):
@@ -158,27 +221,7 @@ def test_random_sample_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range_tensor(5, parallelism=2, shape=(2, 2))
     ensure_sample_size_close(ds)
 
-
-def test_randomize_blocks_operator(ray_start_regular_shared, enable_optimizer):
-    planner = Planner()
-    read_op = Read(ParquetDatasource())
-    op = RandomizeBlocks(
-        read_op,
-        seed=0,
-    )
-    plan = LogicalPlan(op)
-    physical_op = planner.plan(plan).dag
-
-    assert op.name == "RandomizeBlocks"
-    assert isinstance(physical_op, AllToAllOperator)
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], MapOperator)
-
-
-def test_randomize_blocks_e2e(ray_start_regular_shared, enable_optimizer):
-    ds = ray.data.range(12, parallelism=4)
-    ds = ds.randomize_block_order(seed=0)
-    assert ds.take_all() == [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11], ds
+    _check_usage_record(["ReadRange", "MapBatches"])
 
 
 def test_random_shuffle_operator(ray_start_regular_shared, enable_optimizer):
@@ -206,6 +249,7 @@ def test_random_shuffle_e2e(
     assert r1 != r2, (r1, r2)
     assert sorted(r1) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], r1
     assert sorted(r2) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], r2
+    _check_usage_record(["ReadRange", "RandomShuffle"])
 
 
 def test_repartition_operator(ray_start_regular_shared, enable_optimizer):
@@ -237,6 +281,8 @@ def test_repartition_e2e(
     # Check error is thrown for non-shuffle repartition.
     with pytest.raises(AssertionError):
         ds.repartition(20, shuffle=False).take_all()
+
+    _check_usage_record(["ReadRange", "Repartition"])
 
 
 def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optimizer):
@@ -518,6 +564,31 @@ def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_opt
     assert ds.take_all() == [-2, 2, -6, 6, -10, 10, -14, 14, -18, 18]
     name = "DoRead->Filter->MapRows->MapBatches->FlatMap:"
     assert name in ds.stats()
+    _check_usage_record(["ReadRange", "Filter", "MapRows", "MapBatches", "FlatMap"])
+
+
+def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
+    ds = ray.data.range(10, parallelism=2)
+    ds.write_csv(tmp_path)
+    assert "DoRead->Write" in ds._write_ds.stats()
+    _check_usage_record(["ReadRange", "WriteCSV"])
+
+
+def test_write_operator(ray_start_regular_shared, enable_optimizer):
+    planner = Planner()
+    datasource = ParquetDatasource()
+    read_op = Read(datasource)
+    op = Write(
+        read_op,
+        datasource,
+    )
+    plan = LogicalPlan(op)
+    physical_op = planner.plan(plan).dag
+
+    assert op.name == "Write"
+    assert isinstance(physical_op, MapOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
 
 def test_sort_operator(ray_start_regular_shared, enable_optimizer):
@@ -544,21 +615,512 @@ def test_sort_e2e(
     ds = ds.random_shuffle()
     ds = ds.sort()
     assert ds.take_all() == list(range(100))
+    _check_usage_record(["ReadRange", "RandomShuffle", "Sort"])
 
-    df = pd.DataFrame({"one": list(range(100)), "two": ["a"] * 100})
-    ds = ray.data.from_pandas([df])
-    path = os.path.join(local_path, "test_parquet_dir")
-    os.mkdir(path)
-    ds.write_parquet(path)
+    # TODO: write_XXX and from_XXX are not supported yet in new execution plan.
+    # Re-enable once supported.
 
-    ds = ray.data.read_parquet(path)
+    # df = pd.DataFrame({"one": list(range(100)), "two": ["a"] * 100})
+    # ds = ray.data.from_pandas([df])
+    # path = os.path.join(local_path, "test_parquet_dir")
+    # os.mkdir(path)
+    # ds.write_parquet(path)
+
+    # ds = ray.data.read_parquet(path)
+    # ds = ds.random_shuffle()
+    # ds1 = ds.sort("one")
+    # ds2 = ds.sort("one", descending=True)
+    # r1 = ds1.select_columns(["one"]).take_all()
+    # r2 = ds2.select_columns(["one"]).take_all()
+    # assert [d["one"] for d in r1] == list(range(100))
+    # assert [d["one"] for d in r2] == list(reversed(range(100)))
+
+
+def test_aggregate_operator(ray_start_regular_shared, enable_optimizer):
+    planner = Planner()
+    read_op = Read(ParquetDatasource())
+    op = Aggregate(
+        read_op,
+        key="col1",
+        aggs=[Count()],
+    )
+    plan = LogicalPlan(op)
+    physical_op = planner.plan(plan).dag
+
+    assert op.name == "Aggregate"
+    assert isinstance(physical_op, AllToAllOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
+
+
+def test_aggregate_e2e(
+    ray_start_regular_shared,
+    enable_optimizer,
+    use_push_based_shuffle,
+):
+    ds = ray.data.range_table(100, parallelism=4)
+    ds = ds.groupby("value").count()
+    assert ds.count() == 100
+    for idx, row in enumerate(ds.sort("value").iter_rows()):
+        assert row.as_pydict() == {"value": idx, "count()": 1}
+    _check_usage_record(["ReadRange", "Aggregate"])
+
+
+def test_zip_operator(ray_start_regular_shared, enable_optimizer):
+    planner = Planner()
+    read_op1 = Read(ParquetDatasource())
+    read_op2 = Read(ParquetDatasource())
+    op = Zip(read_op1, read_op2)
+    plan = LogicalPlan(op)
+    physical_op = planner.plan(plan).dag
+
+    assert op.name == "Zip"
+    assert isinstance(physical_op, ZipOperator)
+    assert len(physical_op.input_dependencies) == 2
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
+    assert isinstance(physical_op.input_dependencies[1], MapOperator)
+
+
+@pytest.mark.parametrize(
+    "num_blocks1,num_blocks2",
+    list(itertools.combinations_with_replacement(range(1, 12), 2)),
+)
+def test_zip_e2e(ray_start_regular_shared, enable_optimizer, num_blocks1, num_blocks2):
+    n = 12
+    ds1 = ray.data.range(n, parallelism=num_blocks1)
+    ds2 = ray.data.range(n, parallelism=num_blocks2).map(lambda x: x + 1)
+    ds = ds1.zip(ds2)
+    assert ds.take() == list(zip(range(n), range(1, n + 1)))
+    _check_usage_record(["ReadRange", "Zip"])
+
+
+def test_from_dask_operator(ray_start_regular_shared, enable_optimizer):
+    import dask.dataframe as dd
+
+    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
+    ddf = dd.from_pandas(df, npartitions=10)
+
+    planner = Planner()
+    from_dask_op = FromDask(ddf)
+    plan = LogicalPlan(from_dask_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_dask_op.name == "FromDask"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
+    import dask.dataframe as dd
+
+    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
+    ddf = dd.from_pandas(df, npartitions=10)
+    ds = ray.data.from_dask(ddf)
+    # `ds.take_all()` triggers execution with new backend, which is
+    # needed for checking operator usage below.
+    assert len(ds.take_all()) == len(df)
+    dfds = ds.to_pandas()
+    assert df.equals(dfds)
+
+    # Underlying implementation uses `FromPandasRefs` operator
+    assert "FromPandasRefs" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromDask"
+    _check_usage_record(["FromDask"])
+
+
+@pytest.mark.parametrize("enable_pandas_block", [False, True])
+def test_from_modin_operator(
+    ray_start_regular_shared,
+    enable_optimizer,
+    enable_pandas_block,
+):
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_enable_pandas_block = ctx.enable_pandas_block
+    ctx.enable_pandas_block = enable_pandas_block
+    try:
+        import modin.pandas as mopd
+
+        df = pd.DataFrame(
+            {"one": list(range(100)), "two": list(range(100))},
+        )
+        modf = mopd.DataFrame(df)
+
+        planner = Planner()
+        from_modin_op = FromModin(modf)
+        plan = LogicalPlan(from_modin_op)
+        physical_op = planner.plan(plan).dag
+
+        assert from_modin_op.name == "FromModin"
+        assert isinstance(physical_op, InputDataBuffer)
+        assert len(physical_op.input_dependencies) == 0
+    finally:
+        ctx.enable_pandas_block = old_enable_pandas_block
+
+
+def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
+    import modin.pandas as mopd
+
+    df = pd.DataFrame(
+        {"one": list(range(100)), "two": list(range(100))},
+    )
+    modf = mopd.DataFrame(df)
+    ds = ray.data.from_modin(modf)
+    # `ds.take_all()` triggers execution with new backend, which is
+    # needed for checking operator usage below.
+    assert len(ds.take_all()) == len(df)
+    # `ds.to_pandas()` does not use the new backend.
+    dfds = ds.to_pandas()
+
+    assert df.equals(dfds)
+    # Check that metadata fetch is included in stats. This is `FromPandasRefs`
+    # instead of `FromModin` because `from_modin` reduces to `from_pandas_refs`.
+    assert "FromPandasRefs" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromModin"
+    _check_usage_record(["FromModin"])
+
+
+@pytest.mark.parametrize("enable_pandas_block", [False, True])
+def test_from_pandas_refs_operator(
+    ray_start_regular_shared, enable_optimizer, enable_pandas_block
+):
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_enable_pandas_block = ctx.enable_pandas_block
+    ctx.enable_pandas_block = enable_pandas_block
+    try:
+        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+
+        planner = Planner()
+        from_pandas_ref_op = FromPandasRefs([df1, df2])
+        plan = LogicalPlan(from_pandas_ref_op)
+        physical_op = planner.plan(plan).dag
+
+        assert from_pandas_ref_op.name == "FromPandasRefs"
+        assert isinstance(physical_op, InputDataBuffer)
+        assert len(physical_op.input_dependencies) == 0
+    finally:
+        ctx.enable_pandas_block = old_enable_pandas_block
+
+
+@pytest.mark.parametrize("enable_pandas_block", [False, True])
+def test_from_pandas_refs_e2e(
+    ray_start_regular_shared, enable_optimizer, enable_pandas_block
+):
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_enable_pandas_block = ctx.enable_pandas_block
+    ctx.enable_pandas_block = enable_pandas_block
+
+    try:
+        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+
+        ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
+        values = [(r["one"], r["two"]) for r in ds.take(6)]
+        rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+        assert values == rows
+        # Check that metadata fetch is included in stats.
+        assert "FromPandasRefs" in ds.stats()
+        assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
+
+        # Test chaining multiple operations
+        ds2 = ds.map_batches(lambda x: x)
+        values = [(r["one"], r["two"]) for r in ds2.take(6)]
+        assert values == rows
+        assert "MapBatches" in ds2.stats()
+        assert "FromPandasRefs" in ds2.stats()
+        assert ds2._plan._logical_plan.dag.name == "MapBatches"
+
+        # test from single pandas dataframe
+        ds = ray.data.from_pandas_refs(ray.put(df1))
+        values = [(r["one"], r["two"]) for r in ds.take(3)]
+        rows = [(r.one, r.two) for _, r in df1.iterrows()]
+        assert values == rows
+        # Check that metadata fetch is included in stats.
+        assert "FromPandasRefs" in ds.stats()
+        assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
+        _check_usage_record(["FromPandasRefs"])
+    finally:
+        ctx.enable_pandas_block = old_enable_pandas_block
+
+
+def test_from_numpy_refs_operator(
+    ray_start_regular_shared,
+    enable_optimizer,
+):
+    import numpy as np
+
+    arr1 = np.expand_dims(np.arange(0, 4), axis=1)
+    arr2 = np.expand_dims(np.arange(4, 8), axis=1)
+
+    planner = Planner()
+    from_numpy_ref_op = FromNumpyRefs([ray.put(arr1), ray.put(arr2)])
+    plan = LogicalPlan(from_numpy_ref_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_numpy_ref_op.name == "FromNumpyRefs"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
+    import numpy as np
+
+    arr1 = np.expand_dims(np.arange(0, 4), axis=1)
+    arr2 = np.expand_dims(np.arange(4, 8), axis=1)
+
+    ds = ray.data.from_numpy_refs([ray.put(arr1), ray.put(arr2)])
+    values = np.stack(ds.take(8))
+    np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
+    # Check that conversion task is included in stats.
+    assert "FromNumpyRefs" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
+    _check_usage_record(["FromNumpyRefs"])
+
+    # Test chaining multiple operations
+    ds2 = ds.map_batches(lambda x: x)
+    values = np.stack(ds2.take(8))
+    np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
+    assert "MapBatches" in ds2.stats()
+    assert "FromNumpyRefs" in ds2.stats()
+    assert ds2._plan._logical_plan.dag.name == "MapBatches"
+    _check_usage_record(["FromNumpyRefs", "MapBatches"])
+
+    # Test from single NumPy ndarray.
+    ds = ray.data.from_numpy_refs(ray.put(arr1))
+    values = np.stack(ds.take(4))
+    np.testing.assert_array_equal(values, arr1)
+    # Check that conversion task is included in stats.
+    assert "FromNumpyRefs" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
+    _check_usage_record(["FromNumpyRefs"])
+
+
+def test_from_arrow_refs_operator(
+    ray_start_regular_shared,
+    enable_optimizer,
+):
+    import pyarrow as pa
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+
+    planner = Planner()
+    from_arrow_refs_op = FromArrowRefs(
+        [
+            ray.put(pa.Table.from_pandas(df1)),
+            ray.put(pa.Table.from_pandas(df2)),
+        ]
+    )
+    plan = LogicalPlan(from_arrow_refs_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_arrow_refs_op.name == "FromArrowRefs"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
+    import pyarrow as pa
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_arrow_refs(
+        [ray.put(pa.Table.from_pandas(df1)), ray.put(pa.Table.from_pandas(df2))]
+    )
+
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+    # Check that metadata fetch is included in stats.
+    assert "FromArrowRefs" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
+    _check_usage_record(["FromArrowRefs"])
+
+    # test from single pyarrow table ref
+    ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert values == rows
+    # Check that conversion task is included in stats.
+    assert "FromArrowRefs" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
+    _check_usage_record(["FromArrowRefs"])
+
+
+def test_from_huggingface_operator(
+    ray_start_regular_shared,
+    enable_optimizer,
+):
+    import datasets
+
+    data = datasets.load_dataset("tweet_eval", "emotion")
+    assert isinstance(data, datasets.DatasetDict)
+
+    planner = Planner()
+    from_huggingface_op = FromHuggingFace(data)
+    plan = LogicalPlan(from_huggingface_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_huggingface_op.name == "FromHuggingFace"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
+    import datasets
+
+    data = datasets.load_dataset("tweet_eval", "emotion")
+    assert isinstance(data, datasets.DatasetDict)
+
+    ray_datasets = ray.data.from_huggingface(data)
+    assert isinstance(ray_datasets, dict)
+    assert ray.get(ray_datasets["train"].to_arrow_refs())[0].equals(
+        data["train"].data.table
+    )
+    for ds in ray_datasets.values():
+        assert isinstance(ds, ray.data.Dataset)
+        ds.fully_executed()
+        # `ds.take_all()` triggers execution with new backend, which is
+        # needed for checking operator usage below.
+        assert len(ds.take_all()) > 0
+        assert "FromArrowRefs" in ds.stats()
+        assert ds._plan._logical_plan.dag.name == "FromHuggingFace"
+
+    ray_dataset = ray.data.from_huggingface(data["train"]).fully_executed()
+    assert isinstance(ray_dataset, ray.data.Dataset)
+    assert ray.get(ray_dataset.to_arrow_refs())[0].equals(data["train"].data.table)
+    assert len(ray_dataset.take_all()) > 0
+
+    # Check that metadata fetch is included in stats.
+    assert "FromArrowRefs" in ray_dataset.stats()
+    # Underlying implementation uses `FromArrowRefs` operator
+    assert ray_dataset._plan._logical_plan.dag.name == "FromHuggingFace"
+    _check_usage_record(["FromHuggingFace"])
+
+
+def test_from_tf_operator(ray_start_regular_shared, enable_optimizer):
+    import tensorflow_datasets as tfds
+
+    tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
+    tf_dataset = tf_dataset.take(8)  # Use subset to make test run faster.
+
+    planner = Planner()
+    from_tf_op = FromTF(tf_dataset)
+    plan = LogicalPlan(from_tf_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_tf_op.name == "FromTF"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_tf_e2e(ray_start_regular_shared, enable_optimizer):
+    import tensorflow as tf
+    import tensorflow_datasets as tfds
+
+    tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
+    tf_dataset = tf_dataset.take(8)  # Use subset to make test run faster.
+
+    ray_dataset = ray.data.from_tf(tf_dataset)
+
+    actual_data = ray_dataset.take_all()
+    expected_data = list(tf_dataset)
+    assert len(actual_data) == len(expected_data)
+    for (expected_features, expected_label), (actual_features, actual_label) in zip(
+        expected_data, actual_data
+    ):
+        tf.debugging.assert_equal(expected_features, actual_features)
+        tf.debugging.assert_equal(expected_label, actual_label)
+
+    # Check that metadata fetch is included in stats.
+    assert "FromItems" in ray_dataset.stats()
+    # Underlying implementation uses `FromItems` operator
+    assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
+    _check_usage_record(["FromItems"])
+
+
+def test_from_torch_operator(ray_start_regular_shared, enable_optimizer, tmp_path):
+    import torchvision
+
+    torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
+
+    planner = Planner()
+    from_torch_op = FromTorch(torch_dataset)
+    plan = LogicalPlan(from_torch_op)
+    physical_op = planner.plan(plan).dag
+
+    assert from_torch_op.name == "FromTorch"
+    assert isinstance(physical_op, InputDataBuffer)
+    assert len(physical_op.input_dependencies) == 0
+
+
+def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
+    import torchvision
+
+    torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
+
+    ray_dataset = ray.data.from_torch(torch_dataset)
+
+    expected_data = list(torch_dataset)
+    actual_data = list(ray_dataset.take_all())
+    assert actual_data == expected_data
+
+    # Check that metadata fetch is included in stats.
+    assert "FromItems" in ray_dataset.stats()
+    # Underlying implementation uses `FromItems` operator
+    assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
+    _check_usage_record(["FromItems"])
+
+
+def test_execute_to_legacy_block_list(
+    ray_start_regular_shared,
+    enable_optimizer,
+    enable_streaming_executor,
+):
+    ds = ray.data.range(10)
+    # Stats not initialized until `ds.iter_rows()` is called
+    assert ds._plan._snapshot_stats is None
+
+    for i, row in enumerate(ds.iter_rows()):
+        assert row == i
+
+    assert ds._plan._snapshot_stats is not None
+    assert "DoRead" in ds._plan._snapshot_stats.stages
+    assert ds._plan._snapshot_stats.time_total_s > 0
+
+
+def test_execute_to_legacy_block_iterator(
+    ray_start_regular_shared,
+    enable_optimizer,
+    enable_streaming_executor,
+):
+    ds = ray.data.range(10)
+    assert ds._plan._snapshot_stats is None
+    for batch in ds.iter_batches():
+        assert batch is not None
+
+    assert ds._plan._snapshot_stats is not None
+    assert "DoRead" in ds._plan._snapshot_stats.stages
+    assert ds._plan._snapshot_stats.time_total_s > 0
+
+
+def test_streaming_executor(
+    ray_start_regular_shared,
+    enable_optimizer,
+    enable_streaming_executor,
+):
+    ds = ray.data.range(100, parallelism=4)
+    ds = ds.map_batches(lambda x: x)
+    ds = ds.filter(lambda x: x > 0)
     ds = ds.random_shuffle()
-    ds1 = ds.sort("one")
-    ds2 = ds.sort("one", descending=True)
-    r1 = ds1.select_columns(["one"]).take_all()
-    r2 = ds2.select_columns(["one"]).take_all()
-    assert [d["one"] for d in r1] == list(range(100))
-    assert [d["one"] for d in r2] == list(reversed(range(100)))
+    ds = ds.map_batches(lambda x: x)
+
+    result = []
+    for batch in ds.iter_batches(batch_size=3):
+        assert len(batch) == 3, batch
+        result.extend(batch)
+    assert sorted(result) == list(range(1, 100)), result
+    _check_usage_record(["ReadRange", "MapBatches", "Filter", "RandomShuffle"])
 
 
 if __name__ == "__main__":

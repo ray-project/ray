@@ -129,15 +129,15 @@ class TestDistributions(unittest.TestCase):
         expected = (probs * (probs / probs2).log()).sum(dim=-1)
         check(dist_with_probs.kl(dist2), expected)
 
-        # check rsample
-        self.assertRaises(NotImplementedError, dist_with_logits.rsample)
-
         # test temperature
         dist_with_logits = TorchCategorical(logits=logits, temperature=1e-20)
         samples = dist_with_logits.sample()
+        rsamples = dist_with_logits.rsample()
         # expected is armax of logits
         expected = logits.argmax(dim=-1)
         check(samples, expected)
+        # rsample should be the same as sample, but one-hot encoded
+        check(samples, torch.argmax(rsamples, dim=-1))
 
     def test_diag_gaussian(self):
         batch_size = 128

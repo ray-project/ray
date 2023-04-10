@@ -109,7 +109,7 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
-        super().__init__(pyarrow.Table)
+        super().__init__((pyarrow.Table, bytes))
 
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
@@ -125,6 +125,10 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
     @staticmethod
     def _concat_tables(tables: List[Block]) -> Block:
         return transform_pyarrow.concat(tables)
+
+    @staticmethod
+    def _concat_would_copy() -> bool:
+        return False
 
     @staticmethod
     def _empty_table() -> "pyarrow.Table":

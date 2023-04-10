@@ -12,7 +12,7 @@ similar.
 Object refs can be created in two ways.
 
   1. They are returned by remote function calls.
-  2. They are returned by ``put`` (:ref:`docstring <ray-put-ref>`).
+  2. They are returned by :func:`ray.put() <ray.put>`.
 
 .. tabbed:: Python
 
@@ -48,7 +48,7 @@ Object refs can be created in two ways.
 Fetching Object Data
 --------------------
 
-You can use the ``get`` method (:ref:`docstring <ray-get-ref>`) to fetch the result of a remote object from an object ref.
+You can use the :func:`ray.get() <ray.get>` method to fetch the result of a remote object from an object ref.
 If the current node's object store does not contain the object, the object is downloaded.
 
 .. tabbed:: Python

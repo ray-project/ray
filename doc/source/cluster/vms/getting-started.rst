@@ -156,15 +156,9 @@ A minimal sample cluster configuration file looks as follows:
 
 .. tabbed:: AWS
 
-    .. code-block:: yaml
+    .. literalinclude:: ../../../../python/ray/autoscaler/aws/example-minimal.yaml
+        :language: yaml
 
-        # An unique identifier for the head node and workers of this cluster.
-        cluster_name: minimal
-
-        # Cloud-provider specific configuration.
-        provider:
-            type: aws
-            region: us-west-2
 
 .. tabbed:: Azure
 

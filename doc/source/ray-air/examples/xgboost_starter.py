@@ -31,6 +31,8 @@ trainer = XGBoostTrainer(
         num_workers=2,
         # Whether to use GPU acceleration.
         use_gpu=False,
+        # Make sure to leave some CPUs free for Ray Data operations.
+        _max_cpu_fraction_per_node=0.9,
     ),
     label_column="target",
     num_boost_round=20,

@@ -42,25 +42,23 @@ class Partitioning:
 
     Path-based partition formats embed all partition keys and values directly in
     their dataset file paths.
-
-    Attributes:
-        style: The partition style - may be either HIVE or DIRECTORY.
-        base_dir: "/"-delimited base directory that all partitioned paths should
-            exist under (exclusive). File paths either outside of, or at the first
-            level of, this directory will be considered unpartitioned. Specify
-            `None` or an empty string to search for partitions in all file path
-            directories.
-        field_names: The partition key field names (i.e. column names for tabular
-            datasets). When non-empty, the order and length of partition key
-            field names must match the order and length of partition values.
-            Required when parsing DIRECTORY partitioned paths or generating
-            HIVE partitioned paths.
-        filesystem: Filesystem that will be used for partition path file I/O.
     """
 
+    #: The partition style - may be either HIVE or DIRECTORY.
     style: PartitionStyle
+    #: "/"-delimited base directory that all partitioned paths should
+    #: exist under (exclusive). File paths either outside of, or at the first
+    #: level of, this directory will be considered unpartitioned. Specify
+    #: `None` or an empty string to search for partitions in all file path
+    #: directories.
     base_dir: Optional[str] = None
+    #: The partition key field names (i.e. column names for tabular
+    #: datasets). When non-empty, the order and length of partition key
+    #: field names must match the order and length of partition values.
+    #: Required when parsing DIRECTORY partitioned paths or generating
+    #: HIVE partitioned paths.
     field_names: Optional[List[str]] = None
+    #: Filesystem that will be used for partition path file I/O.
     filesystem: Optional["pyarrow.fs.FileSystem"] = None
 
     def __post_init__(self):

@@ -4,7 +4,7 @@
 
 (rayserve)=
 
-# Serve: Scalable and Programmable Serving
+# Ray Serve: Scalable and Programmable Serving
 
 :::{tip}
 [Get in touch with us](https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU) if you're using or considering using Ray Serve.
@@ -61,11 +61,11 @@ In this example we will use Serve's [FastAPI](https://fastapi.tiangolo.com/) int
 ```
 :::
 
-:::{tabbed} Hugging Face model
+:::{tabbed} Hugging Face Transformers model
 
 To run this example, install the following: ``pip install transformers``
 
-In this example we will serve a pre-trained [Hugging Face transformers](https://huggingface.co/docs/transformers/index) model using Ray Serve.
+In this example we will serve a pre-trained [Hugging Face Transformers](https://huggingface.co/docs/transformers/index) model using Ray Serve.
 The model we'll use is a sentiment analysis model: it will take a text string as input and return if the text was "POSITIVE" or "NEGATIVE."
 
 ```{literalinclude} doc_code/transformers_example.py

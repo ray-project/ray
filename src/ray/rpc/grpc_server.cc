@@ -40,6 +40,7 @@ GrpcServer::GrpcServer(std::string name,
       is_closed_(true),
       num_threads_(num_threads),
       keepalive_time_ms_(keepalive_time_ms) {
+  RAY_CHECK(num_threads_ > 0) << "Num of threads in gRPC must be greater than 0";
   cqs_.resize(num_threads_);
   // Enable built in health check implemented by gRPC:
   //   https://github.com/grpc/grpc/blob/master/doc/health-checking.md
@@ -148,7 +149,7 @@ void GrpcServer::Run() {
       if (entry->GetMaxActiveRPCs() != -1) {
         buffer_size = entry->GetMaxActiveRPCs();
       }
-      for (int j = 0; j < buffer_size; j++) {
+      for (int j = 0; j < std::max(1, buffer_size / num_threads_); j++) {
         entry->CreateCall();
       }
     }
