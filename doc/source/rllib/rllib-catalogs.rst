@@ -42,6 +42,7 @@ Prerequisites for this user guide is a rough understanding of `RLModules <rllib-
 This user guide covers the following topics:
 
 - Basic usage
+- What are Catalogs
 - Inject your custom models into RLModules
 - Inject your custom action distributions into RLModules
 - Extend RLlib’s selection of Models and Distributions with your own
@@ -157,9 +158,10 @@ you can override methods by inheriting from :py:class:`~ray.rllib.algorithms.ppo
 or write a :py:class:`~ray.rllib.core.models.catalog.Catalog` that implements them from scratch.
 The following shows such modifications.
 
-This example shows two things:
-    - How to write a custom :py:class:`~ray.rllib.models.distributions.Distribution`
-    - How to inject a custom action distribution into a Catalog
+The follwing example shows two things:
+
+- How to write a custom :py:class:`~ray.rllib.models.distributions.Distribution`
+- How to inject a custom action distribution into a :py:class:`~ray.rllib.core.models.catalog.Catalog`
 
 .. literalinclude:: ../../../rllib/examples/catalog/custom_action_distribution.py
    :language: python
