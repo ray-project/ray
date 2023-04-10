@@ -704,6 +704,8 @@ def test_usage_stats_enabled_endpoint(
 )
 @pytest.mark.parametrize("ray_client", [True, False])
 def test_library_usages(call_ray_start, reset_usage_stats, ray_client):
+    from ray.job_submission import JobSubmissionClient
+
     address = call_ray_start
     ray.init(address=address)
 
@@ -748,9 +750,7 @@ with joblib.parallel_backend("ray"):
     run_string_as_driver(driver)
 
     if sys.platform != "win32":
-        job_submission_client = ray.job_submission.JobSubmissionClient(
-            "http://127.0.0.1:8265"
-        )
+        job_submission_client = JobSubmissionClient("http://127.0.0.1:8265")
         job_id = job_submission_client.submit_job(entrypoint="ls")
         wait_for_condition(
             lambda: job_submission_client.get_job_status(job_id)
