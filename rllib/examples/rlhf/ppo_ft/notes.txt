@@ -8,6 +8,8 @@
 
 - In order to share the module between learner and Sampler I assumed the learner is running in local mode, but we need to generalize this requirement. 
 
+- I created a simple Buffer that collects all experiences and can convert them to sample batches, with the correct padding and everything. 
+
 04/07
 
 - I realized the RLlib API does not allow us to initialize our models easily. This should be super intuitive to do. This feature is absolutely necessary for any fine-tuning or RL on top of a pre-trained network. 
