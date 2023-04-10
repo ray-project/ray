@@ -4124,17 +4124,6 @@ class Datastream(Generic[T]):
         "needed and this API will be removed in a future release"
     )
     def lazy(self) -> "Datastream[T]":
-        """Enable lazy evaluation.
-
-        Datastream is lazy by default, so this is only useful for datastreams created
-        from :func:`ray.data.from_items() <ray.data.read_api.from_items>`, which is
-        eager.
-
-        The returned datastream is a lazy datastream, where all subsequent operations
-        on the stream won't be executed until the datastream is consumed
-        (e.g. ``.take()``, ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.)
-        or execution is manually triggered via ``.materialize()``.
-        """
         ds = Datastream(
             self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
         )
@@ -4338,12 +4327,6 @@ class Datastream(Generic[T]):
     )
     @Deprecated(message="`dataset_format` is deprecated for streaming execution.")
     def dataset_format(self) -> BlockFormat:
-        """The format of the datastream's underlying data blocks. Possible values
-        are: "arrow", "pandas" and "simple".
-
-        This may block; if the schema is unknown, this will synchronously fetch
-        the schema for the first block.
-        """
         context = DatasetContext.get_current()
         if context.use_streaming_executor:
             raise DeprecationWarning(
