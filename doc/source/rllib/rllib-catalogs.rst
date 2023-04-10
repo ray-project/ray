@@ -45,6 +45,7 @@ This user guide covers the following topics:
 - What are Catalogs
 - Inject your custom models into RLModules
 - Inject your custom action distributions into RLModules
+
 .. - Extend RLlib’s selection of Models and Distributions with your own
 .. - Write a Catalog from scratch
 
