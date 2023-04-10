@@ -282,7 +282,7 @@ class AnyscaleJobManager:
             "event_AUTOSCALER.log",
             "event_JOBS.log",
         ]
-        # Logs that can indicate there are exception thrown
+        # Logs that can indicate there are crashes
         error_log_patterns = [
             "ERROR",
             "Traceback (most recent call last)",
