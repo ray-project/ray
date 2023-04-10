@@ -131,7 +131,7 @@ The following diagram shows a concrete case in more detail.
 .. dropdown:: **Example of catalog in a PPORLModule**
     :animate: fade-in-slide-down
 
-    The :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog` is fed an `observation space``, ``action space``,
+    The :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog` is fed an ``observation space``, ``action space``,
     a ``model config dict`` and the ``view requirements`` of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
     The model config dicts and the view requirements are only of interest in special cases, such as
     recurrent networks or attention networks. A PPORLModule has four components that are created by the
