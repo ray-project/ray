@@ -1,6 +1,7 @@
 import io
 import os
 import time
+import subprocess
 import tempfile
 from collections import deque
 from datetime import timedelta
@@ -266,18 +267,19 @@ class AnyscaleJobManager:
 
     def _get_ray_error_logs(self) -> Optional[str]:
         """
-        Obtain any ray logs that contain keywords that indicate a stack trace, such as
+        Obtain any ray logs that contain keywords that indicate a crash, such as
         ERROR or Traceback
         """
-        tmpdir = tempfile.TemporaryDirectory()
-        LogsController().download_logs(
-            filter=LogFilter(
-                cluster_id=self.cluster_manager.cluster_id,
-                glob=None,
-                node_type=NodeType.HEAD_NODE,
-            ),
-            download_dir=tmpdir,
-        )
+        tmpdir = tempfile.mktemp()
+        try:
+            subprocess.check_output(
+                f'anyscale logs cluster --id {self.cluster_manager.cluster_id} '
+                f'--head-only --download --download-dir {tmpdir}',
+                shell=True,
+            )
+        except Exception as e:
+            logger.log(f'Failed to download logs from anyscale {e}')
+            return None
         # Ignored some ray files that do not crash ray despite having exceptions
         ignored_ray_files = [
             'monitor.log',
