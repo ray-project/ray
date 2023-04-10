@@ -150,22 +150,27 @@ def test_experiment_restore(tmp_path, runner_type):
             return_code = run.poll()
             break
 
-        timeout = min(
+        timeout_s = min(
             np.random.uniform(4 * time_per_iter_s, 8 * time_per_iter_s),
             passing_runtime - total_runtime,
         )
+        polling_interval_s = 0.1
 
         print_message(
             "Training has started...\n"
-            f"Interrupting after {timeout:.2f} seconds\n"
+            f"Interrupting after {timeout_s:.2f} seconds\n"
             f"Currently at {total_runtime:.2f}/{passing_runtime} seconds"
         )
 
         # Sleep for a random amount of time, then stop the run.
-        time.sleep(timeout)
-        total_runtime += timeout
+        start_time = time.monotonic()
+        stopping_time = start_time + timeout_s
+        while time.monotonic() < stopping_time:
+            time.sleep(polling_interval_s)
+        total_runtime += time.monotonic() - start_time
 
-        if run.poll() is None:
+        return_code = run.poll()
+        if return_code is None:
             # Send "SIGINT" to stop the run
             print_message(f"Sending SIGUSR1 to run #{run_iter} w/ PID = {run.pid}")
             run.send_signal(signal.SIGUSR1)
@@ -174,8 +179,6 @@ def test_experiment_restore(tmp_path, runner_type):
             kill_process_if_needed(run)
         else:
             print_message("Run has already terminated!")
-            return_code = run.poll()
-            assert return_code
             break
 
         # Check up on the results.
@@ -191,7 +194,7 @@ def test_experiment_restore(tmp_path, runner_type):
 
     print_message(
         f"Total number of restorations = {run_iter}\n"
-        f"Total runtime = {total_runtime}\n"
+        f"Total runtime = {total_runtime:.2f}\n"
         f"Return code = {return_code}"
     )
 
