@@ -195,6 +195,14 @@ TensorFlow
 
    from_tf
 
+WebDataset
+----------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_webdataset
+
 .. _data_source_api:
 
 Datasource API
@@ -226,6 +234,7 @@ Built-in Datasources
    datasource.RangeDatasource
    datasource.TFRecordDatasource
    datasource.MongoDatasource
+   datasource.WebDatasetDatasource
 
 Partitioning API
 ----------------
