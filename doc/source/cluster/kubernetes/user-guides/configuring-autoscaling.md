@@ -40,15 +40,14 @@ See also the operator architecture diagram in the [KubeRay documentation](https:
 
 ## Quickstart
 
+First, follow the [KubeRay quickstart guide](kuberay-quickstart) to:
+* Install `kubectl` and `Helm`
+* Prepare a Kubernetes cluster
+* Deploy a KubeRay operator
+
+Next, create an autoscaling RayCluster custom resource.
 ```bash
-# Create a Kind Kubernetes cluster
-kind create cluster --image=kindest/node:v1.23.0
-
-# Install both CRDs and KubeRay operator v0.5.0.
-helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm install kuberay-operator kuberay/kuberay-operator --version 0.5.0
-
-# Create an autoscaling Ray cluster.
+# Create an autoscaling RayCluster custom resource.
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/release-0.5/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 ```
 
