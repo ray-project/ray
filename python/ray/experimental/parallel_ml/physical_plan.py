@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, List, Tuple
 
 import ray
+from ray.experimental.parallel_ml.communicator import TorchBasedCommunicator
 from ray.experimental.parallel_ml.engine import Config
 from ray.experimental.parallel_ml.schedule import (
     ExecuteSchedule,
@@ -49,6 +50,10 @@ def _get_device_name():
     return f"cuda:{gpu_ids[0]}"
 
 
+def _get_communicator(world_size: int, rank: int):
+    return TorchBasedCommunicator(world_size, rank)
+
+
 class SimplePhysicalPlanner(PhysicalPlanner):
     """Simple physical planner that simply deploys one replica per stage per GPU."""
 
@@ -76,6 +81,7 @@ class SimplePhysicalPlanner(PhysicalPlanner):
                 partition.input_tensor_shape,
                 partition.input_tensor_dtype,
                 _get_device_name,
+                _get_communicator,
                 partition.module_loader,
                 lambda: None,
             )

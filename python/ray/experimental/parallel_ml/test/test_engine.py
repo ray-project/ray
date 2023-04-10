@@ -4,7 +4,12 @@ import pytest
 import ray
 import torch
 from ray.experimental.parallel_ml.communicator.naive import NaiveCommunicator
-from ray.experimental.parallel_ml.communicator.torch import TorchBasedCommunicator
+from ray.experimental.parallel_ml.engine import Config, ExecutionEngine
+from ray.experimental.parallel_ml.schedule import (
+    ExecuteSchedule,
+    InputSchedule,
+    OutputSchedule,
+)
 from ray.tests.conftest import *  # noqa
 
 
@@ -32,19 +37,10 @@ class Actor:
         return tensor
 
 
-def test_naive_send_receive(ray_start_4_cpus_2_gpus):
-    actor0 = Actor.remote(2, 0, NaiveCommunicator)
-    actor1 = Actor.remote(2, 1, NaiveCommunicator)
-    tensor = torch.tensor([1, 2, 3])
-    actor0.send.remote(tensor, 1)
-    received = ray.get(actor1.receive.remote(0, tensor.shape, tensor.dtype))
-    assert tensor.eq(received).all()
-
-
-@pytest.mark.skipif(torch.cuda.device_count() < 2, reason="requires at least 2 GPUs")
-def test_torch_send_receive(ray_start_4_cpus_2_gpus):
-    actor0 = Actor.options(num_gpus=1).remote(2, 0, TorchBasedCommunicator)
-    actor1 = Actor.options(num_gpus=1).remote(2, 1, TorchBasedCommunicator)
+def test_engine(ray_start_4_cpus_2_gpus):
+    input_actor = Actor.remote(3, 0, NaiveCommunicator)
+    engine_actor = ray.remote(ExecutionEngine).remote(3, 1, NaiveCommunicator)
+    oupput_actor = Actor.remote(3, 0, NaiveCommunicator)
     tensor = torch.tensor([1, 2, 3])
     actor0.send.remote(tensor, 1)
     received = ray.get(actor1.receive.remote(0, tensor.shape, tensor.dtype))

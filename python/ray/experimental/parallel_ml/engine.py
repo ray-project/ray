@@ -5,7 +5,7 @@ from typing import Any, Callable
 import torch
 from ray.experimental.parallel_ml.communicator.communicator import (
     FULLFILLED_FUTURE,
-    TorchBasedCommunicator,
+    Communicator,
 )
 from ray.experimental.parallel_ml.schedule import (
     Forward,
@@ -28,6 +28,7 @@ class Config:
         input_tensor_shape: Any,
         input_tensor_dtype: torch.type,
         device_name_builder: Callable[[], str],
+        communicator_builder: Callable[[], Communicator],
         model_builder: Callable[[], torch.nn.Module],
         data_loader_builder: Callable[[], torch.utils.data.DataLoader],
     ) -> None:
@@ -57,9 +58,9 @@ class ExecutionEngine:
     def _initialize_config(self, config: Config):
         self.input_tensor_shape = config.input_tensor_shape
         self.input_tensor_dtype = config.input_tensor_dtype
-        self.cuda = torch.device(config.device_name_builder())
-        self.dist = TorchBasedCommunicator(config.world_size, config.rank)
-        self.model = config.model_builder().to(self.cuda).eval()
+        self.device = torch.device(config.device_name_builder())
+        self.dist = config.communicator_builder(config.world_size, config.rank)
+        self.model = config.model_builder().to(self.device).eval()
         self.data_loader = config.data_loader_builder()
 
     def start(self):
@@ -100,7 +101,7 @@ class ExecutionEngine:
                 tensor = torch.new_empty(
                     size=self.input_tensor_shape,
                     dtype=self.input_tensor_dtype,
-                    device=self.cuda,
+                    device=self.device,
                 )
                 future = self.dist.recv(tensor, instruction.src_rank, async_op=True)
                 self.input_queue.append((tensor, future))
@@ -114,7 +115,7 @@ class ExecutionEngine:
                 tensor = torch.ones(()).new_empty(
                     size=self.input_tensor_shape,
                     dtype=self.input_tensor_dtype,
-                    device=self.cuda,
+                    device=self.device,
                 )
                 self.data_loader.next_batch(tensor)
                 self.input_queue.append((tensor, FULLFILLED_FUTURE))
