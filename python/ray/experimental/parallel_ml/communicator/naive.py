@@ -28,11 +28,12 @@ class CommunicationRegistry(object):
         return [queue.popleft()]
 
     def _get_queue(self, from_rank: int, to_rank: int) -> deque:
-        return self._sending_queue.get((from_rank, to_rank))
+        return self._sending_queue[(from_rank, to_rank)]
 
 
 class NaiveCommunicator(Communicator):
-    """A naive communicator that uses ray.put and ray.get to send and receive tensors."""
+    """A naive communicator that uses ray.put and ray.get to
+    send and receive tensors."""
 
     def __init__(self, world_size: int, rank: int, group_name: str = "default_group"):
         self._communication_registry = CommunicationRegistry.options(
@@ -52,7 +53,7 @@ class NaiveCommunicator(Communicator):
         return FULLFILLED_FUTURE
 
     def recv(self, tensor: torch.Tensor, src_rank: int, async_op: bool = False):
-        receive_ref = self._communication_registry.recv.remote(src_rank, self._rank)
+        receive_ref = self._communication_registry.recv.remote(src_rank, self.rank)
         # TODO: can we really do async_op?
         received_tensor = ray.get(receive_ref)
         tensor.copy_(received_tensor)

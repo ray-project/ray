@@ -24,12 +24,11 @@ class Actor:
         self._communicator.send(tensor, dest_rank, True)
 
     def receive(self, src_rank: int, shape: Any, dtype: torch.Tensor.dtype):
-        tensor = torch.new_empty(size=shape, dtype=dtype)
+        tensor = torch.ones(()).new_empty(size=shape, dtype=dtype)
         self._communicator.recv(tensor, src_rank, True)
         return tensor
 
 
-@ray_start_4_cpus_2_gpus
 def test_basic_send_receive(ray_start_4_cpus_2_gpus):
     actor0 = Actor.remote(2, 0, NaiveCommunicator)
     actor1 = Actor.remote(2, 1, NaiveCommunicator)
