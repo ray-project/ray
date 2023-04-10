@@ -26,6 +26,7 @@ class TFModel:
         from tensorflow import keras  # this is needed for tf<2.9
         from keras import layers
 
+        # Use a standard 3 layer feed-forward neural network.
         self.model = keras.Sequential(
             [
                 keras.Input(shape=(num_features,)),
