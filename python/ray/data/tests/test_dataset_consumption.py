@@ -484,6 +484,9 @@ def test_take_batch(ray_start_regular_shared):
     assert isinstance(ds.take_batch(3, batch_format="pandas"), pd.DataFrame)
     assert isinstance(ds.take_batch(3, batch_format="numpy"), np.ndarray)
 
+    with pytest.raises(ValueError):
+        ray.data.range(0).take_batch()
+
 
 def test_take_all(ray_start_regular_shared):
     assert ray.data.range(5).take_all() == [0, 1, 2, 3, 4]

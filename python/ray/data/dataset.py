@@ -2251,13 +2251,19 @@ class Datastream(Generic[T]):
                 formatting. The default is "default".
 
         Returns:
-            A batch of up to ``limit`` records from the datastream.
+            A batch of up to ``batch_size`` records from the datastream.
+
+        Raises:
+            ValueError if the datastream is empty.
         """
-        res = next(
-            self.iter_batches(
-                batch_size=batch_size, prefetch_batches=0, batch_format=batch_format
+        try:
+            res = next(
+                self.iter_batches(
+                    batch_size=batch_size, prefetch_batches=0, batch_format=batch_format
+                )
             )
-        )
+        except StopIteration:
+            raise ValueError("The datastream is empty.")
         self._synchronize_progress_bar()
         return res
 
