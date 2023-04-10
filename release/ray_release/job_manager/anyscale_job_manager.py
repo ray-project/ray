@@ -37,7 +37,6 @@ job_status_to_return_code = {
     HaJobStates.TERMINATED: -3,
 }
 
-
 class AnyscaleJobManager:
     def __init__(self, cluster_manager: ClusterManager):
         self.start_time = None
