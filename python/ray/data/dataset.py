@@ -4319,12 +4319,6 @@ class Datastream(Generic[T]):
                 return np.ndarray
             return pd.DataFrame
 
-    @ConsumptionAPI(
-        if_more_than_read=True,
-        datasource_metadata="schema",
-        pattern="for the first block.",
-        insert_after=True,
-    )
     @Deprecated(message="`dataset_format` is deprecated for streaming execution.")
     def dataset_format(self) -> BlockFormat:
         context = DatasetContext.get_current()
