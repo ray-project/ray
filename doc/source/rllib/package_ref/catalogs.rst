@@ -7,7 +7,7 @@
 Catalog API
 ===========
 
-Basic Usage
+Basic usage
 -----------
 
 The follwing basic API can be used to get a default ``encoder`` or ``action distribution``
