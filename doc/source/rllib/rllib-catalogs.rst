@@ -1,20 +1,26 @@
-.. _rllib-catalogs-user-guide:
+.. include:: /_includes/rllib/announcement.rst
+
+.. include:: /_includes/rllib/we_are_hiring.rst
 
 .. include:: /_includes/rllib/rlmodules_rollout.rst
 
 .. note:: Interacting with Catalogs mainly covers advanced use cases.
 
-Catalogs
-========
+Catalog (Alpha)
+===============
 
-Catalogs are where RL Modules primarily get their models and action distributions from.
-Each RLModule has its own default Catalog - PPORLModule has the PPOCatalog.
+Catalogs are where `RLModules <rllib-rlmodule.html>`__ primarily get their models and action distributions from.
+Each :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` has its own default
+:py:class:`~ray.rllib.core.models.catalog.Catalog`. For example,
+:py:class:`~ray.rllib.algorithms.ppo.ppo_torch_rl_module.PPOTorchRLModule` has the
+:py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`.
 You can override Catalogs’ methods to alter the behavior of existing RLModules.
 This makes Catalogs a means of configuration for RLModules.
-You interact with Catalogs when making deeper customization to what models and distributions RLlib creates by default.
+You interact with Catalogs when making deeper customization to what :py:class:`~ray.rllib.core.models.Model` and :py:class:`~ray.rllib.models.distributions.Distribution` RLlib creates by default.
 
 .. note::
-    If you simply want to modify RLlib’s models by configuring its default models, have a look at the model config dict:
+    If you simply want to modify a :py:class:`~ray.rllib.core.models.Model` by changing its default values,
+    have a look at the model config dict:
 
     .. dropdown:: **MODEL_DEFAULTS dict**
         :animate: fade-in-slide-down
@@ -28,15 +34,16 @@ You interact with Catalogs when making deeper customization to what models and d
             :start-after: __sphinx_doc_begin__
             :end-before: __sphinx_doc_end__
 
-While Catalogs have a base class, you mostly interact with Algorithm-specific Catalogs.
+While Catalogs have a base class :py:class:`~ray.rllib.core.models.catalog.Catalog`, you mostly interact with
+Algorithm-specific Catalogs.
 Therefore, this doc also includes examples around PPO from which you can extrapolate to other algorithms.
-Prerequisites for this user guide is a rough understanding of RLModules.
+Prerequisites for this user guide is a rough understanding of `RLModules <rllib-rlmodule.html>`__.
 After reading this user guide you will be able to…
 
 - Instantiate and interact with a Catalog
 - Inject your custom models into RLModules
 - Inject your custom action distributions into RLModules
-- Extend RLlib’s selection of Models and distributions with your own
+- Extend RLlib’s selection of Models and Distributions with your own
 - Write a Catalog from scratch
 
 Catalog and AlgorithmConfig
@@ -44,14 +51,17 @@ Catalog and AlgorithmConfig
 
 Since Catalogs effectively control what models and distributions RLlib uses under the hood,
 they are also part of RLlib’s configurations. As the primary entry point for configuring RLlib,
-AlgorithmConfig is the place where you can configure the Catalogs of the RLModules that are created.
-You should set the catalog by going through the SingleAgentRLModuleSpec or MultiAgentRLModuleSpec of an AlgorithmConfig.
-That is, in heterogeneous multi-agent cases, you need to modify the MultiAgentRLModuleSpec.
+:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` is the place where you can configure the
+Catalogs of the RLModules that are created.
+You set the catalog by going through the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec`
+or :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` of an AlgorithmConfig.
+For example, in heterogeneous multi-agent cases, you modify the MultiAgentRLModuleSpec.
 
 .. image:: images/catalog/catalog_rlmspecs_diagram.svg
     :align: center
 
-The following example shows how to configure the Catalogs of the RLModules that are created by PPO.
+The following example shows how to configure the Catalog of an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
+created by PPO.
 
 .. literalinclude:: ../../../rllib/examples/catalog/basics/catalogs_in_algo_configs.py
     :language: python
@@ -59,9 +69,9 @@ The following example shows how to configure the Catalogs of the RLModules that 
     :end-before: __sphinx_doc_end__
 
 Basic Usage
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~
 
-The following three examples illustrate three basic usage patterns of RLLib’s Catalogs.
+The following three examples illustrate three basic usage patterns of Catalogs.
 The following example showcases the general API for interacting with Catalogs.
 
 .. literalinclude:: ../../../rllib/examples/catalog/basics/basic_interaction.py
@@ -69,7 +79,8 @@ The following example showcases the general API for interacting with Catalogs.
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-The following example showcases how to use the PPOCatalog to create models and an action distribution.
+The following example showcases how to use the :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`
+to create a models and an action distribution.
 This is more similar to what RLlib does internally.
 
 .. dropdown:: **Use catalog-generated models**
@@ -80,9 +91,11 @@ This is more similar to what RLlib does internally.
        :start-after: __sphinx_doc_begin__
        :end-before: __sphinx_doc_end__
 
-The following example showcases how to use the base Catalog to create an encoder and an action distribution.
+The following example showcases how to use the base :py:class:`~ray.rllib.core.models.catalog.Catalog`
+to create an encoder and an action distribution.
 Besides these, we create a head network that fits these two by hand to show how you can combine RLLib's
-ModelConfig API and Catalog. Extending Catalog to also build this head is how Catalog is meant to be
+:py:class:`~ray.rllib.core.models.base.ModelConfig` API and Catalog.
+Extending Catalog to also build this head is how :py:class:`~ray.rllib.core.models.catalog.Catalog` is meant to be
 extended, which we cover later in this guide.
 
 .. dropdown:: **Customize a policy head**
@@ -96,28 +109,30 @@ extended, which we cover later in this guide.
 What are Catalogs
 ~~~~~~~~~~~~~~~~~
 
-Catalogs have two primary roles: Choosing the right model and choosing the right action distribution.
+Catalogs have two primary roles: Choosing the right :py:class:`~ray.rllib.core.models.Model` and choosing the right :py:class:`~ray.rllib.models.distributions.Distribution`.
 By default, all catalogs implement decision trees that decide model architecture based on a combination of input configurations.
-These mainly include the observation and action spaces of the RLModule, the model config dict and the deep learning framework backend.
+These mainly include the observation and action spaces of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, the model config dict and the deep learning framework backend.
 
-The following diagram shows the break down of the information flow towards models and distributions within RLModules.
-RLModules create an instance of the Catalog class they receive as part of their constructor.
-They then create their internal models and action distributions with the help of this Catalog.
+The following diagram shows the break down of the information flow towards models and distributions within an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
+An :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` creates an instance of the Catalog class they receive as part of their constructor.
+It then create its internal models and distributions with the help of this Catalog.
 
 .. note::
-  You can also modify the models and distributions in RLModules directly by overriding their constructor!
+    You can also modify :py:class:`~ray.rllib.core.models.Model` or :py:class:`~ray.rllib.models.distributions.Distribution` in an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` directly by overriding the RLModule's constructor!
 
 .. image:: images/catalog/catalog_and_rlm_diagram.svg
     :align: center
 
 The following diagram shows a concrete case in more detail.
 
-.. dropdown:: **Example of catalog in PPORLModule**
+.. dropdown:: **Example of catalog in a PPORLModule**
     :animate: fade-in-slide-down
 
-    The PPOCatalog is fed an observation space, action space, a model config dict and the view requirements
-    of the RLModule. The model config dicts and the view requirements are only of interest in special cases, such as
-    recurrent networks or attention networks. The PPORLModule has four components that are created by the PPOCatalog:
+    The :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog` is fed an observation space, action space,
+    a model config dict and the view requirements of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
+    The model config dicts and the view requirements are only of interest in special cases, such as
+    recurrent networks or attention networks. A PPORLModule has four components that are created by the
+    :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`:
     Encoder, value function head, policy head and action distribution. You can find out more about this
     distinction between these components in our section on Models.
 
@@ -129,24 +144,33 @@ Inject your custom models into RLModules
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can make Catalog build custom models by overriding the Catalog’s methods used by RL Modules to build models.
-Have a look at these lines from the constructor of the PPORLModules to see how Catalogs are being used by RLModules:
+Have a look at these lines from the constructor of the :py:class:`~ray.rllib.algorithms.ppo.ppo_torch_rl_module.PPOTorchRLModule` to see how Catalogs are being used by an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`:
 
 .. literalinclude:: ../../../rllib/algorithms/ppo/ppo_base_rl_module.py
     :language: python
     :start-after: __sphinx_doc_begin__
     :end-before: __sphinx_doc_end__
 
-Consequently, in order to build custom models compatible with the PPORLModule,
-you can override these methods by inheriting from PPOCatalog or write a Catalog that implements them from scratch.
-The following examples show different such modifications.
+Consequently, in order to build a custom :py:class:`~ray.rllib.core.models.Model` compatible with a PPORLModule,
+you can override methods by inheriting from :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`
+or write a :py:class:`~ray.rllib.core.models.catalog.Catalog` that implements them from scratch.
+The following shows such modifications.
 
-.. tabbed:: Custom action distribution
 
-    This example shows two things:
-        - How to write a custom action distribution
-        - How to inject a custom action distribution into a Catalog
+This example shows two things:
+    - How to write a custom :py:class:`~ray.rllib.models.distributions.Distribution`
+    - How to inject a custom action distribution into a Catalog
 
-    .. literalinclude:: ../../../rllib/examples/catalog/custom_action_distribution.py
-       :language: python
-       :start-after: __sphinx_doc_begin__
-       :end-before: __sphinx_doc_end__
+.. literalinclude:: ../../../rllib/examples/catalog/custom_action_distribution.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+
+
+Notable TODOs
+-------------
+
+- Add cross references to Model and Distribution API docs
+- Add example that shows how to inject own model
+- Add more instrictions on how to write a catalog from scratch
