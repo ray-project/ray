@@ -39,7 +39,7 @@ class CustomTorchCategorical(Distribution):
         return int(space.n)
 
     @classmethod
-    # This method is used to create distributions from logits inside RLModules
+    # This method is used to create distributions from logits inside RLModules.
     # You can use this to inject arguments into the constructor of this distribution
     # that are not the logits themselves.
     def from_logits(cls, logits):
