@@ -17,6 +17,7 @@ class TorchDistributedWorker(ABC):
     This is modeled after RayTrainerWorker, which allows arbitrary functions
     to be executed on a remote DDP worker.
     """
+
     def execute(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes the input function and returns the output.
 
@@ -82,29 +83,27 @@ def _init_torch_distributed(
 
 
 def init_torch_dist_process_group(
-        workers: List[ActorHandle],
-        backend: str = "gloo",
-        init_method: str = "env",
-    ):
-    """Initialize a torch distributed process group.
-    """
+    workers: List[ActorHandle],
+    backend: str = "gloo",
+    init_method: str = "env",
+):
+    """Initialize a torch distributed process group."""
     if not dist.is_available():
         raise RuntimeError("Distributed torch is not available.")
 
     # Build a map from node_id to workers on that node.
-    node_ids = ray.get([
-        w.execute.remote(
-            lambda: ray.get_runtime_context().get_node_id()
-        ) for w in workers
-    ])
+    node_ids = ray.get(
+        [
+            w.execute.remote(lambda: ray.get_runtime_context().get_node_id())
+            for w in workers
+        ]
+    )
     node_to_workers = {}
     for i, node_id in enumerate(node_ids):
         node_to_workers.setdefault(node_id, []).append(i)
 
     # Assume the first worker is the master.
-    master_addr, master_port = ray.get(
-        workers[0].execute.remote(get_address_and_port)
-    )
+    master_addr, master_port = ray.get(workers[0].execute.remote(get_address_and_port))
 
     setup_futures = []
     world_size = len(workers)

@@ -6,7 +6,7 @@ import torch.distributed as dist
 import ray
 from ray.air.util.torch_dist import (
     init_torch_dist_process_group,
-    TorchDistributedWorker
+    TorchDistributedWorker,
 )
 
 
@@ -20,9 +20,7 @@ def test_torch_process_group_gloo():
 
     workers = [TestWorker.remote() for _ in range(5)]
 
-    init_torch_dist_process_group(
-        workers, backend="gloo", init_method="env"
-    )
+    init_torch_dist_process_group(workers, backend="gloo", init_method="env")
 
     reduced = ray.get([w.run.remote() for w in workers])
 
