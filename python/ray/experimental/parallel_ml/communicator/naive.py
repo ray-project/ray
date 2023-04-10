@@ -36,7 +36,13 @@ class NaiveCommunicator(Communicator):
     """A naive communicator that uses ray.put and ray.get to
     send and receive tensors."""
 
-    def __init__(self, world_size: int, rank: int, group_name: str = "default_group"):
+    def __init__(
+        self,
+        world_size: int,
+        rank: int,
+        group_name: str = "default_group",
+        master_addr: str = "localhost",
+    ):
         self._communication_registry = CommunicationRegistry.options(
             name=group_name, get_if_exists=True
         ).remote()
