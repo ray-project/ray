@@ -476,6 +476,7 @@ def test_take_batch(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=2)
     assert ds.take_batch(3) == [0, 1, 2]
     assert ds.take_batch(6) == [0, 1, 2, 3, 4, 5]
+    assert ds.take_batch(100) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     assert isinstance(ds.take_batch(3, batch_format="pandas"), pd.DataFrame)
     assert isinstance(ds.take_batch(3, batch_format="numpy"), np.ndarray)
 
