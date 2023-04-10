@@ -2,7 +2,7 @@ import time
 import re
 import json
 import boto3
-from typing import Optional, List
+from typing import List
 from botocore.config import Config
 
 from ray_release.reporter.reporter import Reporter
@@ -11,6 +11,7 @@ from ray_release.config import Test
 from ray_release.logger import logger
 
 CRASH_PATTERN_MAX_LENGTH = 4000
+
 
 class DBReporter(Reporter):
     def __init__(self):
@@ -23,23 +24,23 @@ class DBReporter(Reporter):
     def _compute_unique_pattern(self, stack_trace: List[str]) -> str:
         """
         Compute unique pattern from stack trace, by remove factors such as date, time,
-        temp directory, line numbers, etc. This help to aggregate similar logs into 
+        temp directory, line numbers, etc. This help to aggregate similar logs into
         same bug patterns
         """
         massaged_trace = []
         for line in stack_trace:
-            line = re.sub(r'\d', '', line.strip())
-            if line == 'Traceback (most recent call last):':
+            line = re.sub(r"\d", "", line.strip())
+            if line == "Traceback (most recent call last):":
                 continue
             file_line = re.search(r'File "(.*)", (.*)', line)
             if file_line:
                 line = f'{file_line.group(1).split("/")[-1]}{file_line.group(2)}'
             massaged_trace.append(line)
-        return ''.join(massaged_trace)
+        return "".join(massaged_trace)
 
     def _compute_stack_trace(self, logs: List[str]) -> List[str]:
         """
-        Extract stack trace pattern from the logs. Stack trace pattern often matches 
+        Extract stack trace pattern from the logs. Stack trace pattern often matches
         the following:
         ERROR ...
         Traceback (most recent call last):
@@ -53,13 +54,13 @@ class DBReporter(Reporter):
         while i < len(logs):
             stack = []
             trace = error_stacktrace
-            if 'ERROR' in logs[i]:
+            if "ERROR" in logs[i]:
                 stack.append(logs[i])
                 next = i + 1
-                if i+1 < len(logs) and logs[i+1].startswith('Traceback'):
-                    stack.append(logs[i+1])
+                if i + 1 < len(logs) and logs[i + 1].startswith("Traceback"):
+                    stack.append(logs[i + 1])
                     next = i + 2
-            elif logs[i].startswith('Traceback'):
+            elif logs[i].startswith("Traceback"):
                 stack.append(logs[i])
                 trace = stacktrace
                 next = i + 1
@@ -67,7 +68,7 @@ class DBReporter(Reporter):
                 i = i + 1
                 continue
             while next < len(logs):
-                if logs[next].startswith((' ', '\t')):
+                if logs[next].startswith((" ", "\t")):
                     stack.append(logs[next])
                     next = next + 1
                 else:
@@ -113,7 +114,7 @@ class DBReporter(Reporter):
             "return_code": result.return_code,
             "smoke_test": result.smoke_test,
             "extra_tags": result.extra_tags or {},
-            "crash_pattern": self.compute_crash_pattern(result.last_logs or "")
+            "crash_pattern": self.compute_crash_pattern(result.last_logs or ""),
         }
 
         logger.debug(f"Result json: {json.dumps(result_json)}")
