@@ -35,6 +35,14 @@ py_test(
 )
 
 py_test(
+    name = "test_dataset_iceberg",
+    size = "medium",
+    srcs = ["tests/test_dataset_iceberg.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_dataset_sql",
     size = "small",
     srcs = ["tests/test_dataset_sql.py"],
