@@ -5,9 +5,10 @@ import numpy as np
 import pandas as pd
 
 from ray.tune import TuneError
-from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.execution import trial_runner
 from ray.tune.experiment import Trial
+from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.schedulers.pbt import _PBTTrialState
 from ray.tune.utils.util import flatten_dict, unflatten_dict
 from ray.util.debug import log_once
 
@@ -71,14 +72,14 @@ def _fill_config(
     return filled_hyperparams
 
 
-def select_config(
+def _select_config(
     Xraw: np.array,
     yraw: np.array,
     current: list,
     newpoint: np.array,
     bounds: dict,
     num_f: int,
-):
+) -> np.ndarray:
     """Selects the next hyperparameter config to try.
 
     This function takes the formatted data, fits the GP model and optimizes the
@@ -171,7 +172,14 @@ def select_config(
     return xt
 
 
-def explore(data, bounds, current, base, old, config):
+def _explore(
+    data: pd.DataFrame,
+    bounds: Dict[str, Tuple[float, float]],
+    current: list,
+    base: Trial,
+    old: Trial,
+    config: Dict[str, Tuple[float, float]],
+) -> Tuple[Dict, pd.DataFrame]:
     """Returns next hyperparameter configuration to use.
 
     This function primarily processes the data from completed trials
@@ -213,7 +221,7 @@ def explore(data, bounds, current, base, old, config):
         hparams = df[bounds.keys()]
         X = pd.concat([t_r, hparams], axis=1).values
         newpoint = df[df["Trial"] == str(base)].iloc[-1, :][["Time", "R_before"]].values
-        new = select_config(X, y, current, newpoint, bounds, num_f=len(t_r.columns))
+        new = _select_config(X, y, current, newpoint, bounds, num_f=len(t_r.columns))
 
         new_config = config.copy()
         values = []
@@ -309,26 +317,29 @@ class PB2(PopulationBasedTraining):
             https://arxiv.org/pdf/1711.09846.pdf.
 
     Example:
-        >>> from ray import tune
-        >>> from ray.tune.schedulers.pb2 import PB2
-        >>> from ray.tune.examples.pbt_function import pbt_function
-        >>> # run "pip install gpy" to use PB2
-        >>> pb2 = PB2( # doctest: +SKIP
-        ...     metric="mean_accuracy",
-        ...     mode="max",
-        ...     perturbation_interval=20,
-        ...     hyperparam_bounds={
-        ...     "factor": [0.0, 20.0],
-        ... })
-        >>> tuner = tune.Tuner(  # doctest: +SKIP
-        ...     pbt_function,
-        ...     tune_config=tune.TuneConfig(
-        ...         scheduler=pb2,
-        ...         num_samples=8,
-        ...     ),
-        ...     param_space={"lr": 0.0001}
-        ... )
-        >>> tuner.fit()  # doctest: +SKIP
+
+        .. code-block:: python
+
+            from ray import tune
+            from ray.tune.schedulers.pb2 import PB2
+            from ray.tune.examples.pbt_function import pbt_function
+            # run "pip install gpy" to use PB2
+
+            pb2 = PB2(
+                metric="mean_accuracy",
+                mode="max",
+                perturbation_interval=20,
+                hyperparam_bounds={"lr": [0.0001, 0.1]},
+            )
+            tuner = tune.Tuner(
+                pbt_function,
+                tune_config=tune.TuneConfig(
+                    scheduler=pb2,
+                    num_samples=8,
+                ),
+                param_space={"lr": 0.0001},
+            )
+            tuner.fit()
 
     """
 
@@ -395,7 +406,11 @@ class PB2(PopulationBasedTraining):
         super().on_trial_add(trial_runner, trial)
 
     def _validate_hyperparam_bounds(self, hyperparam_bounds: dict):
-        """Check that each hyperparam bound is of the form [low, high]."""
+        """Check that each hyperparam bound is of the form [low, high].
+
+        Raises:
+            ValueError: if any of the hyperparam bounds are of an invalid format.
+        """
         for key, value in hyperparam_bounds.items():
             if not isinstance(value, (list, tuple)) or len(value) != 2:
                 raise ValueError(
@@ -410,8 +425,9 @@ class PB2(PopulationBasedTraining):
                     f"where low <= high, but got {value} instead for param '{key}'."
                 )
 
-    def _save_trial_state(self, state, time, result, trial):
-
+    def _save_trial_state(
+        self, state: _PBTTrialState, time: int, result: Dict, trial: Trial
+    ):
         score = super(PB2, self)._save_trial_state(state, time, result, trial)
 
         # Data logging for PB2.
@@ -451,7 +467,7 @@ class PB2(PopulationBasedTraining):
         if self.data["Time"].max() > self.last_exploration_time:
             self.current = None
 
-        new_config_flat, data = explore(
+        new_config_flat, data = _explore(
             self.data,
             self._hyperparam_bounds_flat,
             self.current,

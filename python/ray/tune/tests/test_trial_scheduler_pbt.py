@@ -802,11 +802,12 @@ def _create_pb2_scheduler(
     )
 
 
-def _save_trial_result(scheduler, trial, time, result):
+def _save_trial_result(scheduler: PB2, trial: Trial, time: int, result: dict):
     scheduler._save_trial_state(scheduler._trial_state[trial], time, result, trial)
 
 
-def _result(time, val):
+def _result(time: int, val: float) -> dict:
+    """Creates a dummy Tune result to report."""
     return {"training_iteration": time, "score": val}
 
 
