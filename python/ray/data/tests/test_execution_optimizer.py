@@ -56,7 +56,7 @@ from ray.tests.conftest import *  # noqa
 
 
 def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] = True):
-    """Check if operators with given names in `op_names` are recorded.
+    """Check if operators with given names in `op_names` have been used.
     If `clear_after_check` is True, we clear the list of recorded operators
     (so that subsequent checks do not use existing records of operator usage)."""
     for op_name in op_names:
