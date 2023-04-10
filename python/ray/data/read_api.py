@@ -21,6 +21,18 @@ from ray.data._internal.block_list import BlockList
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.operators.from_arrow_operator import (
+    FromArrowRefs,
+    FromHuggingFace,
+)
+from ray.data._internal.logical.operators.from_items_operator import FromItems
+from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
+from ray.data._internal.logical.operators.from_pandas_operator import (
+    FromDask,
+    FromMars,
+    FromModin,
+    FromPandasRefs,
+)
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.pandas_block import PandasRow
@@ -31,6 +43,9 @@ from ray.data._internal.util import (
     _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
     _is_local_scheme,
+    pandas_df_to_arrow_block,
+    ndarray_to_block,
+    get_table_block_metadata,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
@@ -91,7 +106,10 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI
 def from_items(
-    items: List[Any], *, parallelism: int = -1, output_arrow_format: bool = False
+    items: List[Any],
+    *,
+    parallelism: int = -1,
+    output_arrow_format: bool = False,
 ) -> MaterializedDatastream[Any]:
     """Create a datastream from a list of local Python objects.
 
@@ -160,6 +178,8 @@ def from_items(
             )
         )
 
+    from_items_op = FromItems(items, detected_parallelism)
+    logical_plan = LogicalPlan(from_items_op)
     return MaterializedDatastream(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
@@ -168,6 +188,7 @@ def from_items(
         ),
         0,
         True,
+        logical_plan,
     )
 
 
@@ -1557,9 +1578,13 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDatastream[ArrowRow]:
                 "Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}"
             )
 
-    return from_pandas_refs(
-        [to_ref(next(iter(part.dask.values()))) for part in persisted_partitions]
+    ds = from_pandas_refs(
+        [to_ref(next(iter(part.dask.values()))) for part in persisted_partitions],
     )
+    logical_plan = LogicalPlan(FromDask(df))
+    ds._logical_plan = logical_plan
+    ds._plan.link_logical_plan(logical_plan)
+    return ds
 
 
 @PublicAPI
@@ -1574,7 +1599,12 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDatastream[ArrowRow]:
     """
     import mars.dataframe as md
 
-    return md.to_ray_dataset(df)
+    ds: Datastream = md.to_ray_dataset(df)
+
+    logical_plan = LogicalPlan(FromMars(ds.dataframe))
+    ds._logical_plan = logical_plan
+    ds._plan.link_logical_plan(logical_plan)
+    return ds
 
 
 @PublicAPI
@@ -1590,7 +1620,12 @@ def from_modin(df: "modin.DataFrame") -> MaterializedDatastream[ArrowRow]:
     from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
     parts = unwrap_partitions(df, axis=0)
-    return from_pandas_refs(parts)
+    ds = from_pandas_refs(parts)
+
+    logical_plan = LogicalPlan(FromModin(df))
+    ds._logical_plan = logical_plan
+    ds._plan.link_logical_plan(logical_plan)
+    return ds
 
 
 @PublicAPI
@@ -1622,7 +1657,7 @@ def from_pandas(
 
 @DeveloperAPI
 def from_pandas_refs(
-    dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]]
+    dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]],
 ) -> MaterializedDatastream[ArrowRow]:
     """Create a datastream from a list of Ray object references to Pandas
     dataframes.
@@ -1648,9 +1683,10 @@ def from_pandas_refs(
             "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
         )
 
+    logical_plan = LogicalPlan(FromPandasRefs(dfs))
     context = DatasetContext.get_current()
     if context.enable_pandas_block:
-        get_metadata = cached_remote_fn(_get_metadata)
+        get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
         return MaterializedDatastream(
             ExecutionPlan(
@@ -1660,9 +1696,10 @@ def from_pandas_refs(
             ),
             0,
             True,
+            logical_plan,
         )
 
-    df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
+    df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = map(list, zip(*res))
@@ -1675,6 +1712,7 @@ def from_pandas_refs(
         ),
         0,
         True,
+        logical_plan,
     )
 
 
@@ -1723,11 +1761,15 @@ def from_numpy_refs(
             f"Expected Ray object ref or list of Ray object refs, got {type(ndarray)}"
         )
 
-    ndarray_to_block = cached_remote_fn(_ndarray_to_block, num_returns=2)
+    ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
 
-    res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
+    res = [ndarray_to_block_remote.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
+
+    from_numpy_refs_op = FromNumpyRefs(ndarrays)
+    logical_plan = LogicalPlan(from_numpy_refs_op)
+
     return MaterializedDatastream(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
@@ -1736,12 +1778,13 @@ def from_numpy_refs(
         ),
         0,
         True,
+        logical_plan,
     )
 
 
 @PublicAPI
 def from_arrow(
-    tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]]
+    tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]],
 ) -> MaterializedDatastream[ArrowRow]:
     """Create a datastream from a list of Arrow tables.
 
@@ -1764,7 +1807,7 @@ def from_arrow_refs(
     tables: Union[
         ObjectRef[Union["pyarrow.Table", bytes]],
         List[ObjectRef[Union["pyarrow.Table", bytes]]],
-    ]
+    ],
 ) -> MaterializedDatastream[ArrowRow]:
     """Create a datastream from a set of Arrow tables.
 
@@ -1778,8 +1821,10 @@ def from_arrow_refs(
     if isinstance(tables, ray.ObjectRef):
         tables = [tables]
 
-    get_metadata = cached_remote_fn(_get_metadata)
+    get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
+    logical_plan = LogicalPlan(FromArrowRefs(tables))
+
     return MaterializedDatastream(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
@@ -1788,6 +1833,7 @@ def from_arrow_refs(
         ),
         0,
         True,
+        logical_plan,
     )
 
 
@@ -1835,7 +1881,11 @@ def from_huggingface(
     import datasets
 
     def convert(ds: "datasets.Dataset") -> Datastream[ArrowRow]:
-        return from_arrow(ds.data.table)
+        ray_ds = from_arrow(ds.data.table)
+        logical_plan = LogicalPlan(FromHuggingFace(ds))
+        ray_ds._logical_plan = logical_plan
+        ray_ds._plan.link_logical_plan(logical_plan)
+        return ray_ds
 
     if isinstance(dataset, datasets.DatasetDict):
         return {k: convert(ds) for k, ds in dataset.items()}
@@ -1936,35 +1986,6 @@ def from_torch(
         A :class:`MaterializedDatastream` containing the Torch dataset samples.
     """
     return from_items(list(dataset))
-
-
-def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
-    stats = BlockExecStats.builder()
-    import pyarrow as pa
-
-    block = pa.table(df)
-    return (
-        block,
-        BlockAccessor.for_block(block).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        ),
-    )
-
-
-def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
-    stats = BlockExecStats.builder()
-    block = BlockAccessor.batch_to_block(ndarray)
-    metadata = BlockAccessor.for_block(block).get_metadata(
-        input_files=None, exec_stats=stats.build()
-    )
-    return block, metadata
-
-
-def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMetadata:
-    stats = BlockExecStats.builder()
-    return BlockAccessor.for_block(table).get_metadata(
-        input_files=None, exec_stats=stats.build()
-    )
 
 
 def _get_read_tasks(

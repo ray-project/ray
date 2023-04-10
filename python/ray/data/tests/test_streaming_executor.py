@@ -47,14 +47,23 @@ def make_transform(block_fn):
     return map_fn
 
 
-def test_build_streaming_topology():
+@pytest.mark.parametrize(
+    "verbose_progress",
+    [True, False],
+)
+def test_build_streaming_topology(verbose_progress):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
     o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
-    topo, num_progress_bars = build_streaming_topology(o3, ExecutionOptions())
+    topo, num_progress_bars = build_streaming_topology(
+        o3, ExecutionOptions(verbose_progress=verbose_progress)
+    )
     assert len(topo) == 3, topo
-    assert num_progress_bars == 3, num_progress_bars
+    if verbose_progress:
+        assert num_progress_bars == 3, num_progress_bars
+    else:
+        assert num_progress_bars == 1, num_progress_bars
     assert o1 in topo, topo
     assert not topo[o1].inqueues, topo
     assert topo[o1].outqueue == topo[o2].inqueues[0], topo
@@ -70,14 +79,14 @@ def test_disallow_non_unique_operators():
     o3 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
     o4 = PhysicalOperator("test_combine", [o2, o3])
     with pytest.raises(ValueError):
-        build_streaming_topology(o4, ExecutionOptions())
+        build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
 
 
 def test_process_completed_tasks():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
-    topo, _ = build_streaming_topology(o2, ExecutionOptions())
+    topo, _ = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
 
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo

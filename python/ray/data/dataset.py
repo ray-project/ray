@@ -2898,7 +2898,7 @@ class Datastream(Generic[T]):
             try:
                 self._write_ds = Datastream(
                     plan, self._epoch, self._lazy, logical_plan
-                ).cache()
+                ).materialize()
                 blocks = ray.get(self._write_ds._plan.execute().get_blocks())
                 assert all(
                     isinstance(block, list) and len(block) == 1 for block in blocks
@@ -4053,39 +4053,38 @@ class Datastream(Generic[T]):
             )
         return pipe
 
-    @Deprecated(message="Use `Datastream.cache()` instead.")
+    @Deprecated(message="Use `Datastream.materialize()` instead.")
     def fully_executed(self) -> "MaterializedDatastream[T]":
         logger.warning(
-            "The 'fully_executed' call has been renamed to 'cache'.",
+            "Deprecation warning: use Datastream.materialize() instead of "
+            "fully_executed()."
         )
-        return self.cache()
+        self._plan.execute(force_read=True)
+        return self
 
-    @Deprecated(message="Use `Datastream.is_cached()` instead.")
+    @Deprecated(
+        message="Check `isinstance(Datastream, MaterializedDatastream)` instead."
+    )
     def is_fully_executed(self) -> bool:
         logger.warning(
-            "The 'is_fully_executed' call has been renamed to 'is_cached'.",
+            "Deprecation warning: Check "
+            "`isinstance(Datastream, MaterializedDatastream)` "
+            "instead of using is_fully_executed()."
         )
-        return self.is_cached()
-
-    def is_cached(self) -> bool:
-        """Returns whether this datastream has been cached in memory.
-
-        This will return False if the output of its final stage hasn't been computed
-        yet.
-        """
         return self._plan.has_computed_output()
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
-    def cache(self) -> "MaterializedDatastream[T]":
-        """Evaluate and cache the blocks of this datastream in object store memory.
+    def materialize(self) -> "MaterializedDatastream[T]":
+        """Execute and materialize this datastream into object store memory.
 
-        This can be used to read all blocks into memory. By default, Datastreams
+        This can be used to read all blocks into memory. By default, Datastream
         doesn't read blocks from the datasource until the first transform.
 
-        This is a no-op if the Datastream is already cached as a MaterializedDatastream.
+        Note that this does not mutate the original Datastream. Only the blocks of the
+        returned MaterializedDatastream class are pinned in memory.
 
         Returns:
-            A Datastream with all blocks fully materialized in memory.
+            A MaterializedDatastream holding the materialized data blocks.
         """
         copy = Datastream.copy(self, _deep_copy=True, _as=MaterializedDatastream)
         copy._plan.execute(force_read=True)
@@ -4134,7 +4133,7 @@ class Datastream(Generic[T]):
         The returned datastream is a lazy datastream, where all subsequent operations
         on the stream won't be executed until the datastream is consumed
         (e.g. ``.take()``, ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.)
-        or execution is manually triggered via ``.cache()``.
+        or execution is manually triggered via ``.materialize()``.
         """
         ds = Datastream(
             self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
@@ -4451,8 +4450,8 @@ class Datastream(Generic[T]):
             "num_blocks": self._plan.initial_num_blocks(),
             "num_rows": self._meta_count(),
         }
-
-        schema = self.schema()
+        # Show metadata if available, but don't trigger execution.
+        schema = self.schema(fetch_if_missing=False)
         if schema is None:
             schema_repr = Template("rendered_html_common.html.j2").render(
                 content="<h5>Unknown schema</h5>"
@@ -4589,7 +4588,7 @@ Dataset = Datastream
 
 @PublicAPI
 class MaterializedDatastream(Datastream, Generic[T]):
-    """A Datastream that has been materialized into Ray memory, e.g., via `.cache()`.
+    """A Datastream materialized in Ray memory, e.g., via `.materialize()`.
 
     The blocks of a MaterializedDatastream object are materialized into Ray object store
     memory, which means that this class can be shared or iterated over by multiple Ray
