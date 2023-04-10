@@ -2470,6 +2470,7 @@
     script: python workloads/single_deployment_1k_noop_replica.py
 
   alert: default
+
   variations:
     - __suffix__: aws
     - __suffix__: gce
@@ -2500,6 +2501,7 @@
     script: python workloads/multi_deployment_1k_noop_replica.py
 
   alert: default
+
   variations:
     - __suffix__: aws
     - __suffix__: gce
@@ -2530,6 +2532,7 @@
     script: python workloads/autoscaling_single_deployment.py
 
   alert: default
+
   variations:
     - __suffix__: aws
     - __suffix__: gce
@@ -2560,6 +2563,7 @@
     script: python workloads/autoscaling_multi_deployment.py
 
   alert: default
+
   variations:
     - __suffix__: aws
     - __suffix__: gce
