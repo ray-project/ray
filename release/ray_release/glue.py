@@ -38,7 +38,6 @@ from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.file_manager.session_controller import SessionControllerFileManager
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
-from ray_release.reporter.db import DBReporter
 from ray_release.result import Result, handle_exception
 from ray_release.signal_handling import (
     setup_signal_handling,
