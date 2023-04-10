@@ -310,6 +310,7 @@ class AnyscaleJobManager:
                     log_group=log_group,
                     parallelism=DEFAULT_PARALLELISM,
                     read_timeout=timedelta(seconds=DEFAULT_READ_TIMEOUT),
+                    tail=-1,
                 )
                 print("", flush=True)
         output = buf.getvalue().strip()
