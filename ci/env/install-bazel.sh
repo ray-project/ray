@@ -5,6 +5,7 @@ ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || ech
 
 arg1="${1-}"
 
+BAZELISK_VERSION="v1.16.0"
 
 platform="unknown"
 case "${OSTYPE}" in
@@ -47,13 +48,10 @@ if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
     fi
   )
 
-  export PATH=/opt/python/cp36-cp36m/bin:$PATH
-  python="$(command -v python3 || command -v python || echo python)"
-  version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
   if [ "${OSTYPE}" = "msys" ]; then
     target="${MINGW_DIR-/usr}/bin/bazel.exe"
     mkdir -p "${target%/*}"
-    curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${architecture}.exe"
+    curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-linux-amd64"
   else
 
     # Buildkite mac instances
@@ -77,33 +75,21 @@ if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
 
     if [ "${architecture}" = "aarch64" ]; then
       # architecture is "aarch64", but the bazel tag is "arm64"
-      url="https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-arm64"
-
-      if [ "$INSTALL_USER" = "1" ]; then
-        target="$HOME/bin/bazel"
-        curl -f -s -L -R -o "${target}" "${url}"
-        chmod +x "${target}"
-      else
-        target="/bin/bazel"
-        sudo curl -f -s -L -R -o "${target}" "${url}"
-        sudo chmod +x "${target}"
-      fi
-
-      which bazel
-
+      url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-arm64"
     else
-      target="./install.sh"
-      curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${architecture}.sh"
-      chmod +x "${target}"
-
-      if [ "$INSTALL_USER" = "1" ]; then
-        "${target}" --user
-      else
-        "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
-      fi
-      which bazel
-      rm -f "${target}"
+      url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-{architecture}"
     fi
+
+    if [ "$INSTALL_USER" = "1" ]; then
+      target="$HOME/bin/bazel"
+      curl -f -s -L -R -o "${target}" "${url}"
+      chmod +x "${target}"
+    else
+      target="/bin/bazel"
+      sudo curl -f -s -L -R -o "${target}" "${url}"
+      sudo chmod +x "${target}"
+    fi
+    which bazel
   fi
 fi
 
