@@ -96,6 +96,7 @@ class MultiAgentGymnasiumOldAPI(MultiAgentEnv):
         self.action_space = gym.spaces.Dict({"agent0": gym.spaces.Discrete(2)})
         self._obs_space_in_preferred_format = True
         self._action_space_in_preferred_format = True
+        self._skip_env_checking = True
 
     def reset(self):
         return {"agent0": self.observation_space.sample()}
