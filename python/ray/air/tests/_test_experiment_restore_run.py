@@ -80,11 +80,13 @@ class StatefulSearcher(tune.search.Searcher):
         self._trial_count = state["trial_count"]
 
 
-def train_fn(config, data=None):
+def train_fn(config: dict, data: Optional[dict] = None):
     checkpoint = session.get_checkpoint()
     start = checkpoint.to_dict()["iteration"] + 1 if checkpoint else 1
 
-    training_started_marker = Path(os.environ.get("RUN_STARTED_MARKER", "asdf.py"))
+    training_started_marker = Path(
+        os.environ.get("RUN_STARTED_MARKER", "/tmp/does-not-exist")
+    )
     training_started_marker.unlink(missing_ok=True)
 
     for iteration in range(start, ITERATIONS_PER_TRIAL + 1):

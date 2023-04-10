@@ -1,22 +1,25 @@
 """
 This test is meant to be an integration stress test for experiment restoration.
 
+
 Test setup:
-(For Tuner.restore)
-- 8 trials, with a max of 2 running concurrently (--> 4 rounds of trials)
-- Each iteration takes 0.5 seconds
-- Each trial runs for 8 iterations --> 4 seconds
-- Each round of 2 trials should take 4 seconds
-- Without any interrupts/restoration:
-    - Minimum runtime: 4 rounds * 4 seconds / round = 16 seconds
-- The test will stop the script with a SIGINT at a random time between
-  4-8 iterations each restore.
-(For Trainer.restore)
-- 1 trial with 4 workers
-- Each iteration takes 0.5 seconds
-- Runs for 32 iterations --> Minimum runtime = 16 seconds
-- The test will stop the script with a SIGINT at a random time between
-  4-8 iterations after each restore.
+
+- For Tuner.restore:
+    - 8 trials, with a max of 2 running concurrently (--> 4 rounds of trials)
+    - Each iteration takes 0.5 seconds
+    - Each trial runs for 8 iterations --> 4 seconds
+    - Each round of 2 trials should take 4 seconds
+    - Without any interrupts/restoration:
+        - Minimum runtime: 4 rounds * 4 seconds / round = 16 seconds
+    - The test will stop the script with a SIGINT at a random time between
+    4-8 iterations each restore.
+
+- For Trainer.restore:
+    - 1 trial with 4 workers
+    - Each iteration takes 0.5 seconds
+    - Runs for 32 iterations --> Minimum runtime = 16 seconds
+    - The test will stop the script with a SIGINT at a random time between
+    4-8 iterations after each restore.
 
 
 Requirements:
@@ -25,11 +28,12 @@ Requirements:
     - 1.5x is the passing threshold.
 - Req 2: Training progress persisted
     - The experiment should progress monotonically.
-    - The experiment shouldn't "go backward" at any point.
+      (The training iteration shouldn't go backward at any point)
     - Trials shouldn't start from scratch.
 - Req 3: Searcher state saved/restored correctly
 - Req 4: Callback state saved/restored correctly
 """
+
 import json
 import numpy as np
 from pathlib import Path
@@ -40,8 +44,6 @@ import signal
 import subprocess
 import sys
 
-import ray
-
 from ray.tune.result_grid import ResultGrid
 from ray.tune.analysis import ExperimentAnalysis
 
@@ -49,18 +51,14 @@ from ray.tune.analysis import ExperimentAnalysis
 _RUN_SCRIPT_FILENAME = "_test_experiment_restore_run.py"
 
 
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-def kill_process_if_needed(process, timeout_s=10):
+def kill_process_if_needed(
+    process: subprocess.Popen, timeout_s: float = 10, poll_interval_s: float = 1.0
+):
+    """Kills a process if it hasn't finished in `timeout_s` seconds.
+    Polls every `poll_interval_s` seconds to check if the process is still running."""
     kill_timeout = time.monotonic() + timeout_s
     while process.poll() is None and time.monotonic() < kill_timeout:
-        time.sleep(1)
+        time.sleep(poll_interval_s)
     if process.poll() is None:
         process.terminate()
 
@@ -74,7 +72,7 @@ def print_message(message):
 
 
 @pytest.mark.parametrize("runner_type", ["tuner", "trainer"])
-def test_air_experiment_restore(tmp_path, runner_type):
+def test_experiment_restore(tmp_path, runner_type):
     np.random.seed(2023)
 
     script_path = Path(__file__).parent / _RUN_SCRIPT_FILENAME
