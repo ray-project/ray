@@ -142,7 +142,7 @@ Also the class's constrcutor requires a dataclass config object called `~ray.rll
 - :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.observation_space`: The observation space of the environment (either processed or raw).
 - :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.action_space`: The action space of the environment.
 - :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.model_config_dict`: The model config dictionary of the algorithm. Model hyper-parameters such as number of layers, type of activation, etc. are defined here.
-- :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.catalog_class`: The `Catalog` object of the algorithm.
+- :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.catalog_class`: The :py:class:`~ray.rllib.core.models.catalog.Catalog` object of the algorithm.
 
 When writing RLModules, you need to use these fields to construct your model. 
 
@@ -263,9 +263,9 @@ There are two possible ways to extend existing RLModules:
     
 .. tabbed:: Extending RLModule Catalog
 
-    Another way to customize your module is by extending its catalog. The catalog is a component that defines the default architecture and behavior of a model based on factors such as ``observation_space``, ``action_space``, etc. To modify sub-components of an existing RLModule, extend the corresponding catalog class.
+    Another way to customize your module is by extending its :py:class:`~ray.rllib.core.models.catalog.Catalog`. The :py:class:`~ray.rllib.core.models.catalog.Catalog` is a component that defines the default architecture and behavior of a model based on factors such as ``observation_space``, ``action_space``, etc. To modify sub-components of an existing RLModule, extend the corresponding catalog class.
 
-    For instance, to adapt the existing ``PPORLModule`` for a custom graph observation space not supported by RLlib out-of-the-box, extend the catalog class used to create the ``PPORLModule`` and override the method responsible for returning the encoder component to ensure that your custom encoder replaces the default one initially provided by RLlib. For more information on the catalog class, refer to the `RLModule Catalog` user guide.
+    For instance, to adapt the existing ``PPORLModule`` for a custom graph observation space not supported by RLlib out-of-the-box, extend the :py:class:`~ray.rllib.core.models.catalog.Catalog` class used to create the ``PPORLModule`` and override the method responsible for returning the encoder component to ensure that your custom encoder replaces the default one initially provided by RLlib. For more information on the :py:class:`~ray.rllib.core.models.catalog.Catalog` class, refer to the `Catalog user guide <rllib-catalogs.html>`__.
 
 
     .. code-block:: python
