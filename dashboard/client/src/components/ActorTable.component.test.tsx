@@ -126,6 +126,6 @@ describe("ActorTable", () => {
 
     expect(actor2Row.compareDocumentPosition(actor1Row)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
-    ); // actor2Row appear after actor1Row
+    ); // actor2Row appear before actor1Row
   });
 });
