@@ -232,6 +232,7 @@ class TestGymEnvAPIs(unittest.TestCase):
                 .environment(
                     MultiAgentGymnasiumOldAPI,
                     auto_wrap_old_gym_envs=False,
+                    disable_env_checking=True,
                 )
                 .build()
             )
