@@ -24,7 +24,11 @@ from ray._private.utils import run_background_task
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
-from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
+from ray.dashboard.consts import (
+    RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
+    DEFAULT_JOB_START_TIMEOUT_SECONDS,
+    RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
+)
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
@@ -572,9 +576,40 @@ class JobManager:
 
         while is_alive:
             try:
-                if job_supervisor is None:
-                    job_status = await self._job_info_client.get_status(job_id)
+                job_status = await self._job_info_client.get_status(job_id)
+                if job_status == JobStatus.PENDING:
+                    # Compare the current time with the job start time.
+                    # If the job is still pending, we will set the status
+                    # to FAILED.
+                    job_info = await self._job_info_client.get_info(job_id)
+                    timeout = float(
+                        os.environ.get(
+                            RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
+                            DEFAULT_JOB_START_TIMEOUT_SECONDS,
+                        )
+                    )
+                    if job_info.start_time in [None, 0]:
+                        logger.error(
+                            f"Job {job_id} start time not found. "
+                            f"Skipping job start timeout check."
+                        )
+                    if time.time() - job_info.start_time / 1000 > timeout:
+                        err_msg = (
+                            "Job supervisor actor failed to start within "
+                            f"{timeout} seconds. This timeout can be "
+                            f"configured by setting the environment "
+                            f"variable {RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR}."
+                        )
+                        await self._job_info_client.put_status(
+                            job_id,
+                            JobStatus.FAILED,
+                            message=err_msg,
+                        )
+                        is_alive = False
+                        logger.error(err_msg)
+                        continue
 
+                if job_supervisor is None:
                     if job_status != JobStatus.PENDING:
                         # If the job is not pending, it means the job supervisor
                         # actor has been created.
