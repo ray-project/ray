@@ -415,7 +415,7 @@ The below image demonstrates the PACK policy. You can see 3 of ``{"CPU": 2}`` bu
 .. image:: ../images/pg_image_4.png
     :align: center
 
-The below image demonstrates the PACK policy. You can see 3 of ``{"CPU": 2}`` bundles are located in 3 different nodes.
+The below image demonstrates the SPREAD policy. You can see 3 of ``{"CPU": 2}`` bundles are located in 3 different nodes.
 
 .. image:: ../images/pg_image_5.png
     :align: center
