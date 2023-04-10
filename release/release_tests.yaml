@@ -2147,6 +2147,19 @@
 
   alert: long_running_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 86400
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_c5_gce.yaml
+
 - name: long_running_many_jobs
   group: Long running tests
   working_dir: long_running_tests
@@ -2458,6 +2471,19 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 7200
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_32_cpu_gce.yaml
+
 - name: serve_multi_deployment_1k_noop_replica
   group: Serve tests
   working_dir: serve_tests
@@ -2475,6 +2501,19 @@
     script: python workloads/multi_deployment_1k_noop_replica.py
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 7200
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_32_cpu_gce.yaml
 
 - name: serve_autoscaling_single_deployment
   group: Serve tests
@@ -2494,6 +2533,19 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 7200
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_8_cpu_autoscaling_gce.yaml
+
 - name: serve_autoscaling_multi_deployment
   group: Serve tests
   working_dir: serve_tests
@@ -2511,6 +2563,19 @@
     script: python workloads/autoscaling_multi_deployment.py
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 7200
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_32_cpu_autoscaling_gce.yaml
 
 - name: serve_serve_micro_benchmark
   group: Serve tests
