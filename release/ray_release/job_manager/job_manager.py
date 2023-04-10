@@ -119,6 +119,3 @@ class JobManager:
         # return None
         job_client = self._get_job_client()
         return job_client.get_job_logs(self.last_job_id)
-
-    def get_last_ray_logs(self):
-        return None
