@@ -272,27 +272,27 @@ class AnyscaleJobManager:
 
     def get_last_ray_error_logs(self) -> Optional[str]:
         globs = [
-            'dashboard.log',
-            'dashboard.err',
-            'dashboard_agent.log',
-            'runtime_env_agent.log',
-            'raylet.out',
-            'raylet.err',
-            'gcs_server.out',
-            'gcs_server.err',
+            "dashboard.log",
+            "dashboard.err",
+            "dashboard_agent.log",
+            "runtime_env_agent.log",
+            "raylet.out",
+            "raylet.err",
+            "gcs_server.out",
+            "gcs_server.err",
         ]
         for glob in globs:
             last_ray_logs = self._get_last_ray_error_logs(
-                self.cluster_manager.cluster_id, 
+                self.cluster_manager.cluster_id,
                 glob,
             )
             if last_ray_logs:
-              return last_ray_logs
+                return last_ray_logs
         return None
 
     def _get_last_ray_error_logs(self, cluster_id: int, glob: str) -> Optional[str]:
         logs_controller = LogsController()
-        filter = LogFilter(  
+        filter = LogFilter(
             cluster_id=cluster_id,
             glob=glob,
             node_type=NodeType.HEAD_NODE,
@@ -313,8 +313,8 @@ class AnyscaleJobManager:
                     tail=-1,
                 )
                 print("", flush=True)
-        output = "\n".join(buf.getvalue().strip().splitlines()[-LAST_LOGS_LENGTH * 3:])
-        if 'ERROR' in output or 'Traceback (most recent call last)' in output:
+        output = "\n".join(buf.getvalue().strip().splitlines()[-LAST_LOGS_LENGTH * 3 :])
+        if "ERROR" in output or "Traceback (most recent call last)" in output:
             return output
         return None
 
