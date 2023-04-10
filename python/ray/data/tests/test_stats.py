@@ -265,11 +265,11 @@ def test_dataset__repr__(ray_start_regular_shared):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
 
-    ds = ray.data.range(4).materialize()
-    assert len(ds.take_all()) == 4
+    n = 4
+    ds = ray.data.range(n).materialize()
+    assert len(ds.take_all()) == n
     ds2 = ds.map_batches(lambda x: x).materialize()
-    assert len(ds2.take_all()) == 4
-
+    assert len(ds2.take_all()) == n
     ss = ds._plan.stats().to_summary()
     ss2 = ds2._plan.stats().to_summary()
 
@@ -359,7 +359,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "               memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
         "               output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "               output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
-        "               node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
+        "               node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"  # noqa: E501
         "            ),\n"
         "         ],\n"
         "         iter_stats=IterStatsSummary(\n"
