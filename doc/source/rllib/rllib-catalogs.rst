@@ -45,8 +45,8 @@ This user guide covers the following topics:
 - What are Catalogs
 - Inject your custom models into RLModules
 - Inject your custom action distributions into RLModules
-- Extend RLlib’s selection of Models and Distributions with your own
-- Write a Catalog from scratch
+.. - Extend RLlib’s selection of Models and Distributions with your own
+.. - Write a Catalog from scratch
 
 Catalog and AlgorithmConfig
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -65,10 +65,10 @@ For example, in heterogeneous multi-agent cases, you modify the MultiAgentRLModu
 The following example shows how to configure the Catalog of an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
 created by PPO.
 
-.. literalinclude:: ../../../rllib/examples/catalog/basics/catalogs_in_algo_configs.py
+.. literalinclude:: doc_code/catalog_guide.py
     :language: python
-    :start-after: __sphinx_doc_begin__
-    :end-before: __sphinx_doc_end__
+    :start-after: __sphinx_doc_algo_configs_begin__
+    :end-before: __sphinx_doc_algo_configs_end__
 
 Basic Usage
 ~~~~~~~~~~~
@@ -76,26 +76,26 @@ Basic Usage
 The following three examples illustrate three basic usage patterns of Catalogs.
 The following example showcases the general API for interacting with Catalogs.
 
-.. literalinclude:: ../../../rllib/examples/catalog/basics/basic_interaction.py
+.. literalinclude:: doc_code/catalog_guide.py
    :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+   :start-after: __sphinx_doc_basic_interaction_begin__
+   :end-before: __sphinx_doc_basic_interaction_end__
 
 The following example showcases how to use the :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`
-to create a ``models`` and an ``action distribution``.
+to create a ``model`` and an ``action distribution``.
 This is more similar to what RLlib does internally.
 
 .. dropdown:: **Use catalog-generated models**
     :animate: fade-in-slide-down
 
-    .. literalinclude:: ../../../rllib/examples/catalog/basics/cartpole_models_ppo.py
+    .. literalinclude:: doc_code/catalog_guide.py
        :language: python
-       :start-after: __sphinx_doc_begin__
-       :end-before: __sphinx_doc_end__
+       :start-after: __sphinx_doc_ppo_models_begin__
+       :end-before: __sphinx_doc_ppo_models_end__
 
 The following example showcases how to use the base :py:class:`~ray.rllib.core.models.catalog.Catalog`
 to create an ``encoder`` and an ``action distribution``.
-Besides these, we create a ``head network`` that fits these two by hand to show how you can combine RLLib's
+Besides these, we create a ``head network`` that fits these two by hand to show how you can combine RLlib's
 :py:class:`~ray.rllib.core.models.base.ModelConfig` API and Catalog.
 Extending Catalog to also build this head is how :py:class:`~ray.rllib.core.models.catalog.Catalog` is meant to be
 extended, which we cover later in this guide.
@@ -103,10 +103,10 @@ extended, which we cover later in this guide.
 .. dropdown:: **Customize a policy head**
     :animate: fade-in-slide-down
 
-    .. literalinclude:: ../../../rllib/examples/catalog/basics/cartpole_models.py
+    .. literalinclude:: doc_code/catalog_guide.py
        :language: python
-       :start-after: __sphinx_doc_begin__
-       :end-before: __sphinx_doc_end__
+       :start-after: __sphinx_doc_modelsworkflow_begin__
+       :end-before: __sphinx_doc_modelsworkflow_end__
 
 What are Catalogs
 ~~~~~~~~~~~~~~~~~
@@ -142,8 +142,8 @@ The following diagram shows a concrete case in more detail.
         :align: center
 
 
-Inject your custom models into RLModules
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Inject your custom model or action distributions into RLModules
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can make a :py:class:`~ray.rllib.core.models.catalog.Catalog` build custom ``models`` by overriding the Catalog’s methods used by RL Modules to build ``models``.
 Have a look at these lines from the constructor of the :py:class:`~ray.rllib.algorithms.ppo.ppo_torch_rl_module.PPOTorchRLModule` to see how Catalogs are being used by an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`:
@@ -175,4 +175,6 @@ Notable TODOs
 
 - Add cross references to Model and Distribution API docs
 - Add example that shows how to inject own model
-- Add more instrictions on how to write a catalog from scratch
+- Add more instructions on how to write a catalog from scratch
+- Add section "Extend RLlib’s selection of Models and Distributions with your own"
+- Add section "Write a Catalog from scratch"
