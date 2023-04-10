@@ -79,7 +79,7 @@ class ExecutionEngine:
             if self.stop:
                 return
         for instruction in self.schedule.steps():
-            self._execute_instruction(instruction)
+            self._execute_step(instruction)
 
     def _execute_step(self, instruction: Instruction):
         if isinstance(instruction, Send):
