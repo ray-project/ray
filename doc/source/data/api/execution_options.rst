@@ -10,7 +10,6 @@ Constructor
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_without_autosummary.rst
 
    ExecutionOptions
 
@@ -19,6 +18,5 @@ Resource Options
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_without_autosummary.rst
 
    ExecutionResources
