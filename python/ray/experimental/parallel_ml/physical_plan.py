@@ -50,8 +50,8 @@ def _get_device_name():
     return f"cuda:{gpu_ids[0]}"
 
 
-def _get_communicator(world_size: int, rank: int):
-    return TorchBasedCommunicator(world_size, rank)
+def _get_communicator(world_size: int, rank: int, master_addr: str):
+    return TorchBasedCommunicator(world_size, rank, master_addr)
 
 
 class SimplePhysicalPlanner(PhysicalPlanner):

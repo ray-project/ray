@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from threading import Lock, Thread
 from typing import Any, Callable
 
+import socket
 import torch
 from ray.experimental.parallel_ml.communicator.communicator import (
     FULLFILLED_FUTURE,
@@ -62,8 +63,6 @@ class ExecutionEngine:
 
     def get_address(self):
         """Get the address of the engine."""
-        import socket
-
         return socket.gethostname()
 
     def start(self, master_address: str):
