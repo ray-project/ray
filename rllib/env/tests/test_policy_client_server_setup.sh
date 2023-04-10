@@ -85,32 +85,4 @@ client2_pid=$!
 sleep 2
 python $basedir/$client_script --inference-mode=$inference_mode --port=$worker_2_port "$stop_criterion"
 
-is_running=true
-
-if ! ps -p $server_pid > /dev/null
-then
-   echo "$server_pid the server script died"
-   is_running=false
-fi
-
-if ! ps -p $client1_pid > /dev/null
-then
-   echo "$client1_pid the client1 script died"
-   is_running=false
-fi
-
-if ! ps -p $client2_pid > /dev/null
-then
-   echo "$client2_pid the client1 script died"
-   is_running=false
-fi
-
-if ! $is_running
-then
-   echo "One of the scripts died, exiting"
-   exit 1
-fi
-
-echo "All scripts are running, killing them now"
-
 kill $server_pid $client1_pid $client2_pid || true
