@@ -967,6 +967,10 @@ def test_from_huggingface_operator(
 
 
 def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
+    # Since `FromHuggingFace` reads from in-memory data, it will
+    # not record usage of the operator through the streaming executor.
+    # Therefore, in this test, we don't use the `_check_usage_record`
+    # method to check operator usage.
     import datasets
 
     data = datasets.load_dataset("tweet_eval", "emotion")
@@ -991,11 +995,10 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     assert ray.get(ray_dataset.to_arrow_refs())[0].equals(data["train"].data.table)
     assert len(ray_dataset.take_all()) > 0
 
-    # Check that metadata fetch is included in stats.
+    # Check that metadata fetch is included in stats;
+    # the underlying implementation uses the `FromArrowRefs` operator.
     assert "FromArrowRefs" in ray_dataset.stats()
-    # Underlying implementation uses `FromArrowRefs` operator
     assert ray_dataset._plan._logical_plan.dag.name == "FromHuggingFace"
-    _check_usage_record(["FromHuggingFace"])
 
 
 def test_from_tf_operator(ray_start_regular_shared, enable_optimizer):

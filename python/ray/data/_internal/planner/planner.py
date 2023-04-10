@@ -9,7 +9,10 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.operators.all_to_all_operator import AbstractAllToAll
 from ray.data._internal.logical.operators.n_ary_operator import Zip
-from ray.data._internal.logical.operators.from_arrow_operator import FromArrowRefs
+from ray.data._internal.logical.operators.from_arrow_operator import (
+    FromArrowRefs,
+    FromHuggingFace,
+)
 from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
 from ray.data._internal.logical.operators.read_operator import Read
@@ -66,7 +69,7 @@ class Planner:
         elif isinstance(logical_op, FromNumpyRefs):
             assert not physical_children
             physical_op = _plan_from_numpy_refs_op(logical_op)
-        elif isinstance(logical_op, FromArrowRefs):
+        elif isinstance(logical_op, (FromArrowRefs, FromHuggingFace)):
             assert not physical_children
             physical_op = _plan_from_arrow_refs_op(logical_op)
         elif isinstance(logical_op, AbstractUDFMap):
