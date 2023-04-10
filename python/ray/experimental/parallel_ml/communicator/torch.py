@@ -9,7 +9,7 @@ class TorchBasedCommunicator(Communicator):
     def __init__(self, world_size: int, rank: int):
         assert torch.distributed.is_available()
         super().__init__(world_size, rank)
-        # TODO: do torch distributed initialization here.
+        torch.distributed.init_process_group(world_size=world_size, rank=rank)
 
     def send(self, tensor: torch.Tensor, dest_rank: int, async_op: bool = False):
         if async_op:
