@@ -206,7 +206,7 @@ public class RuntimeEnvTest {
 
   private static class Pip {
     private String[] packages;
-    private Boolean pip_check;
+    private Boolean pipCheck;
 
     public String[] getPackages() {
       return packages;
@@ -216,12 +216,12 @@ public class RuntimeEnvTest {
       this.packages = packages;
     }
 
-    public Boolean getPip_check() {
-      return pip_check;
+    public Boolean getPipCheck() {
+      return pipCheck;
     }
 
-    public void setPip_check(Boolean pip_check) {
-      this.pip_check = pip_check;
+    public void setPipCheck(Boolean pipCheck) {
+      this.pipCheck = pipCheck;
     }
   }
 
@@ -231,21 +231,21 @@ public class RuntimeEnvTest {
       RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
       String workingDir = "https://path/to/working_dir.zip";
       runtimeEnv.set("working_dir", workingDir);
-      String[] py_modules =
+      String[] pyModules =
           new String[] {"https://path/to/py_modules1.zip", "https://path/to/py_modules2.zip"};
-      runtimeEnv.set("py_modules", py_modules);
+      runtimeEnv.set("py_modules", pyModules);
       Pip pip = new Pip();
       pip.setPackages(new String[] {"requests", "tensorflow"});
-      pip.setPip_check(true);
+      pip.setPipCheck(true);
       runtimeEnv.set("pip", pip);
       String serializedRuntimeEnv = runtimeEnv.serialize();
 
       RuntimeEnv runtimeEnv2 = RuntimeEnv.deserialize(serializedRuntimeEnv);
       Assert.assertEquals(runtimeEnv2.get("working_dir", String.class), workingDir);
-      Assert.assertEquals(runtimeEnv2.get("py_modules", String[].class), py_modules);
+      Assert.assertEquals(runtimeEnv2.get("py_modules", String[].class), pyModules);
       Pip pip2 = runtimeEnv2.get("pip", Pip.class);
       Assert.assertEquals(pip2.getPackages(), pip.getPackages());
-      Assert.assertEquals(pip2.getPip_check(), pip.getPip_check());
+      Assert.assertEquals(pip2.getPipCheck(), pip.getPipCheck());
 
       Assert.assertEquals(runtimeEnv2.remove("working_dir"), true);
       Assert.assertEquals(runtimeEnv2.remove("py_modules"), true);
