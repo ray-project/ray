@@ -313,7 +313,7 @@ class AnyscaleJobManager:
                     tail=-1,
                 )
                 print("", flush=True)
-        output = buf.getvalue().strip()
+        output = "\n".join(buf.getvalue().strip().splitlines()[-LAST_LOGS_LENGTH * 3:])
         if 'ERROR' in output or 'Traceback (most recent call last)' in output:
             return output
         return None
