@@ -5,7 +5,7 @@ import ray
 import torch
 from ray.experimental.parallel_ml.communicator.naive import NaiveCommunicator
 from ray.experimental.parallel_ml.communicator.torch import TorchBasedCommunicator
-from ray.experimental.parallel_ml.test.test_util import Actor, ray_start_4_cpus_2_gpus
+from ray.experimental.parallel_ml.test.utils import Actor, ray_start_4_cpus_2_gpus
 from ray.tests.conftest import *  # noqa
 
 
