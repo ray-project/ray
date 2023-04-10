@@ -23,6 +23,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -119,6 +120,20 @@ pid_t GetPID();
 bool IsParentProcessAlive();
 
 bool IsProcessAlive(pid_t pid);
+
+static constexpr char kProcDirectory[] = "/proc";
+
+// Platform-specific kill for the specified process identifier.
+// Currently only supported on Linux. Returns nullopt for other platforms.
+std::optional<std::error_code> KillProc(pid_t pid);
+
+// Platform-specific utility to find the process IDs of all processes
+// that have the specified parent_pid as their parent.
+// In other words, find all immediate children of the specified process
+// id.
+//
+// Currently only supported on Linux. Returns nullopt on other platforms.
+std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid);
 
 }  // namespace ray
 

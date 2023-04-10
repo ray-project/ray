@@ -75,7 +75,7 @@ def test_multi_stage_execution(ray_start_10_cpus_shared, preserve_order):
 
 def test_basic_stats(ray_start_10_cpus_shared):
     executor = BulkExecutor(ExecutionOptions())
-    prev_stats = ray.data.range(10).cache()._plan.stats()
+    prev_stats = ray.data.range(10).materialize()._plan.stats()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
@@ -114,7 +114,7 @@ def test_actor_strategy(ray_start_10_cpus_shared):
     o3 = MapOperator.create(
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
-        compute_strategy=ActorPoolStrategy(1, 2),
+        compute_strategy=ActorPoolStrategy(min_size=1, max_size=2),
         ray_remote_args={"num_cpus": 1},
         name="ActorMap",
     )

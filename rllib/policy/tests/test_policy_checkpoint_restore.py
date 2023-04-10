@@ -92,9 +92,7 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
         )
 
     def test_restore_checkpoint_with_nested_obs_space(self):
-
-        from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
-        from ray.rllib.models.catalog import MODEL_DEFAULTS
+        from ray.rllib.algorithms.ppo.ppo import PPOConfig
 
         obs_space = gym.spaces.Box(low=0, high=1, shape=(4,))
         # create 10 levels of nested observation space
@@ -103,7 +101,20 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
             space.original_space = gym.spaces.Discrete(2)
             space = space.original_space
 
-        policy = PPOTorchPolicy(obs_space, gym.spaces.Discrete(2), MODEL_DEFAULTS)
+        # TODO(Artur): Construct a PPO policy here without the algorithm once we are
+        #  able to do that with RLModules.
+        policy = (
+            PPOConfig()
+            .environment(
+                observation_space=obs_space, action_space=gym.spaces.Discrete(2)
+            )
+            # Note (Artur): We have to choose num_rollout_workers=0 here, because
+            # otherwise RolloutWorker will be health-checked without an env which
+            # raises an error. You could also disable the health-check here.
+            .rollouts(num_rollout_workers=0)
+            .build()
+            .get_policy()
+        )
 
         ckpt_dir = "/tmp/test_ckpt"
         policy.export_checkpoint(ckpt_dir)

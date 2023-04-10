@@ -208,22 +208,6 @@ def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
     )
 
 
-def get_current_node_resource_key() -> str:
-    """Get the Ray resource key for current node.
-
-    It can be used for actor placement.
-    """
-    current_node_id = ray.get_runtime_context().get_node_id()
-    for node in ray.nodes():
-        if node["NodeID"] == current_node_id:
-            # Found the node.
-            for key in node["Resources"].keys():
-                if key.startswith("node:"):
-                    return key
-    else:
-        raise ValueError("Cannot found the node dictionary for current node.")
-
-
 def ensure_serialization_context():
     """Ensure the serialization addons on registered, even when Ray has not
     been started."""
@@ -511,6 +495,15 @@ serve_telemetry_tag_map = {
     "SERVE_GRPC_INGRESS_USED": TagKey.SERVE_GRPC_INGRESS_USED,
     "SERVE_REST_API_VERSION": TagKey.SERVE_REST_API_VERSION,
     "SERVE_NUM_APPS": TagKey.SERVE_NUM_APPS,
+    "SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED": (
+        TagKey.SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED
+    ),
+    "SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED": (
+        TagKey.SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED
+    ),
+    "SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED": (
+        TagKey.SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED
+    ),
 }
 
 

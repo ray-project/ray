@@ -5,14 +5,11 @@ import ray
 
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
-    RLModule,
     ModuleID,
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.learner.learner import (
     LearnerSpec,
-    ParamOptimizerPairs,
-    Optimizer,
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
@@ -305,36 +302,23 @@ class LearnerGroup:
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
-        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
-        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         """Add a module to the Learners maintained by this LearnerGroup.
 
         Args:
             module_id: The id of the module to add.
             module_spec:  #TODO (Kourosh) fill in here.
-            set_optimizer_fn: A function that takes in the module and returns a list of
-                (param, optimizer) pairs. Each element in the tuple describes a
-                parameter group that share the same optimizer object, if None, the
-                default optimizer (obtained from the exiting optimizer dictionary) will
-                be used.
-            optimizer_cls: The optimizer class to use. If None, the set_optimizer_fn
-                should be provided.
         """
         if self.is_local:
             self._learner.add_module(
                 module_id=module_id,
                 module_spec=module_spec,
-                set_optimizer_fn=set_optimizer_fn,
-                optimizer_cls=optimizer_cls,
             )
         else:
             results = self._worker_manager.foreach_actor(
                 lambda w: w.add_module(
                     module_id=module_id,
                     module_spec=module_spec,
-                    set_optimizer_fn=set_optimizer_fn,
-                    optimizer_cls=optimizer_cls,
                 )
             )
             return self._get_results(results)

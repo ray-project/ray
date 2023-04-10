@@ -115,6 +115,15 @@ class APPOConfig(ImpalaConfig):
         self.entropy_coeff = 0.01
         self.entropy_coeff_schedule = None
         self.tau = 1.0
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
 
         # __sphinx_doc_end__
         # fmt: on
