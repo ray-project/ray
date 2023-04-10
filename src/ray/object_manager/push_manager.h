@@ -16,9 +16,11 @@
 
 #include <algorithm>
 #include <memory>
+#include <chrono>
+#include <iostream>
+#include <queue>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -85,12 +87,15 @@ class PushManager {
     /// The number of chunks remaining to send.
     int64_t num_chunks_to_send;
 
-    PushState(int64_t num_chunks, std::function<void(int64_t)> chunk_send_fn)
+    const ObjectID obj_id;
+
+    PushState(int64_t num_chunks, std::function<void(int64_t)> chunk_send_fn, const ObjectID &obj_id)
         : num_chunks(num_chunks),
           chunk_send_fn(chunk_send_fn),
           next_chunk_id(0),
           num_chunks_inflight(0),
-          num_chunks_to_send(num_chunks) {}
+          num_chunks_to_send(num_chunks),
+          obj_id(obj_id) {}
 
     /// Resend all chunks and returns how many more chunks will be sent.
     int64_t ResendAllChunks(std::function<void(int64_t)> send_fn) {
@@ -114,6 +119,8 @@ class PushManager {
       return true;
     }
 
+    bool IsNoChunk() { return num_chunks_to_send == 0; }
+
     /// Notify that a chunk is successfully sent.
     void OnChunkComplete() { --num_chunks_inflight; }
 
@@ -126,9 +133,6 @@ class PushManager {
   /// Called on completion events to trigger additional pushes.
   void ScheduleRemainingPushes();
 
-  /// Pair of (destination, object_id).
-  typedef std::pair<NodeID, ObjectID> PushID;
-
   /// Max number of chunks in flight allowed.
   const int64_t max_chunks_in_flight_;
 
@@ -139,7 +143,9 @@ class PushManager {
   int64_t chunks_remaining_ = 0;
 
   /// Tracks all pushes with chunk transfers in flight.
-  absl::flat_hash_map<PushID, std::unique_ptr<PushState>> push_info_;
+  absl::flat_hash_map<NodeID, std::pair<absl::flat_hash_map<ObjectID, std::shared_ptr<PushState>>, std::queue<std::shared_ptr<PushState>>>> push_info_;
+
+  int64_t push_chunk_nums = 0;
 };
 
 }  // namespace ray
