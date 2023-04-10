@@ -52,17 +52,56 @@ Ray has native integration to ``pdb``. You can simply add ``breakpoint()`` to ac
 Debugging Out of Memory
 -----------------------
 
-Before debugging out-of-memory error in Ray, it is recommended to understand Ray's ref:`Memory Management <memory:>` model.
+Before reading this section, it is recommended to understand Ray's ref:`Memory Management <memory>` model.
 
-- Shared Memory (Plasma Store). By default, 30% of “available memory when starting a ray instance” will be assigned for shared memory managed by Ray's plasma store. Any “return object” (if its size is > 100KB). or object created by “ray.put” from ray’s remote task/actor will be allocated to the shared memory. Plasma store comes with a smart memory manager. It automatically spills objects to disk when it is necessary to avoid out of memory issues. When the memory usage is high on plasma store, it only becomes slow, but it is never broken.
-- Worker Memory Usage: It is the memory used by each process, including memory that is shared across processes. Since 30% of memory is assigned for the plasma store, the remaining 70% of memory will be used by Ray’s core components (e.g., raylet. This memory is also shared with other processes  on the node, and its availability depends on whether Ray is running inside a container and whether the container has a memory limit, and the memory usage of other processes and containers.
-Note the memory usage of these components are usually low, unless the cluster is scaled close to the scalability limit) and worker processes which run user’s code. Most of “out of memory error” issues occur due to high RSS usage. 
-Error Detection
-- 
-When a process requests memory and the OS fails to allocate memory, the OS typically executes a routine to free up memory by killing a process that has high memory usage via SIGKILL. Note that SIGKILL cannot be handled by the regular processes, so when out of memory happens tasks or actors may fail without a clear error message. In Ray if out of memory happens and the OS kills a worker process, it will come back as a worker error, with the following error message:
+What's the Out-of-Memory Error?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The actor is dead because its worker process has died. Worker exit type: UNEXPECTED_SYSTEM_EXIT Worker exit detail: Worker unexpectedly exits with a connection error code 2. End of file. There are some potential root causes. (1) The process is killed by SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is called. (3) The worker is crashed unexpectedly due to SIGSEGV or other unexpected errors.
+Memory is a limited resource. When a process requests memory and the OS fails to allocate memory, the OS executes a routine to free up memory
+by killing a process that has high memory usage (via SIGKILL) to avoid the OS becoming unstable. It is called `Linux Out of Memory killer <https://www.kernel.org/doc/gorman/html/understand/understand016.html>`_.
+
+How to Detect Out-of-Memory Errors?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If tasks or actors are killed by the out-of-memory killer, Ray worker processes are unable to catch and display an exact root cause
+because SIGKILL cannot be handled by processes.
+
+When Ray workers are killed by SIGKILL, ``ray.get`` will raise an exception with one of the following error messages.
+This error message means that the worker is killed by an un-handleable reason, 
+which typically is the SIGKILL triggered by the Linux out-of-memory error.
+
+.. code-block:: bash
+
+  Worker exit type: UNEXPECTED_SY STEM_EXIT Worker exit detail: Worker unexpectedly exits with a connection error code 2. End of file. There are some potential root causes. (1) The process is killed by SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is called. (3) The worker is crashed unexpectedly due to SIGSEGV or other unexpected errors.
+
+.. code-block:: bash
+
+  Worker exit type: SYSTEM_ERROR Worker exit detail: The leased worker has unrecoverable failure. Worker is requested to be destroyed when it is returned.
+
+SANG-TODO Events
+
+.. code-block:: bash
+
+  Task was killed due to the node running low on memory.
+  Memory on the node (IP: 10.0.62.231, ID: e5d953ef03e55e26f13973ea1b5a0fd0ecc729cd820bc89e4aa50451) where the task (task ID: 43534ce9375fa8e4cd0d0ec285d9974a6a95897401000000, name=allocate_memory, pid=11362, memory used=1.25GB) was running was 27.71GB / 28.80GB (0.962273), which exceeds the memory usage threshold of 0.95. Ray killed this worker (ID: 6f2ec5c8b0d5f5a66572859faf192d36743536c2e9702ea58084b037) because it was the most recently scheduled task; to see more information about memory usage on this node, use `ray logs raylet.out -ip 10.0.62.231`. To see the logs of the worker, use `ray logs worker-6f2ec5c8b0d5f5a66572859faf192d36743536c2e9702ea58084b037*out -ip 10.0.62.231.`
+  Top 10 memory users:
+  PID	MEM(GB)	COMMAND
+  410728	8.47	510953	7.19	ray::allocate_memory
+  610952	6.15	ray::allocate_memory
+  711164	3.63	ray::allocate_memory
+  811156	3.63	ray::allocate_memory
+  911362	1.25	ray::allocate_memory
+  107230	0.09	python test.py --num-tasks 2011327	0.08	/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/dashboa...
+
+  Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html.
+
 Note that from Ray 2.2, Ray’s built-in memory monitor has been turned on by default. And this normally kills the processes before OS starts killing them. If processes are killed by Ray’s OOM killer, it will have clearer error message as following. Before this error occurs, Ray automatically retries the failed tasks up to 15 times. 
+
+.. code-block:: bash
+
+  (raylet) [2023-04-09 07:23:59,445 E 395 395] (raylet) node_manager.cc:3049: 10 Workers (tasks / actors) killed due to memory pressure (OOM), 0 Workers crashed due to other reasons at node (ID: e5d953ef03e55e26f13973ea1b5a0fd0ecc729cd820bc89e4aa50451, IP: 10.0.62.231) over the last time period. To see more information about the Workers killed on this node, use `ray logs raylet.out -ip 10.0.62.231`
+  (raylet) 
+  (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero.
 
 ray.exceptions.OutOfMemoryError: Task was killed due to the node running low on memory.
 Monitoring
