@@ -22,7 +22,7 @@ class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def build(self):
+    def setup(self):
         catalog = self.config.get_catalog()
         # old pi and old encoder are the "target networks" that are used for
         # the stabilization of the updates of the current pi and encoder.

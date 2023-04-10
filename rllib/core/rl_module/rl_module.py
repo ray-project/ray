@@ -278,7 +278,7 @@ class RLModule(abc.ABC):
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
-        self.build()
+        self.setup()
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
@@ -320,8 +320,8 @@ class RLModule(abc.ABC):
             self.output_specs_inference()
         )
 
-    def build(self):
-        """Builds the components of the module.
+    def setup(self):
+        """Sets up the components of the module.
 
         This is called automatically during the __init__ method of the subclass. This abstraction can be used to create any component that you RLModule needs.
         """
