@@ -384,14 +384,22 @@ TEST_F(PublisherTest, TestSubscriber) {
     ASSERT_TRUE(object_ids_published.contains(oid));
   }
 
-  // Qeueu is not cleaned up if max_processed_sequence_id hasn't
+  // Queue is not cleaned up if max_processed_sequence_id hasn't
   // been set properly.
   request_.set_max_processed_sequence_id(1);
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   ASSERT_FALSE(subscriber->CheckNoLeaks());
+
+  // If we set wrong publisher_id, the queue won't be cleaned up.
+  request_.set_publisher_id(NodeID::FromRandom().Binary());
+  request_.set_max_processed_sequence_id(sequence_id_);
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
+  ASSERT_FALSE(subscriber->CheckNoLeaks());
+
   // By sending back max_processed_sequence_id, the subscriber's sending queue
   // is cleaned up.
   request_.set_max_processed_sequence_id(sequence_id_);
+  request_.set_publisher_id(kDefaultPublisherId.Binary());
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   ASSERT_TRUE(subscriber->CheckNoLeaks());
 }

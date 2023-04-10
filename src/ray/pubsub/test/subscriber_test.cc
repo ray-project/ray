@@ -28,6 +28,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
       const rpc::PubsubLongPollingRequest &request,
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) override {
     max_processed_sequence_id_ = request.max_processed_sequence_id();
+    publisher_id_ = request.publisher_id();
     long_polling_callbacks.push_back(callback);
   }
 
@@ -63,7 +64,8 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
   bool ReplyLongPolling(rpc::ChannelType channel_type,
                         std::vector<ObjectID> &object_ids,
                         std::vector<int64_t> sequence_ids,
-                        Status status = Status::OK()) {
+                        Status status = Status::OK(),
+                        std::string publisher_id = "") {
     if (long_polling_callbacks.empty()) {
       return false;
     }
@@ -79,7 +81,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
           sequence_ids.empty() ? GetNextSequenceId() : sequence_ids.at(i);
       new_pub_message->set_sequence_id(sequence_id);
     }
-    reply.set_publisher_id(publisher_id_);
+    reply.set_publisher_id(publisher_id.empty() ? publisher_id_ : publisher_id);
     callback(status, reply);
     long_polling_callbacks.pop_front();
     return true;
@@ -168,11 +170,12 @@ class SubscriberTest : public ::testing::Test {
   }
 
   bool ReplyLongPolling(rpc::ChannelType channel_type,
-                        std::vector<ObjectID> &object_ids,
+                        std::vector<ObjectID> object_ids,
                         std::vector<int64_t> sequence_ids = {},
-                        Status status = Status::OK()) {
-    auto success =
-        owner_client->ReplyLongPolling(channel_type, object_ids, sequence_ids, status);
+                        Status status = Status::OK(),
+                        std::string publiser_id = "") {
+    auto success = owner_client->ReplyLongPolling(
+        channel_type, object_ids, sequence_ids, status, publiser_id);
     // Need to call this to invoke callback when the reply comes.
     // The io service basically executes the queued handler in a blocking manner, and
     // reset should be called in order to run the poll_one again.
@@ -294,6 +297,47 @@ TEST_F(SubscriberTest, TestIgnoreOutofOrderMessage) {
   ASSERT_TRUE(object_subscribed_[object_id] == 2);
   ASSERT_TRUE(object_subscribed_[object_id1] == 1);
   ASSERT_EQ(4, owner_client->GetReportedMaxProcessedSequenceId());
+}
+
+TEST_F(SubscriberTest, TestPublisherFailsOver) {
+  auto subscription_callback = [this](const rpc::PubMessage &msg) {
+    object_subscribed_[ObjectID::FromBinary(msg.key_id())]++;
+  };
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
+
+  const auto owner_addr = GenerateOwnerAddress();
+  const auto object_id = ObjectID::FromRandom();
+  const auto object_id1 = ObjectID::FromRandom();
+  subscriber_->SubscribeChannel(std::make_unique<rpc::SubMessage>(),
+                                channel,
+                                owner_addr,
+                                /*subscribe_done_callback=*/nullptr,
+                                subscription_callback,
+                                failure_callback);
+  ASSERT_TRUE(owner_client->ReplyCommandBatch());
+
+  std::vector<ObjectID> objects_batched;
+  objects_batched.push_back(object_id);
+  objects_batched.push_back(object_id1);
+  // Make sure the long polling batch works as expected.
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
+  ASSERT_EQ(2, owner_client->GetReportedMaxProcessedSequenceId());
+
+  for (const auto &object_id : objects_batched) {
+    ASSERT_TRUE(object_subscribed_[object_id] == 1);
+  }
+
+  // By resetting the sequence_id, the message now come out of order,
+  // and the subscriber should ignore out of order message.
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched, {1, 2}));
+  ASSERT_EQ(2, owner_client->GetReportedMaxProcessedSequenceId());
+
+  auto new_publisher_id = NodeID::FromRandom().Binary();
+  // if the publisher_id changes, we should reset both publisher_id and sequence_id.
+  ASSERT_TRUE(ReplyLongPolling(
+      channel, std::vector<ObjectID>({object_id}), {1}, Status::OK(), new_publisher_id));
+  ASSERT_EQ(1, owner_client->GetReportedMaxProcessedSequenceId());
+  ASSERT_EQ(new_publisher_id, owner_client->publisher_id_);
 }
 
 TEST_F(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions) {

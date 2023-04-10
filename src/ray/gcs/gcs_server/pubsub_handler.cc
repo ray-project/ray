@@ -40,6 +40,7 @@ void InternalPubSubHandler::HandleGcsPublish(rpc::GcsPublishRequest request,
         nullptr);
     return;
   }
+  RAY_LOG(DEBUG) << "received publish request: " << request.DebugString();
   for (const auto &msg : request.pub_messages()) {
     gcs_publisher_->GetPublisher()->Publish(msg);
   }
