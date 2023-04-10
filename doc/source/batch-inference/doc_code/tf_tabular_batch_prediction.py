@@ -10,12 +10,15 @@ dataset = dataset.drop_columns("target")
 # All columns are features.
 num_features = len(dataset.schema().names)
 
+
 # Concatenate the features to a single Numpy array.
 def concatenate(batch: pd.DataFrame):
     concatenated_features = batch.to_numpy()
     return concatenated_features
 
+
 dataset = dataset.map_batches(concatenate, batch_format="pandas")
+
 
 # Define the model class for prediction.
 class TFModel:
@@ -31,15 +34,14 @@ class TFModel:
                 layers.Dense(1, activation="sigmoid"),
             ]
         )
-        
+
     def __call__(self, batch: np.ndarray):
         return self.model(batch).numpy()
 
+
 # Predict on the features.
 predicted_probabilities = dataset.map_batches(
-    TFModel,
-    compute=ray.data.ActorPoolStrategy(size=2),
-    batch_format="numpy"
+    TFModel, compute=ray.data.ActorPoolStrategy(size=2), batch_format="numpy"
 )
 
 # Call show on the output probabilities to trigger execution.

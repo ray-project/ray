@@ -3,31 +3,31 @@ import numpy as np
 
 import torch
 from torchvision import transforms
-from torchvision.models import resnet18
+from torchvision.models import resnet18, ResNet18_Weights
 
 import ray
-from ray.train.torch import TorchCheckpoint, TorchPredictor
-from ray.train.batch_predictor import BatchPredictor
-from ray.data.preprocessors import TorchVisionPreprocessor
 
-
+# 1G of ImageNet images.
 data_url = "s3://anonymous@air-example-data-2/1G-image-data-synthetic-raw"
-print(f"Running GPU batch prediction with 1GB data from {data_url}")
-dataset = ray.data.read_images(data_url, size=(256, 256)).limit(10)
 
-transform = transforms.Compose(
-    [
-        transforms.ToTensor(),
-        transforms.CenterCrop(224),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ]
-)
+print(f"Running GPU batch prediction with 1GB data from {data_url}")
+
+dataset = ray.data.read_images(data_url).limit(10)
+
+# Preprocess the images using the saved transforms.
+pretrained_weight = ResNet18_Weights.DEFAULT
+imagenet_transforms = pretrained_weight.transforms
+
+transform = transforms.Compose([transforms.ToTensor(), imagenet_transforms()])
+
 
 def preprocess_images(batch: Dict[str, np.ndarray]):
     transformed_images = [transform(image) for image in batch["image"]]
     return transformed_images
 
+
 dataset = dataset.map_batches(preprocess_images, batch_format="numpy")
+
 
 class TorchModel:
     def __init__(self):
@@ -39,11 +39,12 @@ class TorchModel:
         with torch.inference_mode():
             prediction = self.model(torch_batch)
             return {"class": prediction.argmax(dim=1).detach().cpu().numpy()}
-    
+
+
 predictions = dataset.map_batches(
     TorchModel,
     compute=ray.data.ActorPoolStrategy(size=2),
-    num_gpus=1 # Specify 1 GPU per worker.
+    num_gpus=1,  # Specify 1 GPU per worker.
 )
 
 # Call show on the output probabilities to trigger execution
