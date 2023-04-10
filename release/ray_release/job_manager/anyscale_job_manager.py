@@ -1,6 +1,8 @@
 import io
 import os
 import time
+import tempfile
+from collections import deque
 from datetime import timedelta
 from contextlib import redirect_stdout, redirect_stderr, contextmanager
 from typing import Any, Dict, Optional, Tuple
@@ -11,14 +13,7 @@ from anyscale.sdk.anyscale_client.models import (
     HaJobStates,
 )
 from anyscale.controllers.job_controller import JobController, terminal_state
-from anyscale.controllers.logs_controller import (
-    DEFAULT_PAGE_SIZE,
-    DEFAULT_PARALLELISM,
-    DEFAULT_READ_TIMEOUT,
-    DEFAULT_TIMEOUT,
-    DEFAULT_TTL,
-    LogsController,
-)
+from anyscale.controllers.logs_controller import LogsController
 from anyscale.client.openapi_client.models.node_type import NodeType
 from anyscale.client.openapi_client.models.log_filter import LogFilter
 
@@ -44,7 +39,6 @@ job_status_to_return_code = {
     HaJobStates.BROKEN: -2,
     HaJobStates.TERMINATED: -3,
 }
-
 
 class AnyscaleJobManager:
     def __init__(self, cluster_manager: ClusterManager):
@@ -270,52 +264,40 @@ class AnyscaleJobManager:
         )
         return self._wait_job(timeout)
 
-    def get_last_ray_error_logs(self) -> Optional[str]:
-        globs = [
-            "dashboard.log",
-            "dashboard.err",
-            "dashboard_agent.log",
-            "runtime_env_agent.log",
-            "raylet.out",
-            "raylet.err",
-            "gcs_server.out",
-            "gcs_server.err",
+    def _get_ray_error_logs(self) -> Optional[str]:
+        """
+        Obtain any ray logs that contain keywords that indicate a stack trace, such as
+        ERROR or Traceback
+        """
+        tmpdir = tempfile.TemporaryDirectory()
+        LogsController().download_logs(
+            filter=LogFilter(
+                cluster_id=self.cluster_manager.cluster_id,
+                glob=None,
+                node_type=NodeType.HEAD_NODE,
+            ),
+            download_dir=tmpdir,
+        )
+        # Ignored some ray files that do not crash ray despite having exceptions
+        ignored_ray_files = [
+            'monitor.log',
+            'event_AUTOSCALER.log',
+            'event_JOBS.log',
         ]
-        for glob in globs:
-            last_ray_logs = self._get_last_ray_error_logs(
-                self.cluster_manager.cluster_id,
-                glob,
-            )
-            if last_ray_logs:
-                return last_ray_logs
-        return None
-
-    def _get_last_ray_error_logs(self, cluster_id: int, glob: str) -> Optional[str]:
-        logs_controller = LogsController()
-        filter = LogFilter(
-            cluster_id=cluster_id,
-            glob=glob,
-            node_type=NodeType.HEAD_NODE,
-        )
-        log_group = logs_controller.get_log_group(
-            filter=filter,
-            page_size=DEFAULT_PAGE_SIZE,
-            timeout=timedelta(seconds=DEFAULT_TIMEOUT),
-            ttl_seconds=DEFAULT_TTL,
-        )
-        buf = io.StringIO()
-        with open(os.devnull, "w") as devnull:
-            with redirect_stdout(buf), redirect_stderr(devnull):
-                logs_controller.render_logs(
-                    log_group=log_group,
-                    parallelism=DEFAULT_PARALLELISM,
-                    read_timeout=timedelta(seconds=DEFAULT_READ_TIMEOUT),
-                    tail=-1,
-                )
-                print("", flush=True)
-        output = "\n".join(buf.getvalue().strip().splitlines()[-LAST_LOGS_LENGTH * 3 :])
-        if "ERROR" in output or "Traceback (most recent call last)" in output:
-            return output
+        # Logs that can indicate there are exception thrown
+        error_log_patterns = [
+            'ERROR',
+            'Traceback (most recent call last)',
+        ]
+        for root, _, files in os.walk(tmpdir):
+            for file in files:
+                logger.info(f'Ray log: {os.path.join(root, file)}')
+                if file in ignored_ray_files:
+                    continue
+                with open(os.path.join(root, file)) as lines:
+                    output = "\n".join(deque(lines, maxlen=3*LAST_LOGS_LENGTH))
+                    if any([error in output for error in error_log_patterns]):
+                        return output
         return None
 
     def get_last_logs(self):
@@ -340,7 +322,7 @@ class AnyscaleJobManager:
                     print("", flush=True)
             output = buf.getvalue().strip()
             if "### Starting ###" not in output:
-                output = self.get_last_ray_error_logs()
+                output = self._get_ray_error_logs()
             assert output, "No logs fetched"
             return "\n".join(output.splitlines()[-LAST_LOGS_LENGTH * 3 :])
 
