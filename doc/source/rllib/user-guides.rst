@@ -105,5 +105,5 @@ RLlib Feature Guides
     +++
     .. link-button:: rllib-catalogs
         :type: ref
-        :text: How To Use the RLlib Catalogs?
+        :text: How To Use the RLlib Catalogs
         :classes: btn-link btn-block stretched-link
