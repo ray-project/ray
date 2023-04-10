@@ -343,8 +343,6 @@ class AnyscaleJobManager:
             initial_retry_delay_s=30,
             max_retries=3,
         )
-        if not ret:
-          ret = self.get_last_ray_error_logs()
         if ret and not self.in_progress:
             self._last_logs = ret
         return ret
