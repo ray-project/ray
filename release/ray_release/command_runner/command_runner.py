@@ -129,7 +129,7 @@ class CommandRunner(abc.ABC):
     def get_last_logs_ex(self):
         raise NotImplementedError
 
-    def fetch_results_ex(self) -> Dict[str, Any]:
+    def fetch_results(self) -> Dict[str, Any]:
         raise NotImplementedError
 
     def fetch_metrics(self) -> Dict[str, Any]:
