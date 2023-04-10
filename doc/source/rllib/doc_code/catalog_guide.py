@@ -135,4 +135,3 @@ config = config.rl_module(
 # It will say "Hi from within PPORLModule!".
 ppo_rl_module = config.rl_module_spec.build()
 # __sphinx_doc_algo_configs_end__
-
