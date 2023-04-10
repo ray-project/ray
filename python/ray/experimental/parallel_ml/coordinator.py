@@ -1,7 +1,8 @@
+from typing import List
+
 import ray
-from ray.dag import DAGNode
 from ray.experimental.parallel_ml.engine import ExecutionEngine
-from ray.experimental.parallel_ml.physical_plan import PhysicalPlanner
+from ray.experimental.parallel_ml.physical_plan import ModuleParition, PhysicalPlanner
 from ray.util.placement_group import PlacementGroup, PlacementGroupSchedulingStrategy
 
 
@@ -11,7 +12,10 @@ class Coordinator(object):
     """
 
     def __init__(
-        self, logical_plan: DAGNode, pg: PlacementGroup, planner: PhysicalPlanner
+        self,
+        logical_plan: List[ModuleParition],
+        pg: PlacementGroup,
+        planner: PhysicalPlanner,
     ) -> None:
         self._logical_plan = logical_plan
         self._pg = pg
@@ -39,5 +43,7 @@ class Coordinator(object):
             )
         )
 
-    def reconfigure(self, new_logical_plan: DAGNode, new_pg: PlacementGroup) -> None:
+    def reconfigure(
+        self, new_logical_plan: List[ModuleParition], new_pg: PlacementGroup
+    ) -> None:
         pass

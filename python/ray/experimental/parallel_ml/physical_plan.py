@@ -1,11 +1,8 @@
 from abc import ABCMeta, abstractmethod
-from collections import defaultdict
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import Any, Callable, List, Tuple
 
 import ray
-from ray.dag import DAGNode
-from ray.experimental.parallel_ml.dag.nn_module_node import NNModuleNode
 from ray.experimental.parallel_ml.engine import Config
 from ray.experimental.parallel_ml.schedule import (
     ExecuteSchedule,
@@ -14,6 +11,20 @@ from ray.experimental.parallel_ml.schedule import (
     Schedule,
 )
 from ray.util.placement_group import PlacementGroup
+from torch import Tensor, nn
+
+
+def noop_data_loader_builder():
+    return None
+
+
+@dataclass
+class ModuleParition(object):
+    partition_index: int
+    module: nn.Module
+    module_loader: Callable[[], nn.Module]
+    input_tensor_shape: Any
+    input_tensor_dtype: Tensor.dtype
 
 
 @dataclass
@@ -30,7 +41,9 @@ class PhysicalPlanner(metaclass=ABCMeta):
     i.e. number of replicas of each stage, and execution schedule of each replica."""
 
     @abstractmethod
-    def plan(self, logical_plan: DAGNode, pg: PlacementGroup) -> PhysicalPlan:
+    def plan(
+        self, logical_plan: List[ModuleParition], pg: PlacementGroup
+    ) -> PhysicalPlan:
         pass
 
 
@@ -43,32 +56,32 @@ def _get_device_name():
 class SimplePhysicalPlanner(PhysicalPlanner):
     """Simple physical planner that simply deploys one replica per stage per GPU."""
 
-    def plan(self, logical_plan: DAGNode, pg: PlacementGroup) -> PhysicalPlan:
+    def plan(
+        self, logical_plan: List[ModuleParition], pg: PlacementGroup
+    ) -> PhysicalPlan:
         self._validate_pg(pg)
-        nodes, input_edges, output_edges = self._get_nodes_and_edges(logical_plan)
-        assert len(nodes) >= len(pg.bundle_specs)
-        world_size = len(nodes)
+        assert len(logical_plan) >= len(pg.bundle_specs)
+        world_size = len(logical_plan)
         schedules = []
         configs = []
         pgs = []
 
-        for rank, node in enumerate(nodes):
-            assert isinstance(node, NNModuleNode)
+        for rank, partition in enumerate(logical_plan):
             schedule = ExecuteSchedule()
-            if not input_edges[node]:
+            if rank == 0:
                 schedule = InputSchedule()
-            elif not output_edges[node]:
+            elif rank == world_size - 1:
                 schedule = OutputSchedule()
             schedules.append(schedule)
 
             config = Config(
                 world_size,
                 rank,
-                node.get_input_tensor_shape(),
-                node.get_input_tensor_dtype(),
+                partition.input_tensor_shape,
+                partition.input_tensor_dtype,
                 _get_device_name,
-                node.get_model_builder(),
-                node.get_data_loader_builder(),
+                partition.module_loader,
+                noop_data_loader_builder,
             )
             configs.append(config)
             pgs.append((pg, rank))
@@ -80,26 +93,3 @@ class SimplePhysicalPlanner(PhysicalPlanner):
             assert bundle == {
                 "GPU": 1
             }, "SimplePhysicalPlanner only supports one GPU per replica"
-
-    def _get_nodes_and_edges(dag: DAGNode):
-        """Get all unique nodes and edges in the DAG.
-
-        A basic dfs with memorization to get all unique nodes
-        and edges in the DAG.
-        Unique nodes will be used to generate unique names,
-        while edges will be used to construct the graph.
-        """
-
-        input_edges = defaultdict(list)
-        output_edges = defaultdict(list)
-        nodes = []
-
-        def _dfs(node):
-            nodes.append(node)
-            for child_node in node._get_all_child_nodes():
-                input_edges[node].append(child_node)
-                output_edges[child_node].append(node)
-            return node
-
-        dag.apply_recursive(_dfs)
-        return nodes, input_edges, output_edges
