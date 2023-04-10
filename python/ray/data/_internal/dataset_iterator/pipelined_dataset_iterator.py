@@ -67,16 +67,14 @@ class PipelinedDatasetIterator(DatasetIterator):
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
-        # Set prefetch_batches to default of 0 for DatasetPipeline.
-        return super().iter_batches(
-            prefetch_batches=prefetch_batches,
+        yield from self._base_dataset_pipeline.iter_batches(
+            prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=_collate_fn,
-            prefetch_blocks=prefetch_blocks,
         )
 
     def stats(self) -> str:
