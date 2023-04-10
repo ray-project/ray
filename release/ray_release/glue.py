@@ -578,10 +578,10 @@ def run_release_test(
         if runtime is not None:
             result.runtime = runtime
         try:
-          raise pipeline_exception
-        except:
-          if not result.last_logs:
-            result.last_logs = traceback.format_exc()
+            raise pipeline_exception
+        except Exception:
+            if not result.last_logs:
+                result.last_logs = traceback.format_exc()
 
     buildkite_group(":memo: Reporting results", open=True)
     for reporter in reporters or []:
