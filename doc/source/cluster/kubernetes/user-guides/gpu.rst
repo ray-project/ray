@@ -8,6 +8,10 @@ To use GPUs on Kubernetes, you will need to configure both your Kubernetes setup
 
 To learn about GPU usage on different clouds, see instructions for `GKE`_, for `EKS`_, and for `AKS`_.
 
+ML training with GPUs on Kubernetes
+___________________________________________
+See :ref:`GPU training example <kuberay-gpu-training-example>` for a complete example of training a PyTorch model on a GPU with Ray on Kubernetes.
+
 Dependencies for GPU-based machine learning
 ___________________________________________
 The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based container images packaged
