@@ -22,12 +22,13 @@ You interact with Catalogs when making deeper customization to what :py:class:`~
     If you simply want to modify a :py:class:`~ray.rllib.core.models.Model` by changing its default values,
     have a look at the ``model config dict``:
 
-    .. dropdown:: **MODEL_DEFAULTS dict**
+    .. dropdown:: **``MODEL_DEFAULTS`` dict**
         :animate: fade-in-slide-down
 
         This dict (or an overriding sub-set) is part of :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
         and therefore also part of any algorithm-specific config.
-        You can override its values and pass it to an AlgorithmConfig to change the behavior RLlib's default models.
+        You can override its values and pass it to an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
+        to change the behavior RLlib's default models.
 
         .. literalinclude:: ../../../rllib/models/catalog.py
             :language: python
@@ -38,9 +39,9 @@ While Catalogs have a base class :py:class:`~ray.rllib.core.models.catalog.Catal
 Algorithm-specific Catalogs.
 Therefore, this doc also includes examples around PPO from which you can extrapolate to other algorithms.
 Prerequisites for this user guide is a rough understanding of `RLModules <rllib-rlmodule.html>`__.
-After reading this user guide you will be able to…
+This user guide covers the following topics:
 
-- Instantiate and interact with a Catalog
+- Basic usage
 - Inject your custom models into RLModules
 - Inject your custom action distributions into RLModules
 - Extend RLlib’s selection of Models and Distributions with your own
