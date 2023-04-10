@@ -351,7 +351,7 @@ class JobSupervisor:
         resources_specified: bool = False,
     ):
         """
-        Stop and start both happen asynchrously, coordinated by asyncio event
+        Stop and start both happen asynchronously, coordinated by asyncio event
         and coroutine, respectively.
 
         1) Sets job status as running
@@ -359,8 +359,14 @@ class JobSupervisor:
             variables.
         3) Handle concurrent events of driver execution and
         """
-        curr_status = await self._job_info_client.get_status(self._job_id)
-        assert curr_status == JobStatus.PENDING, "Run should only be called once."
+        curr_info = await self._job_info_client.get_info(self._job_id) or {}
+        curr_status = curr_info.get("status", None)
+        curr_message = curr_info.get("message", "")
+        if curr_status != JobStatus.PENDING:
+            raise RuntimeError(
+                f"Job {self._job_id} is not in PENDING state. "
+                f"Current status is {curr_status} with message {curr_message}."
+            )
 
         if _start_signal_actor:
             # Block in PENDING state until start signal received.
@@ -556,21 +562,33 @@ class JobManager:
         self, job_id: str, job_supervisor: Optional[ActorHandle] = None
     ):
         is_alive = True
-        if job_supervisor is None:
-            job_supervisor = self._get_actor_for_job(job_id)
-
-            if job_supervisor is None:
-                logger.error(f"Failed to get job supervisor for job {job_id}.")
-                await self._job_info_client.put_status(
-                    job_id,
-                    JobStatus.FAILED,
-                    message="Unexpected error occurred: Failed to get job supervisor.",
-                )
-                is_alive = False
 
         while is_alive:
             try:
-                await job_supervisor.ping.remote()
+                if job_supervisor is None:
+                    job_status = await self._job_info_client.get_status(job_id)
+
+                    if job_status != JobStatus.PENDING:
+                        job_supervisor = self._get_actor_for_job(job_id)
+
+                        if job_supervisor is None:
+                            logger.error(
+                                f"Failed to get job supervisor for job {job_id}."
+                            )
+                            await self._job_info_client.put_status(
+                                job_id,
+                                JobStatus.FAILED,
+                                message=(
+                                    "Unexpected error occurred: "
+                                    "Failed to get job supervisor."
+                                ),
+                            )
+                            is_alive = False
+                            continue
+
+                if job_supervisor is not None:
+                    await job_supervisor.ping.remote()
+
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
                 is_alive = False
