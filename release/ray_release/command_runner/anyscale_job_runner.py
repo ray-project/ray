@@ -22,7 +22,12 @@ from ray_release.exception import (
 from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.job_manager import AnyscaleJobManager
 from ray_release.logger import logger
-from ray_release.util import get_anyscale_sdk, generate_tmp_s3_path, join_s3_paths
+from ray_release.util import (
+    join_cloud_storage_paths,
+    generate_tmp_cloud_storage_path,
+    get_anyscale_sdk,
+    S3_CLOUD_STORAGE,
+)
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -56,15 +61,18 @@ class AnyscaleJobRunner(JobRunner):
         self.job_manager = AnyscaleJobManager(cluster_manager)
 
         self.last_command_scd_id = None
-        self.path_in_bucket = join_s3_paths(
+        self.path_in_bucket = join_cloud_storage_paths(
             "working_dirs",
             self.cluster_manager.test_name.replace(" ", "_"),
-            generate_tmp_s3_path(),
+            generate_tmp_cloud_storage_path(),
         )
-        # The root s3 bucket path. result, metric, artifact files
-        # will be uploaded to under it on s3.
-        cloud_storage_provider = os.environ.get("ANYSCALE_CLOUD_STORAGE_PROVIDER", "s3")
-        self.upload_path = join_s3_paths(
+        # The root cloud storage bucket path. result, metric, artifact files
+        # will be uploaded to under it on cloud storage.
+        cloud_storage_provider = os.environ.get(
+            "ANYSCALE_CLOUD_STORAGE_PROVIDER",
+            S3_CLOUD_STORAGE,
+        )
+        self.upload_path = join_cloud_storage_paths(
             f"{cloud_storage_provider}://{self.file_manager.bucket}",
             self.path_in_bucket,
         )
@@ -81,12 +89,7 @@ class AnyscaleJobRunner(JobRunner):
         self._artifact_uploaded = artifact_path is not None
 
     def prepare_remote_env(self):
-        # Copy anyscale job script to working dir
-        job_script = os.path.join(os.path.dirname(__file__), "_anyscale_job_wrapper.py")
-        if os.path.exists("anyscale_job_wrapper.py"):
-            os.unlink("anyscale_job_wrapper.py")
-        os.link(job_script, "anyscale_job_wrapper.py")
-
+        self._copy_script_to_working_dir("anyscale_job_wrapper.py")
         super().prepare_remote_env()
 
     def run_prepare_command(
@@ -227,13 +230,14 @@ class AnyscaleJobRunner(JobRunner):
         full_command = (
             f"{env_str}python anyscale_job_wrapper.py '{command}' "
             f"--test-workload-timeout {timeout}{no_raise_on_timeout_str} "
-            "--results-s3-uri "
-            f"'{join_s3_paths(self.upload_path, self._RESULT_OUTPUT_JSON)}' "
-            "--metrics-s3-uri "
-            f"'{join_s3_paths(self.upload_path, self._METRICS_OUTPUT_JSON)}' "
-            "--output-s3-uri "
-            f"'{join_s3_paths(self.upload_path, self.output_json)}' "
-            f"--upload-s3-uri '{self.upload_path}' "
+            "--results-cloud-storage-uri "
+            f"'{join_cloud_storage_paths(self.upload_path, self._RESULT_OUTPUT_JSON)}' "
+            "--metrics-cloud-storage-uri "
+            f"'"
+            f"{join_cloud_storage_paths(self.upload_path, self._METRICS_OUTPUT_JSON)}' "
+            "--output-cloud-storage-uri "
+            f"'{join_cloud_storage_paths(self.upload_path, self.output_json)}' "
+            f"--upload-cloud-storage-uri '{self.upload_path}' "
             f"--prepare-commands {prepare_commands_shell} "
             f"--prepare-commands-timeouts {prepare_commands_timeouts_shell} "
         )
@@ -293,7 +297,7 @@ class AnyscaleJobRunner(JobRunner):
                 "Could not fetch results from session as they were not uploaded."
             )
         return self._fetch_json(
-            join_s3_paths(self.path_in_bucket, self._RESULT_OUTPUT_JSON)
+            join_cloud_storage_paths(self.path_in_bucket, self._RESULT_OUTPUT_JSON)
         )
 
     def fetch_metrics(self) -> Dict[str, Any]:
@@ -302,7 +306,7 @@ class AnyscaleJobRunner(JobRunner):
                 "Could not fetch metrics from session as they were not uploaded."
             )
         return self._fetch_json(
-            join_s3_paths(self.path_in_bucket, self._METRICS_OUTPUT_JSON)
+            join_cloud_storage_paths(self.path_in_bucket, self._METRICS_OUTPUT_JSON)
         )
 
     def fetch_artifact(self):
@@ -332,12 +336,16 @@ class AnyscaleJobRunner(JobRunner):
         # and put it under `self._DEFAULT_ARTIFACTS_DIR`.
         artifact_file_name = os.path.basename(self._artifact_path)
         self.file_manager.download_from_cloud(
-            join_s3_paths(self.path_in_bucket, self._USER_GENERATED_ARTIFACT),
+            join_cloud_storage_paths(
+                self.path_in_bucket, self._USER_GENERATED_ARTIFACT
+            ),
             os.path.join(self._DEFAULT_ARTIFACTS_DIR, artifact_file_name),
         )
 
     def fetch_output(self) -> Dict[str, Any]:
-        return self._fetch_json(join_s3_paths(self.path_in_bucket, self.output_json))
+        return self._fetch_json(
+            join_cloud_storage_paths(self.path_in_bucket, self.output_json),
+        )
 
     def cleanup(self):
         try:
