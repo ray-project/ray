@@ -11,7 +11,7 @@ head_node_type:
 
 worker_node_types:
     - name: worker_node
-      instance_type: n2-standard-32 # m5.4xlarge
+      instance_type: n2-standard-32 # m5.8xlarge
       min_workers: 5
       max_workers: 35
       use_spot: false
