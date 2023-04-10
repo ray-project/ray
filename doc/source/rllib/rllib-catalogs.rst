@@ -158,7 +158,7 @@ you can override methods by inheriting from :py:class:`~ray.rllib.algorithms.ppo
 or write a :py:class:`~ray.rllib.core.models.catalog.Catalog` that implements them from scratch.
 The following showcases such modifications.
 
-This example shows two things:
+This example shows two modifications:
 
 - How to write a custom :py:class:`~ray.rllib.models.distributions.Distribution`
 - How to inject a custom action distribution into a :py:class:`~ray.rllib.core.models.catalog.Catalog`
