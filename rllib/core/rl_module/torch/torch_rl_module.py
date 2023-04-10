@@ -9,6 +9,8 @@ torch, nn = try_import_torch()
 
 
 class TorchRLModule(nn.Module, RLModule):
+    framwork: str = "torch"
+
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)

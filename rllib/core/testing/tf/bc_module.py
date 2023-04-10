@@ -18,6 +18,7 @@ class DiscreteBCTFModule(TfRLModule):
     def __init__(self, config: RLModuleConfig) -> None:
         super().__init__(config)
 
+    def setup(self):
         input_dim = self.config.observation_space.shape[0]
         hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
         output_dim = self.config.action_space.n
@@ -118,6 +119,7 @@ class BCTfMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
     def __init__(self, config: MultiAgentRLModuleConfig) -> None:
         super().__init__(config)
 
+    def setup(self):
         # constructing the global encoder based on the observation_space of the first
         # module
         module_specs = self.config.modules
