@@ -31,12 +31,13 @@ class ImpalaTfPolicyWithRLModule(
     def __init__(self, observation_space, action_space, config):
         validate_config(config)
         EagerTFPolicyV2.enable_eager_execution_if_necessary()
-        EagerTFPolicyV2.__init__(self, observation_space, action_space, config)
-        # Initialize MixIns.
+        # Initialize MixIns before super().__init__ because base class will call
+        # self.loss, which requires these MixIns to be initialized.
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
         )
+        EagerTFPolicyV2.__init__(self, observation_space, action_space, config)
 
         self.maybe_initialize_optimizer_and_loss()
 

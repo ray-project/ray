@@ -14,6 +14,28 @@ from ray._private.test_utils import (
 )
 
 
+def test_dedup_logs():
+    script = """
+import ray
+import time
+
+@ray.remote
+def verbose():
+    print(f"hello world, id={time.time()}")
+    time.sleep(1)
+
+ray.init(num_cpus=4)
+ray.get([verbose.remote() for _ in range(10)])
+"""
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+
+    assert out_str.count("hello") == 2
+    assert out_str.count("RAY_DEDUP_LOGS") == 1
+    assert out_str.count("[repeated 9x across cluster]") == 1
+
+
 def test_logger_config():
     script = """
 import ray

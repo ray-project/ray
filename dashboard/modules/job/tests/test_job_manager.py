@@ -326,10 +326,43 @@ async def test_pass_job_id(job_manager):
     )
 
     # Check that the same job_id is rejected.
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError):
         await job_manager.submit_job(
             entrypoint="echo hello", submission_id=submission_id
         )
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_submit_job(job_manager):
+    """Test that we can submit multiple jobs at once."""
+    job_ids = await asyncio.gather(
+        job_manager.submit_job(entrypoint="echo hello"),
+        job_manager.submit_job(entrypoint="echo hello"),
+        job_manager.submit_job(entrypoint="echo hello"),
+    )
+
+    for job_id in job_ids:
+        await async_wait_for_condition_async_predicate(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id
+        )
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_with_same_id(job_manager):
+    """Test that we can submit multiple jobs at once with the same id.
+
+    The second job should raise a friendly error.
+    """
+    with pytest.raises(ValueError) as excinfo:
+        await asyncio.gather(
+            job_manager.submit_job(entrypoint="echo hello", submission_id="1"),
+            job_manager.submit_job(entrypoint="echo hello", submission_id="1"),
+        )
+    assert "Job with submission_id 1 already exists" in str(excinfo.value)
+    # Check that the (first) job can still succeed.
+    await async_wait_for_condition_async_predicate(
+        check_job_succeeded, job_manager=job_manager, job_id="1"
+    )
 
 
 @pytest.mark.asyncio

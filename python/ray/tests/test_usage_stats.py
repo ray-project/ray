@@ -1197,7 +1197,7 @@ provider:
         payload["extra_usage_tags"]["num_actor_tasks"] = "0"
         payload["extra_usage_tags"]["num_normal_tasks"] = "0"
         payload["extra_usage_tags"]["num_drivers"] = "0"
-        assert payload["extra_usage_tags"] == {
+        expected_payload = {
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
             "_test2": "extra_v3",
@@ -1215,6 +1215,10 @@ provider:
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
         }
+        if os.environ.get("RAY_MINIMAL") != "1":
+            expected_payload["tune_scheduler"] = "FIFOScheduler"
+            expected_payload["tune_searcher"] = "BasicVariantGenerator"
+        assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
         if os.environ.get("RAY_MINIMAL") == "1":

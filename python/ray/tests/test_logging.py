@@ -817,10 +817,10 @@ def test_repr_inheritance():
 
     class MyClass:
         def __repr__(self) -> str:
-            return "ThisIsMyCustomActorName"
+            return "ThisIsMyCustomActorName" + ray_constants.TESTING_NEVER_DEDUP_TOKEN
 
         def do(self):
-            logger.warning("text")
+            logger.warning("text" + ray_constants.TESTING_NEVER_DEDUP_TOKEN)
 
     class MySubclass(MyClass):
         pass

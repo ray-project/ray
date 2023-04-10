@@ -127,6 +127,7 @@ def do_test_log_likelihood(
                     prev_action_batch=np.array([prev_a]) if prev_a else None,
                     prev_reward_batch=np.array([prev_r]) if prev_r else None,
                     actions_normalized=True,
+                    in_training=False,
                 )
 
                 # The expected logp computation logic is overfitted to the ModelV2
@@ -146,6 +147,7 @@ def do_test_log_likelihood(
                     preprocessed_obs_batch,
                     prev_action_batch=np.array([prev_a]) if prev_a else None,
                     prev_reward_batch=np.array([prev_r]) if prev_r else None,
+                    in_training=False,
                 )
 
                 if not config._enable_rl_module_api:

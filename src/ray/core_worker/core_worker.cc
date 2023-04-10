@@ -704,6 +704,56 @@ void CoreWorker::Disconnect(
   }
 }
 
+void CoreWorker::KillChildProcs() {
+  // There are cases where worker processes can "leak" child processes.
+  // Basically this means that the worker process (either itself, or via
+  // code in a task or actor) spawned a process and did not kill it on termination.
+  // The process will continue living beyond the lifetime of the worker process.
+  // If that leaked process has expensive resources, such as a CUDA context and associated
+  // GPU memory, then those resources will never be cleaned until something else kills the
+  // process.
+  //
+  // This function lists all processes that are direct children of the current worker
+  // process, then kills them. This currently only works for the "happy-path"; worker
+  // process crashes will still leak processes.
+  // TODO(cade) Use more robust method to catch leaked processes even in worker crash
+  // scenarios (subreaper).
+
+  if (!RayConfig::instance().kill_child_processes_on_worker_exit()) {
+    RAY_LOG(DEBUG)
+        << "kill_child_processes_on_worker_exit is not true, skipping KillChildProcs";
+    return;
+  }
+
+  RAY_LOG(DEBUG) << "kill_child_processes_on_worker_exit true, KillChildProcs";
+  auto maybe_child_procs = GetAllProcsWithPpid(GetPID());
+
+  // Enumerating child procs is not supported on this platform.
+  if (!maybe_child_procs) {
+    RAY_LOG(DEBUG) << "Killing leaked procs not supported on this platform.";
+    return;
+  }
+
+  const auto &child_procs = *maybe_child_procs;
+  const auto child_procs_str = absl::StrJoin(child_procs, ",");
+  RAY_LOG(INFO) << "Try killing all child processes of this worker as it exits. "
+                << "Child process pids: " << child_procs_str;
+
+  for (const auto &child_pid : child_procs) {
+    auto maybe_error_code = KillProc(child_pid);
+    RAY_CHECK(maybe_error_code)
+        << "Expected this path to only be called when KillProc is supported.";
+    auto error_code = *maybe_error_code;
+
+    RAY_LOG(INFO) << "Kill result for child pid " << child_pid << ": "
+                  << error_code.message() << ", bool " << (bool)error_code;
+    if (error_code) {
+      RAY_LOG(WARNING) << "Unable to kill potentially leaked process " << child_pid
+                       << ": " << error_code.message();
+    }
+  }
+}
+
 void CoreWorker::Exit(
     const rpc::WorkerExitType exit_type,
     const std::string &detail,
@@ -734,6 +784,7 @@ void CoreWorker::Exit(
          creation_task_exception_pb_bytes]() {
           rpc::DrainAndResetServerCallExecutor();
           Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
+          KillChildProcs();
           Shutdown();
         },
         "CoreWorker.Shutdown");
@@ -778,6 +829,9 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
   RAY_LOG(WARNING) << "Force exit the process. "
                    << " Details: " << detail;
   Disconnect(exit_type, detail);
+
+  KillChildProcs();
+
   // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
   // `exit()` will destruct static objects in an incorrect order, which will lead to
   // core dumps.
@@ -2475,7 +2529,7 @@ Status CoreWorker::ExecuteTask(
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
-    bool *is_application_error) {
+    std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
@@ -2562,7 +2616,6 @@ Status CoreWorker::ExecuteTask(
   } else if (task_spec.IsActorTask()) {
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
-
   status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
@@ -2577,7 +2630,7 @@ Status CoreWorker::ExecuteTask(
       dynamic_return_objects,
       creation_task_exception_pb_bytes,
       is_retryable_error,
-      is_application_error,
+      application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
       /*is_reattempt=*/task_spec.AttemptNumber() > 0);
@@ -2762,7 +2815,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   auto old_id = GetActorId();
   SetActorId(actor_id);
   bool is_retryable_error;
-  bool is_application_error;
+  std::string application_error = "";
   // TODO(swang): Support ObjectRefGenerators in local mode?
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
   RAY_UNUSED(ExecuteTask(task_spec,
@@ -2771,7 +2824,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
                          &dynamic_return_objects,
                          &borrowed_refs,
                          &is_retryable_error,
-                         &is_application_error));
+                         &application_error));
   SetActorId(old_id);
   return returned_refs;
 }

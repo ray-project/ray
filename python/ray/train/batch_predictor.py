@@ -190,7 +190,7 @@ class BatchPredictor:
             .. testoutput::
 
                 MapBatches(ScoringWrapper)
-                +- Dataset(num_blocks=1, num_rows=3, schema={feature_1: int64, label: int64})
+                +- Datastream(num_blocks=1, num_rows=3, schema={feature_1: int64, label: int64})
                 Final accuracy: 1.0
         """  # noqa: E501
         if num_gpus_per_worker is None:
@@ -354,7 +354,6 @@ class BatchPredictor:
             if override_prep is not None
             else predict_stage_batch_format,
             batch_size=batch_size,
-            prefetch_batches=int(num_gpus_per_worker > 0),
             fn_constructor_kwargs={"override_prep": override_prep},
             **ray_remote_args,
         )

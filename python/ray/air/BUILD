@@ -86,6 +86,14 @@ py_test(
 )
 
 py_test(
+    name = "test_errors",
+    size = "small",
+    srcs = ["tests/test_errors.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_integration_comet",
     size = "small",
     srcs = ["tests/test_integration_comet.py"],

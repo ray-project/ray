@@ -205,7 +205,6 @@ There are many potential improvements, including:
 
 - Supporting more data sources and transforms.
 - Integration with more ecosystem libraries.
-- Adding features such as `join()`.
 - Performance optimizations.
 
 .. include:: /_includes/data/announcement_bottom.rst

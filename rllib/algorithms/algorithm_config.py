@@ -332,15 +332,9 @@ class AlgorithmConfig(_Config):
 
         # `self.explore()`
         self.explore = True
-        self.exploration_config = {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-            # EpsilonGreedy").
-            "type": "StochasticSampling",
-            # Add constructor kwargs here (if any).
-        }
+        # This is not compatible with RLModules, which have a method
+        # `forward_exploration` to specify custom exploration behavior.
+        self.exploration_config = {}
 
         # `self.multi_agent()`
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
@@ -425,6 +419,8 @@ class AlgorithmConfig(_Config):
         # `self.rl_module()`
         self.rl_module_spec = None
         self._enable_rl_module_api = False
+        # Whether to error out if exploration config is set when using RLModules.
+        self._validate_exploration_conf_and_rl_modules = True
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -599,15 +595,20 @@ class AlgorithmConfig(_Config):
             # Some keys specify config sub-dicts and therefore should go through the
             # correct methods to properly `.update()` those from given config dict
             # (to not lose any sub-keys).
-            elif key == "callbacks_class":
-                # Resolve possible classpath.
-                value = deserialize_type(value, error=True)
+            elif key == "callbacks_class" and value != NOT_SERIALIZABLE:
+                # For backward compatibility reasons, only resolve possible
+                # classpath if value is a str type.
+                if isinstance(value, str):
+                    value = deserialize_type(value, error=True)
                 self.callbacks(callbacks_class=value)
             elif key == "env_config":
                 self.environment(env_config=value)
             elif key.startswith("evaluation_"):
                 eval_call[key] = value
             elif key == "exploration_config":
+                if config_dict.get("_enable_rl_module_api", False):
+                    self.exploration_config = value
+                    continue
                 if isinstance(value, dict) and "type" in value:
                     value["type"] = deserialize_type(value["type"])
                 self.exploration(exploration_config=value)
@@ -857,7 +858,7 @@ class AlgorithmConfig(_Config):
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
             # enable RLModule API and connectors if env variable is set
             # (to be used in unittesting)
-            self._enable_rl_module_api = True
+            self.rl_module(_enable_rl_module_api=True)
             self.enable_connectors = True
 
         # Explore parameter cannot be False with RLModule API enabled.
@@ -998,6 +999,27 @@ class AlgorithmConfig(_Config):
                         )
             else:
                 self.rl_module_spec = default_rl_module_spec
+
+            if self.exploration_config:
+                if self._validate_exploration_conf_and_rl_modules:
+                    # This is not compatible with RLModules, which have a method
+                    # `forward_exploration` to specify custom exploration behavior.
+                    raise ValueError(
+                        "When RLModule API are enabled, exploration_config can not be "
+                        "set. If you want to implement custom exploration behaviour, "
+                        "please modify the `forward_exploration` method of the "
+                        "RLModule at hand. On configs that have a default exploration "
+                        "config, this must be done with "
+                        "`config.exploration_config={}`."
+                    )
+                else:
+                    # RLModules don't support exploration_configs anymore.
+                    # AlgorithmConfig has a default exploration config.
+                    logger.warning(
+                        "When RLModule API are enabled, exploration_config "
+                        "will be ignored. Disable RLModule API make use of an "
+                        "exploration_config."
+                    )
 
         # make sure the resource requirements for learner_group is valid
         if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
@@ -2386,6 +2408,18 @@ class AlgorithmConfig(_Config):
 
         if _enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api
+            if _enable_rl_module_api is True and self.exploration_config:
+                logger.warning(
+                    "Setting `exploration_config={}` because you set "
+                    "`_enable_rl_modules=True`. When RLModule API are "
+                    "enabled, exploration_config can not be "
+                    "set. If you want to implement custom exploration behaviour, "
+                    "please modify the `forward_exploration` method of the "
+                    "RLModule at hand. On configs that have a default exploration "
+                    "config, this must be done with "
+                    "`config.exploration_config={}`."
+                )
+                self.exploration_config = {}
         else:
             # throw a warning if the user has used this API but not enabled it.
             logger.warning(

@@ -632,21 +632,6 @@ class JobManager:
         if job_supervisor is not None:
             ray.kill(job_supervisor, no_restart=True)
 
-    def _get_current_node_resource_key(self) -> str:
-        """Get the Ray resource key for current node.
-
-        It can be used for actor placement.
-        """
-        current_node_id = ray.get_runtime_context().get_node_id()
-        for node in ray.nodes():
-            if node["NodeID"] == current_node_id:
-                # Found the node.
-                for key in node["Resources"].keys():
-                    if key.startswith("node:"):
-                        return key
-        else:
-            raise ValueError("Cannot find the node dictionary for current node.")
-
     def _handle_supervisor_startup(self, job_id: str, result: Optional[Exception]):
         """Handle the result of starting a job supervisor actor.
 
@@ -802,8 +787,6 @@ class JobManager:
             entrypoint_num_gpus = 0
         if submission_id is None:
             submission_id = generate_job_id()
-        elif await self._job_info_client.get_status(submission_id) is not None:
-            raise RuntimeError(f"Job {submission_id} already exists.")
 
         logger.info(f"Starting job with submission_id: {submission_id}")
         job_info = JobInfo(
@@ -816,7 +799,14 @@ class JobManager:
             entrypoint_num_gpus=entrypoint_num_gpus,
             entrypoint_resources=entrypoint_resources,
         )
-        await self._job_info_client.put_info(submission_id, job_info)
+        new_key_added = await self._job_info_client.put_info(
+            submission_id, job_info, overwrite=False
+        )
+        if not new_key_added:
+            raise ValueError(
+                f"Job with submission_id {submission_id} already exists. "
+                "Please use a different submission_id."
+            )
 
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting

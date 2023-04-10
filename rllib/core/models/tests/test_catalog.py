@@ -9,18 +9,22 @@ import tree
 from gymnasium.spaces import Box, Discrete, Dict, Tuple, MultiDiscrete
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.core.models.base import ModelConfig, Encoder
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.models.base import STATE_IN, ENCODER_OUT, STATE_OUT
-from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core.models.base import (
+    ModelConfig,
+    Encoder,
+    STATE_IN,
+    ENCODER_OUT,
+    STATE_OUT,
+)
 from ray.rllib.core.models.catalog import (
     Catalog,
     _multi_action_dist_partial_helper,
     _multi_categorical_dist_partial_helper,
 )
+from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
+from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.tf.tf_distributions import (
@@ -36,8 +40,8 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchMultiDistribution,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -57,7 +61,7 @@ class TestCatalog(unittest.TestCase):
             input_space: The input space to use.
         """
         convert_method = (
-            tf.convert_to_tensor if framework == "tf" else convert_to_torch_tensor
+            tf.convert_to_tensor if framework == "tf2" else convert_to_torch_tensor
         )
         # In order to stay backward compatible, we default to fcnet_hiddens[-1].
         # See MODEL_DEFAULTS for more details
@@ -160,7 +164,7 @@ class TestCatalog(unittest.TestCase):
             # }
         ]
 
-        frameworks = ["tf", "torch"]
+        frameworks = ["tf2", "torch"]
 
         # First check if encoders can be created for non-composite spaces
         print("Testing encoders for non-composite input spaces...")
@@ -172,7 +176,7 @@ class TestCatalog(unittest.TestCase):
         for config in itertools.product(*config_combinations):
             framework, input_space_and_config_type, model_config_dict = config
             input_space, model_config_type = input_space_and_config_type
-            if model_config_type is not MLPEncoderConfig and framework == "tf":
+            if model_config_type is not MLPEncoderConfig and framework == "tf2":
                 # TODO (Artur): Enable this once we have TF implementations
                 continue
             print(
@@ -217,10 +221,10 @@ class TestCatalog(unittest.TestCase):
             # Box
             TestConfig(
                 Box(-np.inf, np.inf, (7,), dtype=np.float32),
-                {"torch": TorchDiagGaussian, "tf": TfDiagGaussian},
+                {"torch": TorchDiagGaussian, "tf2": TfDiagGaussian},
             ),
             # Discrete
-            TestConfig(Discrete(5), {"torch": TorchCategorical, "tf": TfCategorical}),
+            TestConfig(Discrete(5), {"torch": TorchCategorical, "tf2": TfCategorical}),
             # Nested Dict
             TestConfig(
                 Dict(
@@ -231,7 +235,7 @@ class TestCatalog(unittest.TestCase):
                 ),
                 {
                     "torch": TorchMultiDistribution,
-                    "tf": TfMultiDistribution,
+                    "tf2": TfMultiDistribution,
                 },
             ),
             # Nested Tuple
@@ -244,7 +248,7 @@ class TestCatalog(unittest.TestCase):
                 ),
                 {
                     "torch": TorchMultiDistribution,
-                    "tf": TfMultiDistribution,
+                    "tf2": TfMultiDistribution,
                 },
             ),
             # Tuple nested inside Dict
@@ -266,7 +270,7 @@ class TestCatalog(unittest.TestCase):
                 ),
                 {
                     "torch": TorchMultiDistribution,
-                    "tf": TfMultiDistribution,
+                    "tf2": TfMultiDistribution,
                 },
             ),
             # Dict nested inside Tuple
@@ -291,13 +295,13 @@ class TestCatalog(unittest.TestCase):
                 ),
                 {
                     "torch": TorchMultiDistribution,
-                    "tf": TfMultiDistribution,
+                    "tf2": TfMultiDistribution,
                 },
             ),
             # MultiDiscrete
             TestConfig(
                 MultiDiscrete([5, 5, 5]),
-                {"torch": TorchMultiCategorical, "tf": TfMultiCategorical},
+                {"torch": TorchMultiCategorical, "tf2": TfMultiCategorical},
             ),
         ]
 
@@ -315,7 +319,7 @@ class TestCatalog(unittest.TestCase):
             for framework in framework_iterator(frameworks=["tf2", "torch"]):
 
                 if framework == "tf2":
-                    framework = "tf"
+                    framework = "tf2"
 
                 dist_cls = catalog.get_dist_cls_from_action_space(
                     action_space=action_space,

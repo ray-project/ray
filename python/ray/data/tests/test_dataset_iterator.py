@@ -1,5 +1,6 @@
 import pytest
 from typing import Dict
+from unittest.mock import patch
 
 import numpy as np
 import tensorflow as tf
@@ -179,6 +180,16 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
 
     with pytest.raises(ValueError):
         for batch in it.iter_torch_batches(collate_fn=collate_fn, device="cpu"):
+            assert isinstance(batch, torch.Tensor)
+            assert batch.tolist() == list(range(5, 10))
+
+    # Test that we don't automatically set device if collate_fn is specified.
+    with patch(
+        "ray.air._internal.torch_utils.get_device", lambda: torch.device("cuda")
+    ):
+        assert ray.air._internal.torch_utils.get_device().type == "cuda"
+        for batch in it.iter_torch_batches(collate_fn=collate_fn):
+            assert batch.device.type == "cpu"
             assert isinstance(batch, torch.Tensor)
             assert batch.tolist() == list(range(5, 10))
 

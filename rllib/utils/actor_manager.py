@@ -341,7 +341,7 @@ class FaultTolerantActorManager:
     @DeveloperAPI
     def num_healthy_actors(self) -> int:
         """Return the number of healthy remote actors."""
-        return sum([s.is_healthy for s in self.__remote_actor_states.values()])
+        return sum(s.is_healthy for s in self.__remote_actor_states.values())
 
     @DeveloperAPI
     def total_num_restarts(self) -> int:
@@ -785,10 +785,12 @@ class FaultTolerantActorManager:
     ) -> List[int]:
         """Ping all unhealthy actors to try bringing them back.
 
-        Returns:
-            A list of actor ids that are restored.
+        Args:
             timeout_seconds: Timeout to avoid pinging hanging workers indefinitely.
             mark_healthy: Whether to mark actors healthy if they respond to the ping.
+
+        Returns:
+            A list of actor ids that are restored.
         """
         unhealthy_actor_ids = [
             actor_id

@@ -3,7 +3,6 @@ import unittest
 import numpy as np
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, concat_samples
-
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 
 

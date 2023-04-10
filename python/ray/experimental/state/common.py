@@ -586,7 +586,9 @@ class TaskState(StateSchema):
     #: starts/finishes.
     task_log_info: Optional[TaskLogInfo] = state_column(detail=True, filterable=False)
     #: Task error type.
-    error_type: Optional[str] = state_column(detail=False, filterable=False)
+    error_type: Optional[str] = state_column(detail=False, filterable=True)
+    #: Task error detail info.
+    error_message: Optional[str] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=True)
@@ -1365,7 +1367,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
 
     task_state = {}
     task_info = task_attempt.get("task_info", {})
-    state_updates = task_attempt.get("state_updates", [])
+    state_updates = task_attempt.get("state_updates", {})
     profiling_data = task_attempt.get("profile_events", {})
     if profiling_data:
         for event in profiling_data["events"]:
@@ -1395,7 +1397,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
         (task_attempt, ["task_id", "attempt_number", "job_id"]),
         (
             state_updates,
-            ["node_id", "worker_id", "task_log_info", "error_type"],
+            ["node_id", "worker_id", "task_log_info"],
         ),
     ]
     for src, keys in mappings:
@@ -1433,4 +1435,23 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
         latest_state = "NIL"
     task_state["state"] = latest_state
 
+    # Parse error info
+    if latest_state == "FAILED":
+        error_info = state_updates.get("error_info", None)
+        if error_info:
+            # We captured colored error message printed to console, e.g.
+            # "\x1b[31mTraceback (most recent call last):\x1b[0m",
+            # this is to remove the ANSI escape codes.
+            task_state["error_message"] = remove_ansi_escape_codes(
+                error_info.get("error_message", "")
+            )
+            task_state["error_type"] = error_info.get("error_type", "")
+
     return task_state
+
+
+def remove_ansi_escape_codes(text: str) -> str:
+    """Remove ANSI escape codes from a string."""
+    import re
+
+    return re.sub(r"\x1b[^m]*m", "", text)
