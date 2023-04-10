@@ -1,3 +1,4 @@
+import copy
 import unittest
 
 import numpy as np
@@ -118,8 +119,8 @@ class TestSmallGPULargeBatch(unittest.TestCase):
     # These values make it so that one large minibatch and the optimizer
     # variables can fit onto the device, but the whole sample_batch is already too
     # large for the GPU itself.
-    sgd_minibatch_size = int(1e5)
-    train_batch_size = int(sgd_minibatch_size * 1e4)
+    sgd_minibatch_size = int(1e4)
+    train_batch_size = int(sgd_minibatch_size * 1e5)
 
     # The following values are a good starting point when running this test on
     # an 8GB device
@@ -193,6 +194,16 @@ class TestSmallGPULargeBatch(unittest.TestCase):
                 SampleBatch.AGENT_INDEX: np.zeros((train_batch_size,), dtype=np.int64),
             }
         )
+
+        # Test if we can fail this test due too a GPU OOM inside multi_gpu_train_one_step
+        try:
+            batch_copy = copy.deepcopy(CARTPOLE_FAKE_BATCH)
+            batch_copy.to_device(0)
+            raise ValueError(
+                "We should not be able to move this batch to the device. If this error occurs, this means that this test cannot fail inside multi_gpu_train_one_step."
+            )
+        except torch.cuda.OutOfMemoryError:
+            pass
 
         multi_gpu_train_one_step(algorithm, CARTPOLE_FAKE_BATCH)
 

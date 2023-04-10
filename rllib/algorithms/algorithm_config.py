@@ -1682,6 +1682,8 @@ class AlgorithmConfig(_Config):
             self._enable_learner_api = _enable_learner_api
         if learner_class is not NotProvided:
             self.learner_class = learner_class
+        if _load_only_minibatch_onto_device is not NotProvided:
+            self._load_only_minibatch_onto_device = _load_only_minibatch_onto_device
 
         return self
 
