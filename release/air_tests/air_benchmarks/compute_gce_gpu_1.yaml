@@ -1,7 +1,7 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west1
 allowed_azs: 
-    - us-west1-a
+    - us-west1-b
 
 max_workers: 0
 
@@ -16,12 +16,11 @@ worker_node_types:
       min_workers: 0
       use_spot: false
 
-#aws:
-#    BlockDeviceMappings:
-#        - DeviceName: /dev/sda1
-#          Ebs:
-#            DeleteOnTermination: true
-#            Iops: 5000
-#            Throughput: 1000
-#            VolumeSize: 1000
-#            VolumeType: gp3
+gcp_advanced_configurations_json:
+  instance_properties:
+    disks:
+      - boot: true
+        auto_delete: true
+        initialize_params:
+          disk_size_gb: 1000
+          
