@@ -104,6 +104,13 @@ if __name__ == "__main__":
 
     ray.init()
 
+    run_config = air.RunConfig(
+        storage_path=STORAGE_PATH,
+        name=EXP_NAME,
+        checkpoint_config=air.CheckpointConfig(num_to_keep=1),
+        callbacks=[StatefulCallback()],
+    )
+
     if RUNNER_TYPE == "tuner":
         trainable = tune.with_resources(train_fn, resources={"CPU": 1})
         trainable = tune.with_parameters(trainable, data={"dummy_data": [1, 2, 3]})
@@ -115,12 +122,7 @@ if __name__ == "__main__":
         else:
             tuner = tune.Tuner(
                 trainable,
-                run_config=air.RunConfig(
-                    local_dir=STORAGE_PATH,
-                    name=EXP_NAME,
-                    checkpoint_config=air.CheckpointConfig(num_to_keep=1),
-                    callbacks=[StatefulCallback()],
-                ),
+                run_config=run_config,
                 tune_config=tune.TuneConfig(
                     num_samples=8,
                     max_concurrent_trials=2,
@@ -157,12 +159,7 @@ if __name__ == "__main__":
                 scaling_config=air.ScalingConfig(
                     num_workers=num_workers, trainer_resources={"CPU": 0}
                 ),
-                run_config=air.RunConfig(
-                    local_dir=STORAGE_PATH,
-                    name=EXP_NAME,
-                    checkpoint_config=air.CheckpointConfig(num_to_keep=1),
-                    callbacks=[StatefulCallback()],
-                ),
+                run_config=run_config,
             )
 
         result = trainer.fit()
