@@ -1,5 +1,4 @@
 from typing import Any, TYPE_CHECKING, Callable, Optional, Union, Iterator, Tuple
-import warnings
 
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, DataBatch
@@ -32,15 +31,28 @@ class PipelinedDatasetIterator(DatasetIterator):
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats], bool
     ]:
         epoch_pipeline = self._get_next_dataset()
+
+        # Peek the first dataset from the pipeline to see if blocks are owned
+        # by consumer. If so, the blocks are safe to be eagerly cleared after use
+        # because memories are not shared across different consumers. This will
+        # improve the memory efficiency.
+        if epoch_pipeline._first_dataset is not None:
+            blocks_owned_by_consumer = (
+                epoch_pipeline._first_dataset._plan.execute()._owned_by_consumer
+            )
+        else:
+            blocks_owned_by_consumer = (
+                epoch_pipeline._peek()._plan.execute()._owned_by_consumer
+            )
 
         def block_iter():
             for ds in epoch_pipeline.iter_datasets():
                 yield from ds._plan.execute().iter_blocks_with_metadata()
 
-        return block_iter(), None
+        return block_iter(), None, blocks_owned_by_consumer
 
     def iter_batches(
         self,
@@ -78,8 +90,9 @@ class PipelinedDatasetIterator(DatasetIterator):
             raise AttributeError
 
         if hasattr(self._base_dataset_pipeline, name) and not name.startswith("_"):
-            # Warning for backwards compatibility. TODO: remove this method in 2.5.
-            warnings.warn(
+            # Raise error for backwards compatibility.
+            # TODO: remove this method in 2.6.
+            raise DeprecationWarning(
                 "session.get_dataset_shard returns a ray.data.DatasetIterator "
                 "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
                 "Use iter_torch_batches(), to_tf(), or iter_batches() to "
@@ -87,7 +100,5 @@ class PipelinedDatasetIterator(DatasetIterator):
                 "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
                 "for full DatasetIterator docs."
             )
-
-            return getattr(self._base_dataset_pipeline, name)
         else:
-            return super().__getattr__(name)
+            raise AttributeError()

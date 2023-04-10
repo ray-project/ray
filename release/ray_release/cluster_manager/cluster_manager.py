@@ -62,7 +62,7 @@ class ClusterManager(abc.ABC):
 
         self.cluster_env_name = (
             f"{self.project_name}_{self.project_id[4:8]}"
-            f"__env__{self.test_name}__"
+            f"__env__{self.test_name.replace('.', '_')}__"
             f"{dict_hash(self.cluster_env)}"
         )
 

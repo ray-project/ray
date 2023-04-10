@@ -268,7 +268,7 @@ class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
         return "ok"
 
     def on_write_complete(self, write_results: List[WriteResult]) -> None:
-        assert all(w == ["ok"] for w in write_results), write_results
+        assert all(w == "ok" for w in write_results), write_results
         self.num_ok += 1
 
     def on_write_failed(
@@ -340,7 +340,7 @@ def test_get_read_tasks(ray_start_cluster):
     head_node_id = ray.get_runtime_context().get_node_id()
 
     # Issue read so `_get_read_tasks` being executed.
-    ray.data.range(10).cache()
+    ray.data.range(10).materialize()
 
     # Verify `_get_read_tasks` being executed on same node (head node).
     def verify_get_read_tasks():

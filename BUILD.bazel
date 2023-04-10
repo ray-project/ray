@@ -1477,6 +1477,18 @@ cc_test(
 )
 
 cc_test(
+    name = "ray_config_test",
+    size = "small",
+    srcs = ["src/ray/common/test/ray_config_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        "ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "id_test",
     size = "small",
     srcs = ["src/ray/common/id_test.cc"],

@@ -10,7 +10,6 @@ Constructor
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    Dataset
 
@@ -139,8 +138,7 @@ Execution
 .. autosummary::
    :toctree: doc/
 
-   Dataset.cache
-   Dataset.is_cached
+   Dataset.materialize
 
 Serialization
 -------------

@@ -4,6 +4,7 @@ import copy
 import datetime
 import logging
 import os
+from pathlib import Path
 import signal
 import sys
 import threading
@@ -32,6 +33,7 @@ from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.experimental.output import (
     get_air_verbosity,
     _detect_reporter as _detect_air_reporter,
+    IS_NOTEBOOK,
 )
 
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
@@ -44,6 +46,7 @@ from ray.tune.progress_reporter import (
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
+from ray.tune.result import _get_defaults_results_dir
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import (
@@ -80,6 +83,7 @@ from ray.tune.utils.log import (
     set_verbosity,
 )
 from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.utils.util import _resolve_storage_path
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
 
@@ -170,8 +174,8 @@ def _report_air_progress(
 ):
     trials = runner.get_trials()
     reporter_args = []
-    executor_debug_str = runner.trial_executor.debug_string()
-    reporter_args.append(executor_debug_str)
+    used_resources_string = runner._used_resources_string()
+    reporter_args.append(used_resources_string)
     reporter.print_heartbeat(trials, *reporter_args, force=force)
 
 
@@ -208,6 +212,19 @@ def _setup_signal_catching() -> threading.Event:
     return experiment_interrupted_event
 
 
+def _ray_auto_init(entrypoint: str):
+    """Initialize Ray unless already configured."""
+    if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
+        logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
+    elif not ray.is_initialized():
+        ray.init()
+        logger.info(
+            "Initializing Ray automatically. "
+            "For cluster usage or custom Ray initialization, "
+            f"call `ray.init(...)` before `{entrypoint}`."
+        )
+
+
 class _Config(abc.ABC):
     def to_dict(self) -> dict:
         """Converts this configuration to a dict format."""
@@ -228,7 +245,7 @@ def run(
         None, Mapping[str, Union[float, int, Mapping]], PlacementGroupFactory
     ] = None,
     num_samples: int = 1,
-    local_dir: Optional[str] = None,
+    storage_path: Optional[str] = None,
     search_alg: Optional[Union[Searcher, SearchAlgorithm, str]] = None,
     scheduler: Optional[Union[TrialScheduler, str]] = None,
     keep_checkpoints_num: Optional[int] = None,
@@ -254,11 +271,13 @@ def run(
     max_concurrent_trials: Optional[int] = None,
     # Deprecated
     trial_executor: Optional[RayTrialExecutor] = None,
+    local_dir: Optional[str] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
     # Passed by the Tuner.
     _remote_string_queue: Optional[Queue] = None,
+    _tuner_api: bool = False,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -341,8 +360,9 @@ def run(
             provided as an argument, the grid will be repeated
             `num_samples` of times. If this is -1, (virtually) infinite
             samples are generated until a stopping condition is met.
-        local_dir: Local dir to save training results to.
-            Defaults to ``~/ray_results``.
+        storage_path: Path to store results at. Can be a local directory or
+            a destination on cloud storage. Defaults to
+            the local ``~/ray_results`` directory.
         search_alg: Search algorithm for
             optimization. You can also use the name of the algorithm.
         scheduler: Scheduler for executing
@@ -466,6 +486,21 @@ def run(
     remote_run_kwargs = locals().copy()
     remote_run_kwargs.pop("_remote")
 
+    error_message_map = (
+        {
+            "entrypoint": "Tuner(...)",
+            "search_space_arg": "param_space",
+            "restore_entrypoint": 'Tuner.restore(path="{path}", trainable=...)',
+        }
+        if _tuner_api
+        else {
+            "entrypoint": "tune.run(...)",
+            "search_space_arg": "config",
+            "restore_entrypoint": "tune.run(..., resume=True)",
+        }
+    )
+    _ray_auto_init(entrypoint=error_message_map["entrypoint"])
+
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 
@@ -478,11 +513,8 @@ def run(
             DeprecationWarning,
         )
 
-    if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
-        _ray_auto_init()
-
     if _remote:
-        if get_air_verbosity():
+        if get_air_verbosity() is not None:
             logger.warning(
                 "Ignoring AIR_VERBOSITY setting, "
                 "as it doesn't support ray client mode yet."
@@ -511,18 +543,36 @@ def run(
 
     del remote_run_kwargs
 
+    if os.environ.get("TUNE_RESULT_DIR"):
+        # Deprecate: Raise in 2.6, remove in 2.7
+        warnings.warn(
+            "The TUNE_RESULT_DIR environment variable is deprecated and will be "
+            "removed in the future. If you want to set persistent storage to "
+            "a local directory, pass `storage_path` instead. If you are using "
+            "remote storage and want to control the local cache directory, "
+            "set the RAY_AIR_LOCAL_CACHE_DIR environment variable instead.",
+            DeprecationWarning,
+        )
+
     ray._private.usage.usage_lib.record_library_usage("tune")
 
     all_start = time.time()
 
     if mode and mode not in ["min", "max"]:
         raise ValueError(
-            "The `mode` parameter passed to `tune.run()` has to be one of "
-            "['min', 'max']"
+            f"The `mode` parameter passed to `{error_message_map['entrypoint']}` "
+            "must be one of ['min', 'max']"
         )
 
     air_verbosity = get_air_verbosity()
-    if air_verbosity:
+    if air_verbosity is not None and IS_NOTEBOOK:
+        logger.warning(
+            "Ignoring AIR_VERBOSITY setting, "
+            "as it doesn't support JupyterNotebook mode yet."
+        )
+        air_verbosity = None
+
+    if air_verbosity is not None:
         logger.warning(
             f"Testing new AIR console output flow with verbosity={air_verbosity}. "
             f"This will also disable the old flow - setting it to 0 now."
@@ -536,12 +586,47 @@ def run(
         config = config.to_dict()
     if not isinstance(config, dict):
         raise ValueError(
-            "The `config` passed to `tune.run()` must be a dict. "
+            f"The `{error_message_map['search_space_arg']}` passed to "
+            f"`{error_message_map['entrypoint']}` must be a dict. "
             f"Got '{type(config)}' instead."
         )
 
     sync_config = sync_config or SyncConfig()
-    sync_config.validate_upload_dir()
+
+    # Resolve storage_path
+    local_path, remote_path = _resolve_storage_path(
+        storage_path, local_dir, sync_config.upload_dir, error_location="tune.run"
+    )
+
+    if sync_config.upload_dir:
+        assert remote_path == sync_config.upload_dir
+        warnings.warn(
+            "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
+            "in the future. Pass `RunConfig.storage_path` instead."
+        )
+        # Set upload_dir to None to avoid further downstream resolution.
+        # Copy object first to not alter user input.
+        sync_config = copy.copy(sync_config)
+        sync_config.upload_dir = None
+
+    if local_dir:
+        assert local_path == local_dir
+        warnings.warn(
+            "Passing a `local_dir` is deprecated and will be removed "
+            "in the future. Pass `storage_path` instead or set the"
+            "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
+        )
+        local_path = local_dir
+
+    sync_config.validate_upload_dir(remote_path)
+
+    if not local_path:
+        local_path = _get_defaults_results_dir()
+
+    storage_path = storage_path or remote_path or local_path
+
+    if storage_path != local_path and local_path:
+        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
 
     checkpoint_score_attr = checkpoint_score_attr or ""
     if checkpoint_score_attr.startswith("min-"):
@@ -658,7 +743,7 @@ def run(
                 config=config,
                 resources_per_trial=resources_per_trial,
                 num_samples=num_samples,
-                local_dir=local_dir,
+                storage_path=storage_path,
                 _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
                 checkpoint_config=checkpoint_config,
@@ -669,8 +754,6 @@ def run(
                 max_failures=max_failures,
                 restore=restore,
             )
-    else:
-        logger.debug("Ignoring some parameters passed into tune.run.")
 
     if fail_fast and max_failures != 0:
         raise ValueError("max_failures must be 0 if fail_fast=True.")
@@ -734,7 +817,8 @@ def run(
     ):
         if _has_unresolved_values(config):
             raise ValueError(
-                "You passed a `config` parameter to `tune.run()` with "
+                f"You passed a `{error_message_map['search_space_arg']}` parameter to "
+                f"`{error_message_map['entrypoint']}` with "
                 "unresolved parameters, but the search algorithm was already "
                 "instantiated with a search space. Make sure that `config` "
                 "does not contain any more parameter definitions - include "
@@ -745,10 +829,11 @@ def run(
         scheduler.set_search_properties, metric, mode, **experiments[0].public_spec
     ):
         raise ValueError(
-            "You passed a `metric` or `mode` argument to `tune.run()`, but "
+            "You passed a `metric` or `mode` argument to "
+            f"`{error_message_map['entrypoint']}`, but "
             "the scheduler you are using was already instantiated with their "
             "own `metric` and `mode` parameters. Either remove the arguments "
-            "from your scheduler or from your call to `tune.run()`"
+            f"from your scheduler or from `{error_message_map['entrypoint']}` args."
         )
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
@@ -785,13 +870,13 @@ def run(
 
     experiment_interrupted_event = _setup_signal_catching()
 
-    if progress_reporter and air_verbosity:
+    if progress_reporter and air_verbosity is not None:
         logger.warning(
             "AIR_VERBOSITY is set, ignoring passed-in ProgressReporter for now."
         )
         progress_reporter = None
 
-    if not air_verbosity:
+    if air_verbosity is None:
         progress_reporter = progress_reporter or _detect_reporter()
 
     trial_executor = trial_executor or RayTrialExecutor(
@@ -803,7 +888,7 @@ def run(
         search_alg=search_alg,
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
-        experiment_path=experiments[0].local_path,
+        experiment_path=experiments[0].path,
         experiment_dir_name=experiments[0].dir_name,
         sync_config=sync_config,
         stopper=experiments[0].stopper,
@@ -830,9 +915,10 @@ def run(
         for exp in experiments:
             search_alg.add_configurations([exp])
     else:
-        logger.info(
-            "TrialRunner resumed, ignoring new add_experiment but "
-            "updating trial resources."
+        logger.debug(
+            "You have resumed the Tune run, which means that any newly specified "
+            "`Experiment`s will be ignored. "
+            "Tune will just continue what was previously running."
         )
         if resources_per_trial:
             runner.update_pending_trial_resources(resources_per_trial)
@@ -845,7 +931,7 @@ def run(
     tune_start = time.time()
 
     air_progress_reporter = None
-    if not air_verbosity:
+    if air_verbosity is None:
         progress_reporter.setup(
             start_time=tune_start,
             total_samples=search_alg.total_samples,
@@ -876,7 +962,7 @@ def run(
                 if has_verbosity(Verbosity.V1_EXPERIMENT):
                     _report_progress(runner, progress_reporter)
 
-                if air_verbosity:
+                if air_verbosity is not None:
                     _report_air_progress(runner, air_progress_reporter)
         except Exception:
             runner.cleanup()
@@ -892,7 +978,7 @@ def run(
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter, done=True)
 
-        if air_verbosity:
+        if air_verbosity is not None:
             _report_air_progress(runner, air_progress_reporter, force=True)
 
     all_trials = runner.get_trials()
@@ -919,10 +1005,12 @@ def run(
         )
 
     if experiment_interrupted_event.is_set():
+        restore_entrypoint = error_message_map["restore_entrypoint"].format(
+            path=Path(experiment_checkpoint).parent,
+        )
         logger.warning(
-            "Experiment has been interrupted, but the most recent state was "
-            "saved. You can continue running this experiment by passing "
-            "`resume=True` to `tune.run()`"
+            "Experiment has been interrupted, but the most recent state was saved.\n"
+            f"Continue running this experiment with: {restore_entrypoint}"
         )
     ea = ExperimentAnalysis(
         experiment_checkpoint,
@@ -930,6 +1018,7 @@ def run(
         default_metric=metric,
         default_mode=mode,
         sync_config=sync_config,
+        remote_storage_path=remote_path,
     )
 
     return ea
@@ -972,10 +1061,10 @@ def run_experiments(
         raise ValueError("cannot use custom trial executor")
 
     if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
-        _ray_auto_init()
+        _ray_auto_init(entrypoint="tune.run_experiments(...)")
 
     if _remote:
-        if get_air_verbosity():
+        if get_air_verbosity() is not None:
             logger.warning(
                 "Ignoring AIR_VERBOSITY setting, "
                 "as it doesn't support ray client mode yet."
@@ -1036,16 +1125,3 @@ def run_experiments(
                 callbacks=callbacks,
             ).trials
         return trials
-
-
-def _ray_auto_init():
-    """Initialize Ray unless already configured."""
-    if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
-        logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
-    elif not ray.is_initialized():
-        logger.info(
-            "Initializing Ray automatically."
-            "For cluster usage or custom Ray initialization, "
-            "call `ray.init(...)` before `tune.run`."
-        )
-        ray.init()
