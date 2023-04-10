@@ -11,7 +11,6 @@ import pytest
 from jsonschema import validate
 
 import ray
-from ray.job_submission import JobSubmissionClient
 import ray._private.usage.usage_constants as usage_constants
 import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private import gcs_utils
@@ -705,6 +704,8 @@ def test_usage_stats_enabled_endpoint(
 )
 @pytest.mark.parametrize("ray_client", [True, False])
 def test_library_usages(call_ray_start, reset_usage_stats, ray_client):
+    from ray.job_submission import JobSubmissionClient
+
     address = call_ray_start
     ray.init(address=address)
 
