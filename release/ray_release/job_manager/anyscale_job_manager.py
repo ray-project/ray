@@ -312,9 +312,9 @@ class AnyscaleJobManager:
                     read_timeout=timedelta(seconds=DEFAULT_READ_TIMEOUT),
                 )
                 print("", flush=True)
-        output = "\n".join(buf.getvalue().strip().splitlines()[-LAST_LOGS_LENGTH * 3:])
+        output = buf.getvalue().strip()
         if 'ERROR' in output or 'Traceback (most recent call last)' in output:
-          return output
+            return output
         return None
 
     def get_last_logs(self):
@@ -338,7 +338,9 @@ class AnyscaleJobManager:
                     )
                     print("", flush=True)
             output = buf.getvalue().strip()
-            assert "### Starting ###" in output, "No logs fetched"
+            if "### Starting ###" not in output:
+                output = self.get_last_ray_error_logs()
+            assert output, "No logs fetched"
             return "\n".join(output.splitlines()[-LAST_LOGS_LENGTH * 3 :])
 
         ret = exponential_backoff_retry(
@@ -347,8 +349,6 @@ class AnyscaleJobManager:
             initial_retry_delay_s=30,
             max_retries=3,
         )
-        if not ret:
-          ret = self.get_last_ray_error_logs()
         if ret and not self.in_progress:
             self._last_logs = ret
         return ret
