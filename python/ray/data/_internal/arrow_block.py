@@ -191,13 +191,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
         from pkg_resources._vendor.packaging.version import parse as parse_version
 
         element = row[col_name][0]
-        # TODO(Clark): Reduce this to np.asarray(element) once we only support Arrow
-        # 9.0.0+.
-        pyarrow_version = _get_pyarrow_version()
-        if pyarrow_version is not None:
-            pyarrow_version = parse_version(pyarrow_version)
-        if pyarrow_version is None or pyarrow_version >= parse_version("8.0.0"):
-            assert isinstance(element, pyarrow.ExtensionScalar)
+        if isinstance(element, pyarrow.ExtensionScalar):
+            # TODO(Clark): Reduce this to np.asarray(element) once we only support Arrow
+            # 9.0.0+.
+            pyarrow_version = _get_pyarrow_version()
+            if pyarrow_version is not None:
+                pyarrow_version = parse_version(pyarrow_version)
             if pyarrow_version is None or pyarrow_version >= parse_version("9.0.0"):
                 # For Arrow 9.0.0+, accessing an element in a chunked tensor array
                 # produces an ArrowTensorScalar, which we convert to an ndarray using
@@ -208,6 +207,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 # an ExtensionScalar, which we convert to an ndarray using our custom
                 # method.
                 element = element.type._extension_scalar_to_ndarray(element)
+        elif isinstance(element, pyarrow.Scalar):
+            element = element.as_py()
         # For Arrow < 8.0.0, accessing an element in a chunked tensor array produces an
         # ndarray, which we return directly.
         return element
