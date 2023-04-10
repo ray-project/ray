@@ -93,7 +93,7 @@ This is more similar to what RLlib does internally.
        :start-after: __sphinx_doc_ppo_models_begin__
        :end-before: __sphinx_doc_ppo_models_end__
 
-The following example showcases how to use the base :py:class:`~ray.rllib.core.models.catalog.Catalog`
+The third example showcases how to use the base :py:class:`~ray.rllib.core.models.catalog.Catalog`
 to create an ``encoder`` and an ``action distribution``.
 Besides these, we create a ``head network`` that fits these two by hand to show how you can combine RLlib's
 :py:class:`~ray.rllib.core.models.base.ModelConfig` API and Catalog.
