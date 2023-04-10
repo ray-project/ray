@@ -16,7 +16,9 @@ To learn more about using Ray's XGBoostTrainer, check out {ref}`the XGBoostTrain
 
 ## Kubernetes infrastructure setup on GCP
 
-This document provides instructions for GCP to create a Kubernetes cluster, but a similar setup would work for any major cloud provider. If you have an existing Kubernetes cluster, you can ignore this step.
+This document provides instructions for GCP to create a Kubernetes cluster, but a similar setup would work for any major cloud provider.
+Check out the {ref}`introductory guide <kuberay-k8s-setup>` if you want to set up a Kubernetes cluster on other cloud providers.
+If you have an existing Kubernetes cluster, you can ignore this step.
 
 ```shell
 # Set up a cluster on Google Kubernetes Engine (GKE)
@@ -24,6 +26,10 @@ gcloud container clusters create autoscaler-ray-cluster \
     --num-nodes=10 --zone=us-central1-c --machine-type e2-standard-16 --disk-size 1000GB
 
 # (Optional) Set up a cluster with autopilot on Google Kubernetes Engine (GKE).
+# The following command creates an autoscaling node pool with a 1 node minimum and a 10 node maximum.
+# The 1 static node will be used to run the Ray head pod. This node may also host the KubeRay
+# operator and Kubernetes system components. After the workload is submitted, 9 additional nodes will
+# scale up to accommodate Ray worker pods. These nodes will scale back down after the workload is complete.
 gcloud container clusters create autoscaler-ray-cluster \
     --num-nodes=1 --min-nodes 1 --max-nodes 10 --enable-autoscaling \
     --zone=us-central1-c --machine-type e2-standard-16 --disk-size 1000GB
@@ -33,17 +39,6 @@ Make sure you are connected to your Kubernetes cluster. For GCP, you can do so b
 * Navigate to your GKE cluster page, and click "CONNECT" button. Then, copy "Command-line access".
 * `gcloud container clusters get-credentials <your-cluster-name> --region <your-region> --project <your-project>` ([Link](https://cloud.google.com/sdk/gcloud/reference/container/clusters/get-credentials))
 * `kubectl config use-context` ([Link](https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/))
-
-```{admonition} Optional: Set up an autopilot GKE cluster
-**If you would like to try running the workload with autoscaling enabled**, use an autoscaling
-node group or pool with a 1 node minimum and a 10 node maximum.
-The 1 static node will be used to run the Ray head pod. This node may also host the KubeRay
-operator and Kubernetes system components. After the workload is submitted, 9 additional nodes will
-scale up to accommodate Ray worker pods. These nodes will scale back down after the workload is complete.
-```
-
-If you are new to Kubernetes and you are planning to deploy Ray workloads on a managed
-Kubernetes service on other cloud providers, we recommend taking a look at this {ref}`introductory guide <kuberay-k8s-setup>` first. 
 
 For the workload in this guide, it is recommended to use a pool or group of Kubernetes nodes
 with the following properties:
