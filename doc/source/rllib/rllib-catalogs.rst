@@ -81,7 +81,7 @@ The first example showcases the general API for interacting with Catalogs.
    :start-after: __sphinx_doc_basic_interaction_begin__
    :end-before: __sphinx_doc_basic_interaction_end__
 
-The following example showcases how to use the :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`
+The second example showcases how to use the :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`
 to create a ``model`` and an ``action distribution``.
 This is more similar to what RLlib does internally.
 
