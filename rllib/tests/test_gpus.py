@@ -9,7 +9,6 @@ from ray import air
 from ray import tune
 from ray.rllib.algorithms.a2c.a2c import A2CConfig
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.execution.train_ops import multi_gpu_train_one_step
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -114,39 +113,16 @@ class TestGPUs(unittest.TestCase):
 
         ray.shutdown()
 
-
-class TestSmallGPULargeBatch(unittest.TestCase):
-    # These values make it so that one large minibatch and the optimizer
-    # variables can fit onto the device, but the whole sample_batch is already too
-    # large for the GPU itself.
-    sgd_minibatch_size = int(1e4)
-    train_batch_size = int(sgd_minibatch_size * 1e5)
-
-    # The following values are a good starting point when running this test on
-    # an 8GB device
-    # sgd_minibatch_size = int(1e+5)
-    # train_batch_size = int(sgd_minibatch_size * 1e+4)
-    # num_sgd_iter = 1
-
-    def _check_gpu_helper(self):
-        # This test was calibrated to fail without
-        # `_load_only_minibatch_onto_device=True` and succeed with it.
-        # The success of this test is mainly a function of the device's memory.
-        # Therefore, we should only run this test on the device this test was
-        # calibrated with or recalibrate the test.
-        device_name = torch.cuda.get_device_name(device=None)
-        self.assertEqual(device_name, "XYZ")
-
-        free_memory = torch.cuda.memory_reserved(0) - torch.cuda.memory_allocated(0)
-        # Sanity check to see if we have enough memory to test
-        self.assertGreaterEqual(free_memory, 123)
-
     def test_larger_train_batch_size_multi_gpu_train_one_step(self):
         # Tests that we can use a `train_batch_size` larger than GPU memory with our
         # experimental setting `_load_only_minibatch_onto_device` with
         # multi_gpu_train_one_step.
 
-        train_batch_size = self.train_batch_size
+        # These values make it so that one large minibatch and the optimizer
+        # variables can fit onto the device, but the whole sample_batch is already too
+        # large for the GPU itself.
+        sgd_minibatch_size = int(1e4)
+        train_batch_size = int(sgd_minibatch_size * 1e5)
 
         config = (
             PPOConfig()
@@ -195,21 +171,35 @@ class TestSmallGPULargeBatch(unittest.TestCase):
             }
         )
 
-        # Test if we can fail this test due too a GPU OOM inside multi_gpu_train_one_step
+        # Test if we can even fail this test due too a GPU OOM
         try:
             batch_copy = copy.deepcopy(CARTPOLE_FAKE_BATCH)
             batch_copy.to_device(0)
             raise ValueError(
-                "We should not be able to move this batch to the device. If this error occurs, this means that this test cannot fail inside multi_gpu_train_one_step."
+                "We should not be able to move this batch to the device. "
+                "If this error occurs, this means that this test cannot fail "
+                "inside multi_gpu_train_one_step."
             )
         except torch.cuda.OutOfMemoryError:
             pass
 
-        multi_gpu_train_one_step(algorithm, CARTPOLE_FAKE_BATCH)
+        policy = algorithm.get_policy()
+        policy.load_batch_into_buffer(CARTPOLE_FAKE_BATCH)
+        policy.learn_on_loaded_batch()
+
+
+class TestLargeTrainBatchSizeGPU(unittest.TestCase):
+    # This test takes quite long (~25 minutes) to run, so it is better not run on CI.
 
     def test_larger_train_batch_size(self):
         # Tests that we can use a `train_batch_size` larger than GPU memory with our
         # experimental setting `_load_only_minibatch_onto_device` with PPO.
+
+        # These values make it so that one large minibatch and the optimizer
+        # variables can fit onto the device, but the whole sample_batch is already too
+        # large for the GPU itself.
+        sgd_minibatch_size = int(1e4)
+        train_batch_size = int(sgd_minibatch_size * 1e5)
 
         config = (
             A2CConfig()
@@ -218,9 +208,9 @@ class TestSmallGPULargeBatch(unittest.TestCase):
             .resources(num_gpus=1)
             .rollouts(num_rollout_workers=0)
             .training(
-                train_batch_size=self.train_batch_size,
+                train_batch_size=train_batch_size,
                 num_sgd_iter=1,
-                sgd_minibatch_size=self.sgd_minibatch_size,
+                sgd_minibatch_size=sgd_minibatch_size,
                 # This setting makes it so that we don't load a batch of
                 # size `train_batch_size` onto the device, but only
                 # minibatches.
@@ -235,4 +225,7 @@ if __name__ == "__main__":
     import pytest
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    # One can specify the specific TestCase class to run.
+    # None for all unittest.TestCase classes in this file.
+    class_ = sys.argv[1] if len(sys.argv) > 1 else None
+    sys.exit(pytest.main(["-v", __file__ + ("" if class_ is None else "::" + class_)]))
