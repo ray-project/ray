@@ -33,6 +33,33 @@ def test_torch_process_group_gloo():
         assert r[0] == 5.0
 
 
+def test_torch_process_group_nccl():
+    @ray.remote(num_gpus=1)
+    class TestWorker(TorchDistributedWorker):
+        def __init__(self):
+            super().__init__()
+            self.dev = f"cuda:{ray.get_gpu_ids()[0]}"
+
+        def run(self):
+            tensor = torch.tensor([1.0]).to(self.dev)
+            dist.all_reduce(tensor)
+            return tensor.cpu().numpy()
+
+    workers = [TestWorker.remote() for _ in range(2)]
+
+    init_torch_dist_process_group(workers, backend="nccl", init_method="env")
+
+    reduced = ray.get([w.run.remote() for w in workers])
+
+    # One tensor from each worker.
+    assert len(reduced) == 5
+    for r in reduced:
+        assert len(r) == 1
+        assert r.dtype == np.float32
+        # All-reduce. Each tensor contributed 1.0. 5 tensors in total.
+        assert r[0] == 2.0
+
+
 if __name__ == "__main__":
     import sys
 

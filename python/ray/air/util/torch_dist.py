@@ -69,7 +69,7 @@ def _init_torch_distributed(
         os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
         # All workers on a same node should share the same set of
         # visible GPUs. Otherwise they can't talk among themselves.
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(gpu_ids))
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(gid) for gid in gpu_ids)
         if "NCCL_SOCKET_IFNAME" not in os.environ:
             os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_NCCL_SOCKET_IFNAME
 
