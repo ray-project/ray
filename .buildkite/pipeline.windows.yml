@@ -17,6 +17,7 @@ prelude_commands: &prelude_commands |-
     export BUILD="1"
     export DL="1"
     powershell ci/pipeline/fix-windows-container-networking.ps1
+    powershell ci/pipeline/fix-windows-bazel.ps1
     cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
 
 upload_wheels_if_needed: &upload_wheels_if_needed |-
