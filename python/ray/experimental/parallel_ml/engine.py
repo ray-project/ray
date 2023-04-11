@@ -60,14 +60,15 @@ class ExecutionEngine:
 
         # The following fields are only used for training
         # gradient if we are doing training.
-        self.input_gradient = deque()
-        self.input_gradient_tensor_shape = None
-        self.input_gradient_tensor_dtype = None
-        self.output_gradient = deque()
-        self.forward_cache = {}
-        self.forward_counter = 0
-        self.backward_counter = 0
-        self.model_parameters_grads = None
+        if self.is_training:
+            self.input_gradient = deque()
+            self.input_gradient_tensor_shape = None
+            self.input_gradient_tensor_dtype = None
+            self.output_gradient = deque()
+            self.forward_cache = {}
+            self.forward_counter = 0
+            self.backward_counter = 0
+            self.accumulated_parameters_gards = None
 
     def _initialize_config(self, config: Config):
         self.input_tensor_shape = config.input_tensor_shape
@@ -203,11 +204,11 @@ class ExecutionEngine:
 
         # overwrite the gradients in the model with the accumulated gradients
         for i, parameter in enumerate(self.model.parameters()):
-            parameter.grad = self.model_parameters_grads[i]
+            parameter.grad = self.accumulated_parameters_gards[i]
 
         self.optimizer.step()
         self.optimizer.zero_grad()
-        self.model_parameters_grads = None
+        self.accumulated_parameters_gards = None
 
     def _execute_backward(self, instruction: Backward):
         for _ in range(instruction.count):
@@ -216,15 +217,15 @@ class ExecutionEngine:
             input, output = self.forward_cache.pop(self.backward_counter)
             torch.autograd.backward(tensors=output, grad_tensors=tensor)
 
-            # accumulate the gradients into self.model_parameters_grads
+            # accumulate the gradients into self.accumulated_parameters_gards
             for i, parameter in enumerate(self.model.parameters()):
                 tmp = []
-                if self.model_parameters_grads:
-                    self.model_parameters_grads[i] += parameter.grad
+                if self.accumulated_parameters_gards:
+                    self.accumulated_parameters_gards[i] += parameter.grad
                 else:
                     tmp.append(parameter.grad)
                 if tmp:
-                    self.model_parameters_grads = tmp
+                    self.accumulated_parameters_gards = tmp
 
             self.output_gradient.append(input.grad)
             # TODO: do we need to do something for optimize?
