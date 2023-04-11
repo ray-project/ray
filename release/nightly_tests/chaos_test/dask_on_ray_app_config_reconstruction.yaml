@@ -3,7 +3,7 @@ env_vars: {"RAY_lineage_pinning_enabled": "1"}
 debian_packages: []
 
 python:
-  pip_packages: ["dask[complete]", tqdm, scipy, xarray, zarr, pyarrow]
+  pip_packages: ["dask[complete]", tqdm, scipy, xarray, zarr, pyarrow, s3fs, botocore==1.29.110]
   conda_packages: []
 
 post_build_cmds:
