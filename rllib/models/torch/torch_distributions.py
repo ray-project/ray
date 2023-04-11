@@ -497,7 +497,9 @@ class TorchMultiDistribution(Distribution):
 
     @classmethod
     @override(Distribution)
-    def required_input_dim(cls, space: gym.Space, input_lens: List[int], **kwargs) -> int:
+    def required_input_dim(
+        cls, space: gym.Space, input_lens: List[int], **kwargs
+    ) -> int:
         return sum(input_lens)
 
     @classmethod
