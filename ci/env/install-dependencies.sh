@@ -525,6 +525,12 @@ install_pip_packages() {
     # We should move to a model that does not depend on a stale version.
     python -m spacy download en_core_web_sm
   fi
+
+  if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
+    # raydp depends on pyspark <= 3.3.2, but it's pinned to 3.4.0
+    # so we update raydp here manually
+    pip install -U --no-deps "raydp>=0.0.dev0"
+  fi
 }
 
 install_thirdparty_packages() {
