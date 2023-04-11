@@ -94,9 +94,11 @@ We will use {ref}`Ray Job Submission <jobs-overview>` to kick off the workload.
 
 ### Connect to the cluster.
 
-First, we connect to the Job server. Run the following blocking command
-in a separate shell.
+We use port-forwarding in this guide as a simple way to experiment with a Ray cluster's services.
+See the {ref}`networking notes <kuberay-networking>` for production use-cases.
+
 ```shell
+# Run the following blocking command in a separate shell.
 kubectl port-forward --address 0.0.0.0 service/raycluster-xgboost-benchmark-head-svc 8265:8265
 ```
 
