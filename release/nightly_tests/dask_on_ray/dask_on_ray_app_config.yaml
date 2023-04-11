@@ -7,7 +7,7 @@ env_vars: {"RAY_worker_killing_policy": "retriable_lifo"}
 debian_packages: []
 
 python:
-  pip_packages: ["dask[complete]", tqdm, scipy, xarray, zarr, pyarrow, pytest, s3fs, botocore==1.29.110]
+  pip_packages: ["dask[complete]", tqdm, scipy, xarray, zarr, pyarrow, pytest]
   conda_packages: []
 
 post_build_cmds:
