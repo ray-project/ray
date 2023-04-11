@@ -54,8 +54,8 @@ Datasets and Placement Groups
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 By default, Datasets configures its tasks and actors to use the cluster-default scheduling strategy ("DEFAULT"). You can inspect this configuration variable here:
-:class:`ray.data.DatasetContext.get_current().scheduling_strategy <ray.data.DatasetContext>`. This scheduling strategy will schedule these tasks and actors outside any present
-placement group. If you want to force Datasets to schedule tasks within the current placement group (i.e., to use current placement group resources specifically for Datasets), you can set ``ray.data.DatasetContext.get_current().scheduling_strategy = None``.
+:class:`ray.data.DataContext.get_current().scheduling_strategy <ray.data.DataContext>`. This scheduling strategy will schedule these tasks and actors outside any present
+placement group. If you want to force Datasets to schedule tasks within the current placement group (i.e., to use current placement group resources specifically for Datasets), you can set ``ray.data.DataContext.get_current().scheduling_strategy = None``.
 
 This should be considered for advanced use cases to improve performance predictability only. We generally recommend letting Datasets run outside placement groups as documented in the :ref:`Datasets and Other Libraries <datasets_tune>` section.
 
@@ -113,7 +113,7 @@ The following code is a hello world example which invokes the execution with
 
    # Enable verbose reporting. This can also be toggled on by setting
    # the environment variable RAY_DATA_VERBOSE_PROGRESS=1.
-   ctx = ray.data.DatasetContext.get_current()
+   ctx = ray.data.DataContext.get_current()
    ctx.execution_options.verbose_progress = True
 
    def sleep(x):
@@ -166,11 +166,11 @@ You may want to customize these limits in the following scenarios:
 - If you want to fine-tune the memory limit to maximize performance.
 - For data loading into training jobs, you may want to set the object store memory to a low value (e.g., 2GB) to limit resource usage.
 
-Execution options can be configured via the global DatasetContext. The options will be applied for future jobs launched in the process:
+Execution options can be configured via the global DataContext. The options will be applied for future jobs launched in the process:
 
 .. code-block::
 
-   ctx = ray.data.DatasetContext.get_current()
+   ctx = ray.data.DataContext.get_current()
    ctx.execution_options.resource_limits.cpu = 10
    ctx.execution_options.resource_limits.gpu = 5
    ctx.execution_options.resource_limits.object_store_memory = 10e9
@@ -248,7 +248,7 @@ Execution Memory
 
 During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory via Ray's object store.
 
-Datasets attempts to bound its heap memory usage to `num_execution_slots * max_block_size`. The number of execution slots is by default equal to the number of CPUs, unless custom resources are specified. The maximum block size is set by the configuration parameter `ray.data.DatasetContext.target_max_block_size` and is set to 512MiB by default. When a task's output is larger than this value, the worker will automatically split the output into multiple smaller blocks to avoid running out of heap memory.
+Datasets attempts to bound its heap memory usage to `num_execution_slots * max_block_size`. The number of execution slots is by default equal to the number of CPUs, unless custom resources are specified. The maximum block size is set by the configuration parameter `ray.data.DataContext.target_max_block_size` and is set to 512MiB by default. When a task's output is larger than this value, the worker will automatically split the output into multiple smaller blocks to avoid running out of heap memory.
 
 Large block size can lead to potential out-of-memory situations. To avoid these issues, make sure no single item in your Datasets is too large, and always call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with batch size small enough such that the output batch can comfortably fit into memory.
 
