@@ -118,32 +118,32 @@ class ExecutionEngine:
     def _execute_step(self, instruction: Instruction):
         logger.info(f"Executing instruction {instruction}")
         if isinstance(instruction, SendActivation):
-            self._send_activation(instruction)
+            self._execute_send_activation(instruction)
         elif isinstance(instruction, ReceiveActivation):
-            self._receive_activation(instruction)
+            self._execute_receive_activation(instruction)
         elif isinstance(instruction, Forward):
-            self._forward(instruction)
+            self._execute_forward(instruction)
         elif isinstance(instruction, PrintOutput):
-            self._print_output(instruction)
+            self._execute_print_output(instruction)
         elif isinstance(instruction, LoadBatch):
-            self._load_batch(instruction)
+            self._execute_load_batch(instruction)
         elif isinstance(instruction, SendGradient):
-            self._send_gradient(instruction)
+            self._execute_send_gradient(instruction)
         elif isinstance(instruction, ReceiveGradient):
-            self._receive_gradient(instruction)
+            self._execute_receive_gradient(instruction)
         elif isinstance(instruction, Optimize):
-            self._optimize(instruction)
+            self._execute_optimize(instruction)
         elif isinstance(instruction, Backward):
-            self._backward(instruction)
+            self._execute_backward(instruction)
 
-    def _send_activation(self, instruction: SendActivation):
+    def _execute_send_activation(self, instruction: SendActivation):
         for _ in range(instruction.count):
             self.dist.send(
                 self.output_queue.popleft(), instruction.dest_rank, async_op=True
             )
             # TODO: do we need to wait for the future to be completed?
 
-    def _receive_activation(self, instruction: ReceiveActivation):
+    def _execute_receive_activation(self, instruction: ReceiveActivation):
         for _ in range(instruction.count):
             tensor = torch.ones(()).new_empty(
                 size=self.input_tensor_shape,
@@ -153,7 +153,7 @@ class ExecutionEngine:
             future = self.dist.recv(tensor, instruction.src_rank, async_op=True)
             self.input_queue.append((tensor, future))
 
-    def _forward(self, instruction: Instruction):
+    def _execute_forward(self, instruction: Instruction):
         for _ in range(instruction.count):
             tensor, future = self.input_queue.popleft()
             future.wait()
@@ -168,7 +168,7 @@ class ExecutionEngine:
 
             self.output_queue.append(output)
 
-    def _load_batch(self, instruction: Instruction):
+    def _execute_load_batch(self, instruction: Instruction):
         for _ in range(instruction.count):
             tensor = torch.ones(()).new_empty(
                 size=self.input_tensor_shape,
@@ -178,17 +178,17 @@ class ExecutionEngine:
             self.data_loader.next_batch(tensor)
             self.input_queue.append((tensor, FULLFILLED_FUTURE))
 
-    def _print_output(self, instruction: Instruction):
+    def _execute_print_output(self, instruction: Instruction):
         for _ in range(instruction.count):
             logger.info(self.output_queue.popleft())
 
-    def _send_gradient(self, instruction: SendGradient):
+    def _execute_send_gradient(self, instruction: SendGradient):
         for _ in range(instruction.count):
             self.dist.send(
                 self.output_gradient.popleft(), instruction.dest_rank, async_op=True
             )
 
-    def _receive_gradient(self, instruction: ReceiveGradient):
+    def _execute_receive_gradient(self, instruction: ReceiveGradient):
         for _ in range(instruction.count):
             tensor = torch.ones(()).new_empty(
                 size=self.received_gradient_tensor_shape,
@@ -198,7 +198,7 @@ class ExecutionEngine:
             future = self.dist.recv(tensor, instruction.src_rank, async_op=True)
             self.input_gradient.append((tensor, future))
 
-    def _optimize(self, instruction: Optimize):
+    def _execute_optimize(self, instruction: Optimize):
         # TODO: this probably needs to be changed
 
         # overwrite the gradients in the model with the accumulated gradients
@@ -209,7 +209,7 @@ class ExecutionEngine:
         self.optimizer.zero_grad()
         self.model_parameters_grads = None
 
-    def _backward(self, instruction: Backward):
+    def _execute_backward(self, instruction: Backward):
         for _ in range(instruction.count):
             tensor, future = self.input_gradient.popleft()
             future.wait()
