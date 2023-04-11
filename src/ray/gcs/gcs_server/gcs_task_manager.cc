@@ -131,12 +131,15 @@ const rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailed(
-    const TaskAttempt &task_attempt, int64_t failed_ts) {
+    const TaskAttempt &task_attempt,
+    int64_t failed_ts,
+    const rpc::RayErrorInfo &error_info) {
   auto &task_event = GetTaskEvent(task_attempt);
-  if (!task_event.has_state_updates()) {
-    return;
-  }
-  task_event.mutable_state_updates()->set_failed_ts(failed_ts);
+  // We could mark the task as failed even if might not have state updates yet (i.e. only
+  // profiling events are reported).
+  auto state_updates = task_event.mutable_state_updates();
+  state_updates->set_failed_ts(failed_ts);
+  state_updates->mutable_error_info()->CopyFrom(error_info);
 }
 
 bool GcsTaskManager::GcsTaskManagerStorage::IsTaskTerminated(
@@ -159,18 +162,25 @@ absl::optional<int64_t> GcsTaskManager::GcsTaskManagerStorage::GetTaskStatusUpda
              : absl::nullopt;
 }
 
-void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailed(const JobID &job_id,
-                                                            int64_t job_finish_time_ns) {
+void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
+    const JobID &job_id, int64_t job_finish_time_ns) {
   auto task_attempts_itr = job_to_task_attempt_index_.find(job_id);
   if (task_attempts_itr == job_to_task_attempt_index_.end()) {
     // No tasks in the job.
     return;
   }
 
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
+  std::stringstream error_message;
+  error_message << "Job finishes (" << job_id.Hex()
+                << ") as driver exits. Marking all non-terminal tasks as failed.";
+  error_info.set_error_message(error_message.str());
+
   // Iterate all task attempts from the job.
   for (const auto &task_attempt : task_attempts_itr->second) {
     if (!IsTaskTerminated(task_attempt.first)) {
-      MarkTaskAttemptFailed(task_attempt, job_finish_time_ns);
+      MarkTaskAttemptFailed(task_attempt, job_finish_time_ns, error_info);
     }
   }
 }
@@ -181,7 +191,8 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskFailed(const TaskID &task_id
   if (!latest_task_attempt.has_value()) {
     return;
   }
-  MarkTaskAttemptFailed(*latest_task_attempt, failed_ts);
+  // TODO(rickyx): we will fix it in the next PR.
+  MarkTaskAttemptFailed(*latest_task_attempt, failed_ts, rpc::RayErrorInfo());
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailedIfNeeded(
@@ -515,7 +526,8 @@ void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_
         }
         // If there are any non-terminated tasks from the job, mark them failed since all
         // workers associated with the job will be killed.
-        task_event_storage_->MarkTasksFailed(job_id, job_finish_time_ms * 1000 * 1000);
+        task_event_storage_->MarkTasksFailedOnJobEnds(job_id,
+                                                      job_finish_time_ms * 1000 * 1000);
       });
 }
 

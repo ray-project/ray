@@ -272,6 +272,9 @@ ray.get(parent.remote())
                     task["state"] == "FAILED"
                 ), f"task {task['func_or_class_name']} has wrong state"
 
+                assert task["error_type"] == "WORKER_DIED"
+                assert "Job finishes" in task["error_message"]
+
                 duration_ms = task["end_time_ms"] - task["start_time_ms"]
                 assert (
                     # It takes time for the job to run
@@ -307,9 +310,10 @@ class ChildActor:
 
 @ray.remote
 class Actor:
-    def fail_parent(self):
+    def fail_parent(self, wait_fn):
         ray.get(task_finish_child.remote())
         task_sleep_child.remote()
+        wait_for_condition(wait_fn)
         raise ValueError("expected to fail.")
 
     def child_actor(self, wait_fn):
@@ -325,7 +329,15 @@ def test_fault_tolerance_actor_tasks_failed(shutdown_only):
     # Test actor tasks
     with pytest.raises(ray.exceptions.RayTaskError):
         a = Actor.remote()
-        ray.get(a.fail_parent.remote())
+        ray.get(
+            # Wait til finish child's task event is received.
+            a.fail_parent.remote(
+                lambda: list_tasks(filters=[("name", "=", "task_finish_child")])[0][
+                    "state"
+                ]
+                == "FINISHED"
+            )
+        )
 
     def verify():
         tasks = list_tasks()
