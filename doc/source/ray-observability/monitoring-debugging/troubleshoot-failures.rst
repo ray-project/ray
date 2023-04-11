@@ -52,7 +52,7 @@ Ray has native integration to ``pdb``. You can simply add ``breakpoint()`` to ac
 Debugging Out of Memory
 -----------------------
 
-Before reading this section, it is recommended to understand Ray's ref:`Memory Management <memory>` model.
+Before reading this section, it is recommended to understand Ray's :ref:`Memory Management <memory>` model.
 
 What's the Out-of-Memory Error?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -60,15 +60,18 @@ What's the Out-of-Memory Error?
 Memory is a limited resource. When a process requests memory and the OS fails to allocate memory, the OS executes a routine to free up memory
 by killing a process that has high memory usage (via SIGKILL) to avoid the OS becoming unstable. It is called `Linux Out of Memory killer <https://www.kernel.org/doc/gorman/html/understand/understand016.html>`_.
 
+One of the common problems of the Linux out-of-memory killer is that processes are killed by a SIGKILL without Ray noticing it. 
+Since SIGKILL cannot be handled by processes, it makes Ray difficult to raise a proper error message
+and take proper actions for fault tolerance.
+To solve this problem, Ray built and enalbed (from Ray 2.2) an application-level :ref:`memory monitor <ray-oom-monitor>`,
+which keeps monitoring the memory usage of the host and kills the Ray workers before the Linux out-of-memory killer kicks in. 
+
 How to Detect Out-of-Memory Errors?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If tasks or actors are killed by the out-of-memory killer, Ray worker processes are unable to catch and display an exact root cause
-because SIGKILL cannot be handled by processes.
-
-When Ray workers are killed by SIGKILL, ``ray.get`` will raise an exception with one of the following error messages.
-This error message means that the worker is killed by an un-handleable reason, 
-which typically is the SIGKILL triggered by the Linux out-of-memory error.
+If tasks or actors are killed by the Linux out-of-memory killer, Ray worker processes are unable to catch and display an exact root cause
+because SIGKILL cannot be handled by processes. If you call ``ray.get`` into the tasks and actors that were executed from the dead worker,
+it will raise an exception with one of the following error messages (which indicates the worker is killed unexpectedly).
 
 .. code-block:: bash
 
@@ -78,9 +81,12 @@ which typically is the SIGKILL triggered by the Linux out-of-memory error.
 
   Worker exit type: SYSTEM_ERROR Worker exit detail: The leased worker has unrecoverable failure. Worker is requested to be destroyed when it is returned.
 
-SANG-TODO Events
+If the worker is killed by Ray's memory monitor, it raises an exception with 
+a much cleaner error message when you call ``ray.get`` to a task or actor that executed on a dead worker.
 
 .. code-block:: bash
+
+  ray.exceptions.OutOfMemoryError: Task was killed due to the node running low on memory.
 
   Task was killed due to the node running low on memory.
   Memory on the node (IP: 10.0.62.231, ID: e5d953ef03e55e26f13973ea1b5a0fd0ecc729cd820bc89e4aa50451) where the task (task ID: 43534ce9375fa8e4cd0d0ec285d9974a6a95897401000000, name=allocate_memory, pid=11362, memory used=1.25GB) was running was 27.71GB / 28.80GB (0.962273), which exceeds the memory usage threshold of 0.95. Ray killed this worker (ID: 6f2ec5c8b0d5f5a66572859faf192d36743536c2e9702ea58084b037) because it was the most recently scheduled task; to see more information about memory usage on this node, use `ray logs raylet.out -ip 10.0.62.231`. To see the logs of the worker, use `ray logs worker-6f2ec5c8b0d5f5a66572859faf192d36743536c2e9702ea58084b037*out -ip 10.0.62.231.`
@@ -95,7 +101,7 @@ SANG-TODO Events
 
   Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html.
 
-Note that from Ray 2.2, Ray’s built-in memory monitor has been turned on by default. And this normally kills the processes before OS starts killing them. If processes are killed by Ray’s OOM killer, it will have clearer error message as following. Before this error occurs, Ray automatically retries the failed tasks up to 15 times. 
+Ray memory monitor also periodically prints the aggregated out-of-memory killer summary to Ray drivers.
 
 .. code-block:: bash
 
