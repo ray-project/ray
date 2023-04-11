@@ -1073,7 +1073,7 @@ class DatasetPipeline(Generic[T]):
         """Call
         :py:meth:`Dataset.iter_tf_batches <ray.data.Dataset.iter_tf_batches>`
         over the stream of output batches from the pipeline."""
-        return DatasetIterator.iter_tf_batches(
+        return DataIterator.iter_tf_batches(
             self,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
@@ -1099,10 +1099,13 @@ class DatasetPipeline(Generic[T]):
         """Call
         :py:meth:`Dataset.iter_torch_batches <ray.data.Dataset.iter_torch_batches>`
         over the stream of output batches from the pipeline."""
-        yield from self.iter_batches(
+        return DataIterator.iter_torch_batches(
+            self,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            batch_format="numpy",
+            dtypes=dtypes,
+            device=device,
+            collate_fn=collate_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
@@ -1121,7 +1124,7 @@ class DatasetPipeline(Generic[T]):
     ) -> "tf.data.Dataset":
         """Call :py:meth:`Dataset.to_tf <ray.data.Dataset.to_tf>` over the stream of
         output batches from the pipeline"""
-        return DatasetIterator.to_tf(
+        return DataIterator.to_tf(
             self,
             feature_columns=feature_columns,
             label_columns=label_columns,
@@ -1151,7 +1154,7 @@ class DatasetPipeline(Generic[T]):
     ) -> "torch.utils.data.IterableDataset":
         """Call :py:meth:`Dataset.to_torch <ray.data.Dataset.to_torch>` over the stream
         of output batches from the pipeline"""
-        return DatasetIterator.to_torch(
+        return DataIterator.to_torch(
             self,
             label_column=label_column,
             feature_columns=feature_columns,
