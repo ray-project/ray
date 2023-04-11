@@ -2848,7 +2848,7 @@
         run:
           timeout: 7200
       cluster:
-        cluster_env: app_config.yaml
+        cluster_env: gpu_app_config.yaml
         cluster_compute: compute_tpl_gpu_node_gce.yaml
 
 ########################
