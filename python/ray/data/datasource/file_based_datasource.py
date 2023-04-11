@@ -2,6 +2,7 @@ import itertools
 import logging
 import pathlib
 import posixpath
+import sys
 import urllib.parse
 from typing import (
     TYPE_CHECKING,
@@ -19,6 +20,7 @@ from typing import (
 
 import numpy as np
 
+from ray.air._internal.remote_storage import _is_local_windows_path
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
@@ -715,6 +717,11 @@ def _unwrap_protocol(path):
     """
     Slice off any protocol prefixes on path.
     """
+    if sys.platform == "win32" and _is_local_windows_path(path):
+        # Represent as posix path such that downstream functions properly handle it.
+        # This is executed when 'file://' is NOT included in the path.
+        return pathlib.Path(path).as_posix()
+
     parsed = urllib.parse.urlparse(path, allow_fragments=False)  # support '#' in path
     query = "?" + parsed.query if parsed.query else ""  # support '?' in path
     netloc = parsed.netloc
@@ -723,7 +730,20 @@ def _unwrap_protocol(path):
         # credentialed path, and we need to strip off the credentials.
         netloc = parsed.netloc.split("@")[-1]
 
-    return netloc + parsed.path + query
+    parsed_path = parsed.path
+    # urlparse prepends the path with a '/'. This does not work on Windows
+    # so if this is the case strip the leading slash.
+    if (
+        sys.platform == "win32"
+        and not netloc
+        and len(parsed_path) >= 3
+        and parsed_path[0] == "/"  # The problematic leading slash
+        and parsed_path[1].isalpha()  # Ensure it is a drive letter.
+        and parsed_path[2:4] in (":", ":/")
+    ):
+        parsed_path = parsed_path[1:]
+
+    return netloc + parsed_path + query
 
 
 def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
