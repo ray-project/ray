@@ -164,14 +164,6 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
         partitioning: Optional[Partitioning] = None,
         ignore_missing_paths: bool = False,
     ) -> Iterator[Tuple[str, int]]:
-        if len(paths) > 1:
-            logger.warning(
-                f"Expanding {len(paths)} path(s). This may be a HIGH LATENCY "
-                f"operation on some cloud storage services. If the specified paths "
-                f"all point to files and never directories, try rerunning this read "
-                f"with `meta_provider=FastFileMetadataProvider()`."
-            )
-
         yield from _expand_paths(paths, filesystem, partitioning, ignore_missing_paths)
 
 
@@ -422,6 +414,12 @@ def _expand_paths(
             )
         # 3. Parallelization case.
         else:
+            logger.warning(
+                f"Expanding {len(paths)} path(s). This may be a HIGH LATENCY "
+                f"operation on some cloud storage services. Moving all the "
+                "paths to a common parent directory will lead to faster "
+                "metadata fetching."
+            )
             # Parallelize requests via Ray tasks.
             yield from _get_file_infos_parallel(paths, filesystem, ignore_missing_paths)
 
