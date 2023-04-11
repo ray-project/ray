@@ -72,7 +72,7 @@ void PushManager::ScheduleRemainingPushes() {
     while (it != push_info_.end() && chunks_in_flight_ < max_chunks_in_flight_) {
 
       NodeID node_id = it->first;
-      while (!it->second.second.empty() && chunks_in_flight_ < max_chunks_in_flight_) {
+      if (!it->second.second.empty() && chunks_in_flight_ < max_chunks_in_flight_) {
         auto &info = it->second.second.front();
         RAY_CHECK(info->SendOneChunk());
         chunks_in_flight_ += 1;
