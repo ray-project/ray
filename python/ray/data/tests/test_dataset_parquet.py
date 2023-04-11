@@ -426,8 +426,6 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
     ],
 )
 def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
-    context = ray.data.context.DatasetContext.get_current()
-    context.use_streaming_executor = True
     df = pd.DataFrame(
         {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "b", "c", "e", "f", "g"]}
     )
