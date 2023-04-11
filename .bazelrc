@@ -4,8 +4,6 @@ build --enable_platform_specific_config
 # On       Windows, provide: BAZEL_SH, and BAZEL_LLVM (if using clang-cl)
 # On all platforms, provide: PYTHON3_BIN_PATH=python
 ###############################################################################
-build --incompatible_use_platforms_repo_for_constraints=false
-test --incompatible_use_platforms_repo_for_constraints=false
 build:windows --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
