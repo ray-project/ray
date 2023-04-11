@@ -36,14 +36,14 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 )
 @click.option(
     "--only-likely-failing-tests",
-    default=True,
+    default=False,
     type=bool,
     help="Run only tests that have a higher chance to fail, which is determined based "
     "on their historical run behaviors"
 )
 @click.option(
     "--team",
-    default="core",
+    default=None,
     type=str,
     help="Run only tests that are owned by this team (core, ml, etc.)"
 )
