@@ -2226,6 +2226,48 @@ class Datastream(Generic[T]):
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
+    def take_batch(
+        self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
+    ) -> DataBatch:
+        """Return up to ``batch_size`` records from the datastream in a batch.
+
+        Unlike take(), the records are returned in the same format as used for
+        `iter_batches` and `map_batches`.
+
+        This will move up to ``batch_size`` records to the caller's machine; if
+        ``batch_size`` is very large, this can result in an OutOfMemory crash on
+        the caller.
+
+        Time complexity: O(batch_size specified)
+
+        Args:
+            batch_size: The max number of records to return.
+            batch_format: Specify ``"default"`` to use the default block format
+                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
+                ``"numpy"`` to select ``numpy.ndarray`` for tensor datastreams and
+                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None
+                to return the underlying block exactly as is with no additional
+                formatting. The default is "default".
+
+        Returns:
+            A batch of up to ``batch_size`` records from the datastream.
+
+        Raises:
+            ValueError if the datastream is empty.
+        """
+        try:
+            res = next(
+                self.iter_batches(
+                    batch_size=batch_size, prefetch_batches=0, batch_format=batch_format
+                )
+            )
+        except StopIteration:
+            raise ValueError("The datastream is empty.")
+        self._synchronize_progress_bar()
+        return res
+
+    @ConsumptionAPI(pattern="Time complexity:")
     def take(self, limit: int = 20) -> List[T]:
         """Return up to ``limit`` records from the datastream.
 
