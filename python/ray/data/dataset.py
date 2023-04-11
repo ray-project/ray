@@ -440,7 +440,7 @@ class Datastream(Generic[T]):
             ...     "age": [4, 14, 9]
             ... })
             >>> ds = ray.data.from_pandas(df)
-            >>> ds   # doctest: +SKIP
+            >>> ds  # doctest: +SKIP
             MaterializedDatastream(
                 num_blocks=1,
                 num_rows=3,
