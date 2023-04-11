@@ -232,7 +232,7 @@ spec:
             - containerPort: 10001 # Used by Ray Client
             - containerPort: 8265 # Used by Ray Dashboard
           # This volume allocates shared memory for Ray to use for its plasma
-          # object store. If you do not provide this, Ray will fall back to
+          # object store. If you do not provide this, Ray falls back to
           # /tmp which cause slowdowns if it's not a shared memory volume.
           volumeMounts:
             - mountPath: /dev/shm
