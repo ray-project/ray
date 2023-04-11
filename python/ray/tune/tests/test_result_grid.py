@@ -334,7 +334,7 @@ def test_result_grid_df(ray_start_2_cpus):
 def test_num_errors_terminated(tmpdir):
     error_filename = "error.txt"
 
-    trials = [Trial("foo", local_dir=str(tmpdir), stub=True) for i in range(10)]
+    trials = [Trial("foo", experiment_path=str(tmpdir), stub=True) for i in range(10)]
 
     # Only create 1 shared trial logdir for this test
     trials[0].init_local_path()
@@ -380,7 +380,7 @@ def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
         ),
         run_config=air.RunConfig(
             name="exp_dir",
-            local_dir=str(tmpdir / "ray_results"),
+            storage_path=str(tmpdir / "ray_results"),
             stop={"it": total_iters},
             checkpoint_config=air.CheckpointConfig(
                 # Keep the latest checkpoints
