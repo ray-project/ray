@@ -47,7 +47,11 @@ class TorchMLP(nn.Module):
         )
 
         layers = []
-        dims = [input_dim] + hidden_layer_dims + [output_dim]
+        dims = (
+            [self.input_dim]
+            + list(hidden_layer_dims)
+            + ([output_dim] if output_dim else [])
+        )
         layers.append(nn.Linear(dims[0], dims[1]))
         for i in range(1, len(dims) - 1):
             if hidden_activation_class is not None:
