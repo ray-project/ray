@@ -85,4 +85,29 @@ client2_pid=$!
 sleep 2
 python $basedir/$client_script --inference-mode=$inference_mode --port=$worker_2_port "$stop_criterion"
 
+is_running=true
+if ! ps -p $client1_pid > /dev/null
+then
+   echo "$client1_pid client1_pid is not running"
+    is_running=false
+fi
+
+if ! ps -p $client2_pid > /dev/null
+then
+   echo "$client2_pid client2_pid is not running"
+    is_running=false
+fi
+
+if ! ps -p $server_pid > /dev/null
+then
+   echo "$server_pid server_pid is not running"
+    is_running=false
+fi
+
+if ! $is_running; then
+    echo "Some script failed"
+    exit 1
+fi
+
 kill $server_pid $client1_pid $client2_pid || true
+ray stop
