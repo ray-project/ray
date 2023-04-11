@@ -679,7 +679,7 @@ def test_sort_validate_keys(
         ds_named.sort(invalid_col_name).take_all()
 
     def dummy_sort_fn(x):
-        x
+        return x
 
     with pytest.raises(
         ValueError,
