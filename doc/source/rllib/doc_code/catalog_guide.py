@@ -117,7 +117,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 class MyPPOCatalog(PPOCatalog):
     def __init__(self, *args, **kwargs):
         print("Hi from within PPORLModule!")
-        super.__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
 
 config = (
@@ -129,9 +129,11 @@ config = (
 
 # Specify the catalog to use for the PPORLModule.
 config = config.rl_module(
-    rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyPPOCatalog)
+    rl_module_spec=SingleAgentRLModuleSpec(
+        catalog_class=MyPPOCatalog
+    )
 )
 # This is how RLlib constructs a PPORLModule
 # It will say "Hi from within PPORLModule!".
-ppo_rl_module = config.rl_module_spec.build()
+ppo = config.build()
 # __sphinx_doc_algo_configs_end__
