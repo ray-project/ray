@@ -5,7 +5,7 @@ import logging
 
 import ray
 from ray.data.block import T
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal import progress_bar
@@ -163,9 +163,9 @@ class PipelineSplitExecutorCoordinator:
         pipeline: "DatasetPipeline[T]",
         n: int,
         splitter: Callable[[Dataset], List["Dataset[T]"]],
-        context: DatasetContext,
+        context: DataContext,
     ):
-        DatasetContext._set_current(context)
+        DataContext._set_current(context)
         pipeline._optimize_stages()
         self.executor = PipelineExecutor(pipeline)
         self.n = n

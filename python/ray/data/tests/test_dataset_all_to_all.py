@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -214,7 +214,7 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
 
 def test_grouped_dataset_repr(ray_start_regular_shared):
     ds = ray.data.from_items([{"key": "spam"}, {"key": "ham"}, {"key": "spam"}])
-    assert repr(ds.groupby("key")) == f"GroupedDataset(dataset={ds!r}, key='key')"
+    assert repr(ds.groupby("key")) == f"GroupedData(dataset={ds!r}, key='key')"
 
 
 def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
@@ -1522,7 +1522,7 @@ def test_random_block_order_schema(ray_start_regular_shared):
 
 
 def test_random_block_order(ray_start_regular_shared, restore_dataset_context):
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
     # Test BlockList.randomize_block_order.
@@ -1534,7 +1534,7 @@ def test_random_block_order(ray_start_regular_shared, restore_dataset_context):
     assert results == expected
 
     # Test LazyBlockList.randomize_block_order.
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     try:
         original_optimize_fuse_read_stages = context.optimize_fuse_read_stages
         context.optimize_fuse_read_stages = False

@@ -9,7 +9,7 @@ import numpy as np
 import ray
 from ray.data import dataset
 from ray.data._internal.arrow_block import ArrowRow
-from ray.data.context import DatasetContext, WARN_PREFIX, OK_PREFIX
+from ray.data.context import DataContext, WARN_PREFIX, OK_PREFIX
 from ray.data.dataset import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
 
@@ -205,7 +205,7 @@ def test_window_by_bytes(ray_start_regular_shared):
     )
     assert str(pipe) == "DatasetPipeline(num_windows=8, num_stages=1)"
 
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     old = context.optimize_fuse_read_stages
     try:
         context.optimize_fuse_read_stages = False
@@ -272,7 +272,7 @@ def test_cannot_read_twice(ray_start_regular_shared):
 
 
 def test_basic_pipeline(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(10, parallelism=10)
 
@@ -310,7 +310,7 @@ def test_basic_pipeline(ray_start_regular_shared):
 
 
 def test_window(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(10, parallelism=10)
     pipe = ds.window(blocks_per_window=1)
@@ -338,7 +338,7 @@ def test_window(ray_start_regular_shared):
 
 
 def test_repeat(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(5, parallelism=5)
     pipe = ds.window(blocks_per_window=1)
@@ -366,7 +366,7 @@ def test_from_iterable(ray_start_regular_shared):
 
 
 def test_repeat_forever(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(10)
     pipe = ds.repeat()

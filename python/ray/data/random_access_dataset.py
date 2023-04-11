@@ -9,7 +9,7 @@ from typing import List, Any, Generic, Optional, TYPE_CHECKING
 import ray
 from ray.types import ObjectRef
 from ray.data.block import T, BlockAccessor
-from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
+from ray.data.context import DataContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.util.annotations import PublicAPI
 
@@ -65,7 +65,7 @@ class RandomAccessDataset(Generic[T]):
                 self._upper_bounds.append(b[1])
 
         logger.info("[setup] Creating {} random access workers.".format(num_workers))
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         if ctx.scheduling_strategy != DEFAULT_SCHEDULING_STRATEGY:
             scheduling_strategy = ctx.scheduling_strategy
         else:

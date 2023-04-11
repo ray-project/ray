@@ -18,7 +18,7 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortTaskSpec
 from ray.data._internal.stats import StatsDict
 from ray.data.aggregate import AggregateFn
 from ray.data.block import KeyFn
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 
 
 def generate_aggregate_fn(
@@ -63,7 +63,7 @@ def generate_aggregate_fn(
             key=key,
             aggs=aggs,
         )
-        if DatasetContext.get_current().use_push_based_shuffle:
+        if DataContext.get_current().use_push_based_shuffle:
             scheduler = PushBasedShuffleTaskScheduler(agg_spec)
         else:
             scheduler = PullBasedShuffleTaskScheduler(agg_spec)

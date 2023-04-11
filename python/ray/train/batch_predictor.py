@@ -9,7 +9,7 @@ from ray.air import Checkpoint
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset, DatasetPipeline, Preprocessor
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
@@ -232,7 +232,7 @@ class BatchPredictor:
         predict_stage_batch_format: BatchFormat = (
             self._predictor_cls._batch_format_to_use()
         )
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         cast_tensor_columns = ctx.enable_tensor_extension_casting
 
         class ScoringWrapper:

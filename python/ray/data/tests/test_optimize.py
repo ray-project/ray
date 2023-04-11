@@ -11,7 +11,7 @@ import ray
 from ray._private.internal_api import memory_summary
 from ray.data import Dataset
 from ray.data.block import BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.tests.conftest import *  # noqa
@@ -100,7 +100,7 @@ class OnesSource(Datasource):
 @pytest.mark.skip(reason="Flaky, see https://github.com/ray-project/ray/issues/24757")
 @pytest.mark.parametrize("lazy_input", [True, False])
 def test_memory_release_pipeline(shutdown_only, lazy_input):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     # Disable stage fusion so we can keep reads and maps from being fused together,
     # since we're trying to test multi-stage memory releasing here.
     context.optimize_fuse_stages = False
@@ -159,7 +159,7 @@ def test_memory_release_pipeline(shutdown_only, lazy_input):
 
 
 def test_memory_release_lazy(shutdown_only):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     # Ensure that stage fusion is enabled.
     context.optimize_fuse_stages = True
     info = ray.init(num_cpus=1, object_store_memory=1500e6)
@@ -312,7 +312,7 @@ def test_stage_linking(ray_start_regular_shared):
 
 
 def test_optimize_reorder(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_reorder_stages = True
@@ -339,7 +339,7 @@ def test_optimize_reorder(ray_start_regular_shared):
 
 
 def test_window_randomize_fusion(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_reorder_stages = True
@@ -351,7 +351,7 @@ def test_window_randomize_fusion(ray_start_regular_shared):
 
 
 def test_write_fusion(ray_start_regular_shared, tmp_path):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
@@ -389,7 +389,7 @@ def test_write_doesnt_reorder_randomize_block(ray_start_regular_shared, tmp_path
 
 
 def test_optimize_fuse(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
 
     def build_pipe():
         pipe = ray.data.range(3).window(blocks_per_window=1).repeat(2)
@@ -456,7 +456,7 @@ def test_optimize_fuse(ray_start_regular_shared):
 
 
 def test_optimize_equivalent_remote_args(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
@@ -506,7 +506,7 @@ def test_optimize_equivalent_remote_args(ray_start_regular_shared):
 def test_optimize_incompatible_stages(shutdown_only):
     ray.shutdown()
     ray.init(num_cpus=2)
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
@@ -548,14 +548,14 @@ def test_optimize_incompatible_stages(shutdown_only):
 def test_optimize_callable_classes(shutdown_only, tmp_path):
     ray.shutdown()
     ray.init(num_cpus=2)
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
 
     def put(x):
         # We only support automatic deref in the legacy backend.
-        if DatasetContext.get_current().new_execution_backend:
+        if DataContext.get_current().new_execution_backend:
             return x
         else:
             return ray.put(x)
@@ -649,7 +649,7 @@ def test_optimize_callable_classes(shutdown_only, tmp_path):
 
 
 def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
@@ -674,7 +674,7 @@ def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
 def test_optimize_lazy_reuse_base_data(
     ray_start_regular_shared, local_path, enable_dynamic_splitting, with_shuffle
 ):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.block_splitting_enabled = enable_dynamic_splitting
 
     num_blocks = 4

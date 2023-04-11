@@ -30,7 +30,7 @@ from ray.data.block import (
     T,
     U,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.dataset import DataBatch, Datastream
 from ray.util.annotations import PublicAPI
 
@@ -118,7 +118,7 @@ class PushBasedGroupbyOp(_GroupbyOp, PushBasedShufflePlan):
 
 
 @PublicAPI
-class GroupedDataset(Generic[T]):
+class GroupedData(Generic[T]):
     """Represents a grouped dataset created by calling ``Dataset.groupby()``.
 
     The actual groupby is deferred until an aggregation is applied.
@@ -127,7 +127,7 @@ class GroupedDataset(Generic[T]):
     def __init__(self, dataset: Datastream[T], key: KeyFn):
         """Construct a dataset grouped by key (internal API).
 
-        The constructor is not part of the GroupedDataset API.
+        The constructor is not part of the GroupedData API.
         Use the ``Dataset.groupby()`` method to construct one.
         """
         self._dataset = dataset
@@ -206,7 +206,7 @@ class GroupedDataset(Generic[T]):
                     num_reducers,
                     task_ctx,
                 )
-            ctx = DatasetContext.get_current()
+            ctx = DataContext.get_current()
             if ctx.use_push_based_shuffle:
                 shuffle_op_cls = PushBasedGroupbyOp
             else:
@@ -273,7 +273,7 @@ class GroupedDataset(Generic[T]):
         batch_format: Optional[str] = "default",
         **ray_remote_args,
     ) -> "Datastream[Any]":
-        # TODO AttributeError: 'GroupedDataset' object has no attribute 'map_groups'
+        # TODO AttributeError: 'GroupedData' object has no attribute 'map_groups'
         #  in the example below.
         """Apply the given function to each group of records of this dataset.
 
@@ -720,3 +720,7 @@ class GroupedDataset(Generic[T]):
             If groupby key is ``None`` then the key part of return is omitted.
         """
         return self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
+
+
+# Backwards compatibility alias.
+GroupedDataset = GroupedData

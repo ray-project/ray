@@ -74,7 +74,7 @@ def test_to_dask_tensor_column_cast_pandas(ray_start_regular_shared):
     # Check that tensor column casting occurs when converting a Dataset to a Dask
     # DataFrame.
     data = np.arange(12).reshape((3, 2, 2))
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.enable_tensor_extension_casting
     try:
         ctx.enable_tensor_extension_casting = True
@@ -95,7 +95,7 @@ def test_to_dask_tensor_column_cast_arrow(ray_start_regular_shared):
     # Check that tensor column casting occurs when converting a Dataset to a Dask
     # DataFrame.
     data = np.arange(12).reshape((3, 2, 2))
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.enable_tensor_extension_casting
     try:
         ctx.enable_tensor_extension_casting = True

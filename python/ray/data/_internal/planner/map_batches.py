@@ -5,7 +5,7 @@ from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data.block import BatchUDF, Block, DataBatch
-from ray.data.context import DEFAULT_BATCH_SIZE, DatasetContext
+from ray.data.context import DEFAULT_BATCH_SIZE, DataContext
 
 
 def generate_map_batches_fn(
@@ -18,7 +18,7 @@ def generate_map_batches_fn(
     import pandas as pd
     import pyarrow as pa
 
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
 
     def fn(
         blocks: Iterator[Block],
@@ -27,7 +27,7 @@ def generate_map_batches_fn(
         *fn_args,
         **fn_kwargs,
     ) -> Iterator[Block]:
-        DatasetContext._set_current(context)
+        DataContext._set_current(context)
         output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
 
         def validate_batch(batch: Block) -> None:

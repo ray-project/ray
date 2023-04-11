@@ -8,7 +8,7 @@ import ray
 from ray.air import session
 from ray.air.config import DatasetConfig, ScalingConfig
 from ray.air.util.check_ingest import make_local_dataset_iterator
-from ray.data import DatasetIterator
+from ray.data import DataIterator
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import BatchMapper
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -33,7 +33,7 @@ class TestBasic(DataParallelTrainer):
     ):
         def train_loop_per_worker():
             data_shard = session.get_dataset_shard("train")
-            assert isinstance(data_shard, DatasetIterator), data_shard
+            assert isinstance(data_shard, DataIterator), data_shard
             for k, v in expect_sizes.items():
                 shard = session.get_dataset_shard(k)
                 if v == -1:

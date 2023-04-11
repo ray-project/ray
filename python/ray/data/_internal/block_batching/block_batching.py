@@ -17,7 +17,7 @@ from ray.data._internal.block_batching.util import (
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import Block, DataBatch
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 T = TypeVar("T")
@@ -84,7 +84,7 @@ def batch_block_refs(
     """
     if stats:
         stats._legacy_iter_batches = True
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
 
     if (
         prefetch_blocks > 0
@@ -95,7 +95,7 @@ def batch_block_refs(
     else:
         prefetcher = WaitBlockPrefetcher()
 
-    eager_free = clear_block_after_read and DatasetContext.get_current().eager_free
+    eager_free = clear_block_after_read and DataContext.get_current().eager_free
 
     block_iter = resolve_block_refs(
         _prefetch_blocks(

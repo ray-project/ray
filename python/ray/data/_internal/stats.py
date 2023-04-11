@@ -10,7 +10,7 @@ import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -178,7 +178,7 @@ class _StatsActor:
 
 
 def _get_or_create_stats_actor():
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     scheduling_strategy = ctx.scheduling_strategy
     if not ray.util.client.ray.is_connected():
         # Pin the stats actor to the local node
@@ -290,7 +290,7 @@ class DatasetStats:
             ac = self.stats_actor
             # TODO(chengsu): this is a super hack, clean it up.
             stats_map, self.time_total_s = ray.get(ac.get.remote(self.stats_uuid))
-            if DatasetContext.get_current().block_splitting_enabled:
+            if DataContext.get_current().block_splitting_enabled:
                 # Only populate stats when stats from all read tasks are ready at
                 # stats actor.
                 if len(stats_map.items()) == len(self.stages["Read"]):

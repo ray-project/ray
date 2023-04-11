@@ -44,7 +44,7 @@ def DoConsume(split, rank):
             for _ in range(epochs):
                 yield data
         else:
-            # StreamSplitDatasetIterator
+            # StreamSplitDataIterator
             yield data
 
     for epoch_data in generate_epochs(split, num_epochs):

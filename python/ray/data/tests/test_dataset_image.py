@@ -214,7 +214,7 @@ class TestReadImages:
         assert data_size >= 0, "estimated data size is out of expected bound"
 
     def test_dynamic_block_split(ray_start_regular_shared):
-        ctx = ray.data.context.DatasetContext.get_current()
+        ctx = ray.data.context.DataContext.get_current()
         target_max_block_size = ctx.target_max_block_size
         block_splitting_enabled = ctx.block_splitting_enabled
         # Reduce target max block size to trigger block splitting on small input.

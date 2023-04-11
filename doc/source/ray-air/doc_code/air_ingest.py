@@ -88,7 +88,7 @@ print(my_trainer.get_dataset_config())
 # __config_4__
 import ray
 from ray.air import session
-from ray.data import DatasetIterator
+from ray.data import DataIterator
 from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig
 
@@ -97,8 +97,8 @@ preprocessor = BatchMapper(lambda df: df * 2, batch_format="pandas")
 
 
 def train_loop_per_worker():
-    # Get a handle to the worker's assigned DatasetIterator shard.
-    data_shard: DatasetIterator = session.get_dataset_shard("train")
+    # Get a handle to the worker's assigned DataIterator shard.
+    data_shard: DataIterator = session.get_dataset_shard("train")
 
     # Manually iterate over the data 10 times (10 epochs).
     for _ in range(10):
@@ -123,7 +123,7 @@ my_trainer.fit()
 # __config_5__
 import ray
 from ray.air import session
-from ray.data import DatasetIterator
+from ray.data import DataIterator
 from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig, DatasetConfig
 
@@ -132,7 +132,7 @@ preprocessor = BatchMapper(lambda df: df * 2, batch_format="pandas")
 
 
 def train_loop_per_worker():
-    data_shard: DatasetIterator = session.get_dataset_shard("train")
+    data_shard: DataIterator = session.get_dataset_shard("train")
 
     # Iterate over 10 epochs of data.
     for _ in range(10):
@@ -163,7 +163,7 @@ import random
 
 import ray
 from ray.air import session
-from ray.data import DatasetIterator
+from ray.data import DataIterator
 from ray.data.preprocessors import BatchMapper
 from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig, DatasetConfig
@@ -178,8 +178,8 @@ add_noise = BatchMapper(lambda df: df + random.random(), batch_format="pandas")
 
 
 def train_loop_per_worker():
-    # Get a handle to the worker's assigned DatasetIterator shard.
-    data_shard: DatasetIterator = session.get_dataset_shard("train")
+    # Get a handle to the worker's assigned DataIterator shard.
+    data_shard: DataIterator = session.get_dataset_shard("train")
 
     # Manually iterate over the data 10 times (10 epochs).
     for _ in range(10):
@@ -211,13 +211,13 @@ my_trainer.fit()
 # __global_shuffling_start__
 import ray
 from ray.air import session
-from ray.data import DatasetIterator
+from ray.data import DataIterator
 from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig, ScalingConfig
 
 
 def train_loop_per_worker():
-    data_shard: DatasetIterator = session.get_dataset_shard("train")
+    data_shard: DataIterator = session.get_dataset_shard("train")
 
     # Iterate over 10 epochs of data.
     for epoch in range(10):
@@ -244,13 +244,13 @@ my_trainer.fit()
 # __local_shuffling_start__
 import ray
 from ray.air import session
-from ray.data import DatasetIterator
+from ray.data import DataIterator
 from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig, ScalingConfig
 
 
 def train_loop_per_worker():
-    data_shard: DatasetIterator = session.get_dataset_shard("train")
+    data_shard: DataIterator = session.get_dataset_shard("train")
 
     # Iterate over 10 epochs of data.
     for epoch in range(10):

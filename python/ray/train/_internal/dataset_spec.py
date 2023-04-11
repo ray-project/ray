@@ -10,7 +10,7 @@ from ray.data.preprocessors import Chain
 from ray.air._internal.util import _estimate_avail_object_store_memory
 
 if TYPE_CHECKING:
-    from ray.data import DatasetIterator
+    from ray.data import DataIterator
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
 
@@ -170,7 +170,7 @@ class DataParallelIngestSpec:
 
     def get_dataset_shards(
         self, training_worker_handles: List[ActorHandle]
-    ) -> List[Dict[str, "DatasetIterator"]]:
+    ) -> List[Dict[str, "DataIterator"]]:
         """Get the shards to pass to training workers.
 
         Note: this has to match the signature of DatasetSpec in legacy train.

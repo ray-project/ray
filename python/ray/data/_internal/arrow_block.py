@@ -33,7 +33,7 @@ from ray.data.block import (
     KeyType,
     U,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.row import TableRow
 
 try:
@@ -52,14 +52,14 @@ T = TypeVar("T")
 
 
 # We offload some transformations to polars for performance.
-def get_sort_transform(context: DatasetContext) -> Callable:
+def get_sort_transform(context: DataContext) -> Callable:
     if context.use_polars:
         return transform_polars.sort
     else:
         return transform_pyarrow.sort
 
 
-def get_concat_and_sort_transform(context: DatasetContext) -> Callable:
+def get_concat_and_sort_transform(context: DataContext) -> Callable:
     if context.use_polars:
         return transform_polars.concat_and_sort
     else:
@@ -229,7 +229,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
         df = self._table.to_pandas()
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         if ctx.enable_tensor_extension_casting:
             df = _cast_tensor_columns_to_ndarrays(df)
         return df
@@ -429,7 +429,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             # so calling sort_indices() will raise an error.
             return [self._empty_table() for _ in range(len(boundaries) + 1)]
 
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         sort = get_sort_transform(context)
         col, _ = key[0]
         table = sort(self._table, key, descending)
@@ -543,9 +543,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if len(blocks) == 0:
             ret = ArrowBlockAccessor._empty_table()
         else:
-            concat_and_sort = get_concat_and_sort_transform(
-                DatasetContext.get_current()
-            )
+            concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
             ret = concat_and_sort(blocks, key, _descending)
         return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
 
