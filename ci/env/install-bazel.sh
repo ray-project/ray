@@ -111,9 +111,12 @@ if [ "${TRAVIS-}" = true ]; then
   # NOTE: Normally --jobs should be under 'build:ci-travis' in .bazelrc, but we put
   # it under 'build' here avoid conflicts with other --config options.
   echo "build --jobs=50" >> ~/.bazelrc
-
-  cp .bazeliskrc ~/.bazeliskrc
 fi
+
+if [ "$BUILDKITE" = "true" ]; then
+  cp ${ROOT_DIR}/.bazeliskrc ~/.bazeliskrc
+fi
+
 if [ "${GITHUB_ACTIONS-}" = true ]; then
   echo "build --config=ci-github" >> ~/.bazelrc
   echo "build --jobs="$(($(nproc)+2)) >> ~/.bazelrc
