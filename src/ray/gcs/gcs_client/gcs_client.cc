@@ -154,7 +154,7 @@ Status PythonGcsClient::Connect() {
   return Status::OK();
 }
 
-Status HandleGrpcError(rpc::GcsStatus status) {
+Status HandleGcsError(rpc::GcsStatus status) {
   RAY_CHECK(status.code() != static_cast<int>(StatusCode::OK));
   return Status::Invalid(
     status.message() + " [GCS status code: " + std::to_string(status.code()) + "]");
@@ -188,7 +188,7 @@ Status PythonGcsClient::InternalKVGet(const std::string &ns,
     } else if (reply.status().code() == static_cast<int>(StatusCode::NotFound)) {
       return Status::KeyError(key);
     }
-    return HandleGrpcError(reply.status());
+    return HandleGcsError(reply.status());
   }
   return Status::RpcError(status.error_message(), status.error_code());
 }
@@ -219,7 +219,7 @@ Status PythonGcsClient::InternalKVMultiGet(
       // result has already been cleared above
       return Status::OK();
     }
-    return HandleGrpcError(reply.status());
+    return HandleGcsError(reply.status());
   }
   return Status::RpcError(status.error_message(), status.error_code());
 }
@@ -247,7 +247,7 @@ Status PythonGcsClient::InternalKVPut(const std::string &ns,
       added_num = reply.added_num();
       return Status::OK();
     }
-    return HandleGrpcError(reply.status());
+    return HandleGcsError(reply.status());
   }
   return Status::RpcError(status.error_message(), status.error_code());
 }
@@ -273,7 +273,7 @@ Status PythonGcsClient::InternalKVDel(const std::string &ns,
       deleted_num = reply.deleted_num();
       return Status::OK();
     }
-    return HandleGrpcError(reply.status());
+    return HandleGcsError(reply.status());
   }
   return Status::RpcError(status.error_message(), status.error_code());
 }
@@ -297,7 +297,7 @@ Status PythonGcsClient::InternalKVKeys(const std::string &ns,
       results = std::vector<std::string>(reply.results().begin(), reply.results().end());
       return Status::OK();
     }
-    return HandleGrpcError(reply.status());
+    return HandleGcsError(reply.status());
   }
   return Status::RpcError(status.error_message(), status.error_code());
 }
@@ -321,7 +321,7 @@ Status PythonGcsClient::InternalKVExists(const std::string &ns,
       exists = reply.exists();
       return Status::OK();
     }
-    return HandleGrpcError(reply.status());
+    return HandleGcsError(reply.status());
   }
   return Status::RpcError(status.error_message(), status.error_code());
 }
@@ -370,7 +370,7 @@ Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
                                              reply.node_info_list().end());
       return Status::OK();
     }
-    return HandleGrpcError(reply.status());
+    return HandleGcsError(reply.status());
   }
   return Status::RpcError(status.error_message(), status.error_code());
 }
@@ -390,7 +390,7 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
                                               reply.job_info_list().end());
       return Status::OK();
     }
-    return HandleGrpcError(reply.status());
+    return HandleGcsError(reply.status());
   }
   return Status::RpcError(status.error_message(), status.error_code());
 }
