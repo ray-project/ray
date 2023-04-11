@@ -89,10 +89,10 @@ if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
       sudo curl -f -s -L -R -o "${target}" "${url}"
       sudo chmod +x "${target}"
     fi
-
-    bazel --version
   fi
 fi
+
+bazel --version
 
 # clear bazelrc
 echo > ~/.bazelrc
