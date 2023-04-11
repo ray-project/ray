@@ -608,9 +608,6 @@ def resolve_ip_for_localhost(address: str):
         raise ValueError(f"Malformed address: {address}")
     address_parts = address.split(":")
     if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
-        # Clusters are disabled by default for OSX and Windows.
-        if not ray_constants.ENABLE_RAY_CLUSTER:
-            return address
         # Make sure localhost isn't resolved to the loopback ip
         ip_address = get_node_ip_address()
         return ":".join([ip_address] + address_parts[1:])
