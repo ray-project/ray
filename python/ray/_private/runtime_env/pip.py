@@ -343,14 +343,37 @@ with open(r"{ray_version_path}", "wt") as f:
         # TODO(fyrestone): Support -i, --no-deps, --no-cache-dir, ...
         pip_requirements_file = _PathHelper.get_requirements_file(path, pip_packages)
 
+        pip_packages_list = []
+        pip_packages_specfic_command = []
+        for packages in pip_packages:
+            if len(packages.split(" ")) > 1:
+                pip_packages_specfic_command.append(packages)
+            else:
+                pip_packages_list.append(packages)
+
         def _gen_requirements_txt():
             with open(pip_requirements_file, "w") as file:
-                for line in pip_packages:
+                for line in pip_packages_list:
                     file.write(line + "\n")
 
         # Avoid blocking the event loop.
         loop = get_running_loop()
         await loop.run_in_executor(None, _gen_requirements_txt)
+
+        for package_command in pip_packages_specfic_command:
+            commands = package_command.split(" ")
+
+            pip_install_cmd = [
+                python,
+                "-m",
+                "pip",
+                "install",
+            ]
+            for command in commands:
+                if command != "":
+                    pip_install_cmd.append(command)
+            logger.info("Installing specfic pip to %s", pip_install_cmd)
+            await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)
 
         # pip options
         #
