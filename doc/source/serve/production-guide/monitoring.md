@@ -101,7 +101,7 @@ This causes the HTTP proxy and deployment replica to print log statements to the
 ```
 
 :::{note}
-The logging message above consists of information included logging level, timestamp, deployment name, replica tag, request ID, route, file name with line number.
+Log messages include the logging level, timestamp, deployment name, replica tag, request ID, route, file name, and line number.
 :::
 
 Find a copy of these logs at `/tmp/ray/session_latest/logs/serve/`. You can parse these stored logs with a logging stack such as ELK or [Loki](serve-logging-loki) to be able to search by deployment or replica.
