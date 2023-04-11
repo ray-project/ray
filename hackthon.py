@@ -31,8 +31,9 @@ num_unload = {}
 
 for i in range(1000):
     model_id = random.randint(0, 15)
+    headers = {"ray_serve_request_routing_tag": str(model_id)}
     resp = requests.get(
-        "http://127.0.0.1:8000", params={"ray_serve_request_routing_tag": str(model_id)}
+        "http://127.0.0.1:8000", headers=headers
     )
     resp = resp.json()
     num_unload[resp[0]] = resp[1]
