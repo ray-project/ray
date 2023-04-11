@@ -156,8 +156,8 @@ Status PythonGcsClient::Connect() {
 
 Status HandleGcsError(rpc::GcsStatus status) {
   RAY_CHECK(status.code() != static_cast<int>(StatusCode::OK));
-  return Status::Invalid(
-    status.message() + " [GCS status code: " + std::to_string(status.code()) + "]");
+  return Status::Invalid(status.message() +
+                         " [GCS status code: " + std::to_string(status.code()) + "]");
 }
 
 void GrpcClientContextWithTimeoutMs(grpc::ClientContext &context, int64_t timeout_ms) {
