@@ -124,6 +124,7 @@ elif [[ "$platform" == "macosx" ]]; then
     if [ "$(uname -m)" = "arm64" ]; then
       [ -f "$HOME/.bash_profile" ] && conda init bash
       source ~/.bash_profile
+      conda remove -y python || true
       conda install -y python="${PY_MM}"
       PYTHON_EXE="/opt/homebrew/opt/miniconda/bin/python"
       PIP_CMD="/opt/homebrew/opt/miniconda/bin/pip"
