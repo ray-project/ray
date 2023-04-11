@@ -144,8 +144,6 @@ class PushManager {
 
   /// Tracks all pushes with chunk transfers in flight.
   absl::flat_hash_map<NodeID, std::pair<absl::flat_hash_map<ObjectID, std::shared_ptr<PushState>>, std::queue<std::shared_ptr<PushState>>>> push_info_;
-
-  int64_t push_chunk_nums = 0;
 };
 
 }  // namespace ray
