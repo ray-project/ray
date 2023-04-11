@@ -149,10 +149,9 @@ class TableBlockAccessor(BlockAccessor):
 
     def _get_row(self, index: int, copy: bool = False) -> Union[TableRow, np.ndarray]:
         row = self.slice(index, index + 1, copy=copy)
+        row = self.ROW_TYPE(row)
         if self.is_tensor_wrapper():
-            row = self._build_tensor_row(row)
-        else:
-            row = self.ROW_TYPE(row)
+            row = row[TENSOR_COLUMN_NAME]
         return row
 
     @staticmethod
