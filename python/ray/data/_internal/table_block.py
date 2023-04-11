@@ -152,6 +152,7 @@ class TableBlockAccessor(BlockAccessor):
         row = self.ROW_TYPE(base_row)
         if self.is_tensor_wrapper():
             row = row[TENSOR_COLUMN_NAME]
+            assert isinstance(row, np.ndarray), type(row)
         return row
 
     @staticmethod
