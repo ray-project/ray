@@ -258,11 +258,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
                 fn_constructor_args = stage.fn_constructor_args or ()
                 fn_constructor_kwargs = stage.fn_constructor_kwargs or {}
 
-                max_concurrency = stage.ray_remote_args.get("max_concurrency", 1)
-                if max_concurrency > 1:
-                    fn_ = make_callable_class_concurrent(stage.fn)
-                else:
-                    fn_ = stage.fn
+                fn_ = make_callable_class_concurrent(stage.fn)
 
                 def fn(item: Any) -> Any:
                     assert ray.data._cached_fn is not None
