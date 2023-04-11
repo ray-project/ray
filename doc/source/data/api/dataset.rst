@@ -149,3 +149,17 @@ Serialization
    Dataset.has_serializable_lineage
    Dataset.serialize_lineage
    Dataset.deserialize_lineage
+
+
+Internals
+---------
+
+.. autosummary::
+    :toctree: doc/
+
+    Dataset.__init__
+    Dataset.dataset_format
+    Dataset.fully_executed
+    Dataset.is_fully_executed
+    Dataset.lazy
+    Dataset.write_webdataset
