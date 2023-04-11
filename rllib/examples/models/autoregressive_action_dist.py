@@ -72,8 +72,8 @@ class BinaryAutoregressiveDistribution(ActionDistribution):
         a2_dist = Categorical(a2_logits)
         return a2_dist
 
-    @staticmethod
-    def required_model_output_shape(action_space, model_config):
+    @classmethod
+    def required_model_output_shape(cls, action_space, model_config):
         return 16  # controls model output feature vector size
 
 
@@ -143,6 +143,6 @@ class TorchBinaryAutoregressiveDistribution(TorchDistributionWrapper):
         a2_dist = TorchCategorical(a2_logits)
         return a2_dist
 
-    @staticmethod
-    def required_model_output_shape(action_space, model_config):
+    @classmethod
+    def required_model_output_shape(cls, action_space, model_config):
         return 16  # controls model output feature vector size

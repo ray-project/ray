@@ -32,7 +32,7 @@ observation space. Thereby, the following simple rules apply:
 - Discrete observations are one-hot encoded, e.g. ``Discrete(3) and value=1 -> [0, 1, 0]``.
 
 - MultiDiscrete observations are encoded by one-hot encoding each discrete element
-  and then concatenating the respective one-hot encoded vectors. 
+  and then concatenating the respective one-hot encoded vectors.
   e.g. ``MultiDiscrete([3, 4]) and value=[1, 3] -> [0 1 0 0 0 0 1]`` because
   the first ``1`` is encoded as ``[0 1 0]`` and the second ``3`` is encoded as
   ``[0 0 0 1]``; these two vectors are then concatenated to ``[0 1 0 0 0 0 1]``.
@@ -495,8 +495,8 @@ Similar to custom models and preprocessors, you can also specify a custom action
     from ray.rllib.models.preprocessors import Preprocessor
 
     class MyActionDist(ActionDistribution):
-        @staticmethod
-        def required_model_output_shape(action_space, model_config):
+        @classmethod
+        def required_model_output_shape(cls, action_space, model_config):
             return 7  # controls model output feature vector size
 
         def __init__(self, inputs, model):
@@ -627,8 +627,8 @@ To do this, you need both a custom model that implements the autoregressive patt
     class BinaryAutoregressiveOutput(ActionDistribution):
         """Action distribution P(a1, a2) = P(a1) * P(a2 | a1)"""
 
-        @staticmethod
-        def required_model_output_shape(self, model_config):
+        @classmethod
+        def required_model_output_shape(cls, action_space, model_config):
             return 16  # controls model output feature vector size
 
         def sample(self):

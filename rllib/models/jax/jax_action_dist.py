@@ -13,6 +13,8 @@ tfp = try_import_tfp()
 class JAXDistribution(ActionDistribution):
     """Wrapper class for JAX distributions."""
 
+    framework = "jax"
+
     @override(ActionDistribution)
     def __init__(self, inputs: List[TensorType], model: ModelV2):
         super().__init__(inputs, model)
@@ -64,7 +66,7 @@ class JAXCategorical(JAXDistribution):
         self.last_sample = self.inputs.argmax(axis=1)
         return self.last_sample
 
-    @staticmethod
+    @classmethod
     @override(ActionDistribution)
-    def required_model_output_shape(action_space, model_config):
+    def required_model_output_shape(cls, action_space, model_config):
         return action_space.n

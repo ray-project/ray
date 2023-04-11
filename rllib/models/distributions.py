@@ -100,9 +100,9 @@ class Distribution(abc.ABC):
             The entropy of the distribution.
         """
 
-    @staticmethod
+    @classmethod
     @abc.abstractmethod
-    def required_input_dim(space: gym.Space, **kwargs) -> int:
+    def required_input_dim(cls, space: gym.Space, **kwargs) -> int:
         """Returns the required length of an input parameter tensor.
 
         Args:
@@ -152,8 +152,8 @@ class Distribution(abc.ABC):
                 def entropy(self):
                     ...
 
-                @staticmethod
-                def required_input_dim(space):
+                @classmethod
+                def required_input_dim(cls, space):
                     ...
 
                 def rsample(self):

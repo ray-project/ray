@@ -50,8 +50,8 @@ class CustomActionDistribution(TFActionDistribution):
             self.output_shape = tf.shape(inputs)
         super().__init__(inputs, model)
 
-    @staticmethod
-    def required_model_output_shape(action_space, model_config=None):
+    @classmethod
+    def required_model_output_shape(cls, action_space, model_config=None):
         custom_model_config = model_config["custom_model_config"] or {}
         if custom_model_config is not None and custom_model_config.get("output_dim"):
             return custom_model_config.get("output_dim")

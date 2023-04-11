@@ -3,7 +3,6 @@ import gymnasium as gym
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import logging
 import numpy as np
-import tree  # pip install dm_tree
 from typing import List, Optional, Type, Union
 
 from ray.tune.registry import (
@@ -252,7 +251,7 @@ class ModelCatalog:
 
         # Dist_type is given directly as a class.
         elif (
-            type(dist_type) is type
+            isinstance(dist_type, type)
             and issubclass(dist_type, ActionDistribution)
             and dist_type not in (MultiActionDistribution, TorchMultiActionDistribution)
         ):
@@ -911,22 +910,21 @@ class ModelCatalog:
         if issubclass(
             dist_class, (MultiActionDistribution, TorchMultiActionDistribution)
         ):
-            flat_action_space = flatten_space(action_space)
-            child_dists_and_in_lens = tree.map_structure(
-                lambda s: ModelCatalog.get_action_dist(s, config, framework=framework),
-                flat_action_space,
+            child_dists, input_lens = dist_class.get_child_dists_and_input_lens(
+                action_space, config, framework=framework
             )
-            child_dists = [e[0] for e in child_dists_and_in_lens]
-            input_lens = [int(e[1]) for e in child_dists_and_in_lens]
-            return (
-                partial(
-                    dist_class,
-                    action_space=action_space,
-                    child_distributions=child_dists,
-                    input_lens=input_lens,
-                ),
-                int(sum(input_lens)),
+            wrapped_dist_class = partial(
+                dist_class,
+                action_space=action_space,
+                child_distributions=child_dists,
+                input_lens=input_lens,
             )
+            if dist_class in (MultiActionDistribution, TorchMultiActionDistribution):
+                dist_dim = int(sum(input_lens))  # default value
+            else:
+                # Overridden by users
+                dist_dim = dist_class.required_model_output_shape(action_space, config)
+            return wrapped_dist_class, dist_dim
         return dist_class, dist_class.required_model_output_shape(action_space, config)
 
     @staticmethod
