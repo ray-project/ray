@@ -16,7 +16,7 @@ worker_node_types:
       max_workers: 4
       use_spot: false
     - name: worker_node_2
-      instance_type: c2-standard-32 # c5.9xlarge
+      instance_type: c2-standard-30 # c5.9xlarge
       min_workers: 2
       max_workers: 2
       use_spot: false
