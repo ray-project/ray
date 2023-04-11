@@ -26,7 +26,6 @@ import random
 import gc
 
 import ray
-from ray import tune
 from ray.air import session, Checkpoint
 from ray.air.config import RunConfig, FailureConfig, CheckpointConfig
 from ray.tune.tune_config import TuneConfig
@@ -71,7 +70,7 @@ def main(bucket_uri: str):
         run_config=RunConfig(
             verbose=2,
             failure_config=FailureConfig(max_failures=-1),
-            sync_config=tune.SyncConfig(upload_dir=bucket_uri),
+            storage_path=bucket_uri,
             checkpoint_config=CheckpointConfig(num_to_keep=2),
         ),
     )
