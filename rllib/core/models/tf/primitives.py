@@ -253,7 +253,9 @@ class TfCNNTranspose(tf.keras.Model):
                 layers.append(tf.keras.layers.LayerNormalization(
                     axis=[-3, -2, -1], epsilon=1e-5
                 ))
-                layers.append(tf.keras.layers.Activation(cnn_transpose_activation))
+                layers.append(
+                    tf.keras.layers.Activation(cnn_transpose_activation)
+                )
 
         # Create the final CNNTranspose network.
         self.cnn_transpose = tf.keras.Sequential(layers)

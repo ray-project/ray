@@ -1,12 +1,12 @@
 from dataclasses import dataclass
-import numpy as np
 from typing import Any, List, Mapping
-import tree
 
+import numpy as np
+import tree  # pip install dm_tree
+
+from ray.rllib.core.learner.learner import Learner, LearnerHPs
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.core.learner.learner import LearnerHPs
 from ray.rllib.utils.annotations import override
-from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     NUM_AGENT_STEPS_TRAINED,
