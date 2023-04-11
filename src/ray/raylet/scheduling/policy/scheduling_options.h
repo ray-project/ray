@@ -76,7 +76,7 @@ struct SchedulingOptions {
                                         bool require_node_available,
                                         std::string node_id,
                                         bool soft,
-                                        bool spill_on_unavailable) {
+                                        bool spill_on_unavailable = false) {
     if (spill_on_unavailable) {
       RAY_CHECK(soft);
     }
