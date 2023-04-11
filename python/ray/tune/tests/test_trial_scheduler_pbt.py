@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 
 import ray
-from ray import tune
+from ray import cloudpickle, tune
 from ray.air import Checkpoint
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
@@ -957,7 +957,7 @@ def test_pb2_custom_explore_fn_lambda():
         hyperparam_bounds=hyperparam_bounds,
         custom_explore_fn=lambda config: config,
     )
-    pickle.dumps(pb2)
+    cloudpickle.dumps(pb2)
 
 
 if __name__ == "__main__":
