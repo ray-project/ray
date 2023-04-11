@@ -615,7 +615,7 @@ run_experiments(
     reason="This test currently fails with minimal install.",
 )
 @pytest.mark.parametrize("execution_number", range(3))
-def test_empty_line_thread_safety_bug(execution_number, ray_start_cluster):
+def test_empty_line_thread_safety_bug(tmpdir, execution_number, ray_start_cluster):
     """Make sure when new threads are used within __init__,
     the empty line is not printed.
     Related: https://github.com/ray-project/ray/pull/20987
@@ -639,7 +639,7 @@ class Repro:
     pass
 
 def do_lock():
-    path = f"/tmp/lock"
+    path = f"{tmpdir}/lock"
     lock = FileLock(path, timeout=4)
     lock.acquire()
 

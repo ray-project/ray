@@ -243,7 +243,8 @@ print("success")
     indirect=True,
 )
 def test_using_hostnames(call_ray_start):
-    ray.init(_node_ip_address="localhost", address="localhost:6379")
+    port = call_ray_start.split(":")[1]
+    ray.init(_node_ip_address="localhost", address=f"localhost:{port}")
 
     @ray.remote
     def f():

@@ -13,13 +13,15 @@ import ray
 
 
 def calculate_capacity_threshold(disk_capacity_in_bytes):
-    usage = shutil.disk_usage("/tmp")
+    tmp_dir = os.environ.get("RAY_TMPDIR", "/tmp")
+    usage = shutil.disk_usage(tmp_dir)
     threshold = min(1, 1.0 - 1.0 * (usage.free - disk_capacity_in_bytes) / usage.total)
     return threshold
 
 
 def get_current_usage():
-    usage = shutil.disk_usage("/tmp")
+    tmp_dir = os.environ.get("RAY_TMPDIR", "/tmp")
+    usage = shutil.disk_usage(tmp_dir)
     print(f"free: {usage.free} ")
     print(f"current usage: {1.0 - 1.0 * usage.free  / usage.total}")
     return 1.0 - 1.0 * usage.free / usage.total
@@ -27,7 +29,8 @@ def get_current_usage():
 
 @contextmanager
 def create_tmp_file(bytes):
-    tmp_dir = tempfile.mkdtemp(dir="/tmp")
+    tmp_dir = os.environ.get("RAY_TMPDIR", "/tmp")
+    tmp_dir = tempfile.mkdtemp(dir=tmp_dir)
     tmp_path = os.path.join(tmp_dir, "test.txt")
     with open(tmp_path, "wb") as f:
         f.write(os.urandom(bytes))
