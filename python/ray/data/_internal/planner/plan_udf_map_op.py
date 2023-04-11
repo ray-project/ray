@@ -60,7 +60,7 @@ def _plan_udf_map_op(
         fn_constructor_args = op._fn_constructor_args or ()
         fn_constructor_kwargs = op._fn_constructor_kwargs or {}
 
-        max_concurrency = op.ray_remote_args.get("max_concurrency", 1)
+        max_concurrency = op._ray_remote_args.get("max_concurrency", 1)
         if max_concurrency > 1:
             fn_ = make_callable_class_concurrent(op._fn)
         else:
