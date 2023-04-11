@@ -35,6 +35,8 @@ SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
 
 SUPPORTED_BAZEL = (5, 4, 0)
 
+os.environ.setdefault("USE_BAZEL_VERSION", '.'.join(SUPPORTED_BAZEL))
+
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
