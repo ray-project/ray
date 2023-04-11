@@ -1,5 +1,5 @@
 import math
-from typing import Callable, Optional, List, TYPE_CHECKING
+from typing import Callable, Optional, List, TYPE_CHECKING, Union
 
 from ray.util.annotations import PublicAPI
 from ray.data.block import (
@@ -22,6 +22,7 @@ from ray.data._internal.null_aggregate import (
 
 if TYPE_CHECKING:
     from ray.data import Datastream
+    import pyarrow as pa
 
 
 @PublicAPI
@@ -81,8 +82,8 @@ class AggregateFn(object):
         self.finalize = finalize
         self.name = name
 
-    def _validate(self, ds: "Datastream") -> None:
-        """Raise an error if this cannot be applied to the given datastream."""
+    def _validate(self, schema: Optional[Union[type, "pa.lib.Schema"]]) -> None:
+        """Raise an error if this cannot be applied to the given schema."""
         pass
 
 
@@ -90,8 +91,8 @@ class _AggregateOnKeyBase(AggregateFn):
     def _set_key_fn(self, on: KeyFn):
         self._key_fn = on
 
-    def _validate(self, ds: "Datastream") -> None:
-        _validate_key_fn(ds, self._key_fn)
+    def _validate(self, schema: Optional[Union[type, "pa.lib.Schema"]]) -> None:
+        _validate_key_fn(schema, self._key_fn)
 
 
 @PublicAPI
