@@ -1,7 +1,6 @@
 from functools import partial
 from typing import List, Optional, Tuple, Union
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
-import pyarrow as pa
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
@@ -25,6 +24,7 @@ def generate_sort_fn(
     descending: bool,
 ) -> AllToAllTransformFn:
     """Generate function to sort blocks by the specified key column or key function."""
+    import pyarrow as pa
 
     def fn(
         key: SortKeyT,
