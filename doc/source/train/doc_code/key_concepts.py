@@ -103,7 +103,7 @@ run_config = RunConfig(
     # Name of the training run (directory name).
     name="my_train_run",
     # Directory to store results in (will be local_dir/name).
-    local_dir="~/ray_results",
+    storage_path="~/ray_results",
     # Low training verbosity.
     verbose=1,
 )

@@ -108,7 +108,7 @@ to determine the existence/validity of the given experiment directory.
             scaling_config=air.ScalingConfig(num_workers=2, use_gpu=False),
             run_config=air.RunConfig(
                 name=experiment_name,
-                local_dir="~/ray_results",
+                storage_path="~/ray_results",
                 failure_config=air.FailureConfig(max_failures=3),
                 stop={"training_iteration": 10},
             ),

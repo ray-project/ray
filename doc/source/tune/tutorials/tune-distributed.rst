@@ -52,7 +52,7 @@ Analyze your results on TensorBoard by starting TensorBoard on the remote head m
     ray exec tune-default.yaml 'tensorboard --logdir=~/ray_results/ --port 6006' --port-forward 6006
 
 
-Note that you can customize the directory of results by specifying: ``air.RunConfig(local_dir=..)``, taken in by ``Tuner``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
+Note that you can customize the directory of results by specifying: ``air.RunConfig(storage_path=..)``, taken in by ``Tuner``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
 
 
 Running a Distributed Tune Experiment

@@ -69,7 +69,7 @@ has finished saving a checkpoint. This can be configured by ``sync_on_checkpoint
         trainable,
         run_config=RunConfig(
             name="experiment_name",
-            local_dir="~/ray_results",
+            storage_path="~/ray_results",
             sync_config=tune.SyncConfig(
                 syncer="auto",
                 # Sync approximately every minute rather than on every checkpoint
@@ -116,7 +116,7 @@ All we need to do is **set the shared network filesystem as the path to save res
         trainable,
         run_config=air.RunConfig(
             name="experiment_name",
-            local_dir="/path/to/shared/storage/",
+            storage_path="/path/to/shared/storage/",
             sync_config=tune.SyncConfig(
                 syncer=None  # Disable syncing
             )
@@ -279,7 +279,7 @@ Again, we're running this example script from the Ray cluster's head node.
         my_trainable,
         run_config=air.RunConfig(
             name="my-tune-exp",
-            local_dir="/tmp/mypath",
+            storage_path="/tmp/mypath",
             # Use the default syncing behavior
             # You don't have to pass an empty sync config - but we
             # do it here for clarity and comparison

@@ -23,7 +23,7 @@ tuner = tune.Tuner(
     trainable,
     param_space={"num_epochs": 10},
     run_config=air.RunConfig(
-        local_dir="~/ray_results", name="tune_fault_tolerance_guide"
+        storage_path="~/ray_results", name="tune_fault_tolerance_guide"
     ),
 )
 tuner.fit()
@@ -63,7 +63,7 @@ else:
         trainable,
         param_space={"num_epochs": 10},
         run_config=air.RunConfig(
-            local_dir="~/ray_results", name="single_script_fit_or_restore"
+            storage_path="~/ray_results", name="single_script_fit_or_restore"
         ),
     )
 tuner.fit()
@@ -94,7 +94,7 @@ tuner = tune.Tuner(
     train_fn,
     # Tune over the object references!
     param_space={"model_ref": tune.grid_search(model_refs)},
-    run_config=air.RunConfig(local_dir="~/ray_results", name="restore_object_refs"),
+    run_config=air.RunConfig(storage_path="~/ray_results", name="restore_object_refs"),
 )
 tuner.fit()
 # __ft_restore_objrefs_initial_end__
@@ -125,7 +125,7 @@ tuner = tune.Tuner(
     trainable,
     param_space={"num_epochs": 10},
     run_config=air.RunConfig(
-        local_dir="~/ray_results",
+        storage_path="~/ray_results",
         name="trial_fault_tolerance",
         failure_config=air.FailureConfig(max_failures=3),
     ),

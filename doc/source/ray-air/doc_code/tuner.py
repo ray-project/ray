@@ -104,7 +104,7 @@ param_space = {
 
 tuner = Tuner(
     trainable=trainer,
-    run_config=RunConfig(name="test_tuner", local_dir="~/ray_results"),
+    run_config=RunConfig(name="test_tuner", storage_path="~/ray_results"),
     param_space=param_space,
     tune_config=tune.TuneConfig(
         mode="min", metric="loss", num_samples=2, max_concurrent_trials=2
