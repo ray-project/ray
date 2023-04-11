@@ -614,10 +614,10 @@ class BaseTrainer(abc.ABC):
         return result
 
     def _save(self, experiment_path: Union[str, Path]):
-        """Saves the current trainer's class along with the param_dict used to
-        initialize the Trainer.
+        """Saves the current trainer's class along with the `param_dict` of
+        parameters passed to this trainer's constructor.
 
-        This is used to construct a new trainer on restore.
+        This is used to recreate the trainer on restore.
         Unless a parameter is re-specified during restoration (only a subset
         of parameters can be passed in again), that parameter will be loaded
         from the saved copy.
