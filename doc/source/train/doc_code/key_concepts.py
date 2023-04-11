@@ -102,7 +102,7 @@ from ray.air import RunConfig
 run_config = RunConfig(
     # Name of the training run (directory name).
     name="my_train_run",
-    # Directory to store results in (will be local_dir/name).
+    # Directory to store results in (will be storage_path/name).
     storage_path="~/ray_results",
     # Low training verbosity.
     verbose=1,

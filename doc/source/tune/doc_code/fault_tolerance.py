@@ -52,9 +52,9 @@ tuner = tune.Tuner.restore(
 import os
 from ray import air, tune
 
-local_dir = "~/ray_results"
+storage_path = "~/ray_results"
 exp_name = "tune_fault_tolerance_guide"
-path = os.path.join(local_dir, exp_name)
+path = os.path.join(storage_path, exp_name)
 
 if tune.Tuner.can_restore(path):
     tuner = tune.Tuner.restore(path, trainable=trainable, resume_errored=True)
@@ -63,7 +63,7 @@ else:
         trainable,
         param_space={"num_epochs": 10},
         run_config=air.RunConfig(
-            storage_path="~/ray_results", name="single_script_fit_or_restore"
+            storage_path=storage_path, name="single_script_fit_or_restore"
         ),
     )
 tuner.fit()

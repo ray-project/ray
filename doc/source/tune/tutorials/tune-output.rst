@@ -21,7 +21,7 @@ Tune will log the results of each trial to a sub-folder under a specified local 
     tuner = tune.Tuner(trainable, run_config=air.RunConfig(num_samples=2))
     results = tuner.fit()
 
-You can specify the ``local_dir`` and ``trainable_name``:
+You can specify the ``storage_path`` and ``trainable_name``:
 
 .. code-block:: python
 

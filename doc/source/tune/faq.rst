@@ -592,7 +592,7 @@ be automatically fetched and passed to your trainable as a parameter.
 How can I upload my Tune results to cloud storage?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If an upload directory is provided, Tune will automatically sync results from the ``local_dir`` to the given directory,
+If an upload directory is provided, Tune will automatically sync results from the ``RAY_AIR_LOCAL_CACHE_DIR`` to the given directory,
 natively supporting standard URIs for systems like S3, gsutil or HDFS. You can add more filesystems by installing
 `fs-spec <https://filesystem-spec.readthedocs.io/en/latest/>`_-compatible filesystems e.g. using pip.
 
