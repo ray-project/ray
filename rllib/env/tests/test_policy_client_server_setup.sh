@@ -110,4 +110,3 @@ if ! $is_running; then
 fi
 
 kill $server_pid $client1_pid $client2_pid || true
-ray stop
