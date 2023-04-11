@@ -600,6 +600,29 @@ class JobManager:
                             f"configured by setting the environment "
                             f"variable {RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR}."
                         )
+                        resources_specified = (
+                            (
+                                job_info.entrypoint_num_cpus is not None
+                                and job_info.entrypoint_num_cpus > 0
+                            )
+                            or (
+                                job_info.entrypoint_num_gpus is not None
+                                and job_info.entrypoint_num_gpus > 0
+                            )
+                            or (
+                                job_info.entrypoint_resources is not None
+                                and len(job_info.entrypoint_resources) > 0
+                            )
+                        )
+                        if resources_specified:
+                            err_msg += (
+                                " This may be because the job entrypoint's specified "
+                                "resources (entrypoint_num_cpus, entrypoint_num_gpus, "
+                                "entrypoint_resources) are not available on the cluster. "
+                                "Try checking the cluster's available resources with "
+                                "`ray status` and specifying fewer resources for the "
+                                "job entrypoint."
+                            )
                         await self._job_info_client.put_status(
                             job_id,
                             JobStatus.FAILED,
