@@ -77,7 +77,7 @@ if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
     if [ "${architecture}" = "aarch64" ]; then
       # architecture is "aarch64", but the bazel tag is "arm64"
       url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-arm64"
-    elif [ "${architecture}" = "x86_64" ]
+    elif [ "${architecture}" = "x86_64" ]; then
       url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-amd64"
     fi
 
@@ -90,7 +90,7 @@ if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
       sudo curl -f -s -L -R -o "${target}" "${url}"
       sudo chmod +x "${target}"
     fi
-    which bazel
+
     bazel --version
   fi
 fi
