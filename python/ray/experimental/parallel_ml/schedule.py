@@ -62,8 +62,9 @@ class Backward(Instruction):
 class LoadBatch(Instruction):
     """Load a batch of data from the data loader."""
 
-    def __init__(self, count: int = 1):
+    def __init__(self, count: int = 1, is_label: bool = False):
         self.count = count
+        self.is_label = is_label
 
 
 class PrintOutput(Instruction):

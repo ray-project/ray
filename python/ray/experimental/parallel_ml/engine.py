@@ -47,8 +47,15 @@ class ExecutionEngine:
     It follows a precomputed schedule to schedule until reconfigured.
     """
 
-    def __init__(self, schedule: Schedule, config: Config, is_training: bool = False):
+    def __init__(
+        self,
+        schedule: Schedule,
+        config: Config,
+        is_training: bool = False,
+        is_last_trainig_stage: bool = False,
+    ):
         self.is_training = is_training
+        self.is_last_trainig_stage = is_last_trainig_stage
         self.input_queue = deque()
         self.output_queue = deque()
 
@@ -69,6 +76,7 @@ class ExecutionEngine:
             self.forward_counter = 0
             self.backward_counter = 0
             self.accumulated_parameters_gards = None
+            self.label_queue = deque()
 
     def _initialize_config(self, config: Config):
         self.input_tensor_shape = config.input_tensor_shape
@@ -160,6 +168,15 @@ class ExecutionEngine:
             future.wait()
             output = self.model.forward(tensor)
 
+            # Optionally compute loss on the last device
+            if self.is_last_trainig_stage:
+                if self.model.loss_fn is not None:
+                    labels = self.label_queue().popleft()
+                    output = self.model.loss_fn(output, labels)
+                else:
+                    # Some models just return loss from forward()
+                    pass
+
             if self.is_training:
                 if self.forward_counter == 0:
                     self.received_gradient_tensor_shape = output.shape
@@ -167,17 +184,18 @@ class ExecutionEngine:
                 self.forward_cache[self.forward_counter] = (tensor, output)
                 self.forward_counter += 1
 
-            self.output_queue.append(output)
+            # Only send the output if we are not the last training stage
+            if not self.is_last_trainig_stage:
+                self.output_queue.append(output)
 
     def _execute_load_batch(self, instruction: Instruction):
         for _ in range(instruction.count):
-            tensor = torch.ones(()).new_empty(
-                size=self.input_tensor_shape,
-                dtype=self.input_tensor_dtype,
-                device=self.device,
-            )
-            self.data_loader.next_batch(tensor)
-            self.input_queue.append((tensor, FULLFILLED_FUTURE))
+            if instruction.is_label:
+                _, label = next(iter(self.data_loader))
+                self.label_queue.append((label.to(self.device), FULLFILLED_FUTURE))
+            else:
+                batch, _ = next(iter(self.data_loader))
+                self.input_queue.append((batch.to(self.device), FULLFILLED_FUTURE))
 
     def _execute_print_output(self, instruction: Instruction):
         for _ in range(instruction.count):
@@ -212,10 +230,15 @@ class ExecutionEngine:
 
     def _execute_backward(self, instruction: Backward):
         for _ in range(instruction.count):
-            tensor, future = self.input_gradient.popleft()
-            future.wait()
             input, output = self.forward_cache.pop(self.backward_counter)
-            torch.autograd.backward(tensors=output, grad_tensors=tensor)
+
+            # last stage the output is loss.
+            if self.is_last_trainig_stage:
+                torch.autograd.backward(tensors=output)
+            else:
+                tensor, future = self.input_gradient.popleft()
+                future.wait()
+                torch.autograd.backward(tensors=output, grad_tensors=tensor)
 
             # accumulate the gradients into self.accumulated_parameters_gards
             for i, parameter in enumerate(self.model.parameters()):
