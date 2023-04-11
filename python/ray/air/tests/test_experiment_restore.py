@@ -30,7 +30,7 @@ def _kill_process_if_needed(
 
 def _print_message(message):
     sep = "=" * 50
-    print(f"{sep}\n{message}\n{sep}\n")
+    print(f"\n{sep}\n{message}\n{sep}\n")
 
 
 @pytest.mark.parametrize("runner_type", ["tuner", "trainer"])

@@ -104,7 +104,7 @@ def train_fn(config: dict, data: Optional[dict] = None):
         )
 
 
-def tune(experiment_path: str, run_config: air.RunConfig) -> tune.ResultGrid:
+def tuner(experiment_path: str, run_config: air.RunConfig) -> tune.ResultGrid:
     trainable = tune.with_resources(train_fn, resources={"CPU": 1})
     trainable = tune.with_parameters(trainable, data={"dummy_data": [1, 2, 3]})
 
@@ -127,7 +127,7 @@ def tune(experiment_path: str, run_config: air.RunConfig) -> tune.ResultGrid:
     return result_grid
 
 
-def train(experiment_path: str, run_config: air.RunConfig) -> air.Result:
+def trainer(experiment_path: str, run_config: air.RunConfig) -> air.Result:
     dataset_size = 128
     num_workers = 4
 
@@ -174,9 +174,9 @@ if __name__ == "__main__":
     )
 
     if RUNNER_TYPE == "tuner":
-        tune(experiment_path, run_config)
+        tuner(experiment_path, run_config)
     elif RUNNER_TYPE == "trainer":
-        train(experiment_path, run_config)
+        trainer(experiment_path, run_config)
     else:
         raise NotImplementedError(
             "`RUNNER_TYPE` environment var must be one of ['tuner', 'trainer']"
