@@ -85,28 +85,53 @@ client2_pid=$!
 sleep 2
 python $basedir/$client_script --inference-mode=$inference_mode --port=$worker_2_port "$stop_criterion"
 
-is_running=true
+client_1_is_running=true
+client_2_is_running=true
+server_is_running=true
+
 if ! ps -p $client1_pid > /dev/null
 then
    echo "$client1_pid client1_pid is not running"
-    is_running=false
+    client_1_is_running=false
 fi
 
 if ! ps -p $client2_pid > /dev/null
 then
    echo "$client2_pid client2_pid is not running"
-    is_running=false
+    client_2_is_running=false
 fi
 
 if ! ps -p $server_pid > /dev/null
 then
    echo "$server_pid server_pid is not running"
-    is_running=false
+    server_is_running=false
 fi
 
-if ! $is_running; then
-    echo "Some script failed"
-    exit 1
+if ! $client_1_is_running; then
+  wait $client1_pid
+  client1_exit_code=$?
+  if [ $client1_exit_code -ne 0 ]; then
+    echo "Client 1 exited with code $client1_exit_code"
+    exit $client1_exit_code
+  fi
+fi
+
+if ! $client_2_is_running; then
+  wait $client2_pid
+  client2_exit_code=$?
+  if [ $client2_exit_code -ne 0 ]; then
+    echo "Client 2 exited with code $client2_exit_code"
+    exit $client2_exit_code
+  fi
+fi
+
+if ! $server_is_running; then
+  wait $server_pid
+  server_exit_code=$?
+  if [ $server_exit_code -ne 0 ]; then
+    echo "Server exited with code $server_exit_code"
+    exit $server_exit_code
+  fi
 fi
 
 kill $server_pid $client1_pid $client2_pid || true
