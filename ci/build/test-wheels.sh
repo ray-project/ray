@@ -122,10 +122,17 @@ elif [[ "$platform" == "macosx" ]]; then
     # single path when it's acceptable to move up our lower
     # Python + MacOS compatibility bound.
     if [ "$(uname -m)" = "arm64" ]; then
+      CONDA_ENV_NAME="test-wheels-p$PY_MM"
+
       [ -f "$HOME/.bash_profile" ] && conda init bash
+
       source ~/.bash_profile
+
+      conda create -y -n "$CONDA_ENV_NAME"
+      conda activate "$CONDA_ENV_NAME"
       conda remove -y python || true
       conda install -y python="${PY_MM}"
+
       PYTHON_EXE="/opt/homebrew/opt/miniconda/bin/python"
       PIP_CMD="/opt/homebrew/opt/miniconda/bin/pip"
     else
