@@ -1,4 +1,3 @@
-import collections
 from dataclasses import dataclass
 from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
 
@@ -74,16 +73,11 @@ class ActorPoolMapOperator(MapOperator):
         ] = {}
         # A pool of running actors on which we can execute mapper tasks.
         self._actor_pool = _ActorPool(autoscaling_policy._config.max_tasks_in_flight)
-        # A queue of bundles awaiting dispatch to actors.
-        self._bundle_queue = collections.deque()
         # Cached actor class.
         self._cls = None
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
         self._next_task_idx = 0
-
-    def internal_queue_size(self) -> int:
-        return len(self._bundle_queue)
 
     def start(self, options: ExecutionOptions):
         self._actor_locality_enabled = options.actor_locality_enabled
@@ -104,6 +98,20 @@ class ActorPoolMapOperator(MapOperator):
         )
         ray.get(refs)
 
+    def can_add_input(self) -> bool:
+        return self._actor_pool.num_free_slots() > 0
+
+    def notify_resource_usage(
+        self, input_queue_size: int, under_resource_limits: bool
+    ) -> None:
+        free_slots = self._actor_pool.num_free_slots()
+        if input_queue_size > free_slots and under_resource_limits:
+            # Try to scale up if work remains in the work queue.
+            self._scale_up_if_needed()
+        else:
+            # Try to remove any idle actors.
+            self._scale_down_if_needed()
+
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
@@ -112,45 +120,25 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_pool.add_pending_actor(actor, actor.get_location.remote())
 
     def _add_bundled_input(self, bundle: RefBundle):
-        self._bundle_queue.append(bundle)
-        # Try to dispatch all bundles in the queue, including this new bundle.
-        self._dispatch_tasks()
+        """Dispatch the following bundle as a task."""
 
-    def _dispatch_tasks(self):
-        """Try to dispatch tasks from the bundle buffer to the actor pool.
-
-        This is called when:
-            * a new input bundle is added,
-            * a task finishes,
-            * a new worker has been created.
-        """
-        while self._bundle_queue:
-            # Pick an actor from the pool.
-            if self._actor_locality_enabled:
-                actor = self._actor_pool.pick_actor(self._bundle_queue[0])
-            else:
-                actor = self._actor_pool.pick_actor()
-            if actor is None:
-                # No actors available for executing the next task.
-                break
-            # Submit the map task.
-            bundle = self._bundle_queue.popleft()
-            input_blocks = [block for block, _ in bundle.blocks]
-            ctx = TaskContext(task_idx=self._next_task_idx)
-            ref = actor.submit.options(num_returns="dynamic", name=self.name).remote(
-                self._transform_fn_ref, ctx, *input_blocks
-            )
-            self._next_task_idx += 1
-            task = _TaskState(bundle)
-            self._tasks[ref] = (task, actor)
-            self._handle_task_submitted(task)
-
-        if self._bundle_queue:
-            # Try to scale up if work remains in the work queue.
-            self._scale_up_if_needed()
+        # Pick an actor from the pool.
+        if self._actor_locality_enabled:
+            actor = self._actor_pool.pick_actor(bundle)
         else:
-            # Only try to scale down if the work queue has been fully consumed.
-            self._scale_down_if_needed()
+            actor = self._actor_pool.pick_actor()
+        assert actor is not None, "Tried to add input when not ready."
+
+        # Submit the map task.
+        input_blocks = [block for block, _ in bundle.blocks]
+        ctx = TaskContext(task_idx=self._next_task_idx)
+        ref = actor.submit.options(num_returns="dynamic", name=self.name).remote(
+            self._transform_fn_ref, ctx, *input_blocks
+        )
+        self._next_task_idx += 1
+        task = _TaskState(bundle)
+        self._tasks[ref] = (task, actor)
+        self._handle_task_submitted(task)
 
     def _scale_up_if_needed(self):
         """Try to scale up the pool if the autoscaling policy allows it."""
@@ -195,8 +183,6 @@ class ActorPoolMapOperator(MapOperator):
             if not has_actor:
                 # Actor has already been killed.
                 return
-        # For either a completed task or ready worker, we try to dispatch queued tasks.
-        self._dispatch_tasks()
 
     def inputs_done(self):
         # Call base implementation to handle any leftover bundles. This may or may not
@@ -211,7 +197,7 @@ class ActorPoolMapOperator(MapOperator):
         self._scale_down_if_needed()
 
     def _kill_inactive_workers_if_done(self):
-        if self._inputs_done and not self._bundle_queue:
+        if self._inputs_done:
             # No more tasks will be submitted, so we kill all current and future
             # inactive workers.
             self._actor_pool.kill_all_inactive_actors()
@@ -598,6 +584,13 @@ class _ActorPool:
     def num_pending_actors(self) -> int:
         """Return the number of pending actors in the pool."""
         return len(self._pending_actors)
+
+    def num_free_slots(self) -> int:
+        """Return the number of free slots for task execution."""
+        return sum(
+            max(0, self._max_tasks_in_flight - num_tasks_in_flight)
+            for num_tasks_in_flight in self._num_tasks_in_flight.values()
+        )
 
     def num_active_actors(self) -> int:
         """Return the number of actors in the pool with at least one active task."""
