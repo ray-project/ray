@@ -613,8 +613,8 @@ class JobManager:
                             err_msg += (
                                 " This may be because the job entrypoint's specified "
                                 "resources (entrypoint_num_cpus, entrypoint_num_gpus, "
-                                "entrypoint_resources) aren't available on the cluster."
-                                " Try checking the cluster's available resources with "
+                                "entrypoint_resources) aren't available on the cluster. "
+                                "Try checking the cluster's available resources with "
                                 "`ray status` and specifying fewer resources for the "
                                 "job entrypoint."
                             )
@@ -626,8 +626,11 @@ class JobManager:
                         is_alive = False
                         logger.error(err_msg)
                         continue
-                else:
-                    if job_supervisor is None:
+
+                if job_supervisor is None:
+                    if job_status != JobStatus.PENDING:
+                        # If the job is not pending, it means the job supervisor
+                        # actor has been created.
                         job_supervisor = self._get_actor_for_job(job_id)
 
                         if job_supervisor is None:
@@ -645,6 +648,7 @@ class JobManager:
                             is_alive = False
                             continue
 
+                if job_supervisor is not None:
                     await job_supervisor.ping.remote()
 
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
