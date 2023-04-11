@@ -122,7 +122,7 @@ Ray Datasets Glossary
             Dataset(
                num_blocks=1,
                num_rows=100,
-               schema={__value__: ArrowTensorType(shape=(32, 32, 3), dtype=double)}
+               schema={__value__: numpy.ndarray(shape=(32, 32, 3), dtype=double)}
             )
 
     Tabular Dataset

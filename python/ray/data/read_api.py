@@ -1820,7 +1820,7 @@ def from_tf(
         >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])  # doctest: +SKIP
         >>> ds = ray.data.from_tf(dataset)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
+        Datastream(num_blocks=200, num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
         >>> ds.take(1)  # doctest: +SKIP
         [{'id': b'train_16399', 'image': array([[[143,  96,  70],
         [141,  96,  72],

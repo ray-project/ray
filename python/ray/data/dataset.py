@@ -4323,7 +4323,7 @@ class Datastream(Generic[T]):
 
             >>> ds = ray.data.range_tensor(100)
             >>> ds  # doctest: +SKIP
-            Datastream(num_blocks=20, num_rows=100, schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})
+            Datastream(num_blocks=20, num_rows=100, schema={__value__: numpy.ndarray(shape=(1,), dtype=int64)})
             >>> ds.default_batch_format()
             <class 'numpy.ndarray'>
             >>> next(ds.iter_batches(batch_size=4))
