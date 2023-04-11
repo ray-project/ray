@@ -8,6 +8,7 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.util import make_callable_class_concurrent
 from ray.data._internal.logical.operators.map_operator import (
     AbstractUDFMap,
     Filter,
@@ -58,7 +59,8 @@ def _plan_udf_map_op(
 
         fn_constructor_args = op._fn_constructor_args or ()
         fn_constructor_kwargs = op._fn_constructor_kwargs or {}
-        fn_ = op._fn
+
+        fn_ = make_callable_class_concurrent(op._fn)
 
         def fn(item: Any) -> Any:
             assert ray.data._cached_fn is not None

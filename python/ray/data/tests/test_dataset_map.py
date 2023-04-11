@@ -2,6 +2,7 @@ import itertools
 import math
 import os
 import signal
+import threading
 import time
 from typing import Iterator
 
@@ -142,6 +143,31 @@ def test_callable_classes(shutdown_only):
     # filter
     actor_reuse = ds.filter(StatefulFn, compute="actors").take()
     assert len(actor_reuse) == 9, actor_reuse
+
+
+def test_concurrent_callable_classes(shutdown_only):
+    """Test that concurrenct actor pool runs user UDF in a separate thread."""
+    ray.init(num_cpus=2)
+    ds = ray.data.range(10, parallelism=10)
+
+    class StatefulFn:
+        def __call__(self, x):
+            thread_id = threading.get_ident()
+            assert threading.current_thread() is not threading.main_thread()
+            return [thread_id]
+
+    thread_ids = ds.map_batches(
+        StatefulFn, compute="actors", max_concurrency=2
+    ).take_all()
+    # Make sure user's UDF is not running concurrently.
+    assert len(set(thread_ids)) == 1
+
+    class ErrorFn:
+        def __call__(self, x):
+            raise ValueError
+
+    with pytest.raises(ValueError):
+        ds.map_batches(ErrorFn, compute="actors", max_concurrency=2).take_all()
 
 
 def test_transform_failure(shutdown_only):
