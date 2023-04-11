@@ -272,6 +272,9 @@ ray.get(parent.remote())
                     task["state"] == "FAILED"
                 ), f"task {task['func_or_class_name']} has wrong state"
 
+                assert task["error_type"] == "WORKER_DIED"
+                assert "Job finishes" in task["error_message"]
+
                 duration_ms = task["end_time_ms"] - task["start_time_ms"]
                 assert (
                     # It takes time for the job to run

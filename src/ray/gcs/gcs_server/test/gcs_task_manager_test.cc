@@ -66,13 +66,15 @@ class GcsTaskManagerTest : public ::testing::Test {
       const std::vector<TaskID> &tasks,
       const std::vector<std::pair<rpc::TaskStatus, int64_t>> &status_timestamps,
       const TaskID &parent_task_id = TaskID::Nil(),
-      int job_id = 0) {
+      int job_id = 0,
+      absl::optional<rpc::RayErrorInfo> error_info = absl::nullopt) {
     auto events = GenTaskEvents(tasks,
                                 /* attempt_number */ 0,
                                 /* job_id */ job_id,
                                 /* profile event */ absl::nullopt,
                                 GenStateUpdate(status_timestamps),
-                                GenTaskInfo(JobID::FromInt(job_id), parent_task_id));
+                                GenTaskInfo(JobID::FromInt(job_id), parent_task_id),
+                                error_info);
     auto events_data = Mocker::GenTaskEventsData(events);
     SyncAddTaskEventData(events_data);
   }
@@ -183,7 +185,8 @@ class GcsTaskManagerTest : public ::testing::Test {
       int32_t job_id = 0,
       absl::optional<rpc::ProfileEvents> profile_events = absl::nullopt,
       absl::optional<rpc::TaskStateUpdate> state_update = absl::nullopt,
-      absl::optional<rpc::TaskInfoEntry> task_info = absl::nullopt) {
+      absl::optional<rpc::TaskInfoEntry> task_info = absl::nullopt,
+      absl::optional<rpc::RayErrorInfo> error_info = absl::nullopt) {
     std::vector<rpc::TaskEvents> result;
     for (auto const &task_id : task_ids) {
       rpc::TaskEvents events;
@@ -193,6 +196,10 @@ class GcsTaskManagerTest : public ::testing::Test {
 
       if (state_update.has_value()) {
         events.mutable_state_updates()->CopyFrom(*state_update);
+      }
+
+      if (error_info.has_value()) {
+        events.mutable_state_updates()->mutable_error_info()->CopyFrom(*error_info);
       }
 
       if (profile_events.has_value()) {
@@ -571,6 +578,11 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     EXPECT_EQ(reply.events_by_task_size(), 10);
     for (const auto &task_event : reply.events_by_task()) {
       EXPECT_EQ(task_event.state_updates().failed_ts(), /* 5 ms to ns */ 5 * 1000 * 1000);
+      EXPECT_TRUE(task_event.state_updates().has_error_info());
+      EXPECT_TRUE(task_event.state_updates().error_info().error_type() ==
+                  rpc::ErrorType::WORKER_DIED);
+      EXPECT_TRUE(task_event.state_updates().error_info().error_message().find(
+                      "Job finishes") != std::string::npos);
     }
   }
 
