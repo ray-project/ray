@@ -104,6 +104,63 @@ def train_fn(config: dict, data: Optional[dict] = None):
         )
 
 
+def tune(experiment_path: str, run_config: air.RunConfig) -> tune.ResultGrid:
+    trainable = tune.with_resources(train_fn, resources={"CPU": 1})
+    trainable = tune.with_parameters(trainable, data={"dummy_data": [1, 2, 3]})
+
+    if tune.Tuner.can_restore(experiment_path):
+        tuner = tune.Tuner.restore(
+            experiment_path, trainable=trainable, resume_errored=True
+        )
+    else:
+        tuner = tune.Tuner(
+            trainable,
+            run_config=run_config,
+            tune_config=tune.TuneConfig(
+                num_samples=8,
+                max_concurrent_trials=2,
+                search_alg=StatefulSearcher(),
+            ),
+        )
+
+    result_grid = tuner.fit()
+    return result_grid
+
+
+def train(experiment_path: str, run_config: air.RunConfig) -> air.Result:
+    dataset_size = 128
+    num_workers = 4
+
+    def train_loop_per_worker(config):
+        # Wrap the other train_fn with a check for the dataset.
+        assert session.get_dataset_shard("train")
+        train_fn(config)
+
+    datasets = {
+        "train": ray.data.range(dataset_size),
+        "valid": ray.data.read_csv(CSV_DATA_FILE),
+    }
+
+    if DataParallelTrainer.can_restore(experiment_path):
+        trainer = DataParallelTrainer.restore(
+            experiment_path,
+            datasets=datasets,
+            train_loop_per_worker=train_loop_per_worker,
+        )
+    else:
+        trainer = DataParallelTrainer(
+            train_loop_per_worker,
+            datasets=datasets,
+            scaling_config=air.ScalingConfig(
+                num_workers=num_workers, trainer_resources={"CPU": 0}
+            ),
+            run_config=run_config,
+        )
+
+    result = trainer.fit()
+    return result
+
+
 if __name__ == "__main__":
     experiment_path = os.path.join(STORAGE_PATH, EXP_NAME)
 
@@ -117,54 +174,10 @@ if __name__ == "__main__":
     )
 
     if RUNNER_TYPE == "tuner":
-        trainable = tune.with_resources(train_fn, resources={"CPU": 1})
-        trainable = tune.with_parameters(trainable, data={"dummy_data": [1, 2, 3]})
-
-        if tune.Tuner.can_restore(experiment_path):
-            tuner = tune.Tuner.restore(
-                experiment_path, trainable=trainable, resume_errored=True
-            )
-        else:
-            tuner = tune.Tuner(
-                trainable,
-                run_config=run_config,
-                tune_config=tune.TuneConfig(
-                    num_samples=8,
-                    max_concurrent_trials=2,
-                    search_alg=StatefulSearcher(),
-                ),
-            )
-
-        result_grid = tuner.fit()
-
+        tune(experiment_path, run_config)
     elif RUNNER_TYPE == "trainer":
-        dataset_size = 128
-        num_workers = 4
-
-        def train_loop_per_worker(config):
-            # Wrap the other train_fn with a check for the dataset.
-            assert session.get_dataset_shard("train")
-            train_fn(config)
-
-        datasets = {
-            "train": ray.data.range(dataset_size),
-            "valid": ray.data.read_csv(CSV_DATA_FILE),
-        }
-
-        if DataParallelTrainer.can_restore(experiment_path):
-            trainer = DataParallelTrainer.restore(
-                experiment_path,
-                datasets=datasets,
-                train_loop_per_worker=train_loop_per_worker,
-            )
-        else:
-            trainer = DataParallelTrainer(
-                train_loop_per_worker,
-                datasets=datasets,
-                scaling_config=air.ScalingConfig(
-                    num_workers=num_workers, trainer_resources={"CPU": 0}
-                ),
-                run_config=run_config,
-            )
-
-        result = trainer.fit()
+        train(experiment_path, run_config)
+    else:
+        raise NotImplementedError(
+            "`RUNNER_TYPE` environment var must be one of ['tuner', 'trainer']"
+        )
