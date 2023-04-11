@@ -177,7 +177,7 @@ spec:
         app: ray-head
     spec:
       # If the head node goes down, the entire cluster (including all worker
-      # nodes) will go down as well. If you want Kubernetes to bring up a new
+      # nodes) goes down as well. If you want Kubernetes to bring up a new
       # head node in this case, set this to "Always," else set it to "Never."
       restartPolicy: Always
       terminationGracePeriodSeconds: 60
