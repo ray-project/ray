@@ -909,7 +909,7 @@ def test_one_log_per_workerpool_worker_processes_reuse_log_file(shutdown_only):
         num_cpus=1,
         _system_config={
             "one_log_per_workerpool_worker": True,
-            "enable_worker_prestart": False,
+            "prestart_worker_first_driver": False,
         },
     )
 
