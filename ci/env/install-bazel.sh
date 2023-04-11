@@ -77,7 +77,7 @@ if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
       # architecture is "aarch64", but the bazel tag is "arm64"
       url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-arm64"
     else
-      url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-{architecture}"
+      url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-${architecture}"
     fi
 
     if [ "$INSTALL_USER" = "1" ]; then
