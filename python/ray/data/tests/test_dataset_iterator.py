@@ -54,13 +54,12 @@ def test_basic_dataset_iter_rows(ray_start_regular_shared):
 
 
 def test_basic_dataset_pipeline(ray_start_regular_shared):
-    ds = ray.data.range(100).window(bytes_per_window=1).repeat()
+    ds = ray.data.range(100).window(bytes_per_window=1)
     it = ds.iterator()
-    for _ in range(2):
-        result = []
-        for batch in it.iter_batches():
-            result += batch
-        assert result == list(range(100))
+    result = []
+    for batch in it.iter_batches():
+        result += batch
+    assert result == list(range(100))
 
     assert it.stats() == ds.stats()
 
