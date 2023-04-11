@@ -91,7 +91,8 @@ class _AggregateOnKeyBase(AggregateFn):
         self._key_fn = on
 
     def _validate(self, ds: "Datastream") -> None:
-        _validate_key_fn(ds, self._key_fn)
+        schema = ds.schema(fetch_if_missing=True)
+        _validate_key_fn(schema, self._key_fn)
 
 
 @PublicAPI

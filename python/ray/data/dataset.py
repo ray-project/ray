@@ -1714,7 +1714,7 @@ class Datastream(Generic[T]):
         # Always allow None since groupby interprets that as grouping all
         # records into a single global group.
         if key is not None:
-            _validate_key_fn(self, key)
+            _validate_key_fn(self.schema(fetch_if_missing=True), key)
 
         return GroupedDataset(self, key)
 

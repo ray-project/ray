@@ -314,6 +314,8 @@ class SortStage(AllToAllStage):
     """Implementation of `Dataset.sort()`."""
 
     def __init__(self, ds: "Dataset", key: Optional[KeyFn], descending: bool):
+        schema = ds.schema(fetch_if_missing=True)
+
         def do_sort(
             block_list,
             ctx: TaskContext,
@@ -332,9 +334,9 @@ class SortStage(AllToAllStage):
                 if not key:
                     raise ValueError("`key` must be a list of non-zero length")
                 for subkey in key:
-                    _validate_key_fn(ds, subkey)
+                    _validate_key_fn(schema, subkey)
             else:
-                _validate_key_fn(ds, key)
+                _validate_key_fn(schema, key)
             return sort_impl(blocks, clear_input_blocks, key, descending, ctx)
 
         super().__init__(
