@@ -395,7 +395,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     }
   }
 
-  if (RayConfig::instance().one_log_per_workerpool_worker()) {
+  if (language == Language::PYTHON &&
+      RayConfig::instance().one_log_per_workerpool_worker()) {
     int32_t workers_same_type_count = 0;
     for (const auto &entry : state.worker_processes) {
       if (entry.second.worker_type == worker_type) {
@@ -499,7 +500,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   Process proc = StartProcess(worker_command_args, env);
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
-                << worker_startup_token_counter_;
+                << worker_startup_token_counter_ << " cmd " << worker_command_args;
   if (!IsIOWorkerType(worker_type)) {
     AdjustWorkerOomScore(proc.GetId());
   }
