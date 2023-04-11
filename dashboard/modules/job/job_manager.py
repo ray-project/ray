@@ -588,11 +588,6 @@ class JobManager:
                             DEFAULT_JOB_START_TIMEOUT_SECONDS,
                         )
                     )
-                    if job_info.start_time in [None, 0]:
-                        logger.error(
-                            f"Job {job_id} start time not found. "
-                            f"Skipping job start timeout check."
-                        )
                     if time.time() - job_info.start_time / 1000 > timeout:
                         err_msg = (
                             "Job supervisor actor failed to start within "
@@ -618,7 +613,7 @@ class JobManager:
                             err_msg += (
                                 " This may be because the job entrypoint's specified "
                                 "resources (entrypoint_num_cpus, entrypoint_num_gpus, "
-                                "entrypoint_resources) are not available on the cluster. "
+                                "entrypoint_resources) aren't available on the cluster. "
                                 "Try checking the cluster's available resources with "
                                 "`ray status` and specifying fewer resources for the "
                                 "job entrypoint."
