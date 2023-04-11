@@ -54,7 +54,6 @@ if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
     mkdir -p "${target%/*}"
     curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-linux-amd64"
   else
-
     # Buildkite mac instances
     if [[ -n "${BUILDKITE-}" ]] && [ "${platform}" = "darwin" ]; then
       mkdir -p "$HOME/bin"
@@ -112,6 +111,8 @@ if [ "${TRAVIS-}" = true ]; then
   # NOTE: Normally --jobs should be under 'build:ci-travis' in .bazelrc, but we put
   # it under 'build' here avoid conflicts with other --config options.
   echo "build --jobs=50" >> ~/.bazelrc
+
+  cp .bazeliskrc ~/.bazeliskrc
 fi
 if [ "${GITHUB_ACTIONS-}" = true ]; then
   echo "build --config=ci-github" >> ~/.bazelrc
