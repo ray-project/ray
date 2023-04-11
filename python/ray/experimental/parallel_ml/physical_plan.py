@@ -84,6 +84,7 @@ class SimplePhysicalPlanner(PhysicalPlanner):
                 _get_communicator,
                 partition.module_loader,
                 lambda: None,
+                lambda: None,
             )
             configs.append(config)
             pgs.append((pg, rank))

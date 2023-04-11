@@ -60,6 +60,7 @@ def test_pipelines(ray_start_4_cpus_2_gpus):
         ),
         model_builder=lambda: Model(2, 3),
         data_loader_builder=lambda: None,
+        optimizer_builder=lambda _: None,
     )
 
     config2 = Config(
@@ -73,6 +74,7 @@ def test_pipelines(ray_start_4_cpus_2_gpus):
         ),
         model_builder=lambda: Model(3, 4),
         data_loader_builder=lambda: None,
+        optimizer_builder=lambda _: None,
     )
 
     input_actor = Actor.remote(4, 0, NaiveCommunicator)
@@ -95,7 +97,7 @@ def test_pipelines(ray_start_4_cpus_2_gpus):
     engine_actor2.stop.remote()
 
 
-@pytest.mark.skipif(torch.cuda.device_count() < 2, reason="requires at least 2 GPUs")
+@pytest.mark.skipif(torch.cuda.device_count() < 4, reason="requires at least 4 GPUs")
 def test_gpu_pipelines(ray_start_auto):
     input_actor = Actor.options(num_gpus=1).remote(4, 0, TorchBasedCommunicator)
     address = ray.get(input_actor.get_master_address.remote())
@@ -111,6 +113,7 @@ def test_gpu_pipelines(ray_start_auto):
         ),
         model_builder=lambda: Model(2, 3),
         data_loader_builder=lambda: None,
+        optimizer_builder=lambda _: None,
     )
 
     config2 = Config(
@@ -124,6 +127,7 @@ def test_gpu_pipelines(ray_start_auto):
         ),
         model_builder=lambda: Model(3, 4),
         data_loader_builder=lambda: None,
+        optimizer_builder=lambda _: None,
     )
 
     engine_actor1 = (
