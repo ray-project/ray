@@ -572,6 +572,13 @@ class JobManager:
     async def _monitor_job_internal(
         self, job_id: str, job_supervisor: Optional[ActorHandle] = None
     ):
+        timeout = float(
+            os.environ.get(
+                RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
+                DEFAULT_JOB_START_TIMEOUT_SECONDS,
+            )
+        )
+
         is_alive = True
 
         while is_alive:
@@ -582,12 +589,7 @@ class JobManager:
                     # If the job is still pending, we will set the status
                     # to FAILED.
                     job_info = await self._job_info_client.get_info(job_id)
-                    timeout = float(
-                        os.environ.get(
-                            RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
-                            DEFAULT_JOB_START_TIMEOUT_SECONDS,
-                        )
-                    )
+
                     if time.time() - job_info.start_time / 1000 > timeout:
                         err_msg = (
                             "Job supervisor actor failed to start within "
@@ -628,28 +630,31 @@ class JobManager:
                         continue
 
                 if job_supervisor is None:
-                    if job_status != JobStatus.PENDING:
-                        # If the job is not pending, it means the job supervisor
-                        # actor has been created.
-                        job_supervisor = self._get_actor_for_job(job_id)
+                    job_supervisor = self._get_actor_for_job(job_id)
 
-                        if job_supervisor is None:
-                            logger.error(
-                                f"Failed to get job supervisor for job {job_id}."
-                            )
-                            await self._job_info_client.put_status(
-                                job_id,
-                                JobStatus.FAILED,
-                                message=(
-                                    "Unexpected error occurred: "
-                                    "Failed to get job supervisor."
-                                ),
-                            )
-                            is_alive = False
-                            continue
+                if job_supervisor is None:
+                    if job_status == JobStatus.PENDING:
+                        # Maybe the job supervisor actor is not created yet.
+                        # We will wait for the next loop.
+                        continue
+                    else:
+                        # The job supervisor actor is not created, but the job
+                        # status is not PENDING. This means the job supervisor
+                        # actor is not created due to some unexpected errors.
+                        # We will set the job status to FAILED.
+                        logger.error(f"Failed to get job supervisor for job {job_id}.")
+                        await self._job_info_client.put_status(
+                            job_id,
+                            JobStatus.FAILED,
+                            message=(
+                                "Unexpected error occurred: "
+                                "Failed to get job supervisor."
+                            ),
+                        )
+                        is_alive = False
+                        continue
 
-                if job_supervisor is not None:
-                    await job_supervisor.ping.remote()
+                await job_supervisor.ping.remote()
 
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
