@@ -121,7 +121,7 @@ impl Hostcalls {
         }
     }
 
-    pub fn register_function(
+    pub fn add_hostcall(
         &mut self,
         name: &str,
         params: Vec<WasmType>,
@@ -140,7 +140,7 @@ impl Hostcalls {
         Ok(())
     }
 
-    pub fn unregister_function(&mut self, name: &str) -> Result<()> {
+    pub fn remove_hostcall(&mut self, name: &str) -> Result<()> {
         if self.functions.iter().any(|f| f.name == name) {
             return Err(anyhow!("Hostcall {} does not exist", name));
         }

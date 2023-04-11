@@ -21,22 +21,22 @@ use tracing::info;
 pub fn new_ray_hostcalls() -> Hostcalls {
     let mut hostcalls = Hostcalls::new("ray");
     hostcalls
-        .register_function("test", vec![], vec![], hc_test)
+        .add_hostcall("test", vec![], vec![], hc_test)
         .unwrap();
     hostcalls
-        .register_function("init", vec![], vec![], hc_init)
+        .add_hostcall("init", vec![], vec![], hc_init)
         .unwrap();
     hostcalls
-        .register_function("shutdown", vec![], vec![], hc_shutdown)
+        .add_hostcall("shutdown", vec![], vec![], hc_shutdown)
         .unwrap();
     hostcalls
-        .register_function("get", vec![], vec![], hc_get)
+        .add_hostcall("get", vec![], vec![], hc_get)
         .unwrap();
     hostcalls
-        .register_function("put", vec![], vec![], hc_put)
+        .add_hostcall("put", vec![], vec![], hc_put)
         .unwrap();
     hostcalls
-        .register_function(
+        .add_hostcall(
             "call",
             vec![WasmType::I32, WasmType::I32],
             vec![WasmType::I32],
