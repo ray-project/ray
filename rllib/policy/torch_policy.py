@@ -535,8 +535,11 @@ class TorchPolicy(Policy):
                 view_requirements=self.view_requirements,
             )
 
-        # 3) Load splits into the given buffer (consisting of n GPUs).
-        slices = [slice.to_device(self.devices[i]) for i, slice in enumerate(slices)]
+        if not self.config.get("_load_only_minibatch_onto_device", False):
+            # 3) Load splits into the given buffer (consisting of n GPUs).
+            slices = [
+                slice.to_device(self.devices[i]) for i, slice in enumerate(slices)
+            ]
         self._loaded_batches[buffer_index] = slices
 
         # Return loaded samples per-device.
