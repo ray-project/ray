@@ -1792,7 +1792,7 @@ class DriverDeploymentState(DeploymentState):
     def _deploy_driver(self) -> bool:
         """Deploy the driver deployment to each node."""
         all_nodes = self._get_all_node_ids()
-        self.target_info.deployment_config.num_replicas = len(all_nodes)
+        self._target_state.num_replicas = len(all_nodes)
         deployed_nodes = set()
         for replica in self._replicas.get(
             [
