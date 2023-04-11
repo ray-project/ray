@@ -54,22 +54,26 @@ def test_basic_dataset_iter_rows(ray_start_regular_shared):
 
 
 def test_basic_dataset_pipeline(ray_start_regular_shared):
-    ds = ray.data.range(100).window(bytes_per_window=1)
+    ds = ray.data.range(100).window(bytes_per_window=1).repeat()
     it = ds.iterator()
-    result = []
-    for batch in it.iter_batches():
-        result += batch
-    assert result == list(range(100))
+    for _ in range(2):
+        result = []
+        for batch in it.iter_batches():
+            result += batch
+        assert result == list(range(100))
+
     assert it.stats() == ds.stats()
 
 
 def test_basic_dataset_pipeline_iter_rows(ray_start_regular_shared):
-    ds = ray.data.range(100).window(bytes_per_window=1)
+    ds = ray.data.range(100).window(bytes_per_window=1).repeat()
     it = ds.iterator()
-    result = []
-    for row in it.iter_rows():
-        result.append(row)
-    assert result == list(range(100))
+    for _ in range(2):
+        result = []
+        for row in it.iter_rows():
+            result.append(row)
+        assert result == list(range(100))
+
     assert it.stats() == ds.stats()
 
 
@@ -95,13 +99,13 @@ def test_tf_e2e_pipeline(ray_start_regular_shared):
     ds = ray.data.range_table(5).repeat(2)
     it = ds.iterator()
     model = build_model()
-    model.fit(it.to_tf("value", "value"), epochs=1)
+    model.fit(it.to_tf("value", "value"), epochs=2)
 
     ds = ray.data.range_table(5).repeat(2)
     it = ds.iterator()
     model = build_model()
-    # The DatasetPipeline consumption cannot be repeated.
-    with pytest.raises(Exception, match=r"Pipeline cannot be read multiple times"):
+    # 3 epochs fails since we only repeated twice.
+    with pytest.raises(Exception, match=r"generator raised StopIteration"):
         model.fit(it.to_tf("value", "value"), epochs=3)
 
 
@@ -110,11 +114,21 @@ def test_tf_conversion_pipeline(ray_start_regular_shared):
     it = ds.iterator()
     tf_dataset = it.to_tf("value", "value")
     for i, row in enumerate(tf_dataset):
-        assert all(row[0] == tf.constant([i % 5], dtype=tf.int64))
-        assert all(row[1] == tf.constant([i % 5], dtype=tf.int64))
+        assert all(row[0] == i)
+        assert all(row[1] == i)
         assert isinstance(row[0], tf.Tensor)
         assert isinstance(row[1], tf.Tensor)
-    with pytest.raises(Exception, match=r"Pipeline cannot be read multiple times"):
+
+    # Repeated twice.
+    tf_dataset = it.to_tf("value", "value")
+    for i, row in enumerate(tf_dataset):
+        assert all(row[0] == i)
+        assert all(row[1] == i)
+        assert isinstance(row[0], tf.Tensor)
+        assert isinstance(row[1], tf.Tensor)
+
+    # Fails on third try.
+    with pytest.raises(Exception, match=r"generator raised StopIteration"):
         tf_dataset = it.to_tf("value", "value")
         for _ in tf_dataset:
             pass
@@ -132,11 +146,18 @@ def test_torch_conversion_pipeline(ray_start_regular_shared):
     ds = ray.data.range_table(5).repeat(2)
     it = ds.iterator()
 
+    # First epoch.
     for batch in it.iter_torch_batches():
         assert isinstance(batch["value"], torch.Tensor)
-        assert batch["value"].tolist() == list(range(5)) + list(range(5))
+        assert batch["value"].tolist() == list(range(5))
 
-    with pytest.raises(Exception, match=r"Pipeline cannot be read multiple times"):
+    # Second epoch.
+    for batch in it.iter_torch_batches():
+        assert isinstance(batch["value"], torch.Tensor)
+        assert batch["value"].tolist() == list(range(5))
+
+    # Fails on third iteration.
+    with pytest.raises(Exception, match=r"generator raised StopIteration"):
         for batch in it.iter_torch_batches():
             pass
 
