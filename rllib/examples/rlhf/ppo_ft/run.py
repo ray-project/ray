@@ -7,6 +7,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 from ray.rllib.examples.rlhf.ppo_ft.rlhf_ppo_module import RLHFPPOTorchRLModule
 from ray.rllib.examples.rlhf.ppo_ft.ppo_rlhf import PPORLHF
+from ray.rllib.examples.rlhf.ppo_ft.rlhf_ppo_torch_learner import RLHFPPOTorchLearner
 
 ray.init(local_mode=True)
 
@@ -56,9 +57,10 @@ config = (
     )
     .training(
         num_sgd_iter=1,
-        sgd_minibatch_size=1,
-        train_batch_size=1,
-        _enable_learner_api=True
+        sgd_minibatch_size=2, # minibatch size for each SGD iteration
+        train_batch_size=2, # number of on-policy samples to collect
+        _enable_learner_api=True,
+        learner_class=RLHFPPOTorchLearner,
     )
     .rollouts(
         num_rollout_workers=0
@@ -75,4 +77,18 @@ config = (
 )
 
 algo = config.build()
-algo.train()
+# algo.train()
+
+tuner = tune.Tuner(
+    PPORLHF,
+    param_space=config,
+    run_config=air.RunConfig(
+        checkpoint_config=air.CheckpointConfig(
+            checkpoint_frequency=1,
+            checkpoint_at_end=True,
+        ),
+        stop={"training_iteration": 100}
+    )
+)
+
+results = tuner.fit()

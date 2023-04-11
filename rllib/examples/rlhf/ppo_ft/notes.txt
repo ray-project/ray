@@ -1,6 +1,20 @@
 
 04/10
 
+- Got the core feature changes merged in
+
+- I realized we need to check the required fwd_out keys of the compute_loss_per_module as well. It will be important here, since we are skipping running forward_exploration and forward_inference all together. 
+
+- entorpy can be removed as required keys from PPORLModule
+
+- Pay Attention!! Attention should be right padded not left padded. 
+
+- I got the first iteration of the full training loop running. Things that I had to do:
+
+* Create a custom learner (for attention_mask, and possibly the ptx-loss term)
+* Change the attention mask direction from left to right
+* Share module between sampler and learner to avoid weight syncing. 
+
 
 04/09
 

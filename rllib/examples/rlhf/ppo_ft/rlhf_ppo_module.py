@@ -6,6 +6,9 @@ import torch
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.examples.rlhf.ppo_ft.utils import masked_mean
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.models.torch.torch_distributions import TorchCategorical
+from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 
 import transformers
 
@@ -19,38 +22,26 @@ class Critic(torch.nn.Module):
         self.base = transformers.AutoModel.from_pretrained(model_base)
         self.trunk = torch.nn.Linear(self.base.config.hidden_size, 1)
     
-    # borrowed from colossalai 
-    # https://github.com/hpcaitech/ColossalAI/blob/main/applications/Chat/coati/models/
-    # base/critic.py
     def forward(
         self,
-        sequences: torch.LongTensor,
-        action_mask: Optional[torch.Tensor] = None,
+        input_ids: torch.LongTensor,
         attention_mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        outputs = self.base(sequences, attention_mask=attention_mask)
+        outputs = self.base(input_ids, attention_mask=attention_mask)
         last_hidden_states = outputs['last_hidden_state']
 
-        values = self.trunk(last_hidden_states).squeeze(-1)
+        # only use the hidden state on the last layer for the the last token as the value
+        values = self.trunk(last_hidden_states[:, -1]).squeeze(-1)
+        assert values.ndim == 1, "values should be a 1D tensor with batch size"
+        return values
 
-        if action_mask is not None and self.use_action_mask:
-            num_actions = action_mask.size(1)
-            prompt_mask = attention_mask[:, :-num_actions]
-            values = values[:, :-num_actions]
-            value = masked_mean(values, prompt_mask, dim=1)
-            return value
-
-        values = values[:, :-1]
-        value = values.mean(dim=1)
-        return value
-
-class RLHFPPOTorchRLModule(PPOTorchRLModule):
+class RLHFPPOTorchRLModule(TorchRLModule):
 
     def __init__(self, config: RLModuleConfig):
         super().__init__(config)
 
     # Override the default to customize
-    def build(self):
+    def setup(self):
 
         # TODO (Kourosh): Passing arbitrary custom configs to use in RLModules doesn't 
         # quite work yet. This pretends that it works. 
@@ -65,19 +56,38 @@ class RLHFPPOTorchRLModule(PPOTorchRLModule):
     
     def input_specs_inference(self):
         return []
-    
-    def _fwd(self, batch):
-        breakpoint()
 
     def _forward_exploration(self, batch):
-        print("in forward_exploration")
-        return self._fwd(batch)
+        # we skip the default sampler's procedure for inference and exploration 
+        pass
         
     def _forward_inference(self, batch):
-        print("in forward_inference")
-        return self._fwd(batch)
+        # we skip the default sampler's procedure for inference and exploration
+        pass
     
     def _forward_train(self, batch):
-        print("in forward_train")
-        breakpoint()
+        output = {}
+
+        vf_out = self.critic(
+            input_ids=batch[SampleBatch.ACTIONS]["sequence"],
+            attention_mask=batch[SampleBatch.ACTIONS]["attention_mask"],
+        )
+
+        output[SampleBatch.VF_PREDS] = vf_out # (batch_size,)
+
+        actor_out = self.actor(
+            input_ids=batch[SampleBatch.ACTIONS]["sequence"],
+            attention_mask=batch[SampleBatch.ACTIONS]["attention_mask"],
+        )
+        actor_logits = actor_out.logits # (batch_size, seq_len, vocab_size)
+        actor_dist = TorchCategorical(logits=actor_logits)
+
+        output[SampleBatch.ACTION_DIST_INPUTS] = actor_logits
+        output[SampleBatch.ACTION_DIST] = actor_dist
+
+        return output
+
+
+
+        
         

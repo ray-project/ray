@@ -32,7 +32,7 @@ class RLHFSampler:
         # TODO (Kourosh): Can we use batch inference here? 
         batches = Buffer()
         for i in range(batch_size):
-            obs, _ = self._env.reset(seed=i + 44)
+            obs, _ = self._env.reset()
 
             output = generate_response(
                 self._module.actor, 
@@ -51,7 +51,7 @@ class RLHFSampler:
             action = {
                 "sequence": generated_tokens.detach().numpy()[0],
                 "response_mask": np.array([0]*n_input_tokens + [1]*n_generated_tokens),
-                "probs": output["probs"].detach().numpy()[0], # remove batch dimension
+                "logits": output["logits"].detach().numpy()[0], # remove batch dimension
                 "attention_mask": np.array([1]*(n_input_tokens + n_generated_tokens)),
             }
 
@@ -63,13 +63,14 @@ class RLHFSampler:
             advantages = value - reward
 
             batches.append(
-                BufferItem(
-                    obs=obs,
-                    action=action,
-                    reward=reward,
-                    value=value,
-                    advantage=advantages,
-                )
+                BufferItem(**{
+                    SampleBatch.OBS: obs,
+                    SampleBatch.ACTIONS: action,
+                    SampleBatch.REWARDS: reward,
+                    SampleBatch.INFOS: info,
+                    Postprocessing.VALUE_TARGETS: value,
+                    Postprocessing.ADVANTAGES: advantages,
+                })
             )
 
 
@@ -96,8 +97,7 @@ class PPORLHF(PPO):
 
     def training_step(self):
 
-        train_batch = self.sampler.sample(batch_size=2)
-        breakpoint()
+        train_batch = self.sampler.sample(batch_size=self.config.train_batch_size)
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
@@ -119,4 +119,9 @@ class PPORLHF(PPO):
             timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
         )
 
-        self.sampler.sync_weights_from_learner_group(self.learner_group)
+        # TODO (Kourosh): We need some sort of weight broadcast from learner to 
+        # sampler, but in out first iteration the module is shared so we won't need 
+        # this.
+        # self.sampler.sync_weights_from_learner_group(self.learner_group)
+
+        return train_results

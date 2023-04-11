@@ -56,20 +56,21 @@ def generate_response(
     # Stack the probabilities tensor --> this resulted in N - 1 probs missing the last one, to get that we have to do another forward pass, so we may as well do one round in the end to compute all the probs.
     # probs_tensor = torch.concat(probs_list, dim=0)
 
-    probs_tensor = model(model_in).logits.softmax(dim=-1)
+    logit_tensor = model(model_in).logits
 
     return {
         "sequence": torch.cat([input_ids, generated_tokens], dim=-1),
-        "probs": probs_tensor,
+        "logits": logit_tensor,
         "n_input_tokens": input_ids.shape[-1],
         "n_generated_tokens": generated_tokens.shape[-1],
     }
 
 def compute_approx_kl(
-    probs: torch.Tensor,
-    probs_base: torch.Tensor,
+    logits: torch.Tensor,
+    logits_base: torch.Tensor,
 ) -> torch.Tensor:
-
+    probs = logits.softmax(dim=-1)
+    probs_base = logits_base.softmax(dim=-1)
     log_ratio = (probs / probs_base).log()
     approx_kl = probs * log_ratio
     approx_kl = approx_kl.sum(dim=-1).mean()
@@ -98,7 +99,6 @@ class ShortestAnswerRM(RM):
                  response_mask=None) -> Any:
         # We want to find the shortest answer, so we want to minimize the length of 
         # tokens of the response.
-        print(response_mask)
         if response_mask is not None:
             return -np.sum(response_mask * attention_mask, -1) / self.max_length
         else:
@@ -152,7 +152,7 @@ class RLHFEnv(gym.Env):
             "sequence": Repeated(sp.Discrete(vocab_size), max_len=model_max_length),
             "attention_mask": Repeated(sp.Discrete(2), max_len=model_max_length),
             "response_mask": Repeated(sp.Discrete(2), max_len=model_max_length),
-            "probs": Repeated(
+            "logits": Repeated(
                 sp.Box(0, 1, shape=(vocab_size,)), max_len=model_max_length
             ),
         })
@@ -185,7 +185,7 @@ class RLHFEnv(gym.Env):
         sequence = action["sequence"]
         response_mask = action["response_mask"]
         attention_mask = action["attention_mask"]
-        probs = action["probs"]
+        logits = action["logits"]
 
         n_response_tokens = response_mask.sum()
 
@@ -201,11 +201,11 @@ class RLHFEnv(gym.Env):
             eos_token_id=self.tokenizer.eos_token_id
         )
         
-        probs = torch.tensor(probs, dtype=torch.float32)[None] # add batch dim
+        logits = torch.tensor(logits, dtype=torch.float32)[None] # add batch dim
         # only compute kl on the response tokens
         r_kl = compute_approx_kl(
-            probs[:, -n_response_tokens:], 
-            sft_output["probs"][:, -n_response_tokens:]
+            logits[:, -n_response_tokens:], # the inner term
+            sft_output["logits"][:, -n_response_tokens:] # the outer term
         ).item()
 
         reward = r_align - self.kl_coeff * r_kl
