@@ -79,7 +79,12 @@ class PPOCatalog(Catalog):
         post_fcnet_hiddens = self.model_config_dict["post_fcnet_hiddens"]
         post_fcnet_activation = self.model_config_dict["post_fcnet_activation"]
 
-        self.pi_head_config = MLPHeadConfig(
+        pi_head_config_class = (
+            FreeLogStdMLPHeadConfig
+            if self.model_config_dict["free_log_std"]
+            else MLPHeadConfig
+        )
+        self.pi_head_config = pi_head_config_class(
             input_dims=self.latent_dims,
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
@@ -144,10 +149,6 @@ class PPOCatalog(Catalog):
             _check_if_diag_gaussian(
                 action_distribution_cls=action_distribution_cls, framework=framework
             )
-            self.pi_head_config = FreeLogStdMLPHeadConfig(
-                mlp_head_config=self.pi_head_config
-            )
-
         return self.pi_head_config.build(framework=framework)
 
     def build_vf_head(self, framework: str) -> Model:

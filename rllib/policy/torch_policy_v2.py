@@ -1004,9 +1004,11 @@ class TorchPolicyV2(Policy):
         state = super().get_state()
 
         state["_optimizer_variables"] = []
-        for i, o in enumerate(self._optimizers):
-            optim_state_dict = convert_to_numpy(o.state_dict())
-            state["_optimizer_variables"].append(optim_state_dict)
+        # In the new Learner API stack, the optimizers live in the learner.
+        if not self.config.get("_enable_learner_api", False):
+            for i, o in enumerate(self._optimizers):
+                optim_state_dict = convert_to_numpy(o.state_dict())
+                state["_optimizer_variables"].append(optim_state_dict)
         # Add exploration state.
         if not self.config.get("_enable_rl_module_api", False) and self.exploration:
             # This is not compatible with RLModules, which have a method
