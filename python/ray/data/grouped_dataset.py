@@ -720,3 +720,7 @@ class GroupedData(Generic[T]):
             If groupby key is ``None`` then the key part of return is omitted.
         """
         return self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
+
+
+# Backwards compatibility alias.
+GroupedDataset = GroupedData
