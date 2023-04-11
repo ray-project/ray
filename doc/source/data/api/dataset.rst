@@ -85,6 +85,7 @@ Consuming Datasets
 
    Dataset.show
    Dataset.take
+   Dataset.take_batch
    Dataset.take_all
    Dataset.iterator
    Dataset.iter_rows
