@@ -41,7 +41,7 @@ def filter_tests(
         test_attr_regex_filters['team'] = team
     if only_likely_failing_tests:
         coverage = _get_likely_failing_tests()
-        test_collection = [test for test in test_collection if test.name in coverage]
+        test_collection = [test for test in test_collection if test['name'] in coverage]
 
     tests_to_run = []
     for test in test_collection:
