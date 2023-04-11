@@ -95,13 +95,13 @@ def test_tf_e2e_pipeline(ray_start_regular_shared):
     ds = ray.data.range_table(5).repeat(2)
     it = ds.iterator()
     model = build_model()
-    model.fit(it.to_tf("value", "value"), epochs=2)
+    model.fit(it.to_tf("value", "value"), epochs=1)
 
     ds = ray.data.range_table(5).repeat(2)
     it = ds.iterator()
     model = build_model()
-    # 3 epochs fails since we only repeated twice.
-    with pytest.raises(Exception, match=r"generator raised StopIteration"):
+    # The DatasetPipeline consumption cannot be repeated.
+    with pytest.raises(Exception, match=r"Pipeline cannot be read multiple times"):
         model.fit(it.to_tf("value", "value"), epochs=3)
 
 
@@ -110,21 +110,11 @@ def test_tf_conversion_pipeline(ray_start_regular_shared):
     it = ds.iterator()
     tf_dataset = it.to_tf("value", "value")
     for i, row in enumerate(tf_dataset):
-        assert all(row[0] == i)
-        assert all(row[1] == i)
+        assert all(row[0] == tf.constant([i % 5], dtype=tf.int64))
+        assert all(row[1] == tf.constant([i % 5], dtype=tf.int64))
         assert isinstance(row[0], tf.Tensor)
         assert isinstance(row[1], tf.Tensor)
-
-    # Repeated twice.
-    tf_dataset = it.to_tf("value", "value")
-    for i, row in enumerate(tf_dataset):
-        assert all(row[0] == i)
-        assert all(row[1] == i)
-        assert isinstance(row[0], tf.Tensor)
-        assert isinstance(row[1], tf.Tensor)
-
-    # Fails on third try.
-    with pytest.raises(Exception, match=r"generator raised StopIteration"):
+    with pytest.raises(Exception, match=r"Pipeline cannot be read multiple times"):
         tf_dataset = it.to_tf("value", "value")
         for _ in tf_dataset:
             pass
@@ -142,18 +132,11 @@ def test_torch_conversion_pipeline(ray_start_regular_shared):
     ds = ray.data.range_table(5).repeat(2)
     it = ds.iterator()
 
-    # First epoch.
     for batch in it.iter_torch_batches():
         assert isinstance(batch["value"], torch.Tensor)
-        assert batch["value"].tolist() == list(range(5))
+        assert batch["value"].tolist() == list(range(5)) + list(range(5))
 
-    # Second epoch.
-    for batch in it.iter_torch_batches():
-        assert isinstance(batch["value"], torch.Tensor)
-        assert batch["value"].tolist() == list(range(5))
-
-    # Fails on third iteration.
-    with pytest.raises(Exception, match=r"generator raised StopIteration"):
+    with pytest.raises(Exception, match=r"Pipeline cannot be read multiple times"):
         for batch in it.iter_torch_batches():
             pass
 
