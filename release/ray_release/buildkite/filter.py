@@ -21,7 +21,7 @@ def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> An
 def _get_likely_failing_tests() -> List[str]:
     s3 = boto3.client('s3')
     files = s3.list_objects_v2(
-        Bucket=RELEASE_AWS_BUCKET,
+        Bucket='ray-release-automation-results',
         Prefix='continuous-release/',
     )['Contents']
     _get_last_modified = lambda obj: int(obj['LastModified'].strftime('%s'))
