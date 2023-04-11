@@ -96,6 +96,7 @@ def get_or_create_autoscaling_requester_actor():
     scheduling_strategy = NodeAffinitySchedulingStrategy(
         ray.get_runtime_context().get_node_id(),
         soft=True,
+        _spill_on_unavailable=True,
     )
     return AutoscalingRequester.options(
         name="AutoscalingRequester",

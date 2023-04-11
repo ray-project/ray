@@ -150,7 +150,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
             force_spillback,
             force_spillback,
             scheduling_strategy.node_affinity_scheduling_strategy().node_id(),
-            scheduling_strategy.node_affinity_scheduling_strategy().soft()));
+            scheduling_strategy.node_affinity_scheduling_strategy().soft(),
+            scheduling_strategy.node_affinity_scheduling_strategy()
+                .spill_on_unavailable()));
   } else if (IsAffinityWithBundleSchedule(scheduling_strategy) &&
              !is_local_node_with_raylet_) {
     // This scheduling strategy is only used for gcs scheduling for the time being.
