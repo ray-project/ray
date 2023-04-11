@@ -10,7 +10,7 @@ They can be then used to schedule Ray tasks and actors packed as close as possib
 Here are some real-world use cases:
 
 - **Distributed Machine Learning Training**: Distributed Training (e.g., :ref:`Ray Train <train-docs>` and :ref:`Ray Tune <tune-main>`) uses the placement group APIs to enable gang scheduling. In these settings, all resources for a trial must be available at the same time. Gang scheduling is a critical technique to enable all-or-nothing scheduling for deep learning training. 
-- **Fault tolerance in distributed training**: Placement groups can be used to configure fault tolerance. In Ray Tune, it can be beneficial to pack related resources from a single trial together, so that a node failure impacts a low number of trials. In libraries that support elastic training (e.g. XGBoost-Ray), spreading the resources across multiple nodes can help to ensure training can be continued even when a node dies.
+- **Fault tolerance in distributed training**: Placement groups can be used to configure fault tolerance. In Ray Tune, it can be beneficial to pack related resources from a single trial together, so that a node failure impacts a low number of trials. In libraries that support elastic training (e.g., XGBoost-Ray), spreading the resources across multiple nodes can help to ensure that training continues even when a node dies.
 
 Key Concepts
 ------------
@@ -93,8 +93,10 @@ Placement group scheduling is asynchronous. The `ray.util.placement_group` retur
 
       ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
 
-You can block your program until the placement group is ready using the :func:`ready <ray.util.placement_group.PlacementGroup.ready>`.  (compatible with ``ray.get``) or :func:`ready <ray.util.placement_group.PlacementGroup.wait>` (block the program until the placement group is ready) API. 
-**It is recommended to verify placement groups are ready** before using them to schedule tasks and actors. 
+You can block your program until the placement group is ready using one of two APIs:
+
+* :func:`ready <ray.util.placement_group.PlacementGroup.ready>`, which is compatible with ``ray.get``
+* :func:`wait <ray.util.placement_group.PlacementGroup.wait>`, which blocks the program until the placement group is ready)
 
 .. tabbed:: Python
 
@@ -135,7 +137,7 @@ Let's verify the placement group is successfully created.
 
 .. code-block:: bash
 
-  # This API is only available when you download ray via `pip install "ray[default]"`
+  # This API is only available when you download Ray via `pip install "ray[default]"`
   ray list placement-groups
 
 .. code-block:: bash
@@ -150,9 +152,9 @@ Let's verify the placement group is successfully created.
       PLACEMENT_GROUP_ID                    NAME      CREATOR_JOB_ID  STATE
   0  3cd6174711f47c14132155039c0501000000                  01000000  CREATED
 
-Now the placement group is successfully created! This means out of ``{"CPU": 2, "GPU": 2}`` resources, the placement group reserves ``{"CPU": 1, "GPU": 1}``. 
-The reserved resources cannot be used unless tasks or actors are scheduled with a placement group.
-The diagram below demonstrates 1 CPU and 1 GPU bundle has been reserved by the placement group.
+The placement group is successfully created. Out of the ``{"CPU": 2, "GPU": 2}`` resources, the placement group reserves ``{"CPU": 1, "GPU": 1}``. 
+The reserved resources can only be used when you schedule tasks or actors with a placement group.
+The diagram below demonstrates 1 CPU and 1 GPU bundle that has been reserved by the placement group.
 
 .. image:: ../images/pg_image_1.png
     :align: center
@@ -172,7 +174,7 @@ You can verify the new placement group is pending creation.
 
 .. code-block:: bash
 
-  # This API is only available when you download ray via `pip install "ray[default]"`
+  # This API is only available when you download Ray via `pip install "ray[default]"`
   ray list placement-groups
 
 .. code-block:: bash
@@ -216,7 +218,7 @@ Since we cannot create every bundle to the cluster, placement group won't be cre
 
 When the placement group cannot be scheduled in any way, it is called "infeasible". 
 Imagine you schedule ``{"CPU": 4}`` bundle, but you only have a single node with 2 CPUs. There's no way to create this bundle in your cluster.
-The Ray Autoscaler is aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed. 
+The Ray Autoscaler is aware of placement groups, and auto-scales the cluster to ensure pending groups can be placed as needed. 
 
 If Ray Autoscaler cannot provide resources to schedule a placement group, Ray does *not* print a warning about infeasible groups and tasks and actors that use the groups. 
 You can observe the scheduling state of the placement group from the :ref:`dashboard or state APIs <ray-placement-group-observability-ref>`.
@@ -335,7 +337,7 @@ You can also verify the actor is created using ``ray list actors``
 
 .. code-block:: bash
 
-  # This API is only available when you download ray via `pip install "ray[default]"`
+  # This API is only available when you download Ray via `pip install "ray[default]"`
   ray list actors --detail
 
 .. code-block:: bash

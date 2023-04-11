@@ -13,7 +13,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 # Initialize Ray.
 import ray
 
-# Create a single node Ray cluster with 2 CPUs and 2 GPUs
+# Create a single node Ray cluster with 2 CPUs and 2 GPUs.
 ray.init(num_cpus=2, num_gpus=2)
 
 # Reserve a placement group of 1 bundle that reserves 1 CPU and 1 GPU.
@@ -33,9 +33,9 @@ print(placement_group_table(pg))
 
 # __create_pg_failed_start__
 # Cannot create this placement group because we
-# cannot create {"GPU": 2} bundle.
+# cannot create a {"GPU": 2} bundle.
 pending_pg = placement_group([{"CPU": 1}, {"GPU": 2}])
-# This will raise the timeout exception!
+# This raises the timeout exception!
 try:
     ray.get(pending_pg.ready(), timeout=5)
 except Exception as e:
@@ -87,7 +87,7 @@ actor2 = Actor.options(
     )
 ).remote()
 
-# Verify gpu actor is scheduled.
+# Verify that the GPU actor is scheduled.
 ray.get(actor2.ready.remote(), timeout=10)
 # __schedule_pg_3_end__
 
@@ -97,7 +97,7 @@ remove_placement_group(pg)
 
 # Wait until placement group is killed.
 time.sleep(1)
-# Check the placement group has died.
+# Check that the placement group has died.
 pprint(placement_group_table(pg))
 
 """

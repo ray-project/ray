@@ -19,12 +19,12 @@ def child():
 
 @ray.remote(num_cpus=1)
 def parent():
-    # The child task is scheduled to the same placement group as its parent.
+    # The child task is scheduled to the same placement group as its parent,
     # although it didn't specify the PlacementGroupSchedulingStrategy.
     ray.get(child.remote())
 
 
-# Since the child and parent both uses 1 CPUs, the placement group
+# Since the child and parent use 1 CPU each, the placement group
 # bundle {"CPU": 2} is fully occupied.
 ray.get(
     parent.options(
@@ -39,7 +39,7 @@ ray.get(
 # __child_capture_disable_pg_start__
 @ray.remote
 def parent():
-    # In this case, the child task won't be
+    # In this case, the child task isn't
     # scheduled with the parent's placement group.
     ray.get(
         child.options(
@@ -48,8 +48,8 @@ def parent():
     )
 
 
-# This time, this will timeout because we cannot schedule the child task.
-# It's because the cluster has {"CPU": 2}, and all of them is reserved by
+# This times out because we cannot schedule the child task.
+# The cluster has {"CPU": 2}, and both of them are reserved by
 # the placement group with a bundle {"CPU": 2}. Since the child shouldn't
 # be scheduled within this placement group, it cannot be scheduled because
 # there's no available CPU resources.
