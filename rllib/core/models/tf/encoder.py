@@ -171,7 +171,7 @@ class TfLSTMEncoder(TfModel, Encoder):
             )
 
         # Create the final dense layer.
-        self.dense = tf.keras.layers.Dense(
+        self.linear = tf.keras.layers.Dense(
             units=config.output_dims[0],
             use_bias=config.use_bias,
         )
@@ -221,16 +221,22 @@ class TfLSTMEncoder(TfModel, Encoder):
         out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
 
         # States are batch-first when coming in. Make them layers-first.
-        states = tree.map_structure(lambda s: tf.transpose(s, [0, 1]), inputs[STATE_IN])
+        states_in = tree.map_structure(
+            lambda s: tf.transpose(s, perm=[1, 0] + list(range(2, len(s.shape)))),
+            inputs[STATE_IN],
+        )
 
+        states_out_h = []
+        states_out_c = []
         for i, layer in enumerate(self.lstms):
-            out, states = layer(out, (states["h"][i], states["c"][i]))
-            states = {"h": states[0], "c": states[1]}
+            out, h, c = layer(out, (states_in["h"][i], states_in["c"][i]))
+            states_out_h.append(h)
+            states_out_c.append(c)
 
         out = self.linear(out)
 
         return {
             ENCODER_OUT: out,
-            # Make states layer-first again.
-            STATE_OUT: tree.map_structure(lambda s: tf.transpose(s, [0, 1]), states),
+            # Make state_out batch-first.
+            STATE_OUT: {"h": tf.stack(states_out_h, 1), "c": tf.stack(states_out_c, 1)},
         }

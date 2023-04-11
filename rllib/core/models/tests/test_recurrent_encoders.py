@@ -11,7 +11,7 @@ _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 
 
-class TestLSTMEncoders(unittest.TestCase):
+class TestRecurrentEncoders(unittest.TestCase):
     def test_lstm_encoders(self):
         """Tests building LSTM encoders properly and checks for correct architecture."""
 
@@ -78,8 +78,13 @@ class TestLSTMEncoders(unittest.TestCase):
                     (1, num_lstm_layers, hidden_dim),
                 )
 
-            # Check all added models against each other.
-            model_checker.check()
+            # Check all added models against each other (only if bias=False).
+            # See here on why pytorch uses two bias vectors per layer and tf only uses
+            # one:
+            # https://towardsdatascience.com/implementation-differences-in-lstm-
+            # layers-tensorflow-vs-pytorch-77a31d742f74
+            if use_bias is False:
+                model_checker.check()
 
 
 if __name__ == "__main__":

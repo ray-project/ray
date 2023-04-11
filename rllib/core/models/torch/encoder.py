@@ -223,15 +223,15 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         out = inputs[SampleBatch.OBS].float()
 
         # States are batch-first when coming in. Make them layers-first.
-        states = tree.map_structure(lambda s: s.transpose(0, 1), inputs[STATE_IN])
+        states_in = tree.map_structure(lambda s: s.transpose(0, 1), inputs[STATE_IN])
 
-        out, states = self.lstm(out, (states["h"], states["c"]))
-        states = {"h": states[0], "c": states[1]}
+        out, states_out = self.lstm(out, (states_in["h"], states_in["c"]))
+        states_out = {"h": states_out[0], "c": states_out[1]}
 
         out = self.linear(out)
 
         return {
             ENCODER_OUT: out,
             # Make states layer-first again.
-            STATE_OUT: tree.map_structure(lambda s: s.transpose(0, 1), states),
+            STATE_OUT: tree.map_structure(lambda s: s.transpose(0, 1), states_out),
         }
