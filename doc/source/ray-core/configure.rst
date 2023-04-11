@@ -221,7 +221,7 @@ Step 2: Generate individual private keys and self-signed certificates for the Ra
 
 The `YAML file
 <https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.tls.yaml>`__, has a ConfigMap named `tls` that
-include two shell scripts: `gencert_head.sh` and `gencert_worker.sh`. These scripts produce the private key
+includes two shell scripts: `gencert_head.sh` and `gencert_worker.sh`. These scripts produce the private key
 and self-signed certificate files (`tls.key` and `tls.crt`) for both head and worker Pods in the initContainer
 of each deployment. By using the initContainer, we can dynamically retrieve the `POD_IP` to the `[alt_names]` section. 
 
