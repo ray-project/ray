@@ -1,39 +1,3 @@
-"""
-This test is meant to be an integration stress test for experiment restoration.
-
-
-Test setup:
-
-- For Tuner.restore:
-    - 8 trials, with a max of 2 running concurrently (--> 4 rounds of trials)
-    - Each iteration takes 0.5 seconds
-    - Each trial runs for 8 iterations --> 4 seconds
-    - Each round of 2 trials should take 4 seconds
-    - Without any interrupts/restoration:
-        - Minimum runtime: 4 rounds * 4 seconds / round = 16 seconds
-    - The test will stop the script with a SIGINT at a random time between
-    4-8 iterations each restore.
-
-- For Trainer.restore:
-    - 1 trial with 4 workers
-    - Each iteration takes 0.5 seconds
-    - Runs for 32 iterations --> Minimum runtime = 16 seconds
-    - The test will stop the script with a SIGINT at a random time between
-    4-8 iterations after each restore.
-
-
-Requirements:
-- Req 1: Reasonable runtime
-    - The experiment should finish within 1.5 * 16 = 24 seconds.
-    - 1.5x is the passing threshold.
-- Req 2: Training progress persisted
-    - The experiment should progress monotonically.
-      (The training iteration shouldn't go backward at any point)
-    - Trials shouldn't start from scratch.
-- Req 3: Searcher state saved/restored correctly
-- Req 4: Callback state saved/restored correctly
-"""
-
 import json
 import numpy as np
 import pandas as pd
@@ -52,7 +16,7 @@ from ray.tune.analysis import ExperimentAnalysis
 _RUN_SCRIPT_FILENAME = "_test_experiment_restore_run.py"
 
 
-def kill_process_if_needed(
+def _kill_process_if_needed(
     process: subprocess.Popen, timeout_s: float = 10, poll_interval_s: float = 1.0
 ):
     """Kills a process if it hasn't finished in `timeout_s` seconds.
@@ -64,13 +28,50 @@ def kill_process_if_needed(
         process.terminate()
 
 
-def print_message(message):
+def _print_message(message):
     sep = "=" * 50
     print(f"{sep}\n{message}\n{sep}\n")
 
 
 @pytest.mark.parametrize("runner_type", ["tuner", "trainer"])
 def test_experiment_restore(tmp_path, runner_type):
+    """
+    This is an integration stress test for experiment restoration.
+
+
+    Test setup:
+
+    - For Tuner.restore:
+        - 8 trials, with a max of 2 running concurrently (--> 4 rounds of trials)
+        - Each iteration takes 0.5 seconds
+        - Each trial runs for 8 iterations --> 4 seconds
+        - Each round of 2 trials should take 4 seconds
+        - Without any interrupts/restoration:
+            - Minimum runtime: 4 rounds * 4 seconds / round = 16 seconds
+        - The test will stop the script with a SIGINT at a random time between
+        4-8 iterations each restore.
+
+    - For Trainer.restore:
+        - 1 trial with 4 workers
+        - Each iteration takes 0.5 seconds
+        - Runs for 32 iterations --> Minimum runtime = 16 seconds
+        - The test will stop the script with a SIGINT at a random time between
+        4-8 iterations after each restore.
+
+
+    Requirements:
+    - Req 1: Reasonable runtime
+        - The experiment should finish within 1.5 * 16 = 24 seconds.
+        - 1.5x is the passing threshold.
+        - 16 seconds is the minimum runtime.
+    - Req 2: Training progress persisted
+        - The experiment should progress monotonically.
+        (The training iteration shouldn't go backward at any point)
+        - Trials shouldn't start from scratch.
+    - Req 3: Searcher state saved/restored correctly
+    - Req 4: Callback state saved/restored correctly
+    """
+
     np.random.seed(2023)
 
     script_path = Path(__file__).parent / _RUN_SCRIPT_FILENAME
@@ -117,7 +118,7 @@ def test_experiment_restore(tmp_path, runner_type):
     no_interrupts_runtime = 16.0
     passing_factor = 1.5
     passing_runtime = no_interrupts_runtime * passing_factor
-    print_message(
+    _print_message(
         "Experiment should finish with a total runtime of\n"
         f"<= {passing_runtime} seconds."
     )
@@ -128,19 +129,20 @@ def test_experiment_restore(tmp_path, runner_type):
     run_iter = 0
     progress_history = []
 
+    poll_interval_s = 0.1
+    test_start_time = time.monotonic()
+
     while total_runtime < passing_runtime:
         run_started_marker.write_text("", encoding="utf-8")
 
-        run = subprocess.Popen(
-            [sys.executable, script_path], env=env  # , stderr=subprocess.PIPE
-        )
+        run = subprocess.Popen([sys.executable, script_path], env=env)
         run_iter += 1
 
-        print_message(f"Started run #{run_iter} w/ PID = {run.pid}")
+        _print_message(f"Started run #{run_iter} w/ PID = {run.pid}")
 
         # Start the timer after the first trial has entered its training loop.
         while run.poll() is None and run_started_marker.exists():
-            time.sleep(0.05)
+            time.sleep(poll_interval_s)
 
         # If the run already finished, then exit immediately.
         if run.poll() is not None:
@@ -151,9 +153,8 @@ def test_experiment_restore(tmp_path, runner_type):
             np.random.uniform(4 * time_per_iter_s, 8 * time_per_iter_s),
             passing_runtime - total_runtime,
         )
-        polling_interval_s = 0.1
 
-        print_message(
+        _print_message(
             "Training has started...\n"
             f"Interrupting after {timeout_s:.2f} seconds\n"
             f"Currently at {total_runtime:.2f}/{passing_runtime} seconds"
@@ -163,19 +164,19 @@ def test_experiment_restore(tmp_path, runner_type):
         start_time = time.monotonic()
         stopping_time = start_time + timeout_s
         while time.monotonic() < stopping_time:
-            time.sleep(polling_interval_s)
+            time.sleep(poll_interval_s)
         total_runtime += time.monotonic() - start_time
 
         return_code = run.poll()
         if return_code is None:
             # Send "SIGINT" to stop the run
-            print_message(f"Sending SIGUSR1 to run #{run_iter} w/ PID = {run.pid}")
+            _print_message(f"Sending SIGUSR1 to run #{run_iter} w/ PID = {run.pid}")
             run.send_signal(signal.SIGUSR1)
 
             # Make sure the process is stopped forcefully after a timeout.
-            kill_process_if_needed(run)
+            _kill_process_if_needed(run)
         else:
-            print_message("Run has already terminated!")
+            _print_message("Run has already terminated!")
             break
 
         # Check up on the results.
@@ -183,17 +184,18 @@ def test_experiment_restore(tmp_path, runner_type):
         iters = [result.metrics.get("training_iteration", 0) for result in results]
         progress = sum(iters) / total_iters
         progress_history.append(progress)
-        print_message(
+        _print_message(
             f"Number of trials = {len(results)}\n"
             f"% completion = {progress} ({sum(iters)} iters / {total_iters})\n"
             f"Currently at {total_runtime:.2f}/{passing_runtime} seconds"
         )
 
-    print_message(
+    _print_message(
         f"Total number of restorations = {run_iter}\n"
         f"Total runtime = {total_runtime:.2f}\n"
         f"Return code = {return_code}"
     )
+    test_end_time = time.monotonic()
 
     # The script shouldn't have errored. (It should have finished by this point.)
     assert return_code == 0, (
@@ -238,7 +240,7 @@ def test_experiment_restore(tmp_path, runner_type):
             range(1, iters_per_trial + 1)
         ), f"Expected data from all iterations, but got: {iters}"
 
-    print_message("Success!")
+    _print_message(f"Success! Test took {test_end_time - test_start_time:.2f} seconds.")
 
 
 if __name__ == "__main__":
