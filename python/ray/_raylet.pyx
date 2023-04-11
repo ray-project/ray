@@ -1954,6 +1954,8 @@ cdef class CoreWorker:
                 NodeID.from_hex(python_scheduling_strategy.node_id).binary())
             c_node_affinity_scheduling_strategy[0].set_soft(
                 python_scheduling_strategy.soft)
+            c_node_affinity_scheduling_strategy[0].set_spill_on_unavailable(
+                python_scheduling_strategy._spill_on_unavailable)
         else:
             raise ValueError(
                 f"Invalid scheduling_strategy value "
