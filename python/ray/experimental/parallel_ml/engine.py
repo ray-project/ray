@@ -67,6 +67,7 @@ class ExecutionEngine:
         self.forward_cache = {}
         self.forward_counter = 0
         self.backward_counter = 0
+        self.model_parameters_grads = None
 
     def _initialize_config(self, config: Config):
         self.input_tensor_shape = config.input_tensor_shape
@@ -199,7 +200,14 @@ class ExecutionEngine:
 
     def _optimize(self, instruction: Optimize):
         # TODO: this probably needs to be changed
+
+        # overwrite the gradients in the model with the accumulated gradients
+        for i, parameter in enumerate(self.model.parameters()):
+            parameter.grad = self.model_parameters_grads[i]
+
         self.optimizer.step()
+        self.optimizer.zero_grad()
+        self.model_parameters_grads = None
 
     def _backward(self, instruction: Backward):
         for _ in range(instruction.count):
@@ -207,6 +215,17 @@ class ExecutionEngine:
             future.wait()
             input, output = self.forward_cache.pop(self.backward_counter)
             torch.autograd.backward(tensors=output, grad_tensors=tensor)
+
+            # accumulate the gradients into self.model_parameters_grads
+            for i, parameter in enumerate(self.model.parameters()):
+                tmp = []
+                if self.model_parameters_grads:
+                    self.model_parameters_grads[i] += parameter.grad
+                else:
+                    tmp.append(parameter.grad)
+                if tmp:
+                    self.model_parameters_grads = tmp
+
             self.output_gradient.append(input.grad)
             # TODO: do we need to do something for optimize?
             self.backward_counter += 1
