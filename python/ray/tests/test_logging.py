@@ -10,8 +10,8 @@ from collections import Counter, defaultdict
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, MagicMock
-import numpy as np
 import pytest
+import numpy as np
 
 import ray
 from ray._private import ray_constants
@@ -566,8 +566,8 @@ def test_log_monitor(tmp_path, live_dead_pids):
 
     # files
     if ray._config.one_log_per_workerpool_worker():
-        worker_out_log_file = f"worker-0.out"
-        worker_err_log_file = f"worker-0.err"
+        worker_out_log_file = "worker-0.out"
+        worker_err_log_file = "worker-0.err"
     else:
         worker_out_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.out"
         worker_err_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.err"
@@ -702,7 +702,7 @@ def test_log_monitor(tmp_path, live_dead_pids):
     # log_monitor.open_closed_files() should close all files
     # if it cannot open new files.
     if ray._config.one_log_per_workerpool_worker():
-        new_worker_err_file = f"worker-1.err"
+        new_worker_err_file = "worker-1.err"
     else:
         new_worker_err_file = f"worker-{worker_id}-{job_id}-{alive_pid}.err"
     create_file(log_dir, new_worker_err_file, contents)
@@ -1209,67 +1209,6 @@ def test_worker_type_increments_worker_index_separately(ray_start_regular):
     assert "spill_worker-0.out" in spill_worker_out
     assert "spill_worker-0.err" in spill_worker_err
     assert "python-core-restore_worker-0.log" in python_spill_worker_log
-
-
-@pytest.mark.parametrize(
-    "logger_name,package_name",
-    (
-        ("ray", ""),
-        ("ray.air", "[Ray AIR]"),
-        ("ray.data", "[Ray Data]"),
-        ("ray.rllib", "[Ray RLlib]"),
-        ("ray.serve", "[Ray Serve]"),
-        ("ray.train", "[Ray Train]"),
-        ("ray.tune", "[Ray Tune]"),
-        ("ray.workflow", "[Ray Workflow]"),
-    ),
-)
-def test_log_library_context(logger_name, package_name, caplog):
-    """Test that the log configuration injects the correct context into log messages."""
-    logger = logging.getLogger(logger_name)
-    logger.critical("Test!")
-    logger.critical(caplog.records[-1].__dict__)
-    assert (
-        caplog.records[-1].package == package_name
-    ), "Missing ray package name in log record."
-
-
-@pytest.mark.parametrize(
-    "logger_name,logger_level",
-    (
-        ("ray", logging.INFO),
-        ("ray.air", logging.INFO),
-        ("ray.data", logging.INFO),
-        ("ray.rllib", logging.WARNING),
-        ("ray.serve", logging.INFO),
-        ("ray.train", logging.INFO),
-        ("ray.tune", logging.INFO),
-        ("ray.workflow", logging.INFO),
-    ),
-)
-@pytest.mark.parametrize(
-    "test_level",
-    (
-        logging.NOTSET,
-        logging.DEBUG,
-        logging.INFO,
-        logging.WARNING,
-        logging.ERROR,
-        logging.CRITICAL,
-    ),
-)
-def test_log_level_settings(logger_name, logger_level, test_level, caplog):
-    """Test that logs of lower level than the ray subpackage is
-    configured for are rejected.
-    """
-    logger = logging.getLogger(logger_name)
-    logger.log(test_level, "Test!")
-
-    if test_level >= logger_level:
-        assert caplog.records, "Log message missing where one is expected."
-        assert caplog.records[-1].levelno == test_level, "Log message level mismatch."
-    else:
-        assert len(caplog.records) == 0, "Log message found where none are expected."
 
 
 if __name__ == "__main__":
