@@ -6,8 +6,6 @@ from typing import List, Optional, Tuple, Dict, Any
 
 from ray_release.buildkite.settings import Frequency, get_frequency
 from ray_release.config import Test
-from ray_release.aws import RELEASE_AWS_BUCKET
-
 
 def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> Any:
     curr = lookup
@@ -26,7 +24,7 @@ def _get_likely_failing_tests() -> List[str]:
     )['Contents']
     _get_last_modified = lambda obj: int(obj['LastModified'].strftime('%s'))
     latest_coverage = [file for file in sorted(files, key=_get_last_modified)][-1]
-    data = s3.get_object(Bucket=RELEASE_AWS_BUCKET, Key=latest_coverage['Key'])
+    data = s3.get_object(Bucket='ray-release-automation-results', Key=latest_coverage['Key'])
     return json.loads(data['Body'].read().decode('utf-8'))
 
 def filter_tests(
