@@ -7,6 +7,7 @@ from typing import List, Optional, Tuple, Dict, Any
 from ray_release.buildkite.settings import Frequency, get_frequency
 from ray_release.config import Test
 
+
 def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> Any:
     curr = lookup
     for k in flat_key.split(delimiter):
@@ -16,16 +17,22 @@ def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> An
             return None
     return curr
 
+
 def _get_likely_failing_tests() -> List[str]:
-    s3 = boto3.client('s3')
+    def _get_last_modified(file):
+        return int(file["LastModified"].strftime("%s"))
+
+    s3 = boto3.client("s3")
     files = s3.list_objects_v2(
-        Bucket='ray-release-automation-results',
-        Prefix='continuous-release/',
-    )['Contents']
-    _get_last_modified = lambda obj: int(obj['LastModified'].strftime('%s'))
+        Bucket="ray-release-automation-results",
+        Prefix="continuous-release/",
+    )["Contents"]
     latest_coverage = [file for file in sorted(files, key=_get_last_modified)][-1]
-    data = s3.get_object(Bucket='ray-release-automation-results', Key=latest_coverage['Key'])
-    return json.loads(data['Body'].read().decode('utf-8'))
+    data = s3.get_object(
+        Bucket="ray-release-automation-results", Key=latest_coverage["Key"]
+    )
+    return json.loads(data["Body"].read().decode("utf-8"))
+
 
 def filter_tests(
     test_collection: List[Test],
@@ -38,10 +45,10 @@ def filter_tests(
     if test_attr_regex_filters is None:
         test_attr_regex_filters = {}
     if team:
-        test_attr_regex_filters['team'] = team
+        test_attr_regex_filters["team"] = team
     if only_likely_failing_tests:
         coverage = _get_likely_failing_tests()
-        test_collection = [test for test in test_collection if test['name'] in coverage]
+        test_collection = [test for test in test_collection if test["name"] in coverage]
 
     tests_to_run = []
     for test in test_collection:

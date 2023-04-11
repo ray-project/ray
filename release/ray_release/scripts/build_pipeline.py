@@ -39,13 +39,13 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     default=False,
     type=bool,
     help="Run only tests that have a higher chance to fail, which is determined based "
-    "on their historical run behaviors"
+    "on their historical run behaviors",
 )
 @click.option(
     "--team",
     default=None,
     type=str,
-    help="Run only tests that are owned by this team (core, ml, etc.)"
+    help="Run only tests that are owned by this team (core, ml, etc.)",
 )
 @click.option(
     "--no-clone-repo",
@@ -58,7 +58,7 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     ),
 )
 def main(
-    test_collection_file: Optional[str] = None, 
+    test_collection_file: Optional[str] = None,
     only_likely_failing_tests: bool = True,
     team: Optional[str] = "core",
     no_clone_repo: bool = False,
