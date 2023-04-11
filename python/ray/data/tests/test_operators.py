@@ -117,9 +117,7 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     input_op = InputDataBuffer(
         make_ref_bundles([[np.ones(1024) * i] for i in range(100)])
     )
-    compute_strategy = (
-        ActorPoolStrategy(max_size=1) if use_actors else TaskPoolStrategy()
-    )
+    compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
@@ -453,9 +451,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     ray.init(num_cpus=0, num_gpus=1)
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
-    compute_strategy = (
-        ActorPoolStrategy(max_size=1) if use_actors else TaskPoolStrategy()
-    )
+    compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
@@ -508,6 +504,32 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
 
     # Tasks/actors should be cancelled/killed.
     wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))
+
+
+def test_actor_pool_map_operator_init(ray_start_regular_shared):
+    """Tests that ActorPoolMapOperator runs init_fn on start."""
+
+    from ray.exceptions import RayActorError
+
+    def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
+        time.sleep(999)
+
+    def _fail():
+        raise ValueError("init_failed")
+
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
+    compute_strategy = ActorPoolStrategy(min_size=1)
+
+    op = MapOperator.create(
+        _sleep,
+        input_op=input_op,
+        init_fn=_fail,
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+    )
+
+    with pytest.raises(RayActorError, match=r"init_failed"):
+        op.start(ExecutionOptions())
 
 
 @pytest.mark.parametrize(

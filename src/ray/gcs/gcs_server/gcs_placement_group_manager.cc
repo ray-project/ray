@@ -854,7 +854,7 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
       break;
     }
   }
-  gcs_resource_manager_.UpdatePlacementGroupLoad(move(placement_group_load));
+  gcs_resource_manager_.UpdatePlacementGroupLoad(std::move(placement_group_load));
 }
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {

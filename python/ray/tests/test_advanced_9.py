@@ -295,18 +295,21 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     # Kill the actor
     del a
 
+    # TODO(clarng):remove this once prestart works with actors.
+    # ray_start_cluster defaults to one cpu, which prestarts one worker.
+    FD_PER_WORKER = 2
     # Make sure the # of fds opened by the GCS dropped.
-    wait_for_condition(lambda: get_gcs_num_of_connections() == curr_fds)
+    wait_for_condition(lambda: get_gcs_num_of_connections() + FD_PER_WORKER == curr_fds)
 
     n = cluster.add_node(wait=True)
 
     # Make sure the # of fds opened by the GCS increased.
-    wait_for_condition(lambda: get_gcs_num_of_connections() > curr_fds)
+    wait_for_condition(lambda: get_gcs_num_of_connections() + FD_PER_WORKER > curr_fds)
 
     cluster.remove_node(n)
 
     # Make sure the # of fds opened by the GCS dropped.
-    wait_for_condition(lambda: get_gcs_num_of_connections() == curr_fds)
+    wait_for_condition(lambda: get_gcs_num_of_connections() + FD_PER_WORKER == curr_fds)
 
 
 @pytest.mark.parametrize(
@@ -360,9 +363,7 @@ def test_redis_not_available(monkeypatch, call_ray_stop_only):
         shell=True,
         capture_output=True,
     )
-    assert (
-        "Could not establish connection to Redis localhost:12345" in p.stderr.decode()
-    )
+    assert "Could not establish connection to Redis" in p.stderr.decode()
     assert "Please check" in p.stderr.decode()
     assert "gcs_server.out for details" in p.stderr.decode()
     assert "RuntimeError: Failed to start GCS" in p.stderr.decode()

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
 
 import ray
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
 from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.dataset_logger import DatasetLogger
@@ -37,6 +37,7 @@ class ActorPoolMapOperator(MapOperator):
     def __init__(
         self,
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
+        init_fn: Callable[[], None],
         input_op: PhysicalOperator,
         autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
@@ -47,6 +48,7 @@ class ActorPoolMapOperator(MapOperator):
 
         Args:
             transform_fn: The function to apply to each ref bundle input.
+            init_fn: The callable class to instantiate on each actor.
             input_op: Operator generating input data for this op.
             autoscaling_policy: A policy controlling when the actor pool should be
                 scaled up and scaled down.
@@ -60,6 +62,7 @@ class ActorPoolMapOperator(MapOperator):
         super().__init__(
             transform_fn, input_op, name, min_rows_per_bundle, ray_remote_args
         )
+        self._init_fn = init_fn
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
 
         # Create autoscaling policy from compute strategy.
@@ -105,7 +108,7 @@ class ActorPoolMapOperator(MapOperator):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
         ctx = DatasetContext.get_current()
-        actor = self._cls.remote(ctx, src_fn_name=self.name)
+        actor = self._cls.remote(ctx, src_fn_name=self.name, init_fn=self._init_fn)
         self._actor_pool.add_pending_actor(actor, actor.get_location.remote())
 
     def _add_bundled_input(self, bundle: RefBundle):
@@ -307,9 +310,14 @@ class ActorPoolMapOperator(MapOperator):
 class _MapWorker:
     """An actor worker for MapOperator."""
 
-    def __init__(self, ctx: DatasetContext, src_fn_name: str):
+    def __init__(
+        self, ctx: DatasetContext, src_fn_name: str, init_fn: _CallableClassProtocol
+    ):
         DatasetContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
+
+        # Initialize state for this actor.
+        init_fn()
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
@@ -404,24 +412,30 @@ class AutoscalingPolicy:
         Returns:
             Whether the actor pool should be scaled up by one actor.
         """
-        # TODO(Clark): Replace the ready-to-total-ratio heuristic with a a work queue
+        # TODO: Replace the ready-to-total-ratio heuristic with a a work queue
         # heuristic such that scale-up is only triggered if the current pool doesn't
         # have enough worker slots to process the work queue.
-        # TODO(Clark): Use profiling of the bundle arrival rate, worker startup
+        # TODO: Use profiling of the bundle arrival rate, worker startup
         # time, and task execution time to tailor the work queue heuristic to the
         # running workload and observed Ray performance. E.g. this could be done via an
         # augmented EMA using a queueing model
-        return (
-            # 1. The actor pool will not exceed the configured maximum size.
-            num_total_workers < self._config.max_workers
-            # TODO(Clark): Remove this once we have a good work queue heuristic and our
-            # resource-based backpressure is working well.
-            # 2. At least 80% of the workers in the pool have already started. This will
-            # ensure that workers will be launched in parallel while bounding the worker
-            # pool to requesting 125% of the cluster's available resources.
-            and num_running_workers / num_total_workers
-            > self._config.ready_to_total_workers_ratio
-        )
+        if num_total_workers < self._config.min_workers:
+            # The actor pool does not reach the configured minimum size.
+            return True
+        else:
+            return (
+                # 1. The actor pool will not exceed the configured maximum size.
+                num_total_workers < self._config.max_workers
+                # TODO: Remove this once we have a good work queue heuristic and our
+                # resource-based backpressure is working well.
+                # 2. At least 80% of the workers in the pool have already started.
+                # This will ensure that workers will be launched in parallel while
+                # bounding the worker pool to requesting 125% of the cluster's
+                # available resources.
+                and num_total_workers > 0
+                and num_running_workers / num_total_workers
+                > self._config.ready_to_total_workers_ratio
+            )
 
     def should_scale_down(
         self,
