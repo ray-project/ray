@@ -8,6 +8,7 @@ arg1="${1-}"
 BAZELISK_VERSION="v1.16.0"
 
 platform="unknown"
+
 case "${OSTYPE}" in
   msys)
     echo "Platform is Windows."
@@ -76,8 +77,8 @@ if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
     if [ "${architecture}" = "aarch64" ]; then
       # architecture is "aarch64", but the bazel tag is "arm64"
       url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-arm64"
-    else
-      url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-${architecture}"
+    elif [ "${architecture}" = "x86_64" ]
+      url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-amd64"
     fi
 
     if [ "$INSTALL_USER" = "1" ]; then
@@ -90,6 +91,7 @@ if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
       sudo chmod +x "${target}"
     fi
     which bazel
+    bazel --version
   fi
 fi
 
