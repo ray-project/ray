@@ -307,9 +307,10 @@ class ChildActor:
 
 @ray.remote
 class Actor:
-    def fail_parent(self):
+    def fail_parent(self, wait_fn):
         ray.get(task_finish_child.remote())
         task_sleep_child.remote()
+        wait_for_condition(wait_fn)
         raise ValueError("expected to fail.")
 
     def child_actor(self, wait_fn):
@@ -325,7 +326,15 @@ def test_fault_tolerance_actor_tasks_failed(shutdown_only):
     # Test actor tasks
     with pytest.raises(ray.exceptions.RayTaskError):
         a = Actor.remote()
-        ray.get(a.fail_parent.remote())
+        ray.get(
+            # Wait til finish child's task event is received.
+            a.fail_parent.remote(
+                lambda: list_tasks(filters=[("name", "=", "task_finish_child")])[0][
+                    "state"
+                ]
+                == "FINISHED"
+            )
+        )
 
     def verify():
         tasks = list_tasks()
