@@ -316,7 +316,7 @@ impl ClusterHelper {
 
         let output = child.output().expect("failed to execute process");
         if output.status.success() {
-            info!("ray stop command executed successfully");
+            debug!("ray stop command executed successfully");
         } else {
             return Err(anyhow!(
                 "ray stop command failed with error: {}",

@@ -23,7 +23,7 @@ use tracing_subscriber;
 async fn init(
     cfg: &runtime::RayConfig,
     args: &util::WorkerParameters,
-) -> Result<Box<dyn RayRuntime>> {
+) -> Result<Box<dyn RayRuntime + Send + Sync>> {
     let mut internal_cfg = config::ConfigInternal::new();
 
     internal_cfg.init(&cfg, &args);
@@ -34,7 +34,7 @@ async fn init(
     Ok(runtime)
 }
 
-async fn run_task_loop(runtime: Box<dyn RayRuntime>) -> Result<()> {
+async fn run_task_loop(runtime: Box<dyn RayRuntime + Send + Sync>) -> Result<()> {
     runtime.launch_task_loop().unwrap();
     Ok(())
 }

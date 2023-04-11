@@ -167,7 +167,9 @@ pub trait TaskSubmitter {
 pub struct TaskSubmitterFactory {}
 
 impl TaskSubmitterFactory {
-    pub fn create_task_submitter(submitter_type: TaskSubmitterType) -> Box<dyn TaskSubmitter> {
+    pub fn create_task_submitter(
+        submitter_type: TaskSubmitterType,
+    ) -> Box<dyn TaskSubmitter + Send + Sync> {
         match submitter_type {
             TaskSubmitterType::Native => Box::new(NativeTaskSubmitter::new()),
             TaskSubmitterType::Local => Box::new(LocalTaskSubmitter::new()),

@@ -20,13 +20,13 @@ use crate::runtime::ClusterHelper;
 use crate::runtime::ObjectStore;
 use crate::runtime::TaskExecutor;
 use crate::util::get_node_ip_address;
+use std::sync::{Arc, RwLock};
 
 use anyhow::Result;
 use libc::c_void;
 use tracing::{debug, info};
 
 use crate::engine::Hostcalls;
-use crate::runtime::new_ray_hostcalls;
 
 use super::core::global_state_accessor::GlobalStateAccessor;
 use super::CallOptions;
@@ -42,7 +42,6 @@ pub trait RayRuntime {
     fn do_init(&mut self) -> Result<()>;
     fn do_shutdown(&mut self) -> Result<()>;
     fn launch_task_loop(&self) -> Result<()>;
-    fn setup_hostcalls(&mut self, engine: &mut Box<dyn WasmEngine>) -> Result<()>;
 
     // object get/put related
     fn put_with_id(&self, data: Vec<u8>, obj_id: ObjectID) -> Result<()>;
@@ -63,7 +62,9 @@ pub trait RayRuntime {
 pub struct RayRuntimeFactory {}
 
 impl RayRuntimeFactory {
-    pub fn create_runtime(internal_cfg: ConfigInternal) -> Result<Box<dyn RayRuntime>> {
+    pub fn create_runtime(
+        internal_cfg: ConfigInternal,
+    ) -> Result<Box<dyn RayRuntime + Send + Sync>> {
         let run_mode = internal_cfg.run_mode;
         match run_mode {
             RunMode::Cluster => Ok(Box::new(RayRuntimeClusterMode::new(internal_cfg))),
@@ -74,10 +75,9 @@ impl RayRuntimeFactory {
 
 pub struct RayRuntimeClusterMode {
     internal_cfg: ConfigInternal,
-    hostcalls: Hostcalls,
-    object_store: Box<dyn ObjectStore>,
+    object_store: Box<dyn ObjectStore + Send + Sync>,
     task_executor: TaskExecutor,
-    task_submitter: Box<dyn TaskSubmitter>,
+    task_submitter: Box<dyn TaskSubmitter + Send + Sync>,
     global_state_accessor: GlobalStateAccessor,
 }
 
@@ -90,7 +90,6 @@ impl RayRuntimeClusterMode {
         bootstrap_address = format!("{}:{}", bootstrap_address, internal_cfg.bootstrap_port);
         Self {
             internal_cfg,
-            hostcalls: new_ray_hostcalls(),
             object_store: ObjectStoreFactory::create_object_store(ObjectStoreType::Native),
             task_executor: TaskExecutor::new(),
             task_submitter: TaskSubmitterFactory::create_task_submitter(
@@ -137,10 +136,6 @@ impl RayRuntime for RayRuntimeClusterMode {
         Ok(())
     }
 
-    fn setup_hostcalls(&mut self, engine: &mut Box<dyn WasmEngine>) -> Result<()> {
-        engine.register_hostcalls(&mut self.hostcalls)
-    }
-
     fn put_with_id(&self, data: Vec<u8>, obj_id: ObjectID) -> Result<()> {
         unimplemented!()
     }
@@ -173,15 +168,11 @@ impl RayRuntime for RayRuntimeClusterMode {
 
 pub struct RayRuntimeSingleProcessMode {
     internal_cfg: ConfigInternal,
-    hostcalls: Hostcalls,
 }
 
 impl RayRuntimeSingleProcessMode {
     pub fn new(internal_cfg: ConfigInternal) -> Self {
-        Self {
-            internal_cfg,
-            hostcalls: new_ray_hostcalls(),
-        }
+        Self { internal_cfg }
     }
 
     pub fn load_binary_from_paths(&self, paths: Vec<String>) {
@@ -215,10 +206,6 @@ impl RayRuntime for RayRuntimeSingleProcessMode {
         }
         info!("launch_task_loop done");
         Ok(())
-    }
-
-    fn setup_hostcalls(&mut self, engine: &mut Box<dyn WasmEngine>) -> Result<()> {
-        engine.register_hostcalls(&mut self.hostcalls)
     }
 
     fn put_with_id(&self, data: Vec<u8>, obj_id: ObjectID) -> Result<()> {

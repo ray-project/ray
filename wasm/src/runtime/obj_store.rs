@@ -46,7 +46,9 @@ pub trait ObjectStore {
 pub struct ObjectStoreFactory {}
 
 impl ObjectStoreFactory {
-    pub fn create_object_store(obj_store_type: ObjectStoreType) -> Box<dyn ObjectStore> {
+    pub fn create_object_store(
+        obj_store_type: ObjectStoreType,
+    ) -> Box<dyn ObjectStore + Send + Sync> {
         match obj_store_type {
             ObjectStoreType::Native => Box::new(NativeObjectStore::new()),
             ObjectStoreType::Local => Box::new(LocalObjectStore::new()),

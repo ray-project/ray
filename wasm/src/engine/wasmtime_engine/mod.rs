@@ -12,11 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engine::{
-    Hostcalls, WasmEngine, WasmInstance, WasmModule, WasmSandbox, WasmType, WasmValue,
+use crate::{
+    engine::{Hostcalls, WasmEngine, WasmInstance, WasmModule, WasmSandbox, WasmType, WasmValue},
+    runtime::RayRuntime,
 };
 use anyhow::{anyhow, Result};
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 use tracing::{debug, info};
 use wasmtime::{
     AsContextMut, Caller, Engine, FuncType, Instance, Linker, Module, Store, Val, ValType,
@@ -150,6 +154,7 @@ impl WasmEngine for WasmtimeEngine {
             unsafe {
                 let module_name = hostcalls.module_name.clone();
                 let hostcall = hostcall.clone();
+                let runtime = hostcalls.runtime.clone();
                 debug!(
                     "Registered hostcall: {}, params# {} result# {}, func_type: {:?}",
                     hostcall.name,
@@ -184,6 +189,7 @@ impl WasmEngine for WasmtimeEngine {
                         let mut tmp_caller = caller;
                         let mut ctx = WasmtimeContext {
                             caller: &mut tmp_caller,
+                            runtime: &runtime,
                         };
 
                         // call hostcall
@@ -266,6 +272,7 @@ impl WasmInstance for WasmtimeInstance {}
 
 pub struct WasmtimeContext<'a> {
     caller: &'a mut Caller<'a, WasmtimeStoreData>,
+    runtime: &'a Arc<RwLock<Box<dyn RayRuntime + Send + Sync>>>,
 }
 
 impl WasmContext for WasmtimeContext<'_> {
@@ -282,5 +289,13 @@ impl WasmContext for WasmtimeContext<'_> {
         }
         let data = memory.data(self.caller.as_context_mut());
         Ok(&data[off..off + len])
+    }
+
+    fn resolve_symbol(&self, func_ref: usize) -> Result<&str> {
+        todo!()
+    }
+
+    fn invoke(&mut self, func_name: &str, args: &[WasmValue]) -> Result<Vec<WasmValue>> {
+        todo!()
     }
 }

@@ -16,9 +16,11 @@ mod wasmedge_engine;
 mod wasmtime_engine;
 
 use std::any::Any;
+use std::sync::Arc;
+use std::sync::RwLock;
 
-use crate::engine::wasmedge_engine::WasmEdgeEngine;
 use crate::engine::wasmtime_engine::WasmtimeEngine;
+use crate::{engine::wasmedge_engine::WasmEdgeEngine, runtime::RayRuntime};
 
 use anyhow::{anyhow, Result};
 
@@ -68,7 +70,7 @@ pub enum WasmEngineType {
 pub struct WasmEngineFactory {}
 
 impl WasmEngineFactory {
-    pub fn create_engine(engine_type: WasmEngineType) -> Box<dyn WasmEngine> {
+    pub fn create_engine(engine_type: WasmEngineType) -> Box<dyn WasmEngine + Send + Sync> {
         match engine_type {
             WasmEngineType::WASMTIME => Box::new(WasmtimeEngine::new()),
             WasmEngineType::WASMEDGE => Box::new(WasmEdgeEngine::new()),
@@ -103,6 +105,7 @@ pub enum WasmType {
 pub struct Hostcalls {
     pub module_name: String,
     pub functions: Vec<Hostcall>,
+    pub runtime: Arc<RwLock<Box<dyn RayRuntime + Send + Sync>>>,
 }
 
 #[derive(Clone)]
@@ -114,10 +117,11 @@ pub struct Hostcall {
 }
 
 impl Hostcalls {
-    pub fn new(module_name: &str) -> Self {
+    pub fn new(module_name: &str, runtime: Arc<RwLock<Box<dyn RayRuntime + Send + Sync>>>) -> Self {
         Hostcalls {
             module_name: module_name.to_string(),
             functions: Vec::new(),
+            runtime,
         }
     }
 
@@ -151,4 +155,6 @@ impl Hostcalls {
 
 pub trait WasmContext {
     fn get_memory_region(&mut self, off: usize, len: usize) -> Result<&[u8]>;
+    fn resolve_symbol(&self, func_ref: usize) -> Result<&str>;
+    fn invoke(&mut self, func_name: &str, args: &[WasmValue]) -> Result<Vec<WasmValue>>;
 }

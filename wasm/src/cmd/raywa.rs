@@ -14,20 +14,22 @@
 use wasm_on_ray::config;
 use wasm_on_ray::engine;
 use wasm_on_ray::runtime;
+use wasm_on_ray::runtime::register_ray_hostcalls;
 use wasm_on_ray::util;
 
-use tracing::info;
+use tracing::{debug, info, error};
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
+use std::sync::{Arc, RwLock};
 use tracing_subscriber;
 
 struct RayWaContext {
     // ray runtime
-    runtime: Box<dyn runtime::RayRuntime>,
+    runtime: Arc<RwLock<Box<dyn runtime::RayRuntime + Send + Sync>>>,
 
     // wasm engine
-    engine: Box<dyn engine::WasmEngine>,
+    engine: Arc<RwLock<Box<dyn engine::WasmEngine + Send + Sync>>>,
 
     // launch parameters
     params: util::LauncherParameters,
@@ -49,24 +51,31 @@ impl RayWaContextFactory {
         let ray_runtime = RayWaContextFactory::create_runtime(internal_cfg.clone());
         let (wasm_engine, ray_runtime) = tokio::join!(wasm_engine, ray_runtime);
 
-        let mut context = RayWaContext {
-            runtime: ray_runtime.unwrap(),
-            engine: wasm_engine.unwrap(),
+        let context = RayWaContext {
+            runtime: Arc::new(RwLock::new(ray_runtime.unwrap())),
+            engine: Arc::new(RwLock::new(wasm_engine.unwrap())),
             params: params.clone(),
             config: internal_cfg,
         };
 
-        context.runtime.do_init()?;
-        context.engine.init()?;
+        // init runtime and engine
+        {
+            let mut rt = context.runtime.write().unwrap();
+            rt.do_init()?;
 
-        context.runtime.setup_hostcalls(&mut context.engine)?;
+            let mut engine = context.engine.write().unwrap();
+            engine.init()?;
+        }
+
+        // setup hostcalls
+        register_ray_hostcalls(&context.runtime, &context.engine)?;
 
         Ok(context)
     }
 
     async fn create_engine(
         engine_type: util::WasmEngineType,
-    ) -> Result<Box<dyn engine::WasmEngine>> {
+    ) -> Result<Box<dyn engine::WasmEngine + Send + Sync>> {
         let engine_type = match engine_type {
             util::WasmEngineType::Wasmedge => engine::WasmEngineType::WASMEDGE,
             util::WasmEngineType::Wasmtime => engine::WasmEngineType::WASMTIME,
@@ -78,7 +87,7 @@ impl RayWaContextFactory {
 
     async fn create_runtime(
         internal_cfg: config::ConfigInternal,
-    ) -> Result<Box<dyn runtime::RayRuntime>> {
+    ) -> Result<Box<dyn runtime::RayRuntime + Send + Sync>> {
         let runtime = runtime::RayRuntimeFactory::create_runtime(internal_cfg);
         Ok(runtime.unwrap())
     }
@@ -96,21 +105,28 @@ async fn run_binary(args: &util::LauncherParameters) -> Result<()> {
     let data = std::fs::read(wasm_file)?;
 
     // wait for context creation to finish
-    let mut ctx = ctx.await?;
+    let ctx = ctx.await?;
 
-    let module = ctx.engine.compile("module", &data)?;
-    let sandbox = ctx.engine.create_sandbox("sandbox")?;
-    let instance = ctx.engine.instantiate("sandbox", "module", "instance")?;
+    {
+        let mut engine = ctx.engine.write().unwrap();
+        let module = engine.compile("module", &data)?;
+        let sandbox = engine.create_sandbox("sandbox")?;
+        let instance = engine.instantiate("sandbox", "module", "instance")?;
 
-    info!("wasm module instantiated");
+        debug!("wasm module instantiated");
 
-    match ctx.engine.execute("sandbox", "instance", "_start", vec![]) {
-        Ok(_) => info!("wasm module executed"),
-        Err(e) => info!("wasm module execution failed: {}", e),
+        match engine.execute("sandbox", "instance", "_start", vec![]) {
+            Ok(_) => debug!("wasm module completed execution"),
+            Err(e) => error!("wasm module execution failed: {}", e),
+        }
     }
 
     // for now, we just shutdown the runtime
-    ctx.runtime.do_shutdown().unwrap();
+    {
+        let mut rt = ctx.runtime.write().unwrap();
+        rt.do_shutdown().unwrap();
+    }
+
     Ok(())
 }
 

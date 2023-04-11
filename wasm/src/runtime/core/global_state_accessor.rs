@@ -21,6 +21,9 @@ pub struct GlobalStateAccessor {
     pub raw: *mut c_void,
 }
 
+unsafe impl Send for GlobalStateAccessor {}
+unsafe impl Sync for GlobalStateAccessor {}
+
 impl Drop for GlobalStateAccessor {
     fn drop(&mut self) {
         debug!("destroying global state accessor");

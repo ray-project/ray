@@ -12,14 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::vec;
+use std::sync::Arc;
+use std::{sync::RwLock, vec};
 
-use crate::engine::{Hostcalls, WasmContext, WasmType, WasmValue};
+use crate::engine::WasmEngine;
+use crate::{
+    engine::{Hostcalls, WasmContext, WasmType, WasmValue},
+    runtime::RayRuntime,
+};
 use anyhow::{anyhow, Result};
-use tracing::info;
+use tracing::{debug, error, info};
 
-pub fn new_ray_hostcalls() -> Hostcalls {
-    let mut hostcalls = Hostcalls::new("ray");
+pub fn register_ray_hostcalls(
+    runtime: &Arc<RwLock<Box<dyn RayRuntime + Send + Sync>>>,
+    engine: &Arc<RwLock<Box<dyn WasmEngine + Send + Sync>>>,
+) -> Result<()> {
+    let mut hostcalls = Hostcalls::new("ray", runtime.clone());
     hostcalls
         .add_hostcall("test", vec![], vec![], hc_test)
         .unwrap();
@@ -43,11 +51,15 @@ pub fn new_ray_hostcalls() -> Hostcalls {
             hc_call,
         )
         .unwrap();
-    hostcalls
+    {
+        let mut engine = engine.write().unwrap();
+        engine.register_hostcalls(&hostcalls)?;
+    }
+    Ok(())
 }
 
 fn hc_test(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
-    info!("test");
+    info!("test function called");
     Ok(vec![])
 }
 
@@ -68,7 +80,7 @@ fn hc_put(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmVal
 }
 
 fn hc_call(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
-    info!("call: {:?}", params);
+    debug!("call: {:?}", params);
     let func_ref = match &params[0] {
         WasmValue::I32(v) => v,
         _ => return Err(anyhow!("invalid param")),
@@ -78,9 +90,16 @@ fn hc_call(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmVa
         _ => return Err(anyhow!("invalid param")),
     };
     match ctx.get_memory_region(*args_ptr as usize, 10) {
-        Ok(v) => info!("call: args_ptr: {:x?}", v),
-        Err(e) => info!("call: args_ptr: {:?}", e),
+        Ok(v) => {
+            info!(
+                "call: func_ref: {}, args_ptr: {:#08x} content: {:x?}",
+                func_ref, args_ptr, v
+            );
+        }
+        Err(e) => {
+            error!("cannot access memory region: {}", e);
+            return Ok(vec![WasmValue::I32(-1)]);
+        }
     }
-    info!("call: func_ref: {}, args_ptr: {:#08x}", func_ref, args_ptr);
     Ok(vec![WasmValue::I32(0)])
 }
