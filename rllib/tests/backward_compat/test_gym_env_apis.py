@@ -94,9 +94,7 @@ class MultiAgentGymnasiumOldAPI(MultiAgentEnv):
             {"agent0": gym.spaces.Box(-1.0, 1.0, (1,))}
         )
         self.action_space = gym.spaces.Dict({"agent0": gym.spaces.Discrete(2)})
-        self._obs_space_in_preferred_format = True
-        self._action_space_in_preferred_format = True
-        self._skip_env_checking = True
+        self._agent_ids = {"agent0"}
 
     def reset(self):
         return {"agent0": self.observation_space.sample()}
@@ -232,7 +230,6 @@ class TestGymEnvAPIs(unittest.TestCase):
                 .environment(
                     MultiAgentGymnasiumOldAPI,
                     auto_wrap_old_gym_envs=False,
-                    disable_env_checking=True,
                 )
                 .build()
             )
@@ -251,6 +248,7 @@ class TestGymEnvAPIs(unittest.TestCase):
             .environment(
                 MultiAgentGymnasiumOldAPI,
                 auto_wrap_old_gym_envs=True,
+                disable_env_checking=True,
             )
             .build()
         )
