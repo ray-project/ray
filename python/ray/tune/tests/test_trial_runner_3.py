@@ -990,11 +990,9 @@ class TrialRunnerTest3(unittest.TestCase):
                 pass
 
         runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
             checkpoint_period="auto",
-            sync_config=SyncConfig(
-                upload_dir="fake://somewhere", syncer=CustomSyncer(), sync_period=0
-            ),
+            experiment_path="fake://somewhere/exp",
+            sync_config=SyncConfig(syncer=CustomSyncer(), sync_period=0),
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
@@ -1038,8 +1036,8 @@ class TrialRunnerTest3(unittest.TestCase):
         syncer = CustomSyncer()
 
         runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake://somewhere", syncer=syncer),
+            experiment_path="fake://somewhere",
+            sync_config=SyncConfig(syncer=syncer),
             trial_checkpoint_config=checkpoint_config,
             checkpoint_period=100,  # Only rely on forced syncing
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
@@ -1105,8 +1103,8 @@ class TrialRunnerTest3(unittest.TestCase):
 
         syncer = self.getHangingSyncer(sync_period=60, sync_timeout=0.5)
         runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake://somewhere", syncer=syncer),
+            experiment_path="fake://somewhere/exp",
+            sync_config=SyncConfig(syncer=syncer),
         )
         # Checkpoint for the first time starts the first sync in the background
         runner.checkpoint(force=True)
@@ -1132,8 +1130,8 @@ class TrialRunnerTest3(unittest.TestCase):
         sync_period = 60
         syncer = self.getHangingSyncer(sync_period=sync_period, sync_timeout=0.5)
         runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake://somewhere", syncer=syncer),
+            experiment_path="fake://somewhere/exp",
+            sync_config=SyncConfig(syncer=syncer),
         )
 
         with freeze_time() as frozen:

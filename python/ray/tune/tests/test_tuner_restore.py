@@ -399,8 +399,8 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir, clear_memory_filesys
         _dummy_train_fn,
         run_config=RunConfig(
             name="exp_dir",
+            storage_path="memory:///test/restore",
             local_dir=str(tmpdir / "ray_results"),
-            sync_config=tune.SyncConfig(upload_dir="memory:///test/restore"),
         ),
     )
     tuner.fit()
@@ -460,8 +460,8 @@ def test_tuner_restore_latest_available_checkpoint(
         ),
         run_config=RunConfig(
             name="test_tuner_restore_latest_available_checkpoint",
+            storage_path=upload_uri,
             local_dir=str(tmpdir),
-            sync_config=tune.SyncConfig(upload_dir=upload_uri),
         ),
         param_space={"failing_hanging": (fail_marker, None), "num_epochs": 4},
     )
@@ -790,8 +790,8 @@ def test_tuner_restore_from_moved_cloud_uri(
         failing_fn,
         run_config=RunConfig(
             name="exp_dir",
+            storage_path="memory:///original",
             local_dir=str(tmp_path / "ray_results"),
-            sync_config=tune.SyncConfig(upload_dir="memory:///original"),
         ),
         tune_config=TuneConfig(trial_dirname_creator=lambda _: "test"),
     )
@@ -1008,8 +1008,8 @@ def test_tuner_can_restore(tmp_path, upload_dir):
         lambda config: None,
         run_config=RunConfig(
             name=name,
+            storage_path=upload_dir,
             local_dir=str(tmp_path),
-            sync_config=tune.SyncConfig(upload_dir=upload_dir),
         ),
         tune_config=TuneConfig(trial_dirname_creator=lambda t: "trial_dir"),
     )

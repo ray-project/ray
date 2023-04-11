@@ -436,7 +436,7 @@ def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
     # Test that checkpoints returned by ResultGrid point to URI
     # if upload_dir is specified in SyncConfig.
     local_dir = Path(tmpdir) / "local_dir"
-    sync_config = tune.SyncConfig(upload_dir="s3://bucket", syncer=MockSyncer())
+    sync_config = tune.SyncConfig(syncer=MockSyncer())
 
     def trainable(config):
         for i in range(5):
@@ -445,7 +445,11 @@ def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
 
     tuner = tune.Tuner(
         trainable,
-        run_config=air.RunConfig(sync_config=sync_config, local_dir=str(local_dir)),
+        run_config=air.RunConfig(
+            storage_path="s3://bucket",
+            sync_config=sync_config,
+            local_dir=str(local_dir),
+        ),
         tune_config=tune.TuneConfig(
             metric="metric",
             mode="max",
