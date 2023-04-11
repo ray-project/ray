@@ -1,4 +1,6 @@
 import re
+import boto3
+import json
 from collections import defaultdict
 from typing import List, Optional, Tuple, Dict, Any
 
@@ -15,15 +17,32 @@ def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> An
             return None
     return curr
 
+def _get_likely_failing_tests() -> List[str]:
+    s3 = boto3.client('s3')
+    files = s3.list_objects_v2(
+        Bucket='ray-test-coverage', 
+        Prefix='continuous-release/',
+    )['Contents']
+    _get_last_modified = lambda obj: int(obj['LastModified'].strftime('%s'))
+    latest_coverage = [file for file in sorted(files, key=_get_last_modified)][-1]
+    data = s3.get_object(Bucket='ray-test-coverage', Key=latest_coverage['Key'])
+    return json.loads(data['Body'].read().decode('utf-8'))
 
 def filter_tests(
     test_collection: List[Test],
     frequency: Frequency,
     test_attr_regex_filters: Optional[Dict[str, str]] = None,
     prefer_smoke_tests: bool = False,
+    only_likely_failing_tests: bool = False,
+    team: Optional[str] = None,
 ) -> List[Tuple[Test, bool]]:
     if test_attr_regex_filters is None:
         test_attr_regex_filters = {}
+    if team:
+        test_attr_regex_filters['team'] = team
+    if only_likely_failing_tests:
+        coverage = _get_likely_failing_tests()
+        test_collection = [test for test in test_collection if test.name in coverage]
 
     tests_to_run = []
     for test in test_collection:

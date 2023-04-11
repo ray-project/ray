@@ -35,6 +35,19 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     help="File containing test configurations",
 )
 @click.option(
+    "--only-likely-failing-tests",
+    default=False,
+    type=bool,
+    help="Run only tests that have a higher chance to fail, which is determined based "
+    "on their historical run behaviors"
+)
+@click.option(
+    "--team",
+    default=None,
+    type=str,
+    help="Run only tests that are owned by this team (core, ml, etc.)"
+)
+@click.option(
     "--no-clone-repo",
     is_flag=True,
     show_default=True,
@@ -44,7 +57,12 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
         "(for internal use)."
     ),
 )
-def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False):
+def main(
+    test_collection_file: Optional[str] = None, 
+    only_likely_failing_tests: bool = False,
+    team: Optional[str] = None,
+    no_clone_repo: bool = False,
+):
     settings = get_pipeline_settings()
 
     repo = settings["ray_test_repo"]
@@ -131,6 +149,8 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
         frequency=frequency,
         test_attr_regex_filters=test_attr_regex_filters,
         prefer_smoke_tests=prefer_smoke_tests,
+        only_likely_failing_tests=only_likely_failing_tests,
+        team=team,
     )
     logger.info(f"Found {len(filtered_tests)} tests to run.")
     if len(filtered_tests) == 0:
