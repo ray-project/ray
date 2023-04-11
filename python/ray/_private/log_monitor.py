@@ -374,9 +374,9 @@ class LogMonitor:
                         )[1]
                     elif next_line.startswith(ray_constants.LOG_PREFIX_PID):
                         flush()  # Possible change of pid.
-                        file_info.worker_pid = next_line.split(
-                            ray_constants.LOG_PREFIX_PID, 1
-                        )[1]
+                        file_info.worker_pid = int(
+                            next_line.split(ray_constants.LOG_PREFIX_PID, 1)[1]
+                        )
                     elif next_line.startswith(
                         "Windows fatal exception: access violation"
                     ):

@@ -21,6 +21,7 @@ from ray._private.log_monitor import (
     LogFileInfo,
     LogMonitor,
     is_proc_alive,
+    WORKER_LOG_PATTERN,
 )
 from ray._private.test_utils import (
     get_log_batch,
@@ -332,7 +333,7 @@ def test_worker_id_names(shutdown_only):
         if "python-core-worker" in str(path):
             pattern = ".*-([a-f0-9]*).*"
         elif "worker" in str(path):
-            pattern = ".*worker-([a-f0-9]*)-.*-.*"
+            pattern = WORKER_LOG_PATTERN
         else:
             continue
         worker_id = re.match(pattern, str(path)).group(1)
@@ -564,8 +565,12 @@ def test_log_monitor(tmp_path, live_dead_pids):
     )
 
     # files
-    worker_out_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.out"
-    worker_err_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.err"
+    if ray._config.one_log_per_workerpool_worker():
+        worker_out_log_file = f"worker-0.out"
+        worker_err_log_file = f"worker-0.err"
+    else:
+        worker_out_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.out"
+        worker_err_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.err"
     monitor = "monitor.log"
     raylet_out = "raylet.out"
     raylet_err = "raylet.err"
@@ -577,8 +582,12 @@ def test_log_monitor(tmp_path, live_dead_pids):
     create_file(log_dir, raylet_out, contents)
     create_file(log_dir, gcs_server_err, contents)
     create_file(log_dir, monitor, contents)
-    create_file(log_dir, worker_out_log_file, contents)
-    create_file(log_dir, worker_err_log_file, contents)
+    if ray._config.one_log_per_workerpool_worker():
+        worker_contents = f"{ray_constants.LOG_PREFIX_PID}{dead_pid}\n" + contents
+    else:
+        worker_contents = contents
+    create_file(log_dir, worker_out_log_file, worker_contents)
+    create_file(log_dir, worker_err_log_file, worker_contents)
 
     """
     Test files are updated.
@@ -627,8 +636,12 @@ def test_log_monitor(tmp_path, live_dead_pids):
 
     assert worker_out_log_file_info.job_id is None
     assert worker_err_log_file_info.job_id is None
-    assert worker_out_log_file_info.worker_pid == int(dead_pid)
-    assert worker_out_log_file_info.worker_pid == int(dead_pid)
+    if ray._config.one_log_per_workerpool_worker():
+        assert worker_out_log_file_info.worker_pid is None
+        assert worker_out_log_file_info.worker_pid is None
+    else:
+        assert worker_out_log_file_info.worker_pid == int(dead_pid)
+        assert worker_out_log_file_info.worker_pid == int(dead_pid)
 
     """
     Test files are opened.
@@ -688,7 +701,10 @@ def test_log_monitor(tmp_path, live_dead_pids):
     """
     # log_monitor.open_closed_files() should close all files
     # if it cannot open new files.
-    new_worker_err_file = f"worker-{worker_id}-{job_id}-{alive_pid}.err"
+    if ray._config.one_log_per_workerpool_worker():
+        new_worker_err_file = f"worker-1.err"
+    else:
+        new_worker_err_file = f"worker-{worker_id}-{job_id}-{alive_pid}.err"
     create_file(log_dir, new_worker_err_file, contents)
     log_monitor.update_log_filenames()
 
@@ -1212,6 +1228,7 @@ def test_log_library_context(logger_name, package_name, caplog):
     """Test that the log configuration injects the correct context into log messages."""
     logger = logging.getLogger(logger_name)
     logger.critical("Test!")
+    logger.critical(caplog.records[-1].__dict__)
     assert (
         caplog.records[-1].package == package_name
     ), "Missing ray package name in log record."
