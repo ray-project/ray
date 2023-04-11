@@ -143,13 +143,13 @@ To try out push-based shuffle, set the environment variable ``RAY_DATASET_PUSH_B
     # ...
 
 You can also specify the shuffle implementation during program execution by
-setting the ``DatasetContext.use_push_based_shuffle`` flag:
+setting the ``DataContext.use_push_based_shuffle`` flag:
 
 .. code-block:: python
 
     import ray.data
 
-    ctx = ray.data.DatasetContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     ctx.use_push_based_shuffle = True
 
     n = 1000

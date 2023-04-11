@@ -29,14 +29,14 @@ from ray.data._internal.pipeline_executor import (
     PipelineSplitExecutorCoordinator,
 )
 from ray.data._internal.dataset_iterator.pipelined_dataset_iterator import (
-    PipelinedDatasetIterator,
+    PipelinedDataIterator,
 )
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF, T, U
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.dataset import Dataset
-from ray.data.dataset_iterator import DatasetIterator
+from ray.data.dataset_iterator import DataIterator
 from ray.data.datasource import Datasource
 from ray.data.datasource.file_based_datasource import (
     BlockWritePathProvider,
@@ -109,8 +109,8 @@ class DatasetPipeline(Generic[T]):
         self._schema = None
         self._stats = DatasetPipelineStats()
 
-    def iterator(self) -> DatasetIterator:
-        """Return a :class:`~ray.data.DatasetIterator` that
+    def iterator(self) -> DataIterator:
+        """Return a :class:`~ray.data.DataIterator` that
         can be used to repeatedly iterate over the dataset.
 
         Note that each pass iterates over the entire original Dataset, even if
@@ -124,10 +124,10 @@ class DatasetPipeline(Generic[T]):
             >>> for batch in ds.iterator().iter_batches(batch_size=2):
             ...     print(batch) # doctest: +SKIP
 
-        It is recommended to use ``DatasetIterator`` methods over directly
+        It is recommended to use ``DataIterator`` methods over directly
         calling methods such as ``iter_batches()``.
         """
-        return PipelinedDatasetIterator(self)
+        return PipelinedDataIterator(self)
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the data in the pipeline.
@@ -343,7 +343,7 @@ class DatasetPipeline(Generic[T]):
     def _split(
         self, n: int, splitter: Callable[[Dataset], List["Dataset[T]"]]
     ) -> List["DatasetPipeline[T]"]:
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         scheduling_strategy = ctx.scheduling_strategy
         if not ray.util.client.ray.is_connected():
             # Pin the coordinator (and any child actors) to the local node to avoid
@@ -356,7 +356,7 @@ class DatasetPipeline(Generic[T]):
 
         coordinator = PipelineSplitExecutorCoordinator.options(
             scheduling_strategy=scheduling_strategy,
-        ).remote(self, n, splitter, DatasetContext.get_current())
+        ).remote(self, n, splitter, DataContext.get_current())
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
@@ -1281,7 +1281,7 @@ class DatasetPipeline(Generic[T]):
 
     def _optimize_stages(self):
         """Optimize this pipeline, fusing stages together as possible."""
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
 
         if not context.optimize_fuse_stages:
             self._optimized_stages = self._stages
