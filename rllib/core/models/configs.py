@@ -566,17 +566,59 @@ class MLPEncoderConfig(_MLPConfig):
 @ExperimentalAPI
 @dataclass
 class LSTMEncoderConfig(ModelConfig):
-    """Configuration for a LSTM encoder.
+    """Configuration for an LSTM encoder.
 
-    See ModelConfig for usage details.
+    The encoder consists of N LSTM layers stacked on top of each other and feeding their
+    outputs as inputs to the respective next layer. The internal state is structued
+    as (num_layers, B, hidden-size) for both h- and c-states of the LSTM layer(s).
+
+    Example:
+    .. code-block:: python
+        # Configuration:
+        config = LSTMEncoderConfig(
+            input_dims=[16],  # must be 1D tensor
+            hidden_dim=128,
+            num_lstm_layers=2,
+            output_dims=[256],  # maybe None or a 1D tensor
+            output_activation="linear",
+            use_bias=True,
+        )
+        model = config.build(framework="torch")
+
+        # Resulting stack in pseudocode:
+        # LSTM(16, 128, bias=True)
+        # LSTM(128, 128, bias=True)
+        # Linear(128, 256, bias=True)
+
+        # Resulting shape of the internal states (c- and h-states):
+        # (2, B, 128) for each c- and h-states.
+
+    Example:
+    .. code-block:: python
+        # Configuration:
+        config = LSTMEncoderConfig(
+            input_dims=[32],  # must be 1D tensor
+            hidden_dim=64,
+            num_lstm_layers=1,
+            output_dims=None,  # maybe None or a 1D tensor
+            use_bias=False,
+        )
+        model = config.build(framework="torch")
+
+        # Resulting stack in pseudocode:
+        # LSTM(32, 64, bias=False)
+
+        # Resulting shape of the internal states (c- and h-states):
+        # (1, B, 64) for each c- and h-states.
 
     Attributes:
-        hidden_dim: The size of the hidden layer.
-        num_layers: The number of LSTM layers.
-        batch_first: Wether the input is batch first or not.
+        input_dims: The
+        hidden_dim: The size of the hidden internal state of the LSTM layer(s).
+        num_lstm_layers: The number of LSTM layers to stack.
+        batch_major: Wether the input is batch major (B, T, ..) or
+            time major (T, B, ..).
         output_activation: The activation function to use for the output layer.
-        observation_space: The observation space of the environment.
-        action_space: The action space of the environment.
+        use_bias: Whether to use bias on all layers in the network.
         view_requirements_dict: The view requirements to use if anything else than
             observation_space or action_space is to be encoded. This signifies an
             advanced use case.
@@ -586,15 +628,14 @@ class LSTMEncoderConfig(ModelConfig):
     """
 
     hidden_dim: int = None
-    num_layers: int = None
-    batch_first: bool = True
+    num_lstm_layers: int = None
+    batch_major: bool = True
     output_activation: str = "linear"
-    observation_space: gym.Space = None
-    action_space: gym.Space = None
+    use_bias: bool = True
     view_requirements_dict: ViewRequirementsDict = None
     get_tokenizer_config: Callable[[gym.Space, Dict], ModelConfig] = None
 
-    @_framework_implemented(tf2=False)
+    @_framework_implemented()
     def build(self, framework: str = "torch") -> Encoder:
         if (
             self.get_tokenizer_config is not None
@@ -611,6 +652,10 @@ class LSTMEncoderConfig(ModelConfig):
             from ray.rllib.core.models.torch.encoder import TorchLSTMEncoder
 
             return TorchLSTMEncoder(self)
+        else:
+            from ray.rllib.core.models.tf.encoder import TfLSTMEncoder
+
+            return TfLSTMEncoder(self)
 
 
 @ExperimentalAPI

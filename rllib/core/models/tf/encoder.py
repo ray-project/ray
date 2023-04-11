@@ -1,5 +1,7 @@
 from typing import Optional
 
+import tree  # pip install dm_tree
+
 from ray.rllib.core.models.base import (
     Encoder,
     ActorCriticEncoder,
@@ -11,6 +13,7 @@ from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
     CNNEncoderConfig,
+    LSTMEncoderConfig,
     MLPEncoderConfig,
 )
 from ray.rllib.core.models.tf.base import TfModel
@@ -27,49 +30,17 @@ from ray.rllib.utils.nested_dict import NestedDict
 _, tf, _ = try_import_tf()
 
 
-class TfMLPEncoder(Encoder, TfModel):
-    def __init__(self, config: MLPEncoderConfig) -> None:
+
+class TfActorCriticEncoder(TfModel, ActorCriticEncoder):
+    """An encoder that can hold two encoders."""
+
+    framework = "tf2"
+
+    def __init__(self, config: ActorCriticEncoderConfig) -> None:
+        # We have to call TfModel.__init__ first, because it calls the constructor of
+        # tf.keras.Model, which is required to be called before models are created.
         TfModel.__init__(self, config)
-        Encoder.__init__(self, config)
-
-        # Create the neural network.
-        self.net = TfMLP(
-            input_dim=config.input_dims[0],
-            hidden_layer_dims=config.hidden_layer_dims,
-            hidden_layer_activation=config.hidden_layer_activation,
-            hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
-            output_dim=config.output_dims[0],
-            output_activation=config.output_activation,
-            use_bias=config.use_bias,
-        )
-
-    @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                SampleBatch.OBS: TfTensorSpec("b, d", d=self.config.input_dims[0]),
-                STATE_IN: None,
-                SampleBatch.SEQ_LENS: None,
-            }
-        )
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),
-                STATE_OUT: None,
-            }
-        )
-
-    @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        return NestedDict(
-            {
-                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: inputs[STATE_IN],
-            }
-        )
+        ActorCriticEncoder.__init__(self, config)
 
 
 class TfCNNEncoder(TfModel, Encoder):
@@ -135,13 +106,131 @@ class TfCNNEncoder(TfModel, Encoder):
         )
 
 
-class TfActorCriticEncoder(TfModel, ActorCriticEncoder):
-    """An encoder that can hold two encoders."""
-
-    framework = "tf2"
-
-    def __init__(self, config: ActorCriticEncoderConfig) -> None:
-        # We have to call TfModel.__init__ first, because it calls the constructor of
-        # tf.keras.Model, which is required to be called before models are created.
+class TfMLPEncoder(Encoder, TfModel):
+    def __init__(self, config: MLPEncoderConfig) -> None:
         TfModel.__init__(self, config)
-        ActorCriticEncoder.__init__(self, config)
+        Encoder.__init__(self, config)
+
+        # Create the neural network.
+        self.net = TfMLP(
+            input_dim=config.input_dims[0],
+            hidden_layer_dims=config.hidden_layer_dims,
+            hidden_layer_activation=config.hidden_layer_activation,
+            hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
+            output_dim=config.output_dims[0],
+            output_activation=config.output_activation,
+            use_bias=config.use_bias,
+        )
+
+    @override(Model)
+    def get_input_specs(self) -> Optional[Spec]:
+        return SpecDict(
+            {
+                SampleBatch.OBS: TfTensorSpec("b, d", d=self.config.input_dims[0]),
+                STATE_IN: None,
+                SampleBatch.SEQ_LENS: None,
+            }
+        )
+
+    @override(Model)
+    def get_output_specs(self) -> Optional[Spec]:
+        return SpecDict(
+            {
+                ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),
+                STATE_OUT: None,
+            }
+        )
+
+    @override(Model)
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+        return NestedDict(
+            {
+                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
+                STATE_OUT: inputs[STATE_IN],
+            }
+        )
+
+
+class TfLSTMEncoder(TfModel, Encoder):
+    """An encoder that uses an LSTM cell and a linear layer."""
+
+    def __init__(self, config: LSTMEncoderConfig) -> None:
+        TfModel.__init__(self, config)
+
+        # Create the tf LSTM layers.
+        self.lstms = []
+        for _ in range(config.num_lstm_layers):
+            self.lstms.append(
+                tf.keras.layers.LSTM(
+                    config.hidden_dim,
+                    time_major=not config.batch_major,
+                    use_bias=config.use_bias,
+                    return_sequences=True,
+                    return_state=True,
+                )
+            )
+
+        # Create the final dense layer.
+        self.dense = tf.keras.layers.Dense(
+            units=config.output_dims[0],
+            use_bias=config.use_bias,
+        )
+
+    @override(Model)
+    def get_input_specs(self) -> Optional[Spec]:
+        return SpecDict(
+            {
+                # b, t for batch major; t, b for time major.
+                SampleBatch.OBS: TfTensorSpec("b, t, d", d=self.config.input_dims[0]),
+                STATE_IN: {
+                    "h": TfTensorSpec(
+                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_lstm_layers
+                    ),
+                    "c": TfTensorSpec(
+                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_lstm_layers
+                    ),
+                },
+            }
+        )
+
+    @override(Model)
+    def get_output_specs(self) -> Optional[Spec]:
+        return SpecDict(
+            {
+                ENCODER_OUT: TfTensorSpec("b, t, d", d=self.config.output_dims[0]),
+                STATE_OUT: {
+                    "h": TfTensorSpec(
+                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_lstm_layers
+                    ),
+                    "c": TfTensorSpec(
+                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_lstm_layers
+                    ),
+                },
+            }
+        )
+
+    @override(Model)
+    def get_initial_state(self):
+        return {
+            "h": tf.zeros((self.config.num_layers, self.config.hidden_dim)),
+            "c": tf.zeros((self.config.num_layers, self.config.hidden_dim)),
+        }
+
+    @override(Model)
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+        out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
+
+        # States are batch-first when coming in. Make them layers-first.
+        states = tree.map_structure(lambda s: tf.transpose(s, [0, 1]), inputs[STATE_IN])
+
+        for i, layer in enumerate(self.lstms):
+            out, states = layer(out, (states["h"][i], states["c"][i]))
+            states = {"h": states[0], "c": states[1]}
+
+        out = self.linear(out)
+
+        return {
+            ENCODER_OUT: out,
+            # Make states layer-first again.
+            STATE_OUT: tree.map_structure(lambda s: tf.transpose(s, [0, 1]), states),
+        }
