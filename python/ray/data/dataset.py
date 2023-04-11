@@ -441,7 +441,11 @@ class Datastream(Generic[T]):
             ... })
             >>> ds = ray.data.from_pandas(df)
             >>> ds
-            Datastream(num_blocks=1, num_rows=3, schema={name: object, age: int64})
+            MaterializedDatastream(
+                num_blocks=1, 
+                num_rows=3, 
+                schema={name: object, age: int64}
+            )
 
             Call :meth:`.default_batch_format` to determine the default batch
             type.
