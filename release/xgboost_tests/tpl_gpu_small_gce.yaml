@@ -11,7 +11,7 @@ head_node_type:
 
 worker_node_types:
     - name: worker_node
-      instance_type: n1-standard-8-nvidia-tesla-v100-1
+      instance_type: n1-standard-8-nvidia-tesla-t4-1
       min_workers: 4
       max_workers: 4
       use_spot: false
