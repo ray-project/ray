@@ -164,7 +164,7 @@ py_test(
 
 py_test(
     name = "test_dataset_json",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_dataset_json.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -268,7 +268,7 @@ py_test(
 
 py_test(
     name = "test_execution_optimizer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_execution_optimizer.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -292,7 +292,7 @@ py_test(
 
 py_test(
     name = "test_mars",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_mars.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],

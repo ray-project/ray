@@ -265,11 +265,14 @@ def test_dataset__repr__(ray_start_regular_shared):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
 
-    ds = ray.data.range(10, parallelism=1).materialize()
-    ss = ds._plan.stats().to_summary()
-
+    n = 4
+    ds = ray.data.range(n).materialize()
+    assert len(ds.take_all()) == n
     ds2 = ds.map_batches(lambda x: x).materialize()
+    assert len(ds2.take_all()) == n
+    ss = ds._plan.stats().to_summary()
     ss2 = ds2._plan.stats().to_summary()
+
     assert canonicalize(repr(ss)) == (
         "DatasetStatsSummary(\n"
         "   dataset_uuid=U,\n"
@@ -281,13 +284,13 @@ def test_dataset__repr__(ray_start_regular_shared):
         "         stage_name='Read',\n"
         "         is_substage=False,\n"
         "         time_total_s=T,\n"
-        "         block_execution_summary_str=N/N blocks split from parent in T\n"
-        "         wall_time=None,\n"
-        "         cpu_time=None,\n"
-        "         memory=None,\n"
+        "         block_execution_summary_str=N/N blocks executed in T\n"
+        "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
         "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
-        "         node_count=None,\n"
+        "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
         "      ),\n"
         "   ],\n"
         "   iter_stats=IterStatsSummary(\n"
@@ -295,7 +298,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      get_time=T,\n"
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
-        "      iter_unknown_location=None,\n"
+        "      iter_unknown_location=N,\n"
         "      next_time=T,\n"
         "      format_time=T,\n"
         "      user_time=T,\n"
@@ -333,7 +336,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      get_time=T,\n"
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
-        "      iter_unknown_location=None,\n"
+        "      iter_unknown_location=N,\n"
         "      next_time=T,\n"
         "      format_time=T,\n"
         "      user_time=T,\n"
@@ -350,13 +353,13 @@ def test_dataset__repr__(ray_start_regular_shared):
         "               stage_name='Read',\n"
         "               is_substage=False,\n"
         "               time_total_s=T,\n"
-        "               block_execution_summary_str=N/N blocks split from parent in T\n"
-        "               wall_time=None,\n"
-        "               cpu_time=None,\n"
-        "               memory=None,\n"
+        "               block_execution_summary_str=N/N blocks executed in T\n"
+        "               wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "               cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "               memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
         "               output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "               output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
-        "               node_count=None,\n"
+        "               node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"  # noqa: E501
         "            ),\n"
         "         ],\n"
         "         iter_stats=IterStatsSummary(\n"
@@ -364,7 +367,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "            get_time=T,\n"
         "            iter_blocks_local=None,\n"
         "            iter_blocks_remote=None,\n"
-        "            iter_unknown_location=None,\n"
+        "            iter_unknown_location=N,\n"
         "            next_time=T,\n"
         "            format_time=T,\n"
         "            user_time=T,\n"
