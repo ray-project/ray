@@ -757,21 +757,6 @@ class TorchPolicyV2(Policy):
         offset: int = 0,
         buffer_index: int = 0,
     ):
-        """Runs a single SGD step on the batch specified by buffer_index.
-
-        This method takes a batch that has already been loaded into a buffer with
-        index `buffer_index` via Policy.load_batch_into_buffer() and runs a single
-        SGD step on it. The loaded batch may or may not be on the device of Policy
-        already. If the loaded batch is not on device already, we copy the batch
-        inside memory and move it to the device.
-
-        Args:
-            offset: The offset into the loaded batch to start learning on.
-            buffer_index: The index of the buffer to take the batch from.
-
-        Returns:
-            A dict of metrics from the SGD step.
-        """
         if not self._loaded_batches[buffer_index]:
             raise ValueError(
                 "Must call Policy.load_batch_into_buffer() before "

@@ -604,17 +604,17 @@ class TorchPolicy(Policy):
             )
             batch_fetches[f"tower_{i}"] = {"custom_metrics": custom_metrics}
 
-        # We determine whether we need to copy the batch to the device still
-        # We usually do this before putting the batch into a buffer, but can't do it
-        # if the whole batch is too large to fit on the device.
-        if next(iter(next(iter(device_batches)).values())).device != self.device:
+        # Determine whether we need to copy the batch to the device
+        # We usually do this before putting the batch into a buffer, but not if
+        # `_load_only_minibatch_onto_device=True`
+        if self.config.get("_load_only_minibatch_onto_device", False):
             copy_batch_to_device = True
         else:
             copy_batch_to_device = False
 
         # Do the (maybe parallelized) gradient calculation step.
         tower_outputs = self._multi_gpu_parallel_grad_calc(
-            device_batches, copy_batch_to_device
+            device_batches, copy_batch_to_device=copy_batch_to_device
         )
 
         # Mean-reduce gradients over GPU-towers (do this on CPU: self.device).
