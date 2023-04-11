@@ -63,8 +63,9 @@ class TorchMLP(nn.Module):
 
         layers = []
         dims = (
-            [self.input_dim] + list(hidden_layer_dims) + ([output_dim] if output_dim
-                                                          else [])
+            [self.input_dim]
+            + list(hidden_layer_dims)
+            + ([output_dim] if output_dim else [])
         )
         for i in range(0, len(dims) - 1):
             layers.append(nn.Linear(dims[i], dims[i + 1], bias=use_bias))
