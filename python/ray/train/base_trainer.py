@@ -614,12 +614,20 @@ class BaseTrainer(abc.ABC):
         return result
 
     def _save(self, experiment_path: Union[str, Path]):
-        """Saves the trainer to a directory.
+        """Saves the current trainer's class along with the param_dict used to
+        initialize the Trainer.
 
-        This is used to populate a newly constructed trainer on restore.
-        Unless a parameter is re-specified during restoration (only a limited
-        set of parameters can be passed in again), the argument will be loaded
-        from this saved one.
+        This is used to construct a new trainer on restore.
+        Unless a parameter is re-specified during restoration (only a subset
+        of parameters can be passed in again), that parameter will be loaded
+        from the saved copy.
+
+        Ray Datasets should not be saved as part of the state. Instead, we save the
+        keys and replace the dataset values with dummy functions that will
+        raise an error if invoked. The error only serves as a guardrail for
+        misuse (e.g., manually unpickling and constructing the Trainer again)
+        and is not typically surfaced, since datasets must be re-specified
+        upon restoration.
         """
         param_dict = self._param_dict.copy()
         datasets = param_dict.pop("datasets", {})
