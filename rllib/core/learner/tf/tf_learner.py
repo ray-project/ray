@@ -325,7 +325,11 @@ class TfLearner(Learner):
                 return results
             return reduce_fn(results)
 
-    def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+    def _do_update_fn(
+        self,
+        batch: MultiAgentBatch,
+        _ray_trace_ctx=None,
+    ) -> Mapping[str, Any]:
         # TODO (Avnish): Match this base class's implementation.
         def helper(_batch):
             # TODO (Kourosh): We need to go back to NestedDict because that's the

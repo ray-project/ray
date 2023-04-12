@@ -27,8 +27,10 @@ pong-appo:
         num_sgd_iter: 2
         vf_loss_coeff: 1.0
         clip_param: 0.3
-        num_gpus: 1
+        num_gpus: 0 #TODO
         grad_clip: 10
+
         _enable_learner_api: true
         _enable_rl_module_api: true
+        num_learner_workers: 2
         exploration_config: {}
