@@ -9,7 +9,7 @@ from typing import List
 @click.argument("failing_commit", required=True, type=str)
 def main(test_name: str, passing_commit: str, failing_commit: str) -> None:
     blamed_commit = _bisect(test_name, passing_commit, failing_commit)
-    print(f'Blamed commit found: {failing_commit}')
+    print(f'Blamed commit found: {blamed_commit}')
 
 def _bisect(test_name: str, passing_commit: str, failing_commit: str) -> str:
     lists = _get_commit_lists(passing_commit, failing_commit)
