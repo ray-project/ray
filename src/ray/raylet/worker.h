@@ -118,16 +118,15 @@ class WorkerInterface {
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
-  FRIEND_TEST(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy);
-  FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestWorkerCapping);
-  FRIEND_TEST(WorkerPoolDriverRegisteredTest,
-              TestWorkerCappingLaterNWorkersNotOwningObjects);
-  FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker);
-  FRIEND_TEST(WorkerPoolDriverRegisteredTest,
+  FRIEND_TEST(WorkerPoolTest, PopWorkerMultiTenancy);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCapping);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects);
+  FRIEND_TEST(WorkerPoolTest, TestJobFinishedForceKillIdleWorker);
+  FRIEND_TEST(WorkerPoolTest,
               WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettingKilled);
-  FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay);
-  FRIEND_TEST(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency);
-  FRIEND_TEST(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCappingWithExitDelay);
+  FRIEND_TEST(WorkerPoolTest, MaximumStartupConcurrency);
+  FRIEND_TEST(WorkerPoolTest, HandleWorkerRegistration);
 };
 
 /// Worker class encapsulates the implementation details of a worker. A worker

@@ -29,7 +29,6 @@ namespace ray {
 namespace raylet {
 
 int MAXIMUM_STARTUP_CONCURRENCY = 15;
-int PYTHON_PRESTART_WORKERS = 15;
 int MAX_IO_WORKER_SIZE = 2;
 int POOL_SIZE_SOFT_LIMIT = 5;
 int WORKER_REGISTER_TIMEOUT_SECONDS = 3;
@@ -134,7 +133,7 @@ class WorkerPoolMock : public WorkerPool {
             NodeID::FromRandom(),
             "",
             POOL_SIZE_SOFT_LIMIT,
-            PYTHON_PRESTART_WORKERS,
+            0,
             MAXIMUM_STARTUP_CONCURRENCY,
             0,
             0,
@@ -407,7 +406,7 @@ class WorkerPoolTest : public ::testing::Test {
         std::to_string(WORKER_REGISTER_TIMEOUT_SECONDS) +
         R"(, "object_spilling_config": "dummy", "max_io_workers": )" +
         std::to_string(MAX_IO_WORKER_SIZE) + R"(, "kill_idle_workers_interval_ms": 0)" +
-        R"(, "enable_worker_prestart": true)" + "}");
+        "}");
     SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                        {Language::JAVA,
                         {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
@@ -456,6 +455,8 @@ class WorkerPoolTest : public ::testing::Test {
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
     worker_pool_ = std::make_unique<WorkerPoolMock>(
         io_service_, worker_commands, mock_worker_rpc_clients_);
+    rpc::JobConfig job_config;
+    RegisterDriver(Language::PYTHON, JOB_ID, job_config);
   }
 
   void TestStartupWorkerProcessCount(Language language, int num_workers_per_process) {
@@ -515,15 +516,6 @@ class WorkerPoolTest : public ::testing::Test {
   std::unique_ptr<WorkerPoolMock> worker_pool_;
 };
 
-class WorkerPoolDriverRegisteredTest : public WorkerPoolTest {
- public:
-  void SetUp() override {
-    WorkerPoolTest::SetUp();
-    rpc::JobConfig job_config;
-    RegisterDriver(Language::PYTHON, JOB_ID, job_config);
-  }
-};
-
 static inline rpc::RuntimeEnvInfo ExampleRuntimeEnvInfo(
     const std::vector<std::string> uris, bool eager_install = false) {
   json runtime_env;
@@ -577,7 +569,7 @@ static inline TaskSpecification ExampleTaskSpec(
   return TaskSpecification(std::move(message));
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, CompareWorkerProcessObjects) {
+TEST_F(WorkerPoolTest, CompareWorkerProcessObjects) {
   typedef Process T;
   T a(T::CreateNewDummy()), b(T::CreateNewDummy()), empty = T();
   ASSERT_TRUE(empty.IsNull());
@@ -591,7 +583,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, CompareWorkerProcessObjects) {
   ASSERT_TRUE(!std::equal_to<T>()(a, empty));
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration) {
+TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   PopWorkerStatus status;
   auto [proc, token] = worker_pool_->StartWorkerProcess(
       Language::JAVA, rpc::WorkerType::WORKER, JOB_ID, &status);
@@ -634,26 +626,26 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration) {
   }
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, HandleUnknownWorkerRegistration) {
+TEST_F(WorkerPoolTest, HandleUnknownWorkerRegistration) {
   auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON);
   auto status = worker_pool_->RegisterWorker(
       worker, 1234, -1, [](const Status & /*unused*/, int /*unused*/) {});
   ASSERT_FALSE(status.ok());
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, StartupPythonWorkerProcessCount) {
+TEST_F(WorkerPoolTest, StartupPythonWorkerProcessCount) {
   TestStartupWorkerProcessCount(Language::PYTHON, 1);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, StartupJavaWorkerProcessCount) {
+TEST_F(WorkerPoolTest, StartupJavaWorkerProcessCount) {
   TestStartupWorkerProcessCount(Language::JAVA, 1);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, InitialWorkerProcessCount) {
+TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkers) {
+TEST_F(WorkerPoolTest, TestPrestartingWorkers) {
   const auto task_spec = ExampleTaskSpec();
   // Prestarts 2 workers.
   worker_pool_->PrestartWorkers(task_spec, 2, /*num_available_cpus=*/5);
@@ -669,7 +661,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkers) {
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 5);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerPushPop) {
+TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
   std::shared_ptr<WorkerInterface> popped_worker;
   const auto task_spec = ExampleTaskSpec();
   // Create some workers.
@@ -694,7 +686,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerPushPop) {
   ASSERT_TRUE(workers.count(popped_worker) == 0);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerSyncsOfMultipleLanguages) {
+TEST_F(WorkerPoolTest, PopWorkerSyncsOfMultipleLanguages) {
   // Create a Python Worker, and add it to the pool
   auto py_worker =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON);
@@ -714,7 +706,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerSyncsOfMultipleLanguages) {
   ASSERT_EQ(worker_pool_->PopWorkerSync(java_task_spec), java_worker);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithDynamicOptionsCommand) {
+TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   std::vector<std::string> actor_jvm_options;
   actor_jvm_options.insert(
       actor_jvm_options.end(),
@@ -761,7 +753,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithDynamicOptionsCommand) {
   worker_pool_->HandleJobFinished(job_id);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy) {
+TEST_F(WorkerPoolTest, PopWorkerMultiTenancy) {
   auto job_id1 = JOB_ID;
   auto job_id2 = JobID::FromInt(2);
   ASSERT_NE(job_id1, job_id2);
@@ -828,7 +820,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy) {
   }
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
+TEST_F(WorkerPoolTest, MaximumStartupConcurrency) {
   auto task_spec = ExampleTaskSpec();
   std::vector<Process> started_processes;
 
@@ -917,7 +909,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
   worker_pool_->ClearProcesses();
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, HandleIOWorkersPushPop) {
+TEST_F(WorkerPoolTest, HandleIOWorkersPushPop) {
   std::unordered_set<std::shared_ptr<WorkerInterface>> spill_pushed_worker;
   std::unordered_set<std::shared_ptr<WorkerInterface>> restore_pushed_worker;
   auto spill_worker_callback =
@@ -994,7 +986,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleIOWorkersPushPop) {
   ASSERT_EQ(restore_pushed_worker.size(), 1);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, MaxIOWorkerSimpleTest) {
+TEST_F(WorkerPoolTest, MaxIOWorkerSimpleTest) {
   // Make sure max number of spill workers are respected.
   auto callback = [](std::shared_ptr<WorkerInterface> worker) {};
   std::vector<Process> started_processes;
@@ -1006,7 +998,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaxIOWorkerSimpleTest) {
       started_processes.push_back(last_process);
     }
   }
-  // Make sure process size is not exceeding max io worker size + worker prestarted.
+  // Make sure process size is not exceeding max io worker size.
   ASSERT_EQ(worker_pool_->GetProcessSize(), MAX_IO_WORKER_SIZE);
   ASSERT_EQ(started_processes.size(), MAX_IO_WORKER_SIZE);
   ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), MAX_IO_WORKER_SIZE);
@@ -1024,7 +1016,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaxIOWorkerSimpleTest) {
   ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), 0);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, MaxIOWorkerComplicateTest) {
+TEST_F(WorkerPoolTest, MaxIOWorkerComplicateTest) {
   // Make sure max number of restore workers are respected.
   // This test will test a little more complicated scneario.
   // For example, it tests scenarios where there are
@@ -1076,7 +1068,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaxIOWorkerComplicateTest) {
   ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), 0);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, MaxSpillRestoreWorkersIntegrationTest) {
+TEST_F(WorkerPoolTest, MaxSpillRestoreWorkersIntegrationTest) {
   auto callback = [](std::shared_ptr<WorkerInterface> worker) {};
   // Run many pop spill/restore workers and make sure the max worker size doesn't exceed.
   std::vector<Process> started_restore_processes;
@@ -1123,7 +1115,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaxSpillRestoreWorkersIntegrationTest) {
   ASSERT_EQ(worker_pool_->GetProcessSize(), 2 * MAX_IO_WORKER_SIZE);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, DeleteWorkerPushPop) {
+TEST_F(WorkerPoolTest, DeleteWorkerPushPop) {
   /// Make sure delete workers always pop an I/O worker that has more idle worker in their
   /// pools.
   // 2 spill worker and 1 restore worker.
@@ -1161,7 +1153,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, DeleteWorkerPushPop) {
   });
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
+TEST_F(WorkerPoolTest, TestWorkerCapping) {
   auto job_id = JOB_ID;
 
   // The driver of job 1 is already registered. Here we register the driver for job 2.
@@ -1311,7 +1303,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   worker_pool_->ClearProcesses();
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
+TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
   ///
   /// When there are 2 * N idle workers where the first N workers own objects,
   /// make sure the later N workers are properly killed.
@@ -1375,7 +1367,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingLaterNWorkersNotOwningOb
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers / 2);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay) {
+TEST_F(WorkerPoolTest, TestWorkerCappingWithExitDelay) {
   ///
   /// When there are multiple workers in a worker process, and the worker process's Exit
   /// reply is delayed, We shouldn't send more Exit requests to workers in this process
@@ -1456,7 +1448,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker) {
+TEST_F(WorkerPoolTest, TestJobFinishedForceKillIdleWorker) {
   auto job_id = JOB_ID;
 
   /// Add worker to the pool.
@@ -1501,8 +1493,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker) {
   mock_rpc_client->ExitReplySucceed();
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest,
-       WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettingKilled) {
+TEST_F(WorkerPoolTest, WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettingKilled) {
   rpc::JobConfig job_config;
 
   /// Add worker to the pool whose job will stay alive.
@@ -1561,7 +1552,7 @@ TEST_F(WorkerPoolDriverRegisteredTest,
   mock_rpc_client->ExitReplySucceed();
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerWithRuntimeEnv) {
+TEST_F(WorkerPoolTest, PopWorkerWithRuntimeEnv) {
   ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
   auto actor_creation_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
   const auto actor_creation_task_spec = ExampleTaskSpec(ActorID::Nil(),
@@ -1602,7 +1593,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerWithRuntimeEnv) {
   ASSERT_EQ(worker_pool_->GetProcessSize(), 3);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, RuntimeEnvUriReferenceJobLevel) {
+TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceJobLevel) {
   // First part, test start job with eager installed runtime env.
   {
     auto job_id = JobID::FromInt(12345);
@@ -1634,7 +1625,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, RuntimeEnvUriReferenceJobLevel) {
   }
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, RuntimeEnvUriReferenceWorkerLevel) {
+TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWorkerLevel) {
   // First part, test URI reference with eager install.
   {
     auto job_id = JobID::FromInt(12345);
@@ -1721,7 +1712,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, RuntimeEnvUriReferenceWorkerLevel) {
   }
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, CacheWorkersByRuntimeEnvHash) {
+TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
   ///
   /// Check that a worker can be popped only if there is a
   /// worker available whose runtime env matches the runtime env
@@ -1794,7 +1785,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, CacheWorkersByRuntimeEnvHash) {
   worker_pool_->ClearProcesses();
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, WorkerNoLeaks) {
+TEST_F(WorkerPoolTest, WorkerNoLeaks) {
   std::shared_ptr<WorkerInterface> popped_worker;
   const auto task_spec = ExampleTaskSpec();
 
@@ -1839,7 +1830,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerNoLeaks) {
   worker_pool_->ClearProcesses();
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerStatus) {
+TEST_F(WorkerPoolTest, PopWorkerStatus) {
   std::shared_ptr<WorkerInterface> popped_worker;
   PopWorkerStatus status;
 
@@ -1901,7 +1892,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerStatus) {
   worker_pool_->ClearProcesses();
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, TestIOWorkerFailureAndSpawn) {
+TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
   std::unordered_set<std::shared_ptr<WorkerInterface>> spill_worker_set;
   auto spill_worker_callback =
       [&spill_worker_set](std::shared_ptr<WorkerInterface> worker) {
@@ -2012,7 +2003,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestIOWorkerFailureAndSpawn) {
   ASSERT_FALSE(worker_ids.count(worker3->WorkerId()));
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseForPrestartedWorker) {
+TEST_F(WorkerPoolTest, WorkerReuseForPrestartedWorker) {
   const auto task_spec = ExampleTaskSpec();
 
   worker_pool_->PrestartDefaultCpuWorkers(ray::Language::PYTHON, 1);
@@ -2029,7 +2020,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseForPrestartedWorker) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseForSameJobId) {
+TEST_F(WorkerPoolTest, WorkerReuseForSameJobId) {
   const auto task_spec = ExampleTaskSpec();
 
   // start one worker
@@ -2047,7 +2038,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseForSameJobId) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseFailureForDifferentJobId) {
+TEST_F(WorkerPoolTest, WorkerReuseFailureForDifferentJobId) {
   const auto task_spec = ExampleTaskSpec();
   const auto task_spec1 = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID2);
 
@@ -2067,50 +2058,6 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseFailureForDifferentJobId) {
   ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 }
-
-TEST_F(WorkerPoolTest, RegisterFirstPythonDriverWaitForWorkerStart) {
-  auto driver =
-      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
-  driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
-  bool callback_called = false;
-  auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {
-    *callback_called_ptr = true;
-  };
-  RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, rpc::JobConfig(), callback));
-  ASSERT_FALSE(callback_called);
-}
-
-TEST_F(WorkerPoolTest, RegisterSecondPythonDriverCallbackImmediately) {
-  auto driver =
-      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
-  driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
-  RAY_CHECK_OK(
-      worker_pool_->RegisterDriver(driver, rpc::JobConfig(), [](Status, int) {}));
-
-  bool callback_called = false;
-  auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {
-    *callback_called_ptr = true;
-  };
-  auto second_driver =
-      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
-  second_driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
-  RAY_CHECK_OK(worker_pool_->RegisterDriver(second_driver, rpc::JobConfig(), callback));
-  ASSERT_TRUE(callback_called);
-}
-
-TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
-  auto driver =
-      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::JAVA, JOB_ID);
-
-  driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
-  bool callback_called = false;
-  auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {
-    *callback_called_ptr = true;
-  };
-  RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, rpc::JobConfig(), callback));
-  ASSERT_TRUE(callback_called);
-}
-
 }  // namespace raylet
 
 }  // namespace ray

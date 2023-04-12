@@ -1373,6 +1373,7 @@ def start_raylet(
     huge_pages: bool = False,
     fate_share: Optional[bool] = None,
     socket_to_use: Optional[int] = None,
+    start_initial_python_workers_for_first_job: bool = False,
     max_bytes: int = 0,
     backup_count: int = 0,
     ray_debugger_external: bool = False,
@@ -1609,9 +1610,12 @@ def start_raylet(
 
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
-    command.append(
-        "--num_prestart_python_workers={}".format(int(resource_spec.num_cpus))
-    )
+    if start_initial_python_workers_for_first_job:
+        command.append(
+            "--num_initial_python_workers_for_first_job={}".format(
+                resource_spec.num_cpus
+            )
+        )
     command.append("--agent_command={}".format(subprocess.list2cmdline(agent_command)))
     if huge_pages:
         command.append("--huge_pages")
