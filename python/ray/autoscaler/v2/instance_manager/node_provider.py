@@ -1,6 +1,6 @@
 import logging
 from abc import ABCMeta, abstractmethod
-from typing import Any, Dict, List, override
+from typing import Any, Dict, List, override, Optional
 
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.core.generated.instance_manager_pb2 import InstanceType
@@ -52,6 +52,10 @@ class NodeProviderAdapter(NodeProvider):
         # TODO
         return None
 
+    def _filter_nodes(self, nodes, instance_ids_filter, instance_states_filter):
+        # TODO
+        return nodes
+
     @override
     def create_nodes(self, instance_type: InstanceType, count: int):
         self._provider.create_node_with_resources(
@@ -66,8 +70,10 @@ class NodeProviderAdapter(NodeProvider):
         self._provider.terminate_node(instance_ids)
 
     @override
-    def get_nodes(self, instance_ids: List[str]):
-        pass
+    def get_nodes(self, instance_ids_filter: Optional[List[str]], instance_states_filter: Optional[List[str]]):
+        # TODO: more efficient implementation.
+        nodes = self._provider.non_terminated_nodes()
+        return self._filter_nodes(nodes, instance_ids_filter, instance_states_filter)
 
     @override
     def is_readonly(self) -> bool:
