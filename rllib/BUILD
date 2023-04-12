@@ -2507,7 +2507,7 @@ py_test(
     name = "tests/test_gpus",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["tests/test_gpus.py"],
+    srcs = ["tests/test_gpus.py"]
 )
 
 py_test(
