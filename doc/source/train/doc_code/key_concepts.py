@@ -143,6 +143,23 @@ run_config = RunConfig(
 )
 # __checkpoint_config_end__
 
+# __checkpoint_config_gbdt_start__
+from ray.air import RunConfig, CheckpointConfig
+from ray.train.xgboost import XGBoostTrainer
+
+run_config = RunConfig(
+    checkpoint_config=CheckpointConfig(
+        checkpoint_frequency=1,
+        # Only keep this many checkpoints.
+        num_to_keep=1,
+    )
+)
+trainer = XGBoostTrainer(
+    # ...
+    run_config=run_config,
+)
+# __checkpoint_config_gbdt_end__
+
 
 # __results_start__
 result = trainer.fit()
