@@ -10,12 +10,11 @@ from ray.experimental.lightrails.schedule.instruction import (
     SendActivation,
     SendGradient,
 )
-
 from ray.experimental.lightrails.schedule.schedule import (
-    Schedule,
-    InputSchedule,
     ExecuteSchedule,
+    InputSchedule,
     OutputSchedule,
+    Schedule,
 )
 
 __all__ = [

@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
 
+
 class Instruction(metaclass=ABCMeta):
     """An instruction represents a single step in the execution schedule."""
 

@@ -1,24 +1,19 @@
-from abc import ABCMeta, abstractmethod
-
 from ray.experimental.lightrails.schedule.instruction import (
+    Backward,
     Forward,
+    Instruction,
     LoadBatch,
+    Optimize,
     PrintOutput,
     ReceiveActivation,
+    ReceiveGradient,
     SendActivation,
+    SendGradient,
 )
+from ray.experimental.lightrails.schedule.schedule import Schedule
 
 
-class Schedule(metaclass=ABCMeta):
-    """A schedule represents the execution schedule of a stage replica."""
-
-    @abstractmethod
-    def steps(self):
-        """Yield a list of :class:`Instructions` for each step in the schedule."""
-        pass
-
-
-# Inferencing schedules
+# Simplest trainig schedule
 class InputSchedule(Schedule):
     def __init__(self, downstream_rank: int) -> None:
         super().__init__()
@@ -27,7 +22,14 @@ class InputSchedule(Schedule):
     def steps(self):
         """Yield a list of :class:`Instructions` for each step in the schedule."""
         while True:
-            yield [LoadBatch(1), Forward(1), SendActivation(self.downstream_rank, 1)]
+            yield [
+                LoadBatch(1),
+                Forward(1),
+                SendActivation(self.downstream_rank, 1),
+                ReceiveGradient(self.downstream_rank, 1),
+                Backward(1),
+                Optimize(1),
+            ]
 
 
 class ExecuteSchedule(Schedule):
