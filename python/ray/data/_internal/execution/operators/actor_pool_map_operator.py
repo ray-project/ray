@@ -138,7 +138,6 @@ class ActorPoolMapOperator(MapOperator):
             * a task finishes,
             * a new worker has been created.
         """
-
         while self._bundle_queue:
             # Pick an actor from the pool.
             if self._actor_locality_enabled:
@@ -148,7 +147,6 @@ class ActorPoolMapOperator(MapOperator):
             if actor is None:
                 # No actors available for executing the next task.
                 break
-
             # Submit the map task.
             bundle = self._bundle_queue.popleft()
             input_blocks = [block for block, _ in bundle.blocks]
