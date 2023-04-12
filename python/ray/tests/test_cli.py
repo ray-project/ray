@@ -87,6 +87,7 @@ def cleanup_ray():
     yield
     runner = CliRunner()
     runner.invoke(scripts.stop, ["--force"])
+    ray.shutdown()
 
 
 @pytest.fixture
