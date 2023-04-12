@@ -4,9 +4,40 @@ torch, nn = try_import_torch()
 
 
 class Stride2D(nn.Module):
-    """A striding layer for doing torch Conv2DTranspose operations."""
+    """A striding layer for doing torch Conv2DTranspose operations.
+
+    Using this layer before the 0-padding (on a 3D input "image") and before
+    the actual ConvTranspose2d allows for a padding="same" behavior that matches
+    100% that of a `tf.keras.layers.Conv2DTranspose` layer.
+
+    Examples:
+        Input image (4x4):
+        A B C D
+        E F G H
+        I J K L
+        M N O P
+
+        Stride with stride=2 -> output image=(7x7)
+        A 0 B 0 C 0 D
+        0 0 0 0 0 0 0
+        E 0 F 0 G 0 H
+        0 0 0 0 0 0 0
+        I 0 J 0 K 0 L
+        0 0 0 0 0 0 0
+        M 0 N 0 O 0 P
+    """
 
     def __init__(self, width, height, stride_w, stride_h):
+        """Initializes a Stride2D instance.
+
+        Args:
+            width: The width of the 3D input "image".
+            height: The height of the 3D input "image".
+            stride_w: The stride in width direction, with which to stride the incoming
+                image.
+            stride_h: The stride in height direction, with which to stride the incoming
+                image.
+        """
         super().__init__()
 
         self.width = width
