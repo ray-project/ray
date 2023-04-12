@@ -5,6 +5,7 @@ import ray
 from ray import serve
 from ray.serve.application import Application
 from ray._private.test_utils import wait_for_condition
+from ray.serve._private.client import ServeControllerClient
 
 
 class TestApplicationConstruction:
@@ -38,79 +39,51 @@ class TestApplicationConstruction:
 
 
 class TestServeRun:
-    @serve.deployment
+    @serve.deployment(route_prefix=None)
     def f():
         return "f reached"
 
-    @serve.deployment
+    @serve.deployment(route_prefix=None)
     def g():
         return "g reached"
 
-    @serve.deployment
+    @serve.deployment(route_prefix=None)
     class C:
         async def __call__(self):
             return "C reached"
 
-    @serve.deployment
+    @serve.deployment(route_prefix=None)
     class D:
         async def __call__(self):
             return "D reached"
 
-    def deploy_and_check_responses(
-        self, deployments, responses, blocking=True, client=None
-    ):
+    def deploy_and_check_responses(self, client, deployments, responses):
         """
         Helper function that deploys the list of deployments, calls them with
         their handles, and checks whether they return the objects in responses.
         If blocking is False, this function uses a non-blocking deploy and uses
         the client to wait until the deployments finish deploying.
         """
-
-        for i in range(len(deployments)):
-            serve.run(
-                Application([deployments[i]]),
-                name=f"app{i}",
-                _blocking=blocking,
+        client._controller.deploy_application.remote(
+            "test_app",
+            Application(deployments).deploy_args_list,
+        )
+        for deployment, response in zip(deployments, responses):
+            wait_for_condition(
+                lambda: ray.get(deployment.get_handle().remote()) == response
             )
 
-        def check_all_deployed():
-            try:
-                for deployment, response in zip(deployments, responses):
-                    if ray.get(deployment.get_handle().remote()) != response:
-                        return False
-            except Exception:
-                return False
-
-            return True
-
-        if blocking:
-            # If blocking, this should be guaranteed to pass immediately.
-            assert check_all_deployed()
-        else:
-            # If non-blocking, this should pass eventually.
-            wait_for_condition(check_all_deployed)
-
-    def test_basic_run(self, serve_instance):
+    def test_basic_run(self, serve_instance: ServeControllerClient):
         """
         Atomically deploys a group of deployments, including both functions and
         classes. Checks whether they deploy correctly.
         """
-
         deployments = [self.f, self.g, self.C, self.D]
         responses = ["f reached", "g reached", "C reached", "D reached"]
 
-        self.deploy_and_check_responses(deployments, responses)
+        self.deploy_and_check_responses(serve_instance, deployments, responses)
 
-    def test_non_blocking_run(self, serve_instance):
-        """Checks Application's deploy() behavior when blocking=False."""
-
-        deployments = [self.f, self.g, self.C, self.D]
-        responses = ["f reached", "g reached", "C reached", "D reached"]
-        self.deploy_and_check_responses(
-            deployments, responses, blocking=False, client=serve_instance
-        )
-
-    def test_mutual_handles(self, serve_instance):
+    def test_mutual_handles(self, serve_instance: ServeControllerClient):
         """
         Atomically deploys a group of deployments that get handles to other
         deployments in the group inside their __init__ functions. The handle
@@ -144,10 +117,14 @@ class TestServeRun:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        serve.run(Application(deployments), _blocking=True)
-
+        serve_instance._controller.deploy_application.remote(
+            "test_app",
+            Application(deployments).deploy_args_list,
+        )
         for deployment in deployments:
-            assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
+            wait_for_condition(
+                lambda: ray.get(deployment.get_handle().remote("hello")) == "hello"
+            )
 
     def test_decorated_deployments(self, serve_instance):
         """
@@ -155,24 +132,20 @@ class TestServeRun:
         in their @serve.deployment decorator.
         """
 
-        @serve.deployment(num_replicas=2, max_concurrent_queries=5)
+        @serve.deployment(num_replicas=2, max_concurrent_queries=5, route_prefix=None)
         class DecoratedClass1:
             async def __call__(self):
                 return "DecoratedClass1 reached"
 
-        @serve.deployment(num_replicas=4, max_concurrent_queries=2)
+        @serve.deployment(num_replicas=4, max_concurrent_queries=2, route_prefix=None)
         class DecoratedClass2:
             async def __call__(self):
                 return "DecoratedClass2 reached"
 
         deployments = [DecoratedClass1, DecoratedClass2]
         responses = ["DecoratedClass1 reached", "DecoratedClass2 reached"]
-        self.deploy_and_check_responses(deployments, responses)
 
-    def test_empty_list(self, serve_instance):
-        """Checks Application's deploy behavior when deployment group is empty."""
-
-        self.deploy_and_check_responses([], [])
+        self.deploy_and_check_responses(serve_instance, deployments, responses)
 
     def test_invalid_input(self, serve_instance):
         """
@@ -200,22 +173,25 @@ class TestServeRun:
         shallow = serve.deployment(
             name="shallow",
             ray_actor_options=ray_actor_options,
+            route_prefix=None,
         )("test_env.shallow_import.ShallowClass")
 
         deep = serve.deployment(
             name="deep",
             ray_actor_options=ray_actor_options,
+            route_prefix=None,
         )("test_env.subdir1.subdir2.deep_import.DeepClass")
 
         one = serve.deployment(
             name="one",
             ray_actor_options=ray_actor_options,
+            route_prefix=None,
         )("test_module.test.one")
 
         deployments = [shallow, deep, one]
         responses = ["Hello shallow world!", "Hello deep world!", 2]
 
-        self.deploy_and_check_responses(deployments, responses)
+        self.deploy_and_check_responses(serve_instance, deployments, responses)
 
     def test_different_pymodules(self, serve_instance):
         test_env_uri = (
@@ -228,31 +204,33 @@ class TestServeRun:
         shallow = serve.deployment(
             name="shallow",
             ray_actor_options={"runtime_env": {"py_modules": [test_env_uri]}},
+            route_prefix=None,
         )("test_env.shallow_import.ShallowClass")
 
         one = serve.deployment(
             name="one",
             ray_actor_options={"runtime_env": {"py_modules": [test_module_uri]}},
+            route_prefix=None,
         )("test_module.test.one")
 
         deployments = [shallow, one]
         responses = ["Hello shallow world!", 2]
 
-        self.deploy_and_check_responses(deployments, responses)
+        self.deploy_and_check_responses(serve_instance, deployments, responses)
 
     def test_import_path_deployment_decorated(self, serve_instance):
-        func = serve.deployment(name="decorated_func", route_prefix="/decorated_func")(
+        func = serve.deployment(name="decorated_func", route_prefix=None)(
             "ray.serve.tests.test_application.decorated_func"
         )
 
-        clss = serve.deployment(name="decorated_clss", route_prefix="/decorated_clss")(
+        clss = serve.deployment(name="decorated_clss", route_prefix=None)(
             "ray.serve.tests.test_application.DecoratedClass"
         )
 
         deployments = [func, clss]
         responses = ["got decorated func", "got decorated class"]
 
-        self.deploy_and_check_responses(deployments, responses)
+        self.deploy_and_check_responses(serve_instance, deployments, responses)
 
         # Check that non-default decorated values were overwritten
         assert serve.get_deployment("decorated_func").max_concurrent_queries != 17

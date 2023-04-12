@@ -17,6 +17,7 @@ from ray.serve._private.common import (
     DeploymentInfo,
 )
 
+
 @pytest.fixture
 def mock_application_state_manager() -> ApplicationStateManager:
     class MockDeploymentStateManager:
@@ -45,7 +46,7 @@ def mock_application_state_manager() -> ApplicationStateManager:
 
         def set_deployment_healthy(self, name: str):
             self._deployment_states[name].status = DeploymentStatus.HEALTHY
-            
+
         def set_deployment_deleted(self, name: str):
             del self._deployment_states[name]
 

@@ -734,10 +734,6 @@ class TestDeployApp:
             client.get_serve_status().app_status.deployment_timestamp
             > first_deploy_time
         )
-        assert client.get_serve_status().app_status.status in {
-            ApplicationStatus.DEPLOYING,
-            ApplicationStatus.RUNNING,
-        }
 
     def test_deploy_multi_app_update_timestamp(self, client: ServeControllerClient):
         assert client.get_serve_status("app1").app_status.deployment_timestamp == 0
@@ -778,13 +774,6 @@ class TestDeployApp:
             and client.get_serve_status("app2").app_status.deployment_timestamp
             > first_deploy_time_app2
         )
-        assert {
-            client.get_serve_status("app1").app_status.status,
-            client.get_serve_status("app2").app_status.status,
-        } <= {
-            ApplicationStatus.DEPLOYING,
-            ApplicationStatus.RUNNING,
-        }
 
     def test_deploy_app_overwrite_apps(self, client: ServeControllerClient):
         """Check that overwriting a live app with a new one works."""

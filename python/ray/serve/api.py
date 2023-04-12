@@ -498,11 +498,7 @@ def run(
     # Record after Ray has been started.
     record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v2")
 
-    if isinstance(target, Application):
-        deployments = list(target.deployments.values())
-        ingress = target.ingress
-    # Each DAG should always provide a valid Driver ClassNode
-    elif isinstance(target, ClassNode):
+    if isinstance(target, ClassNode):
         deployments = pipeline_build(target, name)
         ingress = get_and_validate_ingress_deployment(deployments)
     # Special case where user is doing single function serve.run(func.bind())

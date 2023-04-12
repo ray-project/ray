@@ -55,6 +55,7 @@ from ray.serve._private.utils import (
     DEFAULT,
     override_runtime_envs_except_env_vars,
     get_random_letters,
+    record_serve_tag,
 )
 from ray.serve._private.application_state import ApplicationStateManager
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -536,10 +537,9 @@ class ServeController:
             )
 
             logger.info(
-                "Starting deploy_serve_application "
-                f"task for application {app_config.name}."
+                f"Starting build_application task for application {app_config.name}."
             )
-            deploy_obj_ref = deploy_serve_application.options(
+            build_app_obj_ref = build_application.options(
                 runtime_env=app_config.runtime_env
             ).remote(
                 app_config.import_path,
@@ -552,7 +552,7 @@ class ServeController:
 
             self.application_state_manager.create_application_state(
                 app_config.name,
-                deploy_obj_ref=deploy_obj_ref,
+                build_app_obj_ref=build_app_obj_ref,
                 deployment_time=deployment_time,
             )
 
@@ -567,6 +567,7 @@ class ServeController:
         )
         new_applications = {app_config.name for app_config in applications}
         self.delete_apps(existing_applications.difference(new_applications))
+        record_serve_tag("SERVE_API_VERSION", "v2")
 
     def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
@@ -859,7 +860,7 @@ def _generate_deployment_config_versions(
 
 
 @ray.remote(num_cpus=0, max_calls=1)
-def deploy_serve_application(
+def build_application(
     import_path: str,
     runtime_env: Dict,
     deployment_override_options: List[Dict],
@@ -870,23 +871,31 @@ def deploy_serve_application(
     """Deploy Serve application from a user-provided config.
 
     Args:
-        import_path: import path to top-level bound deployment.
-        runtime_env: runtime_env for the application.
+        import_path: import path to ingress deployment.
+        runtime_env: runtime environment for the application. This will also be the
+            default runtime environment for each deployment unless overriden at the
+            deployment level.
         deployment_override_options: Dictionary of options that overrides
             deployment options set in the graph's code itself.
         deployment_versions: Versions of each deployment, each of which is
             the same as the last deployment if it is a config update or
             a new randomly generated version if it is a code update
-        name: application name. If specified, application will be deployed
-            without removing existing applications.
-        route_prefix: route_prefix. Define the route path for the application.
+        name: unique name for the application.
+        route_prefix: unique route prefix path for the application. If not DEFAULT.VALUE
+            this will override the ingress deployment's route prefix.
     """
     try:
-        from ray import serve
         from ray.serve.api import build
 
         # Import and build the application.
         app = build(import_attr(import_path), name)
+        # Overwrite route prefix
+        for deployment in list(app.deployments.values()):
+            if (
+                route_prefix is not DEFAULT.VALUE
+                and deployment._route_prefix is not None
+            ):
+                deployment._route_prefix = route_prefix
 
         # Override options for each deployment.
         for options in deployment_override_options:
@@ -923,9 +932,7 @@ def deploy_serve_application(
             app.deployments[unique_deployment_name].set_options(
                 **options, _internal=True
             )
-
-        # Run the application locally on the cluster.
-        serve.run(app, name=name, route_prefix=route_prefix)
+        return app.deploy_args_list
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.

@@ -3,9 +3,14 @@ from typing import (
     Optional,
     List,
 )
+import logging
 
-from ray.serve.deployment import Deployment
 from ray.util.annotations import DeveloperAPI
+from ray.serve.deployment import Deployment
+from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.deploy_utils import get_deploy_args
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @DeveloperAPI
@@ -56,6 +61,28 @@ class Application:
     @property
     def deployments(self) -> ImmutableDeploymentDict:
         return self._deployments
+
+    @property
+    def deploy_args_list(self) -> List[Dict]:
+        """Get list of deploy args."""
+        deploy_args_list = []
+        for deployment in list(self.deployments.values()):
+            deploy_args_list.append(
+                get_deploy_args(
+                    deployment._name,
+                    deployment._func_or_class,
+                    deployment.init_args,
+                    deployment.init_kwargs,
+                    deployment._ray_actor_options,
+                    deployment._config,
+                    deployment._version,
+                    deployment.route_prefix,
+                    deployment._is_driver_deployment,
+                    deployment._docs_path,
+                )
+            )
+
+        return deploy_args_list
 
     @property
     def ingress(self) -> Optional[Deployment]:

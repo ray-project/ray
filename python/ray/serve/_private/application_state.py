@@ -7,10 +7,7 @@ import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.types import ObjectRef
 from ray.exceptions import RayTaskError, RuntimeEnvSetupError
-<<<<<<< HEAD
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
-=======
->>>>>>> 5e806c06f7 (wip2)
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.common import (
@@ -35,7 +32,6 @@ class ApplicationState:
         name: str,
         deployment_state_manager: DeploymentStateManager,
         endpoint_state: EndpointState,
-        deploy_obj_ref: ObjectRef = None,
         deployment_time: float = 0,
     ):
         """
@@ -43,13 +39,8 @@ class ApplicationState:
             name: application name
             deployment_state_manager: deployment state manager which is used for
                 fetching deployment information
-            deploy_obj_ref: Task ObjRef of deploying application.
             deployment_time: Deployment timestamp
         """
-        if deploy_obj_ref:
-            self.status: ApplicationStatus = ApplicationStatus.DEPLOYING
-        else:
-            self.status: ApplicationStatus = ApplicationStatus.NOT_STARTED
         self.status: ApplicationStatus = ApplicationStatus.NOT_STARTED
         self.name = name
         self.deployment_params: List[Dict] = []
@@ -60,7 +51,6 @@ class ApplicationState:
             self.deployment_timestamp = deployment_time
         else:
             self.deployment_timestamp = time.time()
-        self.deploy_obj_ref = deploy_obj_ref
         self.app_msg = ""
         self.route_prefix = None
         self.docs_path = None
@@ -77,6 +67,10 @@ class ApplicationState:
         self.status = ApplicationStatus.DELETING
         for deployment in self.deployments:
             self.delete_deployment(deployment)
+
+    def set_deploy_failed(self, message):
+        self.status = ApplicationStatus.DEPLOY_FAILED
+        self.app_msg = message
 
     def deploy_deployment(
         self,
@@ -211,32 +205,6 @@ class ApplicationState:
             return
 
         if self.status == ApplicationStatus.DEPLOYING:
-            if self.deploy_obj_ref:
-                finished, pending = ray.wait([self.deploy_obj_ref], timeout=0)
-                if pending:
-                    return
-                try:
-                    ray.get(finished[0])
-                    logger.info(f"Deploy task for app '{self.name}' ran successfully.")
-                except RayTaskError as e:
-                    self.status = ApplicationStatus.DEPLOY_FAILED
-                    # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
-                    # here because the full details of the error is not displayed
-                    # properly with traceback.format_exc(). RayTaskError has its own
-                    # custom __str__ function.
-                    self.app_msg = f"Deploying app '{self.name}' failed:\n{str(e)}"
-                    self.deploy_obj_ref = None
-                    logger.warning(self.app_msg)
-                    return
-                except RuntimeEnvSetupError:
-                    self.status = ApplicationStatus.DEPLOY_FAILED
-                    self.app_msg = (
-                        f"Runtime env setup for app '{self.name}' "
-                        f"failed:\n{traceback.format_exc()}"
-                    )
-                    self.deploy_obj_ref = None
-                    logger.warning(self.app_msg)
-                    return
             deployments_statuses = (
                 self.deployment_state_manager.get_deployment_statuses(self.deployments)
             )
@@ -293,54 +261,7 @@ class ApplicationStateManager:
         self.deployment_state_manager = deployment_state_manager
         self.endpoint_state = endpoint_state
         self._application_states: Dict[str, ApplicationState] = {}
-
-    def delete_application(self, name: str):
-        """Delete application by name"""
-        if name not in self._application_states:
-            return
-        self._application_states[name].delete()
-
-    def deploy_application(
-        self, name: str, deployment_args_list: List[Dict]
-    ) -> List[bool]:
-        """Deploy single application
-
-        Args:
-            name: application name
-            deployment_args_list: deployment arguments needed for deploying a list of
-                deployments.
-        Returns:
-            Returns a list indicating whether each deployment is being updated.
-        """
-
-        # Make sure route_prefix is not being used by other application.
-        live_route_prefixes: Dict[str, str] = {
-            self._application_states[app_name].route_prefix: app_name
-            for app_name, app_state in self._application_states.items()
-            if app_state.route_prefix is not None
-            and not app_state.status == ApplicationStatus.DELETING
-            and name != app_name
-        }
-
-        for deploy_param in deployment_args_list:
-            deploy_app_prefix = deploy_param.get("route_prefix")
-            if deploy_app_prefix in live_route_prefixes:
-                raise RayServeException(
-                    f"Prefix {deploy_app_prefix} is being used by application "
-                    f'"{live_route_prefixes[deploy_app_prefix]}".'
-                    f' Failed to deploy application "{name}".'
-                )
-
-        if name not in self._application_states:
-            self._application_states[name] = ApplicationState(
-                name,
-                self.deployment_state_manager,
-                self.endpoint_state,
-            )
-        record_extra_usage_tag(
-            TagKey.SERVE_NUM_APPS, str(len(self._application_states))
-        )
-        return self._application_states[name].deploy(deployment_args_list)
+        self._build_app_obj_refs: Dict[str, ObjectRef] = {}
 
     def get_deployments(self, app_name: str) -> List[str]:
         """Return all deployment names by app name"""
@@ -398,28 +319,79 @@ class ApplicationStateManager:
     def create_application_state(
         self,
         name: str,
-        deploy_obj_ref: ObjectRef,
+        build_app_obj_ref: ObjectRef,
         deployment_time: float = 0,
     ):
-        """Create application state
-        This is used for holding the deploy_obj_ref which is created by run_graph method
         """
-        if (
-            name in self._application_states
-            and self._application_states[name].deploy_obj_ref
-        ):
+        Create application state.
+
+        This is used for holding the build_app_obj_ref, which is the object ref for the
+        build_application task.
+        """
+        if name in self._application_states and name in self._build_app_obj_refs:
             logger.info(
                 f"Received new config deployment for {name} request. Cancelling "
                 "previous request."
             )
-            ray.cancel(self._application_states[name].deploy_obj_ref)
+            ray.cancel(self._build_app_obj_refs[name])
+
+        self._build_app_obj_refs[name] = build_app_obj_ref
         self._application_states[name] = ApplicationState(
             name,
             self.deployment_state_manager,
-            endpoint_state=self.endpoint_state,
-            deploy_obj_ref=deploy_obj_ref,
+            self.endpoint_state,
             deployment_time=deployment_time,
         )
+
+    def deploy_application(
+        self, name: str, deployment_args_list: List[Dict]
+    ) -> List[bool]:
+        """Deploy single application
+
+        Args:
+            name: application name
+            deployment_args: deployment arguments needed for deploying a list of d
+                deployments.
+        Returns:
+            Returns a list indicating whether each deployment is being updated.
+        """
+
+        # Make sure route_prefix is not being used by other application.
+        live_route_prefixes: Dict[str, str] = {
+            self._application_states[app_name].route_prefix: app_name
+            for app_name, app_state in self._application_states.items()
+            if app_state.route_prefix is not None
+            and not app_state.status == ApplicationStatus.DELETING
+            and name != app_name
+        }
+
+        for deploy_param in deployment_args_list:
+            deploy_app_prefix = deploy_param.get("route_prefix")
+            if deploy_app_prefix in live_route_prefixes:
+                raise RayServeException(
+                    f"Prefix {deploy_app_prefix} is being used by application "
+                    f'"{live_route_prefixes[deploy_app_prefix]}".'
+                    f' Failed to deploy application "{name}".'
+                )
+
+        if name not in self._application_states:
+            self._application_states[name] = ApplicationState(
+                name,
+                self.deployment_state_manager,
+                self.endpoint_state,
+            )
+
+        record_extra_usage_tag(
+            TagKey.SERVE_NUM_APPS, str(len(self._application_states))
+        )
+
+        return self._application_states[name].deploy(deployment_args_list)
+
+    def delete_application(self, name: str):
+        """Delete application by name"""
+        if name not in self._application_states:
+            return
+        self._application_states[name].delete()
 
     def update(self):
         """Update each application state"""
@@ -428,6 +400,46 @@ class ApplicationStateManager:
             app.update()
             if app.ready_to_be_deleted:
                 apps_to_be_deleted.append(name)
+
+        for name, build_app_obj_ref in list(self._build_app_obj_refs.items()):
+            finished, _ = ray.wait([build_app_obj_ref], timeout=0)
+            if finished:
+                try:
+                    deployment_args_list = ray.get(finished[0])
+                    logger.info(f"Build task for app '{name}' ran successfully.")
+
+                    try:
+                        self.deploy_application(name, deployment_args_list)
+                    except RayServeException:
+                        message = (
+                            f"Deploying app '{name}' failed:\n{traceback.format_exc()}"
+                        )
+                        self._application_states[name].set_deploy_failed(message=message)
+                        logger.warning(message)
+                    except Exception:
+                        message = (
+                            f"Deploying app '{name}' failed with an unexpected error:\n"
+                            f"{traceback.format_exc()}"
+                        )
+                        self._application_states[name].set_deploy_failed(message=message)
+                        logger.warning(message)
+                except RayTaskError as e:
+                    # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
+                    # here because the full details of the error is not displayed
+                    # properly with traceback.format_exc(). RayTaskError has its own
+                    # custom __str__ function.
+                    message = f"Deploying app '{name}' failed:\n{str(e)}"
+                    self._application_states[name].set_deploy_failed(message=message)
+                    logger.warning(message)
+                except RuntimeEnvSetupError:
+                    message = (
+                        f"Runtime env setup for app '{name}' "
+                        f"failed:\n{traceback.format_exc()}"
+                    )
+                    self._application_states[name].set_deploy_failed(message=message)
+                    logger.warning(message)
+
+                del self._build_app_obj_refs[name]
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:

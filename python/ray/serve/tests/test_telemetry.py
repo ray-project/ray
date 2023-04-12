@@ -17,6 +17,7 @@ from ray.serve.http_adapters import json_request
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.context import get_global_client
 from ray.serve._private.common import ApplicationStatus
+from ray.serve._private import api as _private_api
 from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 from ray.serve.schema import ServeDeploySchema
 
@@ -434,7 +435,7 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
     }
 
     # Deploy first config
-    client = serve.start(detached=True)
+    client = _private_api.serve_start(detached=True)
     client.deploy_apps(ServeDeploySchema(**config))
     wait_for_condition(
         lambda: client.get_serve_status("receiver_app").app_status.status

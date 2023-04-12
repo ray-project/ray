@@ -2096,6 +2096,7 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
     )
     updating = deployment_state.deploy(b_info_1)
     assert updating
+
     deployment_state_manager._deployment_states[tag] = deployment_state
 
     # Single replica should be created.
@@ -2134,6 +2135,7 @@ def test_resume_deployment_state_from_replica_tags(
 ):
     deployment_state_manager, deployment_state, timer = mock_deployment_state_manager
     mock_get_all_node_ids.return_value = [("node-id", "node-id")]
+
     tag = "test"
 
     # Step 1: Create some deployment info with actors in running state
@@ -2142,6 +2144,7 @@ def test_resume_deployment_state_from_replica_tags(
     )
     updating = deployment_state.deploy(b_info_1)
     assert updating
+
     deployment_state_manager._deployment_states[tag] = deployment_state
 
     # Single replica should be created.

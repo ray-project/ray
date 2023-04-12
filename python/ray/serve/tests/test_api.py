@@ -10,7 +10,6 @@ from fastapi import FastAPI
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve.application import Application
 from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
 
@@ -377,24 +376,6 @@ def test_shutdown_destructor(serve_instance):
 
     B.deploy()
     B.delete()
-
-
-def test_run_get_ingress_app(serve_instance):
-    """Check that serve.run() with an app returns the ingress."""
-
-    @serve.deployment(route_prefix="/g")
-    def g():
-        return "got g"
-
-    app = Application([g])
-    ingress_handle = serve.run(app)
-
-    assert ray.get(ingress_handle.remote()) == "got g"
-    serve_instance.delete_deployments(["g"])
-
-    no_ingress_app = Application([g.options(route_prefix=None)])
-    ingress_handle = serve.run(no_ingress_app)
-    assert ingress_handle is None
 
 
 def test_run_get_ingress_node(serve_instance):
