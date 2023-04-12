@@ -4,7 +4,7 @@ import time
 from typing import List, Any
 
 import ray
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.bulk_executor import BulkExecutor
@@ -97,8 +97,8 @@ def test_basic_stats(ray_start_10_cpus_shared):
 
 # TODO(ekl) remove this test once we have the new backend on by default.
 def test_e2e_bulk_sanity(ray_start_10_cpus_shared):
-    DatasetContext.get_current().new_execution_backend = True
-    DatasetContext.get_current().use_streaming_executor = False
+    DataContext.get_current().new_execution_backend = True
+    DataContext.get_current().use_streaming_executor = False
     result = ray.data.range(5).map(lambda x: x + 1)
     assert result.take_all() == [1, 2, 3, 4, 5], result
 
@@ -125,8 +125,8 @@ def test_actor_strategy(ray_start_10_cpus_shared):
 
 
 def test_new_execution_backend_invocation(ray_start_10_cpus_shared):
-    DatasetContext.get_current().new_execution_backend = True
-    DatasetContext.get_current().use_streaming_executor = False
+    DataContext.get_current().new_execution_backend = True
+    DataContext.get_current().use_streaming_executor = False
     # Read-only: will use legacy executor for now.
     ds = ray.data.range(10)
     assert ds.take_all() == list(range(10))
