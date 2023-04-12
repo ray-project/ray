@@ -161,7 +161,7 @@ class SDKRunner(CommandRunner):
 
         return time_taken
 
-    def get_last_logs(self, scd_id: Optional[str] = None):
+    def get_last_logs_ex(self, scd_id: Optional[str] = None):
         scd_id = scd_id or self.last_command_scd_id
         if not scd_id:
             raise LogsError(
