@@ -1074,7 +1074,7 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.get("max")
 
 
-def test_streaming_stats_full(ray_start_regular_shared, restore_dataset_context):
+def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
