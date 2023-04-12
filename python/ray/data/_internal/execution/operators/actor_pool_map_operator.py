@@ -457,7 +457,7 @@ class _ActorPool:
     actors when the operator is done submitting work to the pool.
     """
 
-    def __init__(self, max_tasks_in_flight: int = float("inf")):
+    def __init__(self, max_tasks_in_flight: int = 4):
         self._max_tasks_in_flight = max_tasks_in_flight
         # Number of tasks in flight per actor.
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
@@ -587,6 +587,8 @@ class _ActorPool:
 
     def num_free_slots(self) -> int:
         """Return the number of free slots for task execution."""
+        if not self._num_tasks_in_flight:
+            return 0
         return sum(
             max(0, self._max_tasks_in_flight - num_tasks_in_flight)
             for num_tasks_in_flight in self._num_tasks_in_flight.values()
