@@ -48,13 +48,13 @@ from ray.data._internal.planner.flat_map import generate_flat_map_fn
 from ray.data._internal.planner.map_batches import generate_map_batches_fn
 from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
-from ray.data.dataset_iterator import DatasetIterator
+from ray.data.dataset_iterator import DataIterator
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.dataset_iterator.dataset_iterator_impl import (
-    DatasetIteratorImpl,
+    DataIteratorImpl,
 )
 from ray.data._internal.dataset_iterator.stream_split_dataset_iterator import (
-    StreamSplitDatasetIterator,
+    StreamSplitDataIterator,
 )
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -103,7 +103,7 @@ from ray.data.block import (
     _validate_key_fn,
 )
 from ray.data.context import (
-    DatasetContext,
+    DataContext,
     WARN_PREFIX,
     OK_PREFIX,
     ESTIMATED_SAFE_MEMORY_FRACTION,
@@ -150,7 +150,7 @@ if TYPE_CHECKING:
     import torch.utils.data
 
     from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedDataset
+    from ray.data.grouped_dataset import GroupedData
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
     from tensorflow_metadata.proto.v0 import schema_pb2
@@ -1137,8 +1137,8 @@ class Datastream(Generic[T]):
         *,
         equal: bool = False,
         locality_hints: Optional[List["NodeIdStr"]] = None,
-    ) -> List[DatasetIterator]:
-        """Returns ``n`` :class:`DatasetIterators <ray.data.DatasetIterator>` that can
+    ) -> List[DataIterator]:
+        """Returns ``n`` :class:`DataIterators <ray.data.DataIterator>` that can
         be used to read disjoint subsets of the datastream in parallel.
 
         This method is the recommended way to consume Datastreams from multiple
@@ -1197,7 +1197,7 @@ class Datastream(Generic[T]):
             The output iterator splits. These iterators are Ray-serializable and can
             be freely passed to any Ray task or actor.
         """
-        return StreamSplitDatasetIterator.create(self, n, equal, locality_hints)
+        return StreamSplitDataIterator.create(self, n, equal, locality_hints)
 
     @ConsumptionAPI
     def split(
@@ -1684,7 +1684,7 @@ class Datastream(Generic[T]):
             self._lazy,
         )
 
-    def groupby(self, key: Optional[KeyFn]) -> "GroupedDataset[T]":
+    def groupby(self, key: Optional[KeyFn]) -> "GroupedData[T]":
         """Group the datastream by the key function or column name.
 
         Examples:
@@ -1707,16 +1707,16 @@ class Datastream(Generic[T]):
                 grouping is global.
 
         Returns:
-            A lazy GroupedDataset that can be aggregated later.
+            A lazy GroupedData that can be aggregated later.
         """
-        from ray.data.grouped_dataset import GroupedDataset
+        from ray.data.grouped_dataset import GroupedData
 
         # Always allow None since groupby interprets that as grouping all
         # records into a single global group.
         if key is not None:
             _validate_key_fn(self, key)
 
-        return GroupedDataset(self, key)
+        return GroupedData(self, key)
 
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> U:
@@ -2224,6 +2224,48 @@ class Datastream(Generic[T]):
             self._epoch,
             self._lazy,
         )
+
+    @ConsumptionAPI(pattern="Time complexity:")
+    def take_batch(
+        self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
+    ) -> DataBatch:
+        """Return up to ``batch_size`` records from the datastream in a batch.
+
+        Unlike take(), the records are returned in the same format as used for
+        `iter_batches` and `map_batches`.
+
+        This will move up to ``batch_size`` records to the caller's machine; if
+        ``batch_size`` is very large, this can result in an OutOfMemory crash on
+        the caller.
+
+        Time complexity: O(batch_size specified)
+
+        Args:
+            batch_size: The max number of records to return.
+            batch_format: Specify ``"default"`` to use the default block format
+                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
+                ``"numpy"`` to select ``numpy.ndarray`` for tensor datastreams and
+                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None
+                to return the underlying block exactly as is with no additional
+                formatting. The default is "default".
+
+        Returns:
+            A batch of up to ``batch_size`` records from the datastream.
+
+        Raises:
+            ValueError if the datastream is empty.
+        """
+        try:
+            res = next(
+                self.iter_batches(
+                    batch_size=batch_size, prefetch_batches=0, batch_format=batch_format
+                )
+            )
+        except StopIteration:
+            raise ValueError("The datastream is empty.")
+        self._synchronize_progress_bar()
+        return res
 
     @ConsumptionAPI(pattern="Time complexity:")
     def take(self, limit: int = 20) -> List[T]:
@@ -2898,7 +2940,7 @@ class Datastream(Generic[T]):
             try:
                 self._write_ds = Datastream(
                     plan, self._epoch, self._lazy, logical_plan
-                ).cache()
+                ).materialize()
                 blocks = ray.get(self._write_ds._plan.execute().get_blocks())
                 assert all(
                     isinstance(block, list) and len(block) == 1 for block in blocks
@@ -2915,7 +2957,7 @@ class Datastream(Generic[T]):
                 "Datasource.write() instead."
             )
 
-            ctx = DatasetContext.get_current()
+            ctx = DataContext.get_current()
             blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
             # Prepare write in a remote task so that in Ray client mode, we
             # don't do metadata resolution from the client machine.
@@ -2943,11 +2985,11 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI(
         delegate=(
-            "Calling any of the consumption methods on the returned ``DatasetIterator``"
+            "Calling any of the consumption methods on the returned ``DataIterator``"
         )
     )
-    def iterator(self) -> DatasetIterator:
-        """Return a :class:`~ray.data.DatasetIterator` that
+    def iterator(self) -> DataIterator:
+        """Return a :class:`~ray.data.DataIterator` that
         can be used to repeatedly iterate over the datastream.
 
         Examples:
@@ -2958,10 +3000,10 @@ class Datastream(Generic[T]):
             ...     print(batch) # doctest: +SKIP
 
         .. note::
-            It is recommended to use ``DatasetIterator`` methods over directly
+            It is recommended to use ``DataIterator`` methods over directly
             calling methods such as ``iter_batches()``.
         """
-        return DatasetIteratorImpl(self)
+        return DataIteratorImpl(self)
 
     @ConsumptionAPI
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
@@ -3801,7 +3843,7 @@ class Datastream(Generic[T]):
         from ray.data._internal.plan import _rewrite_read_stage
         from ray.data.dataset_pipeline import DatasetPipeline
 
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
             blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
@@ -3923,7 +3965,7 @@ class Datastream(Generic[T]):
         if blocks_per_window is None:
             blocks_per_window = 10
 
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
             blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
@@ -4053,39 +4095,38 @@ class Datastream(Generic[T]):
             )
         return pipe
 
-    @Deprecated(message="Use `Datastream.cache()` instead.")
+    @Deprecated(message="Use `Datastream.materialize()` instead.")
     def fully_executed(self) -> "MaterializedDatastream[T]":
         logger.warning(
-            "The 'fully_executed' call has been renamed to 'cache'.",
+            "Deprecation warning: use Datastream.materialize() instead of "
+            "fully_executed()."
         )
-        return self.cache()
+        self._plan.execute(force_read=True)
+        return self
 
-    @Deprecated(message="Use `Datastream.is_cached()` instead.")
+    @Deprecated(
+        message="Check `isinstance(Datastream, MaterializedDatastream)` instead."
+    )
     def is_fully_executed(self) -> bool:
         logger.warning(
-            "The 'is_fully_executed' call has been renamed to 'is_cached'.",
+            "Deprecation warning: Check "
+            "`isinstance(Datastream, MaterializedDatastream)` "
+            "instead of using is_fully_executed()."
         )
-        return self.is_cached()
-
-    def is_cached(self) -> bool:
-        """Returns whether this datastream has been cached in memory.
-
-        This will return False if the output of its final stage hasn't been computed
-        yet.
-        """
         return self._plan.has_computed_output()
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
-    def cache(self) -> "MaterializedDatastream[T]":
-        """Evaluate and cache the blocks of this datastream in object store memory.
+    def materialize(self) -> "MaterializedDatastream[T]":
+        """Execute and materialize this datastream into object store memory.
 
-        This can be used to read all blocks into memory. By default, Datastreams
+        This can be used to read all blocks into memory. By default, Datastream
         doesn't read blocks from the datasource until the first transform.
 
-        This is a no-op if the Datastream is already cached as a MaterializedDatastream.
+        Note that this does not mutate the original Datastream. Only the blocks of the
+        returned MaterializedDatastream class are pinned in memory.
 
         Returns:
-            A Datastream with all blocks fully materialized in memory.
+            A MaterializedDatastream holding the materialized data blocks.
         """
         copy = Datastream.copy(self, _deep_copy=True, _as=MaterializedDatastream)
         copy._plan.execute(force_read=True)
@@ -4134,7 +4175,7 @@ class Datastream(Generic[T]):
         The returned datastream is a lazy datastream, where all subsequent operations
         on the stream won't be executed until the datastream is consumed
         (e.g. ``.take()``, ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.)
-        or execution is manually triggered via ``.cache()``.
+        or execution is manually triggered via ``.materialize()``.
         """
         ds = Datastream(
             self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
@@ -4345,12 +4386,12 @@ class Datastream(Generic[T]):
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
         """
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         if context.use_streaming_executor:
             raise DeprecationWarning(
                 "`dataset_format` is deprecated for streaming execution. To use "
                 "`dataset_format`, you must explicitly enable bulk execution by "
-                "setting `use_streaming_executor` to False in the `DatasetContext`"
+                "setting `use_streaming_executor` to False in the `DataContext`"
             )
 
         # We need schema to properly validate, so synchronously
@@ -4451,8 +4492,8 @@ class Datastream(Generic[T]):
             "num_blocks": self._plan.initial_num_blocks(),
             "num_rows": self._meta_count(),
         }
-
-        schema = self.schema()
+        # Show metadata if available, but don't trigger execution.
+        schema = self.schema(fetch_if_missing=False)
         if schema is None:
             schema_repr = Template("rendered_html_common.html.j2").render(
                 content="<h5>Unknown schema</h5>"
@@ -4589,7 +4630,7 @@ Dataset = Datastream
 
 @PublicAPI
 class MaterializedDatastream(Datastream, Generic[T]):
-    """A Datastream that has been materialized into Ray memory, e.g., via `.cache()`.
+    """A Datastream materialized in Ray memory, e.g., via `.materialize()`.
 
     The blocks of a MaterializedDatastream object are materialized into Ray object store
     memory, which means that this class can be shared or iterated over by multiple Ray
@@ -4649,12 +4690,12 @@ def _sliding_window(iterable: Iterable, n: int):
 
 def _do_write(
     ds: Datasource,
-    ctx: DatasetContext,
+    ctx: DataContext,
     blocks: List[Block],
     meta: List[BlockMetadata],
     ray_remote_args: Dict[str, Any],
     write_args: Dict[str, Any],
 ) -> List[ObjectRef[WriteResult]]:
     write_args = _unwrap_arrow_serialization_workaround(write_args)
-    DatasetContext._set_current(ctx)
+    DataContext._set_current(ctx)
     return ds.do_write(blocks, meta, ray_remote_args=ray_remote_args, **write_args)

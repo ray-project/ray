@@ -20,7 +20,7 @@ from ray.air import session
 from ray.air.constants import MODEL_KEY
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from torch.utils.data import IterableDataset, DataLoader
-from ray.data.dataset import DatasetIterator
+from ray.data.dataset import DataIterator
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ class RayEnvironment(LightningEnvironment):
 
 
 class RayIterableDataset(IterableDataset):
-    def __init__(self, dataset: "DatasetIterator", config: Dict[str, Any]) -> None:
+    def __init__(self, dataset: "DataIterator", config: Dict[str, Any]) -> None:
         super().__init__()
         self.dataset = dataset
         self.config = config
@@ -98,8 +98,8 @@ class RayDataModule(pl.LightningDataModule):
     def __init__(
         self,
         dataset_iter_config: Dict[str, Any],
-        train_dataset: "DatasetIterator",
-        val_dataset: Optional["DatasetIterator"] = None,
+        train_dataset: "DataIterator",
+        val_dataset: Optional["DataIterator"] = None,
     ) -> None:
         super().__init__()
 

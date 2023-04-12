@@ -17,7 +17,7 @@ from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.pandas_block import PandasRow
 from ray.data.block import BlockAccessor, BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDatastream, _sliding_window
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
@@ -164,7 +164,7 @@ def test_empty_dataset(ray_start_regular_shared):
 
     ds = ray.data.range(1)
     ds = ds.filter(lambda x: x > 1)
-    ds = ds.cache()
+    ds = ds.materialize()
     assert (
         str(ds)
         == "MaterializedDatastream(num_blocks=1, num_rows=0, schema=Unknown schema)"
@@ -173,13 +173,13 @@ def test_empty_dataset(ray_start_regular_shared):
     # Test map on empty dataset.
     ds = ray.data.from_items([])
     ds = ds.map(lambda x: x)
-    ds = ds.cache()
+    ds = ds.materialize()
     assert ds.count() == 0
 
     # Test filter on empty dataset.
     ds = ray.data.from_items([])
     ds = ds.filter(lambda: True)
-    ds = ds.cache()
+    ds = ds.materialize()
     assert ds.count() == 0
 
 
@@ -202,12 +202,12 @@ def test_cache_dataset(ray_start_regular_shared):
 
     ds = ray.data.range(1)
     ds = ds.map(inc)
-    assert not ds.is_cached()
+    assert not ds.is_fully_executed()
     assert not isinstance(ds, MaterializedDatastream)
-    ds2 = ds.cache()
-    assert ds2.is_cached()
+    ds2 = ds.materialize()
+    assert ds2.is_fully_executed()
     assert isinstance(ds2, MaterializedDatastream)
-    assert not ds.is_cached()
+    assert not ds.is_fully_executed()
 
     for _ in range(10):
         ds2.take_all()
@@ -219,9 +219,9 @@ def test_schema(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
     ds2 = ray.data.range_table(10, parallelism=10)
     ds3 = ds2.repartition(5)
-    ds3 = ds3.cache()
+    ds3 = ds3.materialize()
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
-    ds4 = ds4.cache()
+    ds4 = ds4.materialize()
     assert str(ds) == "Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     assert str(ds2) == "Datastream(num_blocks=10, num_rows=10, schema={value: int64})"
     assert (
@@ -259,7 +259,7 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
 
     def check_num_computed(expected):
-        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+        if ray.data.context.DataContext.get_current().use_streaming_executor:
             # In streaing executor, ds.take() will not invoke partial execution
             # in LazyBlocklist.
             assert ds._plan.execute()._num_computed() == 0
@@ -300,7 +300,7 @@ def test_dataset_repr(ray_start_regular_shared):
         "   +- MapBatches(<lambda>)\n"
         "      +- Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     )
-    ds = ds.cache()
+    ds = ds.materialize()
     assert (
         repr(ds)
         == "MaterializedDatastream(num_blocks=10, num_rows=9, schema=<class 'int'>)"
@@ -341,7 +341,7 @@ def test_dataset_repr(ray_start_regular_shared):
 def test_limit(ray_start_regular_shared, lazy):
     ds = ray.data.range(100, parallelism=20)
     if not lazy:
-        ds = ds.cache()
+        ds = ds.materialize()
     for i in range(100):
         assert ds.limit(i).take(200) == list(range(i))
 
@@ -470,6 +470,23 @@ def test_from_items_parallelism_truncated(ray_start_regular_shared):
     out = ds.take_all()
     assert out == records
     assert ds.num_blocks() == n
+
+
+def test_take_batch(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=2)
+    assert ds.take_batch(3) == [0, 1, 2]
+    assert ds.take_batch(6) == [0, 1, 2, 3, 4, 5]
+    assert ds.take_batch(100) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    assert isinstance(ds.take_batch(3, batch_format="pandas"), pd.DataFrame)
+    assert isinstance(ds.take_batch(3, batch_format="numpy"), np.ndarray)
+
+    ds = ray.data.range_tensor(10, parallelism=2)
+    assert np.all(ds.take_batch(3) == np.array([[0], [1], [2]]))
+    assert isinstance(ds.take_batch(3, batch_format="pandas"), pd.DataFrame)
+    assert isinstance(ds.take_batch(3, batch_format="numpy"), np.ndarray)
+
+    with pytest.raises(ValueError):
+        ray.data.range(0).take_batch()
 
 
 def test_take_all(ray_start_regular_shared):
@@ -692,7 +709,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert batch.equals(df)
 
     # Prefetch with ray.wait.
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     old_config = context.actor_prefetcher_enabled
     try:
         context.actor_prefetcher_enabled = False
@@ -1013,7 +1030,7 @@ def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
     for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
-        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+        if ray.data.context.DataContext.get_current().use_streaming_executor:
             # In streaming execution of ds.iter_batches(), there is no partial
             # execution so _num_computed() in LazyBlocklist is 0.
             assert ds._plan.execute()._num_computed() == 0
@@ -1426,15 +1443,15 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
     # Read/write from Ray Client will result in error.
     ray.init(address)
     with pytest.raises(ValueError):
-        ds = ray.data.read_parquet("local://" + path).cache()
+        ds = ray.data.read_parquet("local://" + path).materialize()
     ds = ray.data.from_pandas(df)
     with pytest.raises(ValueError):
-        ds.write_parquet("local://" + data_path).cache()
+        ds.write_parquet("local://" + data_path).materialize()
 
 
 def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplog):
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
-        ray.data.range(5000, parallelism=5000).cache()
+        ray.data.range(5000, parallelism=5000).materialize()
     assert (
         "The requested parallelism of 5000 is "
         "more than 4x the number of available CPU slots in the cluster" in caplog.text
@@ -1465,7 +1482,7 @@ def test_read_write_local_node(ray_start_cluster):
         path = os.path.join(data_path, f"test{idx}.parquet")
         df.to_parquet(path)
 
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.read_write_local_node = True
 
     def check_dataset_is_local(ds):
@@ -1480,17 +1497,17 @@ def test_read_write_local_node(ray_start_cluster):
 
     local_path = "local://" + data_path
     # Plain read.
-    ds = ray.data.read_parquet(local_path).cache()
+    ds = ray.data.read_parquet(local_path).materialize()
     check_dataset_is_local(ds)
 
     # SPREAD scheduling got overridden when read local scheme.
     ds = ray.data.read_parquet(
         local_path, ray_remote_args={"scheduling_strategy": "SPREAD"}
-    ).cache()
+    ).materialize()
     check_dataset_is_local(ds)
 
     # With fusion.
-    ds = ray.data.read_parquet(local_path).map(lambda x: x).cache()
+    ds = ray.data.read_parquet(local_path).map(lambda x: x).materialize()
     check_dataset_is_local(ds)
 
     # Write back to local scheme.
@@ -1503,15 +1520,15 @@ def test_read_write_local_node(ray_start_cluster):
     with pytest.raises(ValueError):
         ds = ray.data.read_parquet(
             [local_path + "/test1.parquet", data_path + "/test2.parquet"]
-        ).cache()
+        ).materialize()
     with pytest.raises(ValueError):
         ds = ray.data.read_parquet(
             [local_path + "/test1.parquet", "example://iris.parquet"]
-        ).cache()
+        ).materialize()
     with pytest.raises(ValueError):
         ds = ray.data.read_parquet(
             ["example://iris.parquet", local_path + "/test1.parquet"]
-        ).cache()
+        ).materialize()
 
 
 @ray.remote
@@ -1584,7 +1601,7 @@ def test_datasource(ray_start_regular):
 def test_polars_lazy_import(shutdown_only):
     import sys
 
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
 
     try:
         original_use_polars = ctx.use_polars
@@ -1617,7 +1634,7 @@ def test_polars_lazy_import(shutdown_only):
             ray.data.from_pandas(dfs)
             .map_batches(lambda t: t, batch_format="pyarrow", batch_size=None)
             .sort(key="a")
-            .cache()
+            .materialize()
         )
         assert any(ray.get([f.remote(True) for _ in range(parallelism)]))
 
@@ -1730,7 +1747,7 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
             ds = ds.map_batches(lambda x: x)
             ds.take()
         except Exception as e:
-            if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+            if ray.data.context.DataContext.get_current().use_streaming_executor:
                 assert isinstance(e, ValueError)
                 assert "exceeds the execution limits ExecutionResources(cpu=0.0" in str(
                     e
