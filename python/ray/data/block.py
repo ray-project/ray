@@ -40,7 +40,6 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-    from ray.data import Datastream
     from ray.data._internal.block_builder import BlockBuilder
     from ray.data.aggregate import AggregateFn
 

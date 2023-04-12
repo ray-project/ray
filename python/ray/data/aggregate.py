@@ -21,7 +21,6 @@ from ray.data._internal.null_aggregate import (
 )
 
 if TYPE_CHECKING:
-    from ray.data import Datastream
     import pyarrow as pa
 
 
