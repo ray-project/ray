@@ -227,6 +227,7 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 1.3"
     numpy_dep = "numpy >= 1.20"
+    ipywidgets_dep = "ipywidgets>=8"
     if sys.platform != "win32":
         pyarrow_dep = "pyarrow >= 6.0.1"
     else:
@@ -238,6 +239,7 @@ if setup_spec.type == SetupType.RAY:
             pandas_dep,
             pyarrow_dep,
             "fsspec",
+            ipywidgets_dep,
         ],
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
@@ -255,7 +257,13 @@ if setup_spec.type == SetupType.RAY:
             "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
-        "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
+        "tune": [
+            "pandas",
+            "tensorboardX>=1.9",
+            "requests",
+            ipywidgets_dep,
+            pyarrow_dep,
+        ],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
             "opentelemetry-api",

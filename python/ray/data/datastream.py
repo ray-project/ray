@@ -22,6 +22,8 @@ from typing import (
 from uuid import uuid4
 
 import numpy as np
+import ipywidgets
+import tabulate
 
 import ray
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
@@ -133,7 +135,9 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI, Deprecated
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
-from ray.widgets.util import ensure_notebook_deps, fallback_if_colab
+from ray.widgets.util import (
+    repr_fallback_if_colab,
+)
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -4221,28 +4225,35 @@ class Datastream:
         else:
             return result
 
-    @ensure_notebook_deps(
-        ["ipywidgets", "8"],
-    )
-    @fallback_if_colab
-    def _ipython_display_(self):
-        from ipywidgets import HTML, VBox, Layout
-        from IPython.display import display
+    @repr_fallback_if_colab
+    def _repr_mimebundle_(self, **kwargs):
+        """Return a mimebundle with an ipywidget repr and a simple text repr.
 
-        title = HTML(f"<h2>{self.__class__.__name__}</h2>")
+        Depending on the frontend where the data is being displayed,
+        different mimetypes will be used from this bundle.
+        See https://ipython.readthedocs.io/en/stable/config/integrating.html
+        for information about this method, and
+        https://ipywidgets.readthedocs.io/en/latest/embedding.html
+        for more information about the jupyter widget mimetype.
+
+        Returns:
+            A mimebundle containing an ipywidget repr and a simple text repr.
+        """
+        title = ipywidgets.HTML(f"<h2>{self.__class__.__name__}</h2>")
         tab = self._tab_repr_()
+        widget = ipywidgets.VBox([title, tab], layout=ipywidgets.Layout(width="100%"))
 
-        if tab:
-            display(VBox([title, tab], layout=Layout(width="100%")))
+        # Get the widget mime bundle, but replace the plaintext with repr
+        # with the Datastream repr
+        bundle = widget._repr_mimebundle_(**kwargs)
+        bundle.update(
+            {
+                "text/plain": repr(self),
+            }
+        )
+        return bundle
 
-    @ensure_notebook_deps(
-        ["tabulate", None],
-        ["ipywidgets", "8"],
-    )
     def _tab_repr_(self):
-        from ray._private.thirdparty.tabulate.tabulate import tabulate
-        from ipywidgets import Tab, HTML
-
         metadata = {
             "num_blocks": self._plan.initial_num_blocks(),
             "num_rows": self._meta_count(),
@@ -4263,7 +4274,7 @@ class Datastream:
                 schema_data[sname] = getattr(stype, "__name__", str(stype))
 
             schema_repr = Template("scrollableTable.html.j2").render(
-                table=tabulate(
+                table=tabulate.tabulate(
                     tabular_data=schema_data.items(),
                     tablefmt="html",
                     showindex=False,
@@ -4274,9 +4285,9 @@ class Datastream:
 
         children = []
         children.append(
-            HTML(
+            ipywidgets.HTML(
                 Template("scrollableTable.html.j2").render(
-                    table=tabulate(
+                    table=tabulate.tabulate(
                         tabular_data=metadata.items(),
                         tablefmt="html",
                         showindex=False,
@@ -4286,8 +4297,8 @@ class Datastream:
                 )
             )
         )
-        children.append(HTML(schema_repr))
-        return Tab(children, titles=["Metadata", "Schema"])
+        children.append(ipywidgets.HTML(schema_repr))
+        return ipywidgets.Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
         return self._plan.get_plan_as_string(self.__class__.__name__)
