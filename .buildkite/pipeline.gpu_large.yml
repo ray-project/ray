@@ -61,5 +61,5 @@
     - pip uninstall -y pytorch-lightning
     - pip install lightning==2.0.0
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=ptl_v2
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=ptl_v2,gpu
       python/ray/train/...
