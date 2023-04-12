@@ -22,7 +22,7 @@ class CommunicationRegistry(object):
     async def send(
         self, obj_refs: List[ObjectRef], from_rank: int, to_rank: int
     ) -> None:
-        logger.info(f"send {obj_refs} from {from_rank} to {to_rank}")
+        logger.debug(f"send {obj_refs} from {from_rank} to {to_rank}")
         self._get_queue(from_rank, to_rank).extend(obj_refs)
 
     async def recv(self, from_rank: int, to_rank: int) -> List[ObjectRef]:
@@ -52,6 +52,7 @@ class NaiveCommunicator(Communicator):
         super().__init__(world_size, rank)
 
     def send(self, tensor: torch.Tensor, dest_rank: int, async_op: bool = False):
+        assert tensor is not None
         obj_ref = ray.put(tensor)
         send_ref = self._communication_registry.send.remote(
             [obj_ref], self.rank, dest_rank
@@ -66,7 +67,6 @@ class NaiveCommunicator(Communicator):
         receive_ref = self._communication_registry.recv.remote(src_rank, self.rank)
         # TODO: can we really do async_op?
         received_tensor = ray.get(ray.get(receive_ref)[0])
-        print(f"received_tensor: {received_tensor}")
         tensor.copy_(received_tensor)
         return FULLFILLED_FUTURE
 

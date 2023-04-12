@@ -61,9 +61,11 @@ class Actor:
 
 
 class Model(nn.Module):
-    def __init__(self, dim0=2, dim1=3):
+    def __init__(self, dim0=2, dim1=3, loss_fn=None):
         super().__init__()
         self.linear = nn.Linear(dim0, dim1)
+        if loss_fn:
+            self.loss_fn = loss_fn
 
     def forward(self, x):
         return self.linear(x)

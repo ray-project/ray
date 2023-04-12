@@ -30,6 +30,7 @@ def test_engine(ray_start_4_cpus_2_gpus):
         ),
         model_builder=lambda: Model(),
         data_loader_builder=lambda: None,
+        optimizer_builder=lambda _: None,
     )
 
     input_actor = Actor.remote(3, 0, NaiveCommunicator)

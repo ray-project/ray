@@ -88,7 +88,8 @@ class ExecutionEngine:
         self.model = config.model_builder().to(self.device)
         if not self.is_training:
             self.model.eval()
-        self.data_loader = config.data_loader_builder()
+        data_loader = config.data_loader_builder()
+        self.data_loader = iter(data_loader) if data_loader else None
         self.optimizer = config.optimizer_builder(self.model)
 
     def get_address(self):
@@ -108,6 +109,10 @@ class ExecutionEngine:
             self.stop = True
         self.thread.join()
 
+    def wait_until_stopped(self):
+        """Stop the engine if it's running."""
+        self.thread.join()
+
     def check_state(self):
         """Check the state of the engine."""
         pass
@@ -117,15 +122,15 @@ class ExecutionEngine:
         pass
 
     def _execute(self):
-        with self.execution_lock:
-            if self.stop:
-                return
         for instructions in self.schedule.steps():
+            with self.execution_lock:
+                if self.stop:
+                    return
             for instruction in instructions:
                 self._execute_step(instruction)
 
     def _execute_step(self, instruction: Instruction):
-        logger.info(f"Executing instruction {instruction}")
+        logger.debug(f"Executing instruction {instruction}")
         if isinstance(instruction, SendActivation):
             self._execute_send_activation(instruction)
         elif isinstance(instruction, ReceiveActivation):
@@ -162,7 +167,7 @@ class ExecutionEngine:
             future = self.dist.recv(tensor, instruction.src_rank, async_op=True)
             self.input_queue.append((tensor, future))
 
-    def _execute_forward(self, instruction: Instruction):
+    def _execute_forward(self, instruction: Forward):
         for _ in range(instruction.count):
             tensor, future = self.input_queue.popleft()
             future.wait()
@@ -170,12 +175,17 @@ class ExecutionEngine:
 
             # Optionally compute loss on the last device
             if self.is_last_trainig_stage:
-                if self.model.loss_fn is not None:
-                    labels = self.label_queue().popleft()
-                    output = self.model.loss_fn(output, labels)
+                if hasattr(self.model, "loss_fn"):
+                    label, future = self.label_queue.popleft()
+                    future.wait()
+                    logger.debug(
+                        f"step:{self.forward_counter} label: {label}, output: {output}"
+                    )
+                    output = self.model.loss_fn(output, label)
                 else:
                     # Some models just return loss from forward()
                     pass
+                print(f"step: {self.forward_counter}, loss: {output}")
 
             if self.is_training:
                 if self.forward_counter == 0:
@@ -188,16 +198,22 @@ class ExecutionEngine:
             if not self.is_last_trainig_stage:
                 self.output_queue.append(output)
 
-    def _execute_load_batch(self, instruction: Instruction):
+    def _execute_load_batch(self, instruction: LoadBatch):
         for _ in range(instruction.count):
             if instruction.is_label:
-                _, label = next(iter(self.data_loader))
+                _, label = next(self.data_loader)
+                logger.debug(
+                    f"loading label, step: {self.forward_counter}, label: {label}"
+                )
                 self.label_queue.append((label.to(self.device), FULLFILLED_FUTURE))
             else:
-                batch, _ = next(iter(self.data_loader))
+                batch, _ = next(self.data_loader)
+                logger.debug(
+                    f"loading value, step: {self.forward_counter}, value: {batch}"
+                )
                 self.input_queue.append((batch.to(self.device), FULLFILLED_FUTURE))
 
-    def _execute_print_output(self, instruction: Instruction):
+    def _execute_print_output(self, instruction: PrintOutput):
         for _ in range(instruction.count):
             logger.info(self.output_queue.popleft())
 
@@ -231,6 +247,8 @@ class ExecutionEngine:
     def _execute_backward(self, instruction: Backward):
         for _ in range(instruction.count):
             input, output = self.forward_cache.pop(self.backward_counter)
+            input.requires_grad_()
+            input.retain_grad()
 
             # last stage the output is loss.
             if self.is_last_trainig_stage:
@@ -240,15 +258,15 @@ class ExecutionEngine:
                 future.wait()
                 torch.autograd.backward(tensors=output, grad_tensors=tensor)
 
+            tmp = []
             # accumulate the gradients into self.accumulated_parameters_gards
             for i, parameter in enumerate(self.model.parameters()):
-                tmp = []
                 if self.accumulated_parameters_gards:
                     self.accumulated_parameters_gards[i] += parameter.grad
                 else:
                     tmp.append(parameter.grad)
-                if tmp:
-                    self.accumulated_parameters_gards = tmp
+            if tmp:
+                self.accumulated_parameters_gards = tmp
 
             self.output_gradient.append(input.grad)
             # TODO: do we need to do something for optimize?
