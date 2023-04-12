@@ -8,7 +8,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.datasource.datasource import Reader, ReadTask
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.file_meta_provider import (
@@ -306,7 +306,7 @@ class _ParquetDatasourceReader(Reader):
 
         To avoid OOMs, it is safer to return an over-estimate than an underestimate.
         """
-        if not DatasetContext.get_current().decoding_size_estimation:
+        if not DataContext.get_current().decoding_size_estimation:
             return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
 
         # Sample a few rows from Parquet files to estimate the encoding ratio.
@@ -371,7 +371,7 @@ def _read_pieces(
     import pyarrow as pa
     from pyarrow.dataset import _get_partition_keys
 
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     output_buffer = BlockOutputBuffer(
         block_udf=block_udf,
         target_max_block_size=ctx.target_max_block_size,

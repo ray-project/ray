@@ -13,8 +13,8 @@ import zipfile
 import ray
 
 import pytest
+
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.gcs_utils import GcsClient
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
@@ -228,7 +228,7 @@ class TestUploadPackageIfNeeded:
 
 
 class TestStorePackageInGcs:
-    class DisconnectedClient(GcsClient):
+    class DisconnectedClient:
         """Mock GcsClient that fails cannot put in the GCS."""
 
         def __init__(self, *args, **kwargs):
