@@ -81,8 +81,7 @@ def _get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
         f"git rev-list --ancestry-path {passing_commit}..{failing_commit}",
         shell=True,
     )
-    return commit_lists.decode("utf-8").split("\n")
-
+    return commit_lists.decode('utf-8').strip().split("\n")
 
 if __name__ == "__main__":
     main()
