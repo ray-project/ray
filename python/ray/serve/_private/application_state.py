@@ -50,6 +50,7 @@ class ApplicationState:
             self.status: ApplicationStatus = ApplicationStatus.DEPLOYING
         else:
             self.status: ApplicationStatus = ApplicationStatus.NOT_STARTED
+        self.status: ApplicationStatus = ApplicationStatus.NOT_STARTED
         self.name = name
         self.deployment_params: List[Dict] = []
         self.ready_to_be_deleted = False

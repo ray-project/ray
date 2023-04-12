@@ -17,7 +17,6 @@ from ray.serve._private.common import (
     DeploymentInfo,
 )
 
-
 @pytest.fixture
 def mock_application_state_manager() -> ApplicationStateManager:
     class MockDeploymentStateManager:
@@ -46,7 +45,7 @@ def mock_application_state_manager() -> ApplicationStateManager:
 
         def set_deployment_healthy(self, name: str):
             self._deployment_states[name].status = DeploymentStatus.HEALTHY
-
+            
         def set_deployment_deleted(self, name: str):
             del self._deployment_states[name]
 
@@ -175,20 +174,22 @@ def test_config_deploy_app(mock_application_state_manager, fail_deploy):
     def task():
         ray.get(signal.wait.remote())
         if fail_deploy:
-            raise Exception("Intentionally failed task.")
+            raise Exception("Intentionally failed build task.")
+        else:
+            return [deployment_params("a"), deployment_params("b")]
 
-    deploy_app_obj_ref = task.remote()
+    build_app_obj_ref = task.remote()
 
-    # Create application state
-    app_state_manager.create_application_state("test_app", deploy_app_obj_ref)
-    assert app_state_manager.get_app_status("test_app") == ApplicationStatus.DEPLOYING
-    # Before object ref is read
+    # Create application state - status should be NOT_STARTED
+    app_state_manager.create_application_state("test_app", build_app_obj_ref)
+    assert app_state_manager.get_app_status("test_app") == ApplicationStatus.NOT_STARTED
+    # Before object ref is read, status should still be NOT_STARTED
     app_state_manager.update()
-    assert app_state_manager.get_app_status("test_app") == ApplicationStatus.DEPLOYING
+    assert app_state_manager.get_app_status("test_app") == ApplicationStatus.NOT_STARTED
 
     signal.send.remote()
     # Wait for task to return
-    wait_for_condition(lambda: len(ray.wait([deploy_app_obj_ref], timeout=0)[0]))
+    wait_for_condition(lambda: len(ray.wait([build_app_obj_ref], timeout=0)[0]))
     if fail_deploy:
         app_state_manager.update()
         assert (
@@ -196,9 +197,6 @@ def test_config_deploy_app(mock_application_state_manager, fail_deploy):
             == ApplicationStatus.DEPLOY_FAILED
         )
     else:
-        app_state_manager.deploy_application(
-            "test_app", [deployment_params("a"), deployment_params("b")]
-        )
         app_state_manager.update()
         deployment_state_manager.set_deployment_healthy("a")
         deployment_state_manager.set_deployment_healthy("b")
