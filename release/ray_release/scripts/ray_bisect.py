@@ -32,6 +32,10 @@ def _bisect(test_name: str, commit_list: List[str]) -> str:
             f"{commit_list[0]} to {commit_list[-1]}"
         )
         middle_commit_idx = len(commit_list) // 2
+        logger.info(
+            f'Bisecting between {len(lists)} commits: '
+            f'{passing_commit} to {failing_commit}'
+        )
         middle_commit = commit_list[middle_commit_idx]
         is_passing = _run_test(test, middle_commit)
         if is_passing:
