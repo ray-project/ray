@@ -233,7 +233,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         timeout=10,
     )
     logs_manager.list_logs.assert_awaited_with(
-        node_id.hex(), 10, glob_filter=f"*{worker_id.hex()}*"
+        node_id.hex(), 10, glob_filter=f"*{worker_id.hex()}*out"
     )
     assert log_file_name == f"worker-{worker_id.hex()}-123-123.out"
     assert n == node_id.hex()
@@ -293,7 +293,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         timeout=10,
     )
     logs_manager.list_logs.assert_awaited_with(
-        node_id.hex(), 10, glob_filter=f"*{pid}*"
+        node_id.hex(), 10, glob_filter=f"*{pid}*out"
     )
     assert log_file_name == f"worker-123-123-{pid}.out"
 
@@ -330,7 +330,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         timeout=10,
     )
     logs_manager.list_logs.assert_awaited_with(
-        node_id.hex(), 10, glob_filter=f"*{pid}*"
+        node_id.hex(), 10, glob_filter=f"*{pid}*out"
     )
     assert log_file_name == f"worker-123-123-{pid}.out"
 
@@ -798,11 +798,7 @@ def test_log_get(ray_start_cluster):
         runner = CliRunner()
         result = runner.invoke(
             logs_state_cli_group,
-            [
-                "actor",
-                "--id",
-                actor_id
-            ],
+            ["actor", "--id", actor_id],
         )
         assert result.exit_code == 0, result.exception
         assert ACTOR_LOG_LINE.format(dest="out") in result.output
