@@ -18,7 +18,9 @@ pong-appo:
         use_kl_loss: False
         rollout_fragment_length: 50
         train_batch_size: 750
-        num_workers: 2 #TODO
+        # On a 32 CPU machine (g3.2xlarge), we use 30 CPUs for the rollout workers
+        # and 2 for the learner workers.
+        num_workers: 30
         broadcast_interval: 1
         max_sample_requests_in_flight_per_worker: 1
         num_multi_gpu_tower_stacks: 1
@@ -27,10 +29,18 @@ pong-appo:
         num_sgd_iter: 2
         vf_loss_coeff: 1.0
         clip_param: 0.3
-        num_gpus: 0 #TODO
+        num_gpus: 0
         grad_clip: 10
 
+        # Run with Learner and RLModule APIs.
         _enable_learner_api: true
         _enable_rl_module_api: true
+        # Use a single Learner worker on the GPU.
         num_learner_workers: 2
+        num_gpus_per_learner_worker: 1
+        # Since we are using learner workers, the driver process does not need
+        # a CPU in particular.
+        num_cpus_for_local_worker: 0
+        # Empty exploration settings as exploration is done via
+        # RLModule.forward_exploration().
         exploration_config: {}
