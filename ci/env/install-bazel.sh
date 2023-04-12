@@ -114,7 +114,7 @@ if [ "${TRAVIS-}" = true ]; then
 fi
 
 if [ "$BUILDKITE" = "true" ]; then
-  cp ${ROOT_DIR}/../../.bazeliskrc ~/.bazeliskrc
+  cp "${ROOT_DIR}"/../../.bazeliskrc ~/.bazeliskrc
 fi
 
 if [ "${GITHUB_ACTIONS-}" = true ]; then
