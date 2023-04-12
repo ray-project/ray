@@ -26,7 +26,7 @@ def test_get_locations_timeout(ray_start_regular):
 
 
 def test_get_locations(ray_start_regular):
-    node_id = ray.runtime_context.get_runtime_context().get()["node_id"]
+    node_id = ray.get_runtime_context().get_node_id()
     sizes = [100, 1000]
     obj_refs = [ray.put(np.zeros(s, dtype=np.uint8)) for s in sizes]
     ray.wait(obj_refs)
@@ -35,17 +35,17 @@ def test_get_locations(ray_start_regular):
     for idx, obj_ref in enumerate(obj_refs):
         location = locations[obj_ref]
         assert location["object_size"] > sizes[idx]
-        assert location["node_ids"] == [node_id.hex()]
+        assert location["node_ids"] == [node_id]
 
 
 def test_get_locations_inlined(ray_start_regular):
-    node_id = ray.runtime_context.get_runtime_context().get()["node_id"]
+    node_id = ray.get_runtime_context().get_node_id()
     obj_refs = [ray.put("123")]
     ray.wait(obj_refs)
     locations = ray.experimental.get_object_locations(obj_refs)
     for idx, obj_ref in enumerate(obj_refs):
         location = locations[obj_ref]
-        assert location["node_ids"] == [node_id.hex()]
+        assert location["node_ids"] == [node_id]
         assert location["object_size"] > 0
 
 
@@ -55,7 +55,7 @@ def test_spilled_locations(ray_start_cluster_enabled):
     ray.init(cluster.address)
     cluster.wait_for_nodes()
 
-    node_id = ray.runtime_context.get_runtime_context().get()["node_id"]
+    node_id = ray.get_runtime_context().get_node_id()
 
     @ray.remote
     def task():
@@ -71,7 +71,7 @@ def test_spilled_locations(ray_start_cluster_enabled):
     locations = ray.experimental.get_object_locations(object_refs)
     for obj_ref in object_refs:
         location = locations[obj_ref]
-        assert location["node_ids"] == [node_id.hex()]
+        assert location["node_ids"] == [node_id]
         assert location["object_size"] > 0
 
 
@@ -87,7 +87,7 @@ def test_get_locations_multi_nodes(ray_start_cluster_enabled):
     cluster.wait_for_nodes()
 
     all_node_ids = list(map(lambda node: node["NodeID"], ray.nodes()))
-    driver_node_id = ray.runtime_context.get_runtime_context().get()["node_id"].hex()
+    driver_node_id = ray.get_runtime_context().get_node_id()
     all_node_ids.remove(driver_node_id)
     worker_node_id = all_node_ids[0]
 

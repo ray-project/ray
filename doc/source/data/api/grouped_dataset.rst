@@ -1,20 +1,19 @@
 .. _grouped-dataset-api:
 
-GroupedDataset API
-==================
+GroupedData API
+===============
 
 .. currentmodule:: ray.data
 
-GroupedDataset objects are returned by groupby call: Dataset.groupby().
+GroupedData objects are returned by groupby call: Dataset.groupby().
 
 Constructor
 -----------
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
-   grouped_dataset.GroupedDataset
+   grouped_dataset.GroupedData
 
 Computations / Descriptive Stats
 --------------------------------
@@ -22,12 +21,12 @@ Computations / Descriptive Stats
 .. autosummary::
    :toctree: doc/
 
-   grouped_dataset.GroupedDataset.count
-   grouped_dataset.GroupedDataset.sum
-   grouped_dataset.GroupedDataset.min
-   grouped_dataset.GroupedDataset.max
-   grouped_dataset.GroupedDataset.mean
-   grouped_dataset.GroupedDataset.std
+   grouped_dataset.GroupedData.count
+   grouped_dataset.GroupedData.sum
+   grouped_dataset.GroupedData.min
+   grouped_dataset.GroupedData.max
+   grouped_dataset.GroupedData.mean
+   grouped_dataset.GroupedData.std
 
 Function Application
 --------------------
@@ -35,8 +34,8 @@ Function Application
 .. autosummary::
    :toctree: doc/
 
-   grouped_dataset.GroupedDataset.aggregate
-   grouped_dataset.GroupedDataset.map_groups
+   grouped_dataset.GroupedData.aggregate
+   grouped_dataset.GroupedData.map_groups
 
 Aggregate Function
 ------------------

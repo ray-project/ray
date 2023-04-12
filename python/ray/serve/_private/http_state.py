@@ -7,7 +7,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 from ray.serve.config import HTTPOptions, DeploymentMode
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
@@ -130,7 +130,8 @@ class HTTPState:
                     "Starting HTTP proxy with name '{}' on node '{}' "
                     "listening on '{}:{}'".format(
                         name, node_id, self._config.host, self._config.port
-                    )
+                    ),
+                    extra={"log_to_stderr": False},
                 )
                 proxy = HTTPProxyActor.options(
                     num_cpus=self._config.num_cpus,

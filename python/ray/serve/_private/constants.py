@@ -134,3 +134,9 @@ MIGRATION_MESSAGE = (
 
 # [EXPERIMENTAL] Disable the http actor
 SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY = "SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY"
+
+# Message
+MULTI_APP_MIGRATION_MESSAGE = (
+    "Please see the documentation for ServeDeploySchema for more details on multi-app "
+    "config files."
+)

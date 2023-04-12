@@ -31,7 +31,7 @@ class ParameterNoise(Exploration):
     """An exploration that changes a Model's parameters.
 
     Implemented based on:
-    [1] https://blog.openai.com/better-exploration-with-parameter-noise/
+    [1] https://openai.com/research/better-exploration-with-parameter-noise
     [2] https://arxiv.org/pdf/1706.01905.pdf
 
     At the beginning of an episode, Gaussian noise is added to all weights

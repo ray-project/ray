@@ -16,6 +16,8 @@ from typing import (
 )
 
 import ray
+from ray.data.block import BlockMetadata
+from ray.data._internal.util import capitalize
 from ray.types import ObjectRef
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data._internal.block_list import BlockList
@@ -33,7 +35,7 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.block import Block
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -46,30 +48,6 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
 logger = DatasetLogger(__name__)
-
-
-def capfirst(s: str):
-    """Capitalize the first letter of a string
-
-    Args:
-        s: String to capitalize
-
-    Returns:
-       Capitalized string
-    """
-    return s[0].upper() + s[1:]
-
-
-def capitalize(s: str):
-    """Capitalize a string, removing '_' and keeping camelcase.
-
-    Args:
-        s: String to capitalize
-
-    Returns:
-        Capitalized string with no underscores.
-    """
-    return "".join(capfirst(x) for x in s.split("_"))
 
 
 class Stage:
@@ -164,13 +142,12 @@ class ExecutionPlan:
             f"snapshot_blocks={self._snapshot_blocks})"
         )
 
-    def get_plan_as_string(self) -> str:
+    def get_plan_as_string(self, classname: str) -> str:
         """Create a cosmetic string representation of this execution plan.
 
         Returns:
             The string representation of this execution plan.
         """
-
         # NOTE: this is used for Dataset.__repr__ to give a user-facing string
         # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
         # method as well.
@@ -183,7 +160,7 @@ class ExecutionPlan:
         if self._stages_after_snapshot:
             # Get string representation of each stage in reverse order.
             for stage in self._stages_after_snapshot[::-1]:
-                # Get name of each stage in camel case.
+                # Get name of each stage in pascal case.
                 # The stage representation should be in "<stage-name>(...)" format,
                 # e.g. "MapBatches(my_udf)".
                 #
@@ -235,9 +212,54 @@ class ExecutionPlan:
             num_blocks = "?"
         else:
             num_blocks = dataset_blocks.initial_num_blocks()
-        dataset_str = "Dataset(num_blocks={}, num_rows={}, schema={})".format(
-            num_blocks, count, schema_str
+        dataset_str = "{}(num_blocks={}, num_rows={}, schema={})".format(
+            classname, num_blocks, count, schema_str
         )
+
+        # If the resulting string representation fits in one line, use it directly.
+        SCHEMA_LINE_CHAR_LIMIT = 80
+        MIN_FIELD_LENGTH = 10
+        INDENT_STR = " " * 3
+        trailing_space = " " * (max(num_stages, 0) * 3)
+        if len(dataset_str) > SCHEMA_LINE_CHAR_LIMIT:
+            # If the resulting string representation exceeds the line char limit,
+            # first try breaking up each `Dataset` parameter into its own line
+            # and check if each line fits within the line limit. We check the
+            # `schema` param's length, since this is likely the longest string.
+            schema_str_on_new_line = f"{trailing_space}{INDENT_STR}schema={schema_str}"
+            if len(schema_str_on_new_line) > SCHEMA_LINE_CHAR_LIMIT:
+                # If the schema cannot fit on a single line, break up each field
+                # into its own line.
+                schema_str = []
+                for n, t in zip(schema.names, schema.types):
+                    if hasattr(t, "__name__"):
+                        t = t.__name__
+                    col_str = f"{trailing_space}{INDENT_STR * 2}{n}: {t}"
+                    # If the field line exceeds the char limit, abbreviate
+                    # the field name to fit while maintaining the full type
+                    if len(col_str) > SCHEMA_LINE_CHAR_LIMIT:
+                        shortened_suffix = f"...: {str(t)}"
+                        # Show at least 10 characters of the field name, even if
+                        # we have already hit the line limit with the type.
+                        chars_left_for_col_name = max(
+                            SCHEMA_LINE_CHAR_LIMIT - len(shortened_suffix),
+                            MIN_FIELD_LENGTH,
+                        )
+                        col_str = (
+                            f"{col_str[:chars_left_for_col_name]}{shortened_suffix}"
+                        )
+                    schema_str.append(col_str)
+                schema_str = ",\n".join(schema_str)
+                schema_str = (
+                    "{\n" + schema_str + f"\n{trailing_space}{INDENT_STR}" + "}"
+                )
+            dataset_str = (
+                f"{classname}("
+                f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
+                f"\n{trailing_space}{INDENT_STR}num_rows={count},"
+                f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
+                f"\n{trailing_space})"
+            )
 
         if num_stages == 0:
             plan_str = dataset_str
@@ -460,7 +482,11 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
-    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats, Optional["Executor"]]:
+    ) -> Tuple[
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+        DatasetStats,
+        Optional["Executor"],
+    ]:
         """Execute this plan, returning an iterator.
 
         If the streaming execution backend is enabled, this will use streaming
@@ -475,10 +501,12 @@ class ExecutionPlan:
             Tuple of iterator over output blocks and the executor.
         """
 
-        ctx = DatasetContext.get_current()
-        if not ctx.use_streaming_executor:
+        ctx = DataContext.get_current()
+        if not ctx.use_streaming_executor or self.has_computed_output():
             return (
-                self.execute(allow_clear_input_blocks, force_read).iter_blocks(),
+                self.execute(
+                    allow_clear_input_blocks, force_read
+                ).iter_blocks_with_metadata(),
                 self._snapshot_stats,
                 None,
             )
@@ -509,20 +537,20 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
+        preserve_order: bool = False,
     ) -> BlockList:
         """Execute this plan.
-
-        This will always execute the plan using bulk execution.
 
         Args:
             allow_clear_input_blocks: Whether we should try to clear the input blocks
                 for each stage.
             force_read: Whether to force the read stage to fully execute.
+            preserve_order: Whether to preserve order in execution.
 
         Returns:
             The blocks of the output dataset.
         """
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         if not ray.available_resources().get("CPU"):
             if log_once("cpu_warning"):
                 logger.get_logger().warning(
@@ -554,11 +582,12 @@ class ExecutionPlan:
                     self,
                     allow_clear_input_blocks=allow_clear_input_blocks,
                     dataset_uuid=self._dataset_uuid,
+                    preserve_order=preserve_order,
                 )
                 # TODO(ekl) we shouldn't need to set this in the future once we move
-                # to a fully lazy execution model, unless .cache() is used. The reason
-                # we need it right now is since the user may iterate over a Dataset
-                # multiple times after fully executing it once.
+                # to a fully lazy execution model, unless .materialize() is used. Th
+                # reason we need it right now is since the user may iterate over a
+                # Dataset multiple times after fully executing it once.
                 if not self._run_by_consumer:
                     blocks._owned_by_consumer = False
                 stats = executor.get_stats()
@@ -610,6 +639,10 @@ class ExecutionPlan:
 
         This will render the plan un-executable unless the root is a LazyBlockList."""
         self._in_blocks.clear()
+        self._clear_snapshot()
+
+    def _clear_snapshot(self) -> None:
+        """Clear the snapshot kept in the plan to the beginning state."""
         self._snapshot_blocks = None
         self._snapshot_stats = None
         # We're erasing the snapshot, so put all stages into the "after snapshot"
@@ -657,7 +690,7 @@ class ExecutionPlan:
         """Apply stage fusion optimizations, returning an updated source block list and
         associated stats, and a set of optimized stages.
         """
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         blocks, stats, stages = self._get_source_blocks_and_stages()
         if context.optimize_reorder_stages:
             stages = _reorder_stages(stages)
@@ -691,7 +724,7 @@ class ExecutionPlan:
                 stats = self._snapshot_stats
                 # Unlink the snapshot blocks from the plan so we can eagerly reclaim the
                 # snapshot block memory after the first stage is done executing.
-                self._snapshot_blocks = None
+                self._clear_snapshot()
             else:
                 # Snapshot exists but has been cleared, so we need to recompute from the
                 # source (input blocks).
@@ -713,7 +746,7 @@ class ExecutionPlan:
         """Return whether this plan can be executed as only a read stage."""
         from ray.data._internal.stage_impl import RandomizeBlocksStage
 
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         remaining_stages = self._stages_after_snapshot
         if (
             context.optimize_fuse_stages
@@ -749,7 +782,7 @@ class ExecutionPlan:
         # - Read only: handle with legacy backend
         # - Read->randomize_block_order: handle with new backend
         # Note that both are considered read equivalent, hence this extra check.
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         trailing_randomize_block_order_stage = (
             self._stages_after_snapshot
             and len(self._stages_after_snapshot) == 1
@@ -771,6 +804,17 @@ class ExecutionPlan:
                 )
             )
         )
+
+    def require_preserve_order(self) -> bool:
+        """Whether this plan requires to preserve order when running with new
+        backend.
+        """
+        from ray.data._internal.stage_impl import SortStage, ZipStage
+
+        for stage in self._stages_after_snapshot:
+            if isinstance(stage, ZipStage) or isinstance(stage, SortStage):
+                return True
+        return False
 
 
 def _pack_args(
@@ -1012,15 +1056,17 @@ class AllToAllStage(Stage):
         supports_block_udf: bool = False,
         block_udf: Optional[BlockTransform] = None,
         remote_args: Optional[Dict[str, Any]] = None,
+        sub_stage_names: Optional[List[str]] = None,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
         self.supports_block_udf = supports_block_udf
         self.block_udf = block_udf
         self.ray_remote_args = remote_args or {}
+        self.sub_stage_names = sub_stage_names
 
     def can_fuse(self, prev: Stage):
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         # TODO(ekl) also support fusing shuffle stages to subsequent 1:1 stages.
         if not context.optimize_fuse_shuffle_stages:
             return False
@@ -1064,7 +1110,13 @@ class AllToAllStage(Stage):
                 yield from self_block_udf(blocks, ctx)
 
         return AllToAllStage(
-            name, self.num_blocks, self.fn, True, block_udf, prev.ray_remote_args
+            name,
+            self.num_blocks,
+            self.fn,
+            True,
+            block_udf,
+            prev.ray_remote_args,
+            self.sub_stage_names,
         )
 
     def __call__(
@@ -1143,7 +1195,9 @@ def _rewrite_read_stage(
         for block in read_fn():
             yield block
 
-    name = "read"
+    name = in_blocks._read_stage_name or "Read"
+    if isinstance(name, list):
+        name = "->".join(name)
 
     # Fuse downstream randomize stage with the read stage if possible. This is needed
     # when .window() is called right after read->randomize, since it forces execution.
@@ -1152,7 +1206,7 @@ def _rewrite_read_stage(
         if stages and isinstance(stages[0], RandomizeBlocksStage):
             block_list, _ = stages[0].do_randomize(block_list)
             stages = stages[1:]
-        name += "->randomize_block_order"
+        name += "->RandomizeBlockOrder"
 
     stage = OneToOneStage(
         name,
@@ -1187,7 +1241,7 @@ def _reorder_stages(stages: List[Stage]) -> List[Stage]:
             reorder_buf.append(s)
         else:
             # Barrier: flush the reorder buffer.
-            if isinstance(s, AllToAllStage) or s.name == "write":
+            if isinstance(s, AllToAllStage) or s.name == "Write":
                 output.extend(reorder_buf)
                 reorder_buf = []
             output.append(s)

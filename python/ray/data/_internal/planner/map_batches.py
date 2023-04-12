@@ -1,23 +1,16 @@
-import sys
+from types import GeneratorType
 from typing import Callable, Iterator, Optional
 
 from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data.block import BatchUDF, Block, DataBatch
-from ray.data.context import DEFAULT_BATCH_SIZE, DatasetContext
-
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from ray.data.context import DEFAULT_BATCH_SIZE, DataContext
 
 
 def generate_map_batches_fn(
     batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
-    batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
-    prefetch_batches: int = 0,
+    batch_format: Optional[str] = "default",
     zero_copy_batch: bool = False,
 ) -> Callable[[Iterator[Block], TaskContext, BatchUDF], Iterator[Block]]:
     """Generate function to apply the batch UDF to blocks."""
@@ -25,7 +18,7 @@ def generate_map_batches_fn(
     import pandas as pd
     import pyarrow as pa
 
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
 
     def fn(
         blocks: Iterator[Block],
@@ -34,7 +27,7 @@ def generate_map_batches_fn(
         *fn_args,
         **fn_kwargs,
     ) -> Iterator[Block]:
-        DatasetContext._set_current(context)
+        DataContext._set_current(context)
         output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
 
         def validate_batch(batch: Block) -> None:
@@ -64,6 +57,16 @@ def generate_map_batches_fn(
             # Apply UDF.
             try:
                 batch = batch_fn(batch, *fn_args, **fn_kwargs)
+
+                if not isinstance(batch, GeneratorType):
+                    batch = [batch]
+
+                for b in batch:
+                    validate_batch(b)
+                    # Add output batch to output buffer.
+                    output_buffer.add_batch(b)
+                    if output_buffer.has_next():
+                        yield output_buffer.next()
             except ValueError as e:
                 read_only_msgs = [
                     "assignment destination is read-only",
@@ -82,12 +85,6 @@ def generate_map_batches_fn(
                 else:
                     raise e from None
 
-            validate_batch(batch)
-            # Add output batch to output buffer.
-            output_buffer.add_batch(batch)
-            if output_buffer.has_next():
-                yield output_buffer.next()
-
         # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
         formatted_batch_iter = batch_blocks(
             blocks=blocks,
@@ -95,7 +92,6 @@ def generate_map_batches_fn(
             batch_size=batch_size,
             batch_format=batch_format,
             ensure_copy=not zero_copy_batch and batch_size is not None,
-            prefetch_batches=prefetch_batches,
         )
 
         for batch in formatted_batch_iter:

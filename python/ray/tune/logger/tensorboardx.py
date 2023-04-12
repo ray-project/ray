@@ -177,9 +177,9 @@ class TBXLoggerCallback(LoggerCallback):
     def log_trial_start(self, trial: "Trial"):
         if trial in self._trial_writer:
             self._trial_writer[trial].close()
-        trial.init_logdir()
+        trial.init_local_path()
         self._trial_writer[trial] = self._summary_writer_cls(
-            trial.logdir, flush_secs=30
+            trial.local_path, flush_secs=30
         )
         self._trial_result[trial] = {}
 

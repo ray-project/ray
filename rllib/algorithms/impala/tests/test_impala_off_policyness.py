@@ -16,7 +16,7 @@ tf1, tf, tfv = try_import_tf()
 class TestIMPALAOffPolicyNess(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_gpus=0)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -34,6 +34,8 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
 
         enable_rlm_learner_group_options = [True, False]
 
+        default_exploration_config = config.exploration_config.copy()
+
         for permutation in itertools.product(
             num_aggregation_workers_options, enable_rlm_learner_group_options
         ):
@@ -47,13 +49,22 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
                     continue
                 config.training(_enable_learner_api=enable_learner_api)
                 config.rl_module(_enable_rl_module_api=enable_learner_api)
+                if enable_learner_api:
+                    # We have to set exploration_config here manually because setting
+                    # it through config.exploration() only deepupdates it
+                    config.exploration_config = {}
+                else:
+                    config.exploration_config = default_exploration_config
                 config.num_aggregation_workers = num_aggregation_workers
                 print("aggregation-workers={}".format(config.num_aggregation_workers))
                 algo = config.build()
                 for i in range(num_iterations):
                     results = algo.train()
-                    off_policy_ness = check_off_policyness(results, upper_limit=2.0)
-                    print(f"off-policy'ness={off_policy_ness}")
+                    # TODO (Avnish): Add off-policiness check when the metrics are
+                    # added back to the IMPALA Learner
+                    if not enable_learner_api:
+                        off_policy_ness = check_off_policyness(results, upper_limit=2.0)
+                        print(f"off-policy'ness={off_policy_ness}")
 
                 check_compute_single_action(
                     algo,

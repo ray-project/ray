@@ -183,6 +183,8 @@ message DeploymentRouteList {
 }
 
 enum DeploymentStatus {
+  // Keep frontend code of ServeDeploymentStatus in dashboard/client/src/type/serve.ts
+  // in sync with this enum
   UPDATING = 0;
   HEALTHY = 1;
   UNHEALTHY = 2;
@@ -200,6 +202,8 @@ message DeploymentStatusInfoList {
 }
 
 enum ApplicationStatus {
+  // Keep frontend code of ServeApplicationStatus in dashboard/client/src/type/serve.ts
+  // in sync with this enum
   DEPLOYING = 0;
   RUNNING = 1;
   DEPLOY_FAILED = 2;

@@ -1,4 +1,3 @@
-import itertools
 import logging
 from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
@@ -9,7 +8,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.datasource.datasource import Reader, ReadTask
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.file_meta_provider import (
@@ -18,7 +17,6 @@ from ray.data.datasource.file_meta_provider import (
     _handle_read_os_error,
 )
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
-from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 import ray.cloudpickle as cloudpickle
 
@@ -161,6 +159,13 @@ class ParquetDatasource(ParquetBaseDatasource):
         [{"a": 1, "b": "foo"}, ...]
     """
 
+    def get_name(self):
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        Note: overrides the base `ParquetBaseDatasource` method.
+        """
+        return "Parquet"
+
     def create_reader(self, **kwargs):
         return _ParquetDatasourceReader(**kwargs)
 
@@ -301,7 +306,7 @@ class _ParquetDatasourceReader(Reader):
 
         To avoid OOMs, it is safer to return an over-estimate than an underestimate.
         """
-        if not DatasetContext.get_current().decoding_size_estimation:
+        if not DataContext.get_current().decoding_size_estimation:
             return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
 
         # Sample a few rows from Parquet files to estimate the encoding ratio.
@@ -366,7 +371,7 @@ def _read_pieces(
     import pyarrow as pa
     from pyarrow.dataset import _get_partition_keys
 
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     output_buffer = BlockOutputBuffer(
         block_udf=block_udf,
         target_max_block_size=ctx.target_max_block_size,
@@ -403,29 +408,8 @@ def _read_pieces(
         yield output_buffer.next()
 
 
-def _fetch_metadata_remotely(
-    pieces: List["pyarrow._dataset.ParquetFileFragment"],
-    **ray_remote_args,
-) -> List[ObjectRef["pyarrow.parquet.FileMetaData"]]:
-
-    remote_fetch_metadata = cached_remote_fn(_fetch_metadata_serialization_wrapper)
-    metas = []
-    parallelism = min(len(pieces) // PIECES_PER_META_FETCH, 100)
-    meta_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
-    for pcs in np.array_split(pieces, parallelism):
-        if len(pcs) == 0:
-            continue
-        metas.append(
-            remote_fetch_metadata.options(**ray_remote_args).remote(
-                [_SerializedPiece(p) for p in pcs]
-            )
-        )
-    metas = meta_fetch_bar.fetch_until_complete(metas)
-    return list(itertools.chain.from_iterable(metas))
-
-
 def _fetch_metadata_serialization_wrapper(
-    pieces: str,
+    pieces: _SerializedPiece,
 ) -> List["pyarrow.parquet.FileMetaData"]:
 
     pieces: List[

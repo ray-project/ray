@@ -2,6 +2,7 @@ import json
 import logging
 from pathlib import Path
 from threading import RLock
+from uuid import uuid4
 
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.compute import ComputeManagementClient
@@ -23,6 +24,7 @@ from ray.autoscaler.tags import (
 )
 
 VM_NAME_MAX_LEN = 64
+UNIQUE_ID_LEN = 4
 
 logger = logging.getLogger(__name__)
 azure_logger = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
@@ -221,10 +223,11 @@ class AzureNodeProvider(NodeProvider):
         config_tags.update(tags)
         config_tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
 
-        name_tag = config_tags.get(TAG_RAY_NODE_NAME, "node")
-        vm_name = "{name}-{id}".format(
-            name=name_tag, id=self.provider_config["unique_id"]
-        )
+        vm_name = "{node}-{unique_id}-{vm_id}".format(
+            node=config_tags.get(TAG_RAY_NODE_NAME, "node"),
+            unique_id=self.provider_config["unique_id"],
+            vm_id=uuid4().hex[:UNIQUE_ID_LEN],
+        )[:VM_NAME_MAX_LEN]
         use_internal_ips = self.provider_config.get("use_internal_ips", False)
 
         template_params = node_config["azure_arm_parameters"].copy()
@@ -252,7 +255,7 @@ class AzureNodeProvider(NodeProvider):
         )
         create_or_update(
             resource_group_name=resource_group,
-            deployment_name="ray-vm-{}".format(name_tag),
+            deployment_name=vm_name,
             parameters=parameters,
         ).wait()
 
@@ -311,7 +314,7 @@ class AzureNodeProvider(NodeProvider):
                 delete = get_azure_sdk_function(
                     client=self.compute_client.virtual_machines, function_name="delete"
                 )
-                delete(resource_group_name=resource_group, vm_name=node_id).wait()
+                delete(resource_group_name=resource_group, vm_name=node_id)
             except Exception as e:
                 logger.warning("Failed to delete VM: {}".format(e))
 

@@ -45,6 +45,7 @@ from ray.serve._private.utils import (
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
+    record_serve_tag,
 )
 
 from ray.serve._private import api as _private_api
@@ -200,6 +201,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
             async def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
+                record_serve_tag("SERVE_FASTAPI_USED", "1")
                 install_serve_encoders_to_fastapi()
 
                 self._serve_app = frozen_app
@@ -243,6 +245,8 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                     super_cls.__del__()
 
         ASGIAppWrapper.__name__ = cls.__name__
+        if hasattr(frozen_app, "docs_url"):
+            ASGIAppWrapper.__fastapi_docs_path__ = frozen_app.docs_url
         return ASGIAppWrapper
 
     return decorator
@@ -408,8 +412,8 @@ def deployment(
             ray_actor_options=(
                 ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
             ),
-            _internal=True,
             is_driver_deployment=is_driver_deployment,
+            _internal=True,
         )
 
     # This handles both parametrized and non-parametrized usage of the
@@ -459,7 +463,7 @@ def run(
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
     name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: str = "/",
+    route_prefix: str = DEFAULT.VALUE,
 ) -> Optional[RayServeHandle]:
     """Run a Serve application and return a ServeHandle to the ingress.
 
@@ -479,8 +483,8 @@ def run(
         name: Application name. If not provided, this will be the only
             application running on the cluster (it will delete all others).
         route_prefix: Route prefix for HTTP requests. If not provided, it will use
-            route_prefix of the ingress deployment. By default, the ingress route
-            prefix is '/'.
+            route_prefix of the ingress deployment. If specified neither as an argument
+            nor in the ingress deployment, the route prefix will default to '/'.
 
     Returns:
         RayServeHandle: A regular ray serve handle that can be called by user
@@ -535,7 +539,7 @@ def run(
 
     for deployment in deployments:
         # Overwrite route prefix
-        if route_prefix != "/" and deployment._route_prefix:
+        if route_prefix is not DEFAULT.VALUE and deployment._route_prefix is not None:
             deployment._route_prefix = route_prefix
         deployment_parameters = {
             "name": deployment._name,
@@ -548,6 +552,7 @@ def run(
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
             "is_driver_deployment": deployment._is_driver_deployment,
+            "docs_path": deployment._docs_path,
         }
         parameter_group.append(deployment_parameters)
     client.deploy_group(

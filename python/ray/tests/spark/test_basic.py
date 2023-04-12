@@ -187,6 +187,40 @@ class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):
         )
 
 
+class TestSparkLocalCluster:
+    @classmethod
+    def setup_class(cls):
+        cls.spark = (
+            SparkSession.builder.master("local[2]")
+            .config("spark.task.cpus", "1")
+            .config("spark.task.maxFailures", "1")
+            .getOrCreate()
+        )
+
+    @classmethod
+    def teardown_class(cls):
+        time.sleep(10)  # Wait all background spark job canceled.
+        cls.spark.stop()
+
+    def test_basic(self):
+        setup_ray_cluster(
+            num_worker_nodes=2,
+            head_node_options={"include_dashboard": False},
+        )
+
+        ray.init()
+
+        @ray.remote
+        def f(x):
+            return x * x
+
+        futures = [f.remote(i) for i in range(32)]
+        results = ray.get(futures)
+        assert results == [i * i for i in range(32)]
+
+        shutdown_ray_cluster()
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
