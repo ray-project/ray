@@ -46,7 +46,7 @@ class DataIteratorImpl(DataIterator):
             # Raise error for backwards compatibility.
             # TODO: remove this method in 2.6.
             raise DeprecationWarning(
-                "session.get_datastream_shard returns a ray.data.DataIterator "
+                "session.get_dataset_shard returns a ray.data.DataIterator "
                 "instead of a Datastream/DatasetPipeline as of Ray v2.3. "
                 "Use iter_torch_batches(), to_tf(), or iter_batches() to "
                 "iterate over one epoch. See "

@@ -49,7 +49,7 @@ class PipelinedDataIterator(DataIterator):
             )
 
         def block_iter():
-            for ds in epoch_pipeline.iter_datastreams():
+            for ds in epoch_pipeline.iter_datasets():
                 yield from ds._plan.execute().iter_blocks_with_metadata()
 
         return block_iter(), None, blocks_owned_by_consumer
@@ -93,7 +93,7 @@ class PipelinedDataIterator(DataIterator):
             # Raise error for backwards compatibility.
             # TODO: remove this method in 2.6.
             raise DeprecationWarning(
-                "session.get_datastream_shard returns a ray.data.DataIterator "
+                "session.get_dataset_shard returns a ray.data.DataIterator "
                 "instead of a Datastream/DatasetPipeline as of Ray v2.3. "
                 "Use iter_torch_batches(), to_tf(), or iter_batches() to "
                 "iterate over one epoch. See "
