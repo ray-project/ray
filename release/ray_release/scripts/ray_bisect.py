@@ -41,7 +41,7 @@ def _run_test(test: Test, commit: str) -> bool:
     )
     step = get_step(
         test,
-        ray_wheels=commit,
+        ray_wheels=ray_wheels_url,
     )
     step['label'] = commit
     step['key'] = commit
