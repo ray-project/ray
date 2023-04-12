@@ -1,4 +1,3 @@
-import copy
 import logging
 import platform
 import queue
@@ -1001,7 +1000,7 @@ class Impala(Algorithm):
                 learner_infos.append(learner_results)
         # Nothing new happened since last time, use the same learner stats.
         if not learner_infos:
-            final_learner_info = copy.deepcopy(self._learner_thread.learner_info)
+            final_learner_info = {}
         # Accumulate learner stats using the `LearnerInfoBuilder` utility.
         else:
             builder = LearnerInfoBuilder()
