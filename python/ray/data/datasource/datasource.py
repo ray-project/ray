@@ -282,7 +282,7 @@ class _RangeDatasourceReader(Reader):
                     np.arange(start, start + count),
                     tuple(range(1, 1 + len(tensor_shape))),
                 )
-                return BlockAccessor.batch_to_block(tensor)
+                return BlockAccessor.batch_to_block({"data": tensor})
             else:
                 return list(builtins.range(start, start + count))
 
@@ -298,7 +298,7 @@ class _RangeDatasourceReader(Reader):
             tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
                 np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
             )
-            schema = BlockAccessor.batch_to_block(tensor).schema
+            schema = BlockAccessor.batch_to_block({"data": tensor}).schema
         elif block_format == "list":
             schema = int
         else:

@@ -386,7 +386,7 @@ class Datastream(Generic[T]):
         *,
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
-        batch_format: Optional[str] = "default",
+        batch_format: Optional[str] = "pandas",
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -585,9 +585,6 @@ class Datastream(Generic[T]):
                 This method isn't recommended because it's slow; call
                 :meth:`~Datastream.map_batches` instead.
         """  # noqa: E501
-
-        if batch_format == "native":
-            logger.warning("The 'native' batch format has been renamed 'default'.")
 
         target_block_size = None
         if batch_size == "default":
@@ -2227,7 +2224,7 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI(pattern="Time complexity:")
     def take_batch(
-        self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
+        self, batch_size: int = 20, *, batch_format: Optional[str] = "pandas"
     ) -> DataBatch:
         """Return up to ``batch_size`` records from the datastream in a batch.
 
@@ -2283,6 +2280,11 @@ class Datastream(Generic[T]):
         Returns:
             A list of up to ``limit`` records from the datastream.
         """
+        if ray.util.log_once("datastream_take"):
+            logger.info(
+                "Tip: Use `take_batch()` instead of `take() / show()` to return "
+                "records in pandas or numpy batch format."
+            )
         output = []
         for row in self.iter_rows():
             output.append(row)
@@ -3036,7 +3038,7 @@ class Datastream(Generic[T]):
         *,
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
-        batch_format: Optional[str] = "default",
+        batch_format: Optional[str] = "pandas",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -3082,9 +3084,6 @@ class Datastream(Generic[T]):
         Returns:
             An iterator over record batches.
         """
-        if batch_format == "native":
-            logger.warning("The 'native' batch format has been renamed 'default'.")
-
         return self.iterator().iter_batches(
             prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,

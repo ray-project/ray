@@ -39,7 +39,7 @@ class NumpyDatasource(FileBasedDatasource):
         data = f.readall()
         buf.write(data)
         buf.seek(0)
-        return BlockAccessor.batch_to_block(np.load(buf, allow_pickle=True))
+        return BlockAccessor.batch_to_block({"data": np.load(buf, allow_pickle=True)})
 
     def _convert_block_to_tabular_block(
         self, block: Block, column_name: Optional[str] = None

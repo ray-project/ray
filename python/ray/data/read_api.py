@@ -16,7 +16,6 @@ import numpy as np
 
 import ray
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -35,7 +34,6 @@ from ray.data._internal.logical.operators.from_pandas_operator import (
 )
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.pandas_block import PandasRow
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -47,6 +45,7 @@ from ray.data._internal.util import (
     ndarray_to_block,
     get_table_block_metadata,
 )
+from ray.data.row import TableRow
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DataContext
 from ray.data.dataset import Datastream, MaterializedDatastream
@@ -218,7 +217,7 @@ def range(n: int, *, parallelism: int = -1) -> Datastream[int]:
 
 
 @PublicAPI
-def range_table(n: int, *, parallelism: int = -1) -> Datastream[ArrowRow]:
+def range_table(n: int, *, parallelism: int = -1) -> Datastream[TableRow]:
     """Create a tabular stream from a range of integers [0..n).
 
     Examples:
@@ -227,7 +226,7 @@ def range_table(n: int, *, parallelism: int = -1) -> Datastream[ArrowRow]:
         >>> ds # doctest: +SKIP
         Datastream(num_blocks=200, num_rows=1000, schema={value: int64})
         >>> ds.map(lambda r: {"v2": r["value"] * 2}).take(2) # doctest: +SKIP
-        [ArrowRow({'v2': 0}), ArrowRow({'v2': 2})]
+        [TableRow({'v2': 0}), TableRow({'v2': 2})]
 
     This is similar to range(), but uses Arrow tables to hold the integers
     in Arrow records. The datastream elements take the form {"value": N}.
@@ -253,7 +252,7 @@ def range_arrow(*args, **kwargs):
 @PublicAPI
 def range_tensor(
     n: int, *, shape: Tuple = (1,), parallelism: int = -1
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Create a Tensor stream from a range of integers [0..n).
 
     Examples:
@@ -263,7 +262,7 @@ def range_tensor(
         Datastream(
             num_blocks=200,
             num_rows=1000,
-            schema={__value__: <ArrowTensorType: shape=(2, 2), dtype=int64>},
+            schema={data: <ArrowTensorType: shape=(2, 2), dtype=int64>},
         )
         >>> ds.map_batches(lambda arr: arr * 2).take(2) # doctest: +SKIP
         [array([[0, 0],
@@ -273,7 +272,7 @@ def range_tensor(
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
     type. The datastream elements take the form
-    {"__value__": array(N, shape=shape)}.
+    {"data": array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
@@ -450,7 +449,7 @@ def read_mongo(
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     **mongo_args,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Create an Arrow datastream from MongoDB.
 
     The data to read from is specified via the ``uri``, ``database`` and ``collection``
@@ -530,7 +529,7 @@ def read_parquet(
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
     **arrow_parquet_args,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Create an Arrow datastream from parquet files.
 
     Examples:
@@ -621,7 +620,7 @@ def read_images(
     mode: Optional[str] = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Read images from the specified paths.
 
     Examples:
@@ -729,7 +728,7 @@ def read_parquet_bulk(
         ParquetBaseDatasource.file_extension_filter()
     ),
     **arrow_parquet_args,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Create an Arrow datastream from a large number (such as >1K) of parquet files
     quickly.
 
@@ -826,7 +825,7 @@ def read_json(
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
     **arrow_json_args,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Create an Arrow datastream from json files.
 
     Examples:
@@ -903,7 +902,7 @@ def read_csv(
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
     **arrow_csv_args,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     r"""Create an Arrow datastream from csv files.
 
     Examples:
@@ -1010,7 +1009,7 @@ def read_text(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
-) -> Datastream[str]:
+) -> Datastream[TableRow]:
     """Create a datastream from lines stored in text files.
 
     Examples:
@@ -1078,7 +1077,7 @@ def read_numpy(
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
     **numpy_load_args,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Create an Arrow datastream from numpy files.
 
     Examples:
@@ -1141,7 +1140,7 @@ def read_tfrecords(
     partition_filter: Optional[PathPartitionFilter] = None,
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
-) -> Datastream[PandasRow]:
+) -> Datastream[TableRow]:
     """Create a datastream from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
     messages.
@@ -1246,7 +1245,7 @@ def read_webdataset(
     filerename: Optional[Union[list, callable]] = None,
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
-) -> Datastream[PandasRow]:
+) -> Datastream[TableRow]:
     """Create a datastream from WebDataset files.
 
     Args:
@@ -1304,8 +1303,8 @@ def read_binary_files(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
-    output_arrow_format: bool = False,
-) -> Datastream[Union[Tuple[str, bytes], bytes]]:
+    output_arrow_format: bool = True,
+) -> Datastream[TableRow]:
     """Create a datastream from binary files of arbitrary contents.
 
     Examples:
@@ -1449,7 +1448,7 @@ def read_sql(
 
 
 @PublicAPI
-def from_dask(df: "dask.DataFrame") -> MaterializedDatastream[ArrowRow]:
+def from_dask(df: "dask.DataFrame") -> MaterializedDatastream[TableRow]:
     """Create a datastream from a Dask DataFrame.
 
     Args:
@@ -1487,7 +1486,7 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDatastream[ArrowRow]:
 
 
 @PublicAPI
-def from_mars(df: "mars.DataFrame") -> MaterializedDatastream[ArrowRow]:
+def from_mars(df: "mars.DataFrame") -> MaterializedDatastream[TableRow]:
     """Create a datastream from a MARS dataframe.
 
     Args:
@@ -1507,7 +1506,7 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDatastream[ArrowRow]:
 
 
 @PublicAPI
-def from_modin(df: "modin.DataFrame") -> MaterializedDatastream[ArrowRow]:
+def from_modin(df: "modin.DataFrame") -> MaterializedDatastream[TableRow]:
     """Create a datastream from a Modin dataframe.
 
     Args:
@@ -1530,7 +1529,7 @@ def from_modin(df: "modin.DataFrame") -> MaterializedDatastream[ArrowRow]:
 @PublicAPI
 def from_pandas(
     dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
-) -> MaterializedDatastream[ArrowRow]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a list of Pandas dataframes.
 
     Args:
@@ -1557,7 +1556,7 @@ def from_pandas(
 @DeveloperAPI
 def from_pandas_refs(
     dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]],
-) -> MaterializedDatastream[ArrowRow]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a list of Ray object references to Pandas
     dataframes.
 
@@ -1618,7 +1617,7 @@ def from_pandas_refs(
 @PublicAPI
 def from_numpy(
     ndarrays: Union[np.ndarray, List[np.ndarray]]
-) -> MaterializedDatastream[ArrowRow]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a list of NumPy ndarrays.
 
     Args:
@@ -1636,7 +1635,7 @@ def from_numpy(
 @DeveloperAPI
 def from_numpy_refs(
     ndarrays: Union[ObjectRef[np.ndarray], List[ObjectRef[np.ndarray]]],
-) -> MaterializedDatastream[ArrowRow]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a list of NumPy ndarray futures.
 
     Args:
@@ -1684,7 +1683,7 @@ def from_numpy_refs(
 @PublicAPI
 def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]],
-) -> MaterializedDatastream[ArrowRow]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a list of Arrow tables.
 
     Args:
@@ -1707,7 +1706,7 @@ def from_arrow_refs(
         ObjectRef[Union["pyarrow.Table", bytes]],
         List[ObjectRef[Union["pyarrow.Table", bytes]]],
     ],
-) -> MaterializedDatastream[ArrowRow]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a set of Arrow tables.
 
     Args:
@@ -1739,7 +1738,7 @@ def from_arrow_refs(
 @PublicAPI
 def from_spark(
     df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None
-) -> MaterializedDatastream[ArrowRow]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a Spark dataframe.
 
     Args:
@@ -1761,7 +1760,7 @@ def from_spark(
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
 ) -> Union[
-    MaterializedDatastream[ArrowRow], Dict[str, MaterializedDatastream[ArrowRow]]
+    MaterializedDatastream[TableRow], Dict[str, MaterializedDatastream[TableRow]]
 ]:
     """Create a datastream from a Hugging Face Datasets Dataset.
 
@@ -1779,7 +1778,7 @@ def from_huggingface(
     """
     import datasets
 
-    def convert(ds: "datasets.Dataset") -> Datastream[ArrowRow]:
+    def convert(ds: "datasets.Dataset") -> Datastream[TableRow]:
         ray_ds = from_arrow(ds.data.table)
         logical_plan = LogicalPlan(FromHuggingFace(ds))
         ray_ds._logical_plan = logical_plan
