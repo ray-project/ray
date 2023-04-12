@@ -79,8 +79,11 @@ def main(bucket_uri: str):
         probability=0.03, time_between_checks_s=10, warmup_time_s=WARMUP_TIME_S
     )
     results = tuner.fit()
+    print("Fitted")
     del instance_killer
+    print("Deleted")
     gc.collect()
+    print("Collected")
 
     for result in results:
         checkpoint_dict = result.checkpoint.to_dict()
@@ -89,6 +92,8 @@ def main(bucket_uri: str):
             checkpoint_dict["iteration"] == result.metrics["iteration"]
         ), result.checkpoint
 
+    print("Asserted")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -96,3 +101,4 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     main(args.bucket or "s3://tune-cloud-tests/worker_fault_tolerance")
+    print("Finished.")
