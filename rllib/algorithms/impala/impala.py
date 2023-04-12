@@ -666,6 +666,17 @@ class Impala(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
+        results = None
+        # When we call `_training_step`, it is launching async requests to sampling
+        # and learner workers. There are not necessarily results that are ready to
+        # be returned. Here, we keep calling `_training_step` until we get results back
+        # that way there is something to be returned every time `training_step` is
+        # called.
+        while not results:
+            results = self._training_step()
+        return results
+
+    def _training_step(self) -> ResultDict:
         # First, check, whether our learner thread is still healthy.
         if not self.config._enable_learner_api and not self._learner_thread.is_alive():
             raise RuntimeError("The learner thread died while training!")
