@@ -44,6 +44,10 @@ def _run_test(test: Test, commit: str) -> bool:
         f'buildkite-agent pipeline upload "{pipeline}"',
         shell=True,
     )
+    outcome = subprocess.check_output(
+        f'buildkite-agent step get "outcome" --step "{commit}"',
+        text=True,
+    )
     return True
 
 def _get_test(test_name: str) -> Test:
