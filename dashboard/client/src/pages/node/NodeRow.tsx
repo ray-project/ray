@@ -167,8 +167,7 @@ type WorkerRowProps = {
 export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
   const classes = rowStyles();
 
-  const { ip, mem, logUrl } = node;
-  let { state } = node;
+  const { ip, mem, logUrl, state } = node;
   const {
     pid,
     cpuPercent: cpu = 0,
@@ -181,7 +180,6 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
   const workerLogUrl =
     `/logs/${encodeURIComponent(logUrl)}` +
     (coreWorker ? `?fileName=${coreWorker.workerId}` : "");
-  state = "DEAD";
   return (
     <TableRow>
       <TableCell>
