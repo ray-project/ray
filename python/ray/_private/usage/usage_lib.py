@@ -469,10 +469,10 @@ def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
     try:
         result = gcs_client.get_all_job_info()
         total_num_running_jobs = 0
-        for job in result.job_info_list:
-            if not job.is_dead and not job.config.ray_namespace.startswith(
-                "_ray_internal"
-            ):
+        for job_id, job_info in result.items():
+            if not job_info["is_dead"] and not job_info["config"][
+                "ray_namespace"
+            ].startswith("_ray_internal"):
                 total_num_running_jobs += 1
         return total_num_running_jobs
     except Exception as e:
@@ -485,8 +485,8 @@ def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
     try:
         result = gcs_client.get_all_node_info(timeout=timeout)
         total_num_nodes = 0
-        for node in result.node_info_list:
-            if node.state == gcs_utils.GcsNodeInfo.GcsNodeState.ALIVE:
+        for node_id, node_info in result.items():
+            if node_info["state"] == gcs_utils.GcsNodeInfo.GcsNodeState.ALIVE:
                 total_num_nodes += 1
         return total_num_nodes
     except Exception as e:
@@ -728,7 +728,7 @@ def generate_report_data(
     Returns:
         UsageStats
     """
-    gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=20)
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=20)
 
     cluster_metadata = get_cluster_metadata(gcs_client)
     cluster_status_to_report = get_cluster_status_to_report(gcs_client)
