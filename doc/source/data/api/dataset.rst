@@ -103,6 +103,7 @@ I/O and Conversion
    Dataset.write_csv
    Dataset.write_numpy
    Dataset.write_tfrecords
+   Dataset.write_webdataset
    Dataset.write_mongo
    Dataset.write_datasource
    Dataset.to_torch
@@ -138,8 +139,7 @@ Execution
 .. autosummary::
    :toctree: doc/
 
-   Dataset.cache
-   Dataset.is_cached
+   Dataset.materialize
 
 Serialization
 -------------
@@ -150,3 +150,15 @@ Serialization
    Dataset.has_serializable_lineage
    Dataset.serialize_lineage
    Dataset.deserialize_lineage
+
+Internals
+---------
+
+.. autosummary::
+   :toctree: doc/
+
+   Dataset.__init__
+   Dataset.dataset_format
+   Dataset.fully_executed
+   Dataset.is_fully_executed
+   Dataset.lazy
