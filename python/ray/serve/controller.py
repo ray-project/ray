@@ -15,7 +15,6 @@ from ray._private.utils import (
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
 from ray._raylet import GcsClient
-from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve._private.common import (
     DeploymentInfo,
     EndpointInfo,
@@ -25,7 +24,7 @@ from ray.serve._private.common import (
     StatusOverview,
     ServeDeployMode,
 )
-from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
+from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
     SERVE_LOGGER_NAME,
@@ -37,6 +36,7 @@ from ray.serve._private.constants import (
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     MULTI_APP_MIGRATION_MESSAGE,
 )
+from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPState
@@ -391,52 +391,22 @@ class ServeController:
         docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
     ) -> bool:
+        """Deploys a deployment."""
+
         if route_prefix is not None:
             assert route_prefix.startswith("/")
         if docs_path is not None:
             assert docs_path.startswith("/")
 
-        deployment_config = DeploymentConfig.from_proto_bytes(
-            deployment_config_proto_bytes
-        )
-        version = deployment_config.version
-        replica_config = ReplicaConfig.from_proto_bytes(
-            replica_config_proto_bytes, deployment_config.needs_pickle()
-        )
-
-        autoscaling_config = deployment_config.autoscaling_config
-        if autoscaling_config is not None:
-            if autoscaling_config.initial_replicas is not None:
-                deployment_config.num_replicas = autoscaling_config.initial_replicas
-            else:
-                previous_deployment = self.deployment_state_manager.get_deployment(name)
-                if previous_deployment is None:
-                    deployment_config.num_replicas = autoscaling_config.min_replicas
-                else:
-                    deployment_config.num_replicas = (
-                        previous_deployment.deployment_config.num_replicas
-                    )
-
-            autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
-        else:
-            autoscaling_policy = None
-
-        # Java API passes in JobID as bytes
-        if isinstance(deployer_job_id, bytes):
-            deployer_job_id = ray.JobID.from_int(
-                int.from_bytes(deployer_job_id, "little")
-            ).hex()
-
-        deployment_info = DeploymentInfo(
-            actor_name=name,
-            version=version,
-            deployment_config=deployment_config,
-            replica_config=replica_config,
+        deployment_info = deploy_args_to_deployment_info(
+            deployment_name=name,
+            deployment_config_proto_bytes=deployment_config_proto_bytes,
+            replica_config_proto_bytes=replica_config_proto_bytes,
             deployer_job_id=deployer_job_id,
-            start_time_ms=int(time.time() * 1000),
-            autoscaling_policy=autoscaling_policy,
+            previous_deployment=self.deployment_state_manager.get_deployment(name),
             is_driver_deployment=is_driver_deployment,
         )
+
         # TODO(architkulkarni): When a deployment is redeployed, even if
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?
@@ -450,7 +420,9 @@ class ServeController:
 
         return updating
 
-    def deploy_group(self, name: str, deployment_args_list: List[Dict]) -> List[bool]:
+    def deploy_application(
+        self, name: str, deployment_args_list: List[Dict]
+    ) -> List[bool]:
         """
         Takes in a list of dictionaries that contain keyword arguments for the
         controller's deploy() function. Calls deploy on all the argument
