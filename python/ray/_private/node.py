@@ -24,7 +24,7 @@ import ray._private.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray._private import storage
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
 
@@ -1035,7 +1035,6 @@ class Node:
             socket_to_use=None,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
-            start_initial_python_workers_for_first_job=self._ray_params.start_initial_python_workers_for_first_job,  # noqa: E501
             ray_debugger_external=self._ray_params.ray_debugger_external,
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,

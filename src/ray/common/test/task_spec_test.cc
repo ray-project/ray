@@ -32,6 +32,9 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id("y");
   SchedulingClassDescriptor descriptor5(resources, descriptor, 0, scheduling_strategy);
   SchedulingClassDescriptor descriptor6(resources, descriptor, 0, scheduling_strategy);
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()
+      ->set_spill_on_unavailable(true);
+  SchedulingClassDescriptor descriptor10(resources, descriptor, 0, scheduling_strategy);
   scheduling_strategy.mutable_placement_group_scheduling_strategy()
       ->set_placement_group_id("o");
   scheduling_strategy.mutable_placement_group_scheduling_strategy()
@@ -80,6 +83,12 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
               std::hash<SchedulingClassDescriptor>()(descriptor6));
   ASSERT_TRUE(TaskSpecification::GetSchedulingClass(descriptor5) ==
               TaskSpecification::GetSchedulingClass(descriptor6));
+
+  ASSERT_FALSE(descriptor6 == descriptor10);
+  ASSERT_FALSE(std::hash<SchedulingClassDescriptor>()(descriptor6) ==
+               std::hash<SchedulingClassDescriptor>()(descriptor10));
+  ASSERT_FALSE(TaskSpecification::GetSchedulingClass(descriptor6) ==
+               TaskSpecification::GetSchedulingClass(descriptor10));
 
   ASSERT_FALSE(descriptor6 == descriptor7);
   ASSERT_FALSE(std::hash<SchedulingClassDescriptor>()(descriptor6) ==

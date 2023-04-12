@@ -783,7 +783,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_moderate.yaml
+    cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
     timeout: 600
@@ -792,6 +792,14 @@
     wait_for_nodes:
       num_nodes: 32
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_moderate_gce.yaml
 
   alert: xgboost_tests
 
@@ -804,7 +812,7 @@
 
   cluster:
     cluster_env: app_config_gpu.yaml
-    cluster_compute: tpl_gpu_small.yaml
+    cluster_compute: tpl_gpu_small_aws.yaml
 
   run:
     timeout: 600
@@ -813,6 +821,14 @@
     wait_for_nodes:
       num_nodes: 5
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config_gpu.yaml
+        cluster_compute: tpl_gpu_small_gce.yaml
 
   alert: xgboost_tests
 
@@ -825,13 +841,22 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small.yaml
+    cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
     timeout: 600
     script: python workloads/distributed_api_test.py
     wait_for_nodes:
       num_nodes: 4
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_small_gce.yaml
 
 
   alert: default
@@ -845,7 +870,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small.yaml
+    cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
     timeout: 900
@@ -853,6 +878,15 @@
 
     wait_for_nodes:
       num_nodes: 4
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_small_gce.yaml
 
 
   alert: default
@@ -866,7 +900,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small.yaml
+    cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
     timeout: 900
@@ -875,6 +909,14 @@
     wait_for_nodes:
       num_nodes: 4
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_small_gce.yaml
 
   alert: default
 
@@ -887,7 +929,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small.yaml
+    cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
     timeout: 600
@@ -895,6 +937,15 @@
 
     wait_for_nodes:
       num_nodes: 4
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_small_gce.yaml
 
 
   alert: xgboost_tests
@@ -908,7 +959,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_moderate.yaml
+    cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
     timeout: 900
@@ -916,6 +967,15 @@
 
     wait_for_nodes:
       num_nodes: 32
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_moderate_gce.yaml
 
 
   alert: xgboost_tests
@@ -929,7 +989,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_moderate.yaml
+    cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
     timeout: 900
@@ -938,6 +998,14 @@
     wait_for_nodes:
       num_nodes: 32
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_moderate_gce.yaml
 
   alert: xgboost_tests
 
@@ -978,13 +1046,22 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_moderate.yaml
+    cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
     timeout: 600
     script: python workloads/train_moderate.py
     wait_for_nodes:
       num_nodes: 32
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_moderate_gce.yaml
 
 
   alert: default
@@ -998,7 +1075,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small.yaml
+    cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
     timeout: 600
@@ -1007,6 +1084,14 @@
     wait_for_nodes:
       num_nodes: 4
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_small_gce.yaml
 
   alert: default
 
@@ -1019,7 +1104,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small.yaml
+    cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
     timeout: 900
@@ -1028,6 +1113,14 @@
     wait_for_nodes:
       num_nodes: 4
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_small_gce.yaml
 
   alert: default
 
@@ -1040,13 +1133,22 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small.yaml
+    cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
     timeout: 600
     script: python workloads/tune_small.py
     wait_for_nodes:
       num_nodes: 4
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_small_gce.yaml
 
   alert: default
 
@@ -1059,7 +1161,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_moderate.yaml
+    cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
     timeout: 900
@@ -1067,6 +1169,14 @@
     wait_for_nodes:
       num_nodes: 32
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_moderate_gce.yaml
 
   alert: default
 
@@ -1079,7 +1189,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_moderate.yaml
+    cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
     timeout: 900
@@ -1087,6 +1197,14 @@
     wait_for_nodes:
       num_nodes: 32
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_moderate_gce.yaml
 
   alert: default
 
@@ -2147,6 +2265,19 @@
 
   alert: long_running_tests
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 86400
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_cpu_1_c5_gce.yaml
+
 - name: long_running_many_jobs
   group: Long running tests
   working_dir: long_running_tests
@@ -2458,6 +2589,19 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 7200
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_32_cpu_gce.yaml
+
 - name: serve_multi_deployment_1k_noop_replica
   group: Serve tests
   working_dir: serve_tests
@@ -2475,6 +2619,19 @@
     script: python workloads/multi_deployment_1k_noop_replica.py
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 7200
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_32_cpu_gce.yaml
 
 - name: serve_autoscaling_single_deployment
   group: Serve tests
@@ -2494,6 +2651,19 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 7200
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_8_cpu_autoscaling_gce.yaml
+
 - name: serve_autoscaling_multi_deployment
   group: Serve tests
   working_dir: serve_tests
@@ -2512,6 +2682,19 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 7200
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_32_cpu_autoscaling_gce.yaml
+
 - name: serve_serve_micro_benchmark
   group: Serve tests
   working_dir: serve_tests
@@ -2529,6 +2712,19 @@
     script: python workloads/serve_micro_benchmark.py
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 7200
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_single_node_gce.yaml
 
 # - name: serve_serve_micro_benchmark_k8s
 #   group: Serve tests
@@ -2569,6 +2765,19 @@
   alert: default
   stable: False
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
+
 - name: deployment_graph_wide_ensemble
   group: Serve tests
   working_dir: serve_tests
@@ -2587,6 +2796,19 @@
 
   alert: default
   stable: False
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
 
 - name: serve_handle_long_chain
   group: Serve tests
@@ -2607,6 +2829,19 @@
   alert: default
   stable: False
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
+
 - name: serve_handle_wide_ensemble
   group: Serve tests
   working_dir: serve_tests
@@ -2625,6 +2860,19 @@
 
   alert: default
   stable: False
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
 
 
 - name: serve_micro_protocol_grpc_benchmark
@@ -2645,6 +2893,19 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 7200
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_single_node_gce.yaml
+
 - name: serve_micro_protocol_http_benchmark
   group: Serve tests
   working_dir: serve_tests
@@ -2662,6 +2923,19 @@
     script: python workloads/serve_protocol_benchmark.py --data-size=1048576 --http-test
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 7200
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_single_node_gce.yaml
 
 
 - name: serve_resnet_benchmark
@@ -2681,6 +2955,19 @@
     script: python workloads/serve_resnet_benchmark.py --gpu-env
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 7200
+      cluster:
+        cluster_env: gpu_app_config.yaml
+        cluster_compute: compute_tpl_gpu_node_gce.yaml
 
 ########################
 # Train tests
