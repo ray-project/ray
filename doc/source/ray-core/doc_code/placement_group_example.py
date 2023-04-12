@@ -112,7 +112,7 @@ pprint(placement_group_table(pg))
 # __strategy_pg_start__
 # Reserve a placement group of 2 bundles
 # that have to be packed on the same node.
-pg = placement_group([{"CPU": 1}, {"GPU": 1}], strategy="STRICT_PACK")
+pg = placement_group([{"CPU": 1}, {"GPU": 1}], strategy="PACK")
 # __strategy_pg_end__
 
 remove_placement_group(pg)
