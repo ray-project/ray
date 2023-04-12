@@ -493,9 +493,11 @@ install_pip_packages() {
   # Generate the pip command with collected requirements files
   pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements_pinned.txt"
   for file in "${requirements_files[@]}"; do
-    eval "${pip_cmd}" -r "${file}"
-    # pip_cmd+=" -r ${file}"
+    # eval "${pip_cmd}" -r "${file}"
+    pip_cmd+=" -r ${file}"
   done
+
+  eval "${pip_cmd}"
 
   pip_add=""
   for package in "${requirements_packages[@]}"; do
