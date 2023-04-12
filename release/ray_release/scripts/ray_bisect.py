@@ -40,13 +40,15 @@ def _bisect(test_name: str, commit_list: List[str]) -> str:
 
 def _run_test(test: Test, commit: str) -> bool:
     logger.info(f'Running test {test["name"]} on commit {commit}')
+    _trigger_test_run(test, commit)
+    return _obtain_test_result(commit)
+
+def _trigger_test_run(test: Test, commit: str) -> None:
     ray_wheels_url = find_and_wait_for_ray_wheels_url(
-        commit, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT
+        commit, 
+        timeout=DEFAULT_WHEEL_WAIT_TIMEOUT,
     )
-    step = get_step(
-        test,
-        ray_wheels=ray_wheels_url,
-    )
+    step = get_step(test, ray_wheels=ray_wheels_url)
     step['label'] = f'{test["name"]}:{commit[:6]}'
     step['key'] = commit
     pipeline = json.dumps({'steps': [step]})
@@ -54,13 +56,15 @@ def _run_test(test: Test, commit: str) -> bool:
         f'echo "{pipeline}" | buildkite-agent pipeline upload',
         shell=True,
     )
+
+def _obtain_test_result(buildkite_step_key: str) -> bool:
     outcome = None
     wait = 30
     total_wait = 0
     while outcome not in ['passed', 'hard_failed', 'soft_failed']:
         logger.info(f'... waiting for test result ...({total_wait} seconds)')
         outcome = subprocess.check_output(
-            f'buildkite-agent step get "outcome" --step "{commit}"',
+            f'buildkite-agent step get "outcome" --step "{buildkite_step_key}"',
             shell=True,
         ).decode('utf-8')
         time.sleep(wait)
