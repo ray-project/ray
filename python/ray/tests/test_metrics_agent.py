@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray.experimental.state.api import list_nodes
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
@@ -388,7 +389,7 @@ def test_metrics_export_node_metrics(shutdown_only):
     def verify_dashboard_metrics():
         avail_metrics = fetch_prometheus_metrics([dashboard_export_addr])
         # Run list nodes to trigger dashboard API.
-        ray.experimental.state.api.list_nodes()
+        list_nodes()
 
         # Verify metrics exist.
         avail_metrics = avail_metrics

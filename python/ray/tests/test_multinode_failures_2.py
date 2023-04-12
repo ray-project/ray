@@ -19,8 +19,6 @@ from ray._private.test_utils import get_other_nodes
             "num_nodes": 4,
             "object_store_memory": 1000 * 1024 * 1024,
             "_system_config": {
-                # Raylet codepath is not stable with a shorter timeout.
-                "num_heartbeats_timeout": 10,
                 "object_manager_pull_timeout_ms": 1000,
                 "object_manager_push_timeout_ms": 1000,
             },

@@ -87,6 +87,7 @@ def cleanup_ray():
     yield
     runner = CliRunner()
     runner.invoke(scripts.stop, ["--force"])
+    ray.shutdown()
 
 
 @pytest.fixture
@@ -168,7 +169,6 @@ def _die_on_error(result):
 
 
 def _debug_check_line_by_line(result, expected_lines):
-    """Print the result and expected output line-by-line."""
     output_lines = result.output.split("\n")
     i = 0
 
@@ -193,9 +193,10 @@ def _debug_check_line_by_line(result, expected_lines):
     if i < len(expected_lines):
         print("!!! ERROR: Expected extra lines (regex):")
         for line in expected_lines[i:]:
+
             print(repr(line))
 
-    assert False, (result.output, expected_lines)
+    assert False
 
 
 @contextmanager
@@ -277,10 +278,6 @@ def test_disable_usage_stats(monkeypatch, tmp_path):
     assert '{"usage_stats": false}' == tmp_usage_stats_config_path.read_text()
 
 
-@pytest.mark.skipif(
-    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
-    reason=("Mac builds don't provide proper locale support"),
-)
 def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
     monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
     runner = CliRunner()
@@ -306,8 +303,8 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
 
     _die_on_error(runner.invoke(scripts.stop))
 
-    if ray.util.get_node_ip_address() == "127.0.0.1":
-        _check_output_via_pattern("test_ray_start_localhost.txt", result)
+    if ray_constants.IS_WINDOWS_OR_OSX:
+        _check_output_via_pattern("test_ray_start_windows_osx.txt", result)
     else:
         _check_output_via_pattern("test_ray_start.txt", result)
 
