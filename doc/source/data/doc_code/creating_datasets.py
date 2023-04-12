@@ -38,7 +38,7 @@ ds = ray.data.range_tensor(100 * 64 * 64, shape=(64, 64))
 # -> Dataset(
 #       num_blocks=200,
 #       num_rows=409600,
-#       schema={value: <ArrowTensorType: shape=(64, 64), dtype=int64>}
+#       schema={__value__: numpy.ndarray(shape=(64, 64), dtype=int64)}
 #    )
 
 ds.take(2)
@@ -122,7 +122,7 @@ ds = ray.data.from_numpy(arr)
 # -> Dataset(
 #        num_blocks=1,
 #        num_rows=3,
-#        schema={value: <ArrowTensorType: shape=(4, 4), dtype=int64>},
+#        schema={__value__: numpy.ndarray(shape=(4, 4), dtype=double)}
 #    )
 
 ds.show(2)
@@ -165,7 +165,7 @@ ds = ray.data.from_numpy(arrs)
 # -> Dataset(
 #        num_blocks=4,
 #        num_rows=8,
-#        schema={value: <ArrowTensorType: shape=(4, 4), dtype=int64>},
+#        schema={__value__: numpy.ndarray(shape=(4, 4), dtype=double)}
 #    )
 
 ds.show(2)
@@ -382,7 +382,7 @@ ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(
 #       num_blocks=1,
 #       num_rows=3,
-#       schema={__RAY_TC__: <ArrowTensorType: shape=(28, 28), dtype=uint8>},
+#       schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)}
 #   )
 
 ds.show(2)
@@ -419,7 +419,7 @@ ds = ds.map(lambda bytes_: np.asarray(PIL.Image.open(BytesIO(bytes_)).convert("L
 # -> Dataset(
 #        num_blocks=1,
 #        num_rows=1,
-#        schema={__RAY_TC__: <ArrowTensorType: shape=(28, 28), dtype=uint8>},
+#        schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)}
 #    )
 
 ds.show(3)
