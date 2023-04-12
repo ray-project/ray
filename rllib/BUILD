@@ -2508,7 +2508,6 @@ py_test(
     tags = ["team:rllib", "tests_dir"],
     size = "large",
     srcs = ["tests/test_gpus.py"],
-    args = ["TestGPUs"],
 )
 
 py_test(
