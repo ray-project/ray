@@ -169,7 +169,8 @@ def test_default_file_metadata_provider(
     ) as mock_get:
         file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
     mock_get.assert_called_once_with(paths, fs, False)
-    assert "meta_provider=FastFileMetadataProvider()" in caplog.text
+    # No warning should be logged.
+    assert len(caplog.text) == 0
     assert file_paths == paths
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
     assert file_sizes == expected_file_sizes
@@ -276,7 +277,8 @@ def test_default_file_metadata_provider_many_files_basic(
         mock_get.assert_called_once_with(paths, fs, False)
     else:
         mock_get.assert_called_once_with(paths, _unwrap_protocol(data_path), fs, False)
-    assert "meta_provider=FastFileMetadataProvider()" in caplog.text
+    # No warning should be logged.
+    assert len(caplog.text) == 0
     assert file_paths == paths
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
     assert file_sizes == expected_file_sizes
@@ -349,7 +351,7 @@ def test_default_file_metadata_provider_many_files_partitioned(
         mock_get.assert_called_once_with(
             paths, _unwrap_protocol(partitioning.base_dir), fs, False
         )
-    assert "meta_provider=FastFileMetadataProvider()" in caplog.text
+    assert len(caplog.text) == 0
     assert file_paths == paths
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
     assert file_sizes == expected_file_sizes
@@ -411,7 +413,12 @@ def test_default_file_metadata_provider_many_files_diff_dirs(
         file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
 
     mock_get.assert_called_once_with(paths, fs, False)
-    assert "meta_provider=FastFileMetadataProvider()" in caplog.text
+    if isinstance(fs, LocalFileSystem):
+        # No warning should be logged.
+        assert len(caplog.text) == 0
+    else:
+        # Many files with different directories on cloud storage should log warning.
+        assert "common parent directory" in caplog.text
     assert file_paths == paths
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
     assert file_sizes == expected_file_sizes
