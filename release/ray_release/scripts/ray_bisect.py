@@ -91,6 +91,7 @@ def _get_test(test_name: str) -> Test:
     return [test for test in test_collection if test["name"] == test_name][0]
 
 
+
 def _get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
     # This command obtains all commits between inclusively
     return (
