@@ -99,7 +99,18 @@ def test_bisect():
         "c3": False,
         "c4": False,
     }
-
+    def _mock_get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
+        commits = []
+        in_range = False
+        for commit in commit_to_test_result:
+            if commit == failing_commit:
+                break
+            if in_range:
+                commits.append(commit)
+            if commit == passing_commit:
+                commits.append(commit)
+                in_range = True
+        return commits
     def _mock_run_test(test_name: str, commit: str) -> bool:
         return commit_to_test_result[commit]
 
