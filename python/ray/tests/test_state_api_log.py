@@ -795,7 +795,6 @@ def test_log_get(ray_start_cluster):
     wait_for_condition(verify)
 
     def verify():
-        # Tailing with lines is not supported for binary files, thus the `tail=-1`
         runner = CliRunner()
         result = runner.invoke(
             logs_state_cli_group,
