@@ -180,7 +180,6 @@ class TrainFlow:
     def continue_training(self):
         if self._restart_training:
             self._training_iter = self._restart_training
-            self._restart_training = None
         else:
             self._training_iter += 1
 
@@ -195,6 +194,7 @@ class TrainFlow:
 
     def training_barrier_completed(self, barrier: Barrier):
         self._results.append([res for _, res in barrier.get_results()])
+        self._restart_training = None
 
         # If less than 10 epochs, continue training
         if self._training_iter < 10:
@@ -205,8 +205,7 @@ class TrainFlow:
             self._actor_manager.remove_actor(tracked_actor)
 
     def training_error(self, tracked_actor: TrackedActor, exception: Exception):
-        if not self._restart_training:
-            self._restart_training = self._training_iter
+        self._restart_training = self._training_iter
 
         if isinstance(exception, RayActorError):
             return
