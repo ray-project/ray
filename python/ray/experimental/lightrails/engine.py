@@ -88,7 +88,8 @@ class ExecutionEngine:
         self.model = config.model_builder().to(self.device)
         if not self.is_training:
             self.model.eval()
-        self.data_loader = config.data_loader_builder()
+        data_loader = config.data_loader_builder()
+        self.data_loader = iter(data_loader) if data_loader else None
         self.optimizer = config.optimizer_builder(self.model)
 
     def get_address(self):
@@ -177,12 +178,14 @@ class ExecutionEngine:
                 if hasattr(self.model, "loss_fn"):
                     label, future = self.label_queue.popleft()
                     future.wait()
-                    print(f"label: {label}, output: {output}")
+                    logger.debug(
+                        f"step:{self.forward_counter} label: {label}, output: {output}"
+                    )
                     output = self.model.loss_fn(output, label)
                 else:
                     # Some models just return loss from forward()
                     pass
-                print(f"step: {self.forward_counter + 1}, loss: {output}")
+                print(f"step: {self.forward_counter}, loss: {output}")
 
             if self.is_training:
                 if self.forward_counter == 0:
@@ -198,10 +201,16 @@ class ExecutionEngine:
     def _execute_load_batch(self, instruction: LoadBatch):
         for _ in range(instruction.count):
             if instruction.is_label:
-                _, label = next(iter(self.data_loader))
+                _, label = next(self.data_loader)
+                logger.debug(
+                    f"loading label, step: {self.forward_counter}, label: {label}"
+                )
                 self.label_queue.append((label.to(self.device), FULLFILLED_FUTURE))
             else:
-                batch, _ = next(iter(self.data_loader))
+                batch, _ = next(self.data_loader)
+                logger.debug(
+                    f"loading value, step: {self.forward_counter}, value: {batch}"
+                )
                 self.input_queue.append((batch.to(self.device), FULLFILLED_FUTURE))
 
     def _execute_print_output(self, instruction: PrintOutput):
