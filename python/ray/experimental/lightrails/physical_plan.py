@@ -3,9 +3,9 @@ from dataclasses import dataclass
 from typing import Any, Callable, List, Tuple
 
 import ray
-from ray.experimental.parallel_ml.communicator import TorchBasedCommunicator
-from ray.experimental.parallel_ml.engine import Config
-from ray.experimental.parallel_ml.schedule import (
+from ray.experimental.lightrails.communicator import TorchBasedCommunicator
+from ray.experimental.lightrails.engine import Config
+from ray.experimental.lightrails.schedule import (
     ExecuteSchedule,
     InputSchedule,
     OutputSchedule,
@@ -83,6 +83,7 @@ class SimplePhysicalPlanner(PhysicalPlanner):
                 _get_device_name,
                 _get_communicator,
                 partition.module_loader,
+                lambda: None,
                 lambda: None,
             )
             configs.append(config)

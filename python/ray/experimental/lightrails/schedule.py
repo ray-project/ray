@@ -7,7 +7,7 @@ class Instruction(metaclass=ABCMeta):
     pass
 
 
-class Send(Instruction):
+class SendActivation(Instruction):
     """Send data to dest rank."""
 
     def __init__(self, dest_rank: int, count: int = 1):
@@ -15,12 +15,34 @@ class Send(Instruction):
         self.count = count
 
 
-class Receive(Instruction):
+class ReceiveActivation(Instruction):
     """Receive data from dest rank."""
 
     def __init__(self, src_rank: int, count: int = 1):
         self.src_rank = src_rank
         self.count = count
+
+
+class SendGradient(Instruction):
+    """Send data to dest rank."""
+
+    def __init__(self, dest_rank: int, count: int = 1):
+        self.dest_rank = dest_rank
+        self.count = count
+
+
+class ReceiveGradient(Instruction):
+    """Receive data from dest rank."""
+
+    def __init__(self, src_rank: int, count: int = 1):
+        self.src_rank = src_rank
+        self.count = count
+
+
+class Optimize(Instruction):
+    """Receive data from dest rank."""
+
+    pass
 
 
 class Forward(Instruction):
@@ -30,11 +52,19 @@ class Forward(Instruction):
         self.count = count
 
 
-class LoadBatch(Instruction):
-    """Load a batch of data from the data loader."""
+class Backward(Instruction):
+    """Apply backward computation against the model."""
 
     def __init__(self, count: int = 1):
         self.count = count
+
+
+class LoadBatch(Instruction):
+    """Load a batch of data from the data loader."""
+
+    def __init__(self, count: int = 1, is_label: bool = False):
+        self.count = count
+        self.is_label = is_label
 
 
 class PrintOutput(Instruction):
@@ -61,7 +91,7 @@ class InputSchedule(Schedule):
     def steps(self):
         """Yield a list of :class:`Instructions` for each step in the schedule."""
         while True:
-            yield [LoadBatch(1), Forward(1), Send(self.downstream_rank, 1)]
+            yield [LoadBatch(1), Forward(1), SendActivation(self.downstream_rank, 1)]
 
 
 class ExecuteSchedule(Schedule):
@@ -74,9 +104,9 @@ class ExecuteSchedule(Schedule):
         """Yield a list of :class:`Instructions` for each step in the schedule."""
         while True:
             yield [
-                Receive(self.upstream_rank, 1),
+                ReceiveActivation(self.upstream_rank, 1),
                 Forward(1),
-                Send(self.downstream_rank, 1),
+                SendActivation(self.downstream_rank, 1),
             ]
 
 
@@ -88,4 +118,4 @@ class OutputSchedule(Schedule):
     def steps(self):
         """Yield a list of :class:`Instructions` for each step in the schedule."""
         while True:
-            yield [Receive(self.upstream_rank, 1), Forward(1), PrintOutput(1)]
+            yield [ReceiveActivation(self.upstream_rank, 1), Forward(1), PrintOutput(1)]
