@@ -14,7 +14,7 @@ from ray._private.utils import (
 )
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve._private.common import (
     DeploymentInfo,
