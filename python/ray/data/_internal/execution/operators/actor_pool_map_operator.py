@@ -32,7 +32,18 @@ DEFAULT_MAX_TASKS_IN_FLIGHT = 4
 
 
 class ActorPoolMapOperator(MapOperator):
-    """A MapOperator implementation that executes tasks on an actor pool."""
+    """A MapOperator implementation that executes tasks on an actor pool.
+
+    This class manages the state of a pool of actors used for task execution, as well
+    as dispatch of tasks to those actors.
+
+    It operates in two modes. In bulk mode, tasks are queued internally and executed
+    when the operator has free actor slots. In streaming mode, the streaming executor
+    only adds input when `should_add_input() = True` (i.e., there are free slots).
+    This allows for better control of backpressure (e.g., suppose we go over memory
+    limits after adding put, then there isn't any way to "take back" the inputs prior
+    to actual execution).
+    """
 
     def __init__(
         self,
@@ -107,6 +118,7 @@ class ActorPoolMapOperator(MapOperator):
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_slots() > 0
 
+    # Called by streaming executor periodically to trigger autoscaling.
     def notify_resource_usage(
         self, input_queue_size: int, under_resource_limits: bool
     ) -> None:
@@ -159,6 +171,8 @@ class ActorPoolMapOperator(MapOperator):
             self._tasks[ref] = (task, actor)
             self._handle_task_submitted(task)
 
+        # Needed in the bulk execution path for triggering autoscaling. This is a
+        # no-op in the streaming execution case.
         if self._bundle_queue:
             # Try to scale up if work remains in the work queue.
             self._scale_up_if_needed()
