@@ -121,6 +121,7 @@ class ActorPoolMapOperator(MapOperator):
 
     def _add_bundled_input(self, bundle: RefBundle):
         """Dispatch the following bundle as a task."""
+        assert self.can_add_input(), "No idle actor slots available."
 
         # Pick an actor from the pool.
         if self._actor_locality_enabled:

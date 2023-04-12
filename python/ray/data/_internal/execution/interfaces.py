@@ -337,8 +337,8 @@ class PhysicalOperator(Operator):
         """
         self._started = True
 
-    def can_add_input(self) -> bool:
-        """Return whether it is allowed to add input to this operator right now.
+    def should_add_input(self) -> bool:
+        """Return whether it is desirable to add input to this operator right now.
 
         Operators can customize the implementation of this method to apply additional
         backpressure (e.g., waiting for internal actors to be created).
