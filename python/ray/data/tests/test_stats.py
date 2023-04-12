@@ -8,7 +8,7 @@ import ray
 from ray.data._internal.stats import _StatsActor, DatasetStats
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data.block import BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
 
 from unittest.mock import patch
@@ -34,7 +34,7 @@ def dummy_map_batches(x):
 
 
 def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     if context.new_execution_backend:
@@ -262,14 +262,17 @@ Dataset iterator time breakdown:
 
 
 def test_dataset__repr__(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
-    ds = ray.data.range(10, parallelism=1).materialize()
-    ss = ds._plan.stats().to_summary()
-
+    n = 4
+    ds = ray.data.range(n).materialize()
+    assert len(ds.take_all()) == n
     ds2 = ds.map_batches(lambda x: x).materialize()
+    assert len(ds2.take_all()) == n
+    ss = ds._plan.stats().to_summary()
     ss2 = ds2._plan.stats().to_summary()
+
     assert canonicalize(repr(ss)) == (
         "DatasetStatsSummary(\n"
         "   dataset_uuid=U,\n"
@@ -281,13 +284,13 @@ def test_dataset__repr__(ray_start_regular_shared):
         "         stage_name='Read',\n"
         "         is_substage=False,\n"
         "         time_total_s=T,\n"
-        "         block_execution_summary_str=N/N blocks split from parent in T\n"
-        "         wall_time=None,\n"
-        "         cpu_time=None,\n"
-        "         memory=None,\n"
+        "         block_execution_summary_str=N/N blocks executed in T\n"
+        "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
         "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
-        "         node_count=None,\n"
+        "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
         "      ),\n"
         "   ],\n"
         "   iter_stats=IterStatsSummary(\n"
@@ -295,7 +298,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      get_time=T,\n"
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
-        "      iter_unknown_location=None,\n"
+        "      iter_unknown_location=N,\n"
         "      next_time=T,\n"
         "      format_time=T,\n"
         "      user_time=T,\n"
@@ -333,7 +336,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      get_time=T,\n"
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
-        "      iter_unknown_location=None,\n"
+        "      iter_unknown_location=N,\n"
         "      next_time=T,\n"
         "      format_time=T,\n"
         "      user_time=T,\n"
@@ -350,13 +353,13 @@ def test_dataset__repr__(ray_start_regular_shared):
         "               stage_name='Read',\n"
         "               is_substage=False,\n"
         "               time_total_s=T,\n"
-        "               block_execution_summary_str=N/N blocks split from parent in T\n"
-        "               wall_time=None,\n"
-        "               cpu_time=None,\n"
-        "               memory=None,\n"
+        "               block_execution_summary_str=N/N blocks executed in T\n"
+        "               wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "               cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "               memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
         "               output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "               output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
-        "               node_count=None,\n"
+        "               node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"  # noqa: E501
         "            ),\n"
         "         ],\n"
         "         iter_stats=IterStatsSummary(\n"
@@ -364,7 +367,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "            get_time=T,\n"
         "            iter_blocks_local=None,\n"
         "            iter_blocks_remote=None,\n"
-        "            iter_unknown_location=None,\n"
+        "            iter_unknown_location=N,\n"
         "            next_time=T,\n"
         "            format_time=T,\n"
         "            user_time=T,\n"
@@ -378,7 +381,7 @@ def test_dataset__repr__(ray_start_regular_shared):
 
 
 def test_dataset_stats_shuffle(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.random_shuffle().repartition(1, shuffle=True)
@@ -460,7 +463,7 @@ def test_dataset_stats_from_items(ray_start_regular_shared):
 
 
 def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(1000, parallelism=10)
     ds.write_parquet(str(tmp_path))
@@ -495,7 +498,7 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
 
 
 def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     ds = ray.data.range(100, parallelism=10).map(lambda x: x + 1)
     dses = ds.split_at_indices([49])
     dses = [ds.map(lambda x: x + 1) for ds in dses]
@@ -565,7 +568,7 @@ Stage N Map: N/N blocks executed in T
 
 
 def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     if context.new_execution_backend:
@@ -834,7 +837,7 @@ def test_dataset_pipeline_cache_cases(ray_start_regular_shared):
 
 
 def test_dataset_pipeline_split_stats_basic(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(1000, parallelism=10)
     pipe = ds.repeat(2)
@@ -923,7 +926,7 @@ DatasetPipeline iterator time breakdown:
 
 
 def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
@@ -968,7 +971,7 @@ def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
 
 
 def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
@@ -1050,7 +1053,7 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     `DatasetStats.get_max_wall_time()`,
     `DatasetStats.get_total_cpu_time()`,
     `DatasetStats.get_max_heap_memory()`."""
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
@@ -1072,8 +1075,8 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
 
 
 def test_streaming_stats_full(ray_start_regular_shared, restore_dataset_context):
-    DatasetContext.get_current().new_execution_backend = True
-    DatasetContext.get_current().use_streaming_executor = True
+    DataContext.get_current().new_execution_backend = True
+    DataContext.get_current().use_streaming_executor = True
 
     ds = ray.data.range(5, parallelism=5).map(lambda x: x + 1)
     ds.take_all()
