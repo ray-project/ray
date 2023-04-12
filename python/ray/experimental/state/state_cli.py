@@ -746,13 +746,12 @@ log_node_id_option = click.option(
 )
 
 log_suffix_option = click.option(
-    "--suffix",
-    required=False,
-    default="out",
-    type=click.Choice(["out", "err"], case_sensitive=False),
+    "--err",
+    is_flag=True,
+    default=False,
     help=(
-        "The suffix of the log file that denotes the log type, where out refers "
-        "to logs from stdout, and err for logs from stderr "
+        "If supplied, querying stderr files for workers/actors, "
+        "else defaults to stdout files."
     ),
 )
 
@@ -806,7 +805,7 @@ def _print_log(
     tail: int = DEFAULT_LOG_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     interval: Optional[float] = None,
-    suffix: Optional[str] = None,
+    suffix: str = "out",
     encoding: str = "utf-8",
     encoding_errors: str = "strict",
 ):
@@ -1042,7 +1041,7 @@ def log_actor(
     tail: int,
     interval: float,
     timeout: int,
-    suffix: str,
+    err: bool,
 ):
     """Get/List logs associated with an actor.
 
@@ -1065,7 +1064,7 @@ def log_actor(
         Get the actor err log file.
 
         ```
-        ray logs actor --id ABC --suffix err
+        ray logs actor --id ABC --err
         ```
 
     Raises:
@@ -1090,7 +1089,7 @@ def log_actor(
         follow=follow,
         interval=interval,
         timeout=timeout,
-        suffix=suffix,
+        suffix="err" if err else "out",
     )
 
 
@@ -1123,7 +1122,7 @@ def log_worker(
     tail: int,
     interval: float,
     timeout: int,
-    suffix: str,
+    err: bool,
 ):
     """Get/List logs associated with a worker process.
 
@@ -1138,7 +1137,7 @@ def log_worker(
         Get the stderr logs from a worker process.
 
         ```
-        ray logs worker --pid ABC --suffix err
+        ray logs worker --pid ABC --err
         ```
 
     Raises:
@@ -1156,5 +1155,5 @@ def log_worker(
         follow=follow,
         interval=interval,
         timeout=timeout,
-        suffix=suffix,
+        suffix="err" if err else "out",
     )
