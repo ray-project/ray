@@ -83,6 +83,7 @@ def get_deploy_args(
     }
 
     return controller_deploy_args
+<<<<<<< HEAD
 
 
 def deploy_args_to_deployment_info(
@@ -135,3 +136,5 @@ def deploy_args_to_deployment_info(
         autoscaling_policy=autoscaling_policy,
         is_driver_deployment=is_driver_deployment,
     )
+=======
+>>>>>>> fe668893b6 (wip1)

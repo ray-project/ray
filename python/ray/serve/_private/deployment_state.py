@@ -36,7 +36,8 @@ from ray.serve.schema import (
     ReplicaDetails,
     _deployment_info_to_schema,
 )
-from ray.serve.config import DeploymentConfig
+from ray.serve.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
@@ -2108,7 +2109,14 @@ class DeploymentStateManager:
                 statuses.append(state.curr_status_info)
         return statuses
 
-    def deploy(self, deployment_name: str, deployment_info: DeploymentInfo) -> bool:
+    def deploy(
+        self,
+        deployment_name: str,
+        deployment_config_proto_bytes: bytes,
+        replica_config_proto_bytes: bytes,
+        deployer_job_id: Union[str, bytes],
+        is_driver_deployment: Optional[bool] = False,
+    ) -> bool:
         """Deploy the deployment.
 
         If the deployment already exists with the same version and config,
@@ -2117,6 +2125,50 @@ class DeploymentStateManager:
         Returns:
             bool: Whether or not the deployment is being updated.
         """
+        deployment_config = DeploymentConfig.from_proto_bytes(
+            deployment_config_proto_bytes
+        )
+        version = deployment_config.version
+        replica_config = ReplicaConfig.from_proto_bytes(
+            replica_config_proto_bytes, deployment_config.needs_pickle()
+        )
+
+        autoscaling_config = deployment_config.autoscaling_config
+        if autoscaling_config is not None:
+            if autoscaling_config.initial_replicas is not None:
+                deployment_config.num_replicas = autoscaling_config.initial_replicas
+            else:
+                previous_deployment = self.get_deployment(deployment_name)
+                if previous_deployment is None:
+                    deployment_config.num_replicas = autoscaling_config.min_replicas
+                else:
+                    deployment_config.num_replicas = (
+                        previous_deployment.deployment_config.num_replicas
+                    )
+
+            autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
+        else:
+            autoscaling_policy = None
+
+        # Java API passes in JobID as bytes
+        if isinstance(deployer_job_id, bytes):
+            deployer_job_id = ray.JobID.from_int(
+                int.from_bytes(deployer_job_id, "little")
+            ).hex()
+
+        deployment_info = DeploymentInfo(
+            actor_name=deployment_name,
+            version=version,
+            deployment_config=deployment_config,
+            replica_config=replica_config,
+            deployer_job_id=deployer_job_id,
+            start_time_ms=int(time.time() * 1000),
+            autoscaling_policy=autoscaling_policy,
+            is_driver_deployment=is_driver_deployment,
+        )
+        # TODO(architkulkarni): When a deployment is redeployed, even if
+        # the only change was num_replicas, the start_time_ms is refreshed.
+        # Is this the desired behaviour?
         if deployment_name in self._deleted_deployment_metadata:
             del self._deleted_deployment_metadata[deployment_name]
 
