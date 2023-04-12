@@ -1453,24 +1453,9 @@ class DeploymentState:
         target_version = self._target_state.version
         target_replica_count = self._target_state.num_replicas
 
-        logger.info(
-            f"_check_curr_status: {self._name}, {target_version}, {target_replica_count}, {self.curr_status_info.status}"
-        )
-
         all_running_replica_cnt = self._replicas.count(states=[ReplicaState.RUNNING])
         running_at_target_version_replica_cnt = self._replicas.count(
             states=[ReplicaState.RUNNING], version=target_version
-        )
-        pending_replicas = self._replicas.count(
-            states=[
-                ReplicaState.STARTING,
-                ReplicaState.UPDATING,
-                ReplicaState.RECOVERING,
-                ReplicaState.STOPPING,
-            ]
-        )
-        logger.info(
-            f"_check_curr_status: {self._name}, {all_running_replica_cnt}, {running_at_target_version_replica_cnt}, {pending_replicas}"
         )
 
         failed_to_start_count = self._replica_constructor_retry_counter
@@ -1792,7 +1777,6 @@ class DriverDeploymentState(DeploymentState):
     def _deploy_driver(self) -> bool:
         """Deploy the driver deployment to each node."""
         all_nodes = self._get_all_node_ids()
-        self._target_state.num_replicas = len(all_nodes)
         deployed_nodes = set()
         for replica in self._replicas.get(
             [
@@ -1856,19 +1840,23 @@ class DriverDeploymentState(DeploymentState):
     def update(self) -> bool:
         try:
             if self._target_state.deleting:
-                running_replicas_changed = self._stop_all_replicas()
+                self._stop_all_replicas()
             else:
                 num_nodes = len(self._get_all_node_ids())
+                # For driver deployment, when there are new node,
+                # it is supposed to update the target state.
                 if self._target_state.num_replicas != num_nodes:
                     self._target_state.num_replicas = num_nodes
+                    curr_info = self._target_state.info
+                    new_config = copy(curr_info)
+                    new_config.deployment_config.num_replicas = num_nodes
+                    if new_config.version is None:
+                        new_config.version = self._target_state.version.code_version
+                    self._set_target_state(new_config)
                 max_to_stop = self._calculate_max_replicas_to_stop()
-                running_replicas_changed = self._stop_wrong_version_replicas(
-                    max_to_stop
-                )
-                running_replicas_changed |= self._deploy_driver()
-            running_replicas_changed |= self._check_and_update_replicas()
-            if running_replicas_changed:
-                self._notify_running_replicas_changed()
+                self._stop_wrong_version_replicas(max_to_stop)
+                self._deploy_driver()
+            self._check_and_update_replicas()
             return self._check_curr_status()
         except Exception:
             self._curr_status_info = DeploymentStatusInfo(

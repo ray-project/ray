@@ -82,6 +82,14 @@ class Deployment:
         if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
             raise TypeError("ray_actor_options must be a dict.")
 
+        if is_driver_deployment == True:
+            if config.num_replicas != 1:
+                raise ValueError("num_replicas should not be set for driver deployment")
+            if config.autoscaling_config:
+                raise ValueError("autoscaling should not be set for driver deployment")
+            if route_prefix != DEFAULT.VALUE:
+                raise ValueError("route_prefix should not be set for driver deployment")
+
         if init_args is None:
             init_args = ()
         if init_kwargs is None:
@@ -423,9 +431,6 @@ class Deployment:
 
         if health_check_timeout_s is not DEFAULT.VALUE:
             new_config.health_check_timeout_s = health_check_timeout_s
-
-        if is_driver_deployment is DEFAULT.VALUE:
-            self._is_driver_deployment = False
 
         return Deployment(
             func_or_class,
