@@ -119,10 +119,6 @@ class ServeController:
         # Dictionary of deployment_name -> proxy_name -> queue length.
         self.deployment_stats = defaultdict(lambda: defaultdict(dict))
 
-        # Used to ensure that only a single state-changing operation happens
-        # at any given time.
-        self.write_lock = asyncio.Lock()
-
         self.long_poll_host = LongPollHost()
 
         if _disable_http_proxy:
@@ -255,21 +251,19 @@ class ServeController:
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
         while True:
-
-            async with self.write_lock:
-                if self.http_state:
-                    try:
-                        self.http_state.update()
-                    except Exception:
-                        logger.exception("Exception updating HTTP state.")
+            if self.http_state:
                 try:
-                    self.deployment_state_manager.update()
+                    self.http_state.update()
                 except Exception:
-                    logger.exception("Exception updating deployment state.")
-                try:
-                    self.application_state_manager.update()
-                except Exception:
-                    logger.exception("Exception updating application state.")
+                    logger.exception("Exception updating HTTP state.")
+            try:
+                self.deployment_state_manager.update()
+            except Exception:
+                logger.exception("Exception updating deployment state.")
+            try:
+                self.application_state_manager.update()
+            except Exception:
+                logger.exception("Exception updating application state.")
 
             try:
                 self._put_serve_snapshot()
@@ -372,14 +366,13 @@ class ServeController:
                 )
         return http_config.root_url
 
-    async def shutdown(self):
+    def shutdown(self):
         """Shuts down the serve instance completely."""
-        async with self.write_lock:
-            self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
-            self.deployment_state_manager.shutdown()
-            self.endpoint_state.shutdown()
-            if self.http_state:
-                self.http_state.shutdown()
+        self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
+        self.deployment_state_manager.shutdown()
+        self.endpoint_state.shutdown()
+        if self.http_state:
+            self.http_state.shutdown()
 
     def deploy(
         self,
