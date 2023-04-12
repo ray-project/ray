@@ -39,5 +39,25 @@ def test_bisect():
       'c4': False, 
     }
     def _mock_get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
-    blamed_commit = _bisect('test', 'c0', 'c4')
-    assert blamed_commit == 'c3'
+        commits = []
+        in_range = False
+        for commit in commit_to_test_result:
+            if commit == failing_commit:
+                break
+            if in_range:
+                commits.append(commit)
+            if commit == passing_commit:
+                commits.append(commit)
+                in_range = True
+        return commits
+    def _mock_run_test(test_name: str, commit: str) -> bool:
+        return commit_to_test_result[commit]
+    with mock.patch(
+        'ray_release.scripts.ray_bisect._get_commit_lists',
+        side_effect=_mock_get_commit_lists,
+    ), mock.patch(
+        'ray_release.scripts.ray_bisect._run_test',
+        side_effect=_mock_run_test,
+    ):
+        blamed_commit = _bisect('test', 'c0', 'c4')
+        assert blamed_commit == 'c3'
