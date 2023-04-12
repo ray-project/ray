@@ -9,7 +9,7 @@ from typing import Iterator, Tuple, Any
 import ray
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.util import record_operators_usage
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, List
 from ray.data.datasource import ReadTask
@@ -34,6 +34,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.util import make_callable_class_concurrent
 
 
 def execute_to_legacy_block_iterator(
@@ -129,7 +130,7 @@ def _get_execution_dag(
         record_operators_usage(plan._logical_plan.dag)
 
     # Get DAG of physical operators and input statistics.
-    if DatasetContext.get_current().optimizer_enabled:
+    if DataContext.get_current().optimizer_enabled:
         dag = get_execution_plan(plan._logical_plan).dag
         stats = _get_initial_stats_from_plan(plan)
     else:
@@ -145,7 +146,7 @@ def _get_execution_dag(
 
 
 def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
-    assert DatasetContext.get_current().optimizer_enabled
+    assert DataContext.get_current().optimizer_enabled
     if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
         return plan._snapshot_stats
     return plan._in_stats
@@ -256,7 +257,8 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
                 fn_constructor_args = stage.fn_constructor_args or ()
                 fn_constructor_kwargs = stage.fn_constructor_kwargs or {}
-                fn_ = stage.fn
+
+                fn_ = make_callable_class_concurrent(stage.fn)
 
                 def fn(item: Any) -> Any:
                     assert ray.data._cached_fn is not None
