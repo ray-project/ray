@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data._internal.stats import _StatsActor, DatasetStats
+from ray.data._internal.stats import _StatsActor, DatastreamStats
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
@@ -274,7 +274,7 @@ def test_dataset__repr__(ray_start_regular_shared):
     ss2 = ds2._plan.stats().to_summary()
 
     assert canonicalize(repr(ss)) == (
-        "DatasetStatsSummary(\n"
+        "DatastreamStatsSummary(\n"
         "   dataset_uuid=U,\n"
         "   base_name=None,\n"
         "   number=N,\n"
@@ -308,7 +308,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         ")"
     )
     assert canonicalize(repr(ss2)) == (
-        "DatasetStatsSummary(\n"
+        "DatastreamStatsSummary(\n"
         "   dataset_uuid=U,\n"
         "   base_name=MapBatches(<lambda>),\n"
         "   number=N,\n"
@@ -343,7 +343,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      total_time=T,\n"
         "   ),\n"
         "   parents=[\n"
-        "      DatasetStatsSummary(\n"
+        "      DatastreamStatsSummary(\n"
         "         dataset_uuid=U,\n"
         "         base_name=None,\n"
         "         number=N,\n"
@@ -930,7 +930,7 @@ def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
-    stats = DatasetStats(
+    stats = DatastreamStats(
         stages={"Read": block_meta_list},
         parent=None,
     )
@@ -975,7 +975,7 @@ def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
-    stats = DatasetStats(
+    stats = DatastreamStats(
         stages={"Read": block_meta_list},
         parent=None,
     )
@@ -1050,14 +1050,14 @@ def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
 def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     """Tests a set of similar getter methods which pull aggregated
     statistics values after calculating stage-level stats:
-    `DatasetStats.get_max_wall_time()`,
-    `DatasetStats.get_total_cpu_time()`,
-    `DatasetStats.get_max_heap_memory()`."""
+    `DatastreamStats.get_max_wall_time()`,
+    `DatastreamStats.get_total_cpu_time()`,
+    `DatastreamStats.get_max_heap_memory()`."""
     context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
-    stats = DatasetStats(
+    stats = DatastreamStats(
         stages={"Read": block_meta_list},
         parent=None,
     )
