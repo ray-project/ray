@@ -172,6 +172,9 @@ class ExecutionEngine:
             tensor, future = self.input_queue.popleft()
             future.wait()
             output = self.model.forward(tensor)
+            logger.debug(
+                f"step: {self.forward_counter}, input: {tensor}, output: {output}"
+            )
 
             # Optionally compute loss on the last device
             if self.is_last_trainig_stage:
@@ -252,11 +255,11 @@ class ExecutionEngine:
 
             # last stage the output is loss.
             if self.is_last_trainig_stage:
-                torch.autograd.backward(tensors=output)
+                output.backward()
             else:
                 tensor, future = self.input_gradient.popleft()
                 future.wait()
-                torch.autograd.backward(tensors=output, grad_tensors=tensor)
+                output.backward(tensor)
 
             tmp = []
             # accumulate the gradients into self.accumulated_parameters_gards
