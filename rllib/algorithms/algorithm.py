@@ -656,7 +656,9 @@ class Algorithm(Trainable):
             # the num worker is set to 0 to avoid creating shards. The dataset will not
             # be repartioned to num_workers blocks.
             logger.info("Creating evaluation dataset ...")
-            self.evaluation_dataset, _ = get_dataset_and_shards(self.evaluation_config, num_workers=0)
+            self.evaluation_dataset, _ = get_dataset_and_shards(
+                self.evaluation_config, num_workers=0
+            )
             logger.info("Evaluation dataset created")
 
         self.reward_estimators: Dict[str, OffPolicyEstimator] = {}
