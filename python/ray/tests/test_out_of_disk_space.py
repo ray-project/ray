@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray.experimental.state.api import list_cluster_events
 
 
 def calculate_capacity_threshold(disk_capacity_in_bytes):
@@ -245,7 +246,7 @@ def test_ood_events(shutdown_only):
         except ray.exceptions.RayTaskError as e:
             assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
 
-    events = ray.experimental.state.api.list_cluster_events()
+    events = list_cluster_events()
     print(events)
     # There could be more than 1 event depending on the test timing.
     assert len(events) >= 1
