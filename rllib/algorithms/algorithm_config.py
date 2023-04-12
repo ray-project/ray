@@ -955,9 +955,8 @@ class AlgorithmConfig(_Config):
                 )
 
         if (
-            self.simple_optimizer
-            and self._load_only_minibatch_onto_device
-            and self.framework_str != "torch"
+            (self.simple_optimizer and self._load_only_minibatch_onto_device)
+            or self.framework_str != "torch"
         ):
             raise ValueError(
                 "`load_only_minibatch_onto_device` is only supported for "
