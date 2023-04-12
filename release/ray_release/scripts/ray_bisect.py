@@ -42,7 +42,7 @@ def _run_test(test: Test, commit: str) -> bool:
     step['key'] = commit
     pipeline = json.dumps({'steps': [step]})
     subprocess.check_output(
-        f'buildkite-agent pipeline upload "{pipeline}"',
+        f'echo "{pipeline}" | buildkite-agent pipeline upload',
         shell=True,
     )
     outcome = subprocess.check_output(
