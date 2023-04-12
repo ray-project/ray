@@ -957,17 +957,17 @@ class Learner:
 
         This method uses `self._module_specs` or `self._module_obj` to construct the
         module. If the module_class is a single agent RL module it will be wrapped to a
-        multi-agent RL module. Override this method if there are other things than
-        needs to happen for instantiation of the module.
-
+        multi-agent RL module. Override this method if there are other things that
+        need to happen for instantiation of the module.
 
         Returns:
-            The constructed module.
+            The constructed MultiAgentRLModule.
         """
         if self._module_obj is not None:
             module = self._module_obj
         else:
             module = self._module_spec.build()
+        # If not already, convert to MultiAgentRLModule.
         module = module.as_multi_agent()
         return module
 
