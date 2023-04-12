@@ -58,7 +58,7 @@ class DataIterator(abc.ABC):
         >>> ds
         Datastream(num_blocks=5, num_rows=5, schema=<class 'int'>)
         >>> ds.iterator()
-        DatasetIterator(Datastream(num_blocks=5, num_rows=5, schema=<class 'int'>))
+        DataIterator(Datastream(num_blocks=5, num_rows=5, schema=<class 'int'>))
         >>> ds = ds.repeat(); ds
         DatasetPipeline(num_windows=inf, num_stages=2)
         >>> ds.iterator()
@@ -648,7 +648,7 @@ class DataIterator(abc.ABC):
             ...     "s3://anonymous@air-example-data/iris.csv"
             ... )
             >>> it = ds.iterator(); it
-            DatasetIterator(Datastream(
+            DataIterator(Datastream(
                num_blocks=1,
                num_rows=150,
                schema={
@@ -678,7 +678,7 @@ class DataIterator(abc.ABC):
             >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
             >>> it = preprocessor.transform(ds).iterator()
             >>> it
-            DatasetIterator(Concatenator
+            DataIterator(Concatenator
             +- Datastream(
                   num_blocks=1,
                   num_rows=150,
