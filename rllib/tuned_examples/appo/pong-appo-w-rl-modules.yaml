@@ -17,8 +17,8 @@ pong-appo:
             frameskip: 1  # no frameskip
             full_action_space: false
             repeat_action_probability: 0.0  # deterministic
-        vtrace: True
-        use_kl_loss: False
+        vtrace: true
+        use_kl_loss: false
         rollout_fragment_length: 50
         train_batch_size: 750
         # On a 32 CPU machine (g3.2xlarge), we use 30 CPUs for the rollout workers
@@ -34,6 +34,8 @@ pong-appo:
         clip_param: 0.3
         num_gpus: 0
         grad_clip: 10
+        model:
+            conv_filters: [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]]
 
         # Run with Learner and RLModule APIs.
         _enable_learner_api: true
