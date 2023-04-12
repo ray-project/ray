@@ -191,6 +191,22 @@ class ExecutionOptions:
     """Common options for execution.
 
     Some options may not be supported on all executors (e.g., resource limits).
+
+    Attributes:
+        resource_limits: Set a soft limit on the resource usage during execution.
+            This is not supported in bulk execution mode. Autodetected by default.
+        locality_with_output: Set this to prefer running tasks on the same node as the
+            output node (node driving the execution). It can also be set to a list of
+            node ids to spread the outputs across those nodes. Off by default.
+        preserve_order: Set this to preserve the ordering between blocks processed by
+            operators under the streaming executor. The bulk executor always preserves
+            order. Off by default.
+        actor_locality_enabled: Whether to enable locality-aware task dispatch to
+            actors (on by default). This applies to both ActorPoolStrategy map and
+            streaming_split operations.
+        verbose_progress: Whether to report progress individually per operator. By
+            default, only AllToAll operators and global progress is reported. This
+            option is useful for performance debugging. Off by default.
     """
 
     resource_limits: ExecutionResources = ExecutionResources()
