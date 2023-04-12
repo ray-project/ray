@@ -3904,6 +3904,15 @@
         --num_tasks_or_actors_per_run 64
         --num_measurements_per_configuration 5
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config_gpu.yaml
+        cluster_compute: only_head_node_1gpu_64cpu_gce.yaml
+
 - name: dask_on_ray_100gb_sort
   group: core-daily-test
   working_dir: nightly_tests
@@ -4124,6 +4133,15 @@
   run:
     timeout: 500
     script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: stress_tests/stress_tests_single_node_oom_app_config.yaml
+        cluster_compute: stress_tests/stress_tests_single_node_oom_compute_gce.yaml
 
 
 - name: tune_air_oom
