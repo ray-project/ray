@@ -40,7 +40,7 @@ from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatastreamStats
 from ray.data._internal.util import (
-    _lazy_import_pyarrow.dataset,
+    _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
     _is_local_scheme,
     pandas_df_to_arrow_block,
@@ -341,7 +341,7 @@ def read_datasource(
 
     force_local = False
     cur_pg = ray.util.get_current_placement_group()
-    pa_ds = _lazy_import_pyarrow.dataset()
+    pa_ds = _lazy_import_pyarrow_dataset()
     if pa_ds:
         partitioning = read_args.get("datastream_kwargs", {}).get("partitioning", None)
         if isinstance(partitioning, pa_ds.Partitioning):

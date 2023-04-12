@@ -30,7 +30,7 @@ from ray.data._internal.compute import (
     get_compute,
     is_task_compute,
 )
-from ray.data._internal.datastream_logger import DatastreamLogger
+from ray.data._internal.dataset_logger import DatastreamLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatastreamStats, DatastreamStatsSummary

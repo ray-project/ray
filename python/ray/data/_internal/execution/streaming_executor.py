@@ -6,7 +6,7 @@ from typing import Iterator, Optional
 
 import ray
 from ray.data.context import DataContext
-from ray.data._internal.datastream_logger import DatastreamLogger
+from ray.data._internal.dataset_logger import DatastreamLogger
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
