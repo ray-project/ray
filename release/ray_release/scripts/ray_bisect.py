@@ -26,6 +26,10 @@ def main(test_name: str, passing_commit: str, failing_commit: str) -> None:
 def _bisect(test_name: str, commit_list: List[str]) -> str:
     while len(commit_list) > 1:
         middle_commit_idx = len(commit_list) // 2
+        logger.info(
+            f'Bisecting between {len(lists)} commits: '
+            f'{passing_commit} to {failing_commit}'
+        )
         middle_commit = commit_list[middle_commit_idx]
         is_passing = _run_test(test_name, middle_commit)
         if is_passing:
@@ -43,7 +47,7 @@ def _run_test(test: Test, commit: str) -> bool:
         test,
         ray_wheels=ray_wheels_url,
     )
-    step['label'] = commit
+    step['label'] = f'{test["name"]}:{commit[:6]}'
     step['key'] = commit
     pipeline = json.dumps({'steps': [step]})
     subprocess.check_output(
@@ -51,14 +55,17 @@ def _run_test(test: Test, commit: str) -> bool:
         shell=True,
     )
     outcome = None
+    wait = 30
+    total_wait = 0
     while outcome not in ['passed', 'hard_failed', 'soft_failed']:
-        logger.info('... waiting for test result')
+        logger.info(f'... waiting for test result ...({total_wait} seconds)')
         outcome = subprocess.check_output(
             f'buildkite-agent step get "outcome" --step "{commit}"',
             shell=True,
         ).decode('utf-8')
-        logger.info(f'Outcome: {outcome}')
-        time.sleep(30)
+        time.sleep(wait)
+        total_wait = total_wait + wait
+    logger.info(f'Final test outcome: {outcome}')
     return outcome == 'passed'
 
 def _get_test(test_name: str) -> Test:
