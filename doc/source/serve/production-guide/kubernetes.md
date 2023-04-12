@@ -23,25 +23,10 @@ Although it's actively developed and maintained, [KubeRay] is still considered a
 (serve-installing-kuberay-operator)=
 ## Installing the KubeRay operator
 
-This guide assumes that you have a running Kubernetes cluster and have `kubectl` configured to run commands on it.
-See the [Kubernetes documentation](https://kubernetes.io/docs/setup/) or the [KubeRay quickstart guide](kuberay-quickstart) if you need help getting started. Make sure your Kubernetes cluster and Kubectl are both at version at least 1.19.
-
-The first step is to install the `KubeRay` operator into your Kubernetes cluster.
-This creates a pod that runs the `KubeRay` controller. The `KubeRay` controller manages resources based on the `RayService` CRs you create.
-
-Install the operator using `kubectl apply` and check that the controller pod is running:
-```console
-$ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.4.0&timeout=90s"
-$ kubectl get deployments -n ray-system
-NAME                READY   UP-TO-DATE   AVAILABLE   AGE
-kuberay-operator    1/1     1            1           13s
-
-$ kubectl get pods -n ray-system
-NAME                                 READY   STATUS    RESTARTS   AGE
-kuberay-operator-68c75b5d5f-m8xd7    1/1     Running   0          42s
-```
-
-For more details, see the [KubeRay quickstart guide](kuberay-quickstart).
+Follow the [KubeRay quickstart guide](kuberay-quickstart) to:
+* Install `kubectl` and `Helm`
+* Prepare a Kubernetes cluster
+* Deploy a KubeRay operator
 
 (serve-deploy-app-on-kuberay)=
 ## Deploying a Serve application
@@ -60,7 +45,7 @@ Then, once the cluster is running, it deploys the Serve application to the clust
 The controller also creates a Kubernetes Service that can be used to route traffic to the Serve application.
 
 Let's see this in action by deploying the [`FruitStand` example](serve-in-production-example).
-The Serve config for the example is embedded into [this example `RayService` CR](https://github.com/ray-project/kuberay/blob/release-0.3/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml).
+The Serve config for the example is embedded into [this example `RayService` CR](https://github.com/ray-project/kuberay/blob/release-0.5/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml).
 To follow along, save this CR locally in a file named `ray_v1alpha1_rayservice.yaml`:
 
 :::{note}
@@ -70,7 +55,7 @@ Learn more about how to configure KubeRay clusters [here](kuberay-config).
 :::
 
 ```console
-$ curl -o ray_v1alpha1_rayservice.yaml https://raw.githubusercontent.com/ray-project/kuberay/release-0.3/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml
+$ curl -o ray_v1alpha1_rayservice.yaml https://raw.githubusercontent.com/ray-project/kuberay/release-0.5/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml
 ```
 
 To deploy the example, we simply `kubectl apply` the CR.
@@ -85,18 +70,16 @@ rayservice-sample   7s
 
 $ kubectl get pods
 NAME                                                      READY   STATUS    RESTARTS   AGE
-rayservice-sample-raycluster-qd2vl-worker-small-group-bxpp6   1/1     Running   0          24m
-rayservice-sample-raycluster-qd2vl-head-45hj4             1/1     Running   0          24m
+ervice-sample-raycluster-454c4-worker-small-group-b6mmg   1/1     Running   0          XXs
+kuberay-operator-7fbdbf8c89-4lrnr                         1/1     Running   0          XXs
+rayservice-sample-raycluster-454c4-head-krk9d             1/1     Running   0          XXs
 
 $ kubectl get services
-NAME                                               TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)                                          AGE
-kubernetes                                         ClusterIP   10.100.0.1       <none>        443/TCP                                          62d
-# Services used internally by the KubeRay controller.
-rayservice-sample-head-svc                         ClusterIP   10.100.34.24     <none>        6379/TCP,8265/TCP,10001/TCP,8000/TCP,52365/TCP   24m
-rayservice-sample-raycluster-qd2vl-dashboard-svc   ClusterIP   10.100.109.177   <none>        52365/TCP                                        24m
-rayservice-sample-raycluster-qd2vl-head-svc        ClusterIP   10.100.180.221   <none>        6379/TCP,8265/TCP,10001/TCP,8000/TCP,52365/TCP   24m
-# The Serve service that we will use to send queries to the application.
-rayservice-sample-serve-svc                        ClusterIP   10.100.39.92     <none>        8000/TCP                                         24m
+
+rayservice-sample-head-svc                         ClusterIP   ...        8080/TCP,6379/TCP,8265/TCP,10001/TCP,8000/TCP,52365/TCP   XXs
+rayservice-sample-raycluster-454c4-dashboard-svc   ClusterIP   ...        52365/TCP                                                 XXs
+rayservice-sample-raycluster-454c4-head-svc        ClusterIP   ...        8000/TCP,52365/TCP,8080/TCP,6379/TCP,8265/TCP,10001/TCP   XXs
+rayservice-sample-serve-svc                        ClusterIP   ...        8000/TCP                                                  XXs
 ```
 
 Note that the `rayservice-sample-serve-svc` above is the one that can be used to send queries to the Serve application -- this will be used in the next section.

@@ -186,3 +186,14 @@ def fallback_if_colab(func: F) -> Callable[[F], F]:
             return None
 
     return wrapped
+
+
+@DeveloperAPI
+def in_notebook() -> bool:
+    """Return whether we are in a Jupyter notebook."""
+    try:
+        class_name = get_ipython().__class__.__name__
+        is_notebook = True if "Terminal" not in class_name else False
+    except NameError:
+        is_notebook = False
+    return is_notebook

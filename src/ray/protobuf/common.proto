@@ -52,6 +52,7 @@ enum TaskType {
 message NodeAffinitySchedulingStrategy {
   bytes node_id = 1;
   bool soft = 2;
+  bool spill_on_unavailable = 3;
 }
 
 message PlacementGroupSchedulingStrategy {

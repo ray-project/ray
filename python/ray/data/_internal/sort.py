@@ -28,7 +28,7 @@ from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 T = TypeVar("T")
@@ -158,7 +158,7 @@ def sort_impl(
     if descending:
         boundaries.reverse()
 
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     if context.use_push_based_shuffle:
         sort_op_cls = PushBasedSortOp
     else:
