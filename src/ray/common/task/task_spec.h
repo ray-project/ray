@@ -45,7 +45,9 @@ inline bool operator==(const ray::rpc::SchedulingStrategy &lhs,
     return (lhs.node_affinity_scheduling_strategy().node_id() ==
             rhs.node_affinity_scheduling_strategy().node_id()) &&
            (lhs.node_affinity_scheduling_strategy().soft() ==
-            rhs.node_affinity_scheduling_strategy().soft());
+            rhs.node_affinity_scheduling_strategy().soft()) &&
+           (lhs.node_affinity_scheduling_strategy().spill_on_unavailable() ==
+            rhs.node_affinity_scheduling_strategy().spill_on_unavailable());
   }
   case ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy: {
     return (lhs.placement_group_scheduling_strategy().placement_group_id() ==
@@ -114,6 +116,8 @@ struct hash<ray::rpc::SchedulingStrategy> {
       // soft returns a bool
       hash ^= static_cast<size_t>(
           scheduling_strategy.node_affinity_scheduling_strategy().soft());
+      hash ^= static_cast<size_t>(
+          scheduling_strategy.node_affinity_scheduling_strategy().spill_on_unavailable());
     } else if (scheduling_strategy.scheduling_strategy_case() ==
                ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
       hash ^= std::hash<std::string>()(

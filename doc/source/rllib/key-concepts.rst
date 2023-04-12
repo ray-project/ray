@@ -211,7 +211,6 @@ sample batches are collected separately for each individual policy.
 These batches are wrapped up together in a ``MultiAgentBatch``,
 serving as a container for the individual agents' sample batches.
 
-
 Training Step Method (``Algorithm.training_step()``)
 ----------------------------------------------------
 
