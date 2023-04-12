@@ -7,7 +7,10 @@ import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.types import ObjectRef
 from ray.exceptions import RayTaskError, RuntimeEnvSetupError
+<<<<<<< HEAD
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
+=======
+>>>>>>> 5e806c06f7 (wip2)
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.common import (
