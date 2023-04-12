@@ -80,21 +80,18 @@ spec:
         rayActorOptions:
           numCpus: 0
   rayClusterConfig:
-    rayVersion: '2.0.0'
+    rayVersion: '2.3.0'
     headGroupSpec:
-      serviceType: ClusterIP
       replicas: 1
       rayStartParams:
-        block: 'true'
         num-cpus: '2'
-        object-store-memory: '100000000'
         dashboard-host: '0.0.0.0'
-        node-ip-address: $MY_POD_IP # Auto-completed as the head pod IP
+        redis-password: "5241590000000000"
       template:
         spec:
           containers:
             - name: ray-head
-              image: rayproject/ray:2.0.0
+              image: rayproject/ray:2.3.0
               imagePullPolicy: Always
               env:
                 - name: MY_POD_IP
@@ -125,17 +122,12 @@ spec:
         maxReplicas: 2
         groupName: small-group
         rayStartParams:
-          block: 'true'
           node-ip-address: $MY_POD_IP
         template:
           spec:
-            initContainers:
-              - name: init-myservice
-                image: busybox:1.28
-                command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
             containers:
               - name: machine-learning
-                image: rayproject/ray:2.0.0
+                image: rayproject/ray:2.3.0
                 imagePullPolicy: Always
                 env:
                   - name:  RAY_DISABLE_DOCKER_CPU_WARNING

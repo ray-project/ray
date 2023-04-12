@@ -190,7 +190,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         protocol = Protocol(uri.scheme)
     except ValueError as e:
         raise ValueError(
-            f"Invalid protocol for runtime_env URI {pkg_uri}. "
+            f'Invalid protocol for runtime_env URI "{pkg_uri}". '
             f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
         )
 
