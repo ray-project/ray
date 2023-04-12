@@ -372,7 +372,7 @@ def select_operator_to_run(
     ops = []
     for op, state in topology.items():
         under_resource_limits = _execution_allowed(op, cur_usage, limits)
-        if state.num_queued() > 0 and op.can_add_input() and under_resource_limits:
+        if state.num_queued() > 0 and op.should_add_input() and under_resource_limits:
             ops.append(op)
         # Update the op in all cases to enable internal autoscaling, etc.
         op.notify_resource_usage(state.num_queued(), under_resource_limits)

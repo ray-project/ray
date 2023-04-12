@@ -1,3 +1,4 @@
+import collections
 from dataclasses import dataclass
 from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
 
@@ -73,11 +74,16 @@ class ActorPoolMapOperator(MapOperator):
         ] = {}
         # A pool of running actors on which we can execute mapper tasks.
         self._actor_pool = _ActorPool(autoscaling_policy._config.max_tasks_in_flight)
+        # A queue of bundles awaiting dispatch to actors.
+        self._bundle_queue = collections.deque()
         # Cached actor class.
         self._cls = None
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
         self._next_task_idx = 0
+
+    def internal_queue_size(self) -> int:
+        return len(self._bundle_queue)
 
     def start(self, options: ExecutionOptions):
         self._actor_locality_enabled = options.actor_locality_enabled
@@ -98,7 +104,7 @@ class ActorPoolMapOperator(MapOperator):
         )
         ray.get(refs)
 
-    def can_add_input(self) -> bool:
+    def should_add_input(self) -> bool:
         return self._actor_pool.num_free_slots() > 0
 
     def notify_resource_usage(
@@ -120,26 +126,40 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_pool.add_pending_actor(actor, actor.get_location.remote())
 
     def _add_bundled_input(self, bundle: RefBundle):
-        """Dispatch the following bundle as a task."""
-        assert self.can_add_input(), "No idle actor slots available."
+        self._bundle_queue.append(bundle)
+        # Try to dispatch all bundles in the queue, including this new bundle.
+        self._dispatch_tasks()
 
-        # Pick an actor from the pool.
-        if self._actor_locality_enabled:
-            actor = self._actor_pool.pick_actor(bundle)
-        else:
-            actor = self._actor_pool.pick_actor()
-        assert actor is not None, "Tried to add input when not ready."
+    def _dispatch_tasks(self):
+        """Try to dispatch tasks from the bundle buffer to the actor pool.
 
-        # Submit the map task.
-        input_blocks = [block for block, _ in bundle.blocks]
-        ctx = TaskContext(task_idx=self._next_task_idx)
-        ref = actor.submit.options(num_returns="dynamic", name=self.name).remote(
-            self._transform_fn_ref, ctx, *input_blocks
-        )
-        self._next_task_idx += 1
-        task = _TaskState(bundle)
-        self._tasks[ref] = (task, actor)
-        self._handle_task_submitted(task)
+        This is called when:
+            * a new input bundle is added,
+            * a task finishes,
+            * a new worker has been created.
+        """
+
+        while self._bundle_queue:
+            # Pick an actor from the pool.
+            if self._actor_locality_enabled:
+                actor = self._actor_pool.pick_actor(self._bundle_queue[0])
+            else:
+                actor = self._actor_pool.pick_actor()
+            if actor is None:
+                # No actors available for executing the next task.
+                break
+
+            # Submit the map task.
+            bundle = self._bundle_queue.popleft()
+            input_blocks = [block for block, _ in bundle.blocks]
+            ctx = TaskContext(task_idx=self._next_task_idx)
+            ref = actor.submit.options(num_returns="dynamic", name=self.name).remote(
+                self._transform_fn_ref, ctx, *input_blocks
+            )
+            self._next_task_idx += 1
+            task = _TaskState(bundle)
+            self._tasks[ref] = (task, actor)
+            self._handle_task_submitted(task)
 
     def _scale_up_if_needed(self):
         """Try to scale up the pool if the autoscaling policy allows it."""
@@ -198,7 +218,7 @@ class ActorPoolMapOperator(MapOperator):
         self._scale_down_if_needed()
 
     def _kill_inactive_workers_if_done(self):
-        if self._inputs_done:
+        if self._inputs_done and not self._bundle_queue:
             # No more tasks will be submitted, so we kill all current and future
             # inactive workers.
             self._actor_pool.kill_all_inactive_actors()
