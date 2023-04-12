@@ -8,6 +8,10 @@ from typing import List
 @click.argument("passing_commit", required=True, type=str)
 @click.argument("failing_commit", required=True, type=str)
 def main(test_name: str, passing_commit: str, failing_commit: str) -> None:
+    blamed_commit = _bisect(test_name, passing_commit, failing_commit)
+    print(f'Blamed commit found: {failing_commit}')
+
+def _bisect(test_name: str, passing_commit: str, failing_commit: str) -> str:
     lists = _get_commit_lists(passing_commit, failing_commit)
     while len(lists) > 1:
         middle_commit = lists[math.floor(len(lists)/2)]
@@ -17,11 +21,9 @@ def main(test_name: str, passing_commit: str, failing_commit: str) -> None:
         else:
             failing_commit = middle_commit
         lists = _get_commit_lists(passing_commit, failing_commit)
-        break
-    
-    print(f'Blamed commit found: {failing_commit}')
+    return failing_commit
 
-def _run_test(test_name: str, failing_commit: str) -> bool:
+def _run_test(test_name: str, commit: str) -> bool:
     return True
 
 def _get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
