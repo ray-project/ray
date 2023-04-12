@@ -802,7 +802,7 @@ class SampleBatch(dict):
             copy: If False, modify batch in place. If True, return a new batch.
 
         Returns:
-
+            A batch with all tensors moved to the given device.
         """
         """TODO: transfer batch to given device as framework tensor."""
         if framework == "torch":
