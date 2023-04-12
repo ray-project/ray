@@ -33,6 +33,7 @@ from ray.serve._private.constants import (
     SERVE_ROOT_URL_ENV_KEY,
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
+    RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     MULTI_APP_MIGRATION_MESSAGE,
@@ -124,6 +125,7 @@ class ServeController:
         self.write_lock = asyncio.Lock()
 
         self.long_poll_host = LongPollHost()
+        self.done_recovering_event = asyncio.Event()
 
         if _disable_http_proxy:
             self.http_state = None
@@ -201,6 +203,11 @@ class ServeController:
               determine whether or not the host should immediately return the
               data or wait for the value to be changed.
         """
+        if not self.done_recovering_event.is_set():
+            logger.info("Waiting for recovering event.")
+            await self.done_recovering_event.wait()
+            logger.info("Done waiting for recovering event!")
+
         return await (self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
     async def listen_for_change_java(self, keys_to_snapshot_ids_bytes: bytes):
@@ -210,6 +217,11 @@ class ServeController:
             keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of
               keys_to_snapshot_ids (Dict[str, int]).
         """
+        if not self.done_recovering_event.is_set():
+            logger.info("Waiting for recovering event.")
+            await self.done_recovering_event.wait()
+            logger.info("Done waiting for recovering event!")
+
         return await (
             self.long_poll_host.listen_for_change_java(keys_to_snapshot_ids_bytes)
         )
@@ -254,16 +266,24 @@ class ServeController:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
+        start_time = time.time()
         while True:
+            if not self.done_recovering_event.is_set() and time.time() - start_time > RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S:
+                logger.info("TIMEOUT IS UP BROTHERMAN")
+                self.done_recovering_event.set()
 
             async with self.write_lock:
-                if self.http_state:
+                if self.http_state and self.done_recovering_event.is_set():
                     try:
                         self.http_state.update()
                     except Exception:
                         logger.exception("Exception updating HTTP state.")
                 try:
-                    self.deployment_state_manager.update()
+                    any_recovering = self.deployment_state_manager.update()
+                    if not self.done_recovering_event.is_set() and not any_recovering:
+                        logger.info("!!! Finished recovering !!!")
+                        self.done_recovering_event.set()
+
                 except Exception:
                     logger.exception("Exception updating deployment state.")
                 try:
