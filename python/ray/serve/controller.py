@@ -15,7 +15,6 @@ from ray._private.utils import (
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
 from ray._private.gcs_utils import GcsClient
-from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve._private.common import (
     DeploymentInfo,
     EndpointInfo,
@@ -25,7 +24,7 @@ from ray.serve._private.common import (
     StatusOverview,
     ServeDeployMode,
 )
-from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
+from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
     SERVE_LOGGER_NAME,
@@ -396,51 +395,13 @@ class ServeController:
         if docs_path is not None:
             assert docs_path.startswith("/")
 
-        deployment_config = DeploymentConfig.from_proto_bytes(
-            deployment_config_proto_bytes
-        )
-        version = deployment_config.version
-        replica_config = ReplicaConfig.from_proto_bytes(
-            replica_config_proto_bytes, deployment_config.needs_pickle()
-        )
-
-        autoscaling_config = deployment_config.autoscaling_config
-        if autoscaling_config is not None:
-            if autoscaling_config.initial_replicas is not None:
-                deployment_config.num_replicas = autoscaling_config.initial_replicas
-            else:
-                previous_deployment = self.deployment_state_manager.get_deployment(name)
-                if previous_deployment is None:
-                    deployment_config.num_replicas = autoscaling_config.min_replicas
-                else:
-                    deployment_config.num_replicas = (
-                        previous_deployment.deployment_config.num_replicas
-                    )
-
-            autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
-        else:
-            autoscaling_policy = None
-
-        # Java API passes in JobID as bytes
-        if isinstance(deployer_job_id, bytes):
-            deployer_job_id = ray.JobID.from_int(
-                int.from_bytes(deployer_job_id, "little")
-            ).hex()
-
-        deployment_info = DeploymentInfo(
-            actor_name=name,
-            version=version,
-            deployment_config=deployment_config,
-            replica_config=replica_config,
+        updating = self.deployment_state_manager.deploy(
+            deployment_name=name,
+            deployment_config_proto_bytes=deployment_config_proto_bytes,
+            replica_config_proto_bytes=replica_config_proto_bytes,
             deployer_job_id=deployer_job_id,
-            start_time_ms=int(time.time() * 1000),
-            autoscaling_policy=autoscaling_policy,
             is_driver_deployment=is_driver_deployment,
         )
-        # TODO(architkulkarni): When a deployment is redeployed, even if
-        # the only change was num_replicas, the start_time_ms is refreshed.
-        # Is this the desired behaviour?
-        updating = self.deployment_state_manager.deploy(name, deployment_info)
 
         if route_prefix is not None:
             endpoint_info = EndpointInfo(route=route_prefix)
@@ -450,7 +411,9 @@ class ServeController:
 
         return updating
 
-    def deploy_group(self, name: str, deployment_args_list: List[Dict]) -> List[bool]:
+    def deploy_application(
+        self, name: str, deployment_args_list: List[Dict]
+    ) -> List[bool]:
         """
         Takes in a list of dictionaries that contain keyword arguments for the
         controller's deploy() function. Calls deploy on all the argument
