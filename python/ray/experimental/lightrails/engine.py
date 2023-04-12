@@ -121,14 +121,6 @@ class ExecutionEngine:
         """Reconfgure the engine with a new schedule."""
         pass
 
-    def _allocate_tensor(
-        self, size: Any, dtype: torch.Tensor.dtype, requires_grad: bool = False
-    ):
-        tensor = self._allocate_tensor(
-            size=size, dtype=dtype, device=self.device, requires_grad=requires_grad
-        )
-        return tensor
-
     def _execute(self):
         for instructions in self.schedule.steps():
             with self.execution_lock:
@@ -167,10 +159,10 @@ class ExecutionEngine:
 
     def _execute_receive_activation(self, instruction: ReceiveActivation):
         for _ in range(instruction.count):
-            tensor = self._allocate_tensor(
+            tensor = torch.ones(()).new_empty(
                 size=self.input_tensor_shape,
                 dtype=self.input_tensor_dtype,
-                requires_grad=self.is_training,
+                device=self.device,
             )
             future = self.dist.recv(tensor, instruction.src_rank, async_op=True)
             self.input_queue.append((tensor, future))
@@ -236,9 +228,10 @@ class ExecutionEngine:
 
     def _execute_receive_gradient(self, instruction: ReceiveGradient):
         for _ in range(instruction.count):
-            tensor = self._allocate_tensor(
+            tensor = torch.ones(()).new_empty(
                 size=self.received_gradient_tensor_shape,
                 dtype=self.received_gradient_tensor_dtype,
+                device=self.device,
             )
             future = self.dist.recv(tensor, instruction.src_rank, async_op=True)
             self.input_gradient.append((tensor, future))
@@ -257,6 +250,8 @@ class ExecutionEngine:
     def _execute_backward(self, instruction: Backward):
         for _ in range(instruction.count):
             input, output = self.forward_cache.pop(self.backward_counter)
+            input.requires_grad_()
+            input.retain_grad()
 
             # last stage the output is loss.
             if self.is_last_trainig_stage:
