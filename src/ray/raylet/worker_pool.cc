@@ -500,7 +500,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   Process proc = StartProcess(worker_command_args, env);
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
-                << worker_startup_token_counter_ << " cmd " << worker_command_args;
+                << worker_startup_token_counter_;
   if (!IsIOWorkerType(worker_type)) {
     AdjustWorkerOomScore(proc.GetId());
   }
