@@ -17,7 +17,7 @@ from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.pandas_block import PandasRow
 from ray.data.block import BlockAccessor, BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDatastream, _sliding_window
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
@@ -259,7 +259,7 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
 
     def check_num_computed(expected):
-        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+        if ray.data.context.DataContext.get_current().use_streaming_executor:
             # In streaing executor, ds.take() will not invoke partial execution
             # in LazyBlocklist.
             assert ds._plan.execute()._num_computed() == 0
@@ -709,7 +709,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert batch.equals(df)
 
     # Prefetch with ray.wait.
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     old_config = context.actor_prefetcher_enabled
     try:
         context.actor_prefetcher_enabled = False
@@ -1030,7 +1030,7 @@ def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
     for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
-        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+        if ray.data.context.DataContext.get_current().use_streaming_executor:
             # In streaming execution of ds.iter_batches(), there is no partial
             # execution so _num_computed() in LazyBlocklist is 0.
             assert ds._plan.execute()._num_computed() == 0
@@ -1482,7 +1482,7 @@ def test_read_write_local_node(ray_start_cluster):
         path = os.path.join(data_path, f"test{idx}.parquet")
         df.to_parquet(path)
 
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.read_write_local_node = True
 
     def check_dataset_is_local(ds):
@@ -1601,7 +1601,7 @@ def test_datasource(ray_start_regular):
 def test_polars_lazy_import(shutdown_only):
     import sys
 
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
 
     try:
         original_use_polars = ctx.use_polars
@@ -1747,7 +1747,7 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
             ds = ds.map_batches(lambda x: x)
             ds.take()
         except Exception as e:
-            if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+            if ray.data.context.DataContext.get_current().use_streaming_executor:
                 assert isinstance(e, ValueError)
                 assert "exceeds the execution limits ExecutionResources(cpu=0.0" in str(
                     e
