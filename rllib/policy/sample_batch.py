@@ -791,6 +791,19 @@ class SampleBatch(dict):
 
     @ExperimentalAPI
     def to_device(self, device, framework="torch", copy=False):
+        """Moves tensors inside this batch to a given device.
+
+        Depending on the copy flag, this will either return a new batch
+        or modify this batch in-place.
+
+        Args:
+            device: The device to move the tensors to.
+            framework: The framework to use for the device (e.g. "torch").
+            copy: If False, modify batch in place. If True, return a new batch.
+
+        Returns:
+
+        """
         """TODO: transfer batch to given device as framework tensor."""
         if framework == "torch":
             assert torch is not None

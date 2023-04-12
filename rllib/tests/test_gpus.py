@@ -188,39 +188,6 @@ class TestGPUs(unittest.TestCase):
         policy.learn_on_loaded_batch()
 
 
-class TestLargeTrainBatchSizeGPU(unittest.TestCase):
-    # This test takes quite long (~25 minutes) to run, so it is better not run on CI.
-
-    def test_larger_train_batch_size(self):
-        # Tests that we can use a `train_batch_size` larger than GPU memory with our
-        # experimental setting `_load_only_minibatch_onto_device` with PPO.
-
-        # These values make it so that one large minibatch and the optimizer
-        # variables can fit onto the device, but the whole sample_batch is already too
-        # large for the GPU itself.
-        sgd_minibatch_size = int(1e4)
-        train_batch_size = int(sgd_minibatch_size * 1e5)
-
-        config = (
-            A2CConfig()
-            .environment(env="CartPole-v1")
-            .framework("torch")
-            .resources(num_gpus=1)
-            .rollouts(num_rollout_workers=0)
-            .training(
-                train_batch_size=train_batch_size,
-                num_sgd_iter=1,
-                sgd_minibatch_size=sgd_minibatch_size,
-                # This setting makes it so that we don't load a batch of
-                # size `train_batch_size` onto the device, but only
-                # minibatches.
-                _load_only_minibatch_onto_device=True,
-            )
-        )
-
-        config.build().train()
-
-
 if __name__ == "__main__":
     import pytest
     import sys

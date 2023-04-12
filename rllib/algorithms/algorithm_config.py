@@ -1608,7 +1608,6 @@ class AlgorithmConfig(_Config):
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
         _enable_learner_api: Optional[bool] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
-        _load_only_minibatch_onto_device: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -1683,8 +1682,6 @@ class AlgorithmConfig(_Config):
             self._enable_learner_api = _enable_learner_api
         if learner_class is not NotProvided:
             self.learner_class = learner_class
-        if _load_only_minibatch_onto_device is not NotProvided:
-            self._load_only_minibatch_onto_device = _load_only_minibatch_onto_device
 
         return self
 
@@ -2457,6 +2454,7 @@ class AlgorithmConfig(_Config):
         _disable_action_flattening: Optional[bool] = NotProvided,
         _disable_execution_plan_api: Optional[bool] = NotProvided,
         _disable_initialize_loss_from_dummy_batch: Optional[bool] = NotProvided,
+        _load_only_minibatch_onto_device: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
@@ -2500,6 +2498,8 @@ class AlgorithmConfig(_Config):
             self._disable_initialize_loss_from_dummy_batch = (
                 _disable_initialize_loss_from_dummy_batch
             )
+        if _load_only_minibatch_onto_device is not NotProvided:
+            self._load_only_minibatch_onto_device = _load_only_minibatch_onto_device
 
         return self
 
