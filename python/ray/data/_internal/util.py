@@ -63,7 +63,7 @@ def _check_pyarrow_version():
 
             if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
                 raise ImportError(
-                    f"Datastreams requires pyarrow >= {MIN_PYARROW_VERSION}, but "
+                    f"Datastream requires pyarrow >= {MIN_PYARROW_VERSION}, but "
                     f"{version} is installed. Reinstall with "
                     f'`pip install -U "pyarrow"`. '
                     "If you want to disable this pyarrow version check, set the "
@@ -74,7 +74,7 @@ def _check_pyarrow_version():
                 "You are using the 'pyarrow' module, but the exact version is unknown "
                 "(possibly carried as an internal component by another module). Please "
                 f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION} to ensure "
-                "compatibility with Ray Datastreams. "
+                "compatibility with Ray Datastream. "
                 "If you want to disable this pyarrow version check, set the "
                 f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
             )
@@ -343,7 +343,7 @@ def _consumption_api(
     insert_after=False,
 ):
     """Annotate the function with an indication that it's a consumption API, and that it
-    will trigger Datastreams execution.
+    will trigger Datastream execution.
     """
     base = (
         " will trigger execution of the lazy transformations performed on "
@@ -379,7 +379,7 @@ def _consumption_api(
 
 def ConsumptionAPI(*args, **kwargs):
     """Annotate the function with an indication that it's a consumption API, and that it
-    will trigger Datastreams execution.
+    will trigger Datastream execution.
     """
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return _consumption_api()(args[0])
