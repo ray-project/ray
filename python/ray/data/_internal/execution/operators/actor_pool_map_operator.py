@@ -6,7 +6,7 @@ import ray
 from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
 from ray.data.context import DataContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.datastream_logger import DatastreamLogger
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
@@ -24,7 +24,7 @@ from ray.data._internal.execution.operators.map_operator import (
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
 
-logger = DatasetLogger(__name__)
+logger = DatastreamLogger(__name__)
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
@@ -56,7 +56,7 @@ class ActorPoolMapOperator(MapOperator):
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
-                The actual rows passed may be less if the dataset is small.
+                The actual rows passed may be less if the datastream is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
