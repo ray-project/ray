@@ -25,6 +25,7 @@ def _bisect(test_name: str, commit_list: List[str]) -> str:
     return commit_list[-1]
 
 
+
 def _run_test(test_name: str, commit: str) -> bool:
     return True
 
