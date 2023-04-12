@@ -75,7 +75,9 @@ class DataIterator(abc.ABC):
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatastreamStats], bool
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+        Optional[DatastreamStats],
+        bool,
     ]:
         """Returns the iterator to use for `iter_batches`.
 
@@ -201,9 +203,9 @@ class DataIterator(abc.ABC):
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the datastream.
 
-        If the datastream is a tabular datastream (Arrow/Pandas blocks), dict-like mappings
-        :py:class:`~ray.data.row.TableRow` are yielded for each row by the iterator.
-        If the datastream is not tabular, the raw row is yielded.
+        If the datastream is a tabular datastream (Arrow/Pandas blocks), dict-like
+        mappings :py:class:`~ray.data.row.TableRow` are yielded for each row by the
+        iterator. If the datastream is not tabular, the raw row is yielded.
 
         Examples:
             >>> import ray

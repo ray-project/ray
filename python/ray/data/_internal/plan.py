@@ -393,8 +393,8 @@ class ExecutionPlan:
                 return None
         elif self._in_blocks is not None and self._snapshot_blocks is None:
             # If the plan only has input blocks, we execute it, so snapshot has output.
-            # This applies to newly created datastream. For example, initial datastream from
-            # read, and output datastreams of Datastream.split().
+            # This applies to newly created datastream. For example, initial datastream
+            # from read, and output datastreams of Datastream.split().
             self.execute()
         # Snapshot is now guaranteed to be the output of the final stage or None.
         blocks = self._snapshot_blocks
@@ -465,8 +465,8 @@ class ExecutionPlan:
             return None
         elif self._in_blocks is not None and self._snapshot_blocks is None:
             # If the plan only has input blocks, we execute it, so snapshot has output.
-            # This applies to newly created datastream. For example, initial datastream from
-            # read, and output datastreams of Datastream.split().
+            # This applies to newly created datastream. For example, initial datastream
+            # from read, and output datastreams of Datastream.split().
             self.execute()
         # Snapshot is now guaranteed to be the final block or None.
         return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)

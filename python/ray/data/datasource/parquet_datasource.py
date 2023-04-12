@@ -41,9 +41,9 @@ FILE_READING_RETRY = 8
 # compared to Parquet encoded representation. Parquet file statistics only record
 # encoded (i.e. uncompressed) data size information.
 #
-# To estimate real-time in-memory data size, Datastreams will try to estimate the correct
-# inflation ratio from Parquet to Arrow, using this constant as the default value for
-# safety. See https://github.com/ray-project/ray/pull/26516 for more context.
+# To estimate real-time in-memory data size, Datastreams will try to estimate the
+# correct inflation ratio from Parquet to Arrow, using this constant as the default
+# value for safety. See https://github.com/ray-project/ray/pull/26516 for more context.
 PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT = 5
 
 # The lower bound size to estimate Parquet encoding ratio.
@@ -202,7 +202,10 @@ class _ParquetDatasourceReader(Reader):
         datastream_kwargs = reader_args.pop("datastream_kwargs", {})
         try:
             pq_ds = pq.ParquetDatastream(
-                paths, **datastream_kwargs, filesystem=filesystem, use_legacy_datastream=False
+                paths,
+                **datastream_kwargs,
+                filesystem=filesystem,
+                use_legacy_datastream=False,
             )
         except OSError as e:
             _handle_read_os_error(e, paths)

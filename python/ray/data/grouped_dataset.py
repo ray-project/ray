@@ -135,7 +135,8 @@ class GroupedData(Generic[T]):
 
     def __repr__(self) -> str:
         return (
-            f"{self.__class__.__name__}(datastream={self._datastream}, " f"key={self._key!r})"
+            f"{self.__class__.__name__}(datastream={self._datastream}, "
+            f"key={self._key!r})"
         )
 
     def aggregate(self, *aggs: AggregateFn) -> Datastream[U]:

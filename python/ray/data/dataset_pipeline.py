@@ -105,7 +105,9 @@ class DatasetPipeline(Generic[T]):
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
         self._first_datastream: Optional[Datastream] = None
-        self._remaining_datastreams_iter: Optional[Iterator[Callable[[], Datastream]]] = None
+        self._remaining_datastreams_iter: Optional[
+            Iterator[Callable[[], Datastream]]
+        ] = None
         self._schema = None
         self._stats = DatasetPipelineStats()
 
@@ -132,9 +134,9 @@ class DatasetPipeline(Generic[T]):
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the data in the pipeline.
 
-        If the datastream is a tabular datastream (Arrow/Pandas blocks), dict-like mappings
-        :py:class:`~ray.data.row.TableRow` are yielded for each row by the iterator.
-        If the datastream is not tabular, the raw row is yielded.
+        If the datastream is a tabular datastream (Arrow/Pandas blocks), dict-like
+        mappings :py:class:`~ray.data.row.TableRow` are yielded for each row by the
+        iterator. If the datastream is not tabular, the raw row is yielded.
 
         Examples:
             >>> import ray
@@ -378,7 +380,9 @@ class DatasetPipeline(Generic[T]):
                 tries = 0
                 while ds is None:
                     ds = ray.get(
-                        self.coordinator.next_datastream_if_ready.remote(self.split_index)
+                        self.coordinator.next_datastream_if_ready.remote(
+                            self.split_index
+                        )
                     )
                     # Wait for other shards to catch up reading.
                     if not ds:
@@ -1097,8 +1101,9 @@ class DatasetPipeline(Generic[T]):
         local_shuffle_seed: Optional[int] = None,
     ) -> Iterator["TorchTensorBatchType"]:
         """Call
-        :py:meth:`Datastream.iter_torch_batches <ray.data.Datastream.iter_torch_batches>`
-        over the stream of output batches from the pipeline."""
+        :py:meth:`Datastream.iter_torch_batches
+        <ray.data.Datastream.iter_torch_batches>` over the stream of output batches
+        from the pipeline."""
         return DataIterator.iter_torch_batches(
             self,
             prefetch_blocks=prefetch_blocks,
@@ -1314,7 +1319,9 @@ class DatasetPipeline(Generic[T]):
                 return ds._plan.with_stage(stage)
 
             optimized_stages.append(
-                lambda ds, stage=stage: Datastream(add_stage(ds, stage), ds._epoch, True)
+                lambda ds, stage=stage: Datastream(
+                    add_stage(ds, stage), ds._epoch, True
+                )
             )
         self._optimized_stages = optimized_stages
 

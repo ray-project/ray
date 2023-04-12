@@ -226,7 +226,9 @@ class CountVectorizer(Preprocessor):
 
             return [{col: get_token_counts(col) for col in self.columns}]
 
-        value_counts = datastream.map_batches(get_pd_value_counts, batch_format="pandas")
+        value_counts = datastream.map_batches(
+            get_pd_value_counts, batch_format="pandas"
+        )
         total_counts = {col: Counter() for col in self.columns}
         for batch in value_counts.iter_batches(batch_size=None):
             for x in batch:

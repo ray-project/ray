@@ -31,7 +31,9 @@ class PipelinedDataIterator(DataIterator):
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatastreamStats], bool
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+        Optional[DatastreamStats],
+        bool,
     ]:
         epoch_pipeline = self._get_next_datastream()
 

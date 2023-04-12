@@ -3874,7 +3874,10 @@ class Datastream(Generic[T]):
                 def gen():
                     ds = Datastream(
                         ExecutionPlan(
-                            blocks, outer_stats, datastream_uuid=uuid, run_by_consumer=True
+                            blocks,
+                            outer_stats,
+                            datastream_uuid=uuid,
+                            run_by_consumer=True,
                         ),
                         epoch,
                         lazy=False,

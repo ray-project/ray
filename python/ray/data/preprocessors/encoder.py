@@ -317,7 +317,10 @@ class MultiHotEncoder(Preprocessor):
 
     def _fit(self, datastream: Datastream) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
-            datastream, self.columns, max_categories=self.max_categories, encode_lists=True
+            datastream,
+            self.columns,
+            max_categories=self.max_categories,
+            encode_lists=True,
         )
         return self
 

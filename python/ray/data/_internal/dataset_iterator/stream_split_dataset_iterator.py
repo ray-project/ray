@@ -62,7 +62,9 @@ class StreamSplitDataIterator(DataIterator):
             ),
         ).remote(ctx, base_datastream, n, equal, locality_hints)
 
-        return [StreamSplitDataIterator(base_datastream, coord_actor, i) for i in range(n)]
+        return [
+            StreamSplitDataIterator(base_datastream, coord_actor, i) for i in range(n)
+        ]
 
     def __init__(
         self,
@@ -77,7 +79,9 @@ class StreamSplitDataIterator(DataIterator):
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatastreamStats], bool
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+        Optional[DatastreamStats],
+        bool,
     ]:
         def gen_blocks() -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
             cur_epoch = ray.get(

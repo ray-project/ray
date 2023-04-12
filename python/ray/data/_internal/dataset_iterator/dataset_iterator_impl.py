@@ -25,7 +25,9 @@ class DataIteratorImpl(DataIterator):
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatastreamStats], bool
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+        Optional[DatastreamStats],
+        bool,
     ]:
         ds = self._base_datastream
         block_iterator, stats, executor = ds._plan.execute_to_iterator()

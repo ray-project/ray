@@ -188,8 +188,8 @@ class ZipStage(AllToAllStage):
             )
             inverted = False
             if sum(other_block_bytes) > sum(base_block_bytes):
-                # Make sure that other is the smaller datastream, so we minimize splitting
-                # work when aligning other with base.
+                # Make sure that other is the smaller datastream, so we minimize
+                # splitting work when aligning other with base.
                 # TODO(Clark): Improve this heuristic for minimizing splitting work,
                 # e.g. by generating the splitting plans for each route (via
                 # _generate_per_block_split_indices) and choosing the plan that splits

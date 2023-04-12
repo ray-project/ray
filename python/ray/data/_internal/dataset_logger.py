@@ -40,7 +40,7 @@ class DatastreamLogger:
 
     def _initialize_logger(self) -> logging.Logger:
         """Internal method to initialize the logger and the extra file handler
-        for writing to the Datastream log file. Not intended (nor should it be necessary)
+        for writing to the Datastream log file. Not intended (nor necessary)
         to call explicitly. Assumes that `ray.init()` has already been called prior
         to calling this method; otherwise raises a `ValueError`."""
         # In the case where logger has not yet been set up in another file,
