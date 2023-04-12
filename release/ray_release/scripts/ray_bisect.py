@@ -76,27 +76,10 @@ def _bisect(test: Test, commit_list: List[str], concurrency: int) -> str:
     return commit_list[-1]
 
 
-def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> bool:
-    """
-    Sanity check that the test indeed passes on the passing revision, and fails on the
-    failing revision
-    """
-    logger.info(
-        f"Sanity check passing revision: {passing_revision}"
-        f" and failing revision: {failing_revision}"
-    )
-    outcomes = _run_test(test, [passing_revision, failing_revision])
-    return (
-        outcomes[passing_revision] == "passed"
-        and outcomes[failing_revision] != "passed"
-    )
-
-
-def _run_test(test: Test, commits: Set[str]) -> Dict[str, str]:
-    logger.info(f'Running test {test["name"]} on commits {commits}')
-    for commit in commits:
-        _trigger_test_run(test, commit)
-    return _obtain_test_result(commits)
+def _run_test(test: Test, commit: str) -> bool:
+    logger.info(f'Running test {test["name"]} on commit {commit}')
+    _trigger_test_run(test, commit)
+    return _obtain_test_result(commit)
 
 
 def _trigger_test_run(test: Test, commit: str) -> None:
