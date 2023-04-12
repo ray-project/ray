@@ -5,7 +5,7 @@ import uuid
 from typing import Iterator, Optional
 
 import ray
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
     Executor,
@@ -136,7 +136,7 @@ class StreamingExecutor(Executor, threading.Thread):
             stats_summary_string = self._final_stats.to_summary().to_string(
                 include_parent=False
             )
-            context = DatasetContext.get_current()
+            context = DataContext.get_current()
             logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                 stats_summary_string,
             )
