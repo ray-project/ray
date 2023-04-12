@@ -67,16 +67,15 @@ class ExecutionEngine:
 
         # The following fields are only used for training
         # gradient if we are doing training.
-        if self.is_training:
-            self.input_gradient = deque()
-            self.input_gradient_tensor_shape = None
-            self.input_gradient_tensor_dtype = None
-            self.output_gradient = deque()
-            self.forward_cache = {}
-            self.forward_counter = 0
-            self.backward_counter = 0
-            self.accumulated_parameters_gards = None
-            self.label_queue = deque()
+        self.input_gradient = deque()
+        self.input_gradient_tensor_shape = None
+        self.input_gradient_tensor_dtype = None
+        self.output_gradient = deque()
+        self.forward_cache = {}
+        self.forward_counter = 0
+        self.backward_counter = 0
+        self.accumulated_parameters_gards = None
+        self.label_queue = deque()
 
     def _initialize_config(self, config: Config):
         self.input_tensor_shape = config.input_tensor_shape
