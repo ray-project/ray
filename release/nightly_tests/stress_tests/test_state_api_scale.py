@@ -78,7 +78,7 @@ def test_many_tasks(num_tasks: int):
     #  where num_total_cpus obtained from cluster_compute in `release_tests.yaml`
     # 1 / (10k/45 * 7) ~= 0.03, taking a smaller value to make sure all tasks could be
     # running at the same time.
-    @ray.remote(num_cpus=0.02)
+    @ray.remote(num_cpus=0.03)
     def pi4_sample(signal):
         in_count = 0
         for _ in range(SAMPLES):
@@ -313,7 +313,7 @@ def no_resource_leaks():
 @click.option(
     "--num-tasks",
     required=False,
-    default="1,100,1000,10000",
+    default="1,100,5000,100000",
     type=str,
     help="Number of tasks to launch.",
 )
