@@ -69,6 +69,8 @@ which keeps monitoring the memory usage of the host and kills the Ray workers be
 How to Detect Out-of-Memory Errors?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+**Linux out-of-memory killer**
+
 If tasks or actors are killed by the Linux out-of-memory killer, Ray worker processes are unable to catch and display an exact root cause
 because SIGKILL cannot be handled by processes. If you call ``ray.get`` into the tasks and actors that were executed from the dead worker,
 it will raise an exception with one of the following error messages (which indicates the worker is killed unexpectedly).
@@ -81,8 +83,16 @@ it will raise an exception with one of the following error messages (which indic
 
   Worker exit type: SYSTEM_ERROR Worker exit detail: The leased worker has unrecoverable failure. Worker is requested to be destroyed when it is returned.
 
-If the worker is killed by Ray's memory monitor, it raises an exception with 
-a much cleaner error message when you call ``ray.get`` to a task or actor that executed on a dead worker.
+Also, you can use the `dmesg <https://phoenixnap.com/kb/dmesg-linux#:~:text=The%20dmesg%20command%20is%20a,take%20place%20during%20system%20startup.>`_ CLI command to verify the processes are killed by the Linux out-of-memory killer.
+
+.. image:: ../images/dmesg.png
+    :align: center
+
+**Ray out-of-memory killer**
+
+If the worker is killed by Ray's memory monitor, they are automatically retried (see the :ref:`link <ray-oom-retry-policy:>` for the detail).
+If tasks or actors cannot be retried, they raise an exception with 
+a much cleaner error message when you call ``ray.get`` to it.
 
 .. code-block:: bash
 
@@ -109,53 +119,91 @@ Ray memory monitor also periodically prints the aggregated out-of-memory killer 
   (raylet) 
   (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero.
 
-ray.exceptions.OutOfMemoryError: Task was killed due to the node running low on memory.
-Monitoring
-When OOM happens, memory usage is steeply increasing, and eventually the OOM killer kicks in and kill processes. Here are tools to monitor the memory usage. 
-Historical usage
-Dashboard Metrics View: By default, Anyscale provides the built-in monitoring for memory usage. Users can see the “node memory” graph which shows the per node memory usage. Or “node memory per component” which shows the memory uage per component such as raylet or workers.
-Snapshot
-Htop: If you’d like to pinpoint the processes that use the high memory, it is recommended to use `htop` command. You can use this command using `sudo apt-get install htop`. Type htop from the terminal and see the RSS uage per process. Note that the actual memory usage per process is RES - SHR (SHR is a shared memory usage).
+Ray Dashboard's :ref:`metrics page <dash-metrics-view>` and :ref:`event page <dash-event>` also provides the out-of-memory killer-specific events and metrics.
 
+.. image:: ../images/oom-metrics.png
+    :align: center
 
+.. image:: ../images/oom-events.png
+    :align: center
 
-Dashboard Node View: Dashboard node view provides the snapshot of memory usage per worker. 
-Workflow
-Find the node that has the high memory usage via Ray Core Debugging Runbook.
-See the memory usage of the node that has increasing memory usage. You can use htop or node view to see it.
-Debug. There are several symptoms
-Head node has high memory usage
-Head node normally has higher memory usage than other nodes because it runs extra processes such as driver (which usually has higher memory usage than workers) or more core components (e.g., dashboard, GCS). In this case, try using a bigger head node or configure 0 CPU on a  head node, so that you avoid scheduling extra tasks and actors on a head node. 
-Memory leak or unexpectedly high memory usage from each process.
-In this case, find the processes that have unexpected memory usage and run a memory profiler. I recommend using `memray` that has the built-in Python API.
-High memory usage for all processes
-This usually indicates the concurrency control has failed. 
-Decrease parallelism (increase num_cpus of tasks and actors). Ray’s number of workers are controlled by num_cpus. Increase the num_cpus of each task to reduce the concurrently executing workers
-Decrease the per process memory usage. This is common when you have a train job that is run upon ray dataset that has a big partition. Reduce the partition size or find the inefficient memory allocation using memory profiler (3-(a))in this case.
-By default, Ray doesn’t provide any hints on memory usage, which means the high-memory tasks can be scheduled on the same node. We can solve the problem by better scheduling.
-Use memory aware scheduling.  Assign the peak memory usage to the `.remote` API. Note that to make this work, you should know the peak memory of all tasks/actors that you are using.
-Use spread scheduling to spread out tasks / actors. By default, Ray prefers to pack tasks into the same node until it reaches to the threshold. It can cause issues when you have workloads like reading data in the beginning (since all data reading tasks will be scheduled on the same node). 
-Library has high memory usage
-If the high memory usage is from the library, each library should have their own guideline to debug out of memory issues.
-Features coming up
-Built-in memory profiling tool
-Per func/class name memory usage
+Debug Out-of-Memory Errors
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Relevant Materials
-~~~~~~~~~~~~~~~~~~
-- "Investigating OOM problems with the monitor and Ray Dashboard" section from the `blog <https://www.anyscale.com/blog/automatic-and-optimistic-memory-scheduling-for-ml-workloads-in-ray>`_.
-- :ref:`Ray Out of Memory Monitor <ray-oom-monitor>`.
-- `Linux Out of Memory killer <https://www.kernel.org/doc/gorman/html/understand/understand016.html>`_.
+If tasks or actors are failed by Out-of-memory errors, they are retried based on :ref:`retry policies <ray-oom-retry-policy:>`. 
+However, it is often more desirable to find the root causes of memory issues and fix them instead of relying on fault tolerance mechanisms.
+This section explains how to debug out-of-memory errors in Ray.
 
+**Step 1: Find tasks and actors that use high memory**
+
+First, find the tasks and actors that use high memory usage. View the :ref:`per task and actor memory usage graph <dash-workflow-cpu-memory-analysis>` for more details.
+The memory usage from the per component graph uses RSS - SHR. See the below for reasoning.
+
+Alternatively, you can also use the CLI command `htop <https://htop.dev/>`_.
+
+.. image:: ../images/htop.png
+    :align: center
+
+See the ``allocate_memory`` row. See two columns, RSS and SHR. 
+
+SHR usage is typically the memory usage from the Ray object store. The Ray object store allocates 30% of host memory to the shared memory (``/dev/shm``, unless you specify ``--object-store-memory``).
+If Ray workers access the object inside the object store using ``ray.get``, SHR usage increases. Since the Ray object store supports the :ref:`zero-copy <serialization-guide>`
+deserialization, several workers can access the same object without copying them to in-process memory. For example, if
+8 workers access the same object inside the Ray object store, each process' ``SHR`` usage increases. However, they are not using 8 * SHR memory (there's only 1 copy in the shared memory). 
+Also note that Ray object store triggers :ref:`object spilling <object-spilling>` when the object usage goes beyond the limit, which means the memory usage from the shared memory won't exceed 30%
+of the host memory.
+
+It means when there are out-of-memory issues from a host, it is due to RSS usage from each worker. We recommend to calculate per
+process memory usage by RSS - SHR because SHR is for Ray object store as explained above. That said, the total memory usage is typically
+``SHR (object store memory usage, 30% of memory) + sum(RSS - SHR from each ray proc) + sum(RSS - SHR from system components. e.g., raylet, GCS. Usually small)``.
+
+**Step 2 Debug memory problems, head node**
+
+First, check the head node memory usage from the metrics page. Find the head node address from the cluster page.
+
+.. image:: ../images/head-node-addr.png
+    :align: center
+
+And then check the memory usage from the head node from the node memory usage view inside the Dashboard :ref:`metrics view <dash-metrics-view>`.
+
+.. image:: ../images/metrics-node-view.png
+    :align: center
+
+Ray head node has more memory-demanding system components such as GCS or the dashboard. 
+Also, driver runs from a head node by default. If the head node has the same memory capacity as worker nodes
+and if you execute the same number of tasks and actors from a head node, it can easily have out-of-memory problems.
+In this case, we recommend you to not run any tasks and actors to the head node. This is achievable by specifying ``--num-cpus=0`` when starting a head node by ``ray start --head``.
+
+**Step 3 Debug memory problems, parallelism**
+
+High parallelism can trigger out-of-memory errors. For example, imagine 
+you have 8 training workers that perform the data preprocessing -> training. 
+If you load too much data into each worker, the total memory usage (``training worker mem usage * 8``) can exceed the
+memory capacity. 
+
+You can verify it by looking at the :ref:`per task and actor memory usage graph <dash-workflow-cpu-memory-analysis>`. And the task metrics.
+
+First, see the memory usage of a ``allocate_memory`` task. It is total 21GB.
+At the same time, you can verify 15 concurrent tasks running.
+
+.. image:: ../images/component-memory.png
+    :align: center
+
+.. image:: ../images/tasks-graph.png
+    :align: center
+
+It means each task uses about 21GB / 15 == 1.4 GB. You can increase the ``num_cpus`` requirement of each task to reduce the parallelism to solve the problem.
+
+**Step 4 Debug memory problems, Profiling memory leak**
+
+It is also possible tasks and actors use more memory than you expect. For example, actors or tasks can have a memory leak or have unnecessary copies.
+
+View :ref:`Memory Profiling Ray Tasks and Actors <ray-core-mem-profiling>` for more details.
 
 Starting many actors
 --------------------
 
-Workloads that start a large number of actors all at
-  once may exhibit problems when the processes (or libraries that they use)
-  contend for resources. Similarly, a script that starts many actors over the
-  lifetime of the application will eventually cause the system to run out of
-  file descriptors. 
+Workloads that start a large number of actors all at once may exhibit problems when the processes (or libraries that they use) contend for resources. Similarly, a script that starts many actors over the lifetime of the application will eventually cause the system to run out of file descriptors. 
 
 Running out of file descriptors
 -------------------------------

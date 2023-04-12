@@ -38,6 +38,8 @@ The memory monitor is controlled by the following environment variables:
 Using the Memory Monitor
 ------------------------
 
+.. _ray-oom-retry-policy:
+
 Retry policy
 ~~~~~~~~~~~~
 
