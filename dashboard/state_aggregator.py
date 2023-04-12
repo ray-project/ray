@@ -476,7 +476,7 @@ class StateAPIManager:
             del data["node_ip_address"]
             data["type"] = data["type"].upper()
             data["task_status"] = (
-                data["task_status"] if data["task_status"] != "-" else "NIL"
+                "NIL" if data["task_status"] == "-" else data["task_status"]
             )
             result.append(data)
 
