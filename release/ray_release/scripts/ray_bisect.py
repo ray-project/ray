@@ -129,7 +129,7 @@ def _get_test(test_name: str) -> Test:
             os.path.dirname(__file__), "..", "..", "release_tests.yaml"
         )
     )
-    return [test for test in test_collection if test.name == test_name][0]
+    return [test for test in test_collection if test['name'] == test_name][0]
 
 def _get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
     # This command obtains all commits between inclusively
