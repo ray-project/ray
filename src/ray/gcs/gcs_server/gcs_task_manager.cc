@@ -187,19 +187,25 @@ absl::optional<int64_t> GcsTaskManager::GcsTaskManagerStorage::GetTaskStatusUpda
              : absl::nullopt;
 }
 
-void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailed(const JobID &job_id,
-                                                            int64_t job_finish_time_ns) {
+void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
+    const JobID &job_id, int64_t job_finish_time_ns) {
   auto task_attempts_itr = job_to_task_attempt_index_.find(job_id);
   if (task_attempts_itr == job_to_task_attempt_index_.end()) {
     // No tasks in the job.
     return;
   }
 
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
+  std::stringstream error_message;
+  error_message << "Job finishes (" << job_id.Hex()
+                << ") as driver exits. Marking all non-terminal tasks as failed.";
+  error_info.set_error_message(error_message.str());
+
   // Iterate all task attempts from the job.
   for (const auto &task_attempt : task_attempts_itr->second) {
     if (!IsTaskTerminated(task_attempt.first)) {
-      // TODO(rickyx): will do in another PR.
-      MarkTaskAttemptFailed(task_attempt, job_finish_time_ns, rpc::RayErrorInfo());
+      MarkTaskAttemptFailed(task_attempt, job_finish_time_ns, error_info);
     }
   }
 }
@@ -508,9 +514,10 @@ void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_
           // timer canceled or aborted.
           return;
         }
-        // If there are any non-terminated tasks from the job, mark them failed since
-        // all workers associated with the job will be killed.
-        task_event_storage_->MarkTasksFailed(job_id, job_finish_time_ms * 1000 * 1000);
+        // If there are any non-terminated tasks from the job, mark them failed since all
+        // workers associated with the job will be killed.
+        task_event_storage_->MarkTasksFailedOnJobEnds(job_id,
+                                                      job_finish_time_ms * 1000 * 1000);
       });
 }
 

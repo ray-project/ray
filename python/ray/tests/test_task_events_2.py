@@ -363,6 +363,9 @@ ray.get(parent.remote())
                     task["state"] == "FAILED"
                 ), f"task {task['func_or_class_name']} has wrong state"
 
+                assert task["error_type"] == "WORKER_DIED"
+                assert "Job finishes" in task["error_message"]
+
                 duration_ms = task["end_time_ms"] - task["start_time_ms"]
                 assert (
                     # It takes time for the job to run
@@ -406,10 +409,15 @@ class Actor:
         ray.get(task_finish_child.options(name="task_finish_child").remote(pid_actor))
         task_sleep_child.options(name="task_sleep_child").remote(pid_actor)
         # Wait til child tasks run.
-        wait_for_condition(
-            lambda: ray.get(pid_actor.get_pids.remote()).get("task_sleep_child")
-            is not None
-        )
+        def wait_fn():
+            assert ray.get(pid_actor.get_pids.remote()).get(
+                "task_sleep_child") is not None
+            assert list_tasks(filters=[("name", "=", "task_finish_child")])[0][
+                    "state"
+                ] == "FINISHED"
+            return True 
+
+        wait_for_condition(wait_fn)
         raise ValueError("expected to fail.")
 
     def child_actor(self, pid_actor):
