@@ -146,7 +146,7 @@ class ParquetDatasource(ParquetBaseDatasource):
     """Parquet datasource, for reading and writing Parquet files.
 
     The primary difference from ParquetBaseDatasource is that this uses
-    PyArrow's `ParquetDatastream` abstraction for datastream reads, and thus offers
+    PyArrow's `ParquetDataset` abstraction for datastream reads, and thus offers
     automatic Arrow datastream schema inference and row count collection at the
     cost of some potential performance and/or compatibility penalties.
 
@@ -201,7 +201,7 @@ class _ParquetDatasourceReader(Reader):
 
         datastream_kwargs = reader_args.pop("datastream_kwargs", {})
         try:
-            pq_ds = pq.ParquetDatastream(
+            pq_ds = pq.ParquetDataset(
                 paths,
                 **datastream_kwargs,
                 filesystem=filesystem,
@@ -263,7 +263,7 @@ class _ParquetDatasourceReader(Reader):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
-        # method in order to leverage pyarrow's ParquetDatastream abstraction,
+        # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
         # FileBasedDatasource's write side (do_write), however.
         read_tasks = []
@@ -368,7 +368,7 @@ def _read_pieces(
         "pyarrow._dataset.ParquetFileFragment"
     ] = _deserialize_pieces_with_retry(serialized_pieces)
 
-    # Ensure that we're reading at least one datastream fragment.
+    # Ensure that we're reading at least one dataset fragment.
     assert len(pieces) > 0
 
     import pyarrow as pa
