@@ -2032,13 +2032,22 @@ def test_list_get_pgs(shutdown_only):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_get_nodes(shutdown_only):
-    ray.init()
+def test_list_get_nodes(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, node_name="head_node")
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, node_name="worker_node")
 
     def verify():
         nodes = list_nodes()
-        assert nodes[0]["state"] == "ALIVE"
-        assert is_hex(nodes[0]["node_id"])
+        for node in nodes:
+            assert node["state"] == "ALIVE"
+            assert is_hex(node["node_id"])
+            assert (
+                node["is_head_node"]
+                if node["node_name"] == "head_node"
+                else not node["is_head_node"]
+            )
 
         # Check with legacy API
         check_nodes = ray.nodes()
@@ -2056,11 +2065,9 @@ def test_list_get_nodes(shutdown_only):
         for node in nodes:
             get_node_data = get_node(node["node_id"])
             assert get_node_data == node
-
         return True
 
     wait_for_condition(verify)
-    print(list_nodes())
 
 
 @pytest.mark.skipif(
