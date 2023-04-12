@@ -24,6 +24,7 @@ from typing import (
 
 from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
+from ray.exceptions import RpcError
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
 from ray.tune.result import _get_defaults_results_dir
@@ -216,8 +217,8 @@ class Experiment:
                 )
         try:
             self._run_identifier = Experiment.register_if_needed(run)
-        except grpc.RpcError as e:
-            if e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:
+        except RpcError as e:
+            if e.rpc_code == grpc.StatusCode.RESOURCE_EXHAUSTED.value[0]:
                 raise TuneError(
                     f"The Trainable/training function is too large for grpc resource "
                     f"limit. Check that its definition is not implicitly capturing a "

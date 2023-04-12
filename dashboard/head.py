@@ -14,7 +14,8 @@ import ray.experimental.internal_kv as internal_kv
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private import ray_constants
 from ray.dashboard.utils import DashboardHeadModule
-from ray._private.gcs_utils import GcsClient, GcsAioClient, check_health
+from ray._raylet import GcsClient
+from ray._private.gcs_utils import GcsAioClient, check_health
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
