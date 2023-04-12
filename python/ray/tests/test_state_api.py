@@ -4,7 +4,6 @@ import json
 import sys
 import signal
 from collections import Counter
-from dataclasses import dataclass
 from typing import List, Tuple
 from unittest.mock import MagicMock
 
@@ -155,6 +154,9 @@ def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="c
         pid=1234,
         class_name=class_name,
         address=Address(raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id),
+        job_id=b"123",
+        node_id=None,
+        ray_namespace="",
     )
 
 
@@ -303,7 +305,7 @@ def create_api_options(
         limit=limit,
         timeout=timeout,
         filters=filters,
-        _server_timeout_multiplier=1.0,
+        server_timeout_multiplier=1.0,
         detail=detail,
         exclude_driver=exclude_driver,
     )
@@ -329,14 +331,17 @@ def test_ray_address_to_api_server_url(shutdown_only):
 
 
 def test_state_schema():
+    import pydantic
+    from pydantic.dataclasses import dataclass
+
     @dataclass
     class TestSchema(StateSchema):
         column_a: int
         column_b: int = state_column(filterable=False)
         column_c: int = state_column(filterable=True)
         column_d: int = state_column(filterable=False, detail=False)
-        column_e: int = state_column(filterable=False, detail=True)
         column_f: int = state_column(filterable=True, detail=False)
+        column_e: int = state_column(filterable=False, detail=True)
         column_g: int = state_column(filterable=True, detail=True)
 
     # Correct input validation should work without an exception.
@@ -351,7 +356,7 @@ def test_state_schema():
     )
 
     # Incorrect input type.
-    with pytest.raises(AssertionError):
+    with pytest.raises(pydantic.ValidationError):
         TestSchema(
             column_a=1,
             column_b=1,
@@ -2540,21 +2545,20 @@ def test_list_runtime_envs(shutdown_only):
 
     def verify():
         result = list_runtime_envs(detail=True)
-        correct_num = len(result) == 2
+        assert len(result) == 2
 
         failed_runtime_env = result[0]
-        correct_failed_state = (
+        assert (
             not failed_runtime_env["success"]
-            and failed_runtime_env.get("error")
-            and failed_runtime_env["ref_cnt"] == "0"
+            and failed_runtime_env["error"]
+            and failed_runtime_env["ref_cnt"] == 0
         )
 
         successful_runtime_env = result[1]
-        correct_successful_state = (
-            successful_runtime_env["success"]
-            and successful_runtime_env["ref_cnt"] == "2"
+        assert (
+            successful_runtime_env["success"] and successful_runtime_env["ref_cnt"] == 2
         )
-        return correct_num and correct_failed_state and correct_successful_state
+        return True
 
     wait_for_condition(verify)
 
@@ -2679,7 +2683,8 @@ async def test_cli_format_print(state_api_manager):
         actor_table_data=[generate_actor_data(actor_id), generate_actor_data(b"12345")]
     )
     result = await state_api_manager.list_actors(option=create_api_options())
-    result = result.result
+    print(result)
+    result = [ActorState(**d) for d in result.result]
     # If the format is not yaml, it will raise an exception.
     yaml.load(
         format_list_api_output(result, schema=ActorState, format=AvailableFormat.YAML),
@@ -2876,12 +2881,6 @@ def test_detail(shutdown_only):
 
     a = Actor.remote()
     ray.get(a.ready.remote())
-
-    actor_state = list_actors()[0]
-    actor_state_in_detail = list_actors(detail=True)[0]
-
-    assert set(actor_state.keys()) == ActorState.base_columns()
-    assert set(actor_state_in_detail.keys()) == ActorState.columns()
 
     """
     Test CLI

@@ -474,6 +474,10 @@ class StateAPIManager:
             del data["object_ref"]
             data["ip"] = data["node_ip_address"]
             del data["node_ip_address"]
+            data["type"] = data["type"].upper()
+            data["task_status"] = (
+                data["task_status"] if data["task_status"] != "-" else "NIL"
+            )
             result.append(data)
 
         # Add callsite warnings if it is not configured.
