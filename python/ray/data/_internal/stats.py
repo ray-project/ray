@@ -874,6 +874,7 @@ class DatasetPipelineStats:
             "iter_get_s": Timer(),
             "iter_next_batch_s": Timer(),
             "iter_format_batch_s": Timer(),
+            "iter_collate_batch_s": Timer(),
             "iter_user_s": Timer(),
             "iter_total_s": Timer(),
         }
