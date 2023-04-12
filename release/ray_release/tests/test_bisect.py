@@ -5,12 +5,13 @@ from ray_release.scripts.ray_bisect import _bisect
 
 def test_bisect():
     commit_to_test_result = {
-      'c0': True, 
-      'c1': True, 
-      'c2': True, 
-      'c3': False, 
-      'c4': False, 
+        "c0": True,
+        "c1": True,
+        "c2": True,
+        "c3": False,
+        "c4": False,
     }
+
     def _mock_get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
         commits = []
         in_range = False
@@ -23,14 +24,16 @@ def test_bisect():
                 commits.append(commit)
                 in_range = True
         return commits
+
     def _mock_run_test(test_name: str, commit: str) -> bool:
         return commit_to_test_result[commit]
+
     with mock.patch(
-        'ray_release.scripts.ray_bisect._get_commit_lists',
+        "ray_release.scripts.ray_bisect._get_commit_lists",
         side_effect=_mock_get_commit_lists,
     ), mock.patch(
-        'ray_release.scripts.ray_bisect._run_test',
+        "ray_release.scripts.ray_bisect._run_test",
         side_effect=_mock_run_test,
     ):
-        blamed_commit = _bisect('test', 'c0', 'c4')
-        assert blamed_commit == 'c3'
+        blamed_commit = _bisect("test", "c0", "c4")
+        assert blamed_commit == "c3"
