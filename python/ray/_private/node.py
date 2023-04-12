@@ -1017,6 +1017,7 @@ class Node:
             plasma_directory,
             object_store_memory,
             self.session_name,
+            is_head_node=self.is_head(),
             min_worker_port=self._ray_params.min_worker_port,
             max_worker_port=self._ray_params.max_worker_port,
             worker_port_list=self._ray_params.worker_port_list,
