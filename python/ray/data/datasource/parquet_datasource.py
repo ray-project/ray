@@ -205,7 +205,7 @@ class _ParquetDatasourceReader(Reader):
                 paths,
                 **datastream_kwargs,
                 filesystem=filesystem,
-                use_legacy_datastream=False,
+                use_legacy_dataset=False,
             )
         except OSError as e:
             _handle_read_os_error(e, paths)
