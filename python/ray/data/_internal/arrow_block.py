@@ -210,6 +210,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 element = element.type._extension_scalar_to_ndarray(element)
         # For Arrow < 8.0.0, accessing an element in a chunked tensor array produces an
         # ndarray, which we return directly.
+        assert isinstance(element, np.ndarray), type(element)
         return element
 
     def slice(self, start: int, end: int, copy: bool = False) -> "pyarrow.Table":

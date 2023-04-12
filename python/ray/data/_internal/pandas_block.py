@@ -58,10 +58,16 @@ class PandasRow(TableRow):
     """
 
     def __getitem__(self, key: str) -> Any:
+        from ray.data.extensions import TensorArrayElement
+
         col = self._row[key]
         if len(col) == 0:
             return None
         item = col.iloc[0]
+        if isinstance(item, TensorArrayElement):
+            # Getting an item in a Pandas tensor column may return a TensorArrayElement,
+            # which we have to convert to an ndarray.
+            item = item.to_numpy()
         try:
             # Try to interpret this as a numpy-type value.
             # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
