@@ -540,20 +540,11 @@ def run_release_test(
         result.job_url = command_runner.job_manager.job_url
         result.job_id = command_runner.job_manager.job_id
 
-    try:
-        last_logs = command_runner.get_last_logs()
-    except Exception as e:
-        logger.exception(f"Error fetching logs: {e}")
-        last_logs = "No logs could be retrieved."
+    result.last_logs = command_runner.get_last_logs()
 
-    result.last_logs = last_logs
-
-    if not no_terminate and isinstance(cluster_manager, FullClusterManager):
+    if not no_terminate:
         buildkite_group(":earth_africa: Terminating cluster")
-        try:
-            cluster_manager.terminate_cluster(wait=False)
-        except Exception as e:
-            logger.exception(f"Could not terminate cluster: {e}")
+        cluster_manager.terminate_cluster(wait=False)
 
     if hasattr(command_runner, "cleanup"):
         command_runner.cleanup()
@@ -587,12 +578,8 @@ def run_release_test(
             result.runtime = runtime
 
     buildkite_group(":memo: Reporting results", open=True)
-    reporters = reporters or []
-    for reporter in reporters:
-        try:
-            reporter.report_result(test, result)
-        except Exception as e:
-            logger.exception(f"Error reporting results via {type(reporter)}: {e}")
+    for reporter in reporters or []:
+        reporter.report_result(test, result)
 
     if pipeline_exception:
         raise pipeline_exception
