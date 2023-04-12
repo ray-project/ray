@@ -2,6 +2,7 @@ import click
 import subprocess
 import os
 import json
+import time
 from typing import List
 from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
@@ -48,7 +49,11 @@ def _run_test(test: Test, commit: str) -> bool:
         f'buildkite-agent step get "outcome" --step "{commit}"',
         text=True,
     )
-    return True
+    while outcome not in ['passed', 'hard_failed', 'soft_failed']:
+        logger.info('... waiting for test result')
+        logger.info('Outcome: {outcome}')
+        time.sleep(30)
+    return outcome == 'passed'
 
 def _get_test(test_name: str) -> Test:
     test_collection = read_and_validate_release_test_collection(
@@ -56,7 +61,7 @@ def _get_test(test_name: str) -> Test:
             os.path.dirname(__file__), "..", "..", "release_tests.yaml"
         )
     )
-    return [test for test in test_collection if test.name == test_name][0]
+    return [test for test in test_collection if test['name'] == test_name][0]
 
 def _get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
     commit_lists = subprocess.check_output(
