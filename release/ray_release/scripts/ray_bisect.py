@@ -47,11 +47,11 @@ def _run_test(test: Test, commit: str) -> bool:
     )
     outcome = subprocess.check_output(
         f'buildkite-agent step get "outcome" --step "{commit}"',
-        text=True,
-    )
+        shell=True,
+    ).decode('utf-8')
+    logger.info('Outcome: {outcome}')
     while outcome not in ['passed', 'hard_failed', 'soft_failed']:
         logger.info('... waiting for test result')
-        logger.info('Outcome: {outcome}')
         time.sleep(30)
     return outcome == 'passed'
 
