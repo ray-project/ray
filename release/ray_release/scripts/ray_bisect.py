@@ -43,7 +43,6 @@ def _run_test(test: Test, commit: str) -> bool:
         test,
         ray_wheels=commit,
     )
-    step['env']['BUILDKITE_BRANCH'] = 'master'
     step['label'] = commit
     step['key'] = commit
     pipeline = json.dumps({'steps': [step]})
@@ -51,7 +50,6 @@ def _run_test(test: Test, commit: str) -> bool:
         f'echo "{pipeline}" | buildkite-agent pipeline upload',
         shell=True,
     )
-    time.sleep(30)
     outcome = None
     while outcome not in ['passed', 'hard_failed', 'soft_failed']:
         logger.info('... waiting for test result')
