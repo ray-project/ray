@@ -157,7 +157,7 @@ class ServeController:
 
         # Manage all applications' state
         self.application_state_manager = ApplicationStateManager(
-            self.deployment_state_manager
+            self.deployment_state_manager, self.endpoint_state
         )
 
         # Keep track of single-app vs multi-app
@@ -334,13 +334,11 @@ class ServeController:
                 self.deploy_apps(
                     ServeApplicationSchema.parse_obj(applications[0]),
                     deployment_time,
-                    False,
                 )
             else:
                 self.deploy_apps(
                     ServeDeploySchema.parse_obj({"applications": applications}),
                     deployment_time,
-                    False,
                 )
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
@@ -439,17 +437,14 @@ class ServeController:
             deployed successfully or not.
         """
 
-        deployments_to_delete = self.application_state_manager.deploy_application(
+        return self.application_state_manager.deploy_application(
             name, deployment_args_list
         )
-        self.delete_deployments(deployments_to_delete)
-        return [self.deploy(**args) for args in deployment_args_list]
 
     def deploy_apps(
         self,
         config: Union[ServeApplicationSchema, ServeDeploySchema],
         deployment_time: float = 0,
-        _internal: bool = False,
     ) -> None:
         """Kicks off a task that deploys a set of Serve applications.
 
@@ -470,11 +465,6 @@ class ServeController:
 
             deployment_time: set deployment_timestamp. If not provided, time.time() is
                 used to indicate the deployment time.
-
-            _internal: whether the config is provided by user or internally (i.e. it is
-                restored from a checkpoint). If it is provided by the user, we need to
-                prepend the app name to each deployment name. If not, it should already
-                be prepended.
         """
         # TODO (zcin): We should still support single-app mode, i.e.
         # ServeApplicationSchema. Eventually, after migration is complete, we should
@@ -725,7 +715,7 @@ class ServeController:
             is NOT_STARTED.
         """
 
-        app_status = self.application_state_manager.get_app_status(name)
+        app_status = self.application_state_manager.get_app_status_info(name)
         deployment_statuses = self.application_state_manager.get_deployments_statuses(
             name
         )
@@ -779,13 +769,8 @@ class ServeController:
 
         During deletion, the application status is DELETING
         """
-        deployments_to_delete = []
         for name in names:
-            deployments_to_delete.extend(
-                self.application_state_manager.get_deployments(name)
-            )
             self.application_state_manager.delete_application(name)
-        self.delete_deployments(deployments_to_delete)
 
 
 def _generate_deployment_config_versions(
