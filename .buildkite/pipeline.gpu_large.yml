@@ -56,8 +56,8 @@
   instance_size: large
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/install-minimal.sh 3.8
-    - PYTHON=3.8 DATA_PROCESSING_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
+    - PYTHON=3.8 DATA_PROCESSING_TESTING=1 DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
+    - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
     - pip uninstall -y pytorch-lightning
     - pip install lightning==2.0.0
     - ./ci/env/env_info.sh
