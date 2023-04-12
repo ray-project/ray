@@ -162,7 +162,7 @@ class ExecutionEngine:
             future = self.dist.recv(tensor, instruction.src_rank, async_op=True)
             self.input_queue.append((tensor, future))
 
-    def _execute_forward(self, instruction: Instruction):
+    def _execute_forward(self, instruction: Forward):
         for _ in range(instruction.count):
             tensor, future = self.input_queue.popleft()
             future.wait()
@@ -188,7 +188,7 @@ class ExecutionEngine:
             if not self.is_last_trainig_stage:
                 self.output_queue.append(output)
 
-    def _execute_load_batch(self, instruction: Instruction):
+    def _execute_load_batch(self, instruction: LoadBatch):
         for _ in range(instruction.count):
             if instruction.is_label:
                 _, label = next(iter(self.data_loader))
@@ -197,7 +197,7 @@ class ExecutionEngine:
                 batch, _ = next(iter(self.data_loader))
                 self.input_queue.append((batch.to(self.device), FULLFILLED_FUTURE))
 
-    def _execute_print_output(self, instruction: Instruction):
+    def _execute_print_output(self, instruction: PrintOutput):
         for _ in range(instruction.count):
             logger.info(self.output_queue.popleft())
 
