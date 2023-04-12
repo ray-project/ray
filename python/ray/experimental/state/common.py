@@ -2,12 +2,9 @@ import json
 import logging
 import sys
 from abc import ABC
-from dataclasses import dataclass as py_dataclass
 from dataclasses import field, fields
 from enum import Enum, unique
 from typing import Dict, List, Optional, Set, Tuple, Union
-
-from pydantic.dataclasses import dataclass
 
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
@@ -25,6 +22,14 @@ from ray.experimental.state.custom_types import (
     TypeWorkerType,
 )
 from ray.experimental.state.exception import RayStateApiException
+
+try:
+    from pydantic.dataclasses import dataclass
+except ImportError:
+    # pydantic is not available in the dashboard.
+    # We will use the dataclass from the standard library.
+    from dataclasses import dataclass
+
 
 logger = logging.getLogger(__name__)
 
@@ -321,7 +326,6 @@ class GetLogOptions:
 
 # See the ActorTableData message in gcs.proto for all potential options that
 # can be included in this class.
-# TODO(sang): Replace it with Pydantic or gRPC schema (once interface is finalized).
 @dataclass(init=True)
 class ActorState(StateSchema):
     """Actor State"""
@@ -687,7 +691,7 @@ for state in AVAILABLE_STATES:
 """
 
 
-@py_dataclass(init=True)
+@dataclass(init=True)
 class ListApiResponse:
     # NOTE(rickyyx): We currently perform hard truncation when querying
     # resources which could have a large number (e.g. asking raylets for
@@ -714,25 +718,14 @@ class ListApiResponse:
     # Number of resources after filtering
     num_filtered: int
     # Returned data. None if no data is returned.
-    result: List[
-        Union[
-            ActorState,
-            PlacementGroupState,
-            NodeState,
-            JobState,
-            WorkerState,
-            TaskState,
-            ObjectState,
-            RuntimeEnvState,
-        ]
-    ]
+    result: List[Dict]
     # List API can have a partial failure if queries to
     # all sources fail. For example, getting object states
     # require to ping all raylets, and it is possible some of
     # them fails. Note that it is impossible to guarantee high
     # availability of data because ray's state information is
     # not replicated.
-    partial_failure_warning: str = ""
+    partial_failure_warning: Optional[str] = ""
     # A list of warnings to print.
     warnings: Optional[List[str]] = None
 
