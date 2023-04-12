@@ -41,6 +41,7 @@ def _bisect(test_name: str, commit_list: List[str]) -> str:
     return commit_list[-1]
 
 
+
 def _run_test(test: Test, commit: str) -> bool:
     logger.info(f'Running test {test["name"]} on commit {commit}')
     _trigger_test_run(test, commit)
