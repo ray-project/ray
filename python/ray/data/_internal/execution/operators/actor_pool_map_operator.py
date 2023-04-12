@@ -161,6 +161,13 @@ class ActorPoolMapOperator(MapOperator):
             self._tasks[ref] = (task, actor)
             self._handle_task_submitted(task)
 
+        if self._bundle_queue:
+            # Try to scale up if work remains in the work queue.
+            self._scale_up_if_needed()
+        else:
+            # Only try to scale down if the work queue has been fully consumed.
+            self._scale_down_if_needed()
+
     def _scale_up_if_needed(self):
         """Try to scale up the pool if the autoscaling policy allows it."""
         while self._autoscaling_policy.should_scale_up(
@@ -204,6 +211,8 @@ class ActorPoolMapOperator(MapOperator):
             if not has_actor:
                 # Actor has already been killed.
                 return
+        # For either a completed task or ready worker, we try to dispatch queued tasks.
+        self._dispatch_tasks()
 
     def inputs_done(self):
         # Call base implementation to handle any leftover bundles. This may or may not
