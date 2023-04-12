@@ -155,7 +155,7 @@ class LightningConfigBuilder:
                 and
                 https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.FSDPStrategy.html
         """
-        self._strategy_config["_name"] = name
+        self._strategy_config["_strategy_name"] = name
         self._strategy_config.update(**kwargs)
         return self
 
@@ -469,7 +469,7 @@ def _lightning_train_loop_per_worker(config):
     module_class = ptl_config["_module_class"]
     module_init_config = ptl_config["_module_init_config"]
     strategy_config = ptl_config["_strategy_config"]
-    strategy_name = strategy_config.get("_name", "ddp")
+    strategy_name = strategy_config.pop("_strategy_name", "ddp")
     model_checkpoint_config = ptl_config["_model_checkpoint_config"]
 
     # Prepare data
