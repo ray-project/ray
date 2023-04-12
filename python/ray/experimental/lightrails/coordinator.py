@@ -1,8 +1,8 @@
 from typing import List
 
 import ray
-from ray.experimental.parallel_ml.engine import ExecutionEngine
-from ray.experimental.parallel_ml.physical_plan import ModuleParition, PhysicalPlanner
+from ray.experimental.lightrails.engine import ExecutionEngine
+from ray.experimental.lightrails.physical_plan import ModuleParition, PhysicalPlanner
 from ray.util.placement_group import PlacementGroup, PlacementGroupSchedulingStrategy
 
 

@@ -3,9 +3,9 @@ from typing import Any
 import pytest
 import ray
 import torch
-from ray.experimental.parallel_ml.communicator.naive import NaiveCommunicator
-from ray.experimental.parallel_ml.communicator.torch import TorchBasedCommunicator
-from ray.experimental.parallel_ml.test.utils import (
+from ray.experimental.lightrails.communicator.naive import NaiveCommunicator
+from ray.experimental.lightrails.communicator.torch import TorchBasedCommunicator
+from ray.experimental.lightrails.test.utils import (
     Actor,
     ray_start_4_cpus_2_gpus,
     ray_start_auto,

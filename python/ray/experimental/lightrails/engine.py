@@ -6,11 +6,11 @@ from threading import Lock, Thread
 from typing import Any, Callable
 
 import torch
-from ray.experimental.parallel_ml.communicator.communicator import (
+from ray.experimental.lightrails.communicator.communicator import (
     FULLFILLED_FUTURE,
     Communicator,
 )
-from ray.experimental.parallel_ml.schedule import (
+from ray.experimental.lightrails.schedule import (
     Backward,
     Forward,
     Instruction,

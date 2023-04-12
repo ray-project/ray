@@ -5,7 +5,7 @@ from typing import List
 
 import ray
 import torch
-from ray.experimental.parallel_ml.communicator.communicator import (
+from ray.experimental.lightrails.communicator.communicator import (
     FULLFILLED_FUTURE,
     Communicator,
 )

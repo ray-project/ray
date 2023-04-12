@@ -3,13 +3,13 @@ from typing import Any
 import pytest
 import ray
 import torch
-from ray.experimental.parallel_ml.communicator import (
+from ray.experimental.lightrails.communicator import (
     NaiveCommunicator,
     TorchBasedCommunicator,
 )
-from ray.experimental.parallel_ml.engine import Config, ExecutionEngine
-from ray.experimental.parallel_ml.schedule import ExecuteSchedule
-from ray.experimental.parallel_ml.test.utils import (
+from ray.experimental.lightrails.engine import Config, ExecutionEngine
+from ray.experimental.lightrails.schedule import ExecuteSchedule
+from ray.experimental.lightrails.test.utils import (
     Actor,
     Model,
     ray_start_4_cpus_2_gpus,
