@@ -8,8 +8,10 @@ from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
 from ray_release.config import (
     read_and_validate_release_test_collection,
+    DEFAULT_WHEEL_WAIT_TIMEOUT,
     Test
 )
+from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
 @click.command()
 @click.argument("test_name", required=True, type=str)
@@ -34,10 +36,14 @@ def _bisect(test_name: str, commit_list: List[str]) -> str:
 
 def _run_test(test: Test, commit: str) -> bool:
     logger.info(f'Running test {test["name"]} on commit {commit}')
+    ray_wheels_url = find_and_wait_for_ray_wheels_url(
+        commit, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT
+    )
     step = get_step(
         test,
         ray_wheels=commit,
     )
+    step['env']['BUILDKITE_BRANCH'] = 'master'
     step['label'] = commit
     step['key'] = commit
     pipeline = json.dumps({'steps': [step]})
@@ -45,13 +51,15 @@ def _run_test(test: Test, commit: str) -> bool:
         f'echo "{pipeline}" | buildkite-agent pipeline upload',
         shell=True,
     )
-    outcome = subprocess.check_output(
-        f'buildkite-agent step get "outcome" --step "{commit}"',
-        shell=True,
-    ).decode('utf-8')
-    logger.info('Outcome: {outcome}')
+    time.sleep(30)
+    outcome = None
     while outcome not in ['passed', 'hard_failed', 'soft_failed']:
         logger.info('... waiting for test result')
+        outcome = subprocess.check_output(
+            f'buildkite-agent step get "outcome" --step "{commit}"',
+            shell=True,
+        ).decode('utf-8')
+        logger.info(f'Outcome: {outcome}')
         time.sleep(30)
     return outcome == 'passed'
 
