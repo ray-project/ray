@@ -103,8 +103,8 @@ def handle_exception(e: Exception) -> Tuple[ExitCode, ResultStatus, Optional[int
 
     # if this step is to be retried, mark its status as transient
     if result_status in [ResultStatus.INFRA_ERROR, ResultStatus.INFRA_TIMEOUT]:
-        retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", "0"))
-        max_retry = int(os.environ.get("BUILDKITE_MAX_RETRIES"))
+        retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", 0))
+        max_retry = int(os.environ.get("BUILDKITE_MAX_RETRIES", 1))
         if retry_count < max_retry:
             result_status = ResultStatus.TRANSIENT_INFRA_ERROR
 
