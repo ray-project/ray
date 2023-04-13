@@ -18,7 +18,7 @@ def test_bisect():
         "ray_release.scripts.ray_bisect._run_test",
         side_effect=_mock_run_test,
     ), mock.patch(
-        'ray_release.scripts.ray_bisect._get_test',
+        "ray_release.scripts.ray_bisect._get_test",
         return_value={},
     ):
         blamed_commit = _bisect("test", list(commit_to_test_result.keys()))
