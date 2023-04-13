@@ -166,6 +166,7 @@ class MapOperator(PhysicalOperator, ABC):
                     args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                         self.locs[self.i],
                         soft=True,
+                        _spill_on_unavailable=True,
                     )
                     self.i += 1
                     self.i %= len(self.locs)

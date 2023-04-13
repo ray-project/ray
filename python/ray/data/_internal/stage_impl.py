@@ -14,7 +14,7 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import sort_impl
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.block import (
     _validate_key_fn,
     Block,
@@ -47,7 +47,7 @@ class RepartitionStage(AllToAllStage):
                     block_list.clear()
                 else:
                     blocks = block_list
-                context = DatasetContext.get_current()
+                context = DataContext.get_current()
                 if context.use_push_based_shuffle:
                     shuffle_op_cls = PushBasedShufflePartitionOp
                 else:
@@ -133,7 +133,7 @@ class RandomShuffleStage(AllToAllStage):
                 block_list.clear()
             else:
                 blocks = block_list
-            context = DatasetContext.get_current()
+            context = DataContext.get_current()
             if context.use_push_based_shuffle:
                 if output_num_blocks is not None:
                     raise NotImplementedError(
