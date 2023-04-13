@@ -460,7 +460,7 @@ def run_release_test(
     # non critical for some tests. So separate it from the general one.
     fetch_result_exception = None
     try:
-        raise ReleaseTestConfigError()
+        raise ReleaseTestSetupError('hahahah')
         buildkite_group(":spiral_note_pad: Loading test configuration")
         cluster_manager, command_runner, artifact_path = _load_test_configuration(
             test,
@@ -589,5 +589,8 @@ def run_release_test(
     buildkite_group(":memo: Reporting results", open=True)
     for reporter in reporters or []:
         reporter.report_result(test, result)
+
+    if pipeline_exception:
+        raise pipeline_exception
 
     return result
