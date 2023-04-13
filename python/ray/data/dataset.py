@@ -4320,7 +4320,7 @@ class Datastream(Generic[T]):
             >>> next(ds.iter_batches(batch_size=4))
             [0, 1, 2, 3]
 
-            If your datastream contains a single ``TensorDtype`` or ``ArrowTensorType``
+            If your datastream contains a single ``numpy.ndarray``
             column named ``__value__`` (as created by :func:`ray.data.from_numpy`), then
             the default batch format is ``np.ndarray``. For more information on tensor
             formats, read the :ref:`tensor support guide <datasets_tensor_support>`.
