@@ -41,15 +41,16 @@ const JOB_LIST = [
     status: "RUNNING",
   },
 ];
+const mockedUseJobList = jest.mocked(useJobList);
 
 jest.mock("../../job/hook/useJobList");
 describe("RecentJobsCard", () => {
-  it("renders", async () => {
-    const mockedUseJobList = jest.mocked(useJobList);
+  beforeEach(() => {
     mockedUseJobList.mockReturnValue({
       jobList: JOB_LIST,
     } as any);
-
+  });
+  it("renders", async () => {
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
 
     await screen.findByText("01000000");
@@ -80,6 +81,7 @@ describe("RecentJobsCard", () => {
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
 
     await screen.findByText("01000000");
-    expect(screen.getByText("04000000")).toHaveAttribute("href");
+    const link = screen.getByRole("link", { name: "04000000" });
+    expect(link).toBeInTheDocument();
   });
 });
