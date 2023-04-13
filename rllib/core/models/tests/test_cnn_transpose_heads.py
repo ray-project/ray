@@ -64,9 +64,10 @@ class TestCNNTransposeHeads(unittest.TestCase):
             ) = permutation
 
             # Split up into filters and resulting expected output dims.
-            cnn_transpose_filter_specifiers, expected_output_dims = (
-                cnn_transpose_filter_specifiers
-            )
+            (
+                cnn_transpose_filter_specifiers,
+                expected_output_dims,
+            ) = cnn_transpose_filter_specifiers
 
             print(
                 f"Testing ...\n"
