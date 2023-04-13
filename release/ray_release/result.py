@@ -4,28 +4,25 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Tuple
 
 
-class BuildkiteExitCode(enum.Enum):
+class ResultStatus(enum.Enum):
     """
-    Final exit code the test runner passes to buildkite-agent. This exit code is used
-    to determine job policies, such as automatic retries
+    Overall status of the result test run
     """
-
-    SUCCESS = 0
-    UNKNOWN = 1
-    TRANSIENT_INFRA_ERROR = 10
-    INFRA_ERROR = 11
-    INFRA_TIMEOUT = 30
-    ERROR = 40
-    TIMEOUT = 42
+    SUCCESS = 'success'
+    UNKNOWN = 'unknown'
+    TRANSIENT_INFRA_ERROR = 'transient_infra_error'
+    INFRA_ERROR = 'infra_error'
+    INFRA_TIMEOUT = 'infra_timeout'
+    ERROR = 'error'
+    TIMEOUT = 'timeout'
 
 
 @dataclass
 class Result:
     results: Optional[Dict] = None
 
-    status: str = "invalid"
+    status: str = ResultStatus.UNKNOWN.value
     return_code: int = 0
-    buildkite_exit_code: int = BuildkiteExitCode.SUCCESS.value
     last_logs: Optional[str] = None
 
     runtime: Optional[float] = None
@@ -81,31 +78,33 @@ class ExitCode(enum.Enum):
     PREPARE_ERROR = 43
 
 
-def handle_exception(e: Exception) -> Tuple[ExitCode, BuildkiteExitCode, Optional[int]]:
+def handle_exception(e: Exception) -> Tuple[ExitCode, ResultStatus, Optional[int]]:
     from ray_release.exception import ReleaseTestError
 
     if not isinstance(e, ReleaseTestError):
-        return ExitCode.UNKNOWN, BuildkiteExitCode.UNKNOWN, 0
+        return ExitCode.UNKNOWN, ResultStatus.UNKNOWN, 0
     exit_code = e.exit_code
     if 1 <= exit_code.value < 10:
-        error_type = BuildkiteExitCode.UNKNOWN
+        status = ResultStatus.UNKNOWN
         runtime = None
     elif 10 <= exit_code.value < 20:
-        retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", "0"))
-        # Retry at least once of transient infra error
-        if retry_count == 0:
-            error_type = BuildkiteExitCode.TRANSIENT_INFRA_ERROR
-        else:
-            error_type = BuildkiteExitCode.INFRA_ERROR
+        status = ResultStatus.INFRA_ERROR
         runtime = None
     elif 30 <= exit_code.value < 40:
-        error_type = BuildkiteExitCode.INFRA_TIMEOUT
+        status = ResultStatus.INFRA_TIMEOUT
         runtime = None
     elif exit_code == ExitCode.COMMAND_TIMEOUT:
-        error_type = BuildkiteExitCode.TIMEOUT
+        status = ResultStatus.TIMEOUT
         runtime = 0
     elif 40 <= exit_code.value:
-        error_type = BuildkiteExitCode.ERROR
+        status = ResultStatus.ERROR
         runtime = 0
 
-    return exit_code, error_type, runtime
+    if status in [ResultStatus.INFRA_ERROR, ResultStatus.INFRA_TIMEOUT]:
+        retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", "0"))
+        max_retry = int(os.environ.get("BUILDKITE_MAX_RETRIES"))
+        if retry_count < max_retry:
+            # if this step is to be retried, mark its status as transient
+            status = ResultStatus.TRANSIENT_INFRA_ERROR
+
+    return exit_code, status, runtime
