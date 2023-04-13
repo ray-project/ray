@@ -43,12 +43,6 @@ class DatastreamLogger:
         for writing to the Datastream log file. Not intended (nor necessary)
         to call explicitly. Assumes that `ray.init()` has already been called prior
         to calling this method; otherwise raises a `ValueError`."""
-        # In the case where logger has not yet been set up in another file,
-        # initialize basic configs to set log level and format.
-        logging.basicConfig(
-            level=LOGGER_LEVEL.upper(),
-            format=LOGGER_FORMAT,
-        )
 
         # We initialize a logger using the given base `log_name`, which
         # logs to stdout. Logging with this logger to stdout is enabled by the

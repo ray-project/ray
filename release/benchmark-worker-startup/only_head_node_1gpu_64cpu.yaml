@@ -3,6 +3,15 @@ region: us-west-2
 
 max_workers: 0
 
+aws:
+    # Fix the volume size so that IOPS is constant even if the default changes.
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            # 150GB is the default in Anyscale.
+            VolumeSize: 150
+
 head_node_type:
     name: head_node
     instance_type: g5.16xlarge
