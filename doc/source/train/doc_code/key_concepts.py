@@ -137,20 +137,24 @@ from ray.air import RunConfig, CheckpointConfig
 
 run_config = RunConfig(
     checkpoint_config=CheckpointConfig(
-        # Only keep this many checkpoints.
-        num_to_keep=2
+        # Only keep the 2 *best* checkpoints and delete the others.
+        num_to_keep=2,
+        # *Best* checkpoints are determined by these params:
+        checkpoint_score_attribute="mean_accuracy",
+        checkpoint_score_order="max",
     )
 )
 # __checkpoint_config_end__
 
-# __checkpoint_config_gbdt_start__
+# __checkpoint_config_ckpt_freq_start__
 from ray.air import RunConfig, CheckpointConfig
 from ray.train.xgboost import XGBoostTrainer
 
 run_config = RunConfig(
     checkpoint_config=CheckpointConfig(
+        # Checkpoint every iteration.
         checkpoint_frequency=1,
-        # Only keep this many checkpoints.
+        # Only keep the latest checkpoint and delete the others.
         num_to_keep=1,
     )
 )
@@ -158,7 +162,7 @@ trainer = XGBoostTrainer(
     # ...
     run_config=run_config,
 )
-# __checkpoint_config_gbdt_end__
+# __checkpoint_config_ckpt_freq_end__
 
 
 # __results_start__

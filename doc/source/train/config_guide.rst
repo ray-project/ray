@@ -14,12 +14,14 @@ resources per worker.
 
 The properties of the scaling configuration are :ref:`tunable <air-tuner-search-space>`.
 
-:class:`ScalingConfig API reference <ray.air.config.ScalingConfig>`
-
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
     :start-after: __scaling_config_start__
     :end-before: __scaling_config_end__
+
+.. seealso::
+
+    See the :class:`~ray.air.ScalingConfig` API reference.
 
 
 Run Configuration in Train (``RunConfig``)
@@ -30,12 +32,15 @@ resources per worker.
 
 The properties of the run configuration are :ref:`not tunable <air-tuner-search-space>`.
 
-:class:`RunConfig API reference <ray.air.config.RunConfig>`
-
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
     :start-after: __run_config_start__
     :end-before: __run_config_end__
+
+.. seealso::
+
+    See the :class:`~ray.air.RunConfig` API reference.
+
 
 Failure configurations in Train (``FailureConfig``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -45,12 +50,15 @@ The failure configuration specifies how training failures should be dealt with.
 As part of the RunConfig, the properties of the failure configuration
 are :ref:`not tunable <air-tuner-search-space>`.
 
-:class:`FailureConfig API reference <ray.air.config.FailureConfig>`
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
     :start-after: __failure_config_start__
     :end-before: __failure_config_end__
+
+.. seealso::
+
+    See the :class:`~ray.air.FailureConfig` API reference.
 
 .. _train-config-sync:
 
@@ -63,12 +71,16 @@ Ray cluster and remote storage.
 As part of the RunConfig, the properties of the sync configuration
 are :ref:`not tunable <air-tuner-search-space>`.
 
-:class:`SyncConfig API reference <ray.tune.syncer.SyncConfig>`
-
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
     :start-after: __sync_config_start__
     :end-before: __sync_config_end__
+
+.. seealso::
+
+    See :ref:`tune-storage-options` for configuration examples.
+
+    See the :class:`~ray.tune.syncer.SyncConfig` API reference.
 
 
 Checkpoint configurations in Train (``CheckpointConfig``)
@@ -80,10 +92,27 @@ and how many checkpoints to keep.
 As part of the RunConfig, the properties of the checkpoint configuration
 are :ref:`not tunable <air-tuner-search-space>`.
 
-:class:`CheckpointConfig API reference <ray.air.config.CheckpointConfig>`
-
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
     :start-after: __checkpoint_config_start__
     :end-before: __checkpoint_config_end__
 
+Trainers of certain frameworks including :class:`~ray.train.xgboost.XGBoostTrainer`,
+:class:`~ray.train.lightgbm.LightGBMTrainer`, and :class:`~ray.train.huggingface.HuggingFaceTrainer`
+implement checkpointing out of the box. For these trainers, checkpointing can be
+enabled by setting the checkpoint frequency within the :class:`~ray.air.CheckpointConfig`.
+
+.. literalinclude:: doc_code/key_concepts.py
+    :language: python
+    :start-after: __checkpoint_config_ckpt_freq_start__
+    :end-before: __checkpoint_config_ckpt_freq_end__
+
+.. warning::
+
+    ``checkpoint_frequency`` and other parameters do *not* work for trainers
+    that accept a custom training loop such as :class:`~ray.train.torch.TorchTrainer`,
+    since checkpointing is fully user-controlled.
+
+.. seealso::
+
+    See the :class:`~ray.air.CheckpointConfig` API reference.

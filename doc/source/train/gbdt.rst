@@ -47,8 +47,8 @@ save a checkpoint on every boosting round and will only keep the latest checkpoi
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
-    :start-after: __checkpoint_config_gbdt_start__
-    :end-before: __checkpoint_config_gbdt_end__
+    :start-after: __checkpoint_config_ckpt_freq_start__
+    :end-before: __checkpoint_config_ckpt_freq_end__
 
 .. tip::
 
