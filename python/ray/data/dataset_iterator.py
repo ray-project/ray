@@ -31,6 +31,13 @@ if TYPE_CHECKING:
     from ray.data.dataset import TensorFlowTensorBatchType
 
 
+def _is_tensor_dataset(schema) -> bool:
+    """Return ``True`` if this is an iterator over a tensor dataset."""
+    if schema is None or isinstance(schema, type):
+        return False
+    return _is_tensor_schema(schema.names)
+
+
 @PublicAPI(stability="beta")
 class DataIterator(abc.ABC):
     """An iterator for reading items from a :class:`~Dataset` or
@@ -49,9 +56,9 @@ class DataIterator(abc.ABC):
         >>> import ray
         >>> ds = ray.data.range(5)
         >>> ds
-        Dataset(num_blocks=5, num_rows=5, schema=<class 'int'>)
+        Datastream(num_blocks=5, num_rows=5, schema=<class 'int'>)
         >>> ds.iterator()
-        DataIterator(Dataset(num_blocks=5, num_rows=5, schema=<class 'int'>))
+        DataIterator(Datastream(num_blocks=5, num_rows=5, schema=<class 'int'>))
         >>> ds = ds.repeat(); ds
         DatasetPipeline(num_windows=inf, num_stages=2)
         >>> ds.iterator()
@@ -641,7 +648,7 @@ class DataIterator(abc.ABC):
             ...     "s3://anonymous@air-example-data/iris.csv"
             ... )
             >>> it = ds.iterator(); it
-            DataIterator(Dataset(
+            DataIterator(Datastream(
                num_blocks=1,
                num_rows=150,
                schema={
@@ -672,7 +679,7 @@ class DataIterator(abc.ABC):
             >>> it = preprocessor.transform(ds).iterator()
             >>> it
             DataIterator(Concatenator
-            +- Dataset(
+            +- Datastream(
                   num_blocks=1,
                   num_rows=150,
                   schema={
@@ -728,13 +735,14 @@ class DataIterator(abc.ABC):
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
-        if self._is_tensor_dataset():
+        schema = self.schema()
+
+        if _is_tensor_dataset(schema):
             raise NotImplementedError(
                 "`to_tf` doesn't support single-column tensor datasets. Call the "
                 "more-flexible `iter_batches` instead."
             )
 
-        schema = self.schema()
         if isinstance(schema, type):
             raise NotImplementedError(
                 "`to_tf` doesn't support simple datasets. Call `map_batches` and "
@@ -818,13 +826,6 @@ class DataIterator(abc.ABC):
             "To iterate over one epoch of data, use iter_batches(), "
             "iter_torch_batches(), or to_tf()."
         )
-
-    def _is_tensor_dataset(self) -> bool:
-        """Return ``True`` if this is an iterator over a tensor dataset."""
-        schema = self.schema()
-        if schema is None or isinstance(schema, type):
-            return False
-        return _is_tensor_schema(schema.names)
 
 
 # Backwards compatibility alias.
