@@ -252,6 +252,7 @@ __all__ += [
     "PlacementGroupID",
 ]
 
+
 # Delay importing of expensive, isolated subpackages.
 def __getattr__(name: str):
     import importlib

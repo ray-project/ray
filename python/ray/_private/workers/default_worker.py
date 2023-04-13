@@ -2,7 +2,6 @@ import argparse
 import base64
 import json
 import time
-import sys
 
 import ray
 import ray._private.node
