@@ -415,56 +415,6 @@ class Quantile(_AggregateOnKeyBase):
         )
 
 
-@PublicAPI
-class Mode(_AggregateOnKeyBase):
-    """Defines Mode aggregation."""
-
-    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True,
-                 alias_name: Optional[KeyFn] = None):
-        self._set_key_fn(on)
-
-        def merge(a: dict, b: dict):
-            for key in b:
-                if a.__contains__(key):
-                    a[key] = a[key] + b[key]
-                else:
-                    a[key] = b[key]
-            return a
-
-        null_merge = _null_wrap_merge(ignore_nulls, merge)
-
-        def block_row_dicts(block: Block[T]) -> AggType:
-            block_acc = BlockAccessor.for_block(block)
-            elem_dict = {}
-            for row in block_acc.iter_rows():
-                value = row.get(on)
-                if value is not None:
-                    if elem_dict.__contains__(value):
-                        elem_dict[value] = elem_dict[value] + 1
-                    else:
-                        elem_dict[value] = 1
-            return elem_dict
-
-        if alias_name:
-            rs_name = alias_name
-        else:
-            rs_name = (f"Mode({str(on)})")
-
-        def mode_value(v: dict):
-            sorted_v = sorted(v.items(), key=lambda x: x[1], reverse=True)
-            return sorted_v[0][0]
-
-        super().__init__(
-            init=_null_wrap_init(lambda k: [0]),
-            merge=null_merge,
-            accumulate_block=_null_wrap_accumulate_block(
-                ignore_nulls,
-                block_row_dicts,
-                null_merge,
-            ),
-            finalize=_null_wrap_finalize(mode_value),
-            name=(rs_name),
-        )
 
 
 
