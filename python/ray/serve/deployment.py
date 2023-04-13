@@ -432,6 +432,9 @@ class Deployment:
         if health_check_timeout_s is not DEFAULT.VALUE:
             new_config.health_check_timeout_s = health_check_timeout_s
 
+        if is_driver_deployment is not DEFAULT.VALUE:
+            self._is_driver_deployment = is_driver_deployment
+
         return Deployment(
             func_or_class,
             name,
