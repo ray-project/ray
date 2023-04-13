@@ -8,7 +8,72 @@ Profiling
 Memory profile Ray Actors and Tasks
 -----------------------------------
 
+To memory profile Ray tasks or actors `memray <https://bloomberg.github.io/memray/>`_.
+Note that you can also use other memory profiling tools if it supports a similar API.
 
+First, download ``memray``.
+
+.. code-block:: bash
+
+  pip install memray
+
+``memray`` supports a Python context manager to enable memory profiling. You can write the ``memray`` profiling file wherever you want.
+But in this example, we will write them to `/tmp/ray/session_latest/logs` because Ray dashboard allows you to download files inside a log file.
+This will allow you to download profiling files from other nodes.
+
+.. tabbed:: Actors
+
+  .. code-block:: python
+
+    import memray
+    import ray
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            # Every memory allocation after `__enter__` method will be tracked.
+            memray.Tracker(f"/tmp/ray/session_latest/logs/{ray.get_runtime_context().get_actor_id()}_mem_profile.bin").__enter__()
+            self.arr = [bytearray(b"1" * 1000000)]
+            
+        def append(self):
+            self.arr.append(bytearray(b"1" * 1000000))
+            
+    a = Actor.remote()
+    ray.get(a.append.remote())
+
+.. tabbed:: Tasks
+
+  Note that tasks have a shorter lifetime, so there could be lots of memory profiling files.
+
+  .. code-block:: python
+
+    import memray
+    import ray
+
+    @ray.remote
+    def task():
+      with memray.Tracker(f"/tmp/ray/session_latest/logs/{ray.get_runtime_context().get_task_id()}_mem_profile.bin"):
+        arr = bytearray(b"1" * 1000000)
+
+    ray.get(task.remote())
+
+Once the task or actor runs, go to the :ref:`Logs View <dash-logs-view>` of the dashboard. Find and click the log file name.
+
+.. image:: ../images/memory-profiling-files.png
+    :align: center
+
+Click the download button. 
+
+.. image:: ../images/download-memory-profiling-files.png
+    :align: center
+
+Now, you have the memory profiling file. Running
+
+.. code-block:: bash
+
+  memray flamegraph <memory profiling bin file>
+
+And you can see the result of the memory profiling!
 
 .. _ray-core-timeline:
 

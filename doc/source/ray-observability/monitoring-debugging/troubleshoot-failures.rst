@@ -49,6 +49,8 @@ Debugger
 Many Python developers use a debugger to debug Python programs, and `Python pdb <https://docs.python.org/3/library/pdb.html>`_) is one of the popular choices.
 Ray has native integration to ``pdb``. You can simply add ``breakpoint()`` to actors and tasks code to enable ``pdb``. View :ref:`Ray Debugger <ray-debugger>` for more details.
 
+.. _troubleshooting-out-of-memory:
+
 Debugging Out of Memory
 -----------------------
 
@@ -85,7 +87,7 @@ it will raise an exception with one of the following error messages (which indic
 
 Also, you can use the `dmesg <https://phoenixnap.com/kb/dmesg-linux#:~:text=The%20dmesg%20command%20is%20a,take%20place%20during%20system%20startup.>`_ CLI command to verify the processes are killed by the Linux out-of-memory killer.
 
-.. image:: ../images/dmesg.png
+.. image:: ../images/dmsg.png
     :align: center
 
 **Ray out-of-memory killer**
@@ -198,33 +200,53 @@ It means each task uses about 21GB / 15 == 1.4 GB. You can increase the ``num_cp
 
 It is also possible tasks and actors use more memory than you expect. For example, actors or tasks can have a memory leak or have unnecessary copies.
 
-View :ref:`Memory Profiling Ray Tasks and Actors <ray-core-mem-profiling>` for more details.
+View :ref:`Memory Profiling Ray Tasks and Actors <ray-core-mem-profiling>` to learn how to memory profile individual actors and tasks.
 
-Starting many actors
---------------------
 
-Workloads that start a large number of actors all at once may exhibit problems when the processes (or libraries that they use) contend for resources. Similarly, a script that starts many actors over the lifetime of the application will eventually cause the system to run out of file descriptors. 
+Running out of file descriptors (``Too may open files``)
+--------------------------------------------------------
 
-Running out of file descriptors
--------------------------------
+In a Ray cluster, arbitrary two system components can communicate with each other and make 1 or more connections.
+For example, some workers may need to communicate with GCS to schedule actors (worker <-> GCS connection).
+Your driver can invoke actor methods (worker <-> worker connection).
 
-As a workaround, you may be able to
-  increase the maximum number of file descriptors with a command like
-  ``ulimit -n 65536``. If that fails, double check that the hard limit is
-  sufficiently large by running ``ulimit -Hn``. If it is too small, you can
-  increase the hard limit as follows (these instructions work on EC2).
+Ray can support 1000s of raylets and 10000s of worker processes. When a Ray cluster gets larger, 
+each component can have an increasing number of network connections which requires file descriptors. 
 
-    * Increase the hard ulimit for open file descriptors system-wide by running
-      the following.
+Linux typically limits the default file descriptors per process to 1024. When there are
+more than 1024 connections to the component, it can raise error messages below.
 
-      .. code-block:: bash
+.. code-block:: bash
 
-        sudo bash -c "echo $USER hard nofile 65536 >> /etc/security/limits.conf"
+  Too may open files
 
-    * Logout and log back in.
+It is especially common for the head node GCS process because it is a centralized
+component that many other components in Ray communicate with. When you see this error message,
+we recommend you adjust the max file descriptors limit per process via the ``ulimit`` command.
 
-This document discusses some common problems that people run into when using Ray
-as well as some known problems. If you encounter other problems, please
-`let us know`_.
+We recommend you apply ``ulimit -n 65536`` to your host configuration. However, you can also selectively apply it for
+Ray components (view below example). Normally, each worker has 2~3 connections to GCS. Each raylet has 1~2 connections to GCS.
+65536 file descriptors can handle 10000~15000 of workers and 1000~2000 of nodes. 
+If you have more workers, you should consider using a higher number than 65536.
 
-.. _`let us know`: https://github.com/ray-project/ray/issues
+.. code-block:: bash
+  # Start head node components with higher ulimit.
+  ulimit -n 65536 ray start --head
+
+  # Start worker node components with higher ulimit.
+  ulimit -n 65536 ray start --address <head_node>
+
+  # Start a Ray driver with higher ulimit.
+  ulimit -n 65536 <python script>
+
+If that fails, double-check that the hard limit is sufficiently large by running ``ulimit -Hn``. 
+If it is too small, you can increase the hard limit as follows (these instructions work on EC2).
+
+* Increase the hard ulimit for open file descriptors system-wide by running
+  the following.
+
+  .. code-block:: bash
+
+    sudo bash -c "echo $USER hard nofile 65536 >> /etc/security/limits.conf"
+
+* Logout and log back in.
