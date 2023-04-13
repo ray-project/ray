@@ -280,10 +280,6 @@ Again, we're running this example script from the Ray cluster's head node.
         run_config=air.RunConfig(
             name="my-tune-exp",
             storage_path="/tmp/mypath",
-            # Use the default syncing behavior
-            # You don't have to pass an empty sync config - but we
-            # do it here for clarity and comparison
-            sync_config=tune.SyncConfig(),
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_score_attribute="max-auc",
                 checkpoint_score_order="max",
