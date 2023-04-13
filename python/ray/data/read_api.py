@@ -259,7 +259,7 @@ def range_tensor(
     Examples:
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
-        >>> ds
+        >>> ds  # doctest: +ellipsis
         Datastream(
             num_blocks=...,
             num_rows=1000,
