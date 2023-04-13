@@ -127,6 +127,7 @@ class Catalog:
 
     .. testcode::
 
+        import torch
         import gymnasium as gym
         from ray.rllib.core.models.configs import MLPHeadConfig
         from ray.rllib.core.models.catalog import Catalog
