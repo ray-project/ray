@@ -29,7 +29,7 @@ DEFAULT_HTTP_PORT = 8000
 DEFAULT_GRPC_PORT = 9000
 
 #: Default Serve application name
-SERVE_DEFAULT_APP_NAME = ""
+SERVE_DEFAULT_APP_NAME = "default"
 
 #: Separator between app name and deployment name when we prepend
 #: the app name to each deployment name. This prepending is currently
