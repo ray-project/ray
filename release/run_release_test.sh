@@ -116,11 +116,13 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   START=$(date +%s)
   set +e
 
+  START=`date +%s`
   trap _term SIGINT SIGTERM
   python "${RAY_TEST_SCRIPT}" "$@" &
   proc=$!
 
   wait "$proc"
+  END=`date +%s`
   EXIT_CODE=$?
 
   set -e
