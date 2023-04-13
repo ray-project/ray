@@ -262,7 +262,7 @@ DEFAULT_GRAFANA_PANELS = [
                 legend="{{Component}}",
             ),
             Target(
-                expr="node_mem_shared_bytes{{{global_filters}}}",
+                expr="sum(ray_node_mem_shared_bytes{{{global_filters}}})",
                 legend="shared_memory",
             ),
             Target(
