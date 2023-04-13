@@ -571,4 +571,7 @@ def run_release_test(
     if pipeline_exception:
         raise pipeline_exception
 
+    if pipeline_exception:
+        raise pipeline_exception
+
     return result
