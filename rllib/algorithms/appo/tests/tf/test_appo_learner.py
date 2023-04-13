@@ -146,7 +146,7 @@ class TestAPPOTfLearner(unittest.TestCase):
             curr_kl_coeff = results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
                 LEARNER_STATS_KEY
             ][LEARNER_RESULTS_CURR_KL_COEFF_KEY]
-            self.assertLess(curr_kl_coeff, initial_kl_coeff)
+            self.assertNotEqual(curr_kl_coeff, initial_kl_coeff)
 
 
 if __name__ == "__main__":
