@@ -92,7 +92,7 @@ def train_fn(config: dict, data: Optional[dict] = None):
         # Multiple workers may be trying to delete the same marker
         try:
             training_started_marker.unlink()
-        except Exception:
+        except FileNotFoundError:
             pass
 
     for iteration in range(start, ITERATIONS_PER_TRIAL + 1):

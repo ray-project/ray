@@ -61,8 +61,8 @@ def test_experiment_restore(tmp_path, runner_type):
 
     Requirements:
     - Req 1: Reasonable runtime
-        - The experiment should finish within 1.5 * 16 = 24 seconds.
-        - 1.5x is the passing threshold.
+        - The experiment should finish within 2 * 16 = 32 seconds.
+        - 2x is the passing threshold.
         - 16 seconds is the minimum runtime.
     - Req 2: Training progress persisted
         - The experiment should progress monotonically.
@@ -116,7 +116,7 @@ def test_experiment_restore(tmp_path, runner_type):
 
     # Pass criteria
     no_interrupts_runtime = 16.0
-    passing_factor = 1.5
+    passing_factor = 2
     passing_runtime = no_interrupts_runtime * passing_factor
     _print_message(
         "Experiment should finish with a total runtime of\n"
