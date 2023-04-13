@@ -10,6 +10,7 @@ from ray_release.anyscale_util import get_project_name
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
 from ray_release.exception import CloudInfoError
 from ray_release.util import anyscale_cluster_url, dict_hash, get_anyscale_sdk
+from ray_release.logger import logger
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -125,7 +126,13 @@ class ClusterManager(abc.ABC):
     def start_cluster(self, timeout: float = 600.0):
         raise NotImplementedError
 
-    def terminate_cluster(self):
+    def terminate_cluster(self, wait: bool = False):
+        try:
+            self.terminate_cluster_ex(wait=False)
+        except Exception as e:
+            logger.exception(f"Could not terminate cluster: {e}")
+
+    def terminate_cluster_ex(self, wait: bool = False):
         raise NotImplementedError
 
     def get_cluster_address(self) -> str:

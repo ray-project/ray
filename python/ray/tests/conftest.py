@@ -52,6 +52,12 @@ def tmp_dir_session():
     temp_dir = tempfile.mkdtemp()
     print("temp_dir", temp_dir)
     os.environ["RAY_TMPDIR"] = str(temp_dir)
+
+@pytest.fixture(autouse=True)
+def pre_envs(monkeypatch):
+    # To make test run faster
+    monkeypatch.setenv("RAY_NUM_REDIS_GET_RETRIES", "2")
+    ray_constants.NUM_REDIS_GET_RETRIES = 2
     yield
 
 

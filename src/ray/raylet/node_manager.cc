@@ -138,7 +138,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           self_node_id_,
           config.node_manager_address,
           config.num_workers_soft_limit,
-          config.num_initial_python_workers_for_first_job,
+          config.num_prestart_python_workers,
           config.maximum_startup_concurrency,
           config.min_worker_port,
           config.max_worker_port,
@@ -424,7 +424,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
       });
   worker_pool_.SetAgentManager(agent_manager_);
-
+  worker_pool_.Start();
   periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
                                        RayConfig::instance().task_failure_entry_ttl_ms());
 }
@@ -541,6 +541,36 @@ ray::Status NodeManager::RegisterGcs() {
         RayConfig::instance().raylet_check_gc_period_milliseconds(),
         "NodeManager.CheckGC");
   }
+  // Raylet periodically check whether it's alive in GCS.
+  // For failure cases, GCS might think this raylet dead, but this
+  // raylet still think it's alive. This could happen when the cluster setup is wrong,
+  // for example, there is data loss in the DB.
+  periodical_runner_.RunFnPeriodically(
+      [this] {
+        // Flag to see whether a request is running.
+        static bool checking = false;
+        if (checking) {
+          return;
+        }
+        checking = true;
+        RAY_CHECK_OK(gcs_client_->Nodes().AsyncCheckSelfAlive(
+            // capture checking ptr here because vs17 fail to compile
+            [checking_ptr = &checking](auto status, auto alive) mutable {
+              if (status.ok()) {
+                if (!alive) {
+                  // GCS think this raylet is dead. Fail the node
+                  RAY_LOG(FATAL)
+                      << "GCS consider this node to be dead. This may happen when "
+                      << "GCS is not backed by a DB and restarted or there is data loss "
+                      << "in the DB.";
+                }
+                *checking_ptr = false;
+              }
+            },
+            /* timeout_ms = */ 30000));
+      },
+      RayConfig::instance().raylet_liveness_self_check_interval_ms(),
+      "NodeManager.GcsCheckAlive");
   return ray::Status::OK();
 }
 
@@ -1828,17 +1858,15 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
     actor_id = task.GetTaskSpecification().ActorCreationId();
   }
 
-  if (RayConfig::instance().enable_worker_prestart()) {
-    auto task_spec = task.GetTaskSpecification();
-    // We floor the available CPUs to the nearest integer to avoid starting too
-    // many workers when there is less than 1 CPU left. Otherwise, we could end
-    // up repeatedly starting the worker, then killing it because it idles for
-    // too long. The downside is that we will be slower to schedule tasks that
-    // could use a fraction of a CPU.
-    int64_t available_cpus = static_cast<int64_t>(
-        cluster_resource_scheduler_->GetLocalResourceManager().GetLocalAvailableCpus());
-    worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
-  }
+  auto task_spec = task.GetTaskSpecification();
+  // We floor the available CPUs to the nearest integer to avoid starting too
+  // many workers when there is less than 1 CPU left. Otherwise, we could end
+  // up repeatedly starting the worker, then killing it because it idles for
+  // too long. The downside is that we will be slower to schedule tasks that
+  // could use a fraction of a CPU.
+  int64_t available_cpus = static_cast<int64_t>(
+      cluster_resource_scheduler_->GetLocalResourceManager().GetLocalAvailableCpus());
+  worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
 
   auto send_reply_callback_wrapper =
       [this, is_actor_creation_task, actor_id, reply, send_reply_callback](
@@ -1905,10 +1933,6 @@ void NodeManager::HandleCommitBundleResources(
   RAY_LOG(DEBUG) << "Request to commit resources for bundles: "
                  << GetDebugStringForBundles(bundle_specs);
   placement_group_resource_manager_->CommitBundles(bundle_specs);
-  if (RayConfig::instance().use_ray_syncer()) {
-    // To reduce the lag, we trigger a broadcasting immediately.
-    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_VIEW));
-  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   cluster_task_manager_->ScheduleAndDispatchTasks();
@@ -1949,10 +1973,6 @@ void NodeManager::HandleCancelResourceReserve(
 
   // Return bundle resources.
   placement_group_resource_manager_->ReturnBundle(bundle_spec);
-  if (RayConfig::instance().use_ray_syncer()) {
-    // To reduce the lag, we trigger a broadcasting immediately.
-    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_VIEW));
-  }
   cluster_task_manager_->ScheduleAndDispatchTasks();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
