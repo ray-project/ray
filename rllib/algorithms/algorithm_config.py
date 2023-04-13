@@ -2607,11 +2607,6 @@ class AlgorithmConfig(_Config):
                 env=gym.make("CartPole-v1"))
             is_policy_to_train("pol1")
             is_policy_to_train("pol2")
-            print(policy_dict)
-
-        .. testoutput::
-            {'pol1': <ray.rllib.policy.policy.PolicySpec object at 0x17bf0f6a0>, \
-            'pol2': <ray.rllib.policy.policy.PolicySpec object at 0x17bf0f610>}
 
         Args:
             policies: An optional multi-agent `policies` dict, mapping policy IDs
