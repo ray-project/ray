@@ -1,6 +1,6 @@
 import sys
 import pytest
-from typing import List, Dict, Union, Optional
+from typing import List, Dict
 
 import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
@@ -30,10 +30,7 @@ def mock_application_state_manager() -> ApplicationStateManager:
         def deploy(
             self,
             deployment_name: str,
-            deployment_config_proto_bytes: bytes,
-            replica_config_proto_bytes: bytes,
-            deployer_job_id: Union[str, bytes],
-            is_driver_deployment: Optional[bool] = False,
+            deployment_info: DeploymentInfo,
         ):
             self._deployment_states[deployment_name] = DeploymentStatusInfo(
                 name=deployment_name,
@@ -87,7 +84,9 @@ def deployment_params(
         "deployment_config_proto_bytes": DeploymentConfig(
             num_replicas=1, user_config={}
         ).to_proto_bytes(),
-        "replica_config_proto_bytes": ReplicaConfig.create(lambda x: x),
+        "replica_config_proto_bytes": ReplicaConfig.create(
+            lambda x: x
+        ).to_proto_bytes(),
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
         "docs_path": None,
@@ -221,8 +220,9 @@ def test_redeploy_same_app(mock_application_state_manager):
     )
     assert app_state_manager._application_states["app"].deployments_to_delete == {"a"}
 
-    # After updating, the deployment should be deleted successfully, and
-    # deployments_to_delete should be empty
+    # When the deployment should be deleted successfully, deployments_to_delete should
+    # be empty
+    deployment_state_manager.set_deployment_deleted("a")
     app_state_manager.update()
     assert app_state_manager._application_states["app"].deployments_to_delete == set()
     assert "a" not in deployment_state_manager._deployment_states

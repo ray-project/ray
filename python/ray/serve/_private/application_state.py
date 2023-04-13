@@ -96,7 +96,7 @@ class ApplicationState:
             replica_config_proto_bytes=replica_config_proto_bytes,
             deployer_job_id=deployer_job_id,
             previous_deployment=self.deployment_state_manager.get_deployment(name),
-            is_driver_deployment=is_driver_deployment
+            is_driver_deployment=is_driver_deployment,
         )
 
         updating = self.deployment_state_manager.deploy(name, deployment_info)
