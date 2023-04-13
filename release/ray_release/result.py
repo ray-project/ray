@@ -80,16 +80,20 @@ class ExitCode(enum.Enum):
     PREPARE_ERROR = 43
 
 
-def _is_transient_error(runtime: int) -> bool:
+def _is_transient_error(result_status: ResultStatus, runtime: int) -> bool:
     """
     Classify whether an infra-failure issue is a transient issue. This is based on
     the status of its previous retries, and its runtime.
     """
-    retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", "0"))
-    if retry_count > 0:
-        # Already retried at least once and failed again, not a transient issue
+    if result_status not in [ResultStatus.INFRA_ERROR, ResultStatus.INFRA_TIMEOUT]:
+        # Not even an infra failure 
         return False
-    if runtime > 30 * 60:
+    retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", 0))
+    max_retry = int(os.environ.get("BUILDKITE_MAX_RETRIES", 1))
+    if retry_count >= max_retry:
+        # Already reach retry limit
+        return False
+    if runtime > os.environ.get("BUILDKITE_TIME_LIMIT_FOR_RETRY", 0):
         # Take too long to run
         return False
     return True
