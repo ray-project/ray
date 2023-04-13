@@ -85,7 +85,11 @@ if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
       curl -f -s -L -R -o "${target}" "${url}"
       chmod +x "${target}"
     else
-      target="/bin/bazel"
+      if [ which bazel ]; then
+          target="$(which bazel)"
+      else
+          target="/bin/bazel"
+      fi
       sudo curl -f -s -L -R -o "${target}" "${url}"
       sudo chmod +x "${target}"
     fi
@@ -113,7 +117,7 @@ if [ "${TRAVIS-}" = true ]; then
   echo "build --jobs=50" >> ~/.bazelrc
 fi
 
-if [ "$BUILDKITE" = "true" ]; then
+if [ -n "${BUILDKITE-}" ]; then
   cp "${ROOT_DIR}"/../../.bazeliskrc ~/.bazeliskrc
 fi
 
