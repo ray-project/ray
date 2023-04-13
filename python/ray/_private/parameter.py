@@ -1,8 +1,7 @@
 import logging
 import os
 from typing import Dict, List, Optional
-
-import numpy as np
+import pkg_resources
 
 import ray._private.ray_constants as ray_constants
 
@@ -113,8 +112,6 @@ class RayParams:
             core feature flags.
         enable_object_reconstruction: Enable plasma reconstruction on
             failure.
-        start_initial_python_workers_for_first_job: If true, start
-            initial Python workers for the first job on the node.
         ray_debugger_external: If true, make the Ray debugger for a
             worker available externally to the node it is running on. This will
             bind on 0.0.0.0 instead of localhost.
@@ -169,7 +166,6 @@ class RayParams:
         runtime_env_dir_name: Optional[str] = None,
         include_log_monitor: Optional[str] = None,
         autoscaling_config: Optional[str] = None,
-        start_initial_python_workers_for_first_job=False,
         ray_debugger_external: bool = False,
         _system_config: Optional[Dict[str, str]] = None,
         enable_object_reconstruction: Optional[bool] = False,
@@ -231,9 +227,6 @@ class RayParams:
         self.tracing_startup_hook = tracing_startup_hook
         self.no_monitor = no_monitor
         self.object_ref_seed = object_ref_seed
-        self.start_initial_python_workers_for_first_job = (
-            start_initial_python_workers_for_first_job
-        )
         self.ray_debugger_external = ray_debugger_external
         self.env_vars = env_vars
         self.session_name = session_name
@@ -418,7 +411,7 @@ class RayParams:
             raise DeprecationWarning("The redirect_output argument is deprecated.")
 
         # Parse the numpy version.
-        numpy_version = np.__version__.split(".")
+        numpy_version = pkg_resources.get_distribution("numpy").version.split(".")
         numpy_major, numpy_minor = int(numpy_version[0]), int(numpy_version[1])
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning(

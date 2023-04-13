@@ -9,12 +9,16 @@ import numpy as np
 
 import ray
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray._private.utils import _get_pyarrow_version
 
 if TYPE_CHECKING:
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
+    import pyarrow
+    import pandas
+    from ray.data._internal.arrow_block import ArrowRow
+    from ray.data.block import Block, BlockMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +84,7 @@ def _check_pyarrow_version():
 def _autodetect_parallelism(
     parallelism: int,
     cur_pg: Optional["PlacementGroup"],
-    ctx: DatasetContext,
+    ctx: DataContext,
     reader: Optional["Reader"] = None,
     avail_cpus: Optional[int] = None,
 ) -> (int, int):
@@ -421,3 +425,40 @@ def capitalize(s: str):
         Capitalized string with no underscores.
     """
     return "".join(capfirst(x) for x in s.split("_"))
+
+
+def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
+    from ray.data.block import BlockAccessor, BlockExecStats
+
+    stats = BlockExecStats.builder()
+    import pyarrow as pa
+
+    block = pa.table(df)
+    return (
+        block,
+        BlockAccessor.for_block(block).get_metadata(
+            input_files=None, exec_stats=stats.build()
+        ),
+    )
+
+
+def ndarray_to_block(ndarray: np.ndarray) -> "Block[np.ndarray]":
+    from ray.data.block import BlockAccessor, BlockExecStats
+
+    stats = BlockExecStats.builder()
+    block = BlockAccessor.batch_to_block(ndarray)
+    metadata = BlockAccessor.for_block(block).get_metadata(
+        input_files=None, exec_stats=stats.build()
+    )
+    return block, metadata
+
+
+def get_table_block_metadata(
+    table: Union["pyarrow.Table", "pandas.DataFrame"]
+) -> "BlockMetadata":
+    from ray.data.block import BlockAccessor, BlockExecStats
+
+    stats = BlockExecStats.builder()
+    return BlockAccessor.for_block(table).get_metadata(
+        input_files=None, exec_stats=stats.build()
+    )

@@ -278,7 +278,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         hasattr(env, "observation_space")
         and hasattr(env, "action_space")
         and hasattr(env, "_agent_ids")
-        and hasattr(env, "_observation_space_in_preferred_format")
+        and hasattr(env, "_obs_space_in_preferred_format")
         and hasattr(env, "_action_space_in_preferred_format")
     ):
         if log_once("ma_env_super_ctor_called"):

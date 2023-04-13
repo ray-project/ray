@@ -15,7 +15,7 @@ from ray.data.block import (
     BlockMetadata,
     T,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
@@ -203,7 +203,7 @@ class ReadTask(Callable[[], Iterable[Block]]):
         return self._metadata
 
     def __call__(self) -> Iterable[Block]:
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         result = self._read_fn()
         if not hasattr(result, "__iter__"):
             DeprecationWarning(
@@ -339,7 +339,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
     """
 
     def __init__(self):
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
 
         # Setup a dummy actor to send the data. In a real datasource, write
         # tasks would send data to an external system instead of a Ray actor.
@@ -377,7 +377,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
         return "ok"
 
     def on_write_complete(self, write_results: List[WriteResult]) -> None:
-        assert all(w == ["ok"] for w in write_results), write_results
+        assert all(w == "ok" for w in write_results), write_results
         self.num_ok += 1
 
     def on_write_failed(
