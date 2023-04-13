@@ -597,6 +597,8 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
 
     if s.is_driver_deployment is DEFAULT.VALUE:
         is_driver_deployment = False
+    else:
+        is_driver_deployment = s.is_driver_deployment
 
     config = DeploymentConfig.from_default(
         num_replicas=s.num_replicas,
