@@ -378,7 +378,7 @@ class ExternalEnvWrapper(BaseEnv):
                 if not self.external_env.is_alive():
                     raise Exception("Serving thread has stopped.")
         limit = self.external_env._max_concurrent_episodes
-        assert len(results[0]) < limit, (
+        assert len(results[0]) <= limit, (
             "Too many concurrent episodes, were some leaked? This "
             "ExternalEnv was created with max_concurrent={}".format(limit)
         )
