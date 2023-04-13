@@ -789,7 +789,7 @@ RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
 RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
 
 /// Whether to use one log file per worker in the worker pool.
-RAY_CONFIG(bool, one_log_per_workerpool_worker, true)
+RAY_CONFIG(bool, one_log_per_workerpool_worker, false)
 
 // Instruct the Python default worker to preload the specified imports.
 // This is specified as a comma-separated list.
