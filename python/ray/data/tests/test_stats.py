@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray.data._internal.stats import _StatsActor, DatastreamStats
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.dataset_logger import DatastreamLogger
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
@@ -39,19 +39,19 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
 
     if context.new_execution_backend:
         if context.use_streaming_executor:
-            logger = DatasetLogger(
+            logger = DatastreamLogger(
                 "ray.data._internal.execution.streaming_executor"
             ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
         else:
-            logger = DatasetLogger(
+            logger = DatastreamLogger(
                 "ray.data._internal.execution.bulk_executor"
             ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
     else:
-        logger = DatasetLogger("ray.data._internal.plan").get_logger(
+        logger = DatastreamLogger("ray.data._internal.plan").get_logger(
             log_to_stdout=enable_auto_log_stats,
         )
     with patch.object(logger, "info") as mock_logger:
@@ -573,19 +573,19 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_
 
     if context.new_execution_backend:
         if context.use_streaming_executor:
-            logger = DatasetLogger(
+            logger = DatastreamLogger(
                 "ray.data._internal.execution.streaming_executor"
             ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
         else:
-            logger = DatasetLogger(
+            logger = DatastreamLogger(
                 "ray.data._internal.execution.bulk_executor"
             ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
     else:
-        logger = DatasetLogger("ray.data._internal.plan").get_logger(
+        logger = DatastreamLogger("ray.data._internal.plan").get_logger(
             log_to_stdout=enable_auto_log_stats,
         )
 

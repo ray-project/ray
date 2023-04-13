@@ -13,7 +13,7 @@ from unittest.mock import patch
 import ray
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.dataset_logger import DatastreamLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.pandas_block import PandasRow
 from ray.data.block import BlockAccessor, BlockMetadata
@@ -1736,7 +1736,7 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
 
-    logger = DatasetLogger("ray.data._internal.plan").get_logger()
+    logger = DatastreamLogger("ray.data._internal.plan").get_logger()
     with patch.object(
         logger,
         "warning",
@@ -1767,7 +1767,7 @@ def test_nowarning_execute_with_cpu(ray_start_cluster):
     # Create one node with CPUs to avoid triggering the Dataset warning
     ray.init(ray_start_cluster.address)
 
-    logger = DatasetLogger("ray.data._internal.plan").get_logger()
+    logger = DatastreamLogger("ray.data._internal.plan").get_logger()
     with patch.object(
         logger,
         "warning",
