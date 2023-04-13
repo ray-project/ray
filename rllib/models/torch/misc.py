@@ -71,9 +71,10 @@ def same_padding_transpose_after_stride(
 ) -> (Union[int, Tuple[int, int]], Tuple[int, int]):
     """Computes padding and output size such that TF Conv2DTranspose `same` is matched.
 
-    Note that when padding="same", tf's Conv2DTranspose makes sure that 0-padding is
-    added to the already strided image in such a way that the output image has the
-    same size as the input image times the stride (and no matter the kernel size).
+    Note that when padding="same", TensorFlow's Conv2DTranspose makes sure that
+    0-padding is added to the already strided image in such a way that the output image
+    has the same size as the input image times the stride (and no matter the
+    kernel size).
 
     For example: Input image is (4, 4, 24) (not yet strided), padding is "same",
     stride=2, kernel=5.
@@ -144,13 +145,13 @@ def same_padding_transpose_after_stride(
     pad_top = pad_bottom + (1 if pad_total_h % 2 == 1 else 0)
 
     # Compute the output size.
-    output_size = (
+    output_shape = (
         strided_size[0] + pad_total_w - k_w + 1,
         strided_size[1] + pad_total_h - k_h + 1,
     )
 
-    # Return padding and output sizes.
-    return (pad_left, pad_right, pad_top, pad_bottom), output_size
+    # Return padding and output shape.
+    return (pad_left, pad_right, pad_top, pad_bottom), output_shape
 
 
 @DeveloperAPI
