@@ -27,7 +27,6 @@ class Result:
 
     status: str = ResultStatus.UNKNOWN.value
     return_code: int = 0
-    buildkite_exit_code: int = BuildkiteExitCode.SUCCESS.value
     last_logs: Optional[str] = None
 
     runtime: Optional[float] = None
