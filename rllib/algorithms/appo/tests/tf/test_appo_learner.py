@@ -141,7 +141,7 @@ class TestAPPOTfLearner(unittest.TestCase):
             # a asynchronous trainer and results are returned asynchronously.
             while 1:
                 results = algo.train()
-                if results:
+                if results and "info" in results and LEARNER_INFO in results["info"]:
                     break
             curr_kl_coeff = results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
                 LEARNER_STATS_KEY
