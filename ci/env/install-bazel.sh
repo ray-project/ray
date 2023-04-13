@@ -85,8 +85,8 @@ if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
       curl -f -s -L -R -o "${target}" "${url}"
       chmod +x "${target}"
     else
-      if [ which bazel ]; then
-          target="$(which bazel)"
+      if command -v bazel; then
+          target="$(command -v bazel)"
       else
           target="/bin/bazel"
       fi
