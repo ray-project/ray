@@ -1079,7 +1079,7 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
     _check_usage_record(["FromItems"])
 
 
-def test__blocks_to_input_buffer_op_name(
+def test_blocks_to_input_buffer_op_name(
     ray_start_regular_shared,
     enable_streaming_executor,
 ):
