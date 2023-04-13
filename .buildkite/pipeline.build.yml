@@ -625,6 +625,7 @@
       - python ./ci/env/check_minimal_install.py
       - bazel test --config=ci $(./ci/run/bazel_export_options)  --build_tests_only --test_tag_filters=minimal python/ray/train/...
 
+
 - label: ":cold_face: :python: Ray Python 3.6 ML compatibility tests"
   conditions:
     ["ALWAYS", "RAY_CI_TUNE_AFFECTED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_ML_AFFECTED", ]
