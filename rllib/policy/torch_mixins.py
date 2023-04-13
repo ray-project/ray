@@ -172,7 +172,7 @@ class TargetNetworkMixin:
 
     - Adds the `update_target` method to the policy.
       Calling `update_target` updates all target Q-networks' weights from their
-      respective "main" Q-metworks, based on tau (smooth, partial updating).
+      respective "main" Q-networks, based on tau (smooth, partial updating).
     """
 
     def __init__(self):
