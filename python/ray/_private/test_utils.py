@@ -21,14 +21,6 @@ from typing import Any, Callable, Dict, List, Optional
 import uuid
 from dataclasses import dataclass
 
-try:
-    # For pytest > 6.2.0 importing this from _pytest is deprecated,
-    # and is unsupported for pytest > 7.
-    from pytest.logging import LogCaptureHandler
-except ModuleNotFoundError:
-    # Fall back on deprecated import if an old pytest version is used.
-    from _pytest.logging import LogCaptureHandler
-
 import requests
 from ray._raylet import Config
 
@@ -1901,27 +1893,3 @@ def has_no_words(string, words):
         words: Space-separated string of words to search for
     """
     return not any(search_words(string, words))
-
-
-@contextmanager
-def catch_logs(logger: logging.Logger) -> LogCaptureHandler:
-    """Add a LogCaptureHandler to capture logs from the given logger.
-
-    This allows the user to capture logs for handlers even if
-    they don't propagate logs up to the root logger. See
-    https://github.com/pytest-dev/pytest/issues/3697 for more
-    information.
-
-    Args:
-        logger: Target logger whose logs are to be captured.
-
-    Returns:
-        A reference to the LogCaptureHandler. Logs can be inspected
-        with handler.records.
-    """
-    handler = LogCaptureHandler()
-    logger.addHandler(handler)
-    try:
-        yield handler
-    finally:
-        logger.removeHandler(handler)

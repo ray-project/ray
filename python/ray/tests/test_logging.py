@@ -28,7 +28,6 @@ from ray._private.test_utils import (
     init_log_pubsub,
     run_string_as_driver,
     wait_for_condition,
-    catch_logs,
 )
 from ray.cross_language import java_actor_class
 from ray.autoscaler._private.cli_logger import cli_logger
@@ -856,8 +855,8 @@ def test_repr_inheritance():
 
 
 def test_ray_does_not_break_makeRecord():
-    """Importing Ray used to cause `logging.makeRecord` to use the default record factory,
-    rather than the factory set by `logging.setRecordFactory`.
+    """Importing Ray used to cause `logging.makeRecord` to use the default record
+    factory, rather than the factory set by `logging.setRecordFactory`.
 
     This tests validates that this bug is fixed.
     """
@@ -892,13 +891,13 @@ def test_ray_does_not_break_makeRecord():
         ("ray.workflow", "[Ray Workflow]"),
     ),
 )
-def test_log_library_context(logger_name, package_name):
+def test_log_library_context(propagate_logs, caplog, logger_name, package_name):
     """Test that the log configuration injects the correct context into log messages."""
     logger = logging.getLogger(logger_name)
-    with catch_logs(logger) as caphandler:
-        logger.critical("Test!")
+    logger.critical("Test!")
+
     assert (
-        caphandler.records[-1].package == package_name
+        caplog.records[-1].package == package_name
     ), "Missing ray package name in log record."
 
 
@@ -926,24 +925,21 @@ def test_log_library_context(logger_name, package_name):
         logging.CRITICAL,
     ),
 )
-def test_log_level_settings(logger_name, logger_level, test_level):
+def test_log_level_settings(
+    propagate_logs, caplog, logger_name, logger_level, test_level
+):
     """Test that logs of lower level than the ray subpackage is
     configured for are rejected.
     """
     logger = logging.getLogger(logger_name)
 
-    with catch_logs(logger) as caphandler:
-        logger.log(test_level, "Test!")
+    logger.log(test_level, "Test!")
 
     if test_level >= logger_level:
-        assert caphandler.records, "Log message missing where one is expected."
-        assert (
-            caphandler.records[-1].levelno == test_level
-        ), "Log message level mismatch."
+        assert caplog.records, "Log message missing where one is expected."
+        assert caplog.records[-1].levelno == test_level, "Log message level mismatch."
     else:
-        assert (
-            len(caphandler.records) == 0
-        ), "Log message found where none are expected."
+        assert len(caplog.records) == 0, "Log message found where none are expected."
 
 
 if __name__ == "__main__":
