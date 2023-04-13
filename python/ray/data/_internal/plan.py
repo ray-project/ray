@@ -422,7 +422,6 @@ class ExecutionPlan:
         unified_schema = unify_block_metadata_schema(metadata)
         if unified_schema is not None:
             return unified_schema
-
         if not fetch_if_missing:
             return None
         # Synchronously fetch the schema.

@@ -34,11 +34,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.util import (
-    block_list_to_bundles,
-    bundles_to_block_list,
-    make_callable_class_concurrent,
-)
+from ray.data._internal.execution.util import make_callable_class_concurrent
 
 
 def execute_to_legacy_block_iterator(
@@ -116,7 +112,7 @@ def execute_to_legacy_block_list(
         preserve_order,
     )
     bundles = executor.execute(dag, initial_stats=stats)
-    block_list = bundles_to_block_list(bundles)
+    block_list = _bundles_to_block_list(bundles)
     # Set the stats UUID after execution finishes.
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
     return block_list
@@ -232,7 +228,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
             do_read, inputs, name=task_name, ray_remote_args=remote_args
         )
     else:
-        output = block_list_to_bundles(blocks, owns_blocks=owns_blocks)
+        output = _block_list_to_bundles(blocks, owns_blocks=owns_blocks)
         for i in output:
             for b in i.blocks:
                 trace_allocation(b[0], "legacy_compat.blocks_to_input_buf[1]")
@@ -318,11 +314,11 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
                 output_owned = input_owned  # Passthrough ownership hack.
             else:
                 output_owned = True
-            block_list = bundles_to_block_list(refs)
+            block_list = _bundles_to_block_list(refs)
             block_list, stats_dict = fn(
                 block_list, ctx, input_owned, block_udf, remote_args
             )
-            output = block_list_to_bundles(block_list, owns_blocks=output_owned)
+            output = _block_list_to_bundles(block_list, owns_blocks=output_owned)
             if not stats_dict:
                 stats_dict = {stage_name: block_list.get_metadata()}
             return output, stats_dict
@@ -336,6 +332,37 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         )
     else:
         raise NotImplementedError
+
+
+def _bundles_to_block_list(bundles: Iterator["RefBundle"]) -> BlockList:
+    blocks, metadata = [], []
+    owns_blocks = True
+    for ref_bundle in bundles:
+        if not ref_bundle.owns_blocks:
+            owns_blocks = False
+        for block, meta in ref_bundle.blocks:
+            blocks.append(block)
+            metadata.append(meta)
+    return BlockList(blocks, metadata, owned_by_consumer=owns_blocks)
+
+
+def _block_list_to_bundles(blocks: BlockList, owns_blocks: bool) -> List["RefBundle"]:
+    from ray.data._internal.execution.interfaces import RefBundle
+
+    output = []
+    for block, meta in blocks.iter_blocks_with_metadata():
+        output.append(
+            RefBundle(
+                [
+                    (
+                        block,
+                        meta,
+                    )
+                ],
+                owns_blocks=owns_blocks,
+            )
+        )
+    return output
 
 
 def _set_stats_uuid_recursive(stats: DatasetStats, dataset_uuid: str) -> None:

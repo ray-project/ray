@@ -1,5 +1,5 @@
 from functools import partial
-from typing import List, Tuple, TYPE_CHECKING
+from typing import List, Tuple
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,

@@ -1,9 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
-from typing import Iterator, List, TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 
 import ray
 from ray.data.block import Block, BlockAccessor, CallableClass
-from ray.data._internal.block_list import BlockList
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
@@ -27,37 +26,6 @@ def make_ref_bundles(simple_data: List[Block]) -> List["RefBundle"]:
                     )
                 ],
                 owns_blocks=True,
-            )
-        )
-    return output
-
-
-def bundles_to_block_list(bundles: Iterator["RefBundle"]) -> BlockList:
-    blocks, metadata = [], []
-    owns_blocks = True
-    for ref_bundle in bundles:
-        if not ref_bundle.owns_blocks:
-            owns_blocks = False
-        for block, meta in ref_bundle.blocks:
-            blocks.append(block)
-            metadata.append(meta)
-    return BlockList(blocks, metadata, owned_by_consumer=owns_blocks)
-
-
-def block_list_to_bundles(blocks: BlockList, owns_blocks: bool) -> List["RefBundle"]:
-    from ray.data._internal.execution.interfaces import RefBundle
-
-    output = []
-    for block, meta in blocks.iter_blocks_with_metadata():
-        output.append(
-            RefBundle(
-                [
-                    (
-                        block,
-                        meta,
-                    )
-                ],
-                owns_blocks=owns_blocks,
             )
         )
     return output
