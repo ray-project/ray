@@ -83,16 +83,3 @@ describe("RecentJobsCard", () => {
     expect(screen.getByText("04000000")).toHaveAttribute("href");
   });
 });
-
-// it("renders link if job id is not null", () => {
-//   const { getByRole } = render(<RecentJobListItem job={job} />);
-//   expect(getByRole("link")).toBeInTheDocument();
-// });
-// it("do not render the link if job id is null", () => {
-//   job = {
-//     ...job,
-//   }
-//   mockedUseJobList
-//   const { getByRole } = render(<RecentJobListItem job={job} />);
-//   expect(getByRole("link")).toBeInTheDocument();
-// });
