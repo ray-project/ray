@@ -14,13 +14,14 @@ from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentStatusInfo,
 )
-from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
+from ray.serve.config import DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
     SERVE_NAMESPACE,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
@@ -233,7 +234,7 @@ class ServeControllerClient:
         _blocking: Optional[bool] = True,
     ):
 
-        controller_deploy_args = self.get_deploy_args(
+        controller_deploy_args = get_deploy_args(
             name=name,
             deployment_def=deployment_def,
             init_args=init_args,
@@ -253,7 +254,7 @@ class ServeControllerClient:
             self.log_deployment_ready(name, version, url, tag)
 
     @_ensure_connected
-    def deploy_group(
+    def deploy_application(
         self,
         name,
         deployments: List[Dict],
@@ -263,7 +264,7 @@ class ServeControllerClient:
         deployment_args_list = []
         for deployment in deployments:
             deployment_args_list.append(
-                self.get_deploy_args(
+                get_deploy_args(
                     deployment["name"],
                     deployment["func_or_class"],
                     deployment["init_args"],
@@ -278,7 +279,7 @@ class ServeControllerClient:
             )
 
         updating_list = ray.get(
-            self._controller.deploy_group.remote(name, deployment_args_list)
+            self._controller.deploy_application.remote(name, deployment_args_list)
         )
 
         tags = []
@@ -495,79 +496,6 @@ class ServeControllerClient:
             self.handle_cache.pop(evict_key)
 
         return handle
-
-    @_ensure_connected
-    def get_deploy_args(
-        self,
-        name: str,
-        deployment_def: Union[Callable, Type[Callable], str],
-        init_args: Tuple[Any],
-        init_kwargs: Dict[Any, Any],
-        ray_actor_options: Optional[Dict] = None,
-        config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
-        version: Optional[str] = None,
-        route_prefix: Optional[str] = None,
-        is_driver_deployment: Optional[str] = None,
-        docs_path: Optional[str] = None,
-    ) -> Dict:
-        """
-        Takes a deployment's configuration, and returns the arguments needed
-        for the controller to deploy it.
-        """
-
-        if config is None:
-            config = {}
-        if ray_actor_options is None:
-            ray_actor_options = {}
-
-        curr_job_env = ray.get_runtime_context().runtime_env
-        if "runtime_env" in ray_actor_options:
-            # It is illegal to set field working_dir to None.
-            if curr_job_env.get("working_dir") is not None:
-                ray_actor_options["runtime_env"].setdefault(
-                    "working_dir", curr_job_env.get("working_dir")
-                )
-        else:
-            ray_actor_options["runtime_env"] = curr_job_env
-
-        replica_config = ReplicaConfig.create(
-            deployment_def,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
-            ray_actor_options=ray_actor_options,
-        )
-
-        if isinstance(config, dict):
-            deployment_config = DeploymentConfig.parse_obj(config)
-        elif isinstance(config, DeploymentConfig):
-            deployment_config = config
-        else:
-            raise TypeError("config must be a DeploymentConfig or a dictionary.")
-
-        deployment_config.version = version
-
-        if (
-            deployment_config.autoscaling_config is not None
-            and deployment_config.max_concurrent_queries
-            < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
-        ):
-            logger.warning(
-                "Autoscaling will never happen, "
-                "because 'max_concurrent_queries' is less than "
-                "'target_num_ongoing_requests_per_replica' now."
-            )
-
-        controller_deploy_args = {
-            "name": name,
-            "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
-            "replica_config_proto_bytes": replica_config.to_proto_bytes(),
-            "route_prefix": route_prefix,
-            "deployer_job_id": ray.get_runtime_context().get_job_id(),
-            "is_driver_deployment": is_driver_deployment,
-            "docs_path": docs_path,
-        }
-
-        return controller_deploy_args
 
     @_ensure_connected
     def log_deployment_update_status(

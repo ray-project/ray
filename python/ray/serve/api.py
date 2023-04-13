@@ -555,7 +555,7 @@ def run(
             "docs_path": deployment._docs_path,
         }
         parameter_group.append(deployment_parameters)
-    client.deploy_group(
+    client.deploy_application(
         name,
         parameter_group,
         _blocking=_blocking,
