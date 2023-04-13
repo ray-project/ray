@@ -515,6 +515,17 @@ def test_custom_arrow_data_serializer_fallback(
             assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
 
 
+def test_arrow_scalar_conversion(ray_start_regular_shared):
+    ds = ray.data.from_items([1])
+
+    def fn(batch: list):
+        return np.array([1])
+
+    ds = ds.map_batches(fn)
+    res = ds.take()
+    assert res == [1], res
+
+
 def test_custom_arrow_data_serializer_parquet_roundtrip(
     ray_start_regular_shared, tmp_path
 ):
