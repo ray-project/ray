@@ -9,7 +9,6 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
-from ray._private import gcs_utils
 from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
@@ -2033,20 +2032,29 @@ def test_list_get_pgs(shutdown_only):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_get_nodes(shutdown_only):
-    ray.init()
+def test_list_get_nodes(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, node_name="head_node")
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, node_name="worker_node")
 
     def verify():
         nodes = list_nodes()
-        assert nodes[0]["state"] == "ALIVE"
-        assert is_hex(nodes[0]["node_id"])
+        for node in nodes:
+            assert node["state"] == "ALIVE"
+            assert is_hex(node["node_id"])
+            assert (
+                node["is_head_node"]
+                if node["node_name"] == "head_node"
+                else not node["is_head_node"]
+            )
 
         # Check with legacy API
         check_nodes = ray.nodes()
         assert len(check_nodes) == len(nodes)
 
-        sorted(check_nodes, key=lambda n: n["NodeID"])
-        sorted(nodes, key=lambda n: n["node_id"])
+        check_nodes = sorted(check_nodes, key=lambda n: n["NodeID"])
+        nodes = sorted(nodes, key=lambda n: n["node_id"])
 
         for check_node, node in zip(check_nodes, nodes):
             assert check_node["NodeID"] == node["node_id"]
@@ -2057,11 +2065,9 @@ def test_list_get_nodes(shutdown_only):
         for node in nodes:
             get_node_data = get_node(node["node_id"])
             assert get_node_data == node
-
         return True
 
     wait_for_condition(verify)
-    print(list_nodes())
 
 
 @pytest.mark.skipif(
@@ -3310,7 +3316,7 @@ def test_core_state_api_usage_tags(shutdown_only):
     from ray._private.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
 
     ctx = ray.init()
-    gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+    gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
     list_actors()
     list_tasks()
     list_jobs()

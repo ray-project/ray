@@ -18,6 +18,7 @@ _, tf, _ = try_import_tf()
 
 
 LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
+LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
 
 
 @dataclass
@@ -72,8 +73,11 @@ class APPOTfLearner(ImpalaTfLearner):
         super().__init__(*args, **kwargs)
         self.kl_target = self._hps.kl_target
         self.clip_param = self._hps.clip_param
-        self.kl_coeffs = defaultdict(lambda: self._hps.kl_coeff)
-        self.kl_coeff = self._hps.kl_coeff
+        # TODO: (avnishn) Make creating the kl coeff a utility function when we add
+        # torch APPO as well.
+        self.kl_coeffs = defaultdict(
+            lambda: tf.Variable(self._hps.kl_coeff, trainable=False, dtype=tf.float32)
+        )
         self.tau = self._hps.tau
 
     @override(TfLearner)
@@ -192,6 +196,7 @@ class APPOTfLearner(ImpalaTfLearner):
             VF_LOSS_KEY: mean_vf_loss,
             ENTROPY_KEY: mean_entropy_loss,
             LEARNER_RESULTS_KL_KEY: mean_kl_loss,
+            LEARNER_RESULTS_CURR_KL_COEFF_KEY: self.kl_coeffs[module_id],
         }
 
     @override(ImpalaTfLearner)
@@ -238,10 +243,10 @@ class APPOTfLearner(ImpalaTfLearner):
             # Update the current KL value based on the recently measured value.
             # Increase.
             if sampled_kl > 2.0 * self.kl_target:
-                self.kl_coeffs[module_id] *= 1.5
+                self.kl_coeffs[module_id].assign(self.kl_coeffs[module_id] * 1.5)
             # Decrease.
             elif sampled_kl < 0.5 * self.kl_target:
-                self.kl_coeffs[module_id] *= 0.5
+                self.kl_coeffs[module_id].assign(self.kl_coeffs[module_id] * 0.5)
 
     @override(ImpalaTfLearner)
     def additional_update_per_module(

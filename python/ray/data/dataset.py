@@ -440,8 +440,12 @@ class Datastream(Generic[T]):
             ...     "age": [4, 14, 9]
             ... })
             >>> ds = ray.data.from_pandas(df)
-            >>> ds
-            Datastream(num_blocks=1, num_rows=3, schema={name: object, age: int64})
+            >>> ds  # doctest: +SKIP
+            MaterializedDatastream(
+                num_blocks=1,
+                num_rows=3,
+                schema={name: object, age: int64}
+            )
 
             Call :meth:`.default_batch_format` to determine the default batch
             type.
@@ -4316,14 +4320,14 @@ class Datastream(Generic[T]):
             >>> next(ds.iter_batches(batch_size=4))
             [0, 1, 2, 3]
 
-            If your datastream contains a single ``TensorDtype`` or ``ArrowTensorType``
+            If your datastream contains a single ``numpy.ndarray``
             column named ``__value__`` (as created by :func:`ray.data.from_numpy`), then
             the default batch format is ``np.ndarray``. For more information on tensor
             formats, read the :ref:`tensor support guide <datasets_tensor_support>`.
 
             >>> ds = ray.data.range_tensor(100)
             >>> ds  # doctest: +SKIP
-            Datastream(num_blocks=20, num_rows=100, schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})
+            Datastream(num_blocks=20, num_rows=100, schema={__value__: numpy.ndarray(shape=(1,), dtype=int64)})
             >>> ds.default_batch_format()
             <class 'numpy.ndarray'>
             >>> next(ds.iter_batches(batch_size=4))
