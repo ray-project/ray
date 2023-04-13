@@ -17,6 +17,8 @@ from ray.rllib.utils.minibatch_utils import ShardBatchIterator
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
+from ray.tune.utils.file_transfer import sync_dir_between_nodes
+
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner.learner import Learner
@@ -442,7 +444,32 @@ class LearnerGroup:
                 else:
                     # move the checkpoint to a temporary location on the worker
                     # and load the checkpoint from there
-                    pass
+                    worker_temp_dir = self._worker_manager.foreach_actor(
+                        self._create_temporary_dir, remote_actor_ids=[worker]
+                    )
+                    sync_dir_between_nodes(
+                        self_ip_addr, path, worker_ip_addr, worker_temp_dir
+                    )
+                    self._worker_manager.foreach_actor(
+                        lambda w: w.load_state(worker_temp_dir),
+                        remote_actor_ids=[worker],
+                    )
+                    # remove the temporary directory
+
+    @staticmethod
+    def _create_temporary_dir(_=None) -> str:
+        """Creates a temporary directory.
+
+        Args:
+            _: Unused arg. Exists to make this function compatible with foreach_actor
+            calls.
+
+        Returns:
+            The path to the temporary directory.
+        """
+        import tempfile
+
+        return tempfile.mkdtemp()
 
     @staticmethod
     def _get_ip_address(_=None) -> str:
