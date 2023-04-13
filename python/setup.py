@@ -33,7 +33,7 @@ SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
-SUPPORTED_BAZEL = (5, 4, 0)
+SUPPORTED_BAZEL = (6, 1, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
