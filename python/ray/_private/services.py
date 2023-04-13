@@ -1357,6 +1357,7 @@ def start_raylet(
     plasma_directory: str,
     object_store_memory: int,
     session_name: str,
+    is_head_node: bool,
     min_worker_port: Optional[int] = None,
     max_worker_port: Optional[int] = None,
     worker_port_list: Optional[List[int]] = None,
@@ -1606,6 +1607,9 @@ def start_raylet(
         f"--gcs-address={gcs_address}",
         f"--session-name={session_name}",
     ]
+
+    if is_head_node:
+        command.append("--head")
 
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
