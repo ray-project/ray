@@ -93,7 +93,7 @@ def _is_transient_error(result_status: ResultStatus, runtime: int) -> bool:
     if retry_count >= max_retry:
         # Already reach retry limit
         return False
-    if runtime > os.environ.get("BUILDKITE_TIME_LIMIT_FOR_RETRY", 0):
+    if runtime > int(os.environ.get("BUILDKITE_TIME_LIMIT_FOR_RETRY", 0)):
         # Take too long to run
         return False
     return True
