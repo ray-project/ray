@@ -275,7 +275,7 @@ def test_dataset__repr__(ray_start_regular_shared):
 
     assert canonicalize(repr(ss)) == (
         "DatastreamStatsSummary(\n"
-        "   dataset_uuid=U,\n"
+        "   datastream_uuid=U,\n"
         "   base_name=None,\n"
         "   number=N,\n"
         "   extra_metrics={},\n"
@@ -309,7 +309,7 @@ def test_dataset__repr__(ray_start_regular_shared):
     )
     assert canonicalize(repr(ss2)) == (
         "DatastreamStatsSummary(\n"
-        "   dataset_uuid=U,\n"
+        "   datastream_uuid=U,\n"
         "   base_name=MapBatches(<lambda>),\n"
         "   number=N,\n"
         "   extra_metrics={\n"
@@ -344,7 +344,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   ),\n"
         "   parents=[\n"
         "      DatastreamStatsSummary(\n"
-        "         dataset_uuid=U,\n"
+        "         datastream_uuid=U,\n"
         "         base_name=None,\n"
         "         number=N,\n"
         "         extra_metrics={},\n"
@@ -746,10 +746,10 @@ Stage N Map: N/N blocks executed in T
 'obj_store_mem_peak': N}
 
 ##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next dataset: T min, T max, T mean, T total
+* Time stalled waiting for next datastream: T min, T max, T mean, T total
 
 DatasetPipeline iterator time breakdown:
-* Waiting for next dataset: T
+* Waiting for next datastream: T
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -801,10 +801,10 @@ Stage N Map: N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 
 ##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next dataset: T min, T max, T mean, T total
+* Time stalled waiting for next datastream: T min, T max, T mean, T total
 
 DatasetPipeline iterator time breakdown:
-* Waiting for next dataset: T
+* Waiting for next datastream: T
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -877,10 +877,10 @@ Stage N ReadRange: N/N blocks executed in T
 'obj_store_mem_peak': N}
 
 ##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next dataset: T min, T max, T mean, T total
+* Time stalled waiting for next datastream: T min, T max, T mean, T total
 
 DatasetPipeline iterator time breakdown:
-* Waiting for next dataset: T
+* Waiting for next datastream: T
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -911,10 +911,10 @@ Stage N Read: N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 
 ##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next dataset: T min, T max, T mean, T total
+* Time stalled waiting for next datastream: T min, T max, T mean, T total
 
 DatasetPipeline iterator time breakdown:
-* Waiting for next dataset: T
+* Waiting for next datastream: T
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -979,7 +979,7 @@ def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
         stages={"Read": block_meta_list},
         parent=None,
     )
-    stats.dataset_uuid = "test-uuid"
+    stats.datastream_uuid = "test-uuid"
 
     calculated_stats = stats.to_summary()
     summarized_lines = calculated_stats.to_string().split("\n")

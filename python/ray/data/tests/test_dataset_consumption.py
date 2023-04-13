@@ -66,7 +66,7 @@ def test_dataset_lineage_serialization(shutdown_only):
     ds = ds.random_shuffle()
     epoch = ds._get_epoch()
     uuid = ds._get_uuid()
-    plan_uuid = ds._plan._dataset_uuid
+    plan_uuid = ds._plan._datastream_uuid
 
     serialized_ds = ds.serialize_lineage()
     # Confirm that the original Dataset was properly copied before clearing/mutating.
@@ -83,7 +83,7 @@ def test_dataset_lineage_serialization(shutdown_only):
     # Check Dataset state.
     assert ds._get_epoch() == epoch
     assert ds._get_uuid() == uuid
-    assert ds._plan._dataset_uuid == plan_uuid
+    assert ds._plan._datastream_uuid == plan_uuid
     # Check Dataset content.
     assert ds.count() == 10
     assert sorted(ds.take()) == list(range(2, 12))
@@ -1566,7 +1566,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
     path1 = os.path.join(local_path, "test1.csv")
     df1.to_csv(path1, index=False, storage_options={})
     ds1 = ray.data.read_datasource(FlakyCSVDatasource(), parallelism=1, paths=path1)
-    ds1.write_datasource(FlakyCSVDatasource(), path=local_path, dataset_uuid="data")
+    ds1.write_datasource(FlakyCSVDatasource(), path=local_path, datastream_uuid="data")
     assert df1.equals(
         pd.read_csv(os.path.join(local_path, "data_000000.csv"), storage_options={})
     )
