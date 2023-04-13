@@ -333,7 +333,10 @@ def test_worker_id_names(shutdown_only):
         if "python-core-worker" in str(path):
             pattern = ".*-([a-f0-9]*).*"
         elif "worker" in str(path):
-            pattern = WORKER_LOG_PATTERN
+            if ray._config.one_log_per_workerpool_worker():
+                pattern = WORKER_LOG_PATTERN
+            else:
+                pattern = ".*worker-([a-f0-9]*)-.*-.*"
         else:
             continue
         worker_id = re.match(pattern, str(path)).group(1)
