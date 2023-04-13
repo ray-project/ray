@@ -239,7 +239,8 @@ class TfCNNTranspose(tf.keras.Model):
                     padding="same",
                     # Last layer is never activated (regardless of config).
                     activation=(
-                        None if cnn_transpose_use_layernorm or is_final_layer
+                        None
+                        if cnn_transpose_use_layernorm or is_final_layer
                         else cnn_transpose_activation
                     ),
                     # Last layer always uses bias (b/c has no LayerNorm, regardless of
@@ -250,12 +251,10 @@ class TfCNNTranspose(tf.keras.Model):
             if cnn_transpose_use_layernorm and not is_final_layer:
                 # Use epsilon=1e-5 here (instead of default 1e-3) to be unified with
                 # torch. Need to normalize over all axes.
-                layers.append(tf.keras.layers.LayerNormalization(
-                    axis=[-3, -2, -1], epsilon=1e-5
-                ))
                 layers.append(
-                    tf.keras.layers.Activation(cnn_transpose_activation)
+                    tf.keras.layers.LayerNormalization(axis=[-3, -2, -1], epsilon=1e-5)
                 )
+                layers.append(tf.keras.layers.Activation(cnn_transpose_activation))
 
         # Create the final CNNTranspose network.
         self.cnn_transpose = tf.keras.Sequential(layers)
