@@ -414,7 +414,9 @@ class APPO(Impala):
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             if config._enable_rl_module_api:
-                from ray.rllib.algorithms.appo.torch.appo_tf_policy_rlm import APPOTorchPolicyWithRLModule
+                from ray.rllib.algorithms.appo.torch.appo_torch_policy_rlm import (
+                    APPOTorchPolicyWithRLModule
+                )
 
                 return APPOTorchPolicyWithRLModule
             else:

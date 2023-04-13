@@ -30,7 +30,6 @@ class APPOTfLearner(TfLearner, AppoLearner):
         values = fwd_out[SampleBatch.VF_PREDS]
         target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
         old_target_policy_dist = fwd_out[OLD_ACTION_DIST_KEY]
-
         old_target_policy_actions_logp = old_target_policy_dist.logp(
             batch[SampleBatch.ACTIONS]
         )
@@ -86,12 +85,12 @@ class APPOTfLearner(TfLearner, AppoLearner):
         vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
             target_action_log_probs=old_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
+            discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
             clip_pg_rho_threshold=self._hps.vtrace_clip_pg_rho_threshold,
             clip_rho_threshold=self._hps.vtrace_clip_rho_threshold,
-            discounts=discounts_time_major,
         )
 
         # The policy gradients loss.
