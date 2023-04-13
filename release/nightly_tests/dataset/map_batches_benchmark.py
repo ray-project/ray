@@ -49,13 +49,6 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     # Test different batch_size of map_batches.
     for batch_format in batch_formats:
         for batch_size in batch_sizes:
-            if (
-                batch_format == "numpy"
-                and batch_size is not None
-                and batch_size == 1024
-            ):
-                continue
-
             num_calls = 2
             test_name = f"map-batches-{batch_format}-{batch_size}-{num_calls}-eager"
             benchmark.run(
