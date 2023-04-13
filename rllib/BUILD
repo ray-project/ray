@@ -171,6 +171,16 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
+py_test(
+    name = "learning_tests_cartpole_appo_w_rl_modules_and_learner",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/cartpole-appo-w-rl-modules-and-learner.yaml"],
+    args = ["--dir=tuned_examples/appo"]
+)
+
 # py_test(
 #    name = "learning_tests_cartpole_appo_vtrace",
 #    main = "tests/run_regression_tests.py",

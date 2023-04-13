@@ -223,15 +223,22 @@ class APPOConfig(ImpalaConfig):
 
     @override(ImpalaConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
-        if self.framework_str == "tf2":
-            from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
-            from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import APPOTfRLModule
-
-            return SingleAgentRLModuleSpec(
-                module_class=APPOTfRLModule, catalog_class=APPOCatalog
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.appo.torch.appo_torch_rl_module import (
+                APPOTorchRLModule as RLModule
+            )
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import (
+                APPOTfRLModule as RLModule
             )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
+
+        from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
+
+        return SingleAgentRLModuleSpec(
+            module_class=RLModule, catalog_class=APPOCatalog
+        )
 
     @override(ImpalaConfig)
     def get_learner_hyperparameters(self) -> AppoHyperparameters:
@@ -407,10 +414,9 @@ class APPO(Impala):
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             if config._enable_rl_module_api:
-                raise ValueError(
-                    "APPO with the torch backend is not yet supported by "
-                    " the RLModule and Learner API."
-                )
+                from ray.rllib.algorithms.appo.torch.appo_tf_policy_rlm import APPOTorchPolicyWithRLModule
+
+                return APPOTorchPolicyWithRLModule
             else:
                 from ray.rllib.algorithms.appo.appo_torch_policy import APPOTorchPolicy
 
@@ -427,7 +433,6 @@ class APPO(Impala):
             return APPOTF1Policy
         else:
             if config._enable_rl_module_api:
-                # TODO(avnishn): This policy class doesn't work just yet
                 from ray.rllib.algorithms.appo.tf.appo_tf_policy_rlm import (
                     APPOTfPolicyWithRLModule,
                 )

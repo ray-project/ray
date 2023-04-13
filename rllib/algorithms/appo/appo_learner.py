@@ -56,6 +56,7 @@ class AppoHyperparameters(ImpalaHyperparameters):
 
 
 class AppoLearner(ImpalaLearner):
+    """KL coefficient updates under `additional_updates_per_module()`"""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

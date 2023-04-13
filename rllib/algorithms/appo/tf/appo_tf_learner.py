@@ -16,13 +16,12 @@ from ray.rllib.utils.typing import TensorType
 _, tf, _ = try_import_tf()
 
 
-class APPOTfLearner(AppoLearner):
-    """Implements APPO loss / update logic on top of ImpalaTfLearner.
+class APPOTfLearner(TfLearner, AppoLearner):
+    """Implements APPO loss / update logic on top of ImpalaTfLearner."""
 
-    This class implements the APPO loss under `_compute_loss_per_module()` and
-    implements the target network and KL coefficient updates under
-    `additional_updates_per_module()`
-    """
+    def __init__(self, *args, **kwargs):
+        TfLearner.__init__(self, *args, **kwargs)
+        AppoLearner.__init__(self, *args, **kwargs)
 
     @override(TfLearner)
     def compute_loss_per_module(

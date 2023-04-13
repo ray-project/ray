@@ -8,30 +8,30 @@ from ray.rllib.algorithms.appo.appo_learner import (
 )
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
-from ray.rllib.core.learner.tf.tf_learner import TfLearner
+from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 
-_, tf, _ = try_import_tf()
+torch, nn = try_import_torch()
 
 
-class APPOTorchLearner(AppoLearner):
-    """Implements APPO loss / update logic on top of ImpalaTorchLearner.
+class APPOTorchLearner(TorchLearner, AppoLearner):
+    """Implements APPO loss / update logic on top of ImpalaTorchLearner."""
 
-    This class implements the APPO loss under `compute_loss_per_module()` and
-    implements the target network and KL coefficient updates under
-    `additional_updates_per_module()`
-    """
+    def __init__(self, *args, **kwargs):
+        TorchLearner.__init__(self, *args, **kwargs)
+        AppoLearner.__init__(self, *args, **kwargs)
 
-    @override(TfLearner)
+    @override(TorchLearner)
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
+
+
         values = fwd_out[SampleBatch.VF_PREDS]
         target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
         old_target_policy_dist = fwd_out[OLD_ACTION_DIST_KEY]
-
         old_target_policy_actions_logp = old_target_policy_dist.logp(
             batch[SampleBatch.ACTIONS]
         )

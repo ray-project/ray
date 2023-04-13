@@ -1,4 +1,4 @@
-cartpole-appo:
+cartpole-appo-w-rl-modules-and-learner:
     env: CartPole-v1
     run: APPO
     stop:
@@ -8,14 +8,12 @@ cartpole-appo:
         # Works for both torch and tf.
         framework: torch
         num_envs_per_worker: 5
-        num_workers: 1
+        num_workers: 3
         num_gpus: 0
         observation_filter: MeanStdFilter
-        num_sgd_iter: 6
         vf_loss_coeff: 0.01
-        vtrace: false
-        model:
-            fcnet_hiddens: [32]
-            fcnet_activation: linear
-            vf_share_layers: true
+        vtrace: true
         enable_connectors: true
+        _enable_learner_api: true
+        _enable_rl_module_api: true
+        exploration_config: {}
