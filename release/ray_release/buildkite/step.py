@@ -15,7 +15,7 @@ from ray_release.config import (
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
 from ray_release.template import get_test_env_var
 from ray_release.util import python_version_str, DeferredEnvVar
-from ray_release.result import BuildkiteExitCode
+from ray_release.result import ExitCode
 
 DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 
@@ -125,10 +125,10 @@ def get_step(
     # Auto-retry on transient infra error (according to result.BuildkiteExitCode)
     step["retry"] = {
         "automatic": [
-          {
-            "exit_status": BuildkiteExitCode.TRANSIENT_INFRA_ERROR,
-            "limit": 2,
-          }
+            {
+                "exit_status": BuildkiteExitCode.TRANSIENT_INFRA_ERROR.value,
+                "limit": 2,
+            }
         ]
     }
 
