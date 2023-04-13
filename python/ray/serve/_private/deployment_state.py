@@ -2195,6 +2195,7 @@ class DeploymentStateManager:
         Returns True if any of the deployments have replicas in the RECOVERING state.
         """
         deleted_tags = []
+        any_recovering = False
         for deployment_name, deployment_state in self._deployment_states.items():
             if deployment_state.should_autoscale():
                 current_num_ongoing_requests = self.get_replica_ongoing_request_metrics(
