@@ -258,12 +258,12 @@ def range_tensor(
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.range_tensor(1000, shape=(2, 2)) # doctest: +SKIP
-        >>> ds # doctest: +SKIP
+        >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
+        >>> ds
         Datastream(
-            num_blocks=200,
+            num_blocks=...,
             num_rows=1000,
-            schema={__value__: <ArrowTensorType: shape=(2, 2), dtype=int64>},
+            schema={__value__: numpy.ndarray(shape=(2, 2), dtype=int64)}
         )
         >>> ds.map_batches(lambda arr: arr * 2).take(2) # doctest: +SKIP
         [array([[0, 0],
