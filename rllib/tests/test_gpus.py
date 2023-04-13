@@ -116,6 +116,8 @@ class TestGPUs(unittest.TestCase):
 
         ray.shutdown()
 
+
+class TestGPUsLargeBatch(unittest.TestCase):
     def test_larger_train_batch_size_multi_gpu_train_one_step(self):
         # Tests that we can use a `train_batch_size` larger than GPU memory with our
         # experimental setting `_load_only_minibatch_onto_device` with
