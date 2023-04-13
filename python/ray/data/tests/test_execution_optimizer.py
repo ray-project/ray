@@ -42,7 +42,7 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
-from ray.data._internal.logical.util import (
+from ray.data._internal.usage import (
     _recorded_operators,
     _recorded_operators_lock,
     _op_name_white_list,

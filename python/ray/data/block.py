@@ -21,6 +21,7 @@ import numpy as np
 import ray
 from ray import ObjectRefGenerator
 from ray.data._internal.util import _check_pyarrow_version
+from ray.data._internal.usage import record_block_format_usage
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
 
@@ -386,18 +387,22 @@ class BlockAccessor(Generic[T]):
         if isinstance(block, pyarrow.Table):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
+            record_block_format_usage("arrow")
             return ArrowBlockAccessor(block)
         elif isinstance(block, pandas.DataFrame):
             from ray.data._internal.pandas_block import PandasBlockAccessor
 
+            record_block_format_usage("pandas")
             return PandasBlockAccessor(block)
         elif isinstance(block, bytes):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
+            record_block_format_usage("arrow")
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
             from ray.data._internal.simple_block import SimpleBlockAccessor
 
+            record_block_format_usage("simple")
             return SimpleBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))
