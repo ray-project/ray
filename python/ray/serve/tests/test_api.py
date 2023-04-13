@@ -705,8 +705,6 @@ def test_invalid_driver_deployment_class():
     with pytest.raises(ValueError):
         f.options(num_replicas=2)
     with pytest.raises(ValueError):
-        f.options(route_prefix="/")
-    with pytest.raises(ValueError):
         f.options(autoscaling_config={"min_replicas": "1"})
 
 

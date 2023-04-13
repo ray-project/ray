@@ -87,8 +87,6 @@ class Deployment:
                 raise ValueError("num_replicas should not be set for driver deployment")
             if config.autoscaling_config:
                 raise ValueError("autoscaling should not be set for driver deployment")
-            if route_prefix != DEFAULT.VALUE:
-                raise ValueError("route_prefix should not be set for driver deployment")
 
         if init_args is None:
             init_args = ()
