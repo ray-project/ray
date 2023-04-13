@@ -62,25 +62,16 @@ describe("RecentJobsCard", () => {
     expect(screen.queryByText("07000000")).toBeNull();
   });
   it("the link is active when job_id is not null", async () => {
-    const mockedUseJobList = jest.mocked(useJobList);
-    mockedUseJobList.mockReturnValue({
-      jobList: JOB_LIST,
-    } as any);
-
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
 
     await screen.findByText("01000000");
     expect(screen.getByText("raysubmit_23456")).not.toHaveAttribute("href");
   });
   it("disables link when job_id is null", async () => {
-    const mockedUseJobList = jest.mocked(useJobList);
-    mockedUseJobList.mockReturnValue({
-      jobList: JOB_LIST,
-    } as any);
-
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
 
     await screen.findByText("01000000");
+
     const link = screen.getByRole("link", { name: "04000000" });
     expect(link).toBeInTheDocument();
   });

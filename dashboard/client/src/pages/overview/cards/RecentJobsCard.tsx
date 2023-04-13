@@ -40,49 +40,8 @@ type RecentJobsCardProps = {
 export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
   const classes = useStyles();
 
-  let { jobList } = useJobList();
-  jobList = [
-    {
-      job_id: "01000000",
-      submission_id: "raysubmit_12345",
-      status: "SUCCEEDED",
-    },
-    {
-      job_id: "02000000",
-      submission_id: null,
-      status: "FAILED",
-    },
-    {
-      job_id: null,
-      submission_id: "raysubmit_23456",
-      status: "STOPPED",
-    },
-    {
-      job_id: "04000000",
-      submission_id: "raysubmit_34567",
-      status: "SUCCEEDED",
-    },
-    {
-      job_id: "05000000",
-      submission_id: "raysubmit_45678",
-      status: "RUNNING",
-    },
-    {
-      job_id: "06000000",
-      submission_id: "raysubmit_56789",
-      status: "RUNNING",
-    },
-    {
-      job_id: "07000000",
-      submission_id: "raysubmit_67890",
-      status: "RUNNING",
-    },
-    {
-      job_id: null,
-      submission_id: "raysubmit_67900",
-      status: "FAILED",
-    },
-  ] as any;
+  const { jobList } = useJobList();
+
   const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 6);
 
   return (
