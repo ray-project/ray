@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import fireEvent from "@testing-library/user-event";
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
 import { useJobList } from "../../job/hook/useJobList";
@@ -65,14 +66,17 @@ describe("RecentJobsCard", () => {
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
 
     await screen.findByText("01000000");
-    expect(screen.getByText("raysubmit_23456")).not.toHaveAttribute("href");
+
+    const link = screen.getByRole("link", { name: "05000000" });
+    expect(link).toHaveAttribute("href");
   });
   it("disables link when job_id is null", async () => {
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
 
     await screen.findByText("01000000");
+    const jobDiv = screen.getByText("raysubmit_23456");
 
-    const link = screen.getByRole("link", { name: "04000000" });
-    expect(link).toBeInTheDocument();
+    fireEvent.click(jobDiv);
+    expect(window.location.pathname).not.toBe("/jobs/null");
   });
 });

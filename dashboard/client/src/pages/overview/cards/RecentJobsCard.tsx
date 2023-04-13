@@ -1,5 +1,4 @@
 import { createStyles, makeStyles, Typography } from "@material-ui/core";
-import { AnyListenerPredicate } from "@reduxjs/toolkit";
 import classNames from "classnames";
 import _ from "lodash";
 import React from "react";
