@@ -175,7 +175,6 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
     coreWorkerStats,
     cmdline,
   } = worker;
-
   const coreWorker = coreWorkerStats.length ? coreWorkerStats[0] : undefined;
   const workerLogUrl =
     `/logs/${encodeURIComponent(logUrl)}` +
@@ -198,31 +197,32 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       </TableCell>
       <TableCell align="center">{pid}</TableCell>
       <TableCell>
+        {/* {state !== "DEAD" && ( */}
         <Link to={workerLogUrl} target="_blank">
           Logs
         </Link>
-
-        {state !== "DEAD" && (
-          <a
-            href={`/worker/traceback?pid=${pid}&ip=${ip}&native=0`}
-            target="_blank"
-            title="Sample the current Python stack trace for this worker."
-            rel="noreferrer"
-          >
-            Stack&nbsp;Trace
-          </a>
-        )}
+        {/* )} */}
         <br></br>
-
         {state !== "DEAD" && (
-          <a
-            href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
-            target="_blank"
-            title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
-            rel="noreferrer"
-          >
-            CPU&nbsp;Flame&nbsp;Graph
-          </a>
+          <React.Fragment>
+            <a
+              href={`/worker/traceback?pid=${pid}&ip=${ip}&native=0`}
+              target="_blank"
+              title="Sample the current Python stack trace for this worker."
+              rel="noreferrer"
+            >
+              Stack&nbsp;Trace
+            </a>
+            <br></br>
+            <a
+              href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
+              target="_blank"
+              title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
+              rel="noreferrer"
+            >
+              CPU&nbsp;Flame&nbsp;Graph
+            </a>
+          </React.Fragment>
         )}
       </TableCell>
       <TableCell>

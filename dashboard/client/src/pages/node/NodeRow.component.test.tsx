@@ -6,7 +6,7 @@ import { NodeDetail } from "../../type/node";
 import { CoreWorkerStats, Worker } from "../../type/worker";
 import { NodeRow, WorkerRow } from "./NodeRow";
 
-const node: NodeDetail = {
+const NODE: NodeDetail = {
   hostname: "test-hostname",
   ip: "192.168.0.1",
   cpu: 15,
@@ -43,7 +43,7 @@ const node: NodeDetail = {
   logUrl: "http://192.16.0.1/logs",
 } as NodeDetail;
 
-const worker: Worker = {
+const WORKER: Worker = {
   cmdline: ["echo hi"],
   pid: 3456,
   cpuPercent: 14,
@@ -60,13 +60,13 @@ const worker: Worker = {
   ],
 } as Worker;
 
-const DEAD_NODE = { ...node, state: "DEAD" };
+const DEAD_NODE = { ...NODE, state: "DEAD" };
 
 describe("NodeRow", () => {
   it("renders", async () => {
     render(
       <NodeRow
-        node={node}
+        node={NODE}
         expanded
         onExpandButtonClick={() => {
           /* purposefully empty */
@@ -99,11 +99,30 @@ describe("NodeRow", () => {
     expect(screen.getByText(/5.0000B\/s/)).toBeVisible();
     expect(screen.getByText(/10.0000B\/s/)).toBeVisible();
   });
+  it("Disable actions for Dead node", async () => {
+    render(
+      <NodeRow node={DEAD_NODE} expanded={false} onExpandButtonClick={noop} />,
+      {
+        wrapper: ({ children }) => (
+          <MemoryRouter>
+            <table>
+              <tbody>{children}</tbody>
+            </table>
+          </MemoryRouter>
+        ),
+      },
+    );
+    await screen.findByText("test-hostname");
+    // Could not access logs for Dead nodes(the log is hidden)
+    expect(screen.queryByLabelText(/Log/)).not.toBeInTheDocument();
+
+    expect(screen.getByText(/3456/)).toBeVisible();
+  });
 });
 
 describe("WorkerRow", () => {
   it("renders", async () => {
-    render(<WorkerRow node={node} worker={worker} />, {
+    render(<WorkerRow node={NODE} worker={WORKER} />, {
       wrapper: ({ children }) => (
         <MemoryRouter>
           <table>
@@ -122,39 +141,8 @@ describe("WorkerRow", () => {
     // Memory Usage
     expect(screen.getByText(/75\.0000B\/100\.0000B\(75\.0%\)/)).toBeVisible();
   });
-});
-
-describe("NodeRow: Disable actions for Dead node", () => {
-  it("renders", async () => {
-    render(
-      <NodeRow node={DEAD_NODE} expanded={false} onExpandButtonClick={noop} />,
-      {
-        wrapper: ({ children }) => (
-          <MemoryRouter>
-            <table>
-              <tbody>{children}</tbody>
-            </table>
-          </MemoryRouter>
-        ),
-      },
-    );
-    await screen.findByText("test-hostname");
-    // Could not access logs for Dead nodes(the log is hidden)=
-    expect(screen.getByText(/DEAD/)).toBeVisible();
-    expect(screen.queryByLabelText(/Log/)).not.toBeInTheDocument();
-
-    expect(screen.getByText(/worker-12345/)).toBeVisible();
-    expect(screen.getByText(/3456/)).toBeVisible();
-    // CPU Usage
-    expect(screen.getByText(/14%/)).toBeVisible();
-    // Memory Usage
-    expect(screen.getByText(/75\.0000B\/100\.0000B\(75\.0%\)/)).toBeVisible();
-  });
-});
-
-describe("Disable CPU profiling & stacktrace for dead worker", () => {
-  it("renders", async () => {
-    render(<WorkerRow node={DEAD_NODE} worker={worker} />, {
+  it("Disable CPU profiling & stacktrace for dead worker", async () => {
+    render(<WorkerRow node={DEAD_NODE} worker={WORKER} />, {
       wrapper: ({ children }) => (
         <MemoryRouter>
           <table>
@@ -165,8 +153,8 @@ describe("Disable CPU profiling & stacktrace for dead worker", () => {
     });
     await screen.findByText("echo hi");
     // Could not access logs for Dead workers (the log is hidden)
-    expect(screen.getByText(/DEAD/)).toBeVisible();
-    expect(screen.queryByLabelText(/LogsStack Trace/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Log/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Stack Trace/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/CPU Flame Graph/)).not.toBeInTheDocument();
 
     expect(screen.getByText(/worker-12345/)).toBeVisible();
