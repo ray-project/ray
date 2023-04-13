@@ -102,8 +102,8 @@ from ray.air import RunConfig
 run_config = RunConfig(
     # Name of the training run (directory name).
     name="my_train_run",
-    # Directory to store results in (will be local_dir/name).
-    local_dir="~/ray_results",
+    # Directory to store results in (will be storage_path/name).
+    storage_path="~/ray_results",
     # Low training verbosity.
     verbose=1,
 )
@@ -125,10 +125,8 @@ from ray.air import RunConfig
 from ray.tune import SyncConfig
 
 run_config = RunConfig(
-    sync_config=SyncConfig(
-        # This will store checkpoints on S3.
-        upload_dir="s3://remote-bucket/location"
-    )
+    # This will store checkpoints on S3.
+    storage_path="s3://remote-bucket/location"
 )
 # __sync_config_end__
 

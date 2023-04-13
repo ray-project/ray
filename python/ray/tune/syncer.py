@@ -138,8 +138,6 @@ class SyncConfig:
                 "disables syncing. Either remove the `upload_dir`, "
                 "or set `syncer` to 'auto' or a custom syncer."
             )
-        if not self.upload_dir and isinstance(self.syncer, Syncer):
-            raise ValueError("Must specify an `upload_dir` to use a custom `syncer`.")
 
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig.
@@ -190,6 +188,16 @@ class SyncConfig:
             upload_dir: Path to validate.
 
         """
+        upload_dir = upload_dir or self.upload_dir
+        if upload_dir and self.syncer is None:
+            raise ValueError(
+                "`upload_dir` enables syncing to cloud storage, but `syncer=None` "
+                "disables syncing. Either remove the `upload_dir`, "
+                "or set `syncer` to 'auto' or a custom syncer."
+            )
+        if not upload_dir and isinstance(self.syncer, Syncer):
+            raise ValueError("Must specify an `upload_dir` to use a custom `syncer`.")
+
         if isinstance(self.syncer, Syncer):
             return self.syncer.validate_upload_dir(upload_dir or self.upload_dir)
         else:

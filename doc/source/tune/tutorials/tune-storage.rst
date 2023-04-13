@@ -69,7 +69,7 @@ has finished saving a checkpoint. This can be configured by ``sync_on_checkpoint
         trainable,
         run_config=RunConfig(
             name="experiment_name",
-            local_dir="~/ray_results",
+            storage_path="~/ray_results",
             sync_config=tune.SyncConfig(
                 syncer="auto",
                 # Sync approximately every minute rather than on every checkpoint
@@ -116,7 +116,7 @@ All we need to do is **set the shared network filesystem as the path to save res
         trainable,
         run_config=air.RunConfig(
             name="experiment_name",
-            local_dir="/path/to/shared/storage/",
+            storage_path="/path/to/shared/storage/",
             sync_config=tune.SyncConfig(
                 syncer=None  # Disable syncing
             )
@@ -134,7 +134,7 @@ Configuring Tune with cloud storage (AWS S3, Google Cloud Storage)
 If all nodes in a Ray cluster have access to cloud storage, e.g. AWS S3 or Google Cloud Storage (GCS),
 then all experiment outputs can be saved in a shared cloud bucket.
 
-We can configure cloud storage by telling Ray Tune to **upload to a remote** ``upload_dir``:
+We can configure cloud storage by telling Ray Tune to **upload to a remote** ``storage_path``:
 
 .. code-block:: python
     :emphasize-lines: 8, 9, 10, 11
@@ -146,22 +146,20 @@ We can configure cloud storage by telling Ray Tune to **upload to a remote** ``u
         trainable,
         run_config=RunConfig(
             name="experiment_name",
-            sync_config=tune.SyncConfig(
-                upload_dir="s3://bucket-name/sub-path/",
-                syncer="auto",
-            )
+            storage_path="s3://bucket-name/sub-path/",
         )
     )
     tuner.fit()
 
-``syncer="auto"`` automatically configures a default syncer that uses pyarrow to
-perform syncing with the specified cloud ``upload_dir``.
-The ``syncer`` config can also take in a custom :class:`Syncer <ray.tune.syncer.Syncer>`
+Ray AIR automatically configures a default syncer that uses pyarrow to
+perform syncing with the specified cloud ``storage_path``.
+You can also pass a custom :class:`Syncer <ray.tune.syncer.Syncer>` object
+to the :class:`tune.SyncConfig <ray.tune.SyncConfig>`
 if you want to implement custom logic for uploading/downloading from the cloud.
 See :ref:`tune-cloud-syncing` and :ref:`tune-cloud-syncing-command-line-example`
 for more details and examples of custom syncing.
 
-In this example, all experiment results can be found in the shared storage at ``s3://bucket-name/sub-path/experiment_name`` ``/path/to/shared/storage/experiment_name`` for further processing.
+In this example, all experiment results can be found in the shared storage at ``s3://bucket-name/sub-path/experiment_name`` for further processing.
 
 .. note::
 
@@ -193,6 +191,7 @@ that implements saving and loading checkpoints.
 
 .. code-block:: python
 
+    import os
     import ray
     from ray import air, tune
     from your_module import my_trainable
@@ -200,21 +199,20 @@ that implements saving and loading checkpoints.
     # Look for the existing cluster and connect to it
     ray.init()
 
-    # Configure how experiment data and checkpoints are sync'd
-    # We recommend cloud storage checkpointing as it survives the cluster when
-    # instances are terminated and has better performance
-    sync_config = tune.SyncConfig(
-        upload_dir="s3://my-checkpoints-bucket/path/",  # requires AWS credentials
-    )
+    # Set the local caching directory. Results will be stored here
+    # before they are synced to remote storage. This env variable is ignored
+    # if `storage_path` below is set to a local directory.
+    os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/mypath"
 
     tuner = tune.Tuner(
         my_trainable,
         run_config=air.RunConfig(
             # Name of your experiment
             name="my-tune-exp",
-            # Directory where each node's results are stored before being
-            # sync'd to cloud storage
-            local_dir="/tmp/mypath",
+            # Configure how experiment data and checkpoints are persisted.
+            # We recommend cloud storage checkpointing as it survives the cluster when
+            # instances are terminated and has better performance.
+            storage_path="s3://my-checkpoints-bucket/path/",
             # See above! we will sync our checkpoints to S3 directory
             sync_config=sync_config,
             checkpoint_config=air.CheckpointConfig(
@@ -281,11 +279,7 @@ Again, we're running this example script from the Ray cluster's head node.
         my_trainable,
         run_config=air.RunConfig(
             name="my-tune-exp",
-            local_dir="/tmp/mypath",
-            # Use the default syncing behavior
-            # You don't have to pass an empty sync config - but we
-            # do it here for clarity and comparison
-            sync_config=tune.SyncConfig(),
+            storage_path="/tmp/mypath",
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_score_attribute="max-auc",
                 checkpoint_score_order="max",

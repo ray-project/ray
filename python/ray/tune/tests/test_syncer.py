@@ -214,24 +214,24 @@ class CustomCommandSyncer(Syncer):
 
 def test_sync_string_invalid_uri():
     with pytest.raises(ValueError):
-        sync_config = tune.SyncConfig(upload_dir="invalid://some/url")
-        sync_config.validate_upload_dir()
+        sync_config = tune.SyncConfig()
+        sync_config.validate_upload_dir("invalid://some/url")
 
 
 def test_sync_string_invalid_local():
     with pytest.raises(ValueError):
-        sync_config = tune.SyncConfig(upload_dir="/invalid/dir")
-        sync_config.validate_upload_dir()
+        sync_config = tune.SyncConfig()
+        sync_config.validate_upload_dir("/invalid/dir")
 
 
 def test_sync_string_valid_local():
-    sync_config = tune.SyncConfig(upload_dir="file:///valid/dir")
-    sync_config.validate_upload_dir()
+    sync_config = tune.SyncConfig()
+    sync_config.validate_upload_dir("file:///valid/dir")
 
 
 def test_sync_string_valid_s3():
-    sync_config = tune.SyncConfig(upload_dir="s3://valid/bucket")
-    sync_config.validate_upload_dir()
+    sync_config = tune.SyncConfig()
+    sync_config.validate_upload_dir("s3://valid/bucket")
 
 
 def test_sync_config_validate():
@@ -245,18 +245,20 @@ def test_sync_config_validate_custom_syncer():
         def validate_upload_dir(cls, upload_dir: str) -> bool:
             return True
 
-    sync_config = tune.SyncConfig(upload_dir="/invalid/dir", syncer=CustomSyncer())
-    sync_config.validate_upload_dir()
+    sync_config = tune.SyncConfig(syncer=CustomSyncer())
+    sync_config.validate_upload_dir("/invalid/dir")
 
 
 def test_sync_config_upload_dir_custom_syncer_mismatch():
     # Shouldn't be able to disable syncing if upload dir is specified
     with pytest.raises(ValueError):
-        tune.SyncConfig(upload_dir="s3://valid/bucket", syncer=None)
+        sync_config = tune.SyncConfig(syncer=None)
+        sync_config.validate_upload_dir("s3://valid/bucket")
 
     # Shouldn't be able to use a custom cloud syncer without specifying cloud dir
     with pytest.raises(ValueError):
-        tune.SyncConfig(upload_dir=None, syncer=_DefaultSyncer())
+        sync_config = tune.SyncConfig(syncer=_DefaultSyncer())
+        sync_config.validate_upload_dir(None)
 
 
 def test_syncer_sync_up_down(temp_data_dirs):
@@ -671,7 +673,7 @@ def test_trainable_syncer_retry(shutdown_only, temp_data_dirs, num_retries):
 
     trainable = ray.remote(TestTrainableRetry).remote(
         remote_checkpoint_dir=f"file://{tmp_target}",
-        sync_config=SyncConfig(upload_dir="not_used", syncer=syncer),
+        sync_config=SyncConfig(syncer=syncer),
     )
 
     ray.get(trainable.save.remote())
@@ -681,11 +683,7 @@ def test_trainable_syncer_custom(ray_start_2_cpus, temp_data_dirs):
     """Check that Trainable.save() triggers syncing using custom syncer"""
     tmp_source, tmp_target = temp_data_dirs
 
-    sync_config = SyncConfig(
-        # upload_dir not actually used, but needed for SyncConfig validation
-        upload_dir="file://not_used",
-        syncer=CustomSyncer(),
-    )
+    sync_config = SyncConfig(syncer=CustomSyncer())
     trainable = ray.remote(TestTrainable).remote(
         remote_checkpoint_dir=f"file://{tmp_target}",
         sync_config=sync_config,
@@ -707,7 +705,6 @@ def test_trainable_syncer_custom_command(ray_start_2_cpus, temp_data_dirs):
     tmp_source, tmp_target = temp_data_dirs
 
     sync_config = SyncConfig(
-        upload_dir="file://not_used",
         syncer=CustomCommandSyncer(
             sync_up_template="cp -rf {source} `echo '{target}' | cut -c 8-`",
             sync_down_template="cp -rf `echo '{source}' | cut -c 8-` {target}",
@@ -781,9 +778,7 @@ def test_artifact_syncing_disabled(ray_start_2_cpus, temp_data_dirs, tmp_path):
     trainable = ray.remote(TestTrainable).remote(
         remote_checkpoint_dir=f"file://{tmp_target}",
         logdir=str(local_dir_1),
-        sync_config=SyncConfig(
-            upload_dir="file:///not_used", syncer="auto", sync_artifacts=False
-        ),
+        sync_config=SyncConfig(sync_artifacts=False),
     )
 
     ray.get(trainable.train.remote())
@@ -901,9 +896,8 @@ def test_final_experiment_checkpoint_sync(ray_start_2_cpus, tmpdir):
         train_func,
         run_config=RunConfig(
             name="exp_name",
-            sync_config=tune.SyncConfig(
-                upload_dir="memory:///test_upload_dir", syncer=syncer
-            ),
+            storage_path="memory:///test_upload_dir",
+            sync_config=tune.SyncConfig(syncer=syncer),
         ),
     )
     results = tuner.fit()
@@ -973,8 +967,8 @@ def test_e2e_sync_to_s3(ray_start_4_cpus, mock_s3_bucket_uri, tmp_path):
         param_space={"id": tune.grid_search([0, 1, 2, 3])},
         run_config=RunConfig(
             name=exp_name,
+            storage_path=mock_s3_bucket_uri,
             local_dir=local_dir,
-            sync_config=tune.SyncConfig(upload_dir=mock_s3_bucket_uri),
         ),
         tune_config=tune.TuneConfig(
             trial_dirname_creator=lambda t: str(t.config.get("id"))
