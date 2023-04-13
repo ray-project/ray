@@ -343,7 +343,7 @@ def read_datasource(
     cur_pg = ray.util.get_current_placement_group()
     pa_ds = _lazy_import_pyarrow_dataset()
     if pa_ds:
-        partitioning = read_args.get("datastream_kwargs", {}).get("partitioning", None)
+        partitioning = read_args.get("dataset_kwargs", {}).get("partitioning", None)
         if isinstance(partitioning, pa_ds.Partitioning):
             logger.info(
                 "Forcing local metadata resolution since the provided partitioning "

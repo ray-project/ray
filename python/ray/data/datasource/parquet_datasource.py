@@ -199,11 +199,11 @@ class _ParquetDatasourceReader(Reader):
                 ray.get_runtime_context().get_node_id(), soft=False
             )
 
-        datastream_kwargs = reader_args.pop("datastream_kwargs", {})
+        dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         try:
             pq_ds = pq.ParquetDataset(
                 paths,
-                **datastream_kwargs,
+                **dataset_kwargs,
                 filesystem=filesystem,
                 use_legacy_dataset=False,
             )
