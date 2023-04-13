@@ -53,6 +53,7 @@ def tmp_dir_session():
     print("temp_dir", temp_dir)
     os.environ["RAY_TMPDIR"] = str(temp_dir)
 
+
 @pytest.fixture(autouse=True)
 def pre_envs(monkeypatch):
     # To make test run faster
