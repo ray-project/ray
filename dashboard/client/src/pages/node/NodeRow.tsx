@@ -212,6 +212,8 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
             Stack&nbsp;Trace
           </a>
         )}
+        <br></br>
+
         {state !== "DEAD" && (
           <a
             href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
