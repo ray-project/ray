@@ -258,12 +258,12 @@ def range_tensor(
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.range_tensor(1000, shape=(2, 2)) # doctest: +SKIP
-        >>> ds # doctest: +SKIP
+        >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
+        >>> ds  # doctest: +ellipsis
         Datastream(
-            num_blocks=200,
+            num_blocks=...,
             num_rows=1000,
-            schema={__value__: <ArrowTensorType: shape=(2, 2), dtype=int64>},
+            schema={__value__: numpy.ndarray(shape=(2, 2), dtype=int64)}
         )
         >>> ds.map_batches(lambda arr: arr * 2).take(2) # doctest: +SKIP
         [array([[0, 0],
@@ -629,13 +629,13 @@ def read_images(
         >>> path = "s3://anonymous@air-example-data-2/movie-image-small-filesize-1GB"
         >>> ds = ray.data.read_images(path)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3)})
+        Datastream(num_blocks=200, num_rows=41979, schema={image: numpy.ndarray(ndim=3, dtype=uint8)})
 
         If you need image file paths, set ``include_paths=True``.
 
         >>> ds = ray.data.read_images(path, include_paths=True)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3), path: string})
+        Datastream(num_blocks=200, num_rows=41979, schema={image: numpy.ndarray(ndim=3, dtype=uint8), path: string})
         >>> ds.take(1)[0]["path"]  # doctest: +SKIP
         'air-example-data-2/movie-image-small-filesize-1GB/0.jpg'
 
@@ -1820,7 +1820,7 @@ def from_tf(
         >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])  # doctest: +SKIP
         >>> ds = ray.data.from_tf(dataset)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
+        Datastream(num_blocks=200, num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
         >>> ds.take(1)  # doctest: +SKIP
         [{'id': b'train_16399', 'image': array([[[143,  96,  70],
         [141,  96,  72],
