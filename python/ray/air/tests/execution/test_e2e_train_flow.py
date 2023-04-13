@@ -211,6 +211,7 @@ class TrainFlow:
             return
 
         self._actors_to_replace.add(tracked_actor)
+        self._ready_actors.discard(tracked_actor)
         self._actor_manager.remove_actor(tracked_actor)
 
     def run(self):
