@@ -30,7 +30,6 @@ from ray.rllib.utils.nested_dict import NestedDict
 _, tf, _ = try_import_tf()
 
 
-
 class TfActorCriticEncoder(TfModel, ActorCriticEncoder):
     """An encoder that can hold two encoders."""
 
@@ -184,10 +183,14 @@ class TfLSTMEncoder(TfModel, Encoder):
                 SampleBatch.OBS: TfTensorSpec("b, t, d", d=self.config.input_dims[0]),
                 STATE_IN: {
                     "h": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_lstm_layers
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_lstm_layers,
                     ),
                     "c": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_lstm_layers
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_lstm_layers,
                     ),
                 },
             }
@@ -200,10 +203,14 @@ class TfLSTMEncoder(TfModel, Encoder):
                 ENCODER_OUT: TfTensorSpec("b, t, d", d=self.config.output_dims[0]),
                 STATE_OUT: {
                     "h": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_lstm_layers
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_lstm_layers,
                     ),
                     "c": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_lstm_layers
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_lstm_layers,
                     ),
                 },
             }

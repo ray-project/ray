@@ -182,13 +182,19 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         return SpecDict(
             {
                 # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TorchTensorSpec("b, t, d", d=self.config.input_dims[0]),
+                SampleBatch.OBS: TorchTensorSpec(
+                    "b, t, d", d=self.config.input_dims[0]
+                ),
                 STATE_IN: {
                     "h": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_lstm_layers
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_lstm_layers,
                     ),
                     "c": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_lstm_layers
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_lstm_layers,
                     ),
                 },
             }
@@ -201,10 +207,14 @@ class TorchLSTMEncoder(TorchModel, Encoder):
                 ENCODER_OUT: TorchTensorSpec("b, t, d", d=self.config.output_dims[0]),
                 STATE_OUT: {
                     "h": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_lstm_layers
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_lstm_layers,
                     ),
                     "c": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_lstm_layers
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_lstm_layers,
                     ),
                 },
             }
