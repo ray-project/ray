@@ -16,8 +16,7 @@ from typing import (
 )
 
 import ray
-from ray.data._internal.execution.util import block_list_to_bundles
-from ray.data._internal.util import get_unified_blocks_schema
+from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import BlockMetadata
 from ray.data._internal.util import capitalize
 from ray.types import ObjectRef
@@ -179,13 +178,15 @@ class ExecutionPlan:
 
             # Get schema of initial blocks.
             if self._snapshot_blocks is not None:
-                refs = block_list_to_bundles(self._snapshot_blocks, owns_blocks=False)
-                schema = get_unified_blocks_schema(refs, fetch_if_missing=False)
+                schema = self._get_unified_blocks_schema(
+                    self._snapshot_blocks, fetch_if_missing=False
+                )
                 dataset_blocks = self._snapshot_blocks
             else:
                 assert self._in_blocks is not None
-                refs = block_list_to_bundles(self._in_blocks, owns_blocks=False)
-                schema = get_unified_blocks_schema(refs, fetch_if_missing=False)
+                schema = self._get_unified_blocks_schema(
+                    self._in_blocks, fetch_if_missing=False
+                )
                 dataset_blocks = self._in_blocks
         else:
             # Get schema of output blocks.
@@ -399,8 +400,39 @@ class ExecutionPlan:
         blocks = self._snapshot_blocks
         if not blocks:
             return None
-        refs = block_list_to_bundles(blocks, owns_blocks=False)
-        return get_unified_blocks_schema(refs, fetch_if_missing)
+        return self._get_unified_blocks_schema(blocks, fetch_if_missing)
+
+    def _get_unified_blocks_schema(
+        self, blocks: BlockList, fetch_if_missing: bool = False
+    ) -> Union[type, "pyarrow.lib.Schema"]:
+        """Get the unified schema of the blocks.
+        Args:
+            blocks: the blocks to get schema
+            fetch_if_missing: Whether to execute the blocks to fetch the schema.
+        """
+
+        # Only trigger the execution of first block in case it's a lazy block list.
+        # Don't trigger full execution for a schema read.
+        if isinstance(blocks, LazyBlockList):
+            blocks.compute_first_block()
+            blocks.ensure_metadata_for_first_block()
+
+        metadata = blocks.get_metadata(fetch_if_missing=False)
+
+        unified_schema = unify_block_metadata_schema(metadata)
+        if unified_schema is not None:
+            return unified_schema
+
+        if not fetch_if_missing:
+            return None
+        # Synchronously fetch the schema.
+        # For lazy block lists, this launches read tasks and fetches block metadata
+        # until we find the first valid block schema. This is to minimize new
+        # computations when fetching the schema.
+        for _, m in blocks.iter_blocks_with_metadata():
+            if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
+                return m.schema
+        return None
 
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan stages if possible.

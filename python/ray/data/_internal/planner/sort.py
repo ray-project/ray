@@ -1,12 +1,11 @@
 from functools import partial
-from typing import List, Tuple
+from typing import List, Tuple, TYPE_CHECKING
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.util import get_unified_blocks_schema
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
@@ -15,6 +14,7 @@ from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler impor
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKeyT, SortTaskSpec
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import _validate_key_fn
 from ray.data.context import DataContext
 
@@ -32,12 +32,14 @@ def generate_sort_fn(
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
         blocks = []
+        metadata = []
         for ref_bundle in refs:
-            for block, _ in ref_bundle.blocks:
+            for block, block_metadata in ref_bundle.blocks:
                 blocks.append(block)
+                metadata.append(block_metadata)
         if len(blocks) == 0:
             return (blocks, {})
-        unified_schema = get_unified_blocks_schema(refs)
+        unified_schema = unify_block_metadata_schema(metadata)
         _validate_key_fn(unified_schema, key)
 
         if isinstance(key, str):

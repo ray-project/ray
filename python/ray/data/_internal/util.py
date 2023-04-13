@@ -20,8 +20,6 @@ if TYPE_CHECKING:
     import pandas
     from ray.data._internal.arrow_block import ArrowRow
     from ray.data.block import Block, BlockMetadata
-    from ray.data._internal.execution.interfaces import RefBundle
-    from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
@@ -467,24 +465,12 @@ def get_table_block_metadata(
     )
 
 
-def get_unified_blocks_schema(
-    refs: List["RefBundle"],
-    fetch_if_missing: bool = False,
-) -> Union[type, "pyarrow.lib.Schema"]:
-    """Get the unified schema of blocks in the provided list of RefBundles.
-
-    Args:
-        refs: list of RefBundles which hold the blocks.
-        fetch_if_missing: Whether to execute the blocks to fetch the schema.
+def unify_block_metadata_schema(
+    metadata: List["BlockMetadata"],
+) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
+    """For the input list of BlockMetadata, return a unified schema of the
+    corresponding blocks. If the metadata have no valid schema, returns None.
     """
-
-    block_refs: List["ObjectRef[Block]"] = []
-    metadata: List[BlockMetadata] = []
-    for ref_bundle in refs:
-        for block_ref, block_metadata in ref_bundle.blocks:
-            block_refs.append(block_ref)
-            metadata.append(block_metadata)
-
     # Some blocks could be empty, in which case we cannot get their schema.
     # TODO(ekl) validate schema is the same across different blocks.
 
@@ -506,22 +492,4 @@ def get_unified_blocks_schema(
         # Otherwise, if the resulting schemas are simple types (e.g. int),
         # return the first schema.
         return schemas_to_unify[0]
-    if not fetch_if_missing:
-        return None
-    # Synchronously fetch the schema.
-    # For lazy block lists, this launches read tasks and fetches block metadata
-    # until we find the first valid block schema. This is to minimize new
-    # computations when fetching the schema.
-    from ray.data.block import BlockAccessor, BlockExecStats
-
-    for block_ref in block_refs:
-        block = ray.get(block_ref)
-        stats = BlockExecStats.builder()
-        block_metadata = BlockAccessor.for_block(block).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        )
-        if block_metadata.schema is not None and (
-            block_metadata.num_rows is None or block_metadata.num_rows > 0
-        ):
-            return block_metadata.schema
     return None
