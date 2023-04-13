@@ -1,3 +1,4 @@
+import abc
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping
@@ -80,24 +81,15 @@ class AppoLearner(ImpalaLearner):
         self._update_module_kl_coeff(module_id, sampled_kls)
         return {}
 
-    def _update_module_target_networks(self, module_id: ModuleID):
+    @abc.abstractmethod
+    def _update_module_target_networks(self, module_id: ModuleID) -> None:
         """Update the target policy of each module with the current policy.
 
         Do that update via polyak averaging.
 
         Args:
-            module_id: The module whose target networks need to be updated.
-
+            module_id: The module ID, whose target network(s) need to be updated.
         """
-        module = self.module[module_id]
-
-        target_current_network_pairs = module.get_target_network_pairs()
-        for target_network, current_network in target_current_network_pairs:
-            for old_var, current_var in zip(
-                target_network.variables, current_network.variables
-            ):
-                updated_var = self._hps.tau * current_var + (1.0 - self._hps.tau) * old_var
-                old_var.assign(updated_var)
 
     def _update_module_kl_coeff(
         self, module_id: ModuleID, sampled_kls: Dict[ModuleID, float]

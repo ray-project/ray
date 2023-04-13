@@ -12,6 +12,7 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
 )
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
+from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
@@ -141,3 +142,23 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
             ENTROPY_KEY: mean_entropy_loss,
             LEARNER_RESULTS_KL_KEY: mean_kl_loss,
         }
+
+    def _update_module_target_networks(self, module_id: ModuleID):
+        """Update the target policy of each module with the current policy.
+
+        Do that update via polyak averaging.
+
+        Args:
+            module_id: The module whose target networks need to be updated.
+
+        """
+        module = self.module[module_id]
+
+        target_current_network_pairs = module.get_target_network_pairs()
+        for target_network, current_network in target_current_network_pairs:
+            current_state_dict = current_network.state_dict()
+            new_state_dict = {
+                k: self._hps.tau * current_state_dict[k] + (1 - self._hps.tau) * v
+                for k, v in target_network.state_dict().items()
+            }
+            target_network.load_state_dict(new_state_dict)
