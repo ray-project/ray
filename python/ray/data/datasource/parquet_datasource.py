@@ -278,6 +278,11 @@ class _ParquetDatasourceReader(Reader):
                 pieces=pieces,
                 prefetched_metadata=metadata,
             )
+            # If there is a filter operation, reset the calculated row count,
+            # since the resulting row count is unknown.
+            if self._reader_args.get("filter") is not None:
+                meta.num_rows = None
+
             if meta.size_bytes is not None:
                 meta.size_bytes = int(meta.size_bytes * self._encoding_ratio)
             block_udf, reader_args, columns, schema = (
@@ -411,7 +416,6 @@ def _read_pieces(
 def _fetch_metadata_serialization_wrapper(
     pieces: _SerializedPiece,
 ) -> List["pyarrow.parquet.FileMetaData"]:
-
     pieces: List[
         "pyarrow._dataset.ParquetFileFragment"
     ] = _deserialize_pieces_with_retry(pieces)
