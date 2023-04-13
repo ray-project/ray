@@ -81,6 +81,15 @@ Distributed Training Examples using Ray Train
         :text: End-to-end PyTorch Lightning Training Example
         :classes: btn-link btn-block stretched-link trainLightning
 
+    ---
+    :img-top: /images/pytorch_lightning_small.png
+
+    +++
+    .. link-button:: lightning_advanced_example
+        :type: ref
+        :text: Use LightningTrainer with Ray Data and Batch Predictor
+        :classes: btn-link btn-block stretched-link trainLightning
+    
 
 Ray Train Examples Using Loggers & Callbacks
 --------------------------------------------
