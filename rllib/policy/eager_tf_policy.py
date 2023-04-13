@@ -175,12 +175,8 @@ def _traced_eager_policy(eager_policy_cls):
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             """Traced version of Policy.compute_actions_from_input_dict."""
 
-            # NOTE: In the new RLModule stack the sampling side is not traced with this
-            # justification that in order to speed up sampling we need to use more
-            # actors.
             # Create a traced version of `self._compute_actions_helper`.
             if (
-                #not self.config.get("_enable_rl_module_api", False)
                 self._traced_compute_actions_helper is False
                 and not self._no_tracing
             ):

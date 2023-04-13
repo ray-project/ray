@@ -83,16 +83,19 @@ class APPOTfLearner(TfLearner, AppoLearner):
                 dtype=tf.float32,
             )
         ) * self._hps.discount_factor
-        vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
-            target_action_log_probs=old_actions_logp_time_major,
-            behaviour_action_log_probs=behaviour_actions_logp_time_major,
-            discounts=discounts_time_major,
-            rewards=rewards_time_major,
-            values=values_time_major,
-            bootstrap_value=bootstrap_value,
-            clip_pg_rho_threshold=self._hps.vtrace_clip_pg_rho_threshold,
-            clip_rho_threshold=self._hps.vtrace_clip_rho_threshold,
-        )
+
+        # Compute vtrace on the CPU for better performance.
+        with tf.device("/cpu:0"):
+            vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
+                target_action_log_probs=old_actions_logp_time_major,
+                behaviour_action_log_probs=behaviour_actions_logp_time_major,
+                discounts=discounts_time_major,
+                rewards=rewards_time_major,
+                values=values_time_major,
+                bootstrap_value=bootstrap_value,
+                clip_pg_rho_threshold=self._hps.vtrace_clip_pg_rho_threshold,
+                clip_rho_threshold=self._hps.vtrace_clip_rho_threshold,
+            )
 
         # The policy gradients loss.
         is_ratio = tf.clip_by_value(

@@ -112,15 +112,15 @@ def vtrace_torch(
         clip_pg_rho_threshold: A scalar float32 tensor with the clipping threshold
             on rho_s in \rho_s \delta log \pi(a|x) (r + \gamma v_{s+1} - V(x_s)).
     """
-    log_rhos = target_action_log_probs - behaviour_action_log_probs
-    discounts = convert_to_torch_tensor(discounts)
-    rewards = convert_to_torch_tensor(rewards)
-    values = convert_to_torch_tensor(values)
-    bootstrap_value = convert_to_torch_tensor(bootstrap_value)
+    log_rhos = (target_action_log_probs - behaviour_action_log_probs).to("cpu")
+    discounts = convert_to_torch_tensor(discounts, device="cpu")
+    rewards = convert_to_torch_tensor(rewards, device="cpu")
+    values = convert_to_torch_tensor(values, device="cpu")
+    bootstrap_value = convert_to_torch_tensor(bootstrap_value, device="cpu")
     if clip_rho_threshold is not None:
-        clip_rho_threshold = convert_to_torch_tensor(clip_rho_threshold)
+        clip_rho_threshold = convert_to_torch_tensor(clip_rho_threshold, device="cpu")
     if clip_pg_rho_threshold is not None:
-        clip_pg_rho_threshold = convert_to_torch_tensor(clip_pg_rho_threshold)
+        clip_pg_rho_threshold = convert_to_torch_tensor(clip_pg_rho_threshold, device="cpu")
 
     # Make sure tensor ranks are consistent.
     rho_rank = log_rhos.dim()  # Usually 2.

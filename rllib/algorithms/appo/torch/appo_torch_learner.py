@@ -96,6 +96,8 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
             clip_pg_rho_threshold=self._hps.vtrace_clip_pg_rho_threshold,
             clip_rho_threshold=self._hps.vtrace_clip_rho_threshold,
         )
+        vtrace_adjusted_target_values = vtrace_adjusted_target_values.to(bootstrap_value.device)
+        pg_advantages = pg_advantages.to(bootstrap_value.device)
 
         # The policy gradients loss.
         is_ratio = torch.clip(

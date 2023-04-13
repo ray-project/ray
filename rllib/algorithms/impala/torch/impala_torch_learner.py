@@ -89,6 +89,8 @@ class ImpalaTorchLearner(TorchLearner, ImpalaLearner):
             clip_rho_threshold=self._hps.vtrace_clip_rho_threshold,
             clip_pg_rho_threshold=self._hps.vtrace_clip_pg_rho_threshold,
         )
+        vtrace_adjusted_target_values = vtrace_adjusted_target_values.to(device)
+        pg_advantages = pg_advantages.to(device)
 
         # Sample size is T x B, where T is the trajectory length and B is the batch size
         # We mean over the batch size for consistency with the pre-RLModule
