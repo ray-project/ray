@@ -6,8 +6,8 @@ from ray.rllib.core.learner.learner_group import LearnerGroup
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.learner.learner import (
     LearnerSpec,
-    LearnerHPs,
-    FrameworkHPs,
+    LearnerHyperparameters,
+    FrameworkHyperparameters,
 )
 from ray.rllib.utils.from_config import NotProvided
 
@@ -34,7 +34,7 @@ class LearnerGroupConfig:
         # `self.learner()`
         self.learner_class = None
         self.optimizer_config = None
-        self.learner_hps = LearnerHPs()
+        self.learner_hps = LearnerHyperparameters()
 
         # `self.resources()`
         self.num_gpus_per_learner_worker = 0
@@ -65,11 +65,6 @@ class LearnerGroupConfig:
                 "the Learner class with .learner(learner_class=MyTrainerClass)."
             )
 
-        if self.optimizer_config is None:
-            # get the default optimizer config if it's not provided
-            # TODO (Kourosh): Change the optimizer config to a dataclass object.
-            self.optimizer_config = {"lr": 1e-3}
-
     def build(self) -> LearnerGroup:
         self.validate()
 
@@ -80,13 +75,15 @@ class LearnerGroupConfig:
             local_gpu_idx=self.local_gpu_idx,
         )
 
-        framework_hps = FrameworkHPs(eager_tracing=self.eager_tracing)
+        framework_hps = FrameworkHyperparameters(eager_tracing=self.eager_tracing)
 
         learner_spec = LearnerSpec(
             learner_class=self.learner_class,
             module_spec=self.module_spec,
-            optimizer_config=self.optimizer_config,
-            learner_scaling_config=scaling_config,
+            # If optimizer_config is not provided, use a default one.
+            # TODO (Kourosh): Change the optimizer config to a dataclass object.
+            optimizer_config=self.optimizer_config or {"lr": 1e-3},
+            learner_group_scaling_config=scaling_config,
             learner_hyperparameters=self.learner_hps,
             framework_hyperparameters=framework_hps,
         )
@@ -135,7 +132,7 @@ class LearnerGroupConfig:
         *,
         learner_class: Optional[Type["Learner"]] = NotProvided,
         optimizer_config: Optional[Dict] = NotProvided,
-        learner_hps: Optional[LearnerHPs] = NotProvided,
+        learner_hps: Optional[LearnerHyperparameters] = NotProvided,
     ) -> "LearnerGroupConfig":
 
         if learner_class is not NotProvided:

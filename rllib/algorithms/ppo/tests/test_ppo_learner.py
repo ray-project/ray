@@ -74,8 +74,8 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw in framework_iterator(config, ("tf2", "torch"), with_eager_tracing=True):
-            trainer = config.build()
-            policy = trainer.get_policy()
+            algo = config.build()
+            policy = algo.get_policy()
 
             train_batch = SampleBatch(FAKE_BATCH)
             train_batch = compute_gae_for_sample_batch(policy, train_batch)
@@ -110,12 +110,14 @@ class TestPPO(unittest.TestCase):
             learner_group = learner_group_config.build()
 
             # load the trainer weights onto the learner_group
-            learner_group.set_weights(trainer.get_weights())
+            learner_group.set_weights(algo.get_weights())
             results = learner_group.update(train_batch.as_multi_agent())
 
             learner_group_loss = results[ALL_MODULES]["total_loss"]
 
             check(learner_group_loss, policy_loss)
+
+            algo.stop()
 
 
 if __name__ == "__main__":

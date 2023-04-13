@@ -72,7 +72,7 @@ class LearnerGroup:
         learner_spec: LearnerSpec,
         max_queue_len: int = 20,
     ):
-        scaling_config = learner_spec.learner_scaling_config
+        scaling_config = learner_spec.learner_group_scaling_config
         learner_class = learner_spec.learner_class
 
         # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more

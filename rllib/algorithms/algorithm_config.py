@@ -18,7 +18,7 @@ from typing import (
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.learner.learner import LearnerHPs
+from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.learner_group_config import (
     LearnerGroupConfig,
     ModuleSpec,
@@ -322,10 +322,6 @@ class AlgorithmConfig(_Config):
         self.max_requests_in_flight_per_sampler_worker = 2
         self.learner_class = None
         self._enable_learner_api = False
-        # experimental: this will contain the hyper-parameters that are passed to the
-        # Learner, for computing loss, etc. New algorithms have to set this to their
-        # own default. .training() will modify the fields of this object.
-        self._learner_hps = LearnerHPs()
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -465,10 +461,6 @@ class AlgorithmConfig(_Config):
         self.horizon = DEPRECATED_VALUE
         self.soft_horizon = DEPRECATED_VALUE
         self.no_done_at_end = DEPRECATED_VALUE
-
-    @property
-    def learner_hps(self) -> LearnerHPs:
-        return self._learner_hps
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -1028,11 +1020,6 @@ class AlgorithmConfig(_Config):
                 "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
                 "(i.e. num_learner_workers = 0)"
             )
-
-        # resolve learner class
-        if self._enable_learner_api and self.learner_class is None:
-            learner_class_path = self.get_default_learner_class()
-            self.learner_class = deserialize_type(learner_class_path)
 
     def build(
         self,
@@ -3079,12 +3066,12 @@ class AlgorithmConfig(_Config):
             LearnerGroupConfig()
             .module(module_spec)
             .learner(
-                learner_class=self.learner_class,
+                learner_class=self.learner_class or self.get_default_learner_class(),
                 # TODO (Kourosh): optimizer config can now be more complicated.
                 optimizer_config={
                     "lr": self.lr,
                 },
-                learner_hps=self.learner_hps,
+                learner_hps=self.get_learner_hyperparameters(),
             )
             .resources(
                 num_learner_workers=self.num_learner_workers,
@@ -3096,6 +3083,20 @@ class AlgorithmConfig(_Config):
         )
 
         return config
+
+    def get_learner_hyperparameters(self) -> LearnerHyperparameters:
+        """Returns a new LearnerHyperparameters instance for the respective Learner.
+
+        The LearnerHyperparameters is a dataclass containing only those config settings
+        from AlgorithmConfig that are used by the algorithm's specific Learner
+        sub-class. They allow distributing only those settings relevant for learning
+        across a set of learner workers (instead of having to distribute the entire
+        AlgorithmConfig object).
+
+        Note that LearnerHyperparameters should always be derived directly from a
+        AlgorithmConfig object's own settings and considered frozen/read-only.
+        """
+        return LearnerHyperparameters()
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""
@@ -3200,10 +3201,6 @@ class AlgorithmConfig(_Config):
             config["model"]["custom_model"] = serialize_type(
                 config["model"]["custom_model"]
             )
-
-        # Serialize dataclasses.
-        if isinstance(config.get("_learner_hps"), LearnerHPs):
-            config["_learner_hps"] = dataclasses.asdict(config["_learner_hps"])
 
         # List'ify `policies`, iff a set or tuple (these types are not JSON'able).
         ma_config = config.get("multiagent")

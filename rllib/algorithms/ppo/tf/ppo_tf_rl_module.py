@@ -69,14 +69,14 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
-        batch[SampleBatch.SEQ_LENS] = None
+        #if self.encoder.config.shared:
+        #    batch[STATE_IN] = None
+        #else:
+        #    batch[STATE_IN] = {
+        #        ACTOR: None,
+        #        CRITIC: None,
+        #    }
+        #batch[SampleBatch.SEQ_LENS] = None
 
         encoder_outs = self.encoder(batch)
         # TODO (Artur): Un-uncomment once Policy supports RNN
@@ -99,14 +99,14 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
-        batch[SampleBatch.SEQ_LENS] = None
+        #if self.encoder.config.shared:
+        #    batch[STATE_IN] = None
+        #else:
+        #    batch[STATE_IN] = {
+        #        ACTOR: None,
+        #        CRITIC: None,
+        #    }
+        #batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
@@ -132,14 +132,14 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
-        batch[SampleBatch.SEQ_LENS] = None
+        #if self.encoder.config.shared:
+        #    batch[STATE_IN] = None
+        #else:
+        #    batch[STATE_IN] = {
+        #        ACTOR: None,
+        #        CRITIC: None,
+        #    }
+        #batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)

@@ -10,8 +10,8 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.impala.impala_base_learner import (
-    ImpalaHPs,
+from ray.rllib.algorithms.impala.impala_learner import (
+    ImpalaHyperparameters,
     _reduce_impala_results,
 )
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
@@ -108,7 +108,6 @@ class ImpalaConfig(AlgorithmConfig):
         # __sphinx_doc_begin__
 
         # IMPALA specific settings:
-        self._learner_hps = ImpalaHPs()
         self.vtrace = True
         self.vtrace_clip_rho_threshold = 1.0
         self.vtrace_clip_pg_rho_threshold = 1.0
@@ -407,20 +406,6 @@ class ImpalaConfig(AlgorithmConfig):
                     f"{self.train_batch_size}, and rollout_fragment_length="
                     f"{self.get_rollout_fragment_length()}"
                 )
-        # learner hps need to be updated inside of config.validate in order to have
-        # the correct values for when a user starts an experiment from a dict. This is
-        # as oppposed to assigning the values inthe builder functions such as `training`
-        self._learner_hps.rollout_frag_or_episode_len = (
-            self.get_rollout_fragment_length()
-        )
-        self._learner_hps.discount_factor = self.gamma
-        self._learner_hps.entropy_coeff = self.entropy_coeff
-        self._learner_hps.vf_loss_coeff = self.vf_loss_coeff
-        self._learner_hps.vtrace_drop_last_ts = self.vtrace_drop_last_ts
-        self._learner_hps.vtrace_clip_rho_threshold = self.vtrace_clip_rho_threshold
-        self._learner_hps.vtrace_clip_pg_rho_threshold = (
-            self.vtrace_clip_pg_rho_threshold
-        )
 
     @override(AlgorithmConfig)
     def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
@@ -432,6 +417,28 @@ class ImpalaConfig(AlgorithmConfig):
         lg_config = lg_config.learner(optimizer_config=optim_config)
         return lg_config
 
+    @override(AlgorithmConfig)
+    def get_learner_hyperparameters(self) -> ImpalaHyperparameters:
+        learner_hps = ImpalaHyperparameters(
+            rollout_frag_or_episode_len=self.get_rollout_fragment_length(),
+            discount_factor=self.gamma,
+            entropy_coeff=self.entropy_coeff,
+            vf_loss_coeff=self.vf_loss_coeff,
+            vtrace_drop_last_ts=self.vtrace_drop_last_ts,
+            vtrace_clip_rho_threshold=self.vtrace_clip_rho_threshold,
+            vtrace_clip_pg_rho_threshold=(
+                self.vtrace_clip_pg_rho_threshold
+            ),
+        )
+        assert (
+            (learner_hps.rollout_frag_or_episode_len is None)
+            != (learner_hps.recurrent_seq_len is None)
+        ), (
+            "One of `rollout_frag_or_episode_len` or `recurrent_seq_len` must be not "
+            "None in ImpalaHyperparameters!"
+        )
+        return learner_hps
+
     def get_replay_ratio(self) -> float:
         """Returns replay ratio (between 0.0 and 1.0) based off self.replay_proportion.
 
@@ -441,16 +448,16 @@ class ImpalaConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self):
-        if self.framework_str == "tf2":
-            from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
-
-            return ImpalaTfLearner
-        elif self.framework_str == "torch":
+        if self.framework_str == "torch":
             from ray.rllib.algorithms.impala.torch.impala_torch_learner import (
                 ImpalaTorchLearner,
             )
 
             return ImpalaTorchLearner
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
+
+            return ImpalaTfLearner
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 

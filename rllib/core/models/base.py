@@ -301,11 +301,11 @@ class Encoder(Model, abc.ABC):
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        return convert_to_canonical_format([SampleBatch.OBS, STATE_IN])
+        return convert_to_canonical_format([SampleBatch.OBS])#, STATE_IN])
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        return convert_to_canonical_format([ENCODER_OUT, STATE_OUT])
+        return convert_to_canonical_format([ENCODER_OUT])#, STATE_OUT])
 
     @abc.abstractmethod
     def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
@@ -363,31 +363,31 @@ class ActorCriticEncoder(Encoder):
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        if self.config.shared:
-            state_in_spec = self.encoder.input_specs[STATE_IN]
-        else:
-            state_in_spec = {
-                ACTOR: self.actor_encoder.input_specs[STATE_IN],
-                CRITIC: self.critic_encoder.input_specs[STATE_IN],
-            }
+        #if self.config.shared:
+        #    state_in_spec = self.encoder.input_specs[STATE_IN]
+        #else:
+        #    state_in_spec = {
+        #        ACTOR: self.actor_encoder.input_specs[STATE_IN],
+        #        CRITIC: self.critic_encoder.input_specs[STATE_IN],
+        #    }
 
         return SpecDict(
             {
                 SampleBatch.OBS: None,
-                STATE_IN: state_in_spec,
-                SampleBatch.SEQ_LENS: None,
+                #STATE_IN: state_in_spec,
+                #SampleBatch.SEQ_LENS: None,
             }
         )
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        if self.config.shared:
-            state_out_spec = self.encoder.output_specs[STATE_OUT]
-        else:
-            state_out_spec = {
-                ACTOR: self.actor_encoder.output_specs[STATE_OUT],
-                CRITIC: self.critic_encoder.output_specs[STATE_OUT],
-            }
+        #if self.config.shared:
+        #    state_out_spec = self.encoder.output_specs[STATE_OUT]
+        #else:
+        #    state_out_spec = {
+        #        ACTOR: self.actor_encoder.output_specs[STATE_OUT],
+        #        CRITIC: self.critic_encoder.output_specs[STATE_OUT],
+        #    }
 
         return SpecDict(
             {
@@ -395,7 +395,7 @@ class ActorCriticEncoder(Encoder):
                     ACTOR: None,
                     CRITIC: None,
                 },
-                STATE_OUT: state_out_spec,
+                #STATE_OUT: state_out_spec,
             }
         )
 
@@ -416,13 +416,13 @@ class ActorCriticEncoder(Encoder):
             return NestedDict(
                 {
                     ENCODER_OUT: {ACTOR: outs[ENCODER_OUT], CRITIC: outs[ENCODER_OUT]},
-                    STATE_OUT: outs[STATE_OUT],
+                    #STATE_OUT: outs[STATE_OUT],
                 }
             )
         else:
-            actor_inputs = NestedDict({**inputs, **{STATE_IN: inputs[STATE_IN][ACTOR]}})
+            actor_inputs = NestedDict({**inputs})#, **{STATE_IN: inputs[STATE_IN][ACTOR]}})
             critic_inputs = NestedDict(
-                {**inputs, **{STATE_IN: inputs[STATE_IN][CRITIC]}}
+                {**inputs}#, **{STATE_IN: inputs[STATE_IN][CRITIC]}}
             )
             actor_out = self.actor_encoder(actor_inputs, **kwargs)
             critic_out = self.critic_encoder(critic_inputs, **kwargs)
@@ -432,9 +432,9 @@ class ActorCriticEncoder(Encoder):
                         ACTOR: actor_out[ENCODER_OUT],
                         CRITIC: critic_out[ENCODER_OUT],
                     },
-                    STATE_OUT: {
-                        ACTOR: actor_out[STATE_OUT],
-                        CRITIC: critic_out[STATE_OUT],
-                    },
+                    #STATE_OUT: {
+                    #    ACTOR: actor_out[STATE_OUT],
+                    #    CRITIC: critic_out[STATE_OUT],
+                    #},
                 }
             )

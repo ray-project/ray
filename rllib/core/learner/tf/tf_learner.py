@@ -14,7 +14,7 @@ from typing import (
 )
 
 from ray.rllib.core.learner.learner import (
-    FrameworkHPs,
+    FrameworkHyperparameters,
     Learner,
     ParamOptimizerPair,
     NamedParamOptimizerPairs,
@@ -51,7 +51,7 @@ class TfLearner(Learner):
     def __init__(
         self,
         *,
-        framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
+        framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
         **kwargs,
     ):
 
@@ -65,9 +65,14 @@ class TfLearner(Learner):
             # enable_v2_behavior after variables have already been created.
             pass
 
-        super().__init__(framework_hyperparameters=framework_hyperparameters, **kwargs)
+        super().__init__(
+            framework_hyperparameters=(
+                framework_hyperparameters or FrameworkHyperparameters()
+            ),
+            **kwargs,
+        )
 
-        self._enable_tf_function = framework_hyperparameters.eager_tracing
+        self._enable_tf_function = self._framework_hyperparameters.eager_tracing
         # the default strategy is a no-op that can be used in the local mode
         # cpu only case, build will override this if needed.
         self._strategy = tf.distribute.get_strategy()
