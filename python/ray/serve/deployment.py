@@ -82,7 +82,7 @@ class Deployment:
         if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
             raise TypeError("ray_actor_options must be a dict.")
 
-        if is_driver_deployment == True:
+        if is_driver_deployment is True:
             if config.num_replicas != 1:
                 raise ValueError("num_replicas should not be set for driver deployment")
             if config.autoscaling_config:
