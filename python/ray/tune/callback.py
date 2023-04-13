@@ -108,7 +108,7 @@ class Callback(metaclass=_CallbackMeta):
     """
 
     # File templates for any artifacts written by this callback
-    # These files should live in the `trial.logdir` for each trial.
+    # These files should live in the `trial.local_path` for each trial.
     # TODO(ml-team): Make this more visible to users to override. Internal use for now.
     _SAVED_FILE_TEMPLATES = []
 

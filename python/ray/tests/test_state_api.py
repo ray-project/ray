@@ -2,13 +2,13 @@ import os
 import time
 import json
 import sys
+import signal
 from collections import Counter
 from dataclasses import dataclass
 from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
-from ray._private import gcs_utils
 from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
@@ -177,7 +177,14 @@ def generate_node_data(id):
     )
 
 
-def generate_worker_data(id, pid=1234):
+def generate_worker_data(
+    id,
+    pid=1234,
+    worker_launch_time_ms=1,
+    worker_launched_time_ms=2,
+    start_time_ms=3,
+    end_time_ms=4,
+):
     return WorkerTableData(
         worker_address=Address(
             raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id
@@ -187,6 +194,10 @@ def generate_worker_data(id, pid=1234):
         worker_type=WorkerType.WORKER,
         pid=pid,
         exit_type=None,
+        worker_launch_time_ms=worker_launch_time_ms,
+        worker_launched_time_ms=worker_launched_time_ms,
+        start_time_ms=start_time_ms,
+        end_time_ms=end_time_ms,
     )
 
 
@@ -1580,8 +1591,11 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     """
     result = await client.get_all_worker_info(limit=2)
     assert len(result.worker_table_data) == 2
-    # Driver + 3 workers for actors.
-    assert result.total == 4
+    # Driver + 3 workers for actors + 2 prestarted task-only workers
+    # TODO(clarng): prestart worker on worker lease request doesn't
+    # work, otherwise it should have created the 2 prestarted task-only
+    # workers prior to https://github.com/ray-project/ray/pull/33623
+    assert result.total == 6
 
 
 @pytest.mark.asyncio
@@ -1824,6 +1838,13 @@ def test_cli_apis_sanity_check(ray_start_cluster):
             ray_get,
             ["actors", actor._actor_id.hex()],
             ["actor_id", actor._actor_id.hex()],
+        )
+    )
+
+    # Test get task by ID
+    wait_for_condition(
+        lambda: verify_output(
+            ray_get, ["tasks", task.task_id().hex()], ["task_id", task.task_id().hex()]
         )
     )
 
@@ -2076,10 +2097,12 @@ def test_list_get_workers(shutdown_only):
     ray.init()
 
     def verify():
-        workers = list_workers()
+        workers = list_workers(detail=True)
         assert is_hex(workers[0]["worker_id"])
         # +1 to take into account of drivers.
         assert len(workers) == ray.cluster_resources()["CPU"] + 1
+        # End time should be 0 as it is not configured yet.
+        assert workers[0]["end_time_ms"] == 0
 
         # Test get worker returns the same result
         workers = list_workers(detail=True)
@@ -2090,7 +2113,19 @@ def test_list_get_workers(shutdown_only):
         return True
 
     wait_for_condition(verify)
-    print(list_workers())
+
+    # Kill the worker
+    workers = list_workers()
+    os.kill(workers[-1]["pid"], signal.SIGKILL)
+
+    def verify():
+        workers = list_workers(detail=True, filters=[("is_alive", "=", "False")])
+        assert len(workers) == 1
+        assert workers[0]["end_time_ms"] != 0
+        return True
+
+    wait_for_condition(verify)
+    print(list_workers(detail=True))
 
 
 @pytest.mark.skipif(
@@ -3274,7 +3309,7 @@ def test_core_state_api_usage_tags(shutdown_only):
     from ray._private.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
 
     ctx = ray.init()
-    gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+    gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
     list_actors()
     list_tasks()
     list_jobs()

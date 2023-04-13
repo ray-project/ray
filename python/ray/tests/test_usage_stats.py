@@ -13,7 +13,6 @@ from jsonschema import validate
 import ray
 import ray._private.usage.usage_constants as usage_constants
 import ray._private.usage.usage_lib as ray_usage_lib
-from ray._private import gcs_utils
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
@@ -106,10 +105,6 @@ def gcs_storage_type():
 @pytest.fixture
 def reset_usage_stats():
     yield
-    # Remove the lib usage so that it will be reset for each test.
-    ray_usage_lib.LibUsageRecorder(
-        ray._private.utils.get_ray_temp_dir()
-    ).delete_lib_usages()
     ray.experimental.internal_kv._internal_kv_reset()
     ray_usage_lib._recorded_library_usages.clear()
     ray_usage_lib._recorded_extra_usage_tags.clear()
@@ -243,7 +238,7 @@ def test_worker_crash_increment_stats():
         with pytest.raises(ray.exceptions.OutOfMemoryError):
             ray.get(oomer.options(max_retries=0).remote())
 
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
         wait_for_condition(
             lambda: "worker_crash_system_error"
             in ray_usage_lib.get_extra_usage_tags_to_report(gcs_client),
@@ -268,7 +263,7 @@ def test_actor_stats(reset_usage_stats):
     with ray.init(
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         actor = Actor.remote()
         wait_for_condition(
@@ -323,7 +318,7 @@ def test_pg_stats(reset_usage_stats):
         num_cpus=3,
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         pg = placement_group([{"CPU": 1}], strategy="STRICT_PACK")
         ray.get(pg.ready())
@@ -353,7 +348,7 @@ def test_task_stats(reset_usage_stats):
     with ray.init(
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         wait_for_condition(
             lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
@@ -453,37 +448,6 @@ def test_set_usage_stats_enabled_via_config(monkeypatch, tmp_path, reset_usage_s
     os.makedirs(os.path.dirname(tmp_usage_stats_config_path / "xxx.txt"), exist_ok=True)
     with pytest.raises(Exception, match="Failed to enable usage stats.*"):
         ray_usage_lib.set_usage_stats_enabled_via_config(True)
-
-
-def test_lib_usage_recorder(tmp_path):
-    recorder = ray_usage_lib.LibUsageRecorder(tmp_path)
-    lib_tune = "tune"
-    lib_rllib = "rllib"
-
-    filename = recorder._lib_usage_filename(lib_tune)
-    assert recorder._get_lib_usage_from_filename(filename) == lib_tune
-
-    # Write tune.
-    assert recorder.read_lib_usages() == []
-    recorder.put_lib_usage(lib_tune)
-    assert recorder.read_lib_usages() == [lib_tune]
-    recorder.put_lib_usage(lib_tune)
-    assert recorder.read_lib_usages() == [lib_tune]
-
-    # Test write is idempotent
-    for _ in range(5):
-        recorder.put_lib_usage(lib_tune)
-    assert recorder.read_lib_usages() == [lib_tune]
-
-    # Write rllib.
-    recorder.put_lib_usage(lib_rllib)
-    assert set(recorder.read_lib_usages()) == {lib_tune, lib_rllib}
-
-    # Test idempotency when there is more than 1 lib.
-    recorder.put_lib_usage(lib_rllib)
-    recorder.put_lib_usage(lib_rllib)
-    recorder.put_lib_usage(lib_tune)
-    assert set(recorder.read_lib_usages()) == {lib_tune, lib_rllib}
 
 
 @pytest.fixture
@@ -739,6 +703,8 @@ def test_usage_stats_enabled_endpoint(
 )
 @pytest.mark.parametrize("ray_client", [True, False])
 def test_library_usages(call_ray_start, reset_usage_stats, ray_client):
+    from ray.job_submission import JobSubmissionClient
+
     address = call_ray_start
     ray.init(address=address)
 
@@ -783,9 +749,7 @@ with joblib.parallel_backend("ray"):
     run_string_as_driver(driver)
 
     if sys.platform != "win32":
-        job_submission_client = ray.job_submission.JobSubmissionClient(
-            "http://127.0.0.1:8265"
-        )
+        job_submission_client = JobSubmissionClient("http://127.0.0.1:8265")
         job_id = job_submission_client.submit_job(entrypoint="ls")
         wait_for_condition(
             lambda: job_submission_client.get_job_status(job_id)
@@ -795,10 +759,6 @@ with joblib.parallel_backend("ray"):
     library_usages = ray_usage_lib.get_library_usages_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client()
     )
-    tmp_path = ray._private.utils.get_ray_temp_dir()
-    lib_usages_from_home_folder = ray_usage_lib.LibUsageRecorder(
-        tmp_path
-    ).read_lib_usages()
     expected = {
         "pre_init",
         "post_init",
@@ -816,8 +776,6 @@ with joblib.parallel_backend("ray"):
     if ray_client:
         expected.add("client")
     assert set(library_usages) == expected
-    if not ray_client:
-        assert set(lib_usages_from_home_folder) == expected
 
 
 def test_usage_lib_cluster_metadata_generation_usage_disabled(
@@ -839,7 +797,7 @@ def test_usage_lib_get_total_num_running_jobs_to_report(
 ):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
-    gcs_client = gcs_utils.GcsClient(address=cluster.gcs_address)
+    gcs_client = ray._raylet.GcsClient(address=cluster.gcs_address)
     assert ray_usage_lib.get_total_num_running_jobs_to_report(gcs_client) == 0
 
     ray.init(address=cluster.address)
@@ -1012,6 +970,11 @@ available_node_types:
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
+# TODO(https://github.com/ray-project/ray/issues/33486)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 11, 0),
+    reason=("Currently not passing for Python 3.11"),
+)
 def test_usage_lib_report_data(
     monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats
 ):
@@ -1098,6 +1061,11 @@ provider:
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
+# TODO(https://github.com/ray-project/ray/issues/33486)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 11, 0),
+    reason=("Currently not passing for Python 3.11"),
+)
 def test_usage_report_e2e(
     monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats, gcs_storage_type
 ):
@@ -1163,7 +1131,7 @@ provider:
         reporter = StatusReporter.remote()
 
         @ray.remote(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
-        class ServeInitator:
+        class ServeInitiator:
             def __init__(self):
                 # This is used in the worker process
                 # so it won't be tracked as library usage.
@@ -1186,7 +1154,7 @@ provider:
 
         # We need to start a serve with runtime env to make this test
         # work with minimal installation.
-        s = ServeInitator.remote()
+        s = ServeInitiator.remote()
         ray.get(s.ready.remote())
 
         """
@@ -1228,13 +1196,14 @@ provider:
         payload["extra_usage_tags"]["num_actor_tasks"] = "0"
         payload["extra_usage_tags"]["num_normal_tasks"] = "0"
         payload["extra_usage_tags"]["num_drivers"] = "0"
-        assert payload["extra_usage_tags"] == {
+        expected_payload = {
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
             "_test2": "extra_v3",
             "dashboard_metrics_grafana_enabled": "False",
             "dashboard_metrics_prometheus_enabled": "False",
             "serve_num_deployments": "1",
+            "serve_num_gpu_deployments": "0",
             "serve_api_version": "v1",
             "actor_num_created": "0",
             "pg_num_created": "0",
@@ -1245,6 +1214,10 @@ provider:
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
         }
+        if os.environ.get("RAY_MINIMAL") != "1":
+            expected_payload["tune_scheduler"] = "FIFOScheduler"
+            expected_payload["tune_searcher"] = "BasicVariantGenerator"
+        assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
         if os.environ.get("RAY_MINIMAL") == "1":
@@ -1435,6 +1408,11 @@ if os.environ.get("RAY_MINIMAL") != "1":
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
+# TODO(https://github.com/ray-project/ray/issues/33486)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 11, 0),
+    reason=("Currently not passing for Python 3.11"),
+)
 def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats):
     """
     Test library usage is correctly reported when they are imported from
@@ -1480,72 +1458,6 @@ def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats
         def verify():
             lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
             return set(lib_usages) == {"tune", "rllib", "train"}
-
-        wait_for_condition(verify)
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="Test depends on library that's not downloaded from a minimal install.",
-)
-def test_lib_usage_record_from_init_session(
-    monkeypatch, ray_start_cluster, reset_usage_stats
-):
-    """
-    Make sure we store a lib usage to the /tmp/ray folder and report them
-    when any instance that has usage stats enabled.
-    """
-
-    # Start a driver without usage stats enabled. This will record
-    # lib_usage.txt.
-    script = """
-import ray
-import os
-from ray import train  # noqa: F401
-from ray import tune  # noqa: F401
-from ray.rllib.algorithms.ppo import PPO  # noqa: F401
-
-# Start a instance that disables usage stats.
-ray.init()
-
-def objective(*args):
-    pass
-
-tune.run(objective)
-"""
-
-    run_string_as_driver(script)
-
-    # Run the cluster that reports the usage stats. Make sure the lib usage is reported.
-    with monkeypatch.context() as m:
-        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
-        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        cluster = ray_start_cluster
-        cluster.add_node(num_cpus=3)
-        ray.init(address=cluster.address)
-
-        """
-        Verify the library usage is recorded to the ray folder.
-        """
-        lib_usages = ray_usage_lib.LibUsageRecorder(
-            ray._private.utils.get_ray_temp_dir()
-        ).read_lib_usages()
-        assert set(lib_usages) == {"train", "rllib", "tune"}
-
-        """
-        Verify the library usage is reported from the current instance.
-        """
-        print("Verifying lib usage report.")
-        global_node = ray.worker._global_node
-        temp_dir = pathlib.Path(global_node.get_session_dir_path())
-
-        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
-
-        def verify():
-            lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
-            print(lib_usages)
-            return set(lib_usages) == {"rllib", "train", "tune"}
 
         wait_for_condition(verify)
 

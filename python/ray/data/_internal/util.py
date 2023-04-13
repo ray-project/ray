@@ -1,7 +1,7 @@
 import importlib
 import logging
 import os
-from typing import List, Union, Optional, TYPE_CHECKING
+from typing import Any, List, Union, Optional, TYPE_CHECKING
 from types import ModuleType
 import sys
 
@@ -9,12 +9,16 @@ import numpy as np
 
 import ray
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray._private.utils import _get_pyarrow_version
 
 if TYPE_CHECKING:
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
+    import pyarrow
+    import pandas
+    from ray.data._internal.arrow_block import ArrowRow
+    from ray.data.block import Block, BlockMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +84,7 @@ def _check_pyarrow_version():
 def _autodetect_parallelism(
     parallelism: int,
     cur_pg: Optional["PlacementGroup"],
-    ctx: DatasetContext,
+    ctx: DataContext,
     reader: Optional["Reader"] = None,
     avail_cpus: Optional[int] = None,
 ) -> (int, int):
@@ -343,7 +347,7 @@ def _consumption_api(
     """
     base = (
         " will trigger execution of the lazy transformations performed on "
-        "this dataset, and will block until execution completes."
+        "this dataset."
     )
     if delegate:
         message = delegate + base
@@ -380,3 +384,81 @@ def ConsumptionAPI(*args, **kwargs):
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return _consumption_api()(args[0])
     return _consumption_api(*args, **kwargs)
+
+
+def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
+    """Split the list into `num_splits` lists.
+
+    The splits will be even if the `num_splits` divides the length of list, otherwise
+    the remainder (suppose it's R) will be allocated to the first R splits (one for
+    each).
+    This is the same as numpy.array_split(). The reason we make this a separate
+    implementation is to allow the heterogeneity in the elements in the list.
+    """
+    assert num_splits > 0
+    q, r = divmod(len(arr), num_splits)
+    splits = [
+        arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
+    ]
+    return splits
+
+
+def capfirst(s: str):
+    """Capitalize the first letter of a string
+
+    Args:
+        s: String to capitalize
+
+    Returns:
+       Capitalized string
+    """
+    return s[0].upper() + s[1:]
+
+
+def capitalize(s: str):
+    """Capitalize a string, removing '_' and keeping camelcase.
+
+    Args:
+        s: String to capitalize
+
+    Returns:
+        Capitalized string with no underscores.
+    """
+    return "".join(capfirst(x) for x in s.split("_"))
+
+
+def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
+    from ray.data.block import BlockAccessor, BlockExecStats
+
+    stats = BlockExecStats.builder()
+    import pyarrow as pa
+
+    block = pa.table(df)
+    return (
+        block,
+        BlockAccessor.for_block(block).get_metadata(
+            input_files=None, exec_stats=stats.build()
+        ),
+    )
+
+
+def ndarray_to_block(ndarray: np.ndarray) -> "Block[np.ndarray]":
+    from ray.data.block import BlockAccessor, BlockExecStats
+
+    stats = BlockExecStats.builder()
+    block = BlockAccessor.batch_to_block(ndarray)
+    metadata = BlockAccessor.for_block(block).get_metadata(
+        input_files=None, exec_stats=stats.build()
+    )
+    return block, metadata
+
+
+def get_table_block_metadata(
+    table: Union["pyarrow.Table", "pandas.DataFrame"]
+) -> "BlockMetadata":
+    from ray.data.block import BlockAccessor, BlockExecStats
+
+    stats = BlockExecStats.builder()
+    return BlockAccessor.for_block(table).get_metadata(
+        input_files=None, exec_stats=stats.build()
+    )

@@ -1,5 +1,5 @@
 import { AxiosResponse } from "axios";
-import useSWR from "swr";
+import useSWR, { Key } from "swr";
 import { PER_JOB_PAGE_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import {
   AsyncFunction,
@@ -8,7 +8,7 @@ import {
 } from "../../../type/stateApi";
 
 export const useStateApiList = (
-  key: string,
+  key: Key,
   getFunc: AsyncFunction<AxiosResponse<StateApiResponse<StateApiTypes>>>,
 ) => {
   /**

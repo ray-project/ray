@@ -1,8 +1,8 @@
-from typing import Callable, Iterator
+from typing import Callable, Iterator, List
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block
-from ray.data.datasource import Datasource
+from ray.data.datasource import Datasource, WriteResult
 
 
 def generate_write_fn(
@@ -13,6 +13,8 @@ def generate_write_fn(
     # be raised. The Datasource can handle execution outcomes with the
     # on_write_complete() and on_write_failed().
     def fn(blocks: Iterator[Block], ctx) -> Iterator[Block]:
-        return [[datasource.write(blocks, ctx, **write_args)]]
+        # NOTE: `WriteResult` isn't a valid block type, so we need to wrap it in a list.
+        block: List[WriteResult] = [datasource.write(blocks, ctx, **write_args)]
+        return [block]
 
     return fn

@@ -1,6 +1,6 @@
 import { get } from "./requestHandlers";
 
-export const getLogDetail = async (url: string) => {
+const getLogUrl = (url: string) => {
   if (window.location.pathname !== "/" && url !== "log_index") {
     const pathArr = window.location.pathname.split("/");
     if (pathArr.length > 1) {
@@ -12,9 +12,24 @@ export const getLogDetail = async (url: string) => {
       }
     }
   }
-  const rsp = await get(
-    url === "log_index" ? url : `log_proxy?url=${encodeURIComponent(url)}`,
-  );
+  return url === "log_index" ? url : `log_proxy?url=${encodeURIComponent(url)}`;
+};
+
+/**
+ * @returns Url where we can fetch log contents. Will return null if the url
+ * refers to a log directory and not a log file.
+ */
+export const getLogDownloadUrl = (url: string) => {
+  url = getLogUrl(url);
+  if (url === "log_index") {
+    return undefined;
+  }
+  return url;
+};
+
+export const getLogDetail = async (url: string) => {
+  url = getLogUrl(url);
+  const rsp = await get(url);
   if (rsp.headers["content-type"]?.includes("html")) {
     const el = document.createElement("div");
     el.innerHTML = rsp.data;

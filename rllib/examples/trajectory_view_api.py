@@ -23,7 +23,7 @@ parser.add_argument(
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -75,8 +75,12 @@ if __name__ == "__main__":
                 # "use_attention": True,
                 # "attention_use_n_prev_actions": 1,
                 # "attention_use_n_prev_rewards": 1,
-            }
+            },
+            # TODO (Kourosh): This example needs to be migrated to the new RLModule API
+            # stack.
+            _enable_learner_api=False,
         )
+        .rl_module(_enable_rl_module_api=False)
     )
     if args.run == "PPO":
         config.training(

@@ -28,14 +28,15 @@ from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
-from ray.data._internal.pipelined_dataset_iterator import PipelinedDatasetIterator
+from ray.data._internal.dataset_iterator.pipelined_dataset_iterator import (
+    PipelinedDataIterator,
+)
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
-from ray.data._internal.util import _is_tensor_schema
-from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF
-from ray.data.context import DatasetContext
-from ray.data.dataset import Dataset, T, U
-from ray.data.dataset_iterator import DatasetIterator
+from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF, T, U
+from ray.data.context import DataContext
+from ray.data.dataset import Dataset
+from ray.data.dataset_iterator import DataIterator
 from ray.data.datasource import Datasource
 from ray.data.datasource.file_based_datasource import (
     BlockWritePathProvider,
@@ -108,8 +109,8 @@ class DatasetPipeline(Generic[T]):
         self._schema = None
         self._stats = DatasetPipelineStats()
 
-    def iterator(self) -> DatasetIterator:
-        """Return a :class:`~ray.data.DatasetIterator` that
+    def iterator(self) -> DataIterator:
+        """Return a :class:`~ray.data.DataIterator` that
         can be used to repeatedly iterate over the dataset.
 
         Note that each pass iterates over the entire original Dataset, even if
@@ -123,10 +124,10 @@ class DatasetPipeline(Generic[T]):
             >>> for batch in ds.iterator().iter_batches(batch_size=2):
             ...     print(batch) # doctest: +SKIP
 
-        It is recommended to use ``DatasetIterator`` methods over directly
+        It is recommended to use ``DataIterator`` methods over directly
         calling methods such as ``iter_batches()``.
         """
-        return PipelinedDatasetIterator(self)
+        return PipelinedDataIterator(self)
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the data in the pipeline.
@@ -168,9 +169,11 @@ class DatasetPipeline(Generic[T]):
     def iter_batches(
         self,
         *,
+        prefetch_batches: int = 1,
+        # Deprecated.
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "default",
+        batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -193,11 +196,13 @@ class DatasetPipeline(Generic[T]):
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
-            batch_format: The format in which to return each batch.
-                Specify "default" to use the current block format (promoting
-                Arrow to pandas automatically), "pandas" to
-                select ``pandas.DataFrame`` or "pyarrow" to select
-                ``pyarrow.Table``. Default is "default".
+            batch_format: Specify ``"default"`` to use the default block format
+                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
+                ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
+                ``Dict[str, numpy.ndarray]`` for tabular datasets, or None to return
+                the underlying block exactly as is with no additional formatting.
+                The default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -340,7 +345,7 @@ class DatasetPipeline(Generic[T]):
     def _split(
         self, n: int, splitter: Callable[[Dataset], List["Dataset[T]"]]
     ) -> List["DatasetPipeline[T]"]:
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         scheduling_strategy = ctx.scheduling_strategy
         if not ray.util.client.ray.is_connected():
             # Pin the coordinator (and any child actors) to the local node to avoid
@@ -353,7 +358,7 @@ class DatasetPipeline(Generic[T]):
 
         coordinator = PipelineSplitExecutorCoordinator.options(
             scheduling_strategy=scheduling_strategy,
-        ).remote(self, n, splitter, DatasetContext.get_current())
+        ).remote(self, n, splitter, DataContext.get_current())
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
@@ -791,8 +796,7 @@ class DatasetPipeline(Generic[T]):
         *,
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
-        batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
-        prefetch_batches: int = 0,
+        batch_format: Optional[str] = "default",
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -807,7 +811,6 @@ class DatasetPipeline(Generic[T]):
                 batch_size=batch_size,
                 compute=compute,
                 batch_format=batch_format,
-                prefetch_batches=prefetch_batches,
                 fn_args=fn_args,
                 fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
@@ -1062,7 +1065,7 @@ class DatasetPipeline(Generic[T]):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "default",
+        batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -1070,7 +1073,7 @@ class DatasetPipeline(Generic[T]):
         """Call
         :py:meth:`Dataset.iter_tf_batches <ray.data.Dataset.iter_tf_batches>`
         over the stream of output batches from the pipeline."""
-        return Dataset.iter_tf_batches(
+        return DataIterator.iter_tf_batches(
             self,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
@@ -1096,7 +1099,7 @@ class DatasetPipeline(Generic[T]):
         """Call
         :py:meth:`Dataset.iter_torch_batches <ray.data.Dataset.iter_torch_batches>`
         over the stream of output batches from the pipeline."""
-        return Dataset.iter_torch_batches(
+        return DataIterator.iter_torch_batches(
             self,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
@@ -1107,13 +1110,6 @@ class DatasetPipeline(Generic[T]):
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
         )
-
-    def _is_tensor_dataset(self) -> bool:
-        """Return ``True`` if this dataset is a tensor dataset."""
-        schema = self.schema()
-        if schema is None or isinstance(schema, type):
-            return False
-        return _is_tensor_schema(schema.names)
 
     def to_tf(
         self,
@@ -1128,7 +1124,7 @@ class DatasetPipeline(Generic[T]):
     ) -> "tf.data.Dataset":
         """Call :py:meth:`Dataset.to_tf <ray.data.Dataset.to_tf>` over the stream of
         output batches from the pipeline"""
-        return Dataset.to_tf(
+        return DataIterator.to_tf(
             self,
             feature_columns=feature_columns,
             label_columns=label_columns,
@@ -1158,7 +1154,7 @@ class DatasetPipeline(Generic[T]):
     ) -> "torch.utils.data.IterableDataset":
         """Call :py:meth:`Dataset.to_torch <ray.data.Dataset.to_torch>` over the stream
         of output batches from the pipeline"""
-        return Dataset.to_torch(
+        return DataIterator.to_torch(
             self,
             label_column=label_column,
             feature_columns=feature_columns,
@@ -1287,7 +1283,7 @@ class DatasetPipeline(Generic[T]):
 
     def _optimize_stages(self):
         """Optimize this pipeline, fusing stages together as possible."""
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
 
         if not context.optimize_fuse_stages:
             self._optimized_stages = self._stages

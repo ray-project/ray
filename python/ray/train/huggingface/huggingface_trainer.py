@@ -63,16 +63,6 @@ if "datasets_modules" not in sys.modules and is_datasets_available():
     sys.modules[spec.name] = datasets_modules
     spec.loader.exec_module(datasets_modules)
 
-# This trainer uses a special checkpoint syncing logic.
-# Because HF checkpoints are very large dirs (at least several GBs),
-# we use directory checkpoints that are synced between nodes when
-# required instead of serializing the checkpoints and sending
-# bytes over nodes. This is a much more performant solution for
-# large directory checkpoints. The current implementation
-# is special for HuggingFaceTrainer, but can and should be
-# made generic.
-# TODO(ml-team): Make dir syncing checkpoint logic generic.
-
 
 TRAINER_INIT_FN_KEY = "_trainer_init_per_worker"
 
@@ -112,6 +102,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
     (segfault) may be thrown.
 
     This Trainer requires ``transformers>=4.19.0`` package.
+    It is tested with ``transformers==4.19.1``.
 
     Example:
         .. code-block:: python

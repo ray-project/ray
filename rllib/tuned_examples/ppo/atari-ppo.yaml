@@ -10,7 +10,7 @@ atari-ppo:
     run: PPO
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         env_config:
             frameskip: 1  # no frameskip
         lambda: 0.95

@@ -43,7 +43,7 @@ from transformers import (
 from transformers.utils.versions import require_version
 
 import ray
-from ray.train.torch import TorchTrainer
+from ray.train.huggingface.accelerate import AccelerateTrainer
 from ray.air.config import ScalingConfig
 
 logger = logging.getLogger(__name__)
@@ -610,9 +610,10 @@ def main():
         else:
             # Connect to a Ray cluster for distributed training.
             ray.init(address=args.address)
-        trainer = TorchTrainer(
+        trainer = AccelerateTrainer(
             train_func,
             train_loop_config=config,
+            accelerate_config={},
             scaling_config=ScalingConfig(
                 num_workers=args.num_workers, use_gpu=args.use_gpu
             ),
