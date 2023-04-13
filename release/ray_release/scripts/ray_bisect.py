@@ -159,9 +159,7 @@ def _get_test(test_name: str) -> Test:
 
 def _get_test(test_name: str) -> Test:
     test_collection = read_and_validate_release_test_collection(
-        os.path.join(
-            os.path.dirname(__file__), "..", "..", "release_tests.yaml"
-        )
+        os.path.join(os.path.dirname(__file__), "..", "..", "release_tests.yaml")
     )
     return [test for test in test_collection if test['name'] == test_name][0]
 
