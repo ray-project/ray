@@ -219,8 +219,13 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
             for read_task in blocks:
                 yield from read_task()
 
+        # If the BlockList's read stage name is available, we assign it
+        # as the operator's name, which is used as the task name.
+        task_name = "DoRead"
+        if isinstance(blocks, LazyBlockList):
+            task_name = getattr(blocks, "_read_stage_name", task_name)
         return MapOperator.create(
-            do_read, inputs, name="DoRead", ray_remote_args=remote_args
+            do_read, inputs, name=task_name, ray_remote_args=remote_args
         )
     else:
         output = _block_list_to_bundles(blocks, owns_blocks=owns_blocks)
