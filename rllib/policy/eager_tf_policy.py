@@ -180,14 +180,14 @@ def _traced_eager_policy(eager_policy_cls):
             # actors.
             # Create a traced version of `self._compute_actions_helper`.
             if (
-                not self.config.get("_enable_rl_module_api", False)
-                and self._traced_compute_actions_helper is False
+                #not self.config.get("_enable_rl_module_api", False)
+                self._traced_compute_actions_helper is False
                 and not self._no_tracing
             ):
                 self._compute_actions_helper = _convert_eager_inputs(
                     tf.function(
                         super(TracedEagerPolicy, self)._compute_actions_helper,
-                        autograph=False,
+                        autograph=self.config.get("_enable_rl_module_api", False), #False
                         reduce_retracing=True,
                     )
                 )
