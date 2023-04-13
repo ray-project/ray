@@ -1081,7 +1081,6 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
 
 def test__blocks_to_input_buffer_op_name(
     ray_start_regular_shared,
-    enable_optimizer,
     enable_streaming_executor,
 ):
     ds: ray.data.Datastream = ray.data.range(10)
