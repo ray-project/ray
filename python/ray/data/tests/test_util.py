@@ -3,12 +3,23 @@ import ray
 import numpy as np
 
 from ray.data._internal.util import _check_pyarrow_version, _split_list
+from ray.data._internal.usage import _recorded_block_formats
 from ray.data._internal.memory_tracing import (
     trace_allocation,
     trace_deallocation,
     leak_report,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
+
+
+def test_block_format_usage():
+    assert not _recorded_block_formats
+    ray.data.range(10).show()
+    assert set(_recorded_block_formats.keys()) == {"simple"}
+    ray.data.range_table(10).show()
+    assert set(_recorded_block_formats.keys()) == {"simple", "arrow"}
+    ray.data.range_table(10).map_batches(lambda x: x).show()
+    assert set(_recorded_block_formats.keys()) == {"simple", "arrow", "pandas"}
 
 
 def test_check_pyarrow_version_bounds(unsupported_pyarrow_version):
