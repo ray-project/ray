@@ -899,11 +899,14 @@ def fix_docker_images(
     )
     print(dict(tags))
 
+    # Pull images we want to rebuild
     for base_tag in tags:
         base_image = f"{repo}/{image}:{base_tag}"
 
         print(f"docker pull {base_image}")
 
+    # Re-tag these base images as e.g. pinned/ray-ml:tag
+    # This is so we can re-run the build command safely.
     pinned_base_image = {}
     for base_tag in tags:
         base_image = f"{repo}/{image}:{base_tag}"
@@ -913,6 +916,7 @@ def fix_docker_images(
 
         print(f"docker tag {base_image} {pinned_image}")
 
+    # Create commands to build the new layer for the base images.
     for base_tag in tags:
         base_image = f"{repo}/{image}:{base_tag}"
         pinned_image = pinned_base_image[base_image]
@@ -922,14 +926,18 @@ def fix_docker_images(
             if subtag == base_tag:
                 continue
 
+            # This will overwrite the rayproject/ray-ml:tag image
+            # - but we still have the pinned/ image if we want to re-run!
             target_image = f"{repo}/{image}:{subtag}"
             print(f"docker tag {base_image} {target_image}")
 
+    # Lastly, push new layers
     print(f"docker push --all-tags {repo}/{image}")
 
 
 if __name__ == "__main__":
-    main()
-
-    # To manually re-tag images,
-    # fix_docker_images()
+    fix_image = os.environ.get("FIX_IMAGE")
+    if not fix_image:
+        main()
+    else:
+        fix_docker_images(fix_image)
