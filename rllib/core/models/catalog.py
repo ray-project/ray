@@ -151,8 +151,8 @@ class Catalog:
 
         # With that, RLlib can build and use models from this catalog like this:
         catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
-        my_head = catalog.build_my_head("torch")  # doctest: +SKIP
-        out = my_head(...)  # doctest: +SKIP
+        my_head = catalog.build_my_head("torch")
+        out = my_head(torch.Tensor([[1]]))
     """
 
     def __init__(
