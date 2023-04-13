@@ -14,7 +14,7 @@ from ray_release.config import (
     read_and_validate_release_test_collection,
 )
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment, populate_os_env
-from ray_release.exception import ReleaseTestCLIError
+from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
 from ray_release.glue import run_release_test
 from ray_release.logger import logger
 from ray_release.reporter.artifacts import ArtifactsReporter
@@ -166,9 +166,9 @@ def main(
         return_code = e.exit_code.value
     logger.info(
         f"Release test pipeline for test {test['name']} completed. "
-        f"Returning with exit code = {result.return_code}"
+        f"Returning with exit code = {return_code}"
     )
-    sys.exit(result.return_code)
+    sys.exit(return_code)
 
 
 if __name__ == "__main__":
