@@ -406,6 +406,7 @@ class ExecutionPlan:
         self, blocks: BlockList, fetch_if_missing: bool = False
     ) -> Union[type, "pyarrow.lib.Schema"]:
         """Get the unified schema of the blocks.
+
         Args:
             blocks: the blocks to get schema
             fetch_if_missing: Whether to execute the blocks to fetch the schema.

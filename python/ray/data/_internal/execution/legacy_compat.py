@@ -334,7 +334,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         raise NotImplementedError
 
 
-def _bundles_to_block_list(bundles: Iterator["RefBundle"]) -> BlockList:
+def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
     blocks, metadata = [], []
     owns_blocks = True
     for ref_bundle in bundles:
@@ -346,9 +346,7 @@ def _bundles_to_block_list(bundles: Iterator["RefBundle"]) -> BlockList:
     return BlockList(blocks, metadata, owned_by_consumer=owns_blocks)
 
 
-def _block_list_to_bundles(blocks: BlockList, owns_blocks: bool) -> List["RefBundle"]:
-    from ray.data._internal.execution.interfaces import RefBundle
-
+def _block_list_to_bundles(blocks: BlockList, owns_blocks: bool) -> List[RefBundle]:
     output = []
     for block, meta in blocks.iter_blocks_with_metadata():
         output.append(
