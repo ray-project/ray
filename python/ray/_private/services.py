@@ -23,8 +23,7 @@ import psutil
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.gcs_utils import GcsClient
-from ray._raylet import GcsClientOptions
+from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
 
 resource = None
@@ -1358,6 +1357,7 @@ def start_raylet(
     plasma_directory: str,
     object_store_memory: int,
     session_name: str,
+    is_head_node: bool,
     min_worker_port: Optional[int] = None,
     max_worker_port: Optional[int] = None,
     worker_port_list: Optional[List[int]] = None,
@@ -1607,6 +1607,9 @@ def start_raylet(
         f"--gcs-address={gcs_address}",
         f"--session-name={session_name}",
     ]
+
+    if is_head_node:
+        command.append("--head")
 
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
