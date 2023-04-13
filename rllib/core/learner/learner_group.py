@@ -404,6 +404,62 @@ class LearnerGroup:
         if is_module_trainable is not None:
             self._is_module_trainable = is_module_trainable
 
+    def save_state(self, path: str) -> None:
+        """Saves the state of the LearnerGroup.
+
+        Args:
+            path: The path to save the state to.
+        """
+        if self.is_local:
+            self._learner.save_state(path)
+        else:
+            worker = self._worker_manager.healthy_actor_ids()[0]
+            # assert len(self._workers) == self._worker_manager.num_healthy_actors()
+            self._worker_manager.foreach_actor(
+                lambda w: w.save_state(path), remote_actor_ids=[worker]
+            )
+
+    def load_state(self, path: str) -> None:
+        """Loads the state of the LearnerGroup.
+
+        Args:
+            path: The path to load the state from.
+        """
+        if self.is_local:
+            self._learner.load_state(path)
+        else:
+            workers = self._worker_manager.healthy_actor_ids()
+            for worker in workers:
+                worker_ip_addr = self._worker_manager.foreach_actor(
+                    self._get_ip_address, remote_actor_ids=[worker]
+                )
+                self_ip_addr = self._get_ip_address()
+
+                if worker_ip_addr == self_ip_addr:
+                    self._worker_manager.foreach_actor(
+                        lambda w: w.load_state(path), remote_actor_ids=[worker]
+                    )
+                else:
+                    # move the checkpoint to a temporary location on the worker
+                    # and load the checkpoint from there
+                    pass
+
+    @staticmethod
+    def _get_ip_address(_=None) -> str:
+        """Returns this process's address.
+
+        Args:
+            _: Unused arg. Exists to make this function compatible with foreach_actor
+            calls.
+
+        Returns:
+            The address of this process.
+
+        """
+        import platform
+
+        return platform.node()
+
     def shutdown(self):
         """Shuts down the LearnerGroup."""
         if not self._is_local:
