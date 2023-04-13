@@ -98,7 +98,7 @@ def init_torch_dist_process_group(
     workers: List[ActorHandle],
     backend: str = "gloo",
     init_method: str = "env",
-):
+) -> List[int]:
     """Initialize a torch distributed process group.
 
     Args:
@@ -107,6 +107,9 @@ def init_torch_dist_process_group(
             possible choices are "gloo" or "nccl".
         init_method: The initialization method to use,
             possible choices are "env" or "tcp".
+
+    Returns:
+        Local ranks on their respective nodes for the list of workers.
     """
     if not dist.is_available():
         raise RuntimeError("Distributed torch is not available.")
@@ -128,8 +131,11 @@ def init_torch_dist_process_group(
 
     setup_futures = []
     world_size = len(workers)
+    local_ranks = []
     for rank, worker in enumerate(workers):
         node_id = node_and_gpu_ids[rank][0]
+        local_rank = node_to_workers[node_id].index(rank)
+        local_world_size = len(node_to_workers[node_id])
         setup_futures.append(
             worker.execute.remote(
                 _init_torch_distributed,
@@ -137,11 +143,16 @@ def init_torch_dist_process_group(
                 backend=backend,
                 rank=rank,
                 world_size=world_size,
-                local_rank=node_to_workers[node_id].index(i),
-                local_world_size=len(node_to_workers[node_id]),
+                local_rank=local_rank,
+                local_world_size=local_world_size,
                 master_addr=master_addr,
                 master_port=master_port,
                 gpu_ids=node_to_gpu_ids[node_id],
             )
         )
+        local_ranks.append(local_rank)
+
+    # Wait for all workers to join the process group.
     ray.get(setup_futures)
+
+    return local_ranks
