@@ -32,7 +32,7 @@ RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
 BUILDKITE_MAX_RETRIES=1
 BUILDKITE_RETRY_CODE=79
-BUILDKITE_TIME_LIMIT_FOR_RETRY = 1800
+BUILDKITE_TIME_LIMIT_FOR_RETRY=1800
 
 # This is not a great idea if your OS is different to the one
 # used in the product clusters. However, we need this in CI as reloading
