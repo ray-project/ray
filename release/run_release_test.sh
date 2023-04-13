@@ -179,7 +179,7 @@ if [ -z "${NO_CLONE}" ]; then
   rm -rf "${TMPDIR}" || true
 fi
 
-if [ "$REASON" == "infra error" ] || [ "$REASON" == "infra timeout" ] && ["$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY"]; then
+if ([ "$REASON" -eq "infra error"] || ["$REASON" -eq "infra timeout" ]) && ["$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY"]; then
   exit $BUILDKITE_RETRY_CODE
 else
   exit $EXIT_CODE
