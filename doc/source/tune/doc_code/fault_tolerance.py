@@ -31,7 +31,7 @@ tuner.fit()
 
 # __ft_restored_run_start__
 tuner = tune.Tuner.restore(
-    path="~/ray_results/tune_fault_tolerance_guide",
+    "~/ray_results/tune_fault_tolerance_guide",
     trainable=trainable,
     resume_errored=True,
 )
@@ -40,7 +40,7 @@ tuner.fit()
 
 # __ft_restore_options_start__
 tuner = tune.Tuner.restore(
-    path="~/ray_results/tune_fault_tolerance_guide",
+    "~/ray_results/tune_fault_tolerance_guide",
     trainable=trainable,
     resume_errored=True,
     restart_errored=False,
@@ -62,12 +62,23 @@ else:
     tuner = tune.Tuner(
         trainable,
         param_space={"num_epochs": 10},
-        run_config=air.RunConfig(
-            storage_path=storage_path, name="single_script_fit_or_restore"
-        ),
+        run_config=air.RunConfig(storage_path=storage_path, name=exp_name),
     )
 tuner.fit()
 # __ft_restore_multiplexing_end__
+
+
+# Run the multiplexed logic again to make sure it goes through the restore branch.
+if tune.Tuner.can_restore(path):
+    tuner = tune.Tuner.restore(path, trainable=trainable, resume_errored=True)
+else:
+    tuner = tune.Tuner(
+        trainable,
+        param_space={"num_epochs": 10},
+        run_config=air.RunConfig(storage_path=storage_path, name=exp_name),
+    )
+assert tuner.get_results()
+
 
 # __ft_restore_objrefs_initial_start__
 import ray

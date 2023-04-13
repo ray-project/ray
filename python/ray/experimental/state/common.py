@@ -424,6 +424,8 @@ class NodeState(StateSchema):
     node_id: str = state_column(filterable=True)
     #: The ip address of the node.
     node_ip: str = state_column(filterable=True)
+    #: If this is a head node.
+    is_head_node: bool = state_column(filterable=True)
     #: The state of the node.
     #:
     #: ALIVE: The node is alive.
