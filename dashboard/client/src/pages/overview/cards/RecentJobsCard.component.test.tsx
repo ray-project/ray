@@ -4,50 +4,50 @@ import { MemoryRouter } from "react-router-dom";
 import { useJobList } from "../../job/hook/useJobList";
 import { RecentJobsCard } from "./RecentJobsCard";
 
-jest.mock("../../job/hook/useJobList");
+const JOB_LIST = [
+  {
+    job_id: "01000000",
+    submission_id: "raysubmit_12345",
+    status: "SUCCEEDED",
+  },
+  {
+    job_id: "02000000",
+    submission_id: null,
+    status: "FAILED",
+  },
+  {
+    job_id: null,
+    submission_id: "raysubmit_23456",
+    status: "STOPPED",
+  },
+  {
+    job_id: "04000000",
+    submission_id: "raysubmit_34567",
+    status: "SUCCEEDED",
+  },
+  {
+    job_id: "05000000",
+    submission_id: "raysubmit_45678",
+    status: "RUNNING",
+  },
+  {
+    job_id: "06000000",
+    submission_id: "raysubmit_56789",
+    status: "RUNNING",
+  },
+  {
+    job_id: "07000000",
+    submission_id: "raysubmit_67890",
+    status: "RUNNING",
+  },
+];
 
+jest.mock("../../job/hook/useJobList");
 describe("RecentJobsCard", () => {
   it("renders", async () => {
     const mockedUseJobList = jest.mocked(useJobList);
-
     mockedUseJobList.mockReturnValue({
-      jobList: [
-        {
-          job_id: "01000000",
-          submission_id: "raysubmit_12345",
-          status: "SUCCEEDED",
-        },
-        {
-          job_id: "02000000",
-          submission_id: null,
-          status: "FAILED",
-        },
-        {
-          job_id: null,
-          submission_id: "raysubmit_23456",
-          status: "STOPPED",
-        },
-        {
-          job_id: "04000000",
-          submission_id: "raysubmit_34567",
-          status: "SUCCEEDED",
-        },
-        {
-          job_id: "05000000",
-          submission_id: "raysubmit_45678",
-          status: "RUNNING",
-        },
-        {
-          job_id: "06000000",
-          submission_id: "raysubmit_56789",
-          status: "RUNNING",
-        },
-        {
-          job_id: "07000000",
-          submission_id: "raysubmit_67890",
-          status: "RUNNING",
-        },
-      ],
+      jobList: JOB_LIST,
     } as any);
 
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
@@ -60,4 +60,39 @@ describe("RecentJobsCard", () => {
     expect(screen.getByText("06000000")).toBeVisible();
     expect(screen.queryByText("07000000")).toBeNull();
   });
+  it("the link is active when job_id is not null", async () => {
+    const mockedUseJobList = jest.mocked(useJobList);
+    mockedUseJobList.mockReturnValue({
+      jobList: JOB_LIST,
+    } as any);
+
+    render(<RecentJobsCard />, { wrapper: MemoryRouter });
+
+    await screen.findByText("01000000");
+    expect(screen.getByText("raysubmit_23456")).not.toHaveAttribute("href");
+  });
+  it("disables link when job_id is null", async () => {
+    const mockedUseJobList = jest.mocked(useJobList);
+    mockedUseJobList.mockReturnValue({
+      jobList: JOB_LIST,
+    } as any);
+
+    render(<RecentJobsCard />, { wrapper: MemoryRouter });
+
+    await screen.findByText("01000000");
+    expect(screen.getByText("04000000")).toHaveAttribute("href");
+  });
 });
+
+// it("renders link if job id is not null", () => {
+//   const { getByRole } = render(<RecentJobListItem job={job} />);
+//   expect(getByRole("link")).toBeInTheDocument();
+// });
+// it("do not render the link if job id is null", () => {
+//   job = {
+//     ...job,
+//   }
+//   mockedUseJobList
+//   const { getByRole } = render(<RecentJobListItem job={job} />);
+//   expect(getByRole("link")).toBeInTheDocument();
+// });
