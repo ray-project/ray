@@ -1,7 +1,7 @@
 from typing import List, Optional, Union
 
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 
 _initialized = False
 global_gcs_client = None

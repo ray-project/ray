@@ -260,18 +260,62 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
 class CNNTransposeHeadConfig(ModelConfig):
     """Configuration for a convolutional transpose head (decoder) network.
 
-    The configured CNNTranspose transforms 1D-observations into an image space.
-    The stack of layers is composed of a sequence of Conv2DTranspose layers.
+    The configured Model transforms 1D-observations into an image space.
+    The stack of layers is composed of an initial Dense layer, followed by a sequence
+    of Conv2DTranspose layers.
     `input_dims` describes the shape of the (1D) input tensor,
     `initial_image_dims` describes the input into the first Conv2DTranspose
-    layer. Translation from `input_dim` to `initial_image_dims` is done
-    via an initial Dense layer (w/o activation, w/o layer-norm, and w/ bias).
+    layer, where the translation from `input_dim` to `initial_image_dims` is done
+    via the initial Dense layer (w/o activation, w/o layer-norm, and w/ bias).
+
     Beyond that, each layer specified by `cnn_transpose_filter_specifiers`
-    is followed by an activation function according
-    to `cnn_transpose_activation`.
+    is followed by an activation function according to `cnn_transpose_activation`.
+
     `output_dims` is reached after the final Conv2DTranspose layer.
     Not that the last Conv2DTranspose layer is never activated and never layer-norm'd
     regardless of the other settings.
+
+    An example for a single conv2d operation is as follows:
+    Input "image" is (4, 4, 24) (not yet strided), padding is "same", stride=2,
+    kernel=5.
+
+    First, the input "image" is strided (with stride=2):
+
+    Input image (4x4 (x24)):
+    A B C D
+    E F G H
+    I J K L
+    M N O P
+
+    Stride with stride=2 -> (7x7 (x24))
+    A 0 B 0 C 0 D
+    0 0 0 0 0 0 0
+    E 0 F 0 G 0 H
+    0 0 0 0 0 0 0
+    I 0 J 0 K 0 L
+    0 0 0 0 0 0 0
+    M 0 N 0 O 0 P
+
+    Then this strided "image" (strided_size=7x7) is padded (exact padding values will be
+    computed by the model):
+
+    Padding -> (left=3, right=2, top=3, bottom=2)
+
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 A 0 B 0 C 0 D 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 E 0 F 0 G 0 H 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 I 0 J 0 K 0 L 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 M 0 N 0 O 0 P 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+
+    Then deconvolution with kernel=5 yields an output "image" of 8x8 (x num output
+    filters).
 
     Attributes:
         input_dims: The input dimensions of the network. This must be a 1D tensor.
