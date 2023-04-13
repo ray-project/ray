@@ -152,7 +152,7 @@ describe("WorkerRow", () => {
       ),
     });
     await screen.findByText("echo hi");
-    // Could not access logs for Dead workers (the log is hidden)
+    // Could not access Stack Trace and CPU Flame Graph for Dead workers, but the log is still available)
     expect(screen.getByText(/Log/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Stack Trace/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/CPU Flame Graph/)).not.toBeInTheDocument();
