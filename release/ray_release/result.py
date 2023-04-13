@@ -8,13 +8,14 @@ class ResultStatus(enum.Enum):
     """
     Overall status of the result test run
     """
-    SUCCESS = 'success'
-    UNKNOWN = 'unknown'
-    TRANSIENT_INFRA_ERROR = 'transient_infra_error'
-    INFRA_ERROR = 'infra_error'
-    INFRA_TIMEOUT = 'infra_timeout'
-    ERROR = 'error'
-    TIMEOUT = 'timeout'
+
+    SUCCESS = "success"
+    UNKNOWN = "unknown"
+    TRANSIENT_INFRA_ERROR = "transient_infra_error"
+    INFRA_ERROR = "infra_error"
+    INFRA_TIMEOUT = "infra_timeout"
+    ERROR = "error"
+    TIMEOUT = "timeout"
 
 
 @dataclass
@@ -100,11 +101,11 @@ def handle_exception(e: Exception) -> Tuple[ExitCode, ResultStatus, Optional[int
         status = ResultStatus.ERROR
         runtime = 0
 
+    # if this step is to be retried, mark its status as transient
     if status in [ResultStatus.INFRA_ERROR, ResultStatus.INFRA_TIMEOUT]:
         retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", "0"))
         max_retry = int(os.environ.get("BUILDKITE_MAX_RETRIES"))
         if retry_count < max_retry:
-            # if this step is to be retried, mark its status as transient
             status = ResultStatus.TRANSIENT_INFRA_ERROR
 
     return exit_code, status, runtime
