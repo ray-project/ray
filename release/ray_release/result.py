@@ -86,26 +86,26 @@ def handle_exception(e: Exception) -> Tuple[ExitCode, ResultStatus, Optional[int
         return ExitCode.UNKNOWN, ResultStatus.UNKNOWN, 0
     exit_code = e.exit_code
     if 1 <= exit_code.value < 10:
-        status = ResultStatus.UNKNOWN
+        result_status = ResultStatus.UNKNOWN
         runtime = None
     elif 10 <= exit_code.value < 20:
-        status = ResultStatus.INFRA_ERROR
+        result_status = ResultStatus.INFRA_ERROR
         runtime = None
     elif 30 <= exit_code.value < 40:
-        status = ResultStatus.INFRA_TIMEOUT
+        result_status = ResultStatus.INFRA_TIMEOUT
         runtime = None
     elif exit_code == ExitCode.COMMAND_TIMEOUT:
-        status = ResultStatus.TIMEOUT
+        result_status = ResultStatus.TIMEOUT
         runtime = 0
     elif 40 <= exit_code.value:
-        status = ResultStatus.ERROR
+        result_status = ResultStatus.ERROR
         runtime = 0
 
     # if this step is to be retried, mark its status as transient
-    if status in [ResultStatus.INFRA_ERROR, ResultStatus.INFRA_TIMEOUT]:
+    if result_status in [ResultStatus.INFRA_ERROR, ResultStatus.INFRA_TIMEOUT]:
         retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", "0"))
         max_retry = int(os.environ.get("BUILDKITE_MAX_RETRIES"))
         if retry_count < max_retry:
-            status = ResultStatus.TRANSIENT_INFRA_ERROR
+            result_status = ResultStatus.TRANSIENT_INFRA_ERROR
 
-    return exit_code, status, runtime
+    return exit_code, result_status, runtime
