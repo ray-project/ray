@@ -98,14 +98,23 @@ scaling_config = ScalingConfig(
 
 # __run_config_start__
 from ray.air import RunConfig
+from ray.tune.logger import TBXLoggerCallback
 
 run_config = RunConfig(
     # Name of the training run (directory name).
     name="my_train_run",
-    # Directory to store results in (will be local_dir/name).
-    local_dir="~/ray_results",
+    # Path to store the experiment directory, which contains all
+    # the results and checkpoints.
+    # The experiment directory will be at: {storage_path}/{name}
+    storage_path="~/ray_results",
+    # This can be a local or remote path!
+    # storage_path="s3://my_bucket/tune_results",
     # Low training verbosity.
     verbose=1,
+    # Custom and built-in callbacks
+    callbacks=[TBXLoggerCallback()],
+    # Stopping criteria
+    stop={"training_iteration": 10},
 )
 # __run_config_end__
 
@@ -119,18 +128,6 @@ run_config = RunConfig(
     )
 )
 # __failure_config_end__
-
-# __sync_config_start__
-from ray.air import RunConfig
-from ray.tune import SyncConfig
-
-run_config = RunConfig(
-    sync_config=SyncConfig(
-        # This will store checkpoints on S3.
-        upload_dir="s3://remote-bucket/location"
-    )
-)
-# __sync_config_end__
 
 # __checkpoint_config_start__
 from ray.air import RunConfig, CheckpointConfig

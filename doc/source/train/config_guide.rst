@@ -23,7 +23,6 @@ The properties of the scaling configuration are :ref:`tunable <air-tuner-search-
 
     See the :class:`~ray.air.ScalingConfig` API reference.
 
-
 Run Configuration in Train (``RunConfig``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -31,6 +30,8 @@ The run configuration specifies distributed training properties like the number 
 resources per worker.
 
 The properties of the run configuration are :ref:`not tunable <air-tuner-search-space>`.
+
+.. _train-config-sync:
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -40,6 +41,8 @@ The properties of the run configuration are :ref:`not tunable <air-tuner-search-
 .. seealso::
 
     See the :class:`~ray.air.RunConfig` API reference.
+
+    See :ref:`tune-storage-options` for storage configuration examples (related to ``storage_path``).
 
 
 Failure configurations in Train (``FailureConfig``)
@@ -59,29 +62,6 @@ are :ref:`not tunable <air-tuner-search-space>`.
 .. seealso::
 
     See the :class:`~ray.air.FailureConfig` API reference.
-
-.. _train-config-sync:
-
-Sync configurations in Train (``SyncConfig``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The sync configuration specifies how to synchronize checkpoints between the
-Ray cluster and remote storage.
-
-As part of the RunConfig, the properties of the sync configuration
-are :ref:`not tunable <air-tuner-search-space>`.
-
-.. literalinclude:: doc_code/key_concepts.py
-    :language: python
-    :start-after: __sync_config_start__
-    :end-before: __sync_config_end__
-
-.. seealso::
-
-    See :ref:`tune-storage-options` for configuration examples.
-
-    See the :class:`~ray.tune.syncer.SyncConfig` API reference.
-
 
 Checkpoint configurations in Train (``CheckpointConfig``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
