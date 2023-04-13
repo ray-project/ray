@@ -289,7 +289,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         schema.autoscaling_config = info.deployment_config.autoscaling_config
     else:
         schema.num_replicas = info.deployment_config.num_replicas
-    
+
     return schema
 
 
