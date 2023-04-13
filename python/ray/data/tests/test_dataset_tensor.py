@@ -39,7 +39,7 @@ def test_tensors_basic(ray_start_regular_shared):
         "Datastream(\n"
         "   num_blocks=6,\n"
         "   num_rows=6,\n"
-        "   schema={__value__: ArrowTensorType(shape=(3, 5), dtype=int64)}\n"
+        "   schema={__value__: numpy.ndarray(shape=(3, 5), dtype=int64)}\n"
         ")"
     )
     assert ds.size_bytes() == 5 * 3 * 6 * 8
@@ -297,7 +297,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
         "MaterializedDatastream(\n"
         "   num_blocks=10,\n"
         "   num_rows=10,\n"
-        "   schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)}\n"
+        "   schema={__value__: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
         ")"
     )
 
@@ -310,7 +310,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
         "MaterializedDatastream(\n"
         "   num_blocks=4,\n"
         "   num_rows=24,\n"
-        "   schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)}\n"
+        "   schema={__value__: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
         ")"
     )
 
@@ -323,7 +323,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
         "MaterializedDatastream(\n"
         "   num_blocks=10,\n"
         "   num_rows=20,\n"
-        "   schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)}\n"
+        "   schema={__value__: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
         ")"
     )
 
