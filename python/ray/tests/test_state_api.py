@@ -2053,8 +2053,8 @@ def test_list_get_nodes(ray_start_cluster):
         check_nodes = ray.nodes()
         assert len(check_nodes) == len(nodes)
 
-        sorted(check_nodes, key=lambda n: n["NodeID"])
-        sorted(nodes, key=lambda n: n["node_id"])
+        check_nodes = sorted(check_nodes, key=lambda n: n["NodeID"])
+        nodes = sorted(nodes, key=lambda n: n["node_id"])
 
         for check_node, node in zip(check_nodes, nodes):
             assert check_node["NodeID"] == node["node_id"]
