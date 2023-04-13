@@ -27,3 +27,5 @@ cartpole-appo-learner:
         eager_tracing: True
         lr: 0.001
         entropy_coeff: 0.1
+        kl_coeff: 0.01
+        exploration_config: null
