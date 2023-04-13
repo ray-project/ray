@@ -1,7 +1,8 @@
 import gymnasium as gym
 import itertools
-from typing import Any, Dict, List
 import numpy as np
+from typing import Any, Dict, List
+import tempfile
 import unittest
 
 import ray
@@ -267,6 +268,68 @@ class TestLearnerGroup(unittest.TestCase):
                     )
             learner_group.shutdown()
             self.assertLess(min_loss, 0.57)
+
+    def test_save_load_state(self):
+        ray.data.set_progress_bars(False)
+        fws = ["tf", "torch"]
+        scaling_modes = ["remote-cpu"]
+        test_iterator = itertools.product(fws, scaling_modes)
+
+        reader = get_cartpole_dataset_reader(batch_size=1024)
+        batch = reader.next()
+        batch2 = reader.next()
+        for fw, scaling_mode in test_iterator:
+            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+            env = gym.make("CartPole-v1")
+
+            scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
+            initial_learner_group = get_learner_group(
+                fw, env, scaling_config, eager_tracing=True
+            )
+
+            # checkpoint the initial learner state for later comparison
+            initial_learner_checkpoint_dir = tempfile.TemporaryDirectory().name
+            initial_learner_group.save_state(initial_learner_checkpoint_dir)
+            initial_learner_group_weights = initial_learner_group.get_weights()
+
+            # do a single update
+            initial_learner_group.update(batch.as_multi_agent(), reduce_fn=None)
+
+            # checkpoint the learner state after 1 update for later comparison
+            learner_after_1_update_checkpoint_dir = tempfile.TemporaryDirectory().name
+            initial_learner_group.save_state(learner_after_1_update_checkpoint_dir)
+
+            # remove that learner, construct a new one, and load the state of the old
+            # learner into the new one
+            initial_learner_group.shutdown()
+            del initial_learner_group
+            new_learner_group = get_learner_group(
+                fw, env, scaling_config, eager_tracing=True
+            )
+            new_learner_group.load_state(learner_after_1_update_checkpoint_dir)
+
+            # do another update
+            results_with_break = new_learner_group.update(
+                batch2.as_multi_agent(), reduce_fn=None
+            )
+            new_learner_group.shutdown()
+            del new_learner_group
+
+            # construct a new learner group and load the initial state of the learner
+            learner_group = get_learner_group(
+                fw, env, scaling_config, eager_tracing=True
+            )
+            learner_group.load_state(initial_learner_checkpoint_dir)
+            check(learner_group.get_weights(), initial_learner_group_weights)
+            learner_group.update(batch.as_multi_agent(), reduce_fn=None)
+            results_without_break = learner_group.update(
+                batch2.as_multi_agent(), reduce_fn=None
+            )
+            learner_group.shutdown()
+            del learner_group
+
+            # compare the results of the two updates
+            check(results_with_break, results_without_break)
 
 
 if __name__ == "__main__":

@@ -416,10 +416,47 @@ class LearnerGroup:
             self._learner.save_state(path)
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
-            # assert len(self._workers) == self._worker_manager.num_healthy_actors()
-            self._worker_manager.foreach_actor(
-                lambda w: w.save_state(path), remote_actor_ids=[worker]
+            worker_ip_addr = self._worker_manager.foreach_actor(
+                self._get_ip_address, remote_actor_ids=[worker]
             )
+            worker_ip_addr = self._get_results(worker_ip_addr)[0]
+            self_ip_addr = self._get_ip_address()
+
+            if worker_ip_addr == self_ip_addr:
+                self._worker_manager.foreach_actor(
+                    lambda w: w.save_state(path), remote_actor_ids=[worker]
+                )
+            else:
+                # save the checkpoint to a temporary location on the worker
+
+                # create a temporary directory on the worker
+                worker_temp_dir = self._worker_manager.foreach_actor(
+                    self._create_temporary_dir, remote_actor_ids=[worker]
+                )
+                worker_temp_dir = self._get_results(worker_temp_dir)[0]
+
+                # save the checkpoint to the temporary directory on the worker
+                self._worker_manager.foreach_actor(
+                    lambda w: w.save_state(worker_temp_dir), remote_actor_ids=[worker]
+                )
+
+                # sync the temporary directory on the worker to the local directory
+                sync_dir_between_nodes(
+                    worker_ip_addr, worker_temp_dir, self_ip_addr, path
+                )
+
+                # creating this function here instead of making it a member funciton
+                # becasue it uses the worker_temp_dir variable, and this can't
+                # be passed in as an argument to foreach_actor
+                def remove_dir(w):
+                    import shutil
+
+                    shutil.rmtree(worker_temp_dir)
+
+                # remove the temporary directory on the worker
+                self._worker_manager.foreach_actor(
+                    remove_dir, remote_actor_ids=[worker]
+                )
 
     def load_state(self, path: str) -> None:
         """Loads the state of the LearnerGroup.
@@ -435,8 +472,8 @@ class LearnerGroup:
                 worker_ip_addr = self._worker_manager.foreach_actor(
                     self._get_ip_address, remote_actor_ids=[worker]
                 )
+                worker_ip_addr = self._get_results(worker_ip_addr)[0]
                 self_ip_addr = self._get_ip_address()
-
                 if worker_ip_addr == self_ip_addr:
                     self._worker_manager.foreach_actor(
                         lambda w: w.load_state(path), remote_actor_ids=[worker]
@@ -454,7 +491,18 @@ class LearnerGroup:
                         lambda w: w.load_state(worker_temp_dir),
                         remote_actor_ids=[worker],
                     )
-                    # remove the temporary directory
+
+                    # creating this function here instead of making it a member funciton
+                    # becasue it uses the worker_temp_dir variable, and this can't
+                    # be passed in as an argument to foreach_actor
+                    def remove_dir(w):
+                        import shutil
+
+                        shutil.rmtree(worker_temp_dir)
+
+                    self._worker_manager.foreach_actor(
+                        remove_dir, remote_actor_ids=[worker]
+                    )
 
     @staticmethod
     def _create_temporary_dir(_=None) -> str:
