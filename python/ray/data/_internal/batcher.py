@@ -3,6 +3,7 @@ from typing import Optional, List
 
 from ray.data.block import Block, BlockAccessor
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
 
 
@@ -74,19 +75,6 @@ class Batcher(BatcherInterface):
             block: Block to add to the block buffer.
         """
         if BlockAccessor.for_block(block).num_rows() > 0:
-            import pyarrow
-
-            # pyarrow.Table.slice is slow when the table has many chunks
-            # so we combine chunks into a single one to make slice faster
-            # with the cost of an extra copy.
-            # See https://github.com/ray-project/ray/issues/31108 for more details.
-            if (
-                isinstance(block, pyarrow.Table)
-                and block.num_columns > 0
-                and block.column(0).num_chunks > 1
-            ):
-                block = transform_pyarrow.combine_chunks(block)
-
             assert self.can_add(block)
             self._buffer.append(block)
             self._buffer_size += BlockAccessor.for_block(block).num_rows()
@@ -144,6 +132,18 @@ class Batcher(BatcherInterface):
                 output.add_block(accessor.slice(0, accessor.num_rows(), copy=False))
                 needed -= accessor.num_rows()
             else:
+                # pyarrow.Table.slice is slow when the table has many chunks
+                # so we combine chunks into a single one to make slice faster
+                # with the cost of an extra copy.
+                # See https://github.com/ray-project/ray/issues/31108 for more details.
+                if (
+                    isinstance(accessor, ArrowBlockAccessor)
+                    and block.num_columns > 0
+                    and block.column(0).num_chunks > 1
+                ):
+                    accessor = BlockAccessor.for_block(
+                        transform_pyarrow.combine_chunks(block)
+                    )
                 # We only need part of the block to fill out a batch.
                 output.add_block(accessor.slice(0, needed, copy=False))
                 # Add the rest of the block to the leftovers.
