@@ -9,6 +9,7 @@ import numpy as np
 
 import ray
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data.context import DataContext
 from ray._private.utils import _get_pyarrow_version
 
@@ -462,3 +463,33 @@ def get_table_block_metadata(
     return BlockAccessor.for_block(table).get_metadata(
         input_files=None, exec_stats=stats.build()
     )
+
+
+def unify_block_metadata_schema(
+    metadata: List["BlockMetadata"],
+) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
+    """For the input list of BlockMetadata, return a unified schema of the
+    corresponding blocks. If the metadata have no valid schema, returns None.
+    """
+    # Some blocks could be empty, in which case we cannot get their schema.
+    # TODO(ekl) validate schema is the same across different blocks.
+
+    # First check if there are blocks with computed schemas, then unify
+    # valid schemas from all such blocks.
+    schemas_to_unify = []
+    for m in metadata:
+        if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
+            schemas_to_unify.append(m.schema)
+    if schemas_to_unify:
+        # Check valid pyarrow installation before attempting schema unification
+        try:
+            import pyarrow as pa
+        except ImportError:
+            pa = None
+        # If the result contains PyArrow schemas, unify them
+        if pa is not None and any(isinstance(s, pa.Schema) for s in schemas_to_unify):
+            return unify_schemas(schemas_to_unify)
+        # Otherwise, if the resulting schemas are simple types (e.g. int),
+        # return the first schema.
+        return schemas_to_unify[0]
+    return None
