@@ -79,4 +79,4 @@ class CustomIntruction(Instruction):
     """Print the output."""
 
     def __init__(self, fn: Callable[[Any], None]):
-        self.fn = fn
+        self.function = fn

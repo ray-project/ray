@@ -28,6 +28,7 @@ class ModuleParition(object):
     input_tensor_shape: Any
     input_tensor_dtype: Tensor.dtype
     schedule: Schedule
+    data_loader_builder: Callable[[], Any]
 
 
 @dataclass
@@ -97,7 +98,7 @@ class SimplePhysicalPlanner(PhysicalPlanner):
                 _get_device_name,
                 _get_communicator,
                 partition.module_loader,
-                lambda: None,
+                partition.data_loader_builder,
                 lambda: None,
             )
             configs.append(config)

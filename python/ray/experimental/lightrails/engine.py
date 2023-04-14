@@ -12,6 +12,7 @@ from ray.experimental.lightrails.communicator.communicator import (
 )
 from ray.experimental.lightrails.schedule import (
     Backward,
+    CustomIntruction,
     Forward,
     Instruction,
     LoadBatch,
@@ -87,7 +88,9 @@ class ExecutionEngine:
         self.model = config.model_builder().to(self.device)
         if not self.is_training:
             self.model.eval()
-        data_loader = config.data_loader_builder()
+        data_loader = (
+            config.data_loader_builder() if config.data_loader_builder else None
+        )
         self.data_loader = iter(data_loader) if data_loader else None
         self.optimizer = (
             config.optimizer_builder(self.model) if config.optimizer_builder else None
@@ -150,6 +153,8 @@ class ExecutionEngine:
             self._execute_optimize(instruction)
         elif isinstance(instruction, Backward):
             self._execute_backward(instruction)
+        elif isinstance(instruction, CustomIntruction):
+            self._execute_custom_instruction(instruction)
 
     def _execute_send_activation(self, instruction: SendActivation):
         for _ in range(instruction.count):
@@ -275,3 +280,6 @@ class ExecutionEngine:
             self.output_gradient.append(input.grad)
             # TODO: do we need to do something for optimize?
             self.backward_counter += 1
+
+    def _execute_custom_instruction(self, instruction: CustomIntruction):
+        instruction.function(self)
