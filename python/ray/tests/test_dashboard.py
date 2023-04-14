@@ -150,6 +150,7 @@ def test_dashboard(shutdown_only):
 
 
 conflict_port = 34567
+configured_test_port = 34568
 
 
 def run_tasks_without_runtime_env():
@@ -206,6 +207,18 @@ def test_dashboard_agent_grpc_port_conflict(listen_port, call_ray_start):
 
 
 @pytest.mark.parametrize(
+    "call_ray_start",
+    [f"ray start --head --num-cpus=1 --dashboard-grpc-port={configured_test_port}"],
+    indirect=True,
+)
+def test_configured_dashboard_grpc_port(call_ray_start):
+    address = call_ray_start
+    addresses = ray.init(address=address)
+    dashboard_url = addresses["dashboard_url"]
+    assert dashboard_url == "127.0.0.1:8265"
+
+
+@pytest.mark.parametrize(
     "listen_port",
     [conflict_port],
     indirect=True,
@@ -218,7 +231,7 @@ def test_dashboard_agent_grpc_port_conflict(listen_port, call_ray_start):
 def test_dashboard_grpc_port_conflict(listen_port, call_ray_start):
     address = call_ray_start
     addresses = ray.init(address=address)
-    dashboard_url = addresses["webui_url"]
+    dashboard_url = addresses["dashboard_url"]
     # Dashboard should fail to start with conflicting head port
     assert dashboard_url is None
 
