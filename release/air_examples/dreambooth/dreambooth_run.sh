@@ -47,7 +47,8 @@ python train.py \
   --instance_images_dir=$IMAGES_OWN_DIR \
   --instance_prompt="a photo of unqtkn $CLASS_NAME" \
   --class_images_dir=$IMAGES_REG_DIR \
-  --class_prompt="a photo of a $CLASS_NAME"
+  --class_prompt="a photo of a $CLASS_NAME" \
+  --train_batch_size 2
 
 # Clear new dir
 rm -rf "$IMAGES_NEW_DIR"/*.jpg
