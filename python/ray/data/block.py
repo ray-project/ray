@@ -399,9 +399,8 @@ class BlockAccessor(Generic[T]):
             raise DeprecationWarning(
                 "Standalone Python objects are no longer supported. To include "
                 "Python objects in a datastream, wrap them in a dict, e.g., "
-                "return `{'item': obj}` instead of just `obj`.")
-
-            return SimpleBlockAccessor(block)
+                "return `{'item': obj}` instead of just `obj`."
+            )
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))
 

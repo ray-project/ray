@@ -9,7 +9,6 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
-    Mapping,
 )
 
 
@@ -19,7 +18,6 @@ import ray
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.arrow_block import ArrowBlockBuilder
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.from_arrow_operator import (
     FromArrowRefs,
@@ -109,7 +107,7 @@ def from_items(
     items: List[Any],
     *,
     parallelism: int = -1,
-) -> MaterializedDatastream[Mapping]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a list of local Python objects.
 
     The items can either be standalone Python objects or dicts. If they are standalone
@@ -186,7 +184,7 @@ def from_items(
 
 
 @PublicAPI
-def range(n: int, *, parallelism: int = -1) -> Datastream[Mapping]:
+def range(n: int, *, parallelism: int = -1) -> Datastream[TableRow]:
     """Create a datastream from a range of integers [0..n).
 
     Examples:
@@ -211,7 +209,7 @@ def range(n: int, *, parallelism: int = -1) -> Datastream[Mapping]:
 
 
 @PublicAPI
-def range_table(n: int, *, parallelism: int = -1) -> Datastream[TableRow]:
+def range_table(n: int, *, parallelism: int = -1):
     raise DeprecationWarning("range_table() is deprecated, use range() instead.")
 
 
@@ -1274,7 +1272,6 @@ def read_binary_files(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
-    output_arrow_format: bool = True,
 ) -> Datastream[TableRow]:
     """Create a datastream from binary files of arbitrary contents.
 
@@ -1307,19 +1304,10 @@ def read_binary_files(
             that describes how paths are organized. Defaults to ``None``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
-        output_arrow_format: If True, returns data in Arrow format, instead of Python
-            list format. Defaults to False.
 
     Returns:
         Datastream producing records read from the specified paths.
     """
-    if not output_arrow_format:
-        logger.warning(
-            "read_binary_files() returns Datastream in Python list format as of Ray "
-            "v2.4. Use read_binary_files(output_arrow_format=True) to return "
-            "Datastream in Arrow format.",
-        )
-
     return read_datasource(
         BinaryDatasource(),
         parallelism=parallelism,
@@ -1332,7 +1320,6 @@ def read_binary_files(
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
-        output_arrow_format=output_arrow_format,
     )
 
 
