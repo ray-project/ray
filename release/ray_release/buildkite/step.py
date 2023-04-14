@@ -1,6 +1,6 @@
 import copy
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
@@ -68,12 +68,13 @@ def get_step(
     ray_wheels: Optional[str] = None,
     env: Optional[Dict] = None,
     priority_val: int = 0,
+    cmd: List[str] = [],
 ):
     env = env or {}
 
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
-    cmd = ["./release/run_release_test.sh", test["name"]]
+    cmd += ["./release/run_release_test.sh", test["name"]]
 
     if report and not bool(int(os.environ.get("NO_REPORT_OVERRIDE", "0"))):
         cmd += ["--report"]
