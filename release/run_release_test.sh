@@ -69,7 +69,11 @@ fi
 if [ -z "${NO_CLONE}" ]; then
   TMPDIR=$(mktemp -d -t release-XXXXXXXXXX)
   echo "Cloning test repo ${RAY_TEST_REPO} branch ${RAY_TEST_BRANCH}"
-  git clone -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
+  if [ -n "${RAY_TEST_COMMIT}" ]; then
+    git clone -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
+  else
+    git clone --depth 1 -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
+  fi
   pushd "${TMPDIR}/release" || true
   HEAD_COMMIT=$(git rev-parse HEAD)
   echo "The cloned test repo has head commit of ${HEAD_COMMIT}"
