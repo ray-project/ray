@@ -570,6 +570,13 @@ class AlgorithmConfig(_Config):
         """
         eval_call = {}
 
+        # We deal with this special key before all others because it may influence
+        # stuff like "exploration_config".
+        # Namely, we want to re-instantiate the exploration config this config had
+        # inside `self.rl_module()` before potentially overwriting it in the following.
+        if "_enable_rl_module_api" in config_dict:
+            self.rl_module(_enable_rl_module_api=config_dict["_enable_rl_module_api"])
+
         # Modify our properties one by one.
         for key, value in config_dict.items():
             key = self._translate_special_keys(key, warn_deprecated=False)
@@ -579,8 +586,11 @@ class AlgorithmConfig(_Config):
             if key == TRIAL_INFO:
                 continue
 
+            if key == "_enable_rl_module_api":
+                # We've dealt with this above.
+                continue
             # Set our multi-agent settings.
-            if key == "multiagent":
+            elif key == "multiagent":
                 kwargs = {
                     k: value[k]
                     for k in [
