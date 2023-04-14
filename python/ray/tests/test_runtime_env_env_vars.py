@@ -300,6 +300,25 @@ def test_environment_variables_env_caching(shutdown_only):
     assert pid7 == pid1
 
 
+def test_replaceable_environ(ray_start_regular):
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    assert (
+        ray.get(
+            get_env.options(
+                runtime_env={
+                    "env_vars": {
+                        "PATH": "${PATH}:/usr/local/bin",
+                    }
+                }
+            ).remote("PATH")
+        )
+        == os.environ["PATH"] + ":/usr/local/bin"
+    )
+
+
 if __name__ == "__main__":
     import pytest
 
