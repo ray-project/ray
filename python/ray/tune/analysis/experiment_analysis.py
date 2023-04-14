@@ -161,11 +161,14 @@ class ExperimentAnalysis:
         )
 
     def _load_checkpoints(self, experiment_checkpoint_path: str) -> List[str]:
-        # experiment_checkpoint_path = Path(experiment_checkpoint_path).expanduser()
         # Get the latest checkpoints from the checkpoint_path.
         latest_checkpoints = self._get_latest_checkpoint(experiment_checkpoint_path)
         if not latest_checkpoints:
-            raise ValueError()
+            raise ValueError(
+                f"`{experiment_checkpoint_path}` must either be a path to an "
+                "experiment checkpoint file, or a directory containing an experiment "
+                "checkpoint file."
+            )
         # Collect all checkpoints and their directory paths.
         # These are used to infer the `local_dir` from the checkpoints
         # in case the experiment folder had been moved from its original
@@ -202,7 +205,7 @@ class ExperimentAnalysis:
                 Will return None if the download failed.
         """
         if is_local_path(experiment_checkpoint_path):
-            return experiment_checkpoint_path
+            return os.path.expanduser(experiment_checkpoint_path)
 
         experiment_path = Path(URI(self._remote_path).path)
         # s3://bucket/exp_dir/nested/experiment_state.json
