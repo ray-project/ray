@@ -116,6 +116,7 @@ message ListNamedActorsReply {
 
 message GetAllActorInfoRequest {
   // Whether or not to filter out actors which belong to dead jobs.
+  // DEPRECATED: This field is deprecated and will be removed in the future.
   bool show_dead_jobs = 1;
   // Maximum number of entries to return.
   // If not specified, return the whole entries without truncation.

@@ -332,9 +332,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
     async def get_actor_info(
         self, limit: int = 1000, timeout: int = SNAPSHOT_API_TIMEOUT_SECONDS
     ):
-        # TODO (Alex): GCS still needs to return actors from dead jobs.
         request = gcs_service_pb2.GetAllActorInfoRequest()
-        request.show_dead_jobs = True
         request.limit = limit
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
             request, timeout=timeout

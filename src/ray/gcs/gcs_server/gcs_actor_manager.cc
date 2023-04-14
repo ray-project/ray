@@ -338,62 +338,30 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
   auto limit = request.has_limit() ? request.limit() : -1;
   RAY_LOG(DEBUG) << "Getting all actor info.";
   ++counts_[CountType::GET_ALL_ACTOR_INFO_REQUEST];
-  if (request.show_dead_jobs() == false) {
-    auto total_actors = registered_actors_.size() + destroyed_actors_.size();
-    reply->set_total(total_actors);
+  // We store actors in memory from dead jobs as well, until a GC limit by
+  // RAY_maximum_gcs_destroyed_actor_cached_count.
+  // So we don't need to read from gcs table.
+  auto total_actors = registered_actors_.size() + destroyed_actors_.size();
+  reply->set_total(total_actors);
 
-    auto count = 0;
-    for (const auto &iter : registered_actors_) {
-      if (limit != -1 && count >= limit) {
-        break;
-      }
-      count += 1;
-      *reply->add_actor_table_data() = iter.second->GetActorTableData();
+  auto count = 0;
+  for (const auto &iter : registered_actors_) {
+    if (limit != -1 && count >= limit) {
+      break;
     }
-
-    for (const auto &iter : destroyed_actors_) {
-      if (limit != -1 && count >= limit) {
-        break;
-      }
-      count += 1;
-      *reply->add_actor_table_data() = iter.second->GetActorTableData();
-    }
-    RAY_LOG(DEBUG) << "Finished getting all actor info.";
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-    return;
+    count += 1;
+    *reply->add_actor_table_data() = iter.second->GetActorTableData();
   }
 
-  RAY_CHECK(request.show_dead_jobs());
-  // We don't maintain an in-memory cache of all actors which belong to dead
-  // jobs, so fetch it from redis.
-  Status status = gcs_table_storage_->ActorTable().GetAll(
-      [reply, send_reply_callback, limit](
-          absl::flat_hash_map<ActorID, rpc::ActorTableData> &&result) {
-        auto total_actors = result.size();
-
-        reply->set_total(total_actors);
-        auto arena = reply->GetArena();
-        RAY_CHECK(arena != nullptr);
-        auto ptr = google::protobuf::Arena::Create<
-            absl::flat_hash_map<ActorID, rpc::ActorTableData>>(arena, std::move(result));
-        auto count = 0;
-        for (const auto &pair : *ptr) {
-          if (limit != -1 && count >= limit) {
-            break;
-          }
-          count += 1;
-
-          // TODO yic: Fix const cast
-          reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
-              const_cast<rpc::ActorTableData *>(&pair.second));
-        }
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-        RAY_LOG(DEBUG) << "Finished getting all actor info.";
-      });
-  if (!status.ok()) {
-    // Send the response to unblock the sender and free the request.
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  for (const auto &iter : destroyed_actors_) {
+    if (limit != -1 && count >= limit) {
+      break;
+    }
+    count += 1;
+    *reply->add_actor_table_data() = iter.second->GetActorTableData();
   }
+  RAY_LOG(DEBUG) << "Finished getting all actor info.";
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 void GcsActorManager::HandleGetNamedActorInfo(
