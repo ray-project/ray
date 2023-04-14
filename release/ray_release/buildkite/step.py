@@ -1,6 +1,6 @@
 import copy
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group

@@ -59,11 +59,11 @@ def _trigger_test_run(test: Test, commit: str) -> None:
         timeout=DEFAULT_WHEEL_WAIT_TIMEOUT,
     )
     step = get_step(
-        test, 
+        test,
         ray_wheels=ray_wheels_url,
-        env= {
-            'RAY_TEST_COMMIT': commit,
-        }
+        env={
+            "RAY_TEST_COMMIT": commit,
+        },
     )
     step["label"] = f'{test["name"]}:{commit[:6]}'
     step["key"] = commit
