@@ -27,6 +27,7 @@ from ray.experimental.lightrails.physical_plan import (
 from ray.experimental.lightrails.schedule import (
     CustomIntruction,
     ExecuteSchedule,
+    Forward,
     ReceiveActivation,
     Schedule,
     SendActivation,
@@ -255,7 +256,7 @@ def modify_model_and_replace_forward_pass(
     block_only_partition = [
         block for block in partition if block >= 0 and block < num_blocks
     ]
-    print("partition", partition)
+    # print("partition", partition)
     if -1 in partition:
         forward_pass_type = "first"
     elif num_blocks in partition:
@@ -263,9 +264,9 @@ def modify_model_and_replace_forward_pass(
     else:
         forward_pass_type = "intermediate"
 
-    print(
-        f"pp_rank {pp_rank} is type {forward_pass_type}, with blocks {block_only_partition}"
-    )
+    # print(
+    #     f"pp_rank {pp_rank} is type {forward_pass_type}, with blocks {block_only_partition}"
+    # )
 
     remove_blocks_from_model(gpt_neo_model.transformer, block_only_partition)
     custom_fwd_pass = create_custom_forward_pass(
@@ -404,6 +405,7 @@ class ModelWrapper(torch.nn.Module):
         self.model = model
 
     def forward(self, hidden_states):
+        print(f"forwarding {hidden_states}")
         return self.model.forward(hidden_states=hidden_states)
 
 
@@ -448,7 +450,7 @@ class FirstStageSchedule(Schedule):
             )
         ]
         for i in range(10):
-            yield [SendActivation(1), ReceiveActivation(1)]
+            yield [Forward(), SendActivation(1), ReceiveActivation(1)]
 
 
 def gen_logical_plan():
@@ -463,7 +465,7 @@ def gen_logical_plan():
             )
         partion = ModuleParition(
             partition_index=i,
-            module_loader=lambda: load_module(i),
+            module_loader=lambda i=i: load_module(i),
             input_tensor_shape=(1, 128),
             input_tensor_dtype=torch.float32,
             schedule=schedule,

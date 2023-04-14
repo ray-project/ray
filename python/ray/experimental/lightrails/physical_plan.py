@@ -98,8 +98,8 @@ class SimplePhysicalPlanner(PhysicalPlanner):
                 _get_device_name,
                 _get_communicator,
                 partition.module_loader,
-                partition.data_loader_builder,
-                lambda: None,
+                partition.data_loader_builder or (lambda: None),
+                lambda model: None,
             )
             configs.append(config)
             pgs.append((pg, rank))

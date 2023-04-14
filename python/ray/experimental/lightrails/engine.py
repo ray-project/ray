@@ -86,6 +86,8 @@ class ExecutionEngine:
             config.world_size, config.rank, self.communicator_master_address
         )
         self.model = config.model_builder().to(self.device)
+        print(f"model initialized {self.model}")
+        print(f"schedule initialized {self.schedule}")
         if not self.is_training:
             self.model.eval()
         data_loader = (
