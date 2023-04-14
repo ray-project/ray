@@ -2,7 +2,7 @@ load("//bazel:python.bzl", "py_test_run_all_notebooks")
 
 filegroup(
     name = "workspace_templates",
-    srcs = glob(["**/*.ipynb", "**/requirements.txt", ""]),
+    srcs = glob(["**/*.ipynb", "**/requirements.txt"]),
     visibility = ["//doc:__subpackages__"]
 )
 
