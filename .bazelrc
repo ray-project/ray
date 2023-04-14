@@ -42,6 +42,9 @@ build:linux    --per_file_copt="-\\.(asm|S)$@-Werror"
 build:macos    --per_file_copt="-\\.(asm|S)$@-Werror"
 build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
 build:msvc-cl     --per_file_copt="-\\.(asm|S)$@-WX"
+# Fix constraints
+build --incompatible_use_platforms_repo_for_constraints=false
+test --incompatible_use_platforms_repo_for_constraints=false
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
 build:linux --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration"
@@ -144,7 +147,6 @@ build:ci --curses=no
 build:ci --keep_going
 build:ci --progress_report_interval=100
 build:ci --show_progress_rate_limit=15
-build:ci --show_task_finish
 build:ci --ui_actions_shown=1024
 build:ci --show_timestamps
 build:ci-travis --disk_cache=~/ray-bazel-cache
