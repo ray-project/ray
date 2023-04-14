@@ -260,7 +260,7 @@ def test_select_columns(ray_start_regular_shared):
         ds3.select_columns(cols=[]).materialize()
 
 
-def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_dataset_context):
+def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_context):
     ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
@@ -614,7 +614,7 @@ def test_map_batches_actors_preserves_order(shutdown_only):
     ],
 )
 def test_map_batches_batch_mutation(
-    ray_start_regular_shared, num_rows, num_blocks, batch_size, restore_dataset_context
+    ray_start_regular_shared, num_rows, num_blocks, batch_size, restore_data_context
 ):
     ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True

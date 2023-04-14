@@ -37,10 +37,10 @@ DEFAULT_BLOCK_SPLITTING_ENABLED = True
 # TODO (kfstorm): Remove this once stable.
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
-# Whether to enable stage-fusion optimizations for dataset pipelines.
+# Whether to enable stage-fusion optimizations for datastream pipelines.
 DEFAULT_OPTIMIZE_FUSE_STAGES = True
 
-# Whether to enable stage-reorder optimizations for dataset pipelines.
+# Whether to enable stage-reorder optimizations for datastream pipelines.
 DEFAULT_OPTIMIZE_REORDER_STAGES = True
 
 # Whether to furthermore fuse read stages.

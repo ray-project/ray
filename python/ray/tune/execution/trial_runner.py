@@ -87,11 +87,9 @@ class _TuneControllerBase:
             Trial objects.
         scheduler: Defaults to FIFOScheduler.
         experiment_path: Path where global experiment state checkpoints
-            are saved and restored from.
+            are saved and restored from. If this is a remote URI,
+            experiment checkpoints will be synced to this location.
         sync_config: See :class:`~ray.tune.syncer.SyncConfig`.
-            Within sync config, the `upload_dir` specifies cloud storage, and
-            experiment state checkpoints will be synced to the `remote_checkpoint_dir`:
-            `{sync_config.upload_dir}/{experiment_name}`.
         experiment_dir_name: Experiment directory name.
             See :class:`~ray.tune.experiment.Experiment`.
         stopper: Custom class for stopping whole experiments. See ``Stopper``.
