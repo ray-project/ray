@@ -220,6 +220,7 @@ class ExperimentAnalysis:
             download_from_uri(experiment_checkpoint_path, local_path)
         except FileNotFoundError as e:
             return None
+
         return local_path
 
     def _get_latest_checkpoint_from_dir(
@@ -623,6 +624,10 @@ class ExperimentAnalysis:
         fail_count = 0
         for path in self._get_trial_paths():
             try:
+                param_file = os.path.join(path, EXPR_PARAM_FILE)
+                if not os.path.exists(param_file):
+                    download_from_uri(self._parse_cloud_path(param_file), param_file)
+
                 with open(os.path.join(path, EXPR_PARAM_FILE)) as f:
                     config = json.load(f)
                 if prefix:
@@ -822,15 +827,22 @@ class ExperimentAnalysis:
         for path in self._get_trial_paths():
             try:
                 if self._file_type == "json":
-                    with open(os.path.join(path, EXPR_RESULT_FILE), "r") as f:
+                    json_file = os.path.join(path, EXPR_RESULT_FILE)
+                    if not os.path.exists(json_file):
+                        download_from_uri(self._parse_cloud_path(json_file), json_file)
+
+                    with open(json_file, "r") as f:
                         json_list = [json.loads(line) for line in f if line]
                     df = pd.json_normalize(json_list, sep="/")
                 elif self._file_type == "csv":
-                    df = pd.read_csv(
-                        os.path.join(path, EXPR_PROGRESS_FILE), dtype=force_dtype
-                    )
+                    csv_file = os.path.join(path, EXPR_PROGRESS_FILE)
+                    if not os.path.exists(csv_file):
+                        download_from_uri(self._parse_cloud_path(csv_file), csv_file)
+
+                    df = pd.read_csv(csv_file, dtype=force_dtype)
                 self.trial_dataframes[path] = df
-            except Exception:
+            except Exception as e:
+                logger.error("Exception occurred when loading trial results:", e)
                 fail_count += 1
 
         if fail_count:
