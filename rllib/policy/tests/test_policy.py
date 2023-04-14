@@ -32,7 +32,9 @@ class TestPolicy(unittest.TestCase):
             policy.set_state(state1)
             state3 = policy.get_state()
             # Make sure everything is the same.
-            check(state1["_exploration_state"], state3["_exploration_state"])
+            # TODO(Artur): Make sure exploration state is managed within RLModules.
+            if not config._enable_rl_module_api:
+                check(state1["_exploration_state"], state3["_exploration_state"])
             check(state1["global_timestep"], state3["global_timestep"])
             check(state1["weights"], state3["weights"])
 
