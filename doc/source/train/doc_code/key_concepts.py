@@ -103,17 +103,12 @@ from ray.tune.logger import TBXLoggerCallback
 run_config = RunConfig(
     # Name of the training run (directory name).
     name="my_train_run",
-<<<<<<< HEAD
     # Path to store the experiment directory, which contains all
     # the results and checkpoints.
-    # The experiment directory will be at: {storage_path}/{name}
+    # The experiment directory will be at: storage_path/name
     storage_path="~/ray_results",
-    # This can be a local or remote path!
+    # This can also be a remote path!
     # storage_path="s3://my_bucket/tune_results",
-=======
-    # Directory to store results in (will be storage_path/name).
-    storage_path="~/ray_results",
->>>>>>> 0100e645129751d0d6bc1e64a7354b6c0d8e22e8
     # Low training verbosity.
     verbose=1,
     # Custom and built-in callbacks
