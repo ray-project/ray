@@ -102,25 +102,24 @@ def is_non_local_path_uri(uri: str) -> bool:
 _cached_fs = {}
 
 
-def _is_local_path(uri: str) -> bool:
-    """Check if the path points to the local filesystem."""
-    if len(uri) >= 1 and uri[0] == "/":
-        return True
-
+def is_local_path(path: str) -> bool:
+    """Check if a given path is a local path or a remote URI."""
     if sys.platform == "win32":
-        return _is_local_windows_path(uri)
-    return False
+        return _is_local_windows_path(path)
+
+    scheme = urllib.parse.urlparse(path).scheme
+    return scheme in ("", "file")
 
 
-def _is_local_windows_path(uri: str) -> bool:
+def _is_local_windows_path(path: str) -> bool:
     """Determines if path is a Windows file-system location."""
-    if len(uri) >= 1 and uri[0] == "\\":
+    if len(path) >= 1 and path[0] == "\\":
         return True
     if (
-        len(uri) >= 3
-        and uri[1] == ":"
-        and (uri[2] == "/" or uri[2] == "\\")
-        and uri[0].isalpha()
+        len(path) >= 3
+        and path[1] == ":"
+        and (path[2] == "/" or path[2] == "\\")
+        and path[0].isalpha()
     ):
         return True
     return False
@@ -132,7 +131,7 @@ def get_fs_and_path(
     if not pyarrow:
         return None, None
 
-    if _is_local_path(uri):
+    if is_local_path(uri):
         # Append protocol such that the downstream operations work
         # properly on Linux and Windows.
         uri = "file://" + pathlib.Path(uri).as_posix()
