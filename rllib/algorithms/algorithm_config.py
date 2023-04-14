@@ -2431,7 +2431,9 @@ class AlgorithmConfig(_Config):
                         f"{self.__prior_exploration_config}` because you set "
                         f"`_enable_rl_modules=False`. This exploration config was "
                         f"restored from a prior exploration config that was overriden "
-                        f"when setting `_enable_rl_modules=True`."
+                        f"when setting `_enable_rl_modules=True`. This occurs because "
+                        f"when RLModule API are enabled, exploration_config can not "
+                        f"be set."
                     )
                     self.exploration_config = self.__prior_exploration_config
                     self.__prior_exploration_config = None
