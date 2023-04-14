@@ -61,14 +61,17 @@ from ray.includes.common cimport (
     CObjectReference,
     CRayObject,
     CRayStatus,
+    CErrorTableData,
     CGcsClientOptions,
     CGcsNodeInfo,
     CJobTableData,
+    CLogBatch,
     CTaskArg,
     CTaskArgByReference,
     CTaskArgByValue,
     CTaskType,
     CPlacementStrategy,
+    CPythonFunction,
     CSchedulingStrategy,
     CPlacementGroupSchedulingStrategy,
     CNodeAffinitySchedulingStrategy,
@@ -1726,6 +1729,53 @@ cdef class GcsClient:
                 }
             }
         return result
+
+cdef class GcsPublisher:
+    """Cython wrapper class of C++ `ray::gcs::GcsPublisher`."""
+    cdef:
+        shared_ptr[CGcsSyncPublisher] inner
+
+    def __cinit__(self, address):
+        self.inner.reset(new CGcsSyncPublisher(address))
+        check_status(self.inner.get().Connect())
+
+    def publish_error(self, key_id: bytes, error_type: str, message: str, job_id=None):
+        cdef:
+            CErrorTableData error_info
+
+        if job_id is None:
+            job_id = ray.JobID.nil()
+        assert isinstance(job_id, ray.JobID)
+        error_info.set_job_id(job_id.binary())
+        error_info.set_type(error_type)
+        error_info.set_error_message(message)
+
+        check_status(self.inner.get().PublishError(key_id, error_info))
+
+    def publish_logs(self, log_json):
+        cdef:
+            CLogBatch log_batch
+
+        job_id = log_json.get("job")
+        log_batch.set_ip(log_json.get("ip", ""))
+        log_batch.set_pid(str(log_json.get("pid")) if log_json.get("pid") else b"")
+        log_batch.set_job_id(log_json.get("job", ""))
+        log_batch.set_is_error(bool(log_json.get("is_err")))
+        for line in log_json.get("lines", []):
+            log_batch.add_lines(line)
+        log_batch.set_actor_name(log_json.get("actor_name", ""))
+        log_batch.set_task_name(log_json.get("task_name", ""))
+
+        check_status(self.inner.get().PublishLogs(job_id.encode() if job_id else b"", log_batch))
+
+    def publish_function_key(self, key: bytes):
+        cdef:
+            CPythonFunction python_function
+
+        python_function.set_key(key)
+
+        check_status(self.inner.get().PublishFunctionKey(python_function))
+
 
 cdef class CoreWorker:
 
