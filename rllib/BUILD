@@ -2523,7 +2523,7 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_gpus",
+    name = "tests/test_gpus_large_batch",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
     srcs = ["tests/test_gpus.py"],
