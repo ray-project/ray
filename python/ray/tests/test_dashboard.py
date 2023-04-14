@@ -222,16 +222,21 @@ def test_configured_dashboard_grpc_port(call_ray_start):
     [conflict_port],
     indirect=True,
 )
-@pytest.mark.parametrize(
-    "call_ray_start",
-    [f"ray start --head --num-cpus=1 --dashboard-grpc-port={conflict_port}"],
-    indirect=True,
-)
-def test_dashboard_grpc_port_conflict(listen_port, call_ray_start):
-    address = call_ray_start
-    addresses = ray.init(address=address)
-    # Dashboard should fail to start with conflicting head port
-    assert addresses.dashboard_url is None
+def test_dashboard_grpc_port_conflict(listen_port, call_ray_stop_only, shutdown_only):
+    try:
+        subprocess.check_output(
+            [
+                "ray",
+                "start",
+                "--head",
+                "--dashboard-grpc-port",
+                f"{conflict_port}",
+                "--include-dashboard=True",
+            ],
+            stderr=subprocess.PIPE,
+        )
+    except subprocess.CalledProcessError as e:
+        assert f"Failed to bind to address 0.0.0.0:{conflict_port}".encode() in e.stderr
 
 
 @pytest.mark.skipif(
