@@ -25,7 +25,7 @@ from ray.train.lightning._lightning_utils import (
     RayEnvironment,
     RayDataModule,
     RayModelCheckpoint,
-    _get_worker_root_device,
+    get_worker_root_device,
 )
 
 
@@ -503,7 +503,7 @@ def _lightning_train_loop_per_worker(config):
 
     # Setup trainer's parallel devices
     if trainer_config.get("accelerator", None) == "gpu":
-        current_device = _get_worker_root_device()
+        current_device = get_worker_root_device()
         trainer_config["devices"] = [current_device.index]
 
     # Setup ray cluster environment info
