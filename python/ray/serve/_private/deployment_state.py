@@ -100,7 +100,8 @@ class DeploymentTargetState:
             num_replicas = info.deployment_config.num_replicas
             version = DeploymentVersion(
                 info.version,
-                user_config=info.deployment_config.user_config,
+                deployment_config=info.deployment_config,
+                replica_config=info.replica_config,
             )
 
         return cls(info, num_replicas, version, deleting)
@@ -2037,6 +2038,15 @@ class DeploymentStateManager:
                 (deployment_state_info, self._deleted_deployment_metadata)
             ),
         )
+
+    def get_deployments_in_application(self, app_name: str) -> List[str]:
+        """Return list of deployment names in application."""
+        states = []
+        for name, deployment_state in self._deployment_states.items():
+            if deployment_state.target_info.app_name == app_name:
+                states.append(name)
+
+        return states
 
     def get_running_replica_infos(
         self,

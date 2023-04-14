@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -8,10 +9,7 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
-from ray._private.utils import (
-    import_attr,
-    run_background_task,
-)
+from ray._private.utils import run_background_task
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
 from ray._raylet import GcsClient
@@ -33,7 +31,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
     SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     MULTI_APP_MIGRATION_MESSAGE,
 )
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
@@ -51,14 +48,10 @@ from ray.serve.schema import (
     HTTPOptionsSchema,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
-from ray.serve._private.utils import (
-    DEFAULT,
-    override_runtime_envs_except_env_vars,
-    get_random_letters,
-    record_serve_tag,
-)
+from ray.serve._private.utils import record_serve_tag
 from ray.serve._private.application_state import ApplicationStateManager
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+
+# from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -368,6 +361,7 @@ class ServeController:
     def shutdown(self):
         """Shuts down the serve instance completely."""
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
+        self.application_state_manager.shutdown()
         self.deployment_state_manager.shutdown()
         self.endpoint_state.shutdown()
         if self.http_state:
@@ -431,7 +425,7 @@ class ServeController:
             deployed successfully or not.
         """
 
-        return self.application_state_manager.deploy_application(
+        return self.application_state_manager.apply_deployment_args(
             name, deployment_args_list
         )
 
@@ -503,56 +497,16 @@ class ServeController:
         if not deployment_time:
             deployment_time = time.time()
 
-        # Load checkpointed data from last time deploy_apps was called
-        config_checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-        if config_checkpoint is None:
-            config_checkpoints_dict = {}
-        else:
-            _, _, config_checkpoints_dict = pickle.loads(config_checkpoint)
-
         new_config_checkpoint = {}
-
         for app_config in applications:
-            app_config_dict = app_config.dict(exclude_unset=True)
+            # new_config_checkpoint[app_config.name] = (
+            #     app_config.dict(exclude_unset=True),
+            #     app_version,
+            # )
 
-            # Compare new config options with old ones, set versions of new deployments
-            if app_config.name in config_checkpoints_dict:
-                (prev_app_config, prev_versions) = config_checkpoints_dict[
-                    app_config.name
-                ]
-
-                updated_versions = _generate_deployment_config_versions(
-                    app_config_dict,
-                    prev_app_config,
-                    prev_versions,
-                )
-            else:
-                updated_versions = _generate_deployment_config_versions(app_config_dict)
-
-            deployment_override_options = app_config_dict.get("deployments", [])
-
-            new_config_checkpoint[app_config.name] = (
-                app_config_dict,
-                updated_versions,
-            )
-
-            logger.info(
-                f"Starting build_application task for application {app_config.name}."
-            )
-            build_app_obj_ref = build_application.options(
-                runtime_env=app_config.runtime_env
-            ).remote(
-                app_config.import_path,
-                app_config.runtime_env,
-                deployment_override_options,
-                updated_versions,
-                app_config_dict.get("route_prefix", DEFAULT.VALUE),
-                app_config.name,
-            )
-
-            self.application_state_manager.create_application_state(
-                app_config.name,
-                build_app_obj_ref=build_app_obj_ref,
+            self.application_state_manager.deploy(
+                name=app_config.name,
+                config=app_config,
                 deployment_time=deployment_time,
             )
 
@@ -765,178 +719,6 @@ class ServeController:
         """
         for name in names:
             self.application_state_manager.delete_application(name)
-
-
-def _generate_deployment_config_versions(
-    new_config: Dict,
-    last_deployed_config: Dict = None,
-    last_deployed_versions: Dict = None,
-) -> Dict[str, str]:
-    """
-    This function determines whether each deployment's version should be changed based
-    on the newly deployed config.
-
-    When ``import_path`` or ``runtime_env`` is changed, the versions for all deployments
-    should be changed, so old replicas are torn down. When the options for a deployment
-    in ``deployments`` change, its version should generally change. The only deployment
-    options that can be changed without tearing down replicas (i.e. changing the
-    version) are:
-    * num_replicas
-    * user_config
-    * autoscaling_config
-
-    A deployment option is considered changed when:
-    * it was not specified in last_deployed_config and is specified in new_config
-    * it was specified in last_deployed_config and is not specified in new_config
-    * it is specified in both last_deployed_config and new_config but the specified
-      value has changed
-
-    Args:
-        new_config: Newly deployed config dict that follows ServeApplicationSchema
-        last_deployed_config: Last deployed config dict that follows
-            ServeApplicationSchema, which is an empty dictionary if there is no previous
-            deployment
-        last_deployed_versions: Dictionary of {deployment_name: str -> version: str}
-            tracking the versions of deployments listed in the last deployed config
-
-    Returns:
-        Dictionary of {deployment_name: str -> version: str} containing updated
-        versions for deployments listed in the new config
-    """
-    # If import_path or runtime_env is changed, it is considered a code change
-    if last_deployed_config is None:
-        last_deployed_config = {}
-    if last_deployed_versions is None:
-        last_deployed_versions = {}
-
-    if last_deployed_config.get("import_path") != new_config.get(
-        "import_path"
-    ) or last_deployed_config.get("runtime_env") != new_config.get("runtime_env"):
-        last_deployed_config, last_deployed_versions = {}, {}
-
-    new_deployments = {d["name"]: d for d in new_config.get("deployments", [])}
-    old_deployments = {
-        d["name"]: d for d in last_deployed_config.get("deployments", [])
-    }
-
-    lightweight_update_options = {
-        "num_replicas": TagKey.SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED,
-        "user_config": TagKey.SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED,
-        "autoscaling_config": TagKey.SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED,
-    }
-
-    def exclude_lightweight_update_options(dict):
-        # Exclude config options from dict that qualify for a lightweight config
-        # update. Changes in any other config options are considered a code change,
-        # and require a version change to trigger an update that tears
-        # down existing replicas and replaces them with updated ones.
-        return {
-            option: dict[option]
-            for option in dict
-            if option not in lightweight_update_options
-        }
-
-    updated_versions = {}
-    for name in new_deployments:
-        old_deployment = old_deployments.get(name, {})
-        new_deployment = new_deployments[name]
-        new_deployment_filtered = exclude_lightweight_update_options(new_deployment)
-        old_deployment_filtered = exclude_lightweight_update_options(old_deployment)
-
-        # If config options haven't changed, version stays the same
-        # otherwise, generate a new random version
-        if old_deployment_filtered == new_deployment_filtered:
-            updated_versions[name] = last_deployed_versions[name]
-
-            # If the rest of the options haven't changed, but a lightweight option has
-            # changed, then Serve will execute a lightweight update
-            for option, tagkey in lightweight_update_options.items():
-                if old_deployment.get(option) != new_deployment.get(option):
-                    record_extra_usage_tag(tagkey, "True")
-        else:
-            updated_versions[name] = get_random_letters()
-
-    return updated_versions
-
-
-@ray.remote(num_cpus=0, max_calls=1)
-def build_application(
-    import_path: str,
-    runtime_env: Dict,
-    deployment_override_options: List[Dict],
-    deployment_versions: Dict,
-    route_prefix: str,
-    name: str,
-):
-    """Deploy Serve application from a user-provided config.
-
-    Args:
-        import_path: import path to ingress deployment.
-        runtime_env: runtime environment for the application. This will also be the
-            default runtime environment for each deployment unless overriden at the
-            deployment level.
-        deployment_override_options: Dictionary of options that overrides
-            deployment options set in the graph's code itself.
-        deployment_versions: Versions of each deployment, each of which is
-            the same as the last deployment if it is a config update or
-            a new randomly generated version if it is a code update
-        name: unique name for the application.
-        route_prefix: unique route prefix path for the application. If not DEFAULT.VALUE
-            this will override the ingress deployment's route prefix.
-    """
-    try:
-        from ray.serve.api import build
-
-        # Import and build the application.
-        app = build(import_attr(import_path), name)
-        # Overwrite route prefix
-        for deployment in list(app.deployments.values()):
-            if (
-                route_prefix is not DEFAULT.VALUE
-                and deployment._route_prefix is not None
-            ):
-                deployment._route_prefix = route_prefix
-
-        # Override options for each deployment.
-        for options in deployment_override_options:
-            deployment_name = options["name"]
-            unique_deployment_name = (
-                (name + DEPLOYMENT_NAME_PREFIX_SEPARATOR) if len(name) else ""
-            ) + deployment_name
-
-            if unique_deployment_name not in app.deployments:
-                raise KeyError(
-                    f'There is no deployment named "{deployment_name}" in the '
-                    f'application "{name}".'
-                )
-
-            # Merge app-level and deployment-level runtime_envs.
-            if "ray_actor_options" in options:
-                # If specified, get ray_actor_options from config
-                ray_actor_options = options["ray_actor_options"] or {}
-            else:
-                # Otherwise, get options from application code (and default to {}
-                # if the code sets options to None).
-                ray_actor_options = (
-                    app.deployments[unique_deployment_name].ray_actor_options or {}
-                )
-            deployment_env = ray_actor_options.get("runtime_env", {})
-            merged_env = override_runtime_envs_except_env_vars(
-                runtime_env, deployment_env
-            )
-            ray_actor_options.update({"runtime_env": merged_env})
-            options["ray_actor_options"] = ray_actor_options
-            options["version"] = deployment_versions[deployment_name]
-            options["name"] = unique_deployment_name
-            # Update the deployment's options
-            app.deployments[unique_deployment_name].set_options(
-                **options, _internal=True
-            )
-        return app.deploy_args_list
-    except KeyboardInterrupt:
-        # Error is raised when this task is canceled with ray.cancel(), which
-        # happens when deploy_apps() is called.
-        logger.debug("Existing config deployment request terminated.")
 
 
 @ray.remote(num_cpus=0)

@@ -86,12 +86,16 @@ def get_deploy_args(
 
 
 def deploy_args_to_deployment_info(
-    deployment_name: str,
+    # change to deployment_name
+    name: str,
     deployment_config_proto_bytes: bytes,
     replica_config_proto_bytes: bytes,
     deployer_job_id: Union[str, bytes],
-    previous_deployment: DeploymentInfo,
+    previous_deployment: DeploymentInfo = None,
     is_driver_deployment: Optional[bool] = False,
+    app_name: str = None,
+    route_prefix=None,
+    docs_path=None,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
     constructs a DeploymentInfo object.
@@ -125,13 +129,26 @@ def deploy_args_to_deployment_info(
             int.from_bytes(deployer_job_id, "little")
         ).hex()
 
-    return DeploymentInfo(
-        actor_name=deployment_name,
-        version=version,
-        deployment_config=deployment_config,
-        replica_config=replica_config,
-        deployer_job_id=deployer_job_id,
-        start_time_ms=int(time.time() * 1000),
-        autoscaling_policy=autoscaling_policy,
-        is_driver_deployment=is_driver_deployment,
-    )
+    if app_name is not None:
+        return DeploymentInfo(
+            app_name=app_name,
+            actor_name=name,
+            version=version,
+            deployment_config=deployment_config,
+            replica_config=replica_config,
+            deployer_job_id=deployer_job_id,
+            start_time_ms=int(time.time() * 1000),
+            autoscaling_policy=autoscaling_policy,
+            is_driver_deployment=is_driver_deployment,
+        )
+    else:
+        return DeploymentInfo(
+            actor_name=name,
+            version=version,
+            deployment_config=deployment_config,
+            replica_config=replica_config,
+            deployer_job_id=deployer_job_id,
+            start_time_ms=int(time.time() * 1000),
+            autoscaling_policy=autoscaling_policy,
+            is_driver_deployment=is_driver_deployment,
+        )
