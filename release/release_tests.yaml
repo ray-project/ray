@@ -2995,8 +2995,8 @@
 ########################
 
 - name: rllib_learner_group_checkpointing_multinode
-- group: RLlib tests
-- working_dir: rllib_tests
+  group: RLlib tests
+  working_dir: rllib_tests
 
   frequency: nightly
   team: rllib

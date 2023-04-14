@@ -277,7 +277,7 @@ class TestLearnerGroup(unittest.TestCase):
     def test_save_load_state(self):
         fws = ["tf", "torch"]
         # this is expanded to more scaling modes on the release ci.
-        scaling_modes = ["remote-cpu", "remote-gpu"]
+        scaling_modes = REMOTE_SCALING_CONFIGS.keys()
 
         test_iterator = itertools.product(fws, scaling_modes)
 
