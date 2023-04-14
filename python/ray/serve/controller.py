@@ -268,8 +268,7 @@ class ServeController:
                 logger.info("TIMEOUT IS UP BROTHERMAN")
                 self.done_recovering_event.set()
 
-            # if self.http_state and self.done_recovering_event.is_set():
-            if self.http_state:
+            if self.http_state and self.done_recovering_event.is_set():
                 try:
                     self.http_state.update()
                 except Exception:
