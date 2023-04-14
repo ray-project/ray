@@ -496,4 +496,11 @@ def run_model2():
 
 if __name__ == "__main__":
     # run_model1()
+    import ray
+
+    runtime_env = {
+        "working_dir": "/home/ray/default",
+        "pip": ["transformers==4.28.0", "accelerate==0.18.0", "numpy==1.20"],
+    }
+    ray.init(address="auto", _runtime_env=runtime_env)
     run_model2()
