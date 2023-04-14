@@ -421,6 +421,8 @@ class AlgorithmConfig(_Config):
         self._enable_rl_module_api = False
         # Whether to error out if exploration config is set when using RLModules.
         self._validate_exploration_conf_and_rl_modules = True
+        # Helper to keep track of the original exploration config.
+        self.__prior_exploration_config = None
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -2420,7 +2422,24 @@ class AlgorithmConfig(_Config):
                     "config, this must be done with "
                     "`config.exploration_config={}`."
                 )
+                self.__prior_exploration_config = self.exploration_config
                 self.exploration_config = {}
+            elif _enable_rl_module_api is False and not self.exploration_config:
+                if self.__prior_exploration_config is not None:
+                    logger.warning(
+                        f"Setting `exploration_config="
+                        f"{self.__prior_exploration_config}` because you set "
+                        f"`_enable_rl_modules=False`. This exploration config was "
+                        f"restored from a prior exploration config that was overriden "
+                        f"when setting `_enable_rl_modules=True`."
+                    )
+                    self.exploration_config = self.__prior_exploration_config
+                    self.__prior_exploration_config = None
+                else:
+                    logger.warning(
+                        "config._enable_rl_module_api was set to False, but no prior "
+                        "exploration config was found to be restored."
+                    )
         else:
             # throw a warning if the user has used this API but not enabled it.
             logger.warning(
