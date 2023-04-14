@@ -4,6 +4,7 @@ import pytest
 import pandas as pd
 
 import ray
+from ray.data._internal.execution.legacy_compat import _blocks_to_input_buffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
@@ -740,7 +741,7 @@ def test_from_modin_operator(
     enable_optimizer,
     enable_pandas_block,
 ):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     old_enable_pandas_block = ctx.enable_pandas_block
     ctx.enable_pandas_block = enable_pandas_block
     try:
@@ -789,7 +790,7 @@ def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
 def test_from_pandas_refs_operator(
     ray_start_regular_shared, enable_optimizer, enable_pandas_block
 ):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     old_enable_pandas_block = ctx.enable_pandas_block
     ctx.enable_pandas_block = enable_pandas_block
     try:
@@ -812,7 +813,7 @@ def test_from_pandas_refs_operator(
 def test_from_pandas_refs_e2e(
     ray_start_regular_shared, enable_optimizer, enable_pandas_block
 ):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     old_enable_pandas_block = ctx.enable_pandas_block
     ctx.enable_pandas_block = enable_pandas_block
 
@@ -1076,6 +1077,17 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
     # Underlying implementation uses `FromItems` operator
     assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
     _check_usage_record(["FromItems"])
+
+
+def test_blocks_to_input_buffer_op_name(
+    ray_start_regular_shared,
+    enable_streaming_executor,
+):
+    ds: ray.data.Datastream = ray.data.range(10)
+    blocks, _, _ = ds._plan._optimize()
+    assert hasattr(blocks, "_tasks"), blocks
+    physical_op = _blocks_to_input_buffer(blocks, owns_blocks=False)
+    assert physical_op.name == "ReadRange"
 
 
 def test_execute_to_legacy_block_list(

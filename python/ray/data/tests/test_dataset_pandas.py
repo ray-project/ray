@@ -17,7 +17,7 @@ from ray.tests.conftest import *  # noqa
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
 def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     old_enable_pandas_block = ctx.enable_pandas_block
     ctx.enable_pandas_block = enable_pandas_block
     try:
@@ -55,7 +55,7 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
 def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     old_enable_pandas_block = ctx.enable_pandas_block
     ctx.enable_pandas_block = enable_pandas_block
     try:
@@ -127,7 +127,7 @@ def test_to_pandas_tensor_column_cast_pandas(ray_start_regular_shared):
     # Check that tensor column casting occurs when converting a Dataset to a Pandas
     # DataFrame.
     data = np.arange(12).reshape((3, 2, 2))
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.enable_tensor_extension_casting
     try:
         ctx.enable_tensor_extension_casting = True
@@ -152,7 +152,7 @@ def test_to_pandas_tensor_column_cast_arrow(ray_start_regular_shared):
     # Check that tensor column casting occurs when converting a Dataset to a Pandas
     # DataFrame.
     data = np.arange(12).reshape((3, 2, 2))
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.enable_tensor_extension_casting
     try:
         ctx.enable_tensor_extension_casting = True

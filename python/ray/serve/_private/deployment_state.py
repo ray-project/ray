@@ -58,7 +58,7 @@ from ray.serve._private.utils import (
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
 
 from ray.util import metrics
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)

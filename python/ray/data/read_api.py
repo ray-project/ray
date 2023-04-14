@@ -48,7 +48,7 @@ from ray.data._internal.util import (
     get_table_block_metadata,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DataContext
 from ray.data.dataset import Datastream, MaterializedDatastream
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -139,7 +139,7 @@ def from_items(
     detected_parallelism, _ = _autodetect_parallelism(
         parallelism,
         ray.util.get_current_placement_group(),
-        DatasetContext.get_current(),
+        DataContext.get_current(),
     )
     # Truncate parallelism to number of items to avoid empty blocks.
     detected_parallelism = min(len(items), detected_parallelism)
@@ -258,12 +258,12 @@ def range_tensor(
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.range_tensor(1000, shape=(2, 2)) # doctest: +SKIP
-        >>> ds # doctest: +SKIP
+        >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
+        >>> ds  # doctest: +ellipsis
         Datastream(
-            num_blocks=200,
+            num_blocks=...,
             num_rows=1000,
-            schema={__value__: <ArrowTensorType: shape=(2, 2), dtype=int64>},
+            schema={__value__: numpy.ndarray(shape=(2, 2), dtype=int64)}
         )
         >>> ds.map_batches(lambda arr: arr * 2).take(2) # doctest: +SKIP
         [array([[0, 0],
@@ -315,7 +315,7 @@ def read_datasource(
     Returns:
         Datastream that reads data from the datasource.
     """
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
 
     if ray_remote_args is None:
         ray_remote_args = {}
@@ -629,13 +629,13 @@ def read_images(
         >>> path = "s3://anonymous@air-example-data-2/movie-image-small-filesize-1GB"
         >>> ds = ray.data.read_images(path)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3)})
+        Datastream(num_blocks=200, num_rows=41979, schema={image: numpy.ndarray(ndim=3, dtype=uint8)})
 
         If you need image file paths, set ``include_paths=True``.
 
         >>> ds = ray.data.read_images(path, include_paths=True)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3), path: string})
+        Datastream(num_blocks=200, num_rows=41979, schema={image: numpy.ndarray(ndim=3, dtype=uint8), path: string})
         >>> ds.take(1)[0]["path"]  # doctest: +SKIP
         'air-example-data-2/movie-image-small-filesize-1GB/0.jpg'
 
@@ -1548,7 +1548,7 @@ def from_pandas(
         _cast_ndarray_columns_to_tensor_extension,
     )
 
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     if context.enable_tensor_extension_casting:
         dfs = [_cast_ndarray_columns_to_tensor_extension(df.copy()) for df in dfs]
     return from_pandas_refs([ray.put(df) for df in dfs])
@@ -1583,7 +1583,7 @@ def from_pandas_refs(
         )
 
     logical_plan = LogicalPlan(FromPandasRefs(dfs))
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
@@ -1820,7 +1820,7 @@ def from_tf(
         >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])  # doctest: +SKIP
         >>> ds = ray.data.from_tf(dataset)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
+        Datastream(num_blocks=200, num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
         >>> ds.take(1)  # doctest: +SKIP
         [{'id': b'train_16399', 'image': array([[[143,  96,  70],
         [141,  96,  72],
@@ -1889,7 +1889,7 @@ def from_torch(
 
 def _get_read_tasks(
     ds: Datasource,
-    ctx: DatasetContext,
+    ctx: DataContext,
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
     local_uri: bool,
@@ -1911,10 +1911,10 @@ def _get_read_tasks(
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     if local_uri:
         kwargs["local_uri"] = local_uri
-    DatasetContext._set_current(ctx)
+    DataContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
     requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
-        parallelism, cur_pg, DatasetContext.get_current(), reader
+        parallelism, cur_pg, DataContext.get_current(), reader
     )
     return (
         requested_parallelism,

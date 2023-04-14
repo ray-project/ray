@@ -29,7 +29,7 @@ except ImportError:
 
 
 def get_ray_status_output(address):
-    gcs_client = gcs_utils.GcsClient(address=address)
+    gcs_client = ray._raylet.GcsClient(address=address)
     internal_kv._initialize_internal_kv(gcs_client)
     status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
     error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
