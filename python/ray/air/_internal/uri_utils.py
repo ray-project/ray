@@ -42,6 +42,14 @@ class URI:
         assert self._path.parent != ".", f"{str(self)} has no valid parent URI"
         return URI(self._get_str_representation(self._parsed, self._path.parent))
 
+    @property
+    def scheme(self) -> str:
+        return self._parsed.scheme
+
+    @property
+    def path(self) -> str:
+        return str(self._path)
+
     def __truediv__(self, path_to_append):
         assert isinstance(path_to_append, str)
         return URI(
