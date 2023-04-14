@@ -98,16 +98,20 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
         rllib_dir = str(Path(__file__).parent.parent.absolute())
 
         # This is only supported without RLModule API. See AlgorithmConfig for
-        # more info.
-        if algo.config._enable_rl_module_api:
-            eval_ = ""
+        # more info. We need to prefetch the default config that will be used when we
+        # call rllib train here to see if the RLModule API is enabled.
+        algo_cls = get_trainable_cls(algo)
+        config = algo_cls.get_default_config()
+        if config._enable_rl_module_api:
+            eval_ = ''
         else:
-            eval_ = '\\"evaluation_config\\": {\\"explore\\": false}'
+            eval_ = ', \\"evaluation_config\\": {\\"explore\\": false}'
+
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
         os.system(
             "python {}/train.py --local-dir={} --run={} "
             "--checkpoint-freq=1 --checkpoint-at-end ".format(rllib_dir, tmp_dir, algo)
-            + '--config="{\\"num_gpus\\": 0, \\"num_workers\\": 1, '
+            + '--config="{\\"num_gpus\\": 0, \\"num_workers\\": 1'
             + eval_
             + fw_
             + '}" '
