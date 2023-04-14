@@ -287,6 +287,8 @@ class AnyscaleJobManager:
             "ERROR",
             "Traceback (most recent call last)",
         ]
+        error_output = None
+        matched_pattern_count = 0
         for root, _, files in os.walk(tmpdir):
             for file in files:
                 logger.info(f"Ray log: {os.path.join(root, file)}")
@@ -294,9 +296,13 @@ class AnyscaleJobManager:
                     continue
                 with open(os.path.join(root, file)) as lines:
                     output = "".join(deque(lines, maxlen=3 * LAST_LOGS_LENGTH))
-                    if any([error in output for error in error_log_patterns]):
-                        return output
-        return None
+                    # favor error logs that match with the most number of error patterns
+                    if (
+                        len([error for error in error_log_patterns if error in output])
+                        > matched_pattern_count
+                    ):
+                        error_output = output
+        return error_output
 
     def get_last_logs(self):
         if not self.job_id:
