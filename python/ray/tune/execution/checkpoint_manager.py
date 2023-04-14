@@ -104,7 +104,7 @@ class _CheckpointManager(CommonCheckpointManager):
         state = self.__dict__.copy()
         # Avoid serializing the memory checkpoint.
         state["_latest_memory_checkpoint"] = _TrackedCheckpoint(
-            dir_or_data=None, storage_mode=CheckpointStorage.MEMORY
+            dir_or_data=None, checkpoint_id=-1, storage_mode=CheckpointStorage.MEMORY
         )
         # Avoid serializing lambda since it may capture cyclical dependencies.
         state.pop("_delete_fn")
