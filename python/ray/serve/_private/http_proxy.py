@@ -511,7 +511,7 @@ Please make sure your http-host and http-port are specified correctly."""
             root_path=self.root_path,
             lifespan="off",
             access_log=False,
-            limit_concurrency=1,
+            limit_concurrency=100,
         )
         server = uvicorn.Server(config=config)
         # TODO(edoakes): we need to override install_signal_handlers here
