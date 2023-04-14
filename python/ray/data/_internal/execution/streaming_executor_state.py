@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Deque, Tuple, Union
 
 import ray
+from ray.data.context import DataContext
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     RefBundle,
@@ -361,7 +362,11 @@ def select_operator_to_run(
 
     # If no ops are allowed to execute due to resource constraints, try to trigger
     # cluster scale-up.
-    if not ops and any(state.num_queued() > 0 for state in topology.values()):
+    if (
+        DataContext.get_current().autoscaling_enabled
+        and not ops
+        and any(state.num_queued() > 0 for state in topology.values())
+    ):
         now = time.time()
         if (
             now
@@ -424,13 +429,10 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
             req["GPU"] = math.ceil(resource.gpu)
         return req
 
-    total_cpu_usage = 0
     for op, state in topology.items():
         per_task_resource = op.incremental_resource_usage()
         task_bundle = to_bundle(per_task_resource)
         resource_request.extend([task_bundle] * op.num_active_work_refs())
-        if "CPU" in task_bundle:
-            total_cpu_usage += task_bundle["CPU"] * op.num_active_work_refs()
         # Only include incremental resource usage for ops that are ready for
         # dispatch.
         if state.num_queued() > 0:
@@ -438,9 +440,6 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
             # usage for more than one bundle in the queue for this op?
             resource_request.append(task_bundle)
 
-    total = ray.cluster_resources()
-    if not ("CPU" in total and total_cpu_usage > 0.6 * total["CPU"]):
-        return
     # Make autoscaler resource request.
     actor = get_or_create_autoscaling_requester_actor()
     actor.request_resources.remote(resource_request, execution_id)
