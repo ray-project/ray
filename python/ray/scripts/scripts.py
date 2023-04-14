@@ -431,7 +431,7 @@ def debug(address):
     help="the port for dashboard agents to listen for grpc on.",
 )
 @click.option(
-    "--dashboard-head-grpc-port",
+    "--dashboard-grpc-port",
     type=int,
     default=None,
     help="The port for the dashboard head to listen for grpc on.",
@@ -558,7 +558,7 @@ def start(
     dashboard_port,
     dashboard_agent_listen_port,
     dashboard_agent_grpc_port,
-    dashboard_head_grpc_port,
+    dashboard_grpc_port,
     block,
     plasma_directory,
     autoscaling_config,
@@ -645,7 +645,7 @@ def start(
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
-        dashboard_head_grpc_port=dashboard_head_grpc_port,
+        dashboard_grpc_port=dashboard_grpc_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,

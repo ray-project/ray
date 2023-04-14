@@ -36,7 +36,7 @@ class Dashboard:
         port_retries: The retry times to select a valid port.
         gcs_address: GCS address of the cluster
         grpc_port: Port used to listen for gRPC on.
-        dashboard_ip: The IP address of the dashboard.
+        node_ip_address: The IP address of the dashboard.
         serve_frontend: If configured, frontend HTML
             is not served from the dashboard.
         log_dir: Log directory of dashboard.
@@ -49,7 +49,7 @@ class Dashboard:
         port_retries: int,
         gcs_address: str,
         grpc_port: int,
-        dashboard_ip: Optional[str] = None,
+        node_ip_address: str,
         log_dir: str = None,
         temp_dir: str = None,
         session_dir: str = None,
@@ -62,7 +62,7 @@ class Dashboard:
             http_port=port,
             http_port_retries=port_retries,
             gcs_address=gcs_address,
-            dashboard_ip=dashboard_ip,
+            node_ip_address=node_ip_address,
             grpc_port=grpc_port,
             log_dir=log_dir,
             temp_dir=temp_dir,
@@ -95,17 +95,17 @@ if __name__ == "__main__":
         "--gcs-address", required=True, type=str, help="The address (ip:port) of GCS."
     )
     parser.add_argument(
-        "--dashboard-head-grpc-port",
+        "--grpc-port",
         required=False,
         type=int,
         default=dashboard_consts.DASHBOARD_RPC_PORT,
         help="The port for the dashboard to listen for gRPC on.",
     )
     parser.add_argument(
-        "--dashboard-ip",
-        required=False,
+        "--node-ip-address",
+        required=True,
         type=str,
-        help="The public IP address of the dashboard. Inferred if not provided.",
+        help="The IP address of the node where this is running.",
     )
     parser.add_argument(
         "--logging-level",
@@ -219,12 +219,12 @@ if __name__ == "__main__":
         # https://github.com/grpc/grpc/blob/master/src/python/grpcio/grpc/_cython/_cygrpc/aio/common.pyx.pxi#L174-L188
         loop = ray._private.utils.get_or_create_event_loop()
         dashboard = Dashboard(
-            args.host,
-            args.port,
-            args.port_retries,
-            args.gcs_address,
-            grpc_port=args.dashboard_head_grpc_port,
-            dashboard_ip=args.dashboard_ip,
+            host=args.host,
+            port=args.port,
+            port_retries=args.port_retries,
+            gcs_address=args.gcs_address,
+            grpc_port=args.grpc_port,
+            node_ip_address=args.node_ip_address,
             log_dir=args.log_dir,
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,

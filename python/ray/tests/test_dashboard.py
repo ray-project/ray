@@ -205,9 +205,6 @@ def test_dashboard_agent_grpc_port_conflict(listen_port, call_ray_start):
         run_tasks_with_runtime_env()
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="`runtime_env` with `pip` not supported on Windows."
-)
 @pytest.mark.parametrize(
     "listen_port",
     [conflict_port],
@@ -215,10 +212,10 @@ def test_dashboard_agent_grpc_port_conflict(listen_port, call_ray_start):
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    [f"ray start --head --num-cpus=1 --dashboard-head-grpc-port={conflict_port}"],
+    [f"ray start --head --num-cpus=1 --dashboard-grpc-port={conflict_port}"],
     indirect=True,
 )
-def test_dashboard_head_grpc_port_conflict(listen_port, call_ray_start):
+def test_dashboard_grpc_port_conflict(listen_port, call_ray_start):
     address = call_ray_start
     addresses = ray.init(address=address)
     dashboard_url = addresses["webui_url"]

@@ -75,7 +75,7 @@ class DashboardHead:
         http_port: int,
         http_port_retries: int,
         gcs_address: str,
-        dashboard_ip: str,
+        node_ip_address: str,
         grpc_port: int,
         log_dir: str,
         temp_dir: str,
@@ -127,9 +127,7 @@ class DashboardHead:
         self.gcs_aio_client = None
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
-        self.ip = (
-            ray.util.get_node_ip_address() if dashboard_ip is None else dashboard_ip
-        )
+        self.ip = node_ip_address
         DataOrganizer.head_node_ip = self.ip
 
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))

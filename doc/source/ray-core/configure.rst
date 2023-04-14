@@ -127,7 +127,7 @@ In addition to ports specified above, the head node needs to open several more p
 - ``--port``: Port of Ray (GCS server). The head node will start a GCS server listening on this port. Default: 6379.
 - ``--ray-client-server-port``: Listening port for Ray Client Server. Default: 10001.
 - ``--redis-shard-ports``: Comma-separated list of ports for non-primary Redis shards. Default: Random values.
-- ``--dashboard-head-grpc-port``: The gRPC port used by the dashboard head. Default: Random value.
+- ``--dashboard-grpc-port``: The gRPC port used by the dashboard. Default: Random value.
 
 - If ``--include-dashboard`` is true (the default), then the head node must open ``--dashboard-port``. Default: 8265.
 
