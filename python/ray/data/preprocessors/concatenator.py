@@ -51,7 +51,7 @@ class Concatenator(Preprocessor):
         2  [1.0, 0.9]
 
         Sometimes, you might not want to concatenate all of of the columns in your
-        dataset. In this case, you can exclude columns with the ``exclude`` parameter.
+        datastream. In this case, you can exclude columns with the ``exclude`` parameter.
 
         >>> df = pd.DataFrame({"X0": [0, 3, 1], "X1": [0.5, 0.2, 0.9], "Y": ["blue", "orange", "blue"]})
         >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
@@ -88,7 +88,7 @@ class Concatenator(Preprocessor):
 
         >>> concatenator = Concatenator(include=["X0", "X1"], dtype=np.float32)
         >>> concatenator.fit_transform(ds)  # doctest: +SKIP
-        Dataset(num_blocks=1, num_rows=3, schema={Y: object, concat_out: TensorDtype(shape=(2,), dtype=float32)})
+        Datastream(num_blocks=1, num_rows=3, schema={Y: object, concat_out: TensorDtype(shape=(2,), dtype=float32)})
 
     Args:
         output_column_name: The desired name for the new column.
@@ -106,7 +106,7 @@ class Concatenator(Preprocessor):
 
     Raises:
         ValueError: if `raise_if_missing` is `True` and a column in `include` or
-            `exclude` doesn't exist in the dataset.
+            `exclude` doesn't exist in the datastream.
     """  # noqa: E501
 
     _is_fittable = False
