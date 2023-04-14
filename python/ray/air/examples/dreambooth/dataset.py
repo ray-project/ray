@@ -81,7 +81,7 @@ def collate(batch, device, dtype):
     # of the batch.
     # During training, a batch will be chunked into 2 sub-batches for prior
     # preserving loss calculation.
-    images = torch.cat([batch["image"], batch["image_1"]], dim=1)
+    images = torch.squeeze(torch.stack([batch["image"], batch["image_1"]]))
     images = images.to(memory_format=torch.contiguous_format).float()
 
     prompt_ids = torch.cat([batch["prompt_ids"], batch["prompt_ids_1"]], dim=0)
