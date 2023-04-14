@@ -315,12 +315,14 @@ class _TuneControllerBase:
 
     @property
     def experiment_state_path(self) -> str:
-        storage_path = (
-            URI(self._remote_experiment_path)
-            if self._remote_checkpoint_path
-            else Path(self._local_experiment_path)
+        """Returns the local experiment checkpoint path."""
+        return os.path.join(
+            self._local_experiment_path, self.experiment_state_file_name
         )
-        return str(storage_path / self.experiment_state_file_name)
+
+    @property
+    def experiment_path(self) -> str:
+        return self._remote_experiment_path or self._local_experiment_path
 
     def _create_checkpoint_manager(self):
         return _ExperimentCheckpointManager(
