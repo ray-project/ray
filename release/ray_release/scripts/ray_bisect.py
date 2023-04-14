@@ -62,7 +62,6 @@ def _trigger_test_run(test: Test, commit: str) -> None:
         test, 
         ray_wheels=ray_wheels_url,
         env= {
-            'RAY_TEST_BRANCH': 'master',
             'RAY_TEST_COMMIT': commit,
         }
     )
