@@ -19,7 +19,7 @@ from ray.data.block import (
     CallableClass,
     RowUDF,
 )
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
+from python.ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 

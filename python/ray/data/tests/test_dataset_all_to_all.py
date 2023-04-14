@@ -9,7 +9,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
+from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum, Quantile
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -818,13 +818,14 @@ def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
             Max("B"),
             Mean("B"),
             Std("B"),
+            Quantile("B"),
         )
     )
     assert agg_ds.count() == 3
     agg_df = agg_ds.to_pandas()
     expected_grouped = df.groupby("A")["B"]
     np.testing.assert_array_equal(agg_df["count()"].to_numpy(), [34, 33, 33])
-    for agg in ["sum", "min", "max", "mean", "std"]:
+    for agg in ["sum", "min", "max", "mean", "quantile", "std"]:
         result = agg_df[f"{agg}(B)"].to_numpy()
         expected = getattr(expected_grouped, agg)().to_numpy()
         if agg == "std":
@@ -843,11 +844,71 @@ def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
             Max("A"),
             Mean("A"),
             Std("A"),
+            Quantile("A"),
         )
     )
-    for agg in ["sum", "min", "max", "mean", "std"]:
+    for agg in ["sum", "min", "max", "mean", "quantile", "std"]:
         result = result_row[f"{agg}(A)"]
         expected = getattr(df["A"], agg)()
+        if agg == "std":
+            assert math.isclose(result, expected)
+        else:
+            assert result == expected
+
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+def test_groupby_arrow_multi_agg_alias(ray_start_regular_shared, num_parts):
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_multi_agg with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+    df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
+    agg_ds = (
+        ray.data.from_pandas(df)
+        .repartition(num_parts)
+        .groupby("A")
+        .aggregate(
+            Sum("B", alias_name="sum_b"),
+            Min("B", alias_name="min_b"),
+            Max("B", alias_name="max_b"),
+            Mean("B", alias_name="mean_b"),
+            Std("B", alias_name="std_b"),
+            Quantile("B", alias_name="quantile_b"),
+        )
+    )
+
+    agg_df = agg_ds.to_pandas()
+    expected_grouped = df.groupby("A")["B"]
+    for agg in ["sum", "min", "max", "mean", "quantile", "std"]:
+        result = agg_df[f"{agg}_b"].to_numpy()
+        print(agg)
+        print(result)
+        expected = getattr(expected_grouped, agg)().to_numpy()
+        print(expected)
+        if agg == "std":
+            np.testing.assert_array_almost_equal(result, expected)
+        else:
+            np.testing.assert_array_equal(result, expected)
+    # Test built-in global std aggregation
+    df = pd.DataFrame({"A": xs})
+    result_row = (
+        ray.data.from_pandas(df)
+        .repartition(num_parts)
+        .aggregate(
+            Sum("A", alias_name="sum_b"),
+            Min("A", alias_name="min_b"),
+            Max("A", alias_name="max_b"),
+            Mean("A", alias_name="mean_b"),
+            Std("A", alias_name="std_b"),
+            Quantile("A", alias_name="quantile_b"),
+        )
+    )
+    for agg in ["sum", "min", "max", "mean", "quantile", "std"]:
+        result = result_row[f"{agg}_b"]
+        print(result)
+        expected = getattr(df["A"], agg)()
+        print(expected)
         if agg == "std":
             assert math.isclose(result, expected)
         else:
