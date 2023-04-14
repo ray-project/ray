@@ -23,6 +23,7 @@ from ray.experimental.lightrails.coordinator import Coordinator
 from ray.experimental.lightrails.physical_plan import (
     ModuleParition,
     SimplePhysicalPlanner,
+    _get_device_name,
 )
 from ray.experimental.lightrails.schedule import (
     CustomIntruction,
@@ -291,8 +292,8 @@ def build_model(
     tokenizer.padding_side = "left"
 
     device_map = {
-        "transformer": "cpu",
-        "lm_head": "cpu",
+        "transformer": _get_device_name,
+        "lm_head": _get_device_name,
     }
 
     # model_start = AutoModelForCausalLM.from_config(config)
@@ -505,5 +506,5 @@ if __name__ == "__main__":
     #     "working_dir": "/home/ray/default",
     #     "pip": ["transformers==4.28.0", "accelerate==0.18.0", "numpy==1.20"],
     # }
-    # ray.init(address="local", runtime_env=runtime_env)
+    # ray.init(address="auto", runtime_env=runtime_env)
     run_model2()
