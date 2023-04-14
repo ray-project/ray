@@ -145,7 +145,6 @@ run_config = RunConfig(
 
 # __checkpoint_config_ckpt_freq_start__
 from ray.air import RunConfig, CheckpointConfig
-from ray.train.xgboost import XGBoostTrainer
 
 run_config = RunConfig(
     checkpoint_config=CheckpointConfig(
@@ -155,10 +154,9 @@ run_config = RunConfig(
         num_to_keep=1,
     )
 )
-trainer = XGBoostTrainer(
-    # ...
-    run_config=run_config,
-)
+
+# from ray.train.xgboost import XGBoostTrainer
+# trainer = XGBoostTrainer(..., run_config=run_config)
 # __checkpoint_config_ckpt_freq_end__
 
 

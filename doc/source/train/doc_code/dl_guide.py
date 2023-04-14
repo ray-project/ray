@@ -7,8 +7,8 @@ from typing import Dict, Optional
 
 import ray
 from ray import air
-from ray.air import TorchCheckpoint, session
-from ray.train.torch import TorchTrainer
+from ray.air import session
+from ray.train.torch import TorchCheckpoint, TorchTrainer
 
 
 def get_datasets() -> Dict[str, ray.data.Dataset]:
