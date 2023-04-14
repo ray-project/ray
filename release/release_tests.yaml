@@ -4211,14 +4211,15 @@
     timeout: 1800
     script: python dataset_shuffle_data_loader.py
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: shuffle_app_config.yaml
-        cluster_compute: shuffle_compute_gce.yaml
+  # TODO: Port s3://shuffling-data-loader-benchmarks/ to GCS.
+  # variations:
+  #   - __suffix__: aws
+  #   - __suffix__: gce
+  #     env: gce
+  #     frequency: manual
+  #     cluster:
+  #       cluster_env: shuffle_app_config.yaml
+  #       cluster_compute: shuffle_compute_gce.yaml
 
 - name: parquet_metadata_resolution
   group: data-tests
@@ -4235,14 +4236,15 @@
     timeout: 100
     script: python parquet_metadata_resolution.py --num-files 915
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: single_node_benchmark_compute_gce.yaml
+  # TODO: Port s3://shuffling-data-loader-benchmarks/ to GCS.
+  # variations:
+  #   - __suffix__: aws
+  #   - __suffix__: gce
+  #     env: gce
+  #     frequency: manual
+  #     cluster:
+  #       cluster_env: app_config.yaml
+  #       cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: dataset_random_access
   group: data-tests
