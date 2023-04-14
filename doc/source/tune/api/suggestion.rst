@@ -84,7 +84,7 @@ identifier:
         ),
         run_config=air.RunConfig(
             name="my-experiment-1",
-            local_dir="~/my_results",
+            storage_path="~/my_results",
         )
     )
     results = tuner_1.fit()
