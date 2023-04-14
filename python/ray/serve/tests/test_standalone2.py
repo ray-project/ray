@@ -1324,6 +1324,27 @@ class TestDeployApp:
 
         wait_for_condition(check_app_message)
 
+    def test_deploy_with_no_applications(self, client: ServeControllerClient):
+        """Deploy an empty list of applications, serve should just be started."""
+
+        config = ServeDeploySchema.parse_obj({"applications": []})
+        client.deploy_apps(config)
+
+        def serve_running():
+            ServeInstanceDetails.parse_obj(
+                ray.get(client._controller.get_serve_instance_details.remote())
+            )
+            actors = list_actors(
+                filters=[
+                    ("ray_namespace", "=", SERVE_NAMESPACE),
+                    ("state", "=", "ALIVE"),
+                ]
+            )
+            actor_names = [actor["class_name"] for actor in actors]
+            return "ServeController" in actor_names and "HTTPProxyActor" in actor_names
+
+        wait_for_condition(serve_running)
+
 
 class TestServeRequestProcessingTimeoutS:
     @pytest.mark.parametrize(

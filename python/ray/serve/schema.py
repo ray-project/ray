@@ -533,7 +533,7 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
         default=HTTPOptionsSchema(), description="Options to start the HTTP Proxy with."
     )
     applications: List[ServeApplicationSchema] = Field(
-        ..., description=("The set of Serve applications to run on the Ray cluster."),
+        ..., description=("The set of Serve applications to run on the Ray cluster.")
     )
 
     @validator("applications")
