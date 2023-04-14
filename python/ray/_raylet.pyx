@@ -1757,14 +1757,16 @@ cdef class GcsPublisher:
             CLogBatch log_batch
 
         job_id = log_json.get("job")
-        log_batch.set_ip(log_json.get("ip", ""))
+        log_batch.set_ip(log_json.get("ip", b""))
         log_batch.set_pid(str(log_json.get("pid")) if log_json.get("pid") else b"")
-        log_batch.set_job_id(log_json.get("job", ""))
+        log_batch.set_job_id(job_id.encode() if job_id else b"")
         log_batch.set_is_error(bool(log_json.get("is_err")))
         for line in log_json.get("lines", []):
             log_batch.add_lines(line)
-        log_batch.set_actor_name(log_json.get("actor_name", ""))
-        log_batch.set_task_name(log_json.get("task_name", ""))
+        actor_name = log_json.get("actor_name")
+        log_batch.set_actor_name(actor_name.encode() if actor_name else b"")
+        task_name = log_json.get("task_name")
+        log_batch.set_task_name(task_name.encode() if task_name else b"")
 
         check_status(self.inner.get().PublishLogs(
             job_id.encode() if job_id else b"", log_batch))
