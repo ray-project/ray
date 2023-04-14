@@ -202,8 +202,9 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
         # This is only supported without RLModule API. See AlgorithmConfig for
         # more info.
         if not config._enable_rl_module_api:
-            config.evaluation(evaluation_config=AlgorithmConfig.overrides(
-                explore=False))
+            config.evaluation(
+                evaluation_config=AlgorithmConfig.overrides(explore=False)
+            )
 
         stop = {"episode_reward_mean": 100.0}
 
