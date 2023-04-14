@@ -22,13 +22,16 @@ class CommunicationRegistry(object):
     async def send(
         self, obj_refs: List[ObjectRef], from_rank: int, to_rank: int
     ) -> None:
-        logger.debug(f"send {obj_refs} from {from_rank} to {to_rank}")
+        logger.debug(f"sending from {from_rank} to {to_rank}")
         self._get_queue(from_rank, to_rank).extend(obj_refs)
+        logger.debug(f"sent from {from_rank} to {to_rank}")
 
     async def recv(self, from_rank: int, to_rank: int) -> List[ObjectRef]:
+        logger.debug(f"receiving from {from_rank} to {to_rank}")
         queue = self._get_queue(from_rank, to_rank)
         while len(queue) == 0:
             await asyncio.sleep(0.01)
+        logger.debug(f"received from {from_rank} to {to_rank}")
         return [queue.popleft()]
 
     def _get_queue(self, from_rank: int, to_rank: int) -> deque:

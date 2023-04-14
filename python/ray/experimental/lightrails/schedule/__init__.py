@@ -1,5 +1,6 @@
 from ray.experimental.lightrails.schedule.instruction import (
     Backward,
+    CustomIntruction,
     Forward,
     Instruction,
     LoadBatch,
@@ -32,4 +33,5 @@ __all__ = [
     "ReceiveGradient",
     "SendActivation",
     "SendGradient",
+    "CustomIntruction",
 ]

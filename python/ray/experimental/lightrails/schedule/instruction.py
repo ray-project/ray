@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from typing import Any, Callable
 
 
 class Instruction(metaclass=ABCMeta):
@@ -72,3 +73,10 @@ class PrintOutput(Instruction):
 
     def __init__(self, count: int = 1):
         self.count = count
+
+
+class CustomIntruction(Instruction):
+    """Print the output."""
+
+    def __init__(self, fn: Callable[[Any], None]):
+        self.function = fn
