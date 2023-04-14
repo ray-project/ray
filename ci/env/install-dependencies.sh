@@ -331,17 +331,7 @@ compile_ray_requirements() {
       "${WORKSPACE_DIR}/python/requirements_linters.txt"
   fi
 
-  if [ -n "${BUILDKITE-}" ] && [ -d "/artifact-mount" ]; then
-    rm -rf /artifact-mount/requirements*.txt
-    cp -f "${WORKSPACE_DIR}/python/requirements_pinned.txt" /artifact-mount/
-  else
-    if [ -n "${BUILDKITE-}" ]; then
-      mkdir -p /tmp/artifacts
-      rm -rf /tmp/artifacts/requirements*.txt
-      cp -f "${WORKSPACE_DIR}/python/requirements_pinned.txt" /tmp/artifacts/
-    fi
-    cat "${WORKSPACE_DIR}/python/requirements_pinned.txt"
-  fi
+  cat "${WORKSPACE_DIR}/python/requirements_pinned.txt"
 }
 
 install_pip_packages() {
@@ -503,7 +493,7 @@ install_pip_packages() {
   done
 
   if [ -n "${pip_add}" ]; then
-    pip_cmd="pip install $pip_add"
+    pip_cmd="pip install -c ${WORKSPACE_DIR}/python/requirements_pinned.txt $pip_add"
     # Run the pip command to install all collected requirements files
     echo Running pip install: "$pip_cmd"
     eval "${pip_cmd}"
