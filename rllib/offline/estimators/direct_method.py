@@ -67,7 +67,7 @@ class DirectMethod(OffPolicyEstimator):
         if hasattr(policy, "config"):
             assert (
                 policy.config.get("framework", "torch") == "torch"
-            ), "Framework must be torch or None or torch to use DirectMethod."
+            ), "Framework must be torch to use DirectMethod."
 
         q_model_config = q_model_config or {}
         model_cls = q_model_config.pop("type", FQETorchModel)
