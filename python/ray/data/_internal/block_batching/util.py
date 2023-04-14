@@ -14,7 +14,7 @@ from ray.data._internal.block_batching.interfaces import (
     CollatedBatch,
     BlockPrefetcher,
 )
-from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
+from ray.data._internal.stats import DatasetPipelineStats, DatastreamStats
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 T = TypeVar("T")
@@ -48,7 +48,7 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
-    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
+    stats: Optional[Union[DatastreamStats, DatasetPipelineStats]] = None,
 ) -> Iterator[Block]:
     """Resolves the block references for each logical batch.
 
@@ -80,7 +80,7 @@ def resolve_block_refs(
 
 def blocks_to_batches(
     block_iter: Iterator[Block],
-    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
+    stats: Optional[Union[DatastreamStats, DatasetPipelineStats]] = None,
     batch_size: Optional[int] = None,
     drop_last: bool = False,
     shuffle_buffer_min_size: Optional[int] = None,
@@ -95,7 +95,7 @@ def blocks_to_batches(
 
     Args:
         block_iter: An iterator over blocks.
-        stats: Dataset stats object used to store block batching time.
+        stats: Datastream stats object used to store block batching time.
         batch_size: Record batch size, or None to let the system pick.
         drop_last: Whether to drop the last batch if it's incomplete.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled
@@ -152,7 +152,7 @@ def blocks_to_batches(
 def format_batches(
     block_iter: Iterator[Batch],
     batch_format: Optional[str],
-    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
+    stats: Optional[Union[DatastreamStats, DatasetPipelineStats]] = None,
 ) -> Iterator[Batch]:
     """Given an iterator of blocks, returns an iterator of formatted batches.
 
@@ -175,7 +175,7 @@ def format_batches(
 def collate(
     batch_iter: Iterator[Batch],
     collate_fn: Optional[Callable[[DataBatch], Any]],
-    stats: Optional[DatasetStats] = None,
+    stats: Optional[DatastreamStats] = None,
 ) -> Iterator[CollatedBatch]:
     """Returns an iterator with the provided collate_fn applied to items of the batch
     iterator.
@@ -278,7 +278,7 @@ def make_async_gen(
             break
 
 
-PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
+PREFETCHER_ACTOR_NAMESPACE = "ray.datastream"
 
 
 class WaitBlockPrefetcher(BlockPrefetcher):
@@ -300,7 +300,7 @@ class ActorBlockPrefetcher(BlockPrefetcher):
     @staticmethod
     def _get_or_create_actor_prefetcher() -> "ActorHandle":
         node_id = ray.get_runtime_context().get_node_id()
-        actor_name = f"dataset-block-prefetcher-{node_id}"
+        actor_name = f"datastream-block-prefetcher-{node_id}"
         return _BlockPretcher.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
             name=actor_name,

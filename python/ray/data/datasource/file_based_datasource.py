@@ -63,7 +63,7 @@ PATHS_PER_FILE_SIZE_FETCH_TASK = 16
 @DeveloperAPI
 class BlockWritePathProvider:
     """Abstract callable that provides concrete output paths when writing
-    dataset blocks.
+    datastream blocks.
 
     Current subclasses:
         DefaultBlockWritePathProvider
@@ -74,32 +74,32 @@ class BlockWritePathProvider:
         base_path: str,
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        dataset_uuid: Optional[str] = None,
+        datastream_uuid: Optional[str] = None,
         block: Optional[Block] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
         """
-        Resolves and returns the write path for the given dataset block. When
+        Resolves and returns the write path for the given datastream block. When
         implementing this method, care should be taken to ensure that a unique
-        path is provided for every dataset block.
+        path is provided for every datastream block.
 
         Args:
-            base_path: The base path to write the dataset block out to. This is
-                expected to be the same for all blocks in the dataset, and may
+            base_path: The base path to write the datastream block out to. This is
+                expected to be the same for all blocks in the datastream, and may
                 point to either a directory or file prefix.
             filesystem: The filesystem implementation that will be used to
                 write a file out to the write path returned.
-            dataset_uuid: Unique identifier for the dataset that this block
+            datastream_uuid: Unique identifier for the datastream that this block
                 belongs to.
             block: The block to write.
             block_index: Ordered index of the block to write within its parent
-                dataset.
+                datastream.
             file_format: File format string for the block that can be used as
                 the file extension in the write path returned.
 
         Returns:
-            The dataset block write path.
+            The datastream block write path.
         """
         raise NotImplementedError
 
@@ -108,7 +108,7 @@ class BlockWritePathProvider:
         base_path: str,
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        dataset_uuid: Optional[str] = None,
+        datastream_uuid: Optional[str] = None,
         block: Optional[Block] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
@@ -116,7 +116,7 @@ class BlockWritePathProvider:
         return self._get_write_path_for_block(
             base_path,
             filesystem=filesystem,
-            dataset_uuid=dataset_uuid,
+            datastream_uuid=datastream_uuid,
             block=block,
             block_index=block_index,
             file_format=file_format,
@@ -126,8 +126,8 @@ class BlockWritePathProvider:
 @DeveloperAPI
 class DefaultBlockWritePathProvider(BlockWritePathProvider):
     """Default block write path provider implementation that writes each
-    dataset block out to a file of the form:
-    {base_path}/{dataset_uuid}_{block_index}.{file_format}
+    datastream block out to a file of the form:
+    {base_path}/{datastream_uuid}_{block_index}.{file_format}
     """
 
     def _get_write_path_for_block(
@@ -135,12 +135,12 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
         base_path: str,
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        dataset_uuid: Optional[str] = None,
+        datastream_uuid: Optional[str] = None,
         block: Optional[ObjectRef[Block]] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
-        suffix = f"{dataset_uuid}_{block_index:06}.{file_format}"
+        suffix = f"{datastream_uuid}_{block_index:06}.{file_format}"
         # Uses POSIX path for cross-filesystem compatibility, since PyArrow
         # FileSystem paths are always forward slash separated, see:
         # https://arrow.apache.org/docs/python/filesystems.html
@@ -277,7 +277,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         blocks: Iterable[Block],
         ctx: TaskContext,
         path: str,
-        dataset_uuid: str,
+        datastream_uuid: str,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
@@ -332,7 +332,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         write_path = block_path_provider(
             path,
             filesystem=filesystem,
-            dataset_uuid=dataset_uuid,
+            datastream_uuid=datastream_uuid,
             block=block,
             block_index=ctx.task_idx,
             file_format=file_format,

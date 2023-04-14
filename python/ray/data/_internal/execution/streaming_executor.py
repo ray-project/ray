@@ -6,7 +6,7 @@ from typing import Iterator, Optional
 
 import ray
 from ray.data.context import DataContext
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.dataset_logger import DatastreamLogger
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
@@ -30,9 +30,9 @@ from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatastreamStats
 
-logger = DatasetLogger(__name__)
+logger = DatastreamLogger(__name__)
 
 # Set this environment variable for detailed scheduler debugging logs.
 DEBUG_TRACE_SCHEDULING = "RAY_DATASET_TRACE_SCHEDULING" in os.environ
@@ -43,17 +43,17 @@ PROGRESS_BAR_UPDATE_INTERVAL = 50
 
 
 class StreamingExecutor(Executor, threading.Thread):
-    """A streaming Dataset executor.
+    """A streaming Datastream executor.
 
-    This implementation executes Dataset DAGs in a fully streamed way. It runs
+    This implementation executes Datastream DAGs in a fully streamed way. It runs
     by setting up the operator topology, and then routing blocks through operators in
     a way that maximizes throughput under resource constraints.
     """
 
     def __init__(self, options: ExecutionOptions):
         self._start_time: Optional[float] = None
-        self._initial_stats: Optional[DatasetStats] = None
-        self._final_stats: Optional[DatasetStats] = None
+        self._initial_stats: Optional[DatastreamStats] = None
+        self._final_stats: Optional[DatastreamStats] = None
         self._global_info: Optional[ProgressBar] = None
 
         self._execution_id = uuid.uuid4().hex
@@ -73,7 +73,7 @@ class StreamingExecutor(Executor, threading.Thread):
         threading.Thread.__init__(self)
 
     def execute(
-        self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
+        self, dag: PhysicalOperator, initial_stats: Optional[DatastreamStats] = None
     ) -> Iterator[RefBundle]:
         """Executes the DAG using a streaming execution strategy.
 
@@ -177,9 +177,9 @@ class StreamingExecutor(Executor, threading.Thread):
         else:
             return self._generate_stats()
 
-    def _generate_stats(self) -> DatasetStats:
+    def _generate_stats(self) -> DatastreamStats:
         """Create a new stats object reflecting execution status so far."""
-        stats = self._initial_stats or DatasetStats(stages={}, parent=None)
+        stats = self._initial_stats or DatastreamStats(stages={}, parent=None)
         for op in self._topology:
             if isinstance(op, InputDataBuffer):
                 continue

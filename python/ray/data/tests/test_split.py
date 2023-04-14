@@ -14,7 +14,7 @@ from ray.data._internal.equalize import (
     _equalize,
 )
 from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatastreamStats
 from ray.data._internal.split import (
     _drop_empty_block_split,
     _generate_valid_indices,
@@ -103,7 +103,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         total_rows += block_size
     block_list = BlockList(blocks, metadata, owned_by_consumer=True)
     ds = Dataset(
-        ExecutionPlan(block_list, DatasetStats.TODO(), run_by_consumer=True),
+        ExecutionPlan(block_list, DatastreamStats.TODO(), run_by_consumer=True),
         0,
         False,
     )

@@ -57,8 +57,8 @@ _cached_cls = None
 
 __all__ = [
     "ActorPoolStrategy",
-    "Dataset",
     "Datastream",
+    "Dataset",  # Backwards compatibility alias.
     "DataContext",
     "DatasetContext",  # Backwards compatibility alias.
     "DataIterator",

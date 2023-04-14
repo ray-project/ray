@@ -13,7 +13,7 @@ from unittest.mock import patch
 import ray
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.dataset_logger import DatastreamLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.pandas_block import PandasRow
 from ray.data.block import BlockAccessor, BlockMetadata
@@ -66,7 +66,7 @@ def test_dataset_lineage_serialization(shutdown_only):
     ds = ds.random_shuffle()
     epoch = ds._get_epoch()
     uuid = ds._get_uuid()
-    plan_uuid = ds._plan._dataset_uuid
+    plan_uuid = ds._plan._datastream_uuid
 
     serialized_ds = ds.serialize_lineage()
     # Confirm that the original Dataset was properly copied before clearing/mutating.
@@ -83,7 +83,7 @@ def test_dataset_lineage_serialization(shutdown_only):
     # Check Dataset state.
     assert ds._get_epoch() == epoch
     assert ds._get_uuid() == uuid
-    assert ds._plan._dataset_uuid == plan_uuid
+    assert ds._plan._datastream_uuid == plan_uuid
     # Check Dataset content.
     assert ds.count() == 10
     assert sorted(ds.take()) == list(range(2, 12))
@@ -1566,7 +1566,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
     path1 = os.path.join(local_path, "test1.csv")
     df1.to_csv(path1, index=False, storage_options={})
     ds1 = ray.data.read_datasource(FlakyCSVDatasource(), parallelism=1, paths=path1)
-    ds1.write_datasource(FlakyCSVDatasource(), path=local_path, dataset_uuid="data")
+    ds1.write_datasource(FlakyCSVDatasource(), path=local_path, datastream_uuid="data")
     assert df1.equals(
         pd.read_csv(os.path.join(local_path, "data_000000.csv"), storage_options={})
     )
@@ -1736,7 +1736,7 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
 
-    logger = DatasetLogger("ray.data._internal.plan").get_logger()
+    logger = DatastreamLogger("ray.data._internal.plan").get_logger()
     with patch.object(
         logger,
         "warning",
@@ -1767,7 +1767,7 @@ def test_nowarning_execute_with_cpu(ray_start_cluster):
     # Create one node with CPUs to avoid triggering the Dataset warning
     ray.init(ray_start_cluster.address)
 
-    logger = DatasetLogger("ray.data._internal.plan").get_logger()
+    logger = DatastreamLogger("ray.data._internal.plan").get_logger()
     with patch.object(
         logger,
         "warning",

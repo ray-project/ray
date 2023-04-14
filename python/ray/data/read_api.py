@@ -38,7 +38,7 @@ from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.pandas_block import PandasRow
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatastreamStats
 from ray.data._internal.util import (
     _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
@@ -183,7 +183,7 @@ def from_items(
     return MaterializedDatastream(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromItems": metadata}, parent=None),
+            DatastreamStats(stages={"FromItems": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -483,7 +483,7 @@ def read_mongo(
         ... )
 
     Args:
-        uri: The URI of the source MongoDB where the dataset will be
+        uri: The URI of the source MongoDB where the datastream will be
             read from. For the URI format, see details in
             https://www.mongodb.com/docs/manual/reference/connection-string/.
         database: The name of the database hosted in the MongoDB. This database
@@ -1590,7 +1590,7 @@ def from_pandas_refs(
         return MaterializedDatastream(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
-                DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
+                DatastreamStats(stages={"FromPandasRefs": metadata}, parent=None),
                 run_by_consumer=False,
             ),
             0,
@@ -1606,7 +1606,7 @@ def from_pandas_refs(
     return MaterializedDatastream(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
+            DatastreamStats(stages={"FromPandasRefs": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1672,7 +1672,7 @@ def from_numpy_refs(
     return MaterializedDatastream(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromNumpyRefs": metadata}, parent=None),
+            DatastreamStats(stages={"FromNumpyRefs": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1727,7 +1727,7 @@ def from_arrow_refs(
     return MaterializedDatastream(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromArrowRefs": metadata}, parent=None),
+            DatastreamStats(stages={"FromArrowRefs": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1899,7 +1899,7 @@ def _get_read_tasks(
 
     Args:
         ds: Datasource to read from.
-        ctx: Dataset config to use.
+        ctx: Datastream config to use.
         cur_pg: The current placement group, if any.
         parallelism: The user-requested parallelism, or -1 for autodetection.
         kwargs: Additional kwargs to pass to the reader.
