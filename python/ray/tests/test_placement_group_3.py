@@ -497,7 +497,11 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
             for _, pg in ray.util.placement_group_table().items()
             if pg["state"] == "CREATED"
         ]
-        return len(created_pgs) == expected_created_num
+        print(created_pgs)
+        print(expected_created_num)
+        assert len(created_pgs) == expected_created_num
+        return True
+        #return len(created_pgs) == expected_created_num
 
     wait_for_condition(is_pg_created_number_correct, timeout=3)
     wait_for_condition(is_actor_created_number_correct, timeout=30, retry_interval_ms=0)
