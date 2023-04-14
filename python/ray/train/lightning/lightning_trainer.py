@@ -1,5 +1,4 @@
 import os
-import ray
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
 import pytorch_lightning as pl
@@ -26,7 +25,7 @@ from ray.train.lightning._lightning_utils import (
     RayEnvironment,
     RayDataModule,
     RayModelCheckpoint,
-    _get_worker_root_device
+    _get_worker_root_device,
 )
 
 
