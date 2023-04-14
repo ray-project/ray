@@ -1,4 +1,3 @@
-from typing import List
 from unittest import mock
 from ray_release.scripts.ray_bisect import _bisect
 

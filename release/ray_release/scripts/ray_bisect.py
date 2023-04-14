@@ -19,8 +19,8 @@ def _bisect(test_name: str, commit_list: List[str]) -> str:
         middle_commit = commit_list[middle_commit_idx]
         is_passing = _run_test(test_name, middle_commit)
         if is_passing:
-            commit_list = commit_list[middle_commit_idx + 1:] 
-        else: 
+            commit_list = commit_list[middle_commit_idx + 1 :]
+        else:
             commit_list = commit_list[:middle_commit_idx]
     return commit_list[-1]
 
