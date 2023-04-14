@@ -40,7 +40,6 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-    from ray.data import Datastream
     from ray.data._internal.block_builder import BlockBuilder
     from ray.data.aggregate import AggregateFn
 
@@ -58,9 +57,11 @@ AggType = TypeVar("AggType")
 KeyFn = Union[None, str, Callable[[T], Any]]
 
 
-def _validate_key_fn(ds: "Datastream", key: KeyFn) -> None:
-    """Check the key function is valid on the given datastream."""
-    schema = ds.schema(fetch_if_missing=True)
+def _validate_key_fn(
+    schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+    key: KeyFn,
+) -> None:
+    """Check the key function is valid on the given schema."""
     if schema is None:
         # Datastream is empty/cleared, validation not possible.
         return
