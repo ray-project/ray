@@ -54,14 +54,20 @@ def lazy_import_pandas():
 
 class PandasRow(TableRow):
     """
-    Row of a tabular Dataset backed by a Pandas DataFrame block.
+    Row of a tabular Datastream backed by a Pandas DataFrame block.
     """
 
     def __getitem__(self, key: str) -> Any:
+        from ray.data.extensions import TensorArrayElement
+
         col = self._row[key]
         if len(col) == 0:
             return None
         item = col.iloc[0]
+        if isinstance(item, TensorArrayElement):
+            # Getting an item in a Pandas tensor column may return a TensorArrayElement,
+            # which we have to convert to an ndarray.
+            item = item.to_numpy()
         try:
             # Try to interpret this as a numpy-type value.
             # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
@@ -180,11 +186,11 @@ class PandasBlockAccessor(TableBlockAccessor):
             names=dtypes.index.tolist(), types=dtypes.values.tolist()
         )
         # Column names with non-str types of a pandas DataFrame is not
-        # supported by Ray Dataset.
+        # supported by Ray Datastream.
         if any(not isinstance(name, str) for name in schema.names):
             raise ValueError(
                 "A Pandas DataFrame with column names of non-str types"
-                " is not supported by Ray Dataset. Column names of this"
+                " is not supported by Ray Datastream. Column names of this"
                 f" DataFrame: {schema.names!r}."
             )
         return schema

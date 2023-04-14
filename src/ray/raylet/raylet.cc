@@ -62,7 +62,8 @@ Raylet::Raylet(instrumented_io_context &main_service,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::GcsClient> gcs_client,
-               int metrics_export_port)
+               int metrics_export_port,
+               bool is_head_node)
     : main_service_(main_service),
       self_node_id_(
           !RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty()
@@ -92,6 +93,7 @@ Raylet::Raylet(instrumented_io_context &main_service,
   self_node_info_.mutable_resources_total()->insert(resource_map.begin(),
                                                     resource_map.end());
   self_node_info_.set_start_time_ms(current_sys_time_ms());
+  self_node_info_.set_is_head_node(is_head_node);
 }
 
 Raylet::~Raylet() {}

@@ -394,9 +394,31 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
 
 def test_to_torch(ray_start_regular_shared):
-    pipe = ray.data.range(10, parallelism=10).window(blocks_per_window=2)
+    pipe = ray.data.range(10, parallelism=10).window(blocks_per_window=2).repeat(2)
     batches = list(pipe.to_torch(batch_size=None))
-    assert len(batches) == 10
+    assert len(batches) == 20
+
+
+def test_to_tf(ray_start_regular_shared):
+    ds = ray.data.range_tensor(10, shape=(1, 1, 1), parallelism=10)
+    ds = ds.add_column("label", lambda x: 1)
+    pipe = ds.window(blocks_per_window=2).repeat(2)
+    batches = list(
+        pipe.to_tf(feature_columns="__value__", label_columns="label", batch_size=None)
+    )
+    assert len(batches) == 20
+
+
+def test_iter_torch_batches(ray_start_regular_shared):
+    pipe = ray.data.range(10).repeat(2)
+    batches = list(pipe.iter_torch_batches(batch_size=1))
+    assert len(batches) == 20
+
+
+def test_iter_tf_batches(ray_start_regular_shared):
+    pipe = ray.data.range(10).repeat(2)
+    batches = list(pipe.iter_tf_batches(batch_size=1))
+    assert len(batches) == 20
 
 
 def test_iter_batches_batch_across_windows(ray_start_regular_shared):
@@ -434,19 +456,19 @@ def test_schema_peek(ray_start_regular_shared):
     # Multiple datasets
     pipe = ray.data.range(6, parallelism=6).window(blocks_per_window=2)
     assert pipe.schema() == int
-    assert pipe._first_dataset is not None
+    assert pipe._first_datastream is not None
     dss = list(pipe.iter_datasets())
     assert len(dss) == 3, dss
-    assert pipe._first_dataset is None
+    assert pipe._first_datastream is None
     assert pipe.schema() == int
 
     # Only 1 dataset
     pipe = ray.data.range(1).window(blocks_per_window=2)
     assert pipe.schema() == int
-    assert pipe._first_dataset is not None
+    assert pipe._first_datastream is not None
     dss = list(pipe.iter_datasets())
     assert len(dss) == 1, dss
-    assert pipe._first_dataset is None
+    assert pipe._first_datastream is None
     assert pipe.schema() == int
 
     # Empty datasets
@@ -456,10 +478,10 @@ def test_schema_peek(ray_start_regular_shared):
         .window(blocks_per_window=2)
     )
     assert pipe.schema() is None
-    assert pipe._first_dataset is not None
+    assert pipe._first_datastream is not None
     dss = list(pipe.iter_datasets())
     assert len(dss) == 3, dss
-    assert pipe._first_dataset is None
+    assert pipe._first_datastream is None
     assert pipe.schema() is None
 
 
