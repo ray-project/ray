@@ -672,6 +672,7 @@
   run:
     timeout: 1800
     script: bash dreambooth_run.sh
+    artifact_path: /tmp/artifacts/example_out.jpg
 
 
 - name: air_example_gptj_deepspeed_fine_tuning
