@@ -48,7 +48,7 @@ from ray.data._internal.planner.flat_map import generate_flat_map_fn
 from ray.data._internal.planner.map_batches import generate_map_batches_fn
 from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
-from ray.data.dataset_iterator import DataIterator
+from ray.data.datastream_iterator import DataIterator
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.dataset_iterator.dataset_iterator_impl import (
     DataIteratorImpl,
@@ -149,7 +149,7 @@ if TYPE_CHECKING:
     import torch
     import torch.utils.data
 
-    from ray.data.dataset_pipeline import DatasetPipeline
+    from ray.data.datastream_pipeline import DatasetPipeline
     from ray.data.grouped_dataset import GroupedData
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
@@ -3845,7 +3845,7 @@ class Datastream(Generic[T]):
                 to repeat indefinitely.
         """
         from ray.data._internal.plan import _rewrite_read_stage
-        from ray.data.dataset_pipeline import DatasetPipeline
+        from ray.data.datastream_pipeline import DatasetPipeline
 
         ctx = DataContext.get_current()
         if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
@@ -3964,7 +3964,7 @@ class Datastream(Generic[T]):
                 exclusive with ``blocks_per_window``.
         """
         from ray.data._internal.plan import _rewrite_read_stage
-        from ray.data.dataset_pipeline import DatasetPipeline
+        from ray.data.datastream_pipeline import DatasetPipeline
 
         if blocks_per_window is not None and bytes_per_window is not None:
             raise ValueError("Only one windowing scheme can be specified.")

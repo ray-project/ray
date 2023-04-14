@@ -50,7 +50,7 @@ Reading image data
 
 .. tabbed:: NumPy
 
-    To load NumPy arrays into a :class:`~ray.data.dataset.Dataset`, separately read the image and label arrays.
+    To load NumPy arrays into a :class:`~ray.data.Datastream`, separately read the image and label arrays.
 
     .. literalinclude:: ./doc_code/computer_vision.py
         :start-after: __read_numpy1_start__
@@ -89,7 +89,7 @@ Reading image data
             }
         }
 
-    To load examples stored in this format, read the TFRecords into a :class:`~ray.data.dataset.Dataset`.
+    To load examples stored in this format, read the TFRecords into a :class:`~ray.data.Datastream`.
 
     .. literalinclude:: ./doc_code/computer_vision.py
         :start-after: __read_tfrecords1_start__

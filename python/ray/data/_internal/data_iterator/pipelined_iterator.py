@@ -2,7 +2,7 @@ from typing import Any, TYPE_CHECKING, Callable, Optional, Union, Iterator, Tupl
 
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, DataBatch
-from ray.data.dataset_iterator import DataIterator
+from ray.data.datastream_iterator import DataIterator
 from ray.data._internal.stats import DatastreamStats
 
 if TYPE_CHECKING:

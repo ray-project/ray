@@ -10,8 +10,8 @@ import ray
 from ray.data import dataset
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data.context import DataContext, WARN_PREFIX, OK_PREFIX
-from ray.data.dataset import Dataset
-from ray.data.dataset_pipeline import DatasetPipeline
+from ray.data.datastream import Dataset
+from ray.data.datastream_pipeline import DatasetPipeline
 
 from ray.tests.conftest import *  # noqa
 
