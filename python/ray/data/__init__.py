@@ -6,16 +6,16 @@ import sys
 if sys.version_info >= (3, 7):
     import pandas  # noqa
 
-from python.ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
-from python.ray.data.dataset import Dataset, Datastream
-from python.ray.data.context import DatasetContext, DataContext
-from python.ray.data.dataset_iterator import DatasetIterator, DataIterator
+from ray.data.dataset import Dataset, Datastream
+from ray.data.context import DatasetContext, DataContext
+from ray.data.dataset_iterator import DatasetIterator, DataIterator
 from ray.data.dataset_pipeline import DatasetPipeline
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.preprocessor import Preprocessor
-from python.ray.data.read_api import (  # noqa: F401
+from ray.data.read_api import (  # noqa: F401
     from_arrow,
     from_arrow_refs,
     from_dask,
