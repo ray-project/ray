@@ -58,7 +58,16 @@ def _trigger_test_run(test: Test, commit: str) -> None:
         commit,
         timeout=DEFAULT_WHEEL_WAIT_TIMEOUT,
     )
-    step = get_step(test, ray_wheels=ray_wheels_url)
+    step = get_step(
+        test, 
+        ray_wheels=ray_wheels_url,
+        cmd = [
+            'git checkout master',
+            '&&',
+            f'git checkout {commit}',
+            '&&',
+        ],
+    )
     step["label"] = f'{test["name"]}:{commit[:6]}'
     step["key"] = commit
     pipeline = json.dumps({"steps": [step]})
