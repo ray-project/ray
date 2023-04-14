@@ -1,5 +1,5 @@
-import unittest
 import itertools
+import unittest
 
 from ray.rllib.core.models.configs import MLPEncoderConfig
 from ray.rllib.core.models.base import STATE_OUT, ENCODER_OUT
