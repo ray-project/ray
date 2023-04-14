@@ -61,10 +61,13 @@ def _trigger_test_run(test: Test, commit: str) -> None:
     step = get_step(
         test, 
         ray_wheels=ray_wheels_url,
+        env= {
+            'RAY_TEST_BRANCH': 'master',
+            'RAY_TEST_COMMIT': commit,
+        }
     )
     step["label"] = f'{test["name"]}:{commit[:6]}'
     step["key"] = commit
-    step["env"]["RAY_BISECT_REVISION"] = commit
     pipeline = json.dumps({"steps": [step]})
     subprocess.check_output(
         f'echo "{pipeline}" | buildkite-agent pipeline upload',
