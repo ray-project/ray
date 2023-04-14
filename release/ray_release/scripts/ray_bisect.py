@@ -62,9 +62,9 @@ def _trigger_test_run(test: Test, commit: str) -> None:
         test, 
         ray_wheels=ray_wheels_url,
         cmd = [
-            'git checkout master',
+            'git', 'checkout', 'master',
             '&&',
-            f'git checkout {commit}',
+            'git', 'checkout', commit,
             '&&',
         ],
     )
