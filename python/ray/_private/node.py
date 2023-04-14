@@ -276,12 +276,13 @@ class Node:
             )
             # If "RAY_GCS_SERVER_PORT" is set incorrectly by user,
             # it will be ignored.
-            if gcs_server_port_environment.isnumeric():
-                gcs_server_port = int(gcs_server_port_environment)
+            gcs_server_port = (
+                int(gcs_server_port_environment)
+                if gcs_server_port_environment.isnumeric()
+                else None
+            )
             if gcs_server_port:
-                if gcs_server_port.isnumeric():
-                    gcs_server_port = int(gcs_server_port)
-                    ray_params.update_if_absent(gcs_server_port=gcs_server_port)
+                ray_params.update_if_absent(gcs_server_port=gcs_server_port)
             if ray_params.gcs_server_port is None or ray_params.gcs_server_port == 0:
                 ray_params.gcs_server_port = self._get_cached_port("gcs_server_port")
 
