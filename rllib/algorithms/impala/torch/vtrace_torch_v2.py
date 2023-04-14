@@ -147,7 +147,7 @@ def vtrace_torch(
 
     deltas = clipped_rhos * (rewards + discounts * values_t_plus_1 - values)
 
-    #TEST: Only move the for-loop to CPU.
+    # Only move the for-loop to CPU.
     discounts_cpu = discounts.to("cpu")
     cs_cpu = cs.to("cpu")
     deltas_cpu = deltas.to("cpu")
@@ -156,10 +156,8 @@ def vtrace_torch(
         discount_t, c_t, delta_t = discounts_cpu[i], cs_cpu[i], deltas_cpu[i]
         vs_minus_v_xs.append(delta_t + discount_t * c_t * vs_minus_v_xs[-1])
     vs_minus_v_xs = torch.stack(vs_minus_v_xs[1:])
-
-    #TEST: Move results back to GPU - if applicable.
+    # Move results back to GPU - if applicable.
     vs_minus_v_xs = vs_minus_v_xs.to(deltas.device)
-    #END: TEST
 
     # Reverse the results back to original order.
     vs_minus_v_xs = torch.flip(vs_minus_v_xs, dims=[0])

@@ -1,8 +1,17 @@
 from collections import deque
-from typing import Any, List, Mapping, Type, Optional, Callable, Set, TYPE_CHECKING
+from typing import (
+    Any,
+    Callable,
+    List,
+    Mapping,
+    Optional,
+    Set,
+    Type,
+    TYPE_CHECKING,
+    Union,
+)
 
 import ray
-
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
@@ -139,9 +148,11 @@ class LearnerGroup:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
+            _reduce_mean_results
+        ),
         block: bool = True,
-    ) -> List[Mapping[str, Any]]:
+    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Do one gradient based update to the Learner(s).
 
         Args:
@@ -203,7 +214,9 @@ class LearnerGroup:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
+            _reduce_mean_results
+        ),
         block: bool = True,
     ) -> List[Mapping[str, Any]]:
         """Do a gradient based update to the Learners using DDP training.
@@ -268,9 +281,9 @@ class LearnerGroup:
     def additional_update(
         self,
         *,
-        reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results,
+        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
         **kwargs,
-    ) -> List[Mapping[str, Any]]:
+    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Apply additional non-gradient based updates to the Learners.
 
         For example, this could be used to do a polyak averaging update
@@ -287,7 +300,7 @@ class LearnerGroup:
         """
 
         if self.is_local:
-            results = [self._learner.additional_update(**kwargs)]
+            return self._learner.additional_update(**kwargs)
         else:
             results = self._worker_manager.foreach_actor(
                 [lambda w: w.additional_update(**kwargs) for worker in self._workers]

@@ -317,7 +317,9 @@ class APPO(Impala):
 
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
 
-        if self.config._enable_learner_api and train_results:
+        if self.config._enable_learner_api and not train_results:
+            pass
+        elif self.config._enable_learner_api:
             # using steps trained here instead of sampled ... I'm not sure why the
             # other implemenetation uses sampled.
             # to be quite frank, im not sure if I understand how their target update

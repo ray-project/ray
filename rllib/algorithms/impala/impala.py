@@ -137,7 +137,7 @@ class ImpalaConfig(AlgorithmConfig):
         self._lr_vf = 0.0005
         self.after_train_step = None
 
-        # Override some of AlgorithmConfig's default values with ARS-specific values.
+        # Override some of AlgorithmConfig's default values with IMPALA-specific values.
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
         self.minibatch_size = self.train_batch_size

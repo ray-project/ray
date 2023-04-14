@@ -784,7 +784,9 @@ class Learner:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
+            _reduce_mean_results
+        ),
     ) -> Mapping[str, Any]:
         """Do `num_iters` minibatch updates given the original batch.
 
@@ -983,11 +985,11 @@ class Learner:
         """Checks whether the result has the correct format.
 
         All the keys should be referencing the module ids that got updated. There is a
-        special key `__all__` that hold any extra information that is not specific to a
-        module.
+        special key `ALL_MODULES` that hold any extra information that is not specific
+        to a module.
 
         Args:
-            results: The result of the update.
+            result: The result of the update.
 
         Raises:
             ValueError: If the result are not in the correct format.
@@ -1008,7 +1010,7 @@ class Learner:
                 if key not in self.module.keys():
                     raise ValueError(
                         f"The key {key} in the result of the update is not a valid "
-                        f"module id. Valid module ids are: {self.module.keys()}"
+                        f"module id. Valid module ids are: {list(self.module.keys())}."
                     )
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -1016,19 +1018,36 @@ class Learner:
         self,
         batch: MultiAgentBatch,
     ) -> Mapping[str, Any]:
-        """Performs a single update given a batch of data."""
+        """Performs a single update  given a batch of data."""
         # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
-        # NestedDict from the base class.
+        #  NestedDict from the base class.
+        import time
+        t0 = time.time()
         tensorbatch = self._convert_batch_type(batch)
+        t1 = time.time()
         fwd_out = self._module.forward_train(tensorbatch)
+        t2 = time.time()
         loss = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
-
+        t3 = time.time()
         gradients = self.compute_gradients(loss)
+        t4 = time.time()
         postprocessed_gradients = self.postprocess_gradients(gradients)
+        t5 = time.time()
         self.apply_gradients(postprocessed_gradients)
-        result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
-        self._check_result(result)
-        return convert_to_numpy(result)
+        t6 = time.time()
+        results = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+        t7 = time.time()
+        results[ALL_MODULES].update({
+            "time_convert_batch_ms": (t1 - t0) * 1000.0,
+            "time_forward_train_ms": (t2 - t1) * 1000.0,
+            "time_compute_loss_ms": (t3 - t2) * 1000.0,
+            "time_compute_gradients_ms": (t4 - t3) * 1000.0,
+            "time_postprocess_gradients_ms": (t5 - t4) * 1000.0,
+            "time_apply_gradients_ms": (t6 - t5) * 1000.0,
+            "time_compile_results_ms": (t7 - t6) * 1000.0,
+        })
+        self._check_result(results)
+        return convert_to_numpy(results)
 
     def _check_is_built(self):
         if self._module is None:

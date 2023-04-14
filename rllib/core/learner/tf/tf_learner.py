@@ -441,13 +441,19 @@ class TfLearner(Learner):
             # in-efficient. Make it efficient.
             _batch = NestedDict(_batch)
             with tf.GradientTape() as tape:
+                t0 = tf.timestamp()
                 fwd_out = self._module.forward_train(_batch)
+                t1 = tf.timestamp()
                 loss = self.compute_loss(fwd_out=fwd_out, batch=_batch)
                 if isinstance(loss, tf.Tensor):
                     loss = {"total_loss": loss}
+            t2 = tf.timestamp()
             gradients = self.compute_gradients(loss, tape)
+            t3 = tf.timestamp()
             gradients = self.postprocess_gradients(gradients)
+            t4 = tf.timestamp()
             self.apply_gradients(gradients)
+            t5 = tf.timestamp()
 
             # NOTE (Kourosh) The reason for returning fwd_out is that it is optionally
             # needed for compiling the results in a later step (e.g. in
@@ -464,6 +470,11 @@ class TfLearner(Learner):
                 return None
 
             return {
+                "time_forward_train_ms": (t1 - t0) * 1000.0,
+                "time_compute_loss_ms": (t2 - t1) * 1000.0,
+                "time_compute_gradients_ms": (t3 - t2) * 1000.0,
+                "time_postprocess_gradients_ms": (t4 - t3) * 1000.0,
+                "time_apply_gradients_ms": (t5 - t4) * 1000.0,
                 "loss": loss,
                 "fwd_out": tree.map_structure(filter_fwd_out, fwd_out),
                 "postprocessed_gradients": gradients,
