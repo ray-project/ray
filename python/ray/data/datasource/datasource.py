@@ -273,7 +273,7 @@ class _RangeDatasourceReader(Reader):
                 import pyarrow as pa
 
                 return pa.Table.from_arrays(
-                    [np.arange(start, start + count)], names=["value"]
+                    [np.arange(start, start + count)], names=["id"]
                 )
             elif block_format == "tensor":
                 import pyarrow as pa
@@ -290,7 +290,7 @@ class _RangeDatasourceReader(Reader):
             _check_pyarrow_version()
             import pyarrow as pa
 
-            schema = pa.Table.from_pydict({"value": [0]}).schema
+            schema = pa.Table.from_pydict({"id": [0]}).schema
         elif block_format == "tensor":
             _check_pyarrow_version()
             import pyarrow as pa

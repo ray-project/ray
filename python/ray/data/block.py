@@ -396,7 +396,10 @@ class BlockAccessor(Generic[T]):
 
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
-            from ray.data._internal.simple_block import SimpleBlockAccessor
+            raise DeprecationWarning(
+                "Standalone Python objects are no longer supported. To include "
+                "Python objects in a datastream, wrap them in a dict, e.g., "
+                "return `{'item': obj}` instead of just `obj`.")
 
             return SimpleBlockAccessor(block)
         else:

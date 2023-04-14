@@ -9,6 +9,7 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
+    Mapping,
 )
 
 
@@ -108,24 +109,24 @@ def from_items(
     items: List[Any],
     *,
     parallelism: int = -1,
-    output_arrow_format: bool = False,
-) -> MaterializedDatastream[Any]:
+) -> MaterializedDatastream[Mapping]:
     """Create a datastream from a list of local Python objects.
+
+    The items can either be standalone Python objects or dicts. If they are standalone
+    objects, the items will be wrapped in a dict as `{"item": obj}`.
 
     Examples:
         >>> import ray
         >>> ds = ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        MaterializedDatastream(num_blocks=5, num_rows=5, schema=<class 'int'>)
+        MaterializedDatastream(num_blocks=5, num_rows=5, schema={item: int64})
         >>> ds.take(2) # doctest: +SKIP
-        [1, 2]
+        [{"item": 1}, {"item": 2}]
 
     Args:
         items: List of local Python objects.
         parallelism: The amount of parallelism to use for the datastream.
             Parallelism may be limited by the number of items.
-        output_arrow_format: If True, always return data in Arrow format, raising an
-            error if this is not possible. Defaults to False.
 
     Returns:
         MaterializedDatastream holding the items.
@@ -153,22 +154,15 @@ def from_items(
     metadata: List[BlockMetadata] = []
     for i in builtins.range(detected_parallelism):
         stats = BlockExecStats.builder()
-        if output_arrow_format:
-            builder = ArrowBlockBuilder()
-        else:
-            builder = DelegatingBlockBuilder()
+        builder = ArrowBlockBuilder()
         # Evenly distribute remainder across block slices while preserving record order.
         block_start = i * block_size + min(i, remainder)
         block_end = (i + 1) * block_size + min(i + 1, remainder)
         for j in builtins.range(block_start, block_end):
-            if output_arrow_format and not isinstance(items[j], (dict, np.ndarray)):
-                raise ValueError(
-                    "Arrow block format can only be used if all items are "
-                    "either dicts or Numpy arrays. Received data of type: "
-                    f"{type(items[j])}. Set `output_arrow_format` to "
-                    "False to not use Arrow blocks."
-                )
-            builder.add(items[j])
+            item = items[j]
+            if not isinstance(item, dict):
+                item = {"item": item}
+            builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
         metadata.append(
@@ -192,16 +186,16 @@ def from_items(
 
 
 @PublicAPI
-def range(n: int, *, parallelism: int = -1) -> Datastream[int]:
+def range(n: int, *, parallelism: int = -1) -> Datastream[Mapping]:
     """Create a datastream from a range of integers [0..n).
 
     Examples:
         >>> import ray
         >>> ds = ray.data.range(10000) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=10000, schema=<class 'int'>)
-        >>> ds.map(lambda x: x * 2).take(4) # doctest: +SKIP
-        [0, 2, 4, 6]
+        Datastream(num_blocks=200, num_rows=10000, schema={id: int64})
+        >>> ds.map(lambda x: {"id": x["id"] * 2}).take(4) # doctest: +SKIP
+        [{"id": 0}, {"id": 2}, {"id": 4}, {"id": 6}]
 
     Args:
         n: The upper bound of the range of integers.
@@ -212,36 +206,13 @@ def range(n: int, *, parallelism: int = -1) -> Datastream[int]:
         Datastream producing the integers.
     """
     return read_datasource(
-        RangeDatasource(), parallelism=parallelism, n=n, block_format="list"
+        RangeDatasource(), parallelism=parallelism, n=n, block_format="arrow"
     )
 
 
 @PublicAPI
 def range_table(n: int, *, parallelism: int = -1) -> Datastream[TableRow]:
-    """Create a tabular stream from a range of integers [0..n).
-
-    Examples:
-        >>> import ray
-        >>> ds = ray.data.range_table(1000) # doctest: +SKIP
-        >>> ds # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=1000, schema={value: int64})
-        >>> ds.map(lambda r: {"v2": r["value"] * 2}).take(2) # doctest: +SKIP
-        [TableRow({'v2': 0}), TableRow({'v2': 2})]
-
-    This is similar to range(), but uses Arrow tables to hold the integers
-    in Arrow records. The datastream elements take the form {"value": N}.
-
-    Args:
-        n: The upper bound of the range of integer records.
-        parallelism: The amount of parallelism to use for the datastream.
-            Parallelism may be limited by the number of items.
-
-    Returns:
-        Datastream producing the integers as Arrow records.
-    """
-    return read_datasource(
-        RangeDatasource(), parallelism=parallelism, n=n, block_format="arrow"
-    )
+    raise DeprecationWarning("range_table() is deprecated, use range() instead.")
 
 
 @Deprecated

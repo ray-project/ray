@@ -386,7 +386,7 @@ class Datastream(Generic[T]):
         *,
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
-        batch_format: Optional[str] = "pandas",
+        batch_format: Optional[str] = "numpy",
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -724,7 +724,7 @@ class Datastream(Generic[T]):
 
         return self.map_batches(
             process_batch,
-            batch_format="pandas",
+            batch_format="pandas",  # TODO fix
             compute=compute,
             zero_copy_batch=False,
             **ray_remote_args,
@@ -764,7 +764,7 @@ class Datastream(Generic[T]):
 
         return self.map_batches(
             lambda batch: batch.drop(columns=cols),
-            batch_format="pandas",
+            batch_format="pandas",  # TODO fix
             zero_copy_batch=True,
             compute=compute,
             **ray_remote_args,
@@ -2224,7 +2224,7 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI(pattern="Time complexity:")
     def take_batch(
-        self, batch_size: int = 20, *, batch_format: Optional[str] = "pandas"
+        self, batch_size: int = 20, *, batch_format: Optional[str] = "numpy"
     ) -> DataBatch:
         """Return up to ``batch_size`` records from the datastream in a batch.
 
@@ -3038,7 +3038,7 @@ class Datastream(Generic[T]):
         *,
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
-        batch_format: Optional[str] = "pandas",
+        batch_format: Optional[str] = "numpy",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
