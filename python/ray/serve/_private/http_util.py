@@ -159,7 +159,7 @@ class ASGIHTTPSender(Send):
         return RawASGIResponse(self.messages)
 
 
-def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
+def make_fastapi_class_based_view(fastapi_app, cls: Type, servable_object=None) -> None:
     """Transform the `cls`'s methods and class annotations to FastAPI routes.
 
     Modified from
@@ -183,6 +183,8 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     def get_current_servable_instance():
         from ray import serve
 
+        if servable_object:
+            return servable_object
         return serve.get_replica_context().servable_object
 
     # Find all the class method routes

@@ -23,6 +23,7 @@ from ray.serve._private.constants import (
     MIGRATION_MESSAGE,
     RAY_SERVE_REQUEST_ROUTING_TAG,
 )
+from ray._private.async_compat import sync_to_async
 from ray.serve.context import (
     ReplicaContext,
     get_global_client,
@@ -185,6 +186,8 @@ def multiplex(num_models_per_replicas=1):
                 self.num_models_per_replicas = num_models_per_replicas
                 self._lru_order = []
                 self.nums_model_unload = 0
+                self.model_instance = cls
+
                 import os
 
                 self.pid = os.getpid()
@@ -192,8 +195,13 @@ def multiplex(num_models_per_replicas=1):
             def get_custom_tags(self):
                 return self.models.keys()
 
-            def load_model(self, tag):
-                return cls(tag)
+            async def load_model(self, tag):
+                model = self.model_instance.__new__(self.model_instance)
+                if "__serve_fastapi_wrapper__" in self.model_instance.__dict__:
+                    await model.__init__(tag, servable_object=model)
+                else:
+                    await model.__init__(tag)
+                return model
 
             def _should_unload_model(self):
                 return len(self.models) >= self.num_models_per_replicas
@@ -203,17 +211,21 @@ def multiplex(num_models_per_replicas=1):
                 self.nums_model_unload += 1
 
             async def __call__(self, request: starlette.requests.Request):
-                assert RAY_SERVE_REQUEST_ROUTING_TAG in request.query_params
-                tag = request.query_params[RAY_SERVE_REQUEST_ROUTING_TAG]
+
+                # assert RAY_SERVE_REQUEST_ROUTING_TAG in request.query_params
+                tag = request.headers["ray_serve_request_routing_tag"]
+
                 if tag not in self.models:
                     print(f"{bcolors.WARNING}Model miss {tag} {bcolors.ENDC}")
                     if self._should_unload_model():
                         self._unload_model()
-                    self.models[tag] = self.load_model(tag)
+                    self.models[tag] = await self.load_model(tag)
                 else:
                     print(f"{bcolors.OKGREEN}Model hit {tag} {bcolors.ENDC}")
                 self.models.move_to_end(tag)
-                resp = await self.models[tag](request)
+                call_func = getattr(self.models[tag], "__call__")
+                method_to_call = sync_to_async(call_func)
+                resp = await method_to_call(request)
                 return (self.pid, self.nums_model_unload, resp)
 
         ModelMultiplexWrapper.__name__ = cls.__name__
@@ -254,37 +266,41 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 
         # Sometimes there are decorators on the methods. We want to fix
         # the fast api routes here.
-        if isinstance(app, (FastAPI, APIRouter)):
-            make_fastapi_class_based_view(app, cls)
+        # if isinstance(app, (FastAPI, APIRouter)):
+        #    make_fastapi_class_based_view(app, cls)
 
         # Free the state of the app so subsequent modification won't affect
         # this ingress deployment. We don't use copy.copy here to avoid
         # recursion issue.
         ensure_serialization_context()
-        frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
+        # frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
 
         class ASGIAppWrapper(cls):
-            async def __init__(self, *args, **kwargs):
+            async def __init__(self, *args, servable_object=None, **kwargs):
                 super().__init__(*args, **kwargs)
 
                 record_serve_tag("SERVE_FASTAPI_USED", "1")
+                if isinstance(app, (FastAPI, APIRouter)):
+                    make_fastapi_class_based_view(app, cls, servable_object)
+
                 install_serve_encoders_to_fastapi()
 
+                frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
                 self._serve_app = frozen_app
 
                 # Use uvicorn's lifespan handling code to properly deal with
                 # startup and shutdown event.
-                self._serve_asgi_lifespan = LifespanOn(
-                    Config(self._serve_app, lifespan="on")
-                )
+                # self._serve_asgi_lifespan = LifespanOn(
+                #    Config(self._serve_app, lifespan="on")
+                # )
                 # Replace uvicorn logger with our own.
-                self._serve_asgi_lifespan.logger = logger
+                # self._serve_asgi_lifespan.logger = logger
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
-                with LoggingContext(
-                    self._serve_asgi_lifespan.logger, level=logging.WARNING
-                ):
-                    await self._serve_asgi_lifespan.startup()
+                # with LoggingContext(
+                #    self._serve_asgi_lifespan.logger, level=logging.WARNING
+                # ):
+                #    await self._serve_asgi_lifespan.startup()
 
             async def __call__(self, request: Request):
                 sender = ASGIHTTPSender()
@@ -297,13 +313,13 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 
             # NOTE: __del__ must be async so that we can run asgi shutdown
             # in the same event loop.
-            async def __del__(self):
+            def __del__(self):
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
-                with LoggingContext(
-                    self._serve_asgi_lifespan.logger, level=logging.WARNING
-                ):
-                    await self._serve_asgi_lifespan.shutdown()
+                # with LoggingContext(
+                #    self._serve_asgi_lifespan.logger, level=logging.WARNING
+                # ):
+                #    await self._serve_asgi_lifespan.shutdown()
 
                 # Make sure to call user's del method as well.
                 super_cls = super()
@@ -311,8 +327,9 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                     super_cls.__del__()
 
         ASGIAppWrapper.__name__ = cls.__name__
-        if hasattr(frozen_app, "docs_url"):
-            ASGIAppWrapper.__fastapi_docs_path__ = frozen_app.docs_url
+        ASGIAppWrapper.__serve_fastapi_wrapper__ = True
+        if hasattr(app, "docs_url"):
+            ASGIAppWrapper.__fastapi_docs_path__ = app.docs_url
         return ASGIAppWrapper
 
     return decorator

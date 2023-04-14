@@ -307,6 +307,11 @@ class RayServeReplica:
             def user_health_check():
                 pass
 
+        if not callable(get_custom_tags):
+
+            def get_custom_tags():
+                return ()
+
         self.user_health_check = sync_to_async(user_health_check)
         self.custom_tags_get = sync_to_async(get_custom_tags)
 

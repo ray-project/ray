@@ -80,8 +80,12 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     request = pickle.dumps(request)
 
     # Extract the request routing tags
-    params = QueryParams(scope["query_string"])
-    tag = params.get(RAY_SERVE_REQUEST_ROUTING_TAG, None)
+    # params = QueryParams(scope["query_string"])
+    # tag = params.get(RAY_SERVE_REQUEST_ROUTING_TAG, None)
+    tag = None
+    for key, value in scope["headers"]:
+        if RAY_SERVE_REQUEST_ROUTING_TAG == key.decode():
+            tag = value.decode()
 
     retries = 0
     backoff_time_s = 0.05
