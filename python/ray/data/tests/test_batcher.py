@@ -140,7 +140,7 @@ def test_batching_pyarrow_table_with_many_chunks():
     for _ in range(num_chunks):
         batch = {}
         for i in range(10):
-            batch[str(i)] = [j for j in range(batch_size)]
+            batch[str(i)] = list(range(batch_size))
         batches.append(pa.Table.from_pydict(batch))
 
     block = pa.concat_tables(batches, promote=True)
