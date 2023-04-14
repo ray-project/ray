@@ -144,8 +144,8 @@ class LightningConfigBuilder:
         self._trainer_fit_params.update(**kwargs)
         return self
 
-    def strategy(self, name, **kwargs) -> "LightningConfigBuilder":
-        """Set up the configurations of ``pytorch_lightning.strategies.DDPStrategy``.
+    def strategy(self, name: str = "ddp", **kwargs) -> "LightningConfigBuilder":
+        """Set up the configurations of ``pytorch_lightning.strategies.Strategy``.
 
         Args:
             name: The name of your distributed strategy. You can choose
@@ -155,6 +155,12 @@ class LightningConfigBuilder:
                 and
                 https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.FSDPStrategy.html
         """
+        if name not in ["ddp", "fsdp"]:
+            raise ValueError(
+                "LightningTrainer currently supports 'ddp' and 'fsdp' strategy. "
+                "Please choose one of them."
+            )
+
         self._strategy_config["_strategy_name"] = name
         self._strategy_config.update(**kwargs)
         return self
@@ -526,15 +532,9 @@ def _lightning_train_loop_per_worker(config):
     if "strategy" in trainer_config:
         logger.warning(
             "`strategy` specified in `LightningConfig.trainer_init_config` "
-            "will be ignored. LightningTrainer will create a RayDDPStrategy "
-            "or RayFSDPStrategy object based on `LightningConfigBuilder.strategy()`."
+            "will be ignored. LightningTrainer will create a strategy based on "
+            "the settings passed into `LightningConfigBuilder.strategy()`."
         )
-
-    assert strategy_name in [
-        "ddp",
-        "fsdp",
-    ], "LightningTrainer currently supports 'ddp' and 'fsdp' strategy. "
-    "Please choose one of them."
 
     if strategy_name == "ddp":
         trainer_config["strategy"] = RayDDPStrategy(**strategy_config)

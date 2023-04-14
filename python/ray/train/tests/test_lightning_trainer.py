@@ -40,6 +40,11 @@ def test_config_builder():
     ):
         LightningConfigBuilder().module(cls=LinearModule).trainer(10, 100)
 
+    with pytest.raises(
+        ValueError, match="LightningTrainer currently supports 'ddp' and 'fsdp'"
+    ):
+        LightningConfigBuilder().strategy(name="dummy_strategy")
+
     config = (
         LightningConfigBuilder()
         .module(cls=LinearModule, input_dim=10)
