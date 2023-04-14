@@ -304,6 +304,7 @@ py_test_module_list(
     "test_usage_stats.py",
     "test_placement_group_3.py",
     "test_placement_group_5.py",
+    "test_env.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_0", "team:core"],
