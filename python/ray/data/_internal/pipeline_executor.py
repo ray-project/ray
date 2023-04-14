@@ -13,7 +13,7 @@ from ray.data._internal import progress_bar
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ray.data.datastream_pipeline import DatasetPipeline
+    from ray.data.dataset_pipeline import DatasetPipeline
 
 
 def pipeline_stage(fn: Callable[[], Datastream[T]]) -> Datastream[T]:

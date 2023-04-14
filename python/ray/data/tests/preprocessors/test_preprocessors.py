@@ -232,7 +232,7 @@ def test_transform_all_formats(create_dummy_preprocessors, pipeline, dataset_for
         _apply_transform(with_nothing, ds)
 
     if pipeline:
-        patcher = patch.object(ray.data.datastream_pipeline.DatasetPipeline, "map_batches")
+        patcher = patch.object(ray.data.dataset_pipeline.DatasetPipeline, "map_batches")
     else:
         patcher = patch.object(ray.data.datastream.Datastream, "map_batches")
 
