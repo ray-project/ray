@@ -21,12 +21,21 @@ logger = logging.getLogger(__name__)
 LIGHTNING_REPORT_STAGE_KEY = "_report_on"
 
 
+def _get_worker_root_device():
+    """Get a single torch device for the current worker."""
+    devices = ray.train.torch.get_device()
+    if isinstance(devices, list):
+        return devices[0]
+    else:
+        return devices
+
+
 class RayDDPStrategy(DDPStrategy):
     """Subclass of DDPStrategy to ensure compatibility with Ray orchestration."""
 
     @property
     def root_device(self) -> torch.device:
-        return ray.train.torch.get_device()
+        return _get_worker_root_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
