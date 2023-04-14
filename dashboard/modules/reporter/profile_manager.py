@@ -7,11 +7,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+DARWIN_SET_CHOWN_CMD = "sudo chown root: `which py-spy`"
+LINUX_SET_CHOWN_CMD = "sudo chown root:root `which py-spy`"
+
 PYSPY_PERMISSIONS_ERROR_MESSAGE = """
 Note that this command requires `py-spy` to be installed with root permissions. You
 can install `py-spy` and give it root permissions as follows:
   $ pip install py-spy
-  $ sudo chown root:root `which py-spy`
+  $ {set_chown_command}
   $ sudo chmod u+s `which py-spy`
 
 Alternatively, you can start Ray with passwordless sudo / root permissions.
@@ -21,12 +24,17 @@ Alternatively, you can start Ray with passwordless sudo / root permissions.
 
 def _format_failed_pyspy_command(cmd, stdout, stderr) -> str:
     stderr_str = stderr.decode("utf-8")
+    extra_message = ""
 
     # If some sort of permission error returned, show a message about how
     # to set up permissions correctly.
-    extra_message = (
-        PYSPY_PERMISSIONS_ERROR_MESSAGE if "permission" in stderr_str.lower() else ""
-    )
+    if "permission" in stderr_str.lower():
+        set_chown_command = (
+            DARWIN_SET_CHOWN_CMD if sys.platform == "darwin" else LINUX_SET_CHOWN_CMD
+        )
+        extra_message = PYSPY_PERMISSIONS_ERROR_MESSAGE.format(
+            set_chown_command=set_chown_command
+        )
 
     return f"""Failed to execute `{cmd}`.
 {extra_message}

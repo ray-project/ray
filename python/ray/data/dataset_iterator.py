@@ -15,7 +15,7 @@ from typing import (
 
 from ray.types import ObjectRef
 from ray.data.block import BlockAccessor, Block, BlockMetadata, DataBatch, T
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.row import TableRow
 from ray.util.annotations import PublicAPI
 from ray.data._internal.block_batching import batch_block_refs
@@ -31,8 +31,15 @@ if TYPE_CHECKING:
     from ray.data.dataset import TensorFlowTensorBatchType
 
 
+def _is_tensor_dataset(schema) -> bool:
+    """Return ``True`` if this is an iterator over a tensor dataset."""
+    if schema is None or isinstance(schema, type):
+        return False
+    return _is_tensor_schema(schema.names)
+
+
 @PublicAPI(stability="beta")
-class DatasetIterator(abc.ABC):
+class DataIterator(abc.ABC):
     """An iterator for reading items from a :class:`~Dataset` or
     :class:`~DatasetPipeline`.
 
@@ -49,18 +56,18 @@ class DatasetIterator(abc.ABC):
         >>> import ray
         >>> ds = ray.data.range(5)
         >>> ds
-        Dataset(num_blocks=5, num_rows=5, schema=<class 'int'>)
+        Datastream(num_blocks=5, num_rows=5, schema=<class 'int'>)
         >>> ds.iterator()
-        DatasetIterator(Dataset(num_blocks=5, num_rows=5, schema=<class 'int'>))
+        DataIterator(Datastream(num_blocks=5, num_rows=5, schema=<class 'int'>))
         >>> ds = ds.repeat(); ds
         DatasetPipeline(num_windows=inf, num_stages=2)
         >>> ds.iterator()
-        DatasetIterator(DatasetPipeline(num_windows=inf, num_stages=2))
+        DataIterator(DatasetPipeline(num_windows=inf, num_stages=2))
 
     .. tip::
         For debugging purposes, use
         :meth:`~ray.air.util.check_ingest.make_local_dataset_iterator` to create a
-        local `DatasetIterator` from a :class:`~ray.data.Dataset`, a
+        local `DataIterator` from a :class:`~ray.data.Dataset`, a
         :class:`~ray.data.Preprocessor`, and a :class:`~ray.air.DatasetConfig`.
     """
 
@@ -68,7 +75,7 @@ class DatasetIterator(abc.ABC):
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats], bool
     ]:
         """Returns the iterator to use for `iter_batches`.
 
@@ -76,6 +83,8 @@ class DatasetIterator(abc.ABC):
             A tuple. The first item of the tuple is an iterator over pairs of Block
             object references and their corresponding metadata. The second item of the
             tuple is a DatasetStats object used for recording stats during iteration.
+            The third item is a boolean indicating if the blocks can be safely cleared
+            after use.
         """
         raise NotImplementedError
 
@@ -109,7 +118,7 @@ class DatasetIterator(abc.ABC):
                 to fetch the objects to the local node, format the batches, and apply
                 the collate_fn. Defaults to 1. You can revert back to the old
                 prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the DatasetContext.
+                `use_legacy_iter_batches` to True in the DataContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -134,7 +143,7 @@ class DatasetIterator(abc.ABC):
             An iterator over record batches.
         """
 
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         if not context.use_streaming_executor:
             # Always use legacy iter_batches for bulk executor.
             use_legacy = True
@@ -148,12 +157,12 @@ class DatasetIterator(abc.ABC):
                 "prefetching in terms of batches instead of blocks. If you "
                 "would like to use the legacy `iter_batches` codepath, "
                 "you can enable it by setting `use_legacy_iter_batches` "
-                "to True in the DatasetContext."
+                "to True in the DataContext."
             )
 
         time_start = time.perf_counter()
 
-        block_iterator, stats = self._to_block_iterator()
+        block_iterator, stats, blocks_owned_by_consumer = self._to_block_iterator()
         if use_legacy:
             # Legacy iter_batches does not use metadata.
             def drop_metadata(block_iterator):
@@ -164,6 +173,7 @@ class DatasetIterator(abc.ABC):
                 drop_metadata(block_iterator),
                 stats=stats,
                 prefetch_blocks=prefetch_blocks,
+                clear_block_after_read=blocks_owned_by_consumer,
                 batch_size=batch_size,
                 batch_format=batch_format,
                 drop_last=drop_last,
@@ -175,6 +185,7 @@ class DatasetIterator(abc.ABC):
             yield from iter_batches(
                 block_iterator,
                 stats=stats,
+                clear_block_after_read=blocks_owned_by_consumer,
                 batch_size=batch_size,
                 batch_format=batch_format,
                 drop_last=drop_last,
@@ -211,7 +222,7 @@ class DatasetIterator(abc.ABC):
         """
         iter_batch_args = {"batch_size": None, "batch_format": None}
 
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         if context.use_legacy_iter_batches:
             iter_batch_args["prefetch_blocks"] = prefetch_blocks
         else:
@@ -271,7 +282,7 @@ class DatasetIterator(abc.ABC):
                 to fetch the objects to the local node, format the batches, and apply
                 the collate_fn. Defaults to 1. You can revert back to the old
                 prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the DatasetContext.
+                `use_legacy_iter_batches` to True in the DataContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -379,7 +390,7 @@ class DatasetIterator(abc.ABC):
                 to fetch the objects to the local node, format the batches, and apply
                 the collate_fn. Defaults to 1. You can revert back to the old
                 prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the DatasetContext.
+                `use_legacy_iter_batches` to True in the DataContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -500,7 +511,7 @@ class DatasetIterator(abc.ABC):
                 to fetch the objects to the local node, format the batches, and apply
                 the collate_fn. Defaults to 1. You can revert back to the old
                 prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the DatasetContext.
+                `use_legacy_iter_batches` to True in the DataContext.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
@@ -637,7 +648,7 @@ class DatasetIterator(abc.ABC):
             ...     "s3://anonymous@air-example-data/iris.csv"
             ... )
             >>> it = ds.iterator(); it
-            DatasetIterator(Dataset(
+            DataIterator(Datastream(
                num_blocks=1,
                num_rows=150,
                schema={
@@ -667,8 +678,8 @@ class DatasetIterator(abc.ABC):
             >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
             >>> it = preprocessor.transform(ds).iterator()
             >>> it
-            DatasetIterator(Concatenator
-            +- Dataset(
+            DataIterator(Concatenator
+            +- Datastream(
                   num_blocks=1,
                   num_rows=150,
                   schema={
@@ -694,7 +705,7 @@ class DatasetIterator(abc.ABC):
                 to fetch the objects to the local node, format the batches, and apply
                 the collate_fn. Defaults to 1. You can revert back to the old
                 prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the DatasetContext.
+                `use_legacy_iter_batches` to True in the DataContext.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
@@ -724,13 +735,14 @@ class DatasetIterator(abc.ABC):
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
-        if self._is_tensor_dataset():
+        schema = self.schema()
+
+        if _is_tensor_dataset(schema):
             raise NotImplementedError(
                 "`to_tf` doesn't support single-column tensor datasets. Call the "
                 "more-flexible `iter_batches` instead."
             )
 
-        schema = self.schema()
         if isinstance(schema, type):
             raise NotImplementedError(
                 "`to_tf` doesn't support simple datasets. Call `map_batches` and "
@@ -809,15 +821,12 @@ class DatasetIterator(abc.ABC):
     def iter_epochs(self, max_epoch: int = -1) -> None:
         raise DeprecationWarning(
             "If you are using AIR, note that session.get_dataset_shard() "
-            "returns a ray.data.DatasetIterator instead of a "
+            "returns a ray.data.DataIterator instead of a "
             "DatasetPipeline as of Ray 2.3. "
             "To iterate over one epoch of data, use iter_batches(), "
             "iter_torch_batches(), or to_tf()."
         )
 
-    def _is_tensor_dataset(self) -> bool:
-        """Return ``True`` if this is an iterator over a tensor dataset."""
-        schema = self.schema()
-        if schema is None or isinstance(schema, type):
-            return False
-        return _is_tensor_schema(schema.names)
+
+# Backwards compatibility alias.
+DatasetIterator = DataIterator

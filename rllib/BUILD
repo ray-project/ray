@@ -1677,14 +1677,16 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-sh_test(
-    name = "env/tests/test_local_inference_unity3d",
-    tags = ["team:rllib", "env"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "unity3d", "8850"],
-    data = glob(["examples/serving/*.py"]),
-)
+# Tests with unity 3d and external envs currently don't work
+# see: https://github.com/ray-project/ray/issues/34290 for more details
+# sh_test(
+#     name = "env/tests/test_local_inference_unity3d",
+#     tags = ["team:rllib", "env"],
+#     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+#     srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#     args = ["local", "unity3d", "8850"],
+#     data = glob(["examples/serving/*.py"]),
+# )
 
 py_test(
     name = "env/tests/test_multi_agent_env",
@@ -1720,14 +1722,16 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-sh_test(
-    name = "env/tests/test_remote_inference_unity3d",
-    tags = ["team:rllib", "env", "exclusive"],
-    size = "small",
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "unity3d", "8860"],
-    data = glob(["examples/serving/*.py"]),
-)
+# Tests with unity 3d and external envs currently don't work
+# see: https://github.com/ray-project/ray/issues/34290 for more details
+# sh_test(
+#     name = "env/tests/test_remote_inference_unity3d",
+#     tags = ["team:rllib", "env", "exclusive"],
+#     size = "small",
+#     srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#     args = ["remote", "unity3d", "8860"],
+#     data = glob(["examples/serving/*.py"]),
+# )
 
 py_test(
     name = "env/tests/test_remote_worker_envs",
@@ -1854,6 +1858,7 @@ py_test(
 # Tag: core
 # --------------------------------------------------------------------
 
+# Catalog
 py_test(
     name = "test_catalog",
     tags = ["team:rllib", "core"],
@@ -1861,6 +1866,58 @@ py_test(
     srcs = ["core/models/tests/test_catalog.py"]
 )
 
+# Default Models
+py_test(
+    name = "test_cnn_encoders",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_cnn_encoders.py"]
+)
+
+py_test(
+    name = "test_cnn_transpose_heads",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_cnn_transpose_heads.py"]
+)
+
+py_test(
+    name = "test_mlp_encoders",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_mlp_encoders.py"]
+)
+
+py_test(
+    name = "test_mlp_heads",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_mlp_heads.py"]
+)
+
+# Specs
+py_test(
+    name = "test_check_specs",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["core/models/specs/tests/test_check_specs.py"]
+)
+
+py_test(
+    name = "test_tensor_spec",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["core/models/specs/tests/test_tensor_spec.py"]
+)
+
+py_test(
+    name = "test_spec_dict",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["core/models/specs/tests/test_spec_dict.py"]
+)
+
+# RLModule
 py_test(
     name = "test_torch_rl_module",
     tags = ["team:rllib", "core"],
@@ -1889,34 +1946,7 @@ py_test(
     srcs = ["core/rl_module/tests/test_rl_module_specs.py"]
 )
 
-py_test(
-    name = "test_tf_mlp_head",
-    tags = ["team:rllib", "core", "models"],
-    size = "medium",
-    srcs = ["core/models/tf/tests/test_tf_mlp_head.py"]
-)
-
-py_test(
-    name = "test_torch_cnn_encoder",
-    tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_cnn_encoder.py"]
-)
-
-py_test(
-    name = "test_torch_mlp_encoder",
-    tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_mlp_encoder.py"]
-)
-
-py_test(
-    name = "test_torch_mlp_head",
-    tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_mlp_head.py"]
-)
-
+# Learner
 py_test(
     name = "test_learner_group",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
@@ -1965,13 +1995,6 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "large",
     srcs = ["models/tests/test_attention_nets.py"]
-)
-
-py_test(
-    name = "test_check_specs",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/specs/tests/test_check_specs.py"]
 )
 
 py_test(
@@ -2024,14 +2047,6 @@ py_test(
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
-# Test Tensor specs
-py_test(
-    name = "test_tensor_spec",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/specs/tests/test_tensor_spec.py"]
-)
-
 # test abstract base models
 py_test(
     name = "test_base_model",
@@ -2046,14 +2061,6 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "small",
     srcs = ["models/tests/test_torch_model.py"]
-)
-
-# test ModelSpec
-py_test(
-    name = "test_spec_dict",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/specs/tests/test_spec_dict.py"]
 )
 
 
@@ -2301,6 +2308,13 @@ py_test(
 )
 
 # ReplayBuffers
+py_test(
+    name = "test_episode_replay_buffer",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_episode_replay_buffer.py"]
+)
+
 py_test(
     name = "test_multi_agent_mixin_replay_buffer",
     tags = ["team:rllib", "utils"],
@@ -4125,7 +4139,7 @@ py_test(
     name = "examples/documentation/saving_and_loading_algos_and_policies",
     main = "examples/documentation/saving_and_loading_algos_and_policies.py",
     tags = ["team:rllib", "documentation", "no_main"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/documentation/saving_and_loading_algos_and_policies.py"],
 )
 

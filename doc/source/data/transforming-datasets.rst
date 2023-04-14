@@ -444,9 +444,8 @@ Datasets transformations are executed by either :ref:`Ray tasks <ray-remote-func
 or :ref:`Ray actors <actor-guide>` across a Ray cluster. By default, Ray tasks are
 used (with ``compute="tasks"``). For transformations that require expensive setup,
 it's preferrable to use Ray actors, which are stateful and allow setup to be reused
-for efficiency. You can specify ``compute=ray.data.ActorPoolStrategy(min, max)`` and
-Ray will use an autoscaling actor pool of ``min`` to ``max`` actors to execute your
-transforms. For a fixed-size actor pool, specify ``ActorPoolStrategy(n, n)``.
+for efficiency. For a fixed-size actor pool, specify ``compute=ActorPoolStrategy(size=n)``.
+For an autoscaling actor pool, use ``compute=ray.data.ActorPoolStrategy(min_size=m, max_size=n)``.
 
 The following is an example of using the Ray tasks and actors compute strategy
 for batch inference:
@@ -473,7 +472,7 @@ aggregation has been computed.
         for x in range(10)])
 
     # Group by the A column and calculate the per-group mean for B and C columns.
-    agg_ds: ray.data.Dataset = ds.groupby("A").mean(["B", "C"]).cache()
+    agg_ds: ray.data.Dataset = ds.groupby("A").mean(["B", "C"]).materialize()
     # -> Sort Sample: 100%|███████████████████████████████████████| 10/10 [00:01<00:00,  9.04it/s]
     # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 23.66it/s]
     # -> GroupBy Reduce: 100%|████████████████████████████████████| 10/10 [00:00<00:00, 937.21it/s]
@@ -542,7 +541,7 @@ with calculated column means.
         return df
 
     ds = ds.map_batches(batch_standard_scaler, batch_format="pandas")
-    ds.cache()
+    ds.materialize()
     # -> Map Progress: 100%|██████████████████████████████████████| 10/10 [00:00<00:00, 144.79it/s]
     # -> Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: double, C: double})
 

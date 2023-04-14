@@ -1383,6 +1383,9 @@ class Policy(metaclass=ABCMeta):
                 TensorType]]]): An optional stats function to be called after
                 the loss.
         """
+
+        if self.config.get("_disable_initialize_loss_from_dummy_batch", False):
+            return
         # Signal Policy that currently we do not like to eager/jit trace
         # any function calls. This is to be able to track, which columns
         # in the dummy batch are accessed by the different function (e.g.
@@ -1446,7 +1449,10 @@ class Policy(metaclass=ABCMeta):
         self._dummy_batch.deleted_keys.clear()
         self._dummy_batch.added_keys.clear()
 
-        self.exploration.postprocess_trajectory(self, self._dummy_batch)
+        if self.exploration:
+            # Policies with RLModules don't have an exploration object.
+            self.exploration.postprocess_trajectory(self, self._dummy_batch)
+
         postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
         seq_lens = None
         if state_outs:
