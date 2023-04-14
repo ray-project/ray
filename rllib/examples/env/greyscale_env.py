@@ -56,7 +56,7 @@ args = parser.parse_args()
 
 
 # The space we down-sample and transform the greyscale pistonball images to.
-# Other spaces supported by Rllib can be chosen here.
+# Other spaces supported by RLlib can be chosen here.
 TRANSFORMED_OBS_SPACE = (42, 42, 1)
 
 
