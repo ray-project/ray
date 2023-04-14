@@ -438,7 +438,9 @@ def test_syncer_callback_wait_for_all_error(ray_start_2_cpus, temp_data_dirs):
         assert "At least one" in e
 
 
-def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
+def test_syncer_callback_log_error(
+    propagate_logs, caplog, ray_start_2_cpus, temp_data_dirs
+):
     """Check that errors in a previous sync are logged correctly"""
     caplog.set_level(logging.ERROR, logger="ray.tune.syncer")
 
