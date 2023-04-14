@@ -499,7 +499,7 @@ class _ActorPool:
     actors when the operator is done submitting work to the pool.
     """
 
-    def __init__(self, max_tasks_in_flight: int = 4):
+    def __init__(self, max_tasks_in_flight: int = DEFAULT_MAX_TASKS_IN_FLIGHT):
         self._max_tasks_in_flight = max_tasks_in_flight
         # Number of tasks in flight per actor.
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
