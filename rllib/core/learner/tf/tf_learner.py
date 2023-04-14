@@ -68,9 +68,7 @@ class TfLearner(Learner):
         super().__init__(framework_hyperparameters=framework_hyperparameters, **kwargs)
 
         self._enable_tf_function = framework_hyperparameters.eager_tracing
-        # the default strategy is a no-op that can be used in the local mode
-        # cpu only case, build will override this if needed.
-        self._strategy = tf.distribute.get_strategy()
+        self._strategy = None
 
     @override(Learner)
     def configure_optimizer_per_module(
@@ -349,6 +347,25 @@ class TfLearner(Learner):
         if self._enable_tf_function:
             self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
 
+    def _make_distributed_strategy(self):
+        """Create a distributed strategy for the learner."""
+        if self._distributed:
+            self._strategy = tf.distribute.MultiWorkerMirroredStrategy()
+        elif self._use_gpu:
+            # mirrored strategy is typically used for multi-gpu training
+            # on a single machine, however we can use it for single-gpu
+            devices = tf.config.list_logical_devices("GPU")
+            assert self._local_gpu_idx < len(devices), (
+                f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
+                " not available."
+            )
+            local_gpu = [devices[self._local_gpu_idx].name]
+            self._strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
+        else:
+            # the default strategy is a no-op that can be used in the local mode
+            # cpu only case, build will override this if needed.
+            self._strategy = tf.distribute.get_strategy()
+
     @override(Learner)
     def build(self) -> None:
         """Build the TfLearner.
@@ -358,19 +375,13 @@ class TfLearner(Learner):
         placed on the correct device. After running super(), depending on eager_tracing
         flag it will decide whether to wrap the update function with tf.function or not.
         """
-        if self._distributed:
-            self._strategy = tf.distribute.MultiWorkerMirroredStrategy()
-        else:
-            if self._use_gpu:
-                # mirrored strategy is typically used for multi-gpu training
-                # on a single machine, however we can use it for single-gpu
-                devices = tf.config.list_logical_devices("GPU")
-                assert self._local_gpu_idx < len(devices), (
-                    f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
-                    " not available."
-                )
-                local_gpu = [devices[self._local_gpu_idx].name]
-                self._strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
+
+        # we call build anytime we make a learner, or load a learner from a checkpoint.
+        # we can't make a new strategy every time we build, so we only make one the
+        # first time build is called.
+        if not self._strategy:
+            self._make_distributed_strategy()
+
         with self._strategy.scope():
             super().build()
 

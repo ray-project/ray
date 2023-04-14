@@ -6,7 +6,12 @@ import tempfile
 import unittest
 
 import ray
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
+from ray.rllib.algorithms.ppo.tests.test_ppo_learner import FAKE_BATCH
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    SampleBatch,
+    MultiAgentBatch,
+)
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.testing.utils import (
     get_learner_group,
@@ -20,7 +25,7 @@ from ray.util.timer import _Timer
 
 REMOTE_SCALING_CONFIGS = {
     "remote-cpu": LearnerGroupScalingConfig(num_workers=1),
-    "remote-gpu": LearnerGroupScalingConfig(num_workers=1, num_gpus_per_worker=0.5),
+    "remote-gpu": LearnerGroupScalingConfig(num_workers=1, num_gpus_per_worker=1),
     "multi-gpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_gpus_per_worker=1),
     "multi-cpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_cpus_per_worker=2),
     # "multi-gpu-ddp-pipeline": LearnerGroupScalingConfig(
@@ -270,14 +275,13 @@ class TestLearnerGroup(unittest.TestCase):
             self.assertLess(min_loss, 0.57)
 
     def test_save_load_state(self):
-        ray.data.set_progress_bars(False)
         fws = ["tf", "torch"]
-        scaling_modes = ["remote-cpu"]
+        # this is expanded to more scaling modes on the release ci.
+        scaling_modes = ["remote-cpu", "remote-gpu"]
+
         test_iterator = itertools.product(fws, scaling_modes)
 
-        reader = get_cartpole_dataset_reader(batch_size=1024)
-        batch = reader.next()
-        batch2 = reader.next()
+        batch = SampleBatch(FAKE_BATCH)
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
@@ -310,7 +314,7 @@ class TestLearnerGroup(unittest.TestCase):
 
             # do another update
             results_with_break = new_learner_group.update(
-                batch2.as_multi_agent(), reduce_fn=None
+                batch.as_multi_agent(), reduce_fn=None
             )
             new_learner_group.shutdown()
             del new_learner_group
@@ -323,7 +327,7 @@ class TestLearnerGroup(unittest.TestCase):
             check(learner_group.get_weights(), initial_learner_group_weights)
             learner_group.update(batch.as_multi_agent(), reduce_fn=None)
             results_without_break = learner_group.update(
-                batch2.as_multi_agent(), reduce_fn=None
+                batch.as_multi_agent(), reduce_fn=None
             )
             learner_group.shutdown()
             del learner_group

@@ -484,6 +484,7 @@ class LearnerGroup:
                     worker_temp_dir = self._worker_manager.foreach_actor(
                         self._create_temporary_dir, remote_actor_ids=[worker]
                     )
+                    worker_temp_dir = self._get_results(worker_temp_dir)[0]
                     sync_dir_between_nodes(
                         self_ip_addr, path, worker_ip_addr, worker_temp_dir
                     )
@@ -531,9 +532,11 @@ class LearnerGroup:
             The address of this process.
 
         """
-        import platform
+        import socket
 
-        return platform.node()
+        hostname = socket.gethostname()
+
+        return socket.gethostbyname(hostname)
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""
