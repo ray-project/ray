@@ -18,7 +18,7 @@ The Serve code is as follows:
 :end-before: __example_code_end__
 ```
 
-Use `serve run stable_diffusion:entrypoint` to start the serve application.
+Use `serve run stable_diffusion:my_first_deployment` to start the serve application.
 
 :::{note}
 The autoscaling config sets `min_replicas` to 0, which means the deployment starts with no `ObjectDetection` replicas. These replicas spawn only when a request arrives. When no requests arrive after a certain period, Serve downscales `ObjectDetection` back to 0 replica to save GPU resources.
