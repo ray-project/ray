@@ -2,6 +2,7 @@ import itertools
 import math
 import os
 import signal
+import threading
 import time
 from typing import Iterator
 
@@ -13,7 +14,7 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data.block import BlockAccessor
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -39,7 +40,7 @@ def test_basic_actors(shutdown_only, pipelined):
     ds = ray.data.range(n)
     ds = maybe_pipeline(ds, pipelined)
     assert sorted(
-        ds.map(lambda x: x + 1, compute=ray.data.ActorPoolStrategy(4, 4)).take()
+        ds.map(lambda x: x + 1, compute=ray.data.ActorPoolStrategy(size=4)).take()
     ) == list(range(1, n + 1))
 
     # Test setting custom max inflight tasks.
@@ -61,7 +62,15 @@ def test_basic_actors(shutdown_only, pipelined):
 
     # Test min no more than max check.
     with pytest.raises(ValueError):
-        ray.data.range(10).map(lambda x: x, compute=ray.data.ActorPoolStrategy(8, 4))
+        ray.data.range(10).map(
+            lambda x: x, compute=ray.data.ActorPoolStrategy(min_size=8, max_size=4)
+        )
+
+    # Test conflicting args.
+    with pytest.raises(ValueError):
+        ray.data.range(10).map(
+            lambda x: x, compute=ray.data.ActorPoolStrategy(min_size=8, size=4)
+        )
 
 
 def test_callable_classes(shutdown_only):
@@ -136,6 +145,31 @@ def test_callable_classes(shutdown_only):
     assert len(actor_reuse) == 9, actor_reuse
 
 
+def test_concurrent_callable_classes(shutdown_only):
+    """Test that concurrenct actor pool runs user UDF in a separate thread."""
+    ray.init(num_cpus=2)
+    ds = ray.data.range(10, parallelism=10)
+
+    class StatefulFn:
+        def __call__(self, x):
+            thread_id = threading.get_ident()
+            assert threading.current_thread() is not threading.main_thread()
+            return [thread_id]
+
+    thread_ids = ds.map_batches(
+        StatefulFn, compute="actors", max_concurrency=2
+    ).take_all()
+    # Make sure user's UDF is not running concurrently.
+    assert len(set(thread_ids)) == 1
+
+    class ErrorFn:
+        def __call__(self, x):
+            raise ValueError
+
+    with pytest.raises(ValueError):
+        ds.map_batches(ErrorFn, compute="actors", max_concurrency=2).take_all()
+
+
 def test_transform_failure(shutdown_only):
     ray.init(num_cpus=2)
     ds = ray.data.from_items([0, 10], parallelism=2)
@@ -146,7 +180,7 @@ def test_transform_failure(shutdown_only):
         return x
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        ds.map(mapper).cache()
+        ds.map(mapper).materialize()
 
 
 def test_flat_map_generator(ray_start_regular_shared):
@@ -189,7 +223,7 @@ def test_drop_columns(ray_start_regular_shared, tmp_path):
         ]
         # Test dropping non-existent column
         with pytest.raises(KeyError):
-            ds.drop_columns(["dummy_col", "col1", "col2"]).cache()
+            ds.drop_columns(["dummy_col", "col1", "col2"]).materialize()
 
 
 def test_select_columns(ray_start_regular_shared):
@@ -218,16 +252,16 @@ def test_select_columns(ray_start_regular_shared):
         ]
         # Test selecting a column that is not in the dataset schema
         with pytest.raises(KeyError):
-            each_ds.select_columns(cols=["col1", "col2", "dummy_col"]).cache()
+            each_ds.select_columns(cols=["col1", "col2", "dummy_col"]).materialize()
 
     # Test simple
     ds3 = ray.data.range(10)
     with pytest.raises(ValueError):
-        ds3.select_columns(cols=[]).cache()
+        ds3.select_columns(cols=[]).materialize()
 
 
 def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_dataset_context):
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
     # Test input validation
@@ -299,7 +333,7 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
 
     def put(x):
         # We only support automatic deref in the legacy backend.
-        if DatasetContext.get_current().new_execution_backend:
+        if DataContext.get_current().new_execution_backend:
             return x
         else:
             return ray.put(x)
@@ -582,7 +616,7 @@ def test_map_batches_actors_preserves_order(shutdown_only):
 def test_map_batches_batch_mutation(
     ray_start_regular_shared, num_rows, num_blocks, batch_size, restore_dataset_context
 ):
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
     # Test that batch mutation works without encountering a read-only error (e.g. if the
@@ -621,13 +655,13 @@ def test_map_batches_batch_zero_copy(
     ds = ray.data.range_table(num_rows, parallelism=num_blocks).repartition(num_blocks)
     # Convert to Pandas blocks.
     ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
-    ds.cache()
+    ds = ds.materialize()
 
     # Apply UDF that mutates the batches, which should fail since the batch is
     # read-only.
     with pytest.raises(ValueError, match="tried to mutate a zero-copy read-only batch"):
         ds = ds.map_batches(mutate, batch_size=batch_size, zero_copy_batch=True)
-        ds.cache()
+        ds.materialize()
 
 
 BLOCK_BUNDLING_TEST_CASES = [
@@ -648,11 +682,11 @@ def test_map_batches_block_bundling_auto(
     assert ds.num_blocks() == num_blocks
 
     # Blocks should be bundled up to the batch size.
-    ds1 = ds.map_batches(lambda x: x, batch_size=batch_size).cache()
+    ds1 = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
     assert ds1.num_blocks() == math.ceil(num_blocks / max(batch_size // block_size, 1))
 
     # Blocks should not be bundled up when batch_size is not specified.
-    ds2 = ds.map_batches(lambda x: x).cache()
+    ds2 = ds.map_batches(lambda x: x).materialize()
     assert ds2.num_blocks() == num_blocks
 
 
@@ -678,7 +712,7 @@ def test_map_batches_block_bundling_skewed_manual(
     )
     # Confirm that we have the expected number of initial blocks.
     assert ds.num_blocks() == num_blocks
-    ds = ds.map_batches(lambda x: x, batch_size=batch_size).cache()
+    ds = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
 
     # Blocks should be bundled up to the batch size.
     assert ds.num_blocks() == expected_num_blocks
@@ -704,7 +738,7 @@ def test_map_batches_block_bundling_skewed_auto(
     )
     # Confirm that we have the expected number of initial blocks.
     assert ds.num_blocks() == num_blocks
-    ds = ds.map_batches(lambda x: x, batch_size=batch_size).cache()
+    ds = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
     curr = 0
     num_out_blocks = 0
     for block_size in block_sizes:
@@ -735,7 +769,7 @@ def test_map_with_mismatched_columns(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=1)
     error_message = "Current row has different columns compared to previous rows."
     with pytest.raises(ValueError) as e:
-        ds.map(bad_fn).cache()
+        ds.map(bad_fn).materialize()
     assert error_message in str(e.value)
     ds_map = ds.map(good_fn)
     assert ds_map.take() == [{"a": "hello1", "b": "hello2"} for _ in range(10)]
@@ -837,7 +871,7 @@ def test_actor_pool_strategy_apply_interrupt(shutdown_only):
                 return block
 
     # No need to test ActorPoolStrategy in new execution backend.
-    if not DatasetContext.get_current().new_execution_backend:
+    if not DataContext.get_current().new_execution_backend:
         with pytest.raises(ray.exceptions.RayTaskError):
             aps._apply(test_func, {}, blocks, False)
 
@@ -857,13 +891,13 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
     compute_strategy = ray.data.ActorPoolStrategy()
     ray.data.range(10, parallelism=10).map_batches(
         f, batch_size=1, compute=compute_strategy
-    ).cache()
+    ).materialize()
 
     # The new execution backend is not using the ActorPoolStrategy under
     # the hood, so the expectation here applies only to the old backend.
     # TODO(https://github.com/ray-project/ray/issues/31723): we should check
     # the num of workers once we have autoscaling in new execution backend.
-    if not DatasetContext.get_current().new_execution_backend:
+    if not DataContext.get_current().new_execution_backend:
         expected_max_num_workers = math.ceil(
             num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
         )
@@ -884,19 +918,19 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
     ds = (
         ray.data.range(10, parallelism=10)
         .map_batches(f, batch_size=None, compute=compute_strategy)
-        .cache()
+        .materialize()
     )
 
     # TODO(https://github.com/ray-project/ray/issues/31723): implement the feature
     # of capping bundle size by actor pool size, and then re-enable this test.
-    if not DatasetContext.get_current().new_execution_backend:
+    if not DataContext.get_current().new_execution_backend:
         assert f"{max_size}/{max_size} blocks" in ds.stats()
 
     # Check batch size is still respected.
     ds = (
         ray.data.range(10, parallelism=10)
         .map_batches(f, batch_size=10, compute=compute_strategy)
-        .cache()
+        .materialize()
     )
 
     assert "1/1 blocks" in ds.stats()

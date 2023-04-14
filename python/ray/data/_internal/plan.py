@@ -35,7 +35,7 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.block import Block
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -142,7 +142,7 @@ class ExecutionPlan:
             f"snapshot_blocks={self._snapshot_blocks})"
         )
 
-    def get_plan_as_string(self) -> str:
+    def get_plan_as_string(self, classname: str) -> str:
         """Create a cosmetic string representation of this execution plan.
 
         Returns:
@@ -212,8 +212,8 @@ class ExecutionPlan:
             num_blocks = "?"
         else:
             num_blocks = dataset_blocks.initial_num_blocks()
-        dataset_str = "Dataset(num_blocks={}, num_rows={}, schema={})".format(
-            num_blocks, count, schema_str
+        dataset_str = "{}(num_blocks={}, num_rows={}, schema={})".format(
+            classname, num_blocks, count, schema_str
         )
 
         # If the resulting string representation fits in one line, use it directly.
@@ -254,7 +254,7 @@ class ExecutionPlan:
                     "{\n" + schema_str + f"\n{trailing_space}{INDENT_STR}" + "}"
                 )
             dataset_str = (
-                f"Dataset("
+                f"{classname}("
                 f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
                 f"\n{trailing_space}{INDENT_STR}num_rows={count},"
                 f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
@@ -501,7 +501,7 @@ class ExecutionPlan:
             Tuple of iterator over output blocks and the executor.
         """
 
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         if not ctx.use_streaming_executor or self.has_computed_output():
             return (
                 self.execute(
@@ -550,7 +550,7 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         if not ray.available_resources().get("CPU"):
             if log_once("cpu_warning"):
                 logger.get_logger().warning(
@@ -585,9 +585,9 @@ class ExecutionPlan:
                     preserve_order=preserve_order,
                 )
                 # TODO(ekl) we shouldn't need to set this in the future once we move
-                # to a fully lazy execution model, unless .cache() is used. The reason
-                # we need it right now is since the user may iterate over a Dataset
-                # multiple times after fully executing it once.
+                # to a fully lazy execution model, unless .materialize() is used. Th
+                # reason we need it right now is since the user may iterate over a
+                # Dataset multiple times after fully executing it once.
                 if not self._run_by_consumer:
                     blocks._owned_by_consumer = False
                 stats = executor.get_stats()
@@ -690,7 +690,7 @@ class ExecutionPlan:
         """Apply stage fusion optimizations, returning an updated source block list and
         associated stats, and a set of optimized stages.
         """
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         blocks, stats, stages = self._get_source_blocks_and_stages()
         if context.optimize_reorder_stages:
             stages = _reorder_stages(stages)
@@ -746,7 +746,7 @@ class ExecutionPlan:
         """Return whether this plan can be executed as only a read stage."""
         from ray.data._internal.stage_impl import RandomizeBlocksStage
 
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         remaining_stages = self._stages_after_snapshot
         if (
             context.optimize_fuse_stages
@@ -782,7 +782,7 @@ class ExecutionPlan:
         # - Read only: handle with legacy backend
         # - Read->randomize_block_order: handle with new backend
         # Note that both are considered read equivalent, hence this extra check.
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         trailing_randomize_block_order_stage = (
             self._stages_after_snapshot
             and len(self._stages_after_snapshot) == 1
@@ -1066,7 +1066,7 @@ class AllToAllStage(Stage):
         self.sub_stage_names = sub_stage_names
 
     def can_fuse(self, prev: Stage):
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         # TODO(ekl) also support fusing shuffle stages to subsequent 1:1 stages.
         if not context.optimize_fuse_shuffle_stages:
             return False

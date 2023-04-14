@@ -138,8 +138,6 @@ class SyncConfig:
                 "disables syncing. Either remove the `upload_dir`, "
                 "or set `syncer` to 'auto' or a custom syncer."
             )
-        if not self.upload_dir and isinstance(self.syncer, Syncer):
-            raise ValueError("Must specify an `upload_dir` to use a custom `syncer`.")
 
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig.
@@ -176,19 +174,34 @@ class SyncConfig:
             max_height="none",
         )
 
-    def validate_upload_dir(self) -> bool:
+    def validate_upload_dir(self, upload_dir: Optional[str] = None) -> bool:
         """Checks if ``upload_dir`` is supported by ``syncer``.
 
         Returns True if ``upload_dir`` is valid, otherwise raises
         ``ValueError``.
 
+        The ``upload_dir`` attribute of ``SyncConfig`` is depreacted and will be
+        removed in the futures. This method also accepts a ``upload_dir`` argument
+        that will be checked for validity instead, if set.
+
         Args:
             upload_dir: Path to validate.
+
         """
+        upload_dir = upload_dir or self.upload_dir
+        if upload_dir and self.syncer is None:
+            raise ValueError(
+                "`upload_dir` enables syncing to cloud storage, but `syncer=None` "
+                "disables syncing. Either remove the `upload_dir`, "
+                "or set `syncer` to 'auto' or a custom syncer."
+            )
+        if not upload_dir and isinstance(self.syncer, Syncer):
+            raise ValueError("Must specify an `upload_dir` to use a custom `syncer`.")
+
         if isinstance(self.syncer, Syncer):
-            return self.syncer.validate_upload_dir(self.upload_dir)
+            return self.syncer.validate_upload_dir(upload_dir or self.upload_dir)
         else:
-            return Syncer.validate_upload_dir(self.upload_dir)
+            return Syncer.validate_upload_dir(upload_dir or self.upload_dir)
 
 
 class _BackgroundProcess:
@@ -609,12 +622,14 @@ class _DefaultSyncer(_BackgroundSyncer):
 
 
 @DeveloperAPI
-def get_node_to_storage_syncer(sync_config: SyncConfig) -> Optional[Syncer]:
+def get_node_to_storage_syncer(
+    sync_config: SyncConfig, upload_dir: Optional[str] = None
+) -> Optional[Syncer]:
     """"""
     if sync_config.syncer is None:
         return None
 
-    if not sync_config.upload_dir:
+    if not sync_config.upload_dir and not upload_dir:
         return None
 
     if sync_config.syncer == "auto":
