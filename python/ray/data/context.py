@@ -83,9 +83,7 @@ DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
 
 # Whether to trace allocations / eager free (new backend only). This adds significant
 # performance overheads and should only be used for debugging.
-DEFAULT_TRACE_ALLOCATIONS = bool(
-    int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0"))
-)
+DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
 
 # Whether to estimate in-memory decoding data size for data source.
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
