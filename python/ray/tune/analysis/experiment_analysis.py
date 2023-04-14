@@ -1,11 +1,19 @@
 import json
 import logging
 import os
+import tempfile
 import traceback
+from typing import Any, Dict, List, Optional, Tuple, Union
 from numbers import Number
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
 
+from ray.air._internal.remote_storage import (
+    download_from_uri,
+    is_directory,
+    is_local_path,
+    list_at_uri,
+)
+from ray.air._internal.uri_utils import URI
 from ray.air.checkpoint import Checkpoint
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
@@ -80,12 +88,19 @@ class ExperimentAnalysis:
         # Deprecate: Raise in 2.6, remove in 2.7
         sync_config: Optional[SyncConfig] = None,
     ):
+        # A temp directory to store downloaded checkpoint files if
+        # they are pulled from a remote `experiment_checkpoint_path`.
+        self._temp_local_experiment_path = tempfile.TemporaryDirectory(
+            prefix="experiment_analysis_"
+        )
+
         # Load the experiment checkpoints and their parent paths.
         # This is important for when experiment folders have been
         # relocated (e.g. from a ray cluster to local disk or GCS/S3)-
         self._experiment_states = []
         self._checkpoints_and_paths: List[Tuple[dict, os.PathLike]] = []
         self._load_checkpoints(experiment_checkpoint_path)
+        assert self._checkpoints_and_paths
 
         self.trials = trials
 
@@ -146,14 +161,16 @@ class ExperimentAnalysis:
         )
 
     def _load_checkpoints(self, experiment_checkpoint_path: str) -> List[str]:
-        experiment_checkpoint_path = Path(experiment_checkpoint_path).expanduser()
+        # experiment_checkpoint_path = Path(experiment_checkpoint_path).expanduser()
         # Get the latest checkpoints from the checkpoint_path.
-        latest_checkpoint = self._get_latest_checkpoint(experiment_checkpoint_path)
+        latest_checkpoints = self._get_latest_checkpoint(experiment_checkpoint_path)
+        if not latest_checkpoints:
+            raise ValueError()
         # Collect all checkpoints and their directory paths.
         # These are used to infer the `local_dir` from the checkpoints
         # in case the experiment folder had been moved from its original
         # location (e.g. from a ray cluster to a GCS/S3 bucket or to local disk).
-        self._load_checkpoints_from_latest(latest_checkpoint)
+        self._load_checkpoints_from_latest(latest_checkpoints)
 
     def _load_checkpoints_from_latest(self, latest_checkpoint: List[str]) -> None:
         # Collect all checkpoints and their directory paths.
@@ -169,46 +186,105 @@ class ExperimentAnalysis:
                 (cp, Path(path).parent) for cp in experiment_state["checkpoints"]
             ]
 
-    def _get_latest_checkpoint(self, experiment_checkpoint_path: Path) -> List[str]:
-        # Case 1: Dir specified, find latest checkpoint.
-        if experiment_checkpoint_path.is_dir():
-            latest_checkpoint = _find_newest_experiment_checkpoint(
-                str(experiment_checkpoint_path)
-            )
+    def _maybe_download_experiment_checkpoint(
+        self, experiment_checkpoint_path: str
+    ) -> Optional[str]:
+        """Downloads the experiment checkpoint from a remote path if needed.
+
+        Args:
+            experiment_checkpoint_path: The local or remote path to the experiment
+                checkpoint *file*.
+
+        Returns:
+            str: The local copy of the experiment checkpoint.
+                If a local path is passed in, this method will return that immediately.
+                If a remote path is passed in, this will try to download that file.
+                Will return None if the download failed.
+        """
+        if is_local_path(experiment_checkpoint_path):
+            return experiment_checkpoint_path
+
+        experiment_path = Path(URI(self._remote_path).path)
+        # s3://bucket/exp_dir/nested/experiment_state.json
+        #   -> bucket/exp_dir/nested/experiment_state.json
+        checkpoint_path = Path(URI(experiment_checkpoint_path).path)
+
+        assert checkpoint_path.is_relative_to(experiment_path)
+        #   -> nested/experiment_state.json
+        relative_path = checkpoint_path.relative_to(experiment_path)
+
+        # Download to:
+        #   -> {self._temp_local_experiment_path}/nested/experiment_state.json
+        local_path = os.path.join(self._temp_local_experiment_path, relative_path)
+        try:
+            download_from_uri(experiment_checkpoint_path, local_path)
+        except FileNotFoundError as e:
+            return None
+        return local_path
+
+    def _get_latest_checkpoint_from_dir(
+        self, experiment_checkpoint_path: str, top_level: bool = True
+    ) -> List[str]:
+        latest_checkpoint = _find_newest_experiment_checkpoint(
+            experiment_checkpoint_path
+        )
+
+        latest_checkpoints = []
+        if latest_checkpoint:
+            latest_checkpoints.extend(self._get_latest_checkpoint(latest_checkpoint))
+
+        if not latest_checkpoint and top_level:
             # If no checkpoint in this folder the sub-directory is searched.
             # In this case also multiple experiment folders could exist in
             # the same root. In this case the length of `latest_checkpoint`
             # will be greater than 1.
-            if not latest_checkpoint:
-                latest_checkpoint = []
-                for fname in experiment_checkpoint_path.iterdir():
-                    fname = experiment_checkpoint_path.joinpath(fname)
-                    latest_checkpoint_subdir = _find_newest_experiment_checkpoint(
-                        str(fname)
+            for subdir in list_at_uri(experiment_checkpoint_path):
+                if is_directory(subdir):
+                    latest_checkpoints.extend(
+                        self._get_latest_checkpoint_from_dir(subdir, top_level=False)
                     )
-                    if latest_checkpoint_subdir:
-                        latest_checkpoint.append(latest_checkpoint_subdir)
-            if not latest_checkpoint:
-                # This avoid nested experiment directories of the form
-                # `experiment_name1/experiment_name2/experiment_state.json`.
-                experiment_checkpoint_path = str(experiment_checkpoint_path)
-                raise ValueError(
-                    f"The directory `{experiment_checkpoint_path}` does not "
-                    "contain a Ray Tune experiment checkpoint."
-                )
-        elif not experiment_checkpoint_path.is_file():
-            # Case 2: File specified, but does not exist.
-            experiment_checkpoint_path = str(experiment_checkpoint_path)
-            raise ValueError(
-                f"The file `{experiment_checkpoint_path}` does not "
-                f"exist and cannot be loaded for experiment analysis."
-            )
+
+        return latest_checkpoints
+
+    def _get_latest_checkpoint(self, experiment_checkpoint_path: str) -> List[str]:
+        """Gets the latest experiment checkpoints corresponding to a given path.
+
+        Acceptable path inputs (either local or remote):
+        - A path to the actual experiment checkpoint file.
+        - A path to the experiment directory, which contains an experiment checkpoint
+          file at the directory's top-level.
+        - A path to a directory that contains multiple experiment directories,
+          where each subdirectory contains an experiment checkpoint file.
+
+        Returns:
+            list: A list of the latest experiment checkpoint files for each experiment
+            found at the given path.
+        """
+        if is_directory(experiment_checkpoint_path):
+            return self._get_latest_checkpoint_from_dir(experiment_checkpoint_path)
         else:
-            # Case 3: File specified, use as latest checkpoint.
-            latest_checkpoint = str(experiment_checkpoint_path)
-        if not isinstance(latest_checkpoint, list):
-            latest_checkpoint = [latest_checkpoint]
-        return latest_checkpoint
+            local_experiment_checkpoint_path = (
+                self._maybe_download_experiment_checkpoint(experiment_checkpoint_path)
+            )
+
+            if (
+                not local_experiment_checkpoint_path
+                or not local_experiment_checkpoint_path.exists()
+            ):
+                raise ValueError(
+                    f"The file `{experiment_checkpoint_path}` does not "
+                    f"exist and cannot be loaded for experiment analysis."
+                )
+
+            assert local_experiment_checkpoint_path.is_file()
+
+            latest_checkpoint = str(local_experiment_checkpoint_path)
+
+        return (
+            latest_checkpoint
+            if isinstance(latest_checkpoint, list)
+            else [latest_checkpoint]
+        )
 
     @property
     def best_trial(self) -> Trial:
@@ -811,9 +887,11 @@ class ExperimentAnalysis:
             _trial_paths = [str(t.local_path) for t in self.trials]
         else:
             logger.info(
-                "No `self.trials`. Drawing logdirs from checkpoint "
-                "file. This may result in some information that is "
-                "out of sync, as checkpointing is periodic."
+                "No trial data passed in during `ExperimentAnalysis` initialization -- "
+                "you are most likely loading the experiment after it has completed.\n"
+                "Loading trial data from the experiment checkpoint file. "
+                "This may result in loading some stale information, "
+                "since checkpointing is periodic."
             )
             self.trials = []
             for trial_json_state, path in self._checkpoints_and_paths:
