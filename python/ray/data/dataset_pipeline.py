@@ -33,7 +33,16 @@ from ray.data._internal.dataset_iterator.pipelined_dataset_iterator import (
 )
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatastreamStats
-from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF, T, U
+from ray.data.block import (
+    BatchUDF,
+    Block,
+    DataBatch,
+    KeyFn,
+    RowUDF,
+    T,
+    U,
+    apply_strict_mode_batch_format,
+)
 from ray.data.context import DataContext
 from ray.data.dataset import Datastream
 from ray.data.dataset_iterator import DataIterator
@@ -175,7 +184,7 @@ class DatasetPipeline(Generic[T]):
         # Deprecated.
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: Optional[str] = "numpy",
+        batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -219,6 +228,7 @@ class DatasetPipeline(Generic[T]):
         Returns:
             An iterator over record batches.
         """
+        batch_format = apply_strict_mode_batch_format(batch_format)
         if batch_format == "native":
             warnings.warn(
                 "The 'native' batch format has been renamed 'default'.",
@@ -800,7 +810,7 @@ class DatasetPipeline(Generic[T]):
         *,
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
-        batch_format: Optional[str] = "numpy",
+        batch_format: Optional[str] = "default",
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -809,6 +819,8 @@ class DatasetPipeline(Generic[T]):
     ) -> "DatasetPipeline[U]":
         """Apply :py:meth:`Datastream.map_batches <ray.data.Datastream.map_batches>` to each
         datastream/window in this pipeline."""
+
+        batch_format = apply_strict_mode_batch_format(batch_format)
         return self.foreach_window(
             lambda ds: ds.map_batches(
                 fn,

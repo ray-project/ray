@@ -150,7 +150,22 @@ BlockPartitionMetadata = List["BlockMetadata"]
 # is on by default. When block splitting is off, the type is a plain block.
 MaybeBlockPartition = Union[Block, ObjectRefGenerator]
 
-VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", None]
+VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy", None]
+
+VALID_BATCH_FORMATS_STRICT_MODE = ["pandas", "pyarrow", "numpy", None]
+
+
+def apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
+    ctx = ray.data.DatasetContext.get_current()
+    if ctx.strict_mode:
+        if given_batch_format == "default":
+            given_batch_format = "numpy"
+        if given_batch_format not in VALID_BATCH_FORMATS_STRICT_MODE:
+            raise ValueError(
+                f"The given batch format {given_batch_format} is not allowed "
+                f"in strict mode (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
+            )
+    return given_batch_format
 
 
 @DeveloperAPI
@@ -374,14 +389,22 @@ class BlockAccessor(Generic[T]):
         """Create a block from user-facing data formats."""
 
         if isinstance(batch, np.ndarray):
-            raise DeprecationWarning(
-                "Column-less datasets are no longer supported. Return a dict of "
-                "field -> batch, e.g., `{'data': batch}` instead of `batch`."
-            )
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
 
-        if isinstance(batch, dict):
+            ctx = ray.data.DatasetContext.get_current()
+            if ctx.strict_mode:
+                raise ValueError(
+                    "Column-less datasets are not supported in strict mode. Return "
+                    "a dict of field -> batch, e.g., `{'data': batch}` instead "
+                    "of `batch`."
+                )
+
+            return ArrowBlockAccessor.numpy_to_block(batch)
+        elif isinstance(batch, dict):
             import pandas as pd
 
+            # TODO(ekl) once we support Python objects within Arrow blocks, we can
+            # use Arrow in this path as well.
             return pd.DataFrame(batch)
         return batch
 
@@ -408,11 +431,17 @@ class BlockAccessor(Generic[T]):
             record_block_format_usage("arrow")
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
-            raise DeprecationWarning(
-                "Standalone Python objects are no longer supported. To include "
-                "Python objects in a datastream, wrap them in a dict, e.g., "
-                "return `{'item': obj}` instead of just `obj`."
-            )
+            from ray.data._internal.simple_block import SimpleBlockAccessor
+
+            ctx = ray.data.DatasetContext.get_current()
+            if ctx.strict_mode:
+                raise ValueError(
+                    "Standalone Python objects are not allowed in strict mode. To "
+                    "use Python objects in a datastream, wrap them in a dict, e.g., "
+                    "return `{'item': obj}` instead of just `obj`."
+                )
+            record_block_format_usage("simple")
+            return SimpleBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))
 

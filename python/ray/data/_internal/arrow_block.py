@@ -160,10 +160,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
         from ray.data.extensions.tensor_extension import ArrowTensorArray
 
         if isinstance(batch, np.ndarray):
-            raise DeprecationWarning(
-                "Column-less datasets are no longer supported. Return a dict of "
-                "field -> batch, e.g., `{'data': batch}` instead of `batch`."
-            )
             batch = {TENSOR_COLUMN_NAME: batch}
         elif not isinstance(batch, dict) or any(
             not isinstance(col, np.ndarray) for col in batch.values()
