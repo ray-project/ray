@@ -27,7 +27,7 @@ class Coordinator(object):
         for rank in range(self._physical_plan.num_stages):
             self._actors.append(self._start_actor(rank))
 
-        master_address = ray.get(self._actors[0].get_master_address.remote())
+        master_address = ray.get(self._actors[0].get_address.remote())
 
         return ray.get([actor.start.remote(master_address) for actor in self._actors])
 

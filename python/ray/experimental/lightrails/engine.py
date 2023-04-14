@@ -89,7 +89,9 @@ class ExecutionEngine:
             self.model.eval()
         data_loader = config.data_loader_builder()
         self.data_loader = iter(data_loader) if data_loader else None
-        self.optimizer = config.optimizer_builder(self.model)
+        self.optimizer = (
+            config.optimizer_builder(self.model) if config.optimizer_builder else None
+        )
 
     def get_address(self):
         """Get the address of the engine."""
