@@ -23,7 +23,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=team:ml
+      --test_tag_filters=team:ml,-doc_tested
       release/...
 
 

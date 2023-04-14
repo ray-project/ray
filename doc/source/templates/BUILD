@@ -16,7 +16,7 @@ py_test_run_all_notebooks(
     include = ["01_batch_inference/*.ipynb", "03_serving_stable_diffusion/*.ipynb"],
     exclude = [],
     data = ["//doc/source/templates:workspace_templates"],
-    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
+    tags = ["exclusive", "team:ml", "ray_air", "gpu", "doc_tested"],
     env = {"SMOKE_TEST": "1"},
 )
 
@@ -25,6 +25,6 @@ py_test_run_all_notebooks(
     include = ["02_many_model_training/*.ipynb"],
     exclude = [],
     data = ["//doc/source/templates:workspace_templates"],
-    tags = ["exclusive", "team:ml", "ray_air", "timeseries_libs"],
+    tags = ["exclusive", "team:ml", "ray_air", "timeseries_libs", "doc_tested"],
     env = {"SMOKE_TEST": "1"},
 )
