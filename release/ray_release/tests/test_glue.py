@@ -621,7 +621,7 @@ class GlueTest(unittest.TestCase):
                 self._run(result)
                 self.assertTrue(any("Could not fetch results" in o for o in cm.output))
         self.assertEqual(result.return_code, ExitCode.FETCH_RESULT_ERROR.value)
-        self.assertEqual(result.status, "infra_error")
+        self.assertEqual(result.status, "transient_infra_error")
 
         # Ensure cluster was terminated, no matter what
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
