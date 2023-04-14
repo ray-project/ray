@@ -865,13 +865,13 @@ class AlgorithmConfig(_Config):
             self.enable_connectors = True
 
         # Explore parameter cannot be False with RLModule API enabled.
-        # The reason is that the explore is not just a parameter that will get passed
+        # The reason is that `explore` is not just a parameter that will get passed
         # down to the policy.compute_actions() anymore. It is a phase in which RLModule.
-        # forward_exploration() will get called during smapling. If user needs to
+        # forward_exploration() will get called during sampling. If user needs to
         # really disable the stochasticity during this phase, they need to override the
         # RLModule.forward_exploration() method or setup model parameters such that it
-        # will disable the stocalisticity of this method (e.g. by setting the std to 0
-        # or setting temprature to 0 for the Categorical distribution).
+        # will disable the stochasticity of this method (e.g. by setting the std to 0
+        # or setting temperature to 0 for the Categorical distribution).
 
         if self._enable_rl_module_api and not self.explore:
             raise ValueError(
