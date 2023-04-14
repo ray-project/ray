@@ -8,11 +8,12 @@ import os
 import time
 import warnings
 
-from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
-from ray.tune import TuneError
+from ray.air._internal.remote_storage import list_at_uri
 
-from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
+from ray.tune import TuneError
 from ray.tune.experiment import Trial
+from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
+from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
 
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ def _find_newest_experiment_checkpoint(experiment_dir: str) -> Optional[str]:
 
     candidate_paths = [
         construct(file)
-        for file in os.listdir(experiment_dir)
+        for file in list_at_uri(experiment_dir)
         if file.startswith("experiment_state") and file.endswith(".json")
     ]
     if not candidate_paths:
