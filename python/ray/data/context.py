@@ -106,6 +106,10 @@ DEFAULT_OPTIMIZER_ENABLED = bool(
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
+# Enable strict schema mode (experimental). In this mode, we only allow structured
+# schemas, and default to numpy as the batch format.
+DEFAULT_USE_STRICT_MODE = bool(int(os.environ.get("RAY_DATA_STRICT_MODE", "0")))
+
 # Set this to True to use the legacy iter_batches codepath prior to 2.4.
 DEFAULT_USE_LEGACY_ITER_BATCHES = False
 
@@ -155,6 +159,7 @@ class DataContext:
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
         use_legacy_iter_batches: bool,
+        use_strict_mode: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_splitting_enabled = block_splitting_enabled
@@ -186,6 +191,7 @@ class DataContext:
         self.execution_options = execution_options
         self.use_ray_tqdm = use_ray_tqdm
         self.use_legacy_iter_batches = use_legacy_iter_batches
+        self.use_strict_mode = use_strict_mode
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -233,6 +239,7 @@ class DataContext:
                     execution_options=ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
+                    use_strict_mode=DEFAULT_USE_STRICT_MODE,
                 )
 
             return _default_context
