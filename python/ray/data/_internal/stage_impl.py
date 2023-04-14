@@ -328,13 +328,14 @@ class SortStage(AllToAllStage):
                 block_list.clear()
             else:
                 blocks = block_list
+            schema = ds.schema(fetch_if_missing=True)
             if isinstance(key, list):
                 if not key:
                     raise ValueError("`key` must be a list of non-zero length")
                 for subkey in key:
-                    _validate_key_fn(ds, subkey)
+                    _validate_key_fn(schema, subkey)
             else:
-                _validate_key_fn(ds, key)
+                _validate_key_fn(schema, key)
             return sort_impl(blocks, clear_input_blocks, key, descending, ctx)
 
         super().__init__(
