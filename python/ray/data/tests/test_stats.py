@@ -146,7 +146,7 @@ Stage N Map: N/N blocks executed in T
 * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
 'obj_store_mem_peak': N}
 
-Dataset iterator time breakdown:
+Datastream iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
 * Total time overall: T
@@ -182,7 +182,7 @@ Stage N Map: N/N blocks executed in T
 * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
 'obj_store_mem_peak': N}
 
-Dataset iterator time breakdown:
+Datastream iterator time breakdown:
 * In ray.wait(): T
 * In ray.get(): T
 * Num blocks local: Z
@@ -218,7 +218,7 @@ Stage N Map: N/N blocks executed in T
 * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
 'obj_store_mem_peak': N}
 
-Dataset iterator time breakdown:
+Datastream iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
 * Total time overall: T
@@ -250,7 +250,7 @@ Stage N Map: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
-Dataset iterator time breakdown:
+Datastream iterator time breakdown:
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -1093,7 +1093,7 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 * Extra metrics: \
 {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, 'obj_store_mem_peak': N}
 
-Dataset iterator time breakdown:
+Datastream iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
 * Total time overall: T
