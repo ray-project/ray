@@ -62,7 +62,7 @@ class DirectMethod(OffPolicyEstimator):
 
         super().__init__(policy, gamma, epsilon_greedy)
 
-        assert policy.config["framework"] == (
+        assert policy.config["framework"] == "torch", (
             "DirectMethod only supports torch as the tensor framework "
             "backend for the policy policy that is being evaluated."
         )
