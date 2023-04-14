@@ -372,10 +372,17 @@ class BlockAccessor(Generic[T]):
     @staticmethod
     def batch_to_block(batch: DataBatch) -> Block:
         """Create a block from user-facing data formats."""
-        if isinstance(batch, (np.ndarray, dict)):
-            from ray.data._internal.arrow_block import ArrowBlockAccessor
 
-            return ArrowBlockAccessor.numpy_to_block(batch)
+        if isinstance(batch, np.ndarray):
+            raise DeprecationWarning(
+                "Column-less datasets are no longer supported. Return a dict of "
+                "field -> batch, e.g., `{'data': batch}` instead of `batch`."
+            )
+
+        if isinstance(batch, dict):
+            import pandas as pd
+
+            return pd.DataFrame(batch)
         return batch
 
     @staticmethod
