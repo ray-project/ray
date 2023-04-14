@@ -30,7 +30,7 @@ reason() {
 RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-ray_release/scripts/run_release_test.py}
 RAY_TEST_REPO=${RAY_TEST_REPO-https://github.com/ray-project/ray.git}
 RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
-RAY_TEST_COMMIT=${RAY_TEST_COMMIT-HEAD}
+RAY_TEST_COMMIT=${RAY_TEST_COMMIT}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
 BUILDKITE_MAX_RETRIES=1
 BUILDKITE_RETRY_CODE=79
@@ -70,9 +70,15 @@ fi
 if [ -z "${NO_CLONE}" ]; then
   TMPDIR=$(mktemp -d -t release-XXXXXXXXXX)
   echo "Cloning test repo ${RAY_TEST_REPO} branch ${RAY_TEST_BRANCH}"
-  git clone -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
+  if [ -n "${RAY_TEST_COMMIT}" ]; then
+    git clone -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
+  else
+    git clone --depth 1 -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
+  fi
   pushd "${TMPDIR}/release" || true
-  git checkout "${RAY_TEST_COMMIT}"
+  if [ -n "${RAY_TEST_COMMIT}" ]; then
+    git checkout "${RAY_TEST_COMMIT}"
+  fi
 fi
 
 if [ -z "${NO_INSTALL}" ]; then
