@@ -15,7 +15,7 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
-from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
+from ray._private.gcs_pubsub import GcsAioPublisher
 from ray._raylet import GcsClient
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_logging import setup_component_logger
@@ -263,7 +263,9 @@ class DashboardAgent:
                             ray._private.utils.publish_error_to_driver(
                                 ray_constants.RAYLET_DIED_ERROR,
                                 msg,
-                                gcs_publisher=GcsPublisher(address=self.gcs_address),
+                                gcs_publisher=ray._raylet.GcsPublisher(
+                                    address=self.gcs_address
+                                ),
                             )
                         else:
                             logger.info(msg)

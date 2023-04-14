@@ -1766,7 +1766,8 @@ cdef class GcsPublisher:
         log_batch.set_actor_name(log_json.get("actor_name", ""))
         log_batch.set_task_name(log_json.get("task_name", ""))
 
-        check_status(self.inner.get().PublishLogs(job_id.encode() if job_id else b"", log_batch))
+        check_status(self.inner.get().PublishLogs(
+            job_id.encode() if job_id else b"", log_batch))
 
     def publish_function_key(self, key: bytes):
         cdef:

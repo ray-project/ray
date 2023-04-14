@@ -10,7 +10,6 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
-from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.test_utils import (
     SignalActor,
     convert_actor_state,
@@ -69,7 +68,7 @@ def test_unhandled_errors(ray_start_regular):
 
 def test_publish_error_to_driver(ray_start_regular, error_pubsub):
     address_info = ray_start_regular
-    gcs_publisher = GcsPublisher(address=address_info["gcs_address"])
+    gcs_publisher = ray._raylet.GcsPublisher(address=address_info["gcs_address"])
 
     error_message = "Test error message"
     ray._private.utils.publish_error_to_driver(

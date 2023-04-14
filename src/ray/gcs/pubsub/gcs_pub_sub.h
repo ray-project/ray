@@ -25,8 +25,8 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "src/ray/protobuf/gcs_service.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -138,11 +138,13 @@ class RAY_EXPORT GcsSyncPublisher {
  public:
   explicit GcsSyncPublisher(const std::string &gcs_address);
   Status Connect();
-  Status PublishError(
-    const std::string &key_id, const rpc::ErrorTableData& data);
-  Status PublishLogs(const std::string &key_id, const rpc::LogBatch& log_batch);
-  Status PublishFunctionKey(const rpc::PythonFunction& python_function);
-  Status PublishWithRetries(grpc::ClientContext *context, const rpc::GcsPublishRequest &request, rpc::GcsPublishReply *reply);
+  Status PublishError(const std::string &key_id, const rpc::ErrorTableData &data);
+  Status PublishLogs(const std::string &key_id, const rpc::LogBatch &log_batch);
+  Status PublishFunctionKey(const rpc::PythonFunction &python_function);
+  Status PublishWithRetries(grpc::ClientContext *context,
+                            const rpc::GcsPublishRequest &request,
+                            rpc::GcsPublishReply *reply);
+
  private:
   std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;
   std::shared_ptr<grpc::Channel> channel_;

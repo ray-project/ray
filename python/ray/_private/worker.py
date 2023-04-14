@@ -68,7 +68,6 @@ from ray._private.gcs_pubsub import (
     GcsErrorSubscriber,
     GcsFunctionKeySubscriber,
     GcsLogSubscriber,
-    GcsPublisher,
 )
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
