@@ -16,14 +16,18 @@ class Coordinator(object):
         logical_plan: List[ModuleParition],
         pg: PlacementGroup,
         planner: PhysicalPlanner,
+        requires_gpu: bool = False,
     ) -> None:
         self._logical_plan = logical_plan
         self._pg = pg
         self._planner = planner
         self._actors = []
+        self.requires_gpu = requires_gpu
 
     def start(self):
-        self._physical_plan = self._planner.plan(self._logical_plan, self._pg)
+        self._physical_plan = self._planner.plan(
+            self._logical_plan, self._pg, requires_gpu=self.requires_gpu
+        )
         for rank in range(self._physical_plan.num_stages):
             self._actors.append(self._start_actor(rank))
 
@@ -39,9 +43,10 @@ class Coordinator(object):
         return (
             ray.remote(ExecutionEngine)
             .options(
+                num_gpus=1 if self.requires_gpu else 0,
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=pg, placement_group_bundle_index=bundle_index
-                )
+                ),
             )
             .remote(
                 self._physical_plan.replica_schedules[rank],

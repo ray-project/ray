@@ -46,7 +46,10 @@ class PhysicalPlanner(metaclass=ABCMeta):
 
     @abstractmethod
     def plan(
-        self, logical_plan: List[ModuleParition], pg: PlacementGroup
+        self,
+        logical_plan: List[ModuleParition],
+        pg: PlacementGroup,
+        requires_gpu: bool = False,
     ) -> PhysicalPlan:
         pass
 
@@ -62,6 +65,10 @@ def _get_device_name():
 
 def _get_communicator(world_size: int, rank: int, master_addr: str):
     return NaiveCommunicator(world_size, rank, master_addr=master_addr)
+
+
+def _get_gpu_communicator(world_size: int, rank: int, master_addr: str):
+    return TorchBasedCommunicator(world_size, rank, master_addr=master_addr)
 
 
 class SimplePhysicalPlanner(PhysicalPlanner):
@@ -96,7 +103,7 @@ class SimplePhysicalPlanner(PhysicalPlanner):
                 partition.input_tensor_shape,
                 partition.input_tensor_dtype,
                 _get_device_name,
-                _get_communicator,
+                _get_communicator if not requires_gpu else _get_gpu_communicator,
                 partition.module_loader,
                 partition.data_loader_builder or (lambda: None),
                 lambda model: None,
@@ -110,5 +117,6 @@ class SimplePhysicalPlanner(PhysicalPlanner):
         for bundle in pg.bundle_specs:
             if requires_gpu:
                 assert bundle == {
-                    "GPU": 1
+                    "GPU": 1,
+                    "CPU": 1,
                 }, "SimplePhysicalPlanner only supports one GPU per replica"

@@ -480,15 +480,18 @@ def gen_logical_plan():
     return logical_plan
 
 
-def run_model2():
+def run_model2(requires_gpu=False):
     physical_planner = SimplePhysicalPlanner()
     pg = placement_group([{"CPU": 1}] * 11, strategy="PACK")
+    if requires_gpu:
+        pg = placement_group([{"CPU": 1, "GPU": 1}] * 11, strategy="PACK")
     logical_plan = gen_logical_plan()
 
     coordinator = Coordinator(
         logical_plan=logical_plan,
         pg=pg,
         planner=physical_planner,
+        requires_gpu=requires_gpu,
     )
     coordinator.start()
     coordinator.wait_until_stopped()
@@ -496,4 +499,11 @@ def run_model2():
 
 if __name__ == "__main__":
     # run_model1()
+    import ray
+
+    # runtime_env = {
+    #     "working_dir": "/home/ray/default",
+    #     "pip": ["transformers==4.28.0", "accelerate==0.18.0", "numpy==1.20"],
+    # }
+    # ray.init(address="local", runtime_env=runtime_env)
     run_model2()
