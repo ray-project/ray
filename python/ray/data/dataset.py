@@ -85,7 +85,7 @@ from ray.data._internal.stage_impl import (
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_index, _split_at_indices, _get_num_rows
-from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
+from ray.data._internal.stats import DatastreamStats, DatastreamStatsSummary
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -1454,7 +1454,7 @@ class Datastream(Generic[T]):
         parent_stats = self._plan.stats()
         splits = []
         for bs, ms in zip(blocks, metadata):
-            stats = DatasetStats(stages={"Split": ms}, parent=parent_stats)
+            stats = DatastreamStats(stages={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
             splits.append(
                 MaterializedDatastream(
@@ -1520,10 +1520,10 @@ class Datastream(Generic[T]):
         if any(p <= 0 for p in proportions):
             raise ValueError("proportions must be bigger than 0")
 
-        dataset_length = self.count()
+        datastream_length = self.count()
         cumulative_proportions = np.cumsum(proportions)
         split_indices = [
-            int(dataset_length * proportion) for proportion in cumulative_proportions
+            int(datastream_length * proportion) for proportion in cumulative_proportions
         ]
 
         # Ensure each split has at least one element
@@ -1677,7 +1677,7 @@ class Datastream(Generic[T]):
                     "number {} will be used. This warning will not "
                     "be shown again.".format(set(epochs), max_epoch)
                 )
-        stats = DatasetStats(
+        stats = DatastreamStats(
             stages={"Union": []},
             parent=[d._plan.stats() for d in datastreams],
         )
@@ -2210,11 +2210,11 @@ class Datastream(Generic[T]):
             )
             for m in metadata
         ]
-        dataset_stats = DatasetStats(
+        datastream_stats = DatastreamStats(
             stages={"Limit": meta_for_stats},
             parent=self._plan.stats(),
         )
-        dataset_stats.time_total_s = split_duration
+        datastream_stats.time_total_s = split_duration
         return Datastream(
             ExecutionPlan(
                 BlockList(
@@ -2222,7 +2222,7 @@ class Datastream(Generic[T]):
                     metadata,
                     owned_by_consumer=block_list._owned_by_consumer,
                 ),
-                dataset_stats,
+                datastream_stats,
                 run_by_consumer=block_list._owned_by_consumer,
             ),
             self._epoch,
@@ -2490,7 +2490,7 @@ class Datastream(Generic[T]):
             ParquetDatasource(),
             ray_remote_args=ray_remote_args,
             path=path,
-            dataset_uuid=self._uuid,
+            datastream_uuid=self._uuid,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -2554,7 +2554,7 @@ class Datastream(Generic[T]):
             JSONDatasource(),
             ray_remote_args=ray_remote_args,
             path=path,
-            dataset_uuid=self._uuid,
+            datastream_uuid=self._uuid,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -2615,7 +2615,7 @@ class Datastream(Generic[T]):
             CSVDatasource(),
             ray_remote_args=ray_remote_args,
             path=path,
-            dataset_uuid=self._uuid,
+            datastream_uuid=self._uuid,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -2683,7 +2683,7 @@ class Datastream(Generic[T]):
             TFRecordDatasource(),
             ray_remote_args=ray_remote_args,
             path=path,
-            dataset_uuid=self._uuid,
+            datastream_uuid=self._uuid,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -2753,7 +2753,7 @@ class Datastream(Generic[T]):
             WebDatasetDatasource(),
             ray_remote_args=ray_remote_args,
             path=path,
-            dataset_uuid=self._uuid,
+            datastream_uuid=self._uuid,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -2809,7 +2809,7 @@ class Datastream(Generic[T]):
             NumpyDatasource(),
             ray_remote_args=ray_remote_args,
             path=path,
-            dataset_uuid=self._uuid,
+            datastream_uuid=self._uuid,
             column=column,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
@@ -3858,7 +3858,7 @@ class Datastream(Generic[T]):
             outer_stats = self._plan.stats()
             read_stage = None
         uuid = self._get_uuid()
-        outer_stats.dataset_uuid = uuid
+        outer_stats.datastream_uuid = uuid
 
         if times is not None and times < 1:
             raise ValueError("`times` must be >= 1, got {}".format(times))
@@ -3878,7 +3878,10 @@ class Datastream(Generic[T]):
                 def gen():
                     ds = Datastream(
                         ExecutionPlan(
-                            blocks, outer_stats, dataset_uuid=uuid, run_by_consumer=True
+                            blocks,
+                            outer_stats,
+                            datastream_uuid=uuid,
+                            run_by_consumer=True,
                         ),
                         epoch,
                         lazy=False,
@@ -4145,7 +4148,7 @@ class Datastream(Generic[T]):
         """
         return self._get_stats_summary().to_string()
 
-    def _get_stats_summary(self) -> DatasetStatsSummary:
+    def _get_stats_summary(self) -> DatastreamStatsSummary:
         return self._plan.stats_summary()
 
     @ConsumptionAPI(pattern="Time complexity:")
