@@ -4,7 +4,8 @@ import unittest
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import make_multi_callbacks
-from ray.rllib.algorithms.ppo import PPO, PPOConfig
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.dqn import DQN
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import (
@@ -25,7 +26,7 @@ class TestAlgorithmConfig(unittest.TestCase):
     def test_running_specific_algo_with_generic_config(self):
         """Tests, whether some algo can be run with the generic AlgorithmConfig."""
         config = (
-            AlgorithmConfig(algo_class=PPO)
+            AlgorithmConfig(algo_class=DQN)
             .environment("CartPole-v0")
             .training(lr=0.12345, train_batch_size=3000)
         )

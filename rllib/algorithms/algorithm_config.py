@@ -1017,12 +1017,12 @@ class AlgorithmConfig(_Config):
                     )
                 else:
                     # RLModules don't support exploration_configs anymore.
-                    # AlgorithmConfig has a default exploration config.
                     logger.warning(
                         "When RLModule API are enabled, exploration_config "
                         "will be ignored. Disable RLModule API make use of an "
                         "exploration_config."
                     )
+                    self.exploration_config = None
 
         # make sure the resource requirements for learner_group is valid
         if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
