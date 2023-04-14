@@ -23,6 +23,8 @@ The properties of the scaling configuration are :ref:`tunable <air-tuner-search-
 
     See the :class:`~ray.air.ScalingConfig` API reference.
 
+.. _train-run-config:
+
 Run Configuration in Train (``RunConfig``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
