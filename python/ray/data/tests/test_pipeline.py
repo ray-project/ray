@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 
 import ray
-from ray.data import dataset
+from ray.data import datastream
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data.context import DataContext, WARN_PREFIX, OK_PREFIX
 from ray.data.datastream import Dataset
@@ -37,11 +37,11 @@ def test_warnings(shutdown_only):
     ray.init(num_cpus=2)
 
     # Test parallelism warning.
-    dataset.logger = MockLogger()
+    datastream.logger = MockLogger()
     ray.data.range(10, parallelism=10).window(blocks_per_window=1)
-    print(dataset.logger.warnings)
-    print(dataset.logger.infos)
-    assert dataset.logger.warnings == [
+    print(datastream.logger.warnings)
+    print(datastream.logger.infos)
+    assert datastream.logger.warnings == [
         f"{WARN_PREFIX} This pipeline's parallelism is limited by its blocks per "
         "window to "
         "~1 concurrent tasks per window. To maximize "
@@ -49,7 +49,7 @@ def test_warnings(shutdown_only):
         "may require increasing the base datastream's parallelism and/or "
         "adjusting the windowing parameters."
     ]
-    assert dataset.logger.infos == [
+    assert datastream.logger.infos == [
         "Created DatasetPipeline with 10 windows: 8b min, 8b max, 8b mean",
         "Blocks per window: 1 min, 1 max, 1 mean",
         f"{OK_PREFIX} This pipeline's windows likely fit in object store memory "
@@ -63,17 +63,17 @@ def test_warnings(shutdown_only):
         ray.cluster_resources = lambda: res_dict
 
         # Test window memory warning.
-        dataset.logger = MockLogger()
+        datastream.logger = MockLogger()
         ray.data.range(100000, parallelism=100).window(blocks_per_window=10)
-        print(dataset.logger.warnings)
-        print(dataset.logger.infos)
-        assert dataset.logger.warnings == [
+        print(datastream.logger.warnings)
+        print(datastream.logger.infos)
+        assert datastream.logger.warnings == [
             f"{WARN_PREFIX} This pipeline's windows are ~0.08MiB in size each and "
             "may not fit in "
             "object store memory without spilling. To improve performance, "
             "consider reducing the size of each window to 250b or less."
         ]
-        assert dataset.logger.infos == [
+        assert datastream.logger.infos == [
             "Created DatasetPipeline with 10 windows: 0.08MiB min, 0.08MiB max, "
             "0.08MiB mean",
             "Blocks per window: 10 min, 10 max, 10 mean",
@@ -83,11 +83,11 @@ def test_warnings(shutdown_only):
         ]
 
         # Test warning on both.
-        dataset.logger = MockLogger()
+        datastream.logger = MockLogger()
         ray.data.range(100000, parallelism=1).window(bytes_per_window=100000)
-        print(dataset.logger.warnings)
-        print(dataset.logger.infos)
-        assert dataset.logger.warnings == [
+        print(datastream.logger.warnings)
+        print(datastream.logger.infos)
+        assert datastream.logger.warnings == [
             f"{WARN_PREFIX} This pipeline's parallelism is limited by its blocks "
             "per window "
             "to ~1 concurrent tasks per window. To maximize performance, increase "
@@ -98,7 +98,7 @@ def test_warnings(shutdown_only):
             "in object store memory without spilling. To improve performance, "
             "consider reducing the size of each window to 250b or less.",
         ]
-        assert dataset.logger.infos == [
+        assert datastream.logger.infos == [
             "Created DatasetPipeline with 1 windows: 0.76MiB min, 0.76MiB max, "
             "0.76MiB mean",
             "Blocks per window: 1 min, 1 max, 1 mean",
@@ -107,12 +107,12 @@ def test_warnings(shutdown_only):
         ray.cluster_resources = old
 
     # Test no warning.
-    dataset.logger = MockLogger()
+    datastream.logger = MockLogger()
     ray.data.range(10, parallelism=10).window(blocks_per_window=10)
-    print(dataset.logger.warnings)
-    print(dataset.logger.infos)
-    assert dataset.logger.warnings == []
-    assert dataset.logger.infos == [
+    print(datastream.logger.warnings)
+    print(datastream.logger.infos)
+    assert datastream.logger.warnings == []
+    assert datastream.logger.infos == [
         "Created DatasetPipeline with 1 windows: 80b min, 80b max, 80b mean",
         "Blocks per window: 10 min, 10 max, 10 mean",
         f"{OK_PREFIX} This pipeline's per-window parallelism is high enough to fully "
