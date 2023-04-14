@@ -30,9 +30,7 @@ class FakePolicy(TorchPolicyV2):
     def __init__(self, observation_space, action_space, sample_batch, improved=True):
         self.sample_batch = sample_batch
         self.improved = improved
-        # We need this to see if "torch" was configured as the framework.
-        # This is because OPEs may be compatible only with torch.
-        self.config = {"framework": "torch"}
+        self.config = {}
 
         # things that are needed for FQE Torch Model
         self.model = ...
