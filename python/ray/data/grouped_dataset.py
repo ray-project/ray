@@ -188,8 +188,8 @@ class GroupedData(Generic[T]):
             if len(aggs) == 0:
                 raise ValueError("Aggregate requires at least one aggregation")
             for agg in aggs:
-                agg._validate(self._dataset.schema(fetch_if_missing=True))
-            # Handle empty dataset.
+                agg._validate(self._datastream.schema(fetch_if_missing=True))
+            # Handle empty datastream.
             if blocks.initial_num_blocks() == 0:
                 return blocks, stage_info
 
