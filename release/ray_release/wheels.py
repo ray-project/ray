@@ -347,7 +347,7 @@ def find_ray_wheels_url(
     # Else, this is a commit
     commit = commit_or_branch
     ray_version = get_ray_version(repo_url, commit)
-    branch = os.environ.get("BUILDKITE_BRANCH", DEFAULT_BRANCH)
+    branch = 'master' # os.environ.get("BUILDKITE_BRANCH", DEFAULT_BRANCH)
     wheels_url = get_ray_wheels_url(
         repo_url, branch, commit, ray_version, python_version
     )
