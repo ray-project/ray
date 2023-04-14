@@ -252,20 +252,14 @@ __all__ += [
     "PlacementGroupID",
 ]
 
-if sys.version_info < (3, 7):
-    # TODO(Clark): Remove this one we drop Python 3.6 support.
-    # Lazy import is not supported in Python 3.6.
-    from ray import data  # noqa: F401
-    from ray import workflow  # noqa: F401
-    from ray import autoscaler  # noqa: E402,F401
-else:
-    # Delay importing of expensive, isolated subpackages.
-    def __getattr__(name: str):
-        import importlib
 
-        if name in ["data", "workflow", "autoscaler"]:
-            return importlib.import_module("." + name, __name__)
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+# Delay importing of expensive, isolated subpackages.
+def __getattr__(name: str):
+    import importlib
+
+    if name in ["data", "workflow", "autoscaler"]:
+        return importlib.import_module("." + name, __name__)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 del os

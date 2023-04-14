@@ -78,8 +78,6 @@ except ImportError:
             self._agen = func(*args, **kwds).__aiter__()
 
         async def __aenter__(self):
-            if sys.version_info < (3, 5, 2):
-                self._agen = await self._agen
             try:
                 return await self._agen.asend(None)
             except StopAsyncIteration:

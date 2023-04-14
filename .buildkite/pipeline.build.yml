@@ -298,15 +298,6 @@
       python/ray/serve/test_gradio
       python/ray/serve/test_gradio_visualization
 
-
-- label: ":python: Minimal install 3.6"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/ci.sh test_minimal 3.6
-    - ./ci/ci.sh test_latest_core_dependencies 3.6
-
 - label: ":python: Minimal install 3.7"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
@@ -624,24 +615,6 @@
       - ./ci/env/env_info.sh
       - python ./ci/env/check_minimal_install.py
       - bazel test --config=ci $(./ci/run/bazel_export_options)  --build_tests_only --test_tag_filters=minimal python/ray/train/...
-
-
-- label: ":cold_face: :python: Ray Python 3.6 ML compatibility tests"
-  conditions:
-    ["ALWAYS", "RAY_CI_TUNE_AFFECTED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_ML_AFFECTED", ]
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/install-minimal.sh 3.6
-    - pip install -r python/requirements/compat/requirements_py36_compat.txt
-    - pip install -U typing-extensions
-    - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_TENSORFLOW=1 HOROVOD_WITH_PYTORCH=1 pip install horovod
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=compat_py36
-      python/ray/tests/horovod/...
-      python/ray/tests/lightgbm/...
-      python/ray/tests/ml_py36_compat/...
-      python/ray/tests/xgboost/...
 
 
 - label: ":cold_face: :python: Ray Python legacy dependency ML compatibility tests"
