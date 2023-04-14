@@ -74,7 +74,7 @@ class SimplePhysicalPlanner(PhysicalPlanner):
         requires_gpu: bool = False,
     ) -> PhysicalPlan:
         self._validate_pg(pg, requires_gpu)
-        assert len(logical_plan) >= len(pg.bundle_specs)
+        assert len(logical_plan) <= len(pg.bundle_specs)
         world_size = len(logical_plan)
         schedules = []
         configs = []

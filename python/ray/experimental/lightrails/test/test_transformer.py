@@ -360,7 +360,7 @@ class FirstStageModelWrapper(torch.nn.Module):
             input_sequence,
             return_tensors="pt",
             truncation=True,
-            padding="longest",  # or "max_length"
+            padding="max_length",  # or "max_length"
             max_length=128,
         )
         input_ids = input_tokens["input_ids"].to(self.first_stage_model.device)
@@ -377,6 +377,7 @@ class FirstStageModelWrapper(torch.nn.Module):
         return hidden_states
 
     def forward_hidden_states(self, hidden_states):
+        # print(f"forwarding {hidden_states.shape}")
         lm_logits = self.last_stage_model.forward(
             hidden_states=hidden_states, output_shape=hidden_states.shape
         )
@@ -387,7 +388,7 @@ class FirstStageModelWrapper(torch.nn.Module):
         next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
         decoded = self.tokenizer.decode(next_tokens)
         print(decoded)
-        input_ids = torch.cat([self.input_ids, next_tokens[:, None]], dim=-1)
+        input_ids = torch.cat([self.input_ids[:, 1:], next_tokens[:, None]], dim=-1)
         return self._process_input_ids(input_ids)
 
     def forward(self, input):
@@ -405,7 +406,7 @@ class ModelWrapper(torch.nn.Module):
         self.model = model
 
     def forward(self, hidden_states):
-        print(f"forwarding {hidden_states}")
+        # print(f"forwarding {hidden_states.shape}")
         return self.model.forward(hidden_states=hidden_states)
 
 
@@ -420,7 +421,7 @@ def run_model1():
     pp_ranks, tokenizer = build_model()
     total_stages = 12
     models = []
-
+    input = "hello what is your name"
     for i in range(total_stages - 1):
         models.append(build_pipeleine_stage_model(i, pp_ranks, tokenizer))
 
@@ -439,8 +440,9 @@ def load_module(i):
 
 
 class FirstStageSchedule(Schedule):
-    def __init__(self):
+    def __init__(self, last_stage):
         super(FirstStageSchedule, self).__init__()
+        self.last_stage = last_stage
 
     def steps(self):
         input = "The quick brown fox jumps over the "
@@ -450,23 +452,26 @@ class FirstStageSchedule(Schedule):
             )
         ]
         for i in range(10):
-            yield [Forward(), SendActivation(1), ReceiveActivation(1)]
+            yield [Forward(), SendActivation(1), ReceiveActivation(self.last_stage)]
+        yield [Forward()]
 
 
 def gen_logical_plan():
     logical_plan = []
 
-    for i in range(11):
+    num_stages = 11
+    for i in range(num_stages):
         if i == 0:
-            schedule = FirstStageSchedule()
+            schedule = FirstStageSchedule(num_stages - 1)
         else:
             schedule = ExecuteSchedule(
-                upstream_rank=i - 1, downstream_rank=(i + 1) % 11
+                upstream_rank=i - 1,
+                downstream_rank=(i + 1) % num_stages,
             )
         partion = ModuleParition(
             partition_index=i,
             module_loader=lambda i=i: load_module(i),
-            input_tensor_shape=(1, 128),
+            input_tensor_shape=(1, 128, 768),
             input_tensor_dtype=torch.float32,
             schedule=schedule,
             data_loader_builder=None,
@@ -486,9 +491,9 @@ def run_model2():
         planner=physical_planner,
     )
     coordinator.start()
+    coordinator.wait_until_stopped()
 
 
 if __name__ == "__main__":
-    # run_model()
     # run_model1()
     run_model2()
