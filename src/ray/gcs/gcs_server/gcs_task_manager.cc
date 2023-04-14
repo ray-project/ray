@@ -128,10 +128,8 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
   error_info.set_error_message(error_message.str());
 
   for (const auto &task_attempt : task_attempts_itr->second) {
-    if (!IsTaskTerminated(task_attempt.first)) {
-      MarkTaskAttemptFailed(
-          task_attempt, worker_failure_data.end_time_ms() * 1000, error_info);
-    }
+    MarkTaskAttemptFailedIfNeeded(
+        task_attempt, worker_failure_data.end_time_ms() * 1000, error_info);
   }
 }
 
@@ -155,36 +153,21 @@ const rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
   return task_events_.at(idx_itr->second);
 }
 
-void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailed(
+void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
     const TaskAttempt &task_attempt,
     int64_t failed_ts,
     const rpc::RayErrorInfo &error_info) {
   auto &task_event = GetTaskEvent(task_attempt);
+  // We don't mark tasks as failed if they are already terminated.
+  if (IsTaskTerminated(task_event)) {
+    return;
+  }
+
   // We could mark the task as failed even if might not have state updates yet (i.e. only
   // profiling events are reported).
   auto state_updates = task_event.mutable_state_updates();
   state_updates->set_failed_ts(failed_ts);
   state_updates->mutable_error_info()->CopyFrom(error_info);
-}
-
-bool GcsTaskManager::GcsTaskManagerStorage::IsTaskTerminated(
-    const TaskID &task_id) const {
-  auto failed_ts = GetTaskStatusUpdateTime(task_id, rpc::TaskStatus::FAILED);
-  auto finished_ts = GetTaskStatusUpdateTime(task_id, rpc::TaskStatus::FINISHED);
-  return failed_ts.has_value() || finished_ts.has_value();
-}
-
-absl::optional<int64_t> GcsTaskManager::GcsTaskManagerStorage::GetTaskStatusUpdateTime(
-    const TaskID &task_id, const rpc::TaskStatus &task_status) const {
-  auto latest_task_attempt = GetLatestTaskAttempt(task_id);
-  if (!latest_task_attempt.has_value()) {
-    return absl::nullopt;
-  }
-
-  const auto &task_event = GetTaskEvent(*latest_task_attempt);
-  return task_event.has_state_updates()
-             ? GetTaskStatusTimeFromStateUpdates(task_status, task_event.state_updates())
-             : absl::nullopt;
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
@@ -204,9 +187,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
 
   // Iterate all task attempts from the job.
   for (const auto &task_attempt : task_attempts_itr->second) {
-    if (!IsTaskTerminated(task_attempt.first)) {
-      MarkTaskAttemptFailed(task_attempt, job_finish_time_ns, error_info);
-    }
+    MarkTaskAttemptFailedIfNeeded(task_attempt, job_finish_time_ns, error_info);
   }
 }
 

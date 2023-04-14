@@ -490,6 +490,47 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsByJob) {
                      reply_job2.mutable_events_by_task());
 }
 
+TEST_F(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded) {
+  auto tasks = GenTaskIDs(3);
+  auto tasks_running = tasks[0];
+  auto tasks_finished = tasks[1];
+  auto tasks_failed = tasks[2];
+
+  SyncAddTaskEvent({tasks_running}, {{rpc::TaskStatus::RUNNING, 1}}, TaskID::Nil(), 1);
+  SyncAddTaskEvent({tasks_finished}, {{rpc::TaskStatus::FINISHED, 2}}, TaskID::Nil(), 1);
+  SyncAddTaskEvent({tasks_failed}, {{rpc::TaskStatus::FAILED, 3}}, TaskID::Nil(), 1);
+
+  // Mark task attempt failed if needed for each task.
+  for (auto &task : tasks) {
+    task_manager->task_event_storage_->MarkTaskAttemptFailedIfNeeded(
+        {task, 0},
+        /* failed time stamp ms*/ 4,
+        rpc::RayErrorInfo());
+  }
+
+  // Check task attempt failed event is added for running task.
+  {
+    auto reply = SyncGetTaskEvents({tasks_running});
+    auto task_event = *(reply.events_by_task().begin());
+    EXPECT_EQ(task_event.state_updates().failed_ts(), 4);
+  }
+
+  // Check task attempt failed event is not overriding failed tasks.
+  {
+    auto reply = SyncGetTaskEvents({tasks_failed});
+    auto task_event = *(reply.events_by_task().begin());
+    EXPECT_EQ(task_event.state_updates().failed_ts(), 3);
+  }
+
+  // Check task attempt failed event is not overriding finished tasks.
+  {
+    auto reply = SyncGetTaskEvents({tasks_finished});
+    auto task_event = *(reply.events_by_task().begin());
+    EXPECT_FALSE(task_event.state_updates().has_failed_ts());
+    EXPECT_EQ(task_event.state_updates().finished_ts(), 2);
+  }
+}
+
 TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
   auto tasks_running_job1 = GenTaskIDs(10);
   auto tasks_finished_job1 = GenTaskIDs(10);

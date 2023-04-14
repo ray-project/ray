@@ -215,30 +215,17 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// \return Reference to the task events stored in the buffer.
     const rpc::TaskEvents &GetTaskEvent(const TaskAttempt &task_attempt) const;
 
-    /// Get the timestamp of a task status update.
+    ///  Mark a task attempt as failed if needed.
     ///
-    /// \param task_id The task id of the task.
-    /// \param task_status The status update.
-    /// \return The failed timestamp of the task attempt if it fails. absl::nullopt if the
-    /// latest task attempt could not be found due to data loss or the task attempt
-    /// doesn't fail.
-    absl::optional<int64_t> GetTaskStatusUpdateTime(
-        const TaskID &task_id, const rpc::TaskStatus &task_status) const;
-
-    ///  Return if task has terminated.
-    ///
-    /// \param task_id Task id
-    /// \return True if the task has finished or failed timestamp sets, false otherwise.
-    bool IsTaskTerminated(const TaskID &task_id) const;
-
-    ///  Mark a task attempt as failed.
+    ///  We only mark a task attempt as failed if it's not already terminated(finished or
+    ///  failed).
     ///
     /// \param task_attempt Task attempt.
     /// \param failed_ts The failure timestamp.
     /// \param error_info The error info.
-    void MarkTaskAttemptFailed(const TaskAttempt &task_attempt,
-                               int64_t failed_ts,
-                               const rpc::RayErrorInfo &error_info);
+    void MarkTaskAttemptFailedIfNeeded(const TaskAttempt &task_attempt,
+                                       int64_t failed_ts,
+                                       const rpc::RayErrorInfo &error_info);
 
     /// Get the latest task attempt for the task.
     ///
@@ -286,6 +273,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
     FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
     FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak);
+    FRIEND_TEST(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded);
   };
 
  private:
@@ -330,6 +318,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak);
   FRIEND_TEST(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks);
+  FRIEND_TEST(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded);
 };
 
 }  // namespace gcs

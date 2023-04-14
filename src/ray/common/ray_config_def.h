@@ -489,6 +489,8 @@ RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 1000)
 RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_job_done_delay_ms, /*  15 secs */ 1000 * 15)
 
 /// The delay in ms that GCS should mark any running tasks from a dead worker failed.
+/// Setting this value too smaller might result in some finished tasks marked as failed by
+/// GCS since task events data are pushed to GCS asynchronously.
 RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_worker_dead_delay_ms, /*  1 secs */ 1000 * 1)
 
 /// Whether or not we enable metrics collection.

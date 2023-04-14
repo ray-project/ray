@@ -270,57 +270,6 @@ inline rpc::RayErrorInfo GetRayErrorInfo(const rpc::ErrorType &error_type,
   return error_info;
 }
 
-/// Get the timestamp of the task status if available.
-///
-/// \param task_event Task event.
-/// \return Timestamp of the task status change if status update available, nullopt
-/// otherwise.
-inline absl::optional<int64_t> GetTaskStatusTimeFromStateUpdates(
-    const ray::rpc::TaskStatus &task_status, const rpc::TaskStateUpdate &state_updates) {
-  switch (task_status) {
-  case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
-    if (state_updates.has_pending_args_avail_ts()) {
-      return state_updates.pending_args_avail_ts();
-    }
-    break;
-  }
-  case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
-    if (state_updates.has_submitted_to_worker_ts()) {
-      return state_updates.submitted_to_worker_ts();
-    }
-    break;
-  }
-  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT: {
-    if (state_updates.has_pending_node_assignment_ts()) {
-      return state_updates.pending_node_assignment_ts();
-    }
-    break;
-  }
-  case rpc::TaskStatus::FINISHED: {
-    if (state_updates.has_finished_ts()) {
-      return state_updates.finished_ts();
-    }
-    break;
-  }
-  case rpc::TaskStatus::FAILED: {
-    if (state_updates.has_failed_ts()) {
-      return state_updates.failed_ts();
-    }
-    break;
-  }
-  case rpc::TaskStatus::RUNNING: {
-    if (state_updates.has_running_ts()) {
-      return state_updates.running_ts();
-    }
-    break;
-  }
-  default: {
-    UNREACHABLE;
-  }
-  }
-  return absl::nullopt;
-}
-
 /// Get the worker id from the task event.
 ///
 /// \param task_event Task event.
@@ -330,6 +279,19 @@ inline WorkerID GetWorkerID(const rpc::TaskEvents &task_event) {
     return WorkerID::FromBinary(task_event.state_updates().worker_id());
   }
   return WorkerID::Nil();
+}
+
+/// Return if the task has already terminated (finished or failed)
+///
+/// \param task_event Task event.
+/// \return True if the task has already terminated, false otherwise.
+inline bool IsTaskTerminated(const rpc::TaskEvents &task_event) {
+  if (!task_event.has_state_updates()) {
+    return false;
+  }
+
+  const auto &state_updates = task_event.state_updates();
+  return state_updates.has_finished_ts() || state_updates.has_failed_ts();
 }
 
 /// Fill the rpc::TaskStateUpdate with the timestamps according to the status change.
