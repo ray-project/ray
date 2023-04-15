@@ -32,7 +32,6 @@ DOCKER_HUB_DESCRIPTION = {
 }
 
 PY_MATRIX = {
-    "py36": "3.6",
     "py37": "3.7",
     "py38": "3.8",
     "py39": "3.9",
@@ -397,7 +396,6 @@ def prep_ray_ml():
     # We don't need these in the ml docker image
     ignore_requirements = [
         "python/requirements/compat/requirements_legacy_compat.txt",
-        "python/requirements/compat/requirements_py36_compat.txt",
     ]
 
     files_on_disk = glob.glob(f"{root_dir}/python/**/requirements*.txt", recursive=True)
@@ -715,7 +713,7 @@ BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
     type=click.Choice(list(PY_MATRIX.keys())),
     multiple=True,
     help="Which python versions to build. "
-    "Must be in (py36, py37, py38, py39, py310, py311)",
+    "Must be in (py37, py38, py39, py310, py311)",
 )
 @click.option(
     "--device-types",

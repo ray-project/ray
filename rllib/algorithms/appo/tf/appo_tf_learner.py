@@ -3,6 +3,7 @@ from typing import Mapping
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.algorithms.appo.appo_learner import (
     AppoLearner,
+    LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
     OLD_ACTION_DIST_KEY,
 )
@@ -141,6 +142,7 @@ class APPOTfLearner(TfLearner, AppoLearner):
             VF_LOSS_KEY: mean_vf_loss,
             ENTROPY_KEY: mean_entropy_loss,
             LEARNER_RESULTS_KL_KEY: mean_kl_loss,
+            LEARNER_RESULTS_CURR_KL_COEFF_KEY: self.kl_coeffs[module_id],
         }
 
     def _update_module_target_networks(self, module_id: ModuleID):

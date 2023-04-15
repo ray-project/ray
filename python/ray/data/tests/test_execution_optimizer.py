@@ -4,6 +4,7 @@ import pytest
 import pandas as pd
 
 import ray
+from ray.data._internal.execution.legacy_compat import _blocks_to_input_buffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
@@ -42,9 +43,9 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
-from ray.data._internal.logical.util import (
+from ray.data._internal.usage import (
     _recorded_operators,
-    _recorded_operators_lock,
+    _recording_lock,
     _op_name_white_list,
 )
 from ray.data._internal.planner.planner import Planner
@@ -61,10 +62,10 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
     (so that subsequent checks do not use existing records of operator usage)."""
     for op_name in op_names:
         assert op_name in _op_name_white_list
-        with _recorded_operators_lock:
+        with _recording_lock:
             assert _recorded_operators.get(op_name, 0) > 0, _recorded_operators
     if clear_after_check:
-        with _recorded_operators_lock:
+        with _recording_lock:
             _recorded_operators.clear()
 
 
@@ -642,6 +643,53 @@ def test_sort_e2e(
     # assert [d["one"] for d in r2] == list(reversed(range(100)))
 
 
+def test_sort_validate_keys(
+    ray_start_regular_shared,
+    enable_optimizer,
+):
+    ds = ray.data.range(10)
+    assert ds.sort().take_all() == list(range(10))
+
+    invalid_col_name = "invalid_column"
+    with pytest.raises(
+        ValueError,
+        match=f"String key '{invalid_col_name}' requires datastream format to be "
+        "'arrow' or 'pandas', was 'simple'",
+    ):
+        ds.sort(invalid_col_name).take_all()
+
+    ds_named = ray.data.from_items(
+        [
+            {"col1": 1, "col2": 2},
+            {"col1": 3, "col2": 4},
+            {"col1": 5, "col2": 6},
+            {"col1": 7, "col2": 8},
+        ]
+    )
+
+    ds_sorted_col1 = ds_named.sort("col1", descending=True)
+    r1 = ds_sorted_col1.select_columns(["col1"]).take_all()
+    r2 = ds_sorted_col1.select_columns(["col2"]).take_all()
+    assert [d["col1"] for d in r1] == [7, 5, 3, 1]
+    assert [d["col2"] for d in r2] == [8, 6, 4, 2]
+
+    with pytest.raises(
+        ValueError,
+        match=f"The column '{invalid_col_name}' does not exist in the schema",
+    ):
+        ds_named.sort(invalid_col_name).take_all()
+
+    def dummy_sort_fn(x):
+        return x
+
+    with pytest.raises(
+        ValueError,
+        match=f"Callable key '{dummy_sort_fn}' requires datastream format to be "
+        "'simple'",
+    ):
+        ds_named.sort(dummy_sort_fn).take_all()
+
+
 def test_aggregate_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
     read_op = Read(ParquetDatasource())
@@ -1076,6 +1124,17 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
     # Underlying implementation uses `FromItems` operator
     assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
     _check_usage_record(["FromItems"])
+
+
+def test_blocks_to_input_buffer_op_name(
+    ray_start_regular_shared,
+    enable_streaming_executor,
+):
+    ds: ray.data.Datastream = ray.data.range(10)
+    blocks, _, _ = ds._plan._optimize()
+    assert hasattr(blocks, "_tasks"), blocks
+    physical_op = _blocks_to_input_buffer(blocks, owns_blocks=False)
+    assert physical_op.name == "ReadRange"
 
 
 def test_execute_to_legacy_block_list(

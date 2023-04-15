@@ -3,15 +3,19 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping
 
+import numpy as np
+
 from ray.rllib.algorithms.impala.impala_learner import (
     ImpalaLearner,
     ImpalaHyperparameters,
 )
 from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import get_variable
 
 
 LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
+LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
 OLD_ACTION_DIST_KEY = "old_action_dist"
 OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
 
@@ -57,11 +61,23 @@ class AppoHyperparameters(ImpalaHyperparameters):
 
 
 class AppoLearner(ImpalaLearner):
-    """KL coefficient updates under `additional_updates_per_module()`"""
+    """Adds KL coeff updates via `additional_updates_per_module()` to Impala logic.
+
+    Framework-specific sub-classes must override `_update_module_target_networks()`
+    and `_update_module_kl_coeff()`
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.kl_coeffs = defaultdict(lambda: self._hps.kl_coeff)
+        # Create framework-specific variables (simple python vars for torch).
+        self.kl_coeffs = defaultdict(
+            lambda: get_variable(
+                self._hps.kl_coeff,
+                framework=self.framework,
+                trainable=False,
+                dtype=np.float32,
+            )
+        )
 
     @override(ImpalaLearner)
     def remove_module(self, module_id: str):
@@ -91,9 +107,10 @@ class AppoLearner(ImpalaLearner):
             module_id: The module ID, whose target network(s) need to be updated.
         """
 
+    @abc.abstractmethod
     def _update_module_kl_coeff(
         self, module_id: ModuleID, sampled_kls: Dict[ModuleID, float]
-    ):
+    ) -> None:
         """Dynamically update the KL loss coefficients of each module with.
 
         The update is completed using the mean KL divergence between the action
@@ -106,12 +123,3 @@ class AppoLearner(ImpalaLearner):
                 the current policy and old policy of each module.
 
         """
-        if module_id in sampled_kls:
-            sampled_kl = sampled_kls[module_id]
-            # Update the current KL value based on the recently measured value.
-            # Increase.
-            if sampled_kl > 2.0 * self._hps.kl_target:
-                self.kl_coeffs[module_id] *= 1.5
-            # Decrease.
-            elif sampled_kl < 0.5 * self._hps.kl_target:
-                self.kl_coeffs[module_id] *= 0.5
