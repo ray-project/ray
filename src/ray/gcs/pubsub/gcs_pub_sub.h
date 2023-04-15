@@ -134,9 +134,9 @@ class GcsSubscriber {
 };
 
 // This client is only supposed to be used from Cython / Python
-class RAY_EXPORT GcsSyncPublisher {
+class RAY_EXPORT PythonGcsPublisher {
  public:
-  explicit GcsSyncPublisher(const std::string &gcs_address);
+  explicit PythonGcsPublisher(const std::string &gcs_address);
   Status Connect();
   Status PublishError(const std::string &key_id, const rpc::ErrorTableData &data);
   Status PublishLogs(const std::string &key_id, const rpc::LogBatch &log_batch);

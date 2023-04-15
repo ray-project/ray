@@ -213,7 +213,7 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
   return Status::OK();
 }
 
-GcsSyncPublisher::GcsSyncPublisher(const std::string &gcs_address) {
+PythonGcsPublisher::PythonGcsPublisher(const std::string &gcs_address) {
   std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
   RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
   RAY_CHECK(address.size() == 2);
@@ -221,7 +221,7 @@ GcsSyncPublisher::GcsSyncPublisher(const std::string &gcs_address) {
   gcs_port_ = std::stoi(address[1]);
 }
 
-Status GcsSyncPublisher::Connect() {
+Status PythonGcsPublisher::Connect() {
   grpc::ChannelArguments arguments;
   arguments.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, 512 * 1024 * 1024);
   arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 60 * 1000);
@@ -233,7 +233,7 @@ Status GcsSyncPublisher::Connect() {
 
 constexpr int MAX_GCS_PUBLISH_RETRIES = 60;
 
-Status GcsSyncPublisher::DoPublishWithRetries(const rpc::GcsPublishRequest &request) {
+Status PythonGcsPublisher::DoPublishWithRetries(const rpc::GcsPublishRequest &request) {
   grpc::ClientContext context;
   int count = MAX_GCS_PUBLISH_RETRIES;
   rpc::GcsPublishReply reply;
@@ -258,8 +258,8 @@ Status GcsSyncPublisher::DoPublishWithRetries(const rpc::GcsPublishRequest &requ
   return Status::TimedOut("Failed to publish after retries: " + status.error_message());
 }
 
-Status GcsSyncPublisher::PublishError(const std::string &key_id,
-                                      const rpc::ErrorTableData &error_info) {
+Status PythonGcsPublisher::PublishError(const std::string &key_id,
+                                        const rpc::ErrorTableData &error_info) {
   rpc::GcsPublishRequest request;
   auto *message = request.add_pub_messages();
   message->set_channel_type(rpc::RAY_ERROR_INFO_CHANNEL);
@@ -268,8 +268,8 @@ Status GcsSyncPublisher::PublishError(const std::string &key_id,
   return DoPublishWithRetries(request);
 }
 
-Status GcsSyncPublisher::PublishLogs(const std::string &key_id,
-                                     const rpc::LogBatch &log_batch) {
+Status PythonGcsPublisher::PublishLogs(const std::string &key_id,
+                                       const rpc::LogBatch &log_batch) {
   rpc::GcsPublishRequest request;
   auto *message = request.add_pub_messages();
   message->set_channel_type(rpc::RAY_LOG_CHANNEL);
@@ -278,7 +278,8 @@ Status GcsSyncPublisher::PublishLogs(const std::string &key_id,
   return DoPublishWithRetries(request);
 }
 
-Status GcsSyncPublisher::PublishFunctionKey(const rpc::PythonFunction &python_function) {
+Status PythonGcsPublisher::PublishFunctionKey(
+    const rpc::PythonFunction &python_function) {
   rpc::GcsPublishRequest request;
   auto *message = request.add_pub_messages();
   message->set_channel_type(rpc::RAY_PYTHON_FUNCTION_CHANNEL);

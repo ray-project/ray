@@ -343,9 +343,9 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
 
 cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
 
-    cdef cppclass CGcsSyncPublisher "ray::gcs::GcsSyncPublisher":
+    cdef cppclass CPythonGcsPublisher "ray::gcs::PythonGcsPublisher":
 
-        CGcsSyncPublisher(const c_string& gcs_address)
+        CPythonGcsPublisher(const c_string& gcs_address)
 
         CRayStatus Connect()
 

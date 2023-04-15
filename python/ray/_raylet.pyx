@@ -1733,10 +1733,10 @@ cdef class GcsClient:
 cdef class GcsPublisher:
     """Cython wrapper class of C++ `ray::gcs::GcsPublisher`."""
     cdef:
-        shared_ptr[CGcsSyncPublisher] inner
+        shared_ptr[CPythonGcsPublisher] inner
 
     def __cinit__(self, address):
-        self.inner.reset(new CGcsSyncPublisher(address))
+        self.inner.reset(new CPythonGcsPublisher(address))
         check_status(self.inner.get().Connect())
 
     def publish_error(self, key_id: bytes, error_type: str, message: str, job_id=None):
