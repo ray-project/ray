@@ -1731,7 +1731,7 @@ cdef class GcsClient:
         return result
 
 cdef class GcsPublisher:
-    """Cython wrapper class of C++ `ray::gcs::GcsPublisher`."""
+    """Cython wrapper class of C++ `ray::gcs::PythonGcsPublisher`."""
     cdef:
         shared_ptr[CPythonGcsPublisher] inner
 

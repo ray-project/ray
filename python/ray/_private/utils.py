@@ -182,32 +182,11 @@ def push_error_to_driver(
     worker.core_worker.push_error(job_id, error_type, message, time.time())
 
 
-def construct_error_message(job_id, error_type, message, timestamp):
-    """Construct an ErrorTableData object.
-
-    Args:
-        job_id: The ID of the job that the error should go to. If this is
-            nil, then the error will go to all drivers.
-        error_type: The type of the error.
-        message: The error message.
-        timestamp: The time of the error.
-
-    Returns:
-        The ErrorTableData object.
-    """
-    data = ErrorTableData()
-    data.job_id = job_id.binary()
-    data.type = error_type
-    data.error_message = message
-    data.timestamp = timestamp
-    return data
-
-
 def publish_error_to_driver(
     error_type: str,
     message: str,
     gcs_publisher,
-    job_id=None,
+    job_id: Optional[str] = None,
     num_retries=None,
 ):
     """Push an error message to the driver to be printed in the background.
@@ -231,7 +210,7 @@ def publish_error_to_driver(
     try:
         gcs_publisher.publish_error(job_id.hex().encode(), error_type, message, job_id)
     except Exception:
-        logger.exception(f"Failed to publish error {message} [type {error_type}]")
+        logger.exception(f"Failed to publish error: {message} [type {error_type}]")
 
 
 def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
