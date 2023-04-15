@@ -349,7 +349,8 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
 
         CRayStatus Connect()
 
-        CRayStatus PublishError(const c_string &key_id, const CErrorTableData &data)
+        CRayStatus PublishError(
+            const c_string &key_id, const CErrorTableData &data, int64_t num_retries)
 
         CRayStatus PublishLogs(const c_string &key_id, const CLogBatch &data)
 

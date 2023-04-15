@@ -44,7 +44,6 @@ from google.protobuf import json_format
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.tls_utils import load_certs_from_env
-from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
@@ -208,7 +207,9 @@ def publish_error_to_driver(
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
     try:
-        gcs_publisher.publish_error(job_id.hex().encode(), error_type, message, job_id)
+        gcs_publisher.publish_error(
+            job_id.hex().encode(), error_type, message, job_id, num_retries
+        )
     except Exception:
         logger.exception(f"Failed to publish error: {message} [type {error_type}]")
 

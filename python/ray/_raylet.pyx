@@ -1739,9 +1739,11 @@ cdef class GcsPublisher:
         self.inner.reset(new CPythonGcsPublisher(address))
         check_status(self.inner.get().Connect())
 
-    def publish_error(self, key_id: bytes, error_type: str, message: str, job_id=None):
+    def publish_error(self, key_id: bytes, error_type: str, message: str,
+                      job_id=None, num_retries=None):
         cdef:
             CErrorTableData error_info
+            int64_t c_num_retries = num_retries if num_retries else -1
 
         if job_id is None:
             job_id = ray.JobID.nil()
@@ -1751,7 +1753,7 @@ cdef class GcsPublisher:
         error_info.set_error_message(message)
         error_info.set_timestamp(time.time())
 
-        check_status(self.inner.get().PublishError(key_id, error_info))
+        check_status(self.inner.get().PublishError(key_id, error_info, c_num_retries))
 
     def publish_logs(self, log_json):
         cdef:

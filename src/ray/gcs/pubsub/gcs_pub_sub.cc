@@ -233,9 +233,16 @@ Status PythonGcsPublisher::Connect() {
 
 constexpr int MAX_GCS_PUBLISH_RETRIES = 60;
 
-Status PythonGcsPublisher::DoPublishWithRetries(const rpc::GcsPublishRequest &request) {
+Status PythonGcsPublisher::DoPublishWithRetries(const rpc::GcsPublishRequest &request,
+                                                int64_t num_retries,
+                                                int64_t timeout_ms) {
   grpc::ClientContext context;
-  int count = MAX_GCS_PUBLISH_RETRIES;
+  if (timeout_ms != -1) {
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::milliseconds(timeout_ms));
+  }
+
+  int count = num_retries == -1 ? MAX_GCS_PUBLISH_RETRIES : num_retries;
   rpc::GcsPublishReply reply;
   grpc::Status status;
   while (count > 0) {
@@ -259,13 +266,14 @@ Status PythonGcsPublisher::DoPublishWithRetries(const rpc::GcsPublishRequest &re
 }
 
 Status PythonGcsPublisher::PublishError(const std::string &key_id,
-                                        const rpc::ErrorTableData &error_info) {
+                                        const rpc::ErrorTableData &error_info,
+                                        int64_t num_retries) {
   rpc::GcsPublishRequest request;
   auto *message = request.add_pub_messages();
   message->set_channel_type(rpc::RAY_ERROR_INFO_CHANNEL);
   message->set_key_id(key_id);
   message->mutable_error_info_message()->MergeFrom(error_info);
-  return DoPublishWithRetries(request);
+  return DoPublishWithRetries(request, num_retries, 1000);
 }
 
 Status PythonGcsPublisher::PublishLogs(const std::string &key_id,
@@ -275,7 +283,7 @@ Status PythonGcsPublisher::PublishLogs(const std::string &key_id,
   message->set_channel_type(rpc::RAY_LOG_CHANNEL);
   message->set_key_id(key_id);
   message->mutable_log_batch_message()->MergeFrom(log_batch);
-  return DoPublishWithRetries(request);
+  return DoPublishWithRetries(request, -1, -1);
 }
 
 Status PythonGcsPublisher::PublishFunctionKey(
@@ -284,7 +292,7 @@ Status PythonGcsPublisher::PublishFunctionKey(
   auto *message = request.add_pub_messages();
   message->set_channel_type(rpc::RAY_PYTHON_FUNCTION_CHANNEL);
   message->mutable_python_function_message()->MergeFrom(python_function);
-  return DoPublishWithRetries(request);
+  return DoPublishWithRetries(request, -1, -1);
 }
 
 }  // namespace gcs

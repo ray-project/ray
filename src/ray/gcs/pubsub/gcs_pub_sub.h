@@ -138,12 +138,16 @@ class RAY_EXPORT PythonGcsPublisher {
  public:
   explicit PythonGcsPublisher(const std::string &gcs_address);
   Status Connect();
-  Status PublishError(const std::string &key_id, const rpc::ErrorTableData &data);
+  Status PublishError(const std::string &key_id,
+                      const rpc::ErrorTableData &data,
+                      int64_t num_retries);
   Status PublishLogs(const std::string &key_id, const rpc::LogBatch &log_batch);
   Status PublishFunctionKey(const rpc::PythonFunction &python_function);
 
  private:
-  Status DoPublishWithRetries(const rpc::GcsPublishRequest &request);
+  Status DoPublishWithRetries(const rpc::GcsPublishRequest &request,
+                              int64_t num_retries,
+                              int64_t timeout_ms);
   std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;
   std::shared_ptr<grpc::Channel> channel_;
   std::string gcs_address_;
