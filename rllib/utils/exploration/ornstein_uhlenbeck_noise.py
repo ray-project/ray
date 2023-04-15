@@ -197,6 +197,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                 gaussian_sample = scale * torch.normal(
                     mean=torch.zeros(self.ou_state.size()), std=1.0
                 ).to(self.device)
+                self.ou_state = self.ou_state.to(self.device)
                 ou_new = (
                     self.ou_theta * -self.ou_state + self.ou_sigma * gaussian_sample
                 )
