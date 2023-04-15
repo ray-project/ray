@@ -1677,16 +1677,14 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-# Tests with unity 3d and external envs currently don't work
-# see: https://github.com/ray-project/ray/issues/34290 for more details
-# sh_test(
-#     name = "env/tests/test_local_inference_unity3d",
-#     tags = ["team:rllib", "env"],
-#     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-#     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#     args = ["local", "unity3d", "8850"],
-#     data = glob(["examples/serving/*.py"]),
-# )
+sh_test(
+    name = "env/tests/test_local_inference_unity3d",
+    tags = ["team:rllib", "env"],
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["local", "unity3d", "8850"],
+    data = glob(["examples/serving/*.py"]),
+)
 
 py_test(
     name = "env/tests/test_multi_agent_env",
@@ -1722,16 +1720,14 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-# Tests with unity 3d and external envs currently don't work
-# see: https://github.com/ray-project/ray/issues/34290 for more details
-# sh_test(
-#     name = "env/tests/test_remote_inference_unity3d",
-#     tags = ["team:rllib", "env", "exclusive"],
-#     size = "small",
-#     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#     args = ["remote", "unity3d", "8860"],
-#     data = glob(["examples/serving/*.py"]),
-# )
+sh_test(
+    name = "env/tests/test_remote_inference_unity3d",
+    tags = ["team:rllib", "env", "exclusive"],
+    size = "small",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["remote", "unity3d", "8860"],
+    data = glob(["examples/serving/*.py"]),
+)
 
 py_test(
     name = "env/tests/test_remote_worker_envs",
