@@ -62,8 +62,8 @@ def test_bisect():
         "c4": False,
     }
 
-    def _mock_run_test(test_name: str, commit: str) -> bool:
-        return commit_to_test_result[commit]
+        def _mock_run_test(test_name: str, commit: str) -> bool:
+            return input[commit]
 
     with mock.patch(
         "ray_release.scripts.ray_bisect._run_test",
