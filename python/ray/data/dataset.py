@@ -4680,7 +4680,7 @@ class Schema:
         return self.base_schema.names
 
     def __str__(self):
-        return f"Schema({str(self.names())})"
+        return f"Schema({str(self.names)})"
 
     def __repr__(self):
         return str(self)

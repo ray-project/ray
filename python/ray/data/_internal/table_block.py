@@ -3,6 +3,7 @@ from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
 
 import numpy as np
 
+import ray
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
@@ -174,6 +175,9 @@ class TableBlockAccessor(BlockAccessor):
         return self._table
 
     def is_tensor_wrapper(self) -> bool:
+        ctx = ray.data.DatasetContext.get_current()
+        if ctx.strict_mode:
+            return False
         return _is_tensor_schema(self.column_names())
 
     def iter_rows(self) -> Iterator[Union[TableRow, np.ndarray]]:

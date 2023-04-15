@@ -113,6 +113,15 @@ def test_strict_tensor_support(ray_start_regular_shared):
     assert np.array_equal(ds.take()[0]["item"], 4 * np.ones(10))
 
 
+def test_strict_value_repr(ray_start_regular_shared):
+    ds = ray.data.from_items([{"__value__": np.ones(10)}])
+
+    ds = ds.map_batches(lambda x: {"__value__": x["__value__"] * 2})
+    ds = ds.map(lambda x: {"x": x["__value__"] * 2})
+    assert np.array_equal(ds.take()[0]["x"], 4 * np.ones(10))
+    assert np.array_equal(ds.take_batch()["x"][0], 4 * np.ones(10))
+
+
 def test_strict_object_support(ray_start_regular_shared):
     ds = ray.data.from_items([{"x": 2}, {"x": object()}])
     ds.map_batches(lambda x: x, batch_format="numpy").materialize()
