@@ -107,28 +107,32 @@ def from_items(
     items: List[Any],
     *,
     parallelism: int = -1,
+    output_arrow_format: bool = False,
 ) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a list of local Python objects.
-
-    The items can either be standalone Python objects or dicts. If they are standalone
-    objects, the items will be wrapped in a dict as `{"item": obj}`.
 
     Examples:
         >>> import ray
         >>> ds = ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        MaterializedDatastream(num_blocks=5, num_rows=5, schema={item: int64})
+        MaterializedDatastream(num_blocks=5, num_rows=5, schema=<class 'int'>)
         >>> ds.take(2) # doctest: +SKIP
-        [{"item": 1}, {"item": 2}]
+        [1, 2]
 
     Args:
         items: List of local Python objects.
         parallelism: The amount of parallelism to use for the datastream.
             Parallelism may be limited by the number of items.
+        output_arrow_format: If True, always return data in Arrow format, raising an
+            error if this is not possible. Defaults to False.
 
     Returns:
         MaterializedDatastream holding the items.
     """
+    ctx = ray.data.DatasetContext.get_current()
+    if ctx.strict_mode:
+        output_arrow_format = True
+
     import builtins
 
     if parallelism == 0:
@@ -152,14 +156,26 @@ def from_items(
     metadata: List[BlockMetadata] = []
     for i in builtins.range(detected_parallelism):
         stats = BlockExecStats.builder()
-        builder = PandasBlockBuilder()  # support python objects
+        if output_arrow_format:
+            builder = PandasBlockBuilder()  # support python objects
+        else:
+            builder = DelegatingBlockBuilder()
         # Evenly distribute remainder across block slices while preserving record order.
         block_start = i * block_size + min(i, remainder)
         block_end = (i + 1) * block_size + min(i + 1, remainder)
         for j in builtins.range(block_start, block_end):
             item = items[j]
-            if not isinstance(item, dict):
-                item = {"item": item}
+            if ctx.strict_mode:
+                if not isinstance(item, dict):
+                    item = {"item": item}
+            else:
+                if output_arrow_format and not isinstance(item, (dict, np.ndarray)):
+                    raise ValueError(
+                        "Arrow block format can only be used if all items are "
+                        "either dicts or Numpy arrays. Received data of type: "
+                        f"{type(items[j])}. Set `output_arrow_format` to "
+                        "False to not use Arrow blocks."
+                    )
             builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
