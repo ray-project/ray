@@ -229,7 +229,8 @@ class TfLSTMEncoder(TfModel, Encoder):
 
         # States are batch-first when coming in. Make them layers-first.
         states_in = tree.map_structure(
-            lambda s: tf.transpose(s, perm=[1, 0, 2]), inputs[STATE_IN],
+            lambda s: tf.transpose(s, perm=[1, 0, 2]),
+            inputs[STATE_IN],
         )
 
         states_out_h = []
