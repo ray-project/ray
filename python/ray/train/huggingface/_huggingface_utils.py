@@ -84,7 +84,7 @@ def process_dataset_for_hf(dataset: DataIterator) -> "IterableDataset":
     ).with_format("torch")
 
     try:
-        dataset_length = dataset._base_dataset.count()
+        dataset_length = dataset._base_datastream.count()
     except (ValueError, AttributeError):
         # pipeline case
         dataset_length = None
