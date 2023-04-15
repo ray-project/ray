@@ -104,18 +104,36 @@ def test_strict_default_batch_format(ray_start_regular_shared):
 
 def test_strict_tensor_support(ray_start_regular_shared):
     ds = ray.data.from_items([np.ones(10), np.ones(10)])
-    assert ds.take()[0] == {"item": 1.0}
+    assert np.array_equal(ds.take()[0]["item"], np.ones(10))
 
     ds = ds.map(lambda x: {"item": x["item"] * 2})
-    assert ds.take()[0] == {"item": 2.0}
+    assert np.array_equal(ds.take()[0]["item"], 2 * np.ones(10))
 
     ds = ds.map_batches(lambda x: {"item": x["item"] * 2})
-    assert ds.take()[0] == {"item": 4.0}
+    assert np.array_equal(ds.take()[0]["item"], 4 * np.ones(10))
 
 
 def test_strict_object_support(ray_start_regular_shared):
     ds = ray.data.from_items([{"x": 2}, {"x": object()}])
     ds.map_batches(lambda x: x, batch_format="numpy").materialize()
+
+
+def test_strict_schema(ray_start_regular_shared):
+    import pyarrow
+    from ray.data._internal.pandas_block import PandasBlockSchema
+
+    ds = ray.data.from_items([{"x": 2}])
+    schema = ds.schema()
+    assert isinstance(schema.base_schema, pyarrow.lib.Schema)
+
+    ds = ray.data.from_numpy(np.ones((100, 10)))
+    schema = ds.schema()
+    assert isinstance(schema.base_schema, pyarrow.lib.Schema)
+    assert str(schema) == "Schema(['data'])"
+
+    schema = ds.map_batches(lambda x: x, batch_format="pandas").schema()
+    assert str(schema) == "Schema(['data'])"
+    assert isinstance(schema.base_schema, PandasBlockSchema)
 
 
 if __name__ == "__main__":

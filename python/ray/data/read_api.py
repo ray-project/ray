@@ -18,7 +18,7 @@ import ray
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.pandas_block import PandasBlockBuilder
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.from_arrow_operator import (
     FromArrowRefs,
@@ -157,8 +157,12 @@ def from_items(
     metadata: List[BlockMetadata] = []
     for i in builtins.range(detected_parallelism):
         stats = BlockExecStats.builder()
-        if output_arrow_format:
-            builder = PandasBlockBuilder()  # support python objects
+        if ctx.strict_mode:
+            # In strict mode, we will fallback from Arrow -> Pandas automatically in
+            # the delegating block builder, and never use simple blocks.
+            builder = DelegatingBlockBuilder()
+        elif output_arrow_format:
+            builder = ArrowBlockBuilder()
         else:
             builder = DelegatingBlockBuilder()
         # Evenly distribute remainder across block slices while preserving record order.

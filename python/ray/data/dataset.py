@@ -2395,7 +2395,12 @@ class Datastream(Generic[T]):
             The Python type or Arrow schema of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        return self._plan.schema(fetch_if_missing=fetch_if_missing)
+        ctx = DataContext.get_current()
+        base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
+        if ctx.strict_mode:
+            return Schema(base_schema)
+        else:
+            return base_schema
 
     def num_blocks(self) -> int:
         """Return the number of blocks of this datastream.
@@ -4655,6 +4660,28 @@ class MaterializedDatastream(Datastream, Generic[T]):
     """
 
     pass
+
+
+@PublicAPI(stability="beta")
+class Schema:
+    """Datastream schema.
+
+    Attributes:
+        base_schema: The underlying Arrow or Pandas schema.
+    """
+
+    def __init__(self, base_schema: Union["pyarrow.lib.Schema", "PandasBlockSchema"]):
+        self.base_schema = base_schema
+
+    def names(self) -> List[str]:
+        """Lists the columns of this Datastream."""
+        return self.base_schema.names
+
+    def __str__(self):
+        return f"Schema({str(self.names())})"
+
+    def __repr__(self):
+        return str(self)
 
 
 def _get_size_bytes(block: Block) -> int:
