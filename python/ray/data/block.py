@@ -394,9 +394,9 @@ class BlockAccessor(Generic[T]):
             ctx = ray.data.DatasetContext.get_current()
             if ctx.strict_mode:
                 raise ValueError(
-                    "Column-less datasets are not supported in strict mode. Return "
-                    "a dict of field -> batch, e.g., `{'data': batch}` instead "
-                    "of `batch`."
+                    f"Error validating {batch}: Standalone numpy arrays are not "
+                    "allowed in strict mode. Return a dict of field -> array, "
+                    "e.g., `{'data': array}` instead of `array`."
                 )
 
             return ArrowBlockAccessor.numpy_to_block(batch)
