@@ -4667,12 +4667,14 @@ class Schema:
     """Datastream schema.
 
     Attributes:
+        names: List of column names of this Datastream.
         base_schema: The underlying Arrow or Pandas schema.
     """
 
     def __init__(self, base_schema: Union["pyarrow.lib.Schema", "PandasBlockSchema"]):
         self.base_schema = base_schema
 
+    @property
     def names(self) -> List[str]:
         """Lists the columns of this Datastream."""
         return self.base_schema.names
