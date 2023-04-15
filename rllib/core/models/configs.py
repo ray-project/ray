@@ -656,8 +656,9 @@ class LSTMEncoderConfig(ModelConfig):
         # (1, B, 64) for each c- and h-states.
 
     Attributes:
-        input_dims: The
-        hidden_dim: The size of the hidden internal state of the LSTM layer(s).
+        input_dims: A 1D tensor indicating the input dimension, e.g. `[32]`.
+        hidden_dim: The size of the hidden internal states (h- and c-states) of the
+            LSTM layer(s).
         num_lstm_layers: The number of LSTM layers to stack.
         batch_major: Wether the input is batch major (B, T, ..) or
             time major (T, B, ..).
@@ -678,6 +679,17 @@ class LSTMEncoderConfig(ModelConfig):
     use_bias: bool = True
     view_requirements_dict: ViewRequirementsDict = None
     get_tokenizer_config: Callable[[gym.Space, Dict], ModelConfig] = None
+
+    def _validate(self, framework: str = "torch"):
+        """Makes sure that settings are valid."""
+        if self.input_dims is not None and len(self.input_dims) != 1:
+            raise ValueError(
+                f"`input_dims` ({self.input_dims}) of LSTMEncoderConfig must be 1D, "
+                "e.g. `[32]`!"
+            )
+
+        # Call these already here to catch errors early on.
+        get_activation_fn(self.output_activation, framework=framework)
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Encoder:
