@@ -120,13 +120,12 @@ class Sum(_AggregateOnKeyBase):
         alias_name: Optional[KeyFn] = None,
     ):
         self._set_key_fn(on)
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"sum({str(on)})"
 
         null_merge = _null_wrap_merge(ignore_nulls, lambda a1, a2: a1 + a2)
-
-        if alias_name:
-            rs_name = alias_name
-        else:
-            rs_name = f"sum({str(on)})"
 
         super().__init__(
             init=_null_wrap_init(lambda k: 0),
@@ -137,7 +136,7 @@ class Sum(_AggregateOnKeyBase):
                 null_merge,
             ),
             finalize=_null_wrap_finalize(lambda a: a),
-            name=(rs_name),
+            name=(self._rs_name),
         )
 
 
@@ -152,13 +151,12 @@ class Min(_AggregateOnKeyBase):
         alias_name: Optional[KeyFn] = None,
     ):
         self._set_key_fn(on)
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"min({str(on)})"
 
         null_merge = _null_wrap_merge(ignore_nulls, min)
-
-        if alias_name:
-            rs_name = alias_name
-        else:
-            rs_name = f"min({str(on)})"
 
         super().__init__(
             init=_null_wrap_init(lambda k: float("inf")),
@@ -169,7 +167,7 @@ class Min(_AggregateOnKeyBase):
                 null_merge,
             ),
             finalize=_null_wrap_finalize(lambda a: a),
-            name=(rs_name),
+            name=(self._rs_name),
         )
 
 
@@ -184,13 +182,12 @@ class Max(_AggregateOnKeyBase):
         alias_name: Optional[KeyFn] = None,
     ):
         self._set_key_fn(on)
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"max({str(on)})"
 
         null_merge = _null_wrap_merge(ignore_nulls, max)
-
-        if alias_name:
-            rs_name = alias_name
-        else:
-            rs_name = f"max({str(on)})"
 
         super().__init__(
             init=_null_wrap_init(lambda k: float("-inf")),
@@ -201,7 +198,7 @@ class Max(_AggregateOnKeyBase):
                 null_merge,
             ),
             finalize=_null_wrap_finalize(lambda a: a),
-            name=(rs_name),
+            name=(self._rs_name),
         )
 
 
@@ -216,6 +213,10 @@ class Mean(_AggregateOnKeyBase):
         alias_name: Optional[KeyFn] = None,
     ):
         self._set_key_fn(on)
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"mean({str(on)})"
 
         null_merge = _null_wrap_merge(
             ignore_nulls, lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]]
@@ -233,11 +234,6 @@ class Mean(_AggregateOnKeyBase):
                 return None
             return [sum_, count]
 
-        if alias_name:
-            rs_name = alias_name
-        else:
-            rs_name = f"mean({str(on)})"
-
         super().__init__(
             init=_null_wrap_init(lambda k: [0, 0]),
             merge=null_merge,
@@ -247,7 +243,7 @@ class Mean(_AggregateOnKeyBase):
                 null_merge,
             ),
             finalize=_null_wrap_finalize(lambda a: a[0] / a[1]),
-            name=(rs_name),
+            name=(self._rs_name),
         )
 
 
@@ -272,6 +268,10 @@ class Std(_AggregateOnKeyBase):
         alias_name: Optional[KeyFn] = None,
     ):
         self._set_key_fn(on)
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"std({str(on)})"
 
         def merge(a: List[float], b: List[float]):
             # Merges two accumulations into one.
@@ -314,11 +314,6 @@ class Std(_AggregateOnKeyBase):
                 return 0.0
             return math.sqrt(M2 / (count - ddof))
 
-        if alias_name:
-            rs_name = alias_name
-        else:
-            rs_name = f"std({str(on)})"
-
         super().__init__(
             init=_null_wrap_init(lambda k: [0, 0, 0]),
             merge=null_merge,
@@ -328,7 +323,7 @@ class Std(_AggregateOnKeyBase):
                 null_merge,
             ),
             finalize=_null_wrap_finalize(finalize),
-            name=(rs_name),
+            name=(self._rs_name),
         )
 
 
@@ -344,11 +339,10 @@ class AbsMax(_AggregateOnKeyBase):
     ):
         self._set_key_fn(on)
         on_fn = _to_on_fn(on)
-
         if alias_name:
-            rs_name = alias_name
+            self._rs_name = alias_name
         else:
-            rs_name = f"abs_max({str(on)})"
+            self._rs_name = f"abs_max({str(on)})"
 
         super().__init__(
             init=_null_wrap_init(lambda k: 0),
@@ -357,7 +351,7 @@ class AbsMax(_AggregateOnKeyBase):
                 ignore_nulls, on_fn, lambda a, r: max(a, abs(r))
             ),
             finalize=_null_wrap_finalize(lambda a: a),
-            name=(rs_name),
+            name=(self._rs_name),
         )
 
 
@@ -383,6 +377,10 @@ class Quantile(_AggregateOnKeyBase):
     ):
         self._set_key_fn(on)
         self._percent = percent
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"quantile({str(on)})"
 
         def merge(a: List[int], b: List[int]):
             if isinstance(a, List) and isinstance(b, List):
@@ -413,24 +411,19 @@ class Quantile(_AggregateOnKeyBase):
                 ls.append(row.get(on))
             return ls
 
-        if alias_name:
-            rs_name = alias_name
-        else:
-            rs_name = f"quantile({str(on)})"
-
         import math
 
-        def percentile(N, key=lambda x: x):
-            if not N:
+        def percentile(input_values, key=lambda x: x):
+            if not input_values:
                 return None
-            N = sorted(N)
-            k = (len(N) - 1) * self._percent
+            input_values = sorted(input_values)
+            k = (len(input_values) - 1) * self._percent
             f = math.floor(k)
             c = math.ceil(k)
             if f == c:
-                return key(N[int(k)])
-            d0 = key(N[int(f)]) * (c - k)
-            d1 = key(N[int(c)]) * (k - f)
+                return key(input_values[int(k)])
+            d0 = key(input_values[int(f)]) * (c - k)
+            d1 = key(input_values[int(c)]) * (k - f)
             return round(d0 + d1, 5)
 
         super().__init__(
@@ -442,5 +435,5 @@ class Quantile(_AggregateOnKeyBase):
                 null_merge,
             ),
             finalize=_null_wrap_finalize(percentile),
-            name=(rs_name),
+            name=(self._rs_name),
         )
