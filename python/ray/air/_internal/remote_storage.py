@@ -283,10 +283,13 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
             f"Hint: {fs_hint(uri)}"
         )
 
-    _local_path = Path(local_path)
+    _local_path = Path(local_path).resolve()
     exists_before = _local_path.exists()
     if is_directory(uri):
         _local_path.mkdir(parents=True, exist_ok=True)
+    else:
+        _local_path.parent.mkdir(parents=True, exist_ok=True)
+
     try:
         if filelock:
             with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
