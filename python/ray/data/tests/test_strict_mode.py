@@ -50,25 +50,25 @@ def test_strict_map_output(ray_start_regular_shared):
 
     with pytest.raises(ValueError):
         ds.map(lambda x: 0, max_retries=0).materialize()
-    ds.map(lambda x: {"id": 0}, max_retries=0).materialize()
+    ds.map(lambda x: {"id": 0}).materialize()
 
     with pytest.raises(ValueError):
         ds.map_batches(lambda x: np.array([0]), max_retries=0).materialize()
-    ds.map_batches(lambda x: {"id": np.array([0])}, max_retries=0).materialize()
+    ds.map_batches(lambda x: {"id": np.array([0])}).materialize()
 
     with pytest.raises(ValueError):
         ds.map(lambda x: np.ones(10), max_retries=0).materialize()
-    ds.map(lambda x: {"x": np.ones(10)}, max_retries=0).materialize()
+    ds.map(lambda x: {"x": np.ones(10)}).materialize()
 
     with pytest.raises(ValueError):
         ds.map_batches(lambda x: np.ones(10), max_retries=0).materialize()
-    ds.map_batches(lambda x: {"x": np.ones(10)}, max_retries=0).materialize()
+    ds.map_batches(lambda x: {"x": np.ones(10)}).materialize()
 
     with pytest.raises(ValueError):
         ds.map_batches(lambda x: object(), max_retries=0).materialize()
     with pytest.raises(ValueError):
         ds.map_batches(lambda x: {"x": object()}, max_retries=0).materialize()
-    ds.map_batches(lambda x: {"x": np.array([object()])}, max_retries=0).materialize()
+    ds.map_batches(lambda x: {"x": np.array([object()])}).materialize()
 
 
 def test_strict_default_batch_format(ray_start_regular_shared):
