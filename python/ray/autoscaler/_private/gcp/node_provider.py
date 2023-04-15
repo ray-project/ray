@@ -1,5 +1,6 @@
 import logging
 import time
+import concurrent.futures
 from functools import wraps
 from threading import RLock
 from typing import Dict, List, Tuple
@@ -182,6 +183,7 @@ class GCPNodeProvider(NodeProvider):
     @_retry
     def terminate_node(self, node_id: str):
         with self.lock:
+            logger.info("NodeProvider: {}: Terminating node".format(node_id))
             resource = self._get_resource_depending_on_node_name(node_id)
             try:
                 result = resource.delete_instance(
@@ -196,6 +198,15 @@ class GCPNodeProvider(NodeProvider):
                 else:
                     raise http_error from None
             return result
+    
+    def terminate_nodes(self, node_ids: List[str]):
+        if not node_ids:
+            return None
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            _ = executor.map(self.terminate_node, node_ids)
+
+        return None
 
     @_retry
     def _get_node(self, node_id: str) -> GCPNode:
