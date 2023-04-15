@@ -141,11 +141,9 @@ class RAY_EXPORT GcsSyncPublisher {
   Status PublishError(const std::string &key_id, const rpc::ErrorTableData &data);
   Status PublishLogs(const std::string &key_id, const rpc::LogBatch &log_batch);
   Status PublishFunctionKey(const rpc::PythonFunction &python_function);
-  Status PublishWithRetries(grpc::ClientContext *context,
-                            const rpc::GcsPublishRequest &request,
-                            rpc::GcsPublishReply *reply);
 
  private:
+  Status DoPublishWithRetries(const rpc::GcsPublishRequest &request);
   std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;
   std::shared_ptr<grpc::Channel> channel_;
   std::string gcs_address_;

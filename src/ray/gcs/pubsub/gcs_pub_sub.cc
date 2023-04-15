@@ -233,17 +233,21 @@ Status GcsSyncPublisher::Connect() {
 
 constexpr int MAX_GCS_PUBLISH_RETRIES = 60;
 
-Status GcsSyncPublisher::PublishWithRetries(grpc::ClientContext *context,
-                                            const rpc::GcsPublishRequest &request,
-                                            rpc::GcsPublishReply *reply) {
+Status GcsSyncPublisher::DoPublishWithRetries(const rpc::GcsPublishRequest &request) {
+  grpc::ClientContext context;
   int count = MAX_GCS_PUBLISH_RETRIES;
+  rpc::GcsPublishReply reply;
   grpc::Status status;
   while (count > 0) {
-    status = pubsub_stub_->GcsPublish(context, request, reply);
+    status = pubsub_stub_->GcsPublish(&context, request, &reply);
     if (status.error_code() == grpc::StatusCode::OK) {
+      if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
+        return Status::Invalid(reply.status().message());
+      }
       return Status::OK();
     } else if (status.error_code() == grpc::StatusCode::UNAVAILABLE ||
                status.error_code() == grpc::StatusCode::UNKNOWN) {
+      // This is the case in which we will retry
       count -= 1;
       std::this_thread::sleep_for(std::chrono::seconds(1));
       continue;
@@ -256,75 +260,30 @@ Status GcsSyncPublisher::PublishWithRetries(grpc::ClientContext *context,
 
 Status GcsSyncPublisher::PublishError(const std::string &key_id,
                                       const rpc::ErrorTableData &error_info) {
-  grpc::ClientContext context;
-
   rpc::GcsPublishRequest request;
   auto *message = request.add_pub_messages();
   message->set_channel_type(rpc::RAY_ERROR_INFO_CHANNEL);
   message->set_key_id(key_id);
   message->mutable_error_info_message()->MergeFrom(error_info);
-
-  rpc::GcsPublishReply reply;
-
-  Status status = PublishWithRetries(&context, request, &reply);
-
-  if (!status.ok()) {
-    return status;
-  }
-
-  if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
-    return Status::Invalid(reply.status().message());
-  }
-
-  return Status::OK();
+  return DoPublishWithRetries(request);
 }
 
 Status GcsSyncPublisher::PublishLogs(const std::string &key_id,
                                      const rpc::LogBatch &log_batch) {
-  grpc::ClientContext context;
-
   rpc::GcsPublishRequest request;
   auto *message = request.add_pub_messages();
   message->set_channel_type(rpc::RAY_LOG_CHANNEL);
   message->set_key_id(key_id);
   message->mutable_log_batch_message()->MergeFrom(log_batch);
-
-  rpc::GcsPublishReply reply;
-
-  Status status = PublishWithRetries(&context, request, &reply);
-
-  if (!status.ok()) {
-    return status;
-  }
-
-  if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
-    return Status::Invalid(reply.status().message());
-  }
-
-  return Status::OK();
+  return DoPublishWithRetries(request);
 }
 
 Status GcsSyncPublisher::PublishFunctionKey(const rpc::PythonFunction &python_function) {
-  grpc::ClientContext context;
-
   rpc::GcsPublishRequest request;
   auto *message = request.add_pub_messages();
   message->set_channel_type(rpc::RAY_PYTHON_FUNCTION_CHANNEL);
   message->mutable_python_function_message()->MergeFrom(python_function);
-
-  rpc::GcsPublishReply reply;
-
-  Status status = PublishWithRetries(&context, request, &reply);
-
-  if (!status.ok()) {
-    return status;
-  }
-
-  if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
-    return Status::Invalid(reply.status().message());
-  }
-
-  return Status::OK();
+  return DoPublishWithRetries(request);
 }
 
 }  // namespace gcs
