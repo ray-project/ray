@@ -1895,6 +1895,13 @@ py_test(
     srcs = ["core/models/tests/test_mlp_heads.py"]
 )
 
+py_test(
+    name = "test_recurrent_encoders",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_recurrent_encoders.py"]
+)
+
 # Specs
 py_test(
     name = "test_check_specs",
