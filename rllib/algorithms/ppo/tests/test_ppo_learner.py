@@ -92,6 +92,10 @@ class TestPPO(unittest.TestCase):
                 )
 
             policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
+            # We shim'd the loss function of the PolicyRLM class. Always returns
+            # 0.0 b/c losses on Policies are no longer needed with the Learner API
+            # enabled.
+            check(policy_loss, 0.0)
 
             algo_config = config.copy(copy_frozen=False)
             algo_config.training(_enable_learner_api=True)
@@ -111,11 +115,7 @@ class TestPPO(unittest.TestCase):
 
             # load the trainer weights onto the learner_group
             learner_group.set_weights(trainer.get_weights())
-            results = learner_group.update(train_batch.as_multi_agent())
-
-            learner_group_loss = results[ALL_MODULES]["total_loss"]
-
-            check(learner_group_loss, policy_loss)
+            learner_group.update(train_batch.as_multi_agent())
 
 
 if __name__ == "__main__":

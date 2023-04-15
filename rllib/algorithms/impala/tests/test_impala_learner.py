@@ -92,6 +92,10 @@ class TestImpalaLearner(unittest.TestCase):
                 train_batch = convert_to_torch_tensor(SampleBatch(FAKE_BATCH))
 
             policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
+            # We shim'd the loss function of the PolicyRLM class. Always returns
+            # 0.0 b/c losses on Policies are no longer needed with the Learner API
+            # enabled.
+            check(policy_loss, 0.0)
 
             train_batch = SampleBatch(FAKE_BATCH)
             algo_config = config.copy(copy_frozen=False)
@@ -110,11 +114,7 @@ class TestImpalaLearner(unittest.TestCase):
             learner_group_config.num_learner_workers = 0
             learner_group = learner_group_config.build()
             learner_group.set_weights(trainer.get_weights())
-            results = learner_group.update(train_batch.as_multi_agent())
-
-            learner_group_loss = results[ALL_MODULES]["total_loss"]
-
-            check(learner_group_loss, policy_loss)
+            learner_group.update(train_batch.as_multi_agent())
 
 
 if __name__ == "__main__":
