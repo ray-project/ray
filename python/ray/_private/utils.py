@@ -186,7 +186,7 @@ def publish_error_to_driver(
     error_type: str,
     message: str,
     gcs_publisher,
-    job_id: Optional[str] = None,
+    job_id=None,
     num_retries=None,
 ):
     """Push an error message to the driver to be printed in the background.
