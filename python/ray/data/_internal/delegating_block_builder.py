@@ -2,6 +2,7 @@ from typing import Any
 
 import numpy as np
 
+import ray
 from ray.data.block import Block, DataBatch, T, BlockAccessor
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.simple_block import SimpleBlockBuilder
@@ -26,7 +27,12 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
                     check.build()
                     self._builder = ArrowBlockBuilder()
                 except (TypeError, pyarrow.lib.ArrowInvalid):
-                    self._builder = SimpleBlockBuilder()
+                    ctx = ray.data.DatasetContext.get_current()
+                    if ctx.strict_mode:
+                        # Can also handle nested Python objects, which Arrow cannot.
+                        self._builder = PandasBlockBuilder()
+                    else:
+                        self._builder = SimpleBlockBuilder()
             elif isinstance(item, np.ndarray):
                 self._builder = ArrowBlockBuilder()
             elif isinstance(item, PandasRow):

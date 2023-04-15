@@ -70,6 +70,10 @@ def test_strict_map_output(ray_start_regular_shared):
         ds.map_batches(lambda x: {"x": object()}, max_retries=0).materialize()
     ds.map_batches(lambda x: {"x": np.array([object()])}).materialize()
 
+    with pytest.raises(ValueError):
+        ds.map(lambda x: object(), max_retries=0).materialize()
+    ds.map(lambda x: {"x": object()}).materialize()
+
 
 def test_strict_default_batch_format(ray_start_regular_shared):
     ds = ray.data.range(1)
