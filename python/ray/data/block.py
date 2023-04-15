@@ -401,11 +401,19 @@ class BlockAccessor(Generic[T]):
 
             return ArrowBlockAccessor.numpy_to_block(batch)
         elif isinstance(batch, dict):
-            import pandas as pd
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
+            import pyarrow as pa
 
-            # TODO(ekl) once we support Python objects within Arrow blocks, we can
-            # use Arrow in this path as well.
-            return pd.DataFrame(batch)
+            try:
+                return ArrowBlockAccessor.numpy_to_block(
+                    batch, passthrough_arrow_not_implemented_errors=True
+                )
+            except pa.ArrowNotImplementedError:
+                import pandas as pd
+
+                # TODO(ekl) once we support Python objects within Arrow blocks, we
+                # don't need this fallback path.
+                return pd.DataFrame(batch)
         return batch
 
     @staticmethod
@@ -436,9 +444,10 @@ class BlockAccessor(Generic[T]):
             ctx = ray.data.DatasetContext.get_current()
             if ctx.strict_mode:
                 raise ValueError(
-                    "Standalone Python objects are not allowed in strict mode. To "
-                    "use Python objects in a datastream, wrap them in a dict, e.g., "
-                    "return `{'item': obj}` instead of just `obj`."
+                    f"Error validating {block}: Standalone Python objects are not "
+                    "allowed in strict mode. To use Python objects in a datastream, "
+                    "wrap them in a dict of numpy arrays, e.g., "
+                    "return `{'item': np.array(batch)}` instead of just `batch`."
                 )
             record_block_format_usage("simple")
             return SimpleBlockAccessor(block)

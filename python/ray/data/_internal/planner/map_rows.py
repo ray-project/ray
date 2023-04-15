@@ -21,7 +21,15 @@ def generate_map_rows_fn() -> Callable[
         for block in blocks:
             block = BlockAccessor.for_block(block)
             for row in block.iter_rows():
-                output_buffer.add(row_fn(row))
+                item = row_fn(row)
+                if context.strict_mode and not isinstance(item, dict):
+                    raise ValueError(
+                        f"Error validating {item}: Standalone Python objects are not "
+                        "allowed in strict mode. To return Python objects from map(), "
+                        "wrap them in a dict, e.g., "
+                        "return `{'item': item}` instead of just `item`."
+                    )
+                output_buffer.add(item)
                 if output_buffer.has_next():
                     yield output_buffer.next()
         output_buffer.finalize()

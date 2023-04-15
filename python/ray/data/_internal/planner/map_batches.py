@@ -45,7 +45,8 @@ def generate_map_batches_fn(
                 for key, value in batch.items():
                     if not isinstance(value, np.ndarray):
                         raise ValueError(
-                            "The `fn` you passed to `map_batches` returned a "
+                            f"Error validating {batch}: The `fn` you passed to "
+                            "`map_batches` returned a "
                             f"`dict`. `map_batches` expects all `dict` values "
                             f"to be of type `numpy.ndarray`, but the value "
                             f"corresponding to key {key!r} is of type "
