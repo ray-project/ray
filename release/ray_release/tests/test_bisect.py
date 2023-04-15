@@ -32,8 +32,7 @@ def test_bisect():
             "ray_release.scripts.ray_bisect._run_test",
             side_effect=_mock_run_test,
         ):
-            for concurreny in range(1, 4):
-                assert _bisect({}, list(input.keys()), concurreny) == output
+            assert _bisect("test", list(input.keys())) == output
 
 def test_bisect():
     commit_to_test_result = {
