@@ -606,9 +606,11 @@ class Impala(Algorithm):
     def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
+        # Queue of batches to be sent to the Learner.
+        self.batches_to_place_on_learner = []
+
         # Create extra aggregation workers and assign each rollout worker to
         # one of them.
-        self.batches_to_place_on_learner = []
         self.batch_being_built = []
         if self.config.num_aggregation_workers > 0:
             # This spawns `num_aggregation_workers` actors that aggregate
@@ -708,6 +710,8 @@ class Impala(Algorithm):
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         # Concatenate single batches into batches of size `train_batch_size`.
         self.concatenate_batches_and_pre_queue(batches)
+        # Using the Learner API. Call `update()` on our LearnerGroup object with
+        # all collected batches.
         if self.config._enable_learner_api:
             train_results = self.learn_on_processed_samples()
         else:
@@ -920,12 +924,13 @@ class Impala(Algorithm):
         """
         result = {}
         if self.batches_to_place_on_learner:
-            batch = self.batches_to_place_on_learner.pop(0)
+            batches = self.batches_to_place_on_learner
+            self.batches_to_place_on_learner = []
             # If there are no learner workers and learning is directly on the driver
             # Then we can't do async updates, so we need to block.
             blocking = self.config.num_learner_workers == 0
             lg_results = self.learner_group.update(
-                batch,
+                batches,
                 reduce_fn=_reduce_impala_results,
                 block=blocking,
                 num_iters=self.config.num_sgd_iter,

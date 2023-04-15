@@ -144,7 +144,7 @@ class LearnerGroup:
 
     def update(
         self,
-        batch: MultiAgentBatch,
+        batches: List[MultiAgentBatch],
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
@@ -153,10 +153,10 @@ class LearnerGroup:
         ),
         block: bool = True,
     ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
-        """Do one gradient based update to the Learner(s).
+        """Do one or more gradient based updates to the Learner(s) based on given data.
 
         Args:
-            batch: The data to use for the update.
+            batches: The List of data to use for the update(s).
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.
@@ -167,18 +167,20 @@ class LearnerGroup:
                 example for metrics) or be more selective about you want to report back
                 to the algorithm's training_step. If None is passed, the results will
                 not get reduced.
-            block: Whether to block until the update is complete.
+            block: Whether to block until each update is complete.
 
         Returns:
             A list of dictionaries of results from the updates from the Learner(s)
         """
 
         # Construct a multi-agent batch with only the trainable modules.
-        train_batch = {}
-        for module_id in batch.policy_batches.keys():
-            if self._is_module_trainable(module_id, batch):
-                train_batch[module_id] = batch.policy_batches[module_id]
-        train_batch = MultiAgentBatch(train_batch, batch.count)
+        train_batches = []
+        for batch in batches:
+            train_batch = {}
+            for module_id in batch.policy_batches.keys():
+                if self._is_module_trainable(module_id, batch):
+                    train_batch[module_id] = batch.policy_batches[module_id]
+            train_batches.append(MultiAgentBatch(train_batch, batch.count))
 
         if self.is_local:
             if not block:
@@ -192,11 +194,11 @@ class LearnerGroup:
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                     reduce_fn=reduce_fn,
-                )
+                ) for train_batch in train_batches
             ]
         else:
             results = self._distributed_update(
-                train_batch,
+                train_batches,
                 minibatch_size=minibatch_size,
                 num_iters=num_iters,
                 reduce_fn=reduce_fn,
@@ -210,7 +212,7 @@ class LearnerGroup:
 
     def _distributed_update(
         self,
-        batch: MultiAgentBatch,
+        batches: List[MultiAgentBatch],
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
@@ -237,29 +239,30 @@ class LearnerGroup:
             results = self._worker_manager.foreach_actor(
                 [
                     lambda w: w.update(
-                        b,
+                        minibatch,
                         minibatch_size=minibatch_size,
                         num_iters=num_iters,
                         reduce_fn=reduce_fn,
                     )
-                    for b in ShardBatchIterator(batch, len(self._workers))
+                    for batch in batches
+                    for minibatch in ShardBatchIterator(batch, len(self._workers))
                 ]
             )
         else:
-            if batch is not None:
-                self._in_queue.append(batch)
+            if batches is not None:
+                self._in_queue.extend(batches)
             results = self._worker_manager.fetch_ready_async_reqs()
             if self._worker_manager_ready() and self._in_queue:
                 batch = self._in_queue.popleft()
                 self._worker_manager.foreach_actor_async(
                     [
                         lambda w: w.update(
-                            b,
+                            minibatch,
                             minibatch_size=minibatch_size,
                             num_iters=num_iters,
                             reduce_fn=reduce_fn,
                         )
-                        for b in ShardBatchIterator(batch, len(self._workers))
+                        for minibatch in ShardBatchIterator(batch, len(self._workers))
                     ]
                 )
 
