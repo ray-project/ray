@@ -363,19 +363,19 @@ class ActorCriticEncoder(Encoder):
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        if self.config.shared:
-            state_in_spec = self.encoder.input_specs[STATE_IN]
-        else:
-            state_in_spec = {
-                ACTOR: self.actor_encoder.input_specs[STATE_IN],
-                CRITIC: self.critic_encoder.input_specs[STATE_IN],
-            }
+        # if self.config.shared:
+        #     state_in_spec = self.encoder.input_specs[STATE_IN]
+        # else:
+        #     state_in_spec = {
+        #         ACTOR: self.actor_encoder.input_specs[STATE_IN],
+        #         CRITIC: self.critic_encoder.input_specs[STATE_IN],
+        #     }
 
         return SpecDict(
             {
                 SampleBatch.OBS: None,
-                STATE_IN: state_in_spec,
-                SampleBatch.SEQ_LENS: None,
+                # STATE_IN: state_in_spec,
+                # SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -420,9 +420,10 @@ class ActorCriticEncoder(Encoder):
                 }
             )
         else:
-            actor_inputs = NestedDict({**inputs, **{STATE_IN: inputs[STATE_IN][ACTOR]}})
+            actor_inputs = NestedDict({**inputs})
+            # , **{STATE_IN: inputs[STATE_IN][ACTOR]}})
             critic_inputs = NestedDict(
-                {**inputs, **{STATE_IN: inputs[STATE_IN][CRITIC]}}
+                {**inputs}  # , **{STATE_IN: inputs[STATE_IN][CRITIC]}}
             )
             actor_out = self.actor_encoder(actor_inputs, **kwargs)
             critic_out = self.critic_encoder(critic_inputs, **kwargs)
