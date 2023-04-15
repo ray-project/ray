@@ -2184,7 +2184,7 @@ def test_list_get_tasks(shutdown_only):
     def impossible():
         pass
 
-    out = [f.remote() for _ in range(2)]  # noqa
+    out = [f.options(name=f"f_{i}").remote() for i in range(2)]  # noqa
     g_out = g.remote(f.remote())  # noqa
     im = impossible.remote()  # noqa
 
@@ -2251,6 +2251,9 @@ def test_list_get_tasks(shutdown_only):
         tasks = list_tasks(filters=[("job_id", "=", job_id)])
         for task in tasks:
             assert task["job_id"] == job_id
+
+        tasks = list_tasks(filters=[("name", "=", "f_0")])
+        assert len(tasks) == 1
 
         return True
 
@@ -2442,7 +2445,6 @@ def test_list_actor_tasks(shutdown_only):
         for task in tasks:
             assert task["job_id"] == job_id
         for task in tasks:
-            print(task)
             assert task["actor_id"] == actor_id
         # Actor.__init__: 1 finished
         # Actor.call: 1 running, 9 waiting for execution (queued).
@@ -2491,6 +2493,10 @@ def test_list_actor_tasks(shutdown_only):
             )
             == 1
         )
+
+        # Filters with actor id.
+        assert len(list_tasks(filters=[("actor_id", "=", actor_id)])) == 11
+        assert len(list_tasks(filters=[("actor_id", "!=", actor_id)])) == 0
 
         return True
 

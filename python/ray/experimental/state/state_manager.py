@@ -2,7 +2,7 @@ import inspect
 import logging
 from collections import defaultdict
 from functools import wraps
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import grpc
 from grpc.aio._call import UnaryStreamCall
@@ -12,7 +12,7 @@ import ray.dashboard.modules.log.log_consts as log_consts
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.utils import hex_to_binary
-from ray._raylet import JobID
+from ray._raylet import ActorID, JobID, TaskID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoReply,
@@ -47,7 +47,11 @@ from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
 from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
 from ray.dashboard.utils import Dict as Dictionary
-from ray.experimental.state.common import RAY_MAX_LIMIT_FROM_DATA_SOURCE
+from ray.experimental.state.common import (
+    RAY_MAX_LIMIT_FROM_DATA_SOURCE,
+    PredicateType,
+    SupportedFilterType,
+)
 from ray.experimental.state.exception import DataSourceUnavailable
 
 logger = logging.getLogger(__name__)
@@ -237,16 +241,40 @@ class StateDataSourceClient:
         self,
         timeout: int = None,
         limit: int = None,
-        job_id: Optional[str] = None,
-        exclude_driver: bool = True,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+        exclude_driver: bool = False,
     ) -> Optional[GetTaskEventsReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-        if job_id:
-            job_id = JobID(hex_to_binary(job_id)).binary()
-        request = GetTaskEventsRequest(
-            limit=limit, exclude_driver=exclude_driver, job_id=job_id
-        )
+
+        if filters is None:
+            filters = []
+
+        req_filters = GetTaskEventsRequest.Filters()
+        for filter in filters:
+            key, predicate, value = filter
+            if predicate != "=":
+                # We only support EQUAL predicate for source side filtering.
+                continue
+
+            if key == "actor_id":
+                req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
+            elif key == "job_id":
+                req_filters.job_id = JobID(hex_to_binary(value)).binary()
+            elif key == "name":
+                req_filters.name = value
+            elif key == "task_id":
+                req_filters.task_ids.append(TaskID(hex_to_binary(value)).binary())
+            else:
+                continue
+
+            # Remove the filter from the list so that we don't have to
+            # filter it again later.
+            filters.remove(filter)
+
+        req_filters.exclude_driver = exclude_driver
+
+        request = GetTaskEventsRequest(limit=limit, filters=req_filters)
         reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
         return reply
 
