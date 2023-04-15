@@ -29,6 +29,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
+#TODO: reduce to shim, w/o loss/stats/mixins.
 class PPOTfPolicyWithRLModule(
     LearningRateSchedule,
     EntropyCoeffSchedule,
