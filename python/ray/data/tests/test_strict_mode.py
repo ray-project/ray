@@ -74,8 +74,28 @@ def test_strict_map_output(ray_start_regular_shared):
 def test_strict_default_batch_format(ray_start_regular_shared):
     ds = ray.data.range(1)
 
+    @ray.remote
+    class Queue:
+        def __init__(self):
+            self.item = None
+
+        def put(self, item):
+            old = self.item
+            self.item = item
+            return old
+
+    q = Queue.remote()
+
     assert isinstance(next(ds.iter_batches())["id"], np.ndarray)
     assert isinstance(ds.take_batch()["id"], np.ndarray)
+
+    def f(x):
+        ray.get(q.put.remote(x))
+        return x
+
+    ds.map_batches(f).materialize()
+    batch = ray.get(q.put.remote(None))
+    assert isinstance(batch["id"], np.ndarray), batch
 
 
 def test_strict_tensor_support(ray_start_regular_shared):

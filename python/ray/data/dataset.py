@@ -2340,26 +2340,6 @@ class Datastream(Generic[T]):
         for row in self.take(limit):
             print(row)
 
-    @ConsumptionAPI(pattern="Time complexity:")
-    def show_batch(
-        self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
-    ) -> None:
-        """Print a batch of up to the given number of records from the datastream.
-
-        Time complexity: O(limit specified)
-
-        Args:
-            batch_size: The max number of records to return.
-            batch_format: Specify ``"default"`` to use the default block format
-                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
-                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
-                ``"numpy"`` to select ``numpy.ndarray`` for tensor datastreams and
-                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None
-                to return the underlying block exactly as is with no additional
-                formatting. The default is "default".
-        """
-        print(self.take_batch(batch_size, batch_format=batch_format))
-
     @ConsumptionAPI(
         if_more_than_read=True,
         datasource_metadata="row count",
