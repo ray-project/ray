@@ -487,9 +487,7 @@ class RayServeReplica:
     async def reconfigure(self, user_config: Any):
         async with self.rwlock.writer_lock:
             self.user_config = user_config
-            self.version = DeploymentVersion(
-                self.version.code_version, user_config=user_config
-            )
+            self.version.update_user_config(user_config)
             if self.is_function:
                 raise ValueError("deployment_def must be a class to use user_config")
             elif not hasattr(self.callable, RECONFIGURE_METHOD):

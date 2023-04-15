@@ -1053,7 +1053,7 @@ class TestDeployApp:
                 {
                     "name": "f",
                     "autoscaling_config": None,
-                    "user_config": None,
+                    "user_config": {"name": "alice"},
                     "ray_actor_options": {"num_cpus": 0.1},
                 },
             ],
@@ -1061,7 +1061,7 @@ class TestDeployApp:
 
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
         wait_for_condition(deployment_running, timeout=15)
-        pid1 = requests.get("http://localhost:8000/f").text
+        pid1 = int(requests.get("http://localhost:8000/f").text)
 
         if field_to_update == "import_path":
             config_template[
@@ -1088,7 +1088,7 @@ class TestDeployApp:
         # routing ever changes, this test could become mysteriously flaky
         pids = []
         for _ in range(4):
-            pids.append(requests.get("http://localhost:8000/f").text)
+            pids.append(int(requests.get("http://localhost:8000/f").text))
         assert (pid1 in pids) == config_update
 
     def test_deploy_separate_runtime_envs(self, client: ServeControllerClient):

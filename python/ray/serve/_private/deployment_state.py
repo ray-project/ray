@@ -100,7 +100,8 @@ class DeploymentTargetState:
             num_replicas = info.deployment_config.num_replicas
             version = DeploymentVersion(
                 info.version,
-                user_config=info.deployment_config.user_config,
+                deployment_config=info.deployment_config,
+                replica_config=info.replica_config,
             )
 
         return cls(info, num_replicas, version, deleting)
@@ -768,9 +769,7 @@ class DeploymentReplica(VersionedReplica):
         DeploymentReplica instance.
         """
         self._actor.update_user_config(user_config)
-        self._version = DeploymentVersion(
-            self._version.code_version, user_config=user_config
-        )
+        self._version.update_user_config(user_config)
 
     def recover(self):
         """
@@ -1158,6 +1157,23 @@ class DeploymentState:
         target_state = DeploymentTargetState.from_deployment_info(target_info)
         self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
 
+        if self._target_state.version == target_state.version:
+            # Record either num replica or autoscaling config lightweight update
+            if (
+                self._target_state.version.deployment_config.autoscaling_config
+                != target_state.version.deployment_config.autoscaling_config
+            ):
+                record_extra_usage_tag(
+                    TagKey.SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED, "True"
+                )
+            elif (
+                self._target_state.version.deployment_config.num_replicas
+                != target_state.version.deployment_config.num_replicas
+            ):
+                record_extra_usage_tag(
+                    TagKey.SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED, "True"
+                )
+
         self._target_state = target_state
         self._curr_status_info = DeploymentStatusInfo(
             self._name, DeploymentStatus.UPDATING
@@ -1184,6 +1200,8 @@ class DeploymentState:
 
             if (
                 existing_info.deployment_config == deployment_info.deployment_config
+                and existing_info.replica_config.ray_actor_options
+                == deployment_info.replica_config.ray_actor_options
                 and deployment_info.version is not None
                 and existing_info.version == deployment_info.version
             ):
@@ -1247,19 +1265,13 @@ class DeploymentState:
         code_version_changes = 0
         user_config_changes = 0
         for replica in replicas_to_update:
-            # If the code version is a mismatch, we stop the replica. A new one
-            # with the correct version will be started later as part of the
-            # normal scale-up process.
-            if replica.version.code_version != self._target_state.version.code_version:
-                code_version_changes += 1
-                replica.stop()
-                self._replicas.add(ReplicaState.STOPPING, replica)
-                replicas_stopped = True
             # If only the user_config is a mismatch, we update it dynamically
             # without restarting the replica.
-            elif (
+            if (
                 replica.version.user_config_hash
                 != self._target_state.version.user_config_hash
+                and replica.version.hash_excluding_user_config
+                == self._target_state.version.hash_excluding_user_config
             ):
                 user_config_changes += 1
                 replica.update_user_config(self._target_state.version.user_config)
@@ -1268,8 +1280,13 @@ class DeploymentState:
                     "Adding UPDATING to replica_tag: "
                     f"{replica.replica_tag}, deployment_name: {self._name}"
                 )
+            # Otherwise, stop the replica. A new one with the correct version will be
+            # started later as part of the normal scale-up process.
             else:
-                assert False, "Update must be code version or user config."
+                code_version_changes += 1
+                replica.stop()
+                self._replicas.add(ReplicaState.STOPPING, replica)
+                replicas_stopped = True
 
         if code_version_changes > 0:
             logger.info(
@@ -1283,6 +1300,8 @@ class DeploymentState:
                 f"deployment '{self._name}' with outdated "
                 f"user_configs."
             )
+            # Record user config lightweight update
+            record_extra_usage_tag(TagKey.SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED, "True")
 
         return replicas_stopped
 
