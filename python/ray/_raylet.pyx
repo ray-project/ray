@@ -1755,7 +1755,8 @@ cdef class GcsPublisher:
         error_info.set_timestamp(time.time())
 
         with nogil:
-            check_status(self.inner.get().PublishError(c_key_id, error_info, c_num_retries))
+            check_status(
+                self.inner.get().PublishError(c_key_id, error_info, c_num_retries))
 
     def publish_logs(self, log_json):
         cdef:
