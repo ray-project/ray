@@ -1749,6 +1749,7 @@ cdef class GcsPublisher:
         error_info.set_job_id(job_id.binary())
         error_info.set_type(error_type)
         error_info.set_error_message(message)
+        error_info.set_timestamp(time.time())
 
         check_status(self.inner.get().PublishError(key_id, error_info))
 

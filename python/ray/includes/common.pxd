@@ -382,6 +382,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         void set_job_id(const c_string &job_id)
         void set_type(const c_string &type)
         void set_error_message(const c_string &error_message)
+        void set_timestamp(double timestamp)
 
     cdef cppclass CLogBatch "ray::rpc::LogBatch":
         void set_ip(const c_string &ip)
