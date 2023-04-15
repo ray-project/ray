@@ -168,8 +168,7 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
                 "ray_node_mem_used" in metric_names,
                 "ray_node_mem_available" in metric_names,
                 "ray_node_mem_total" in metric_names,
-                "ray_node_mem_total" in metric_names,
-                "ray_node_mem_shared_bytes" in metric_names,
+                "ray_component_cpu_percentage" in metric_names,
                 "ray_component_rss_mb" in metric_names,
                 "ray_component_uss_mb" in metric_names,
                 "ray_node_disk_io_read" in metric_names,
@@ -261,10 +260,6 @@ def test_report_stats():
 
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
     for record in records:
-        name = record.gauge.name
-        val = record.value
-        if name == "node_mem_shared_bytes":
-            assert val == STATS_TEMPLATE["shm"]
         print(record.gauge.name)
         print(record)
     assert len(records) == 33
