@@ -203,14 +203,45 @@ def range(n: int, *, parallelism: int = -1) -> Datastream[TableRow]:
     Returns:
         Datastream producing the integers.
     """
+    ctx = ray.data.DatasetContext.get_current()
+    if ctx.strict_mode:
+        return range_table(n, parallelism=parallelism)
     return read_datasource(
-        RangeDatasource(), parallelism=parallelism, n=n, block_format="arrow"
+        RangeDatasource(), parallelism=parallelism, n=n, block_format="list"
     )
 
 
 @PublicAPI
 def range_table(n: int, *, parallelism: int = -1):
-    raise DeprecationWarning("range_table() is deprecated, use range() instead.")
+    """Create a tabular stream from a range of integers [0..n).
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.range_table(1000) # doctest: +SKIP
+        >>> ds # doctest: +SKIP
+        Datastream(num_blocks=200, num_rows=1000, schema={value: int64})
+        >>> ds.map(lambda r: {"v2": r["value"] * 2}).take(2) # doctest: +SKIP
+        [ArrowRow({'v2': 0}), ArrowRow({'v2': 2})]
+
+    This is similar to range(), but uses Arrow tables to hold the integers
+    in Arrow records. The datastream elements take the form {"value": N}.
+
+    Args:
+        n: The upper bound of the range of integer records.
+        parallelism: The amount of parallelism to use for the datastream.
+            Parallelism may be limited by the number of items.
+
+    Returns:
+        Datastream producing the integers as Arrow records.
+    """
+    ctx = ray.data.DatasetContext.get_current()
+    return read_datasource(
+        RangeDatasource(),
+        parallelism=parallelism,
+        n=n,
+        block_format="arrow",
+        column_name="id" if ctx.strict_mode else "value",
+    )
 
 
 @Deprecated
@@ -231,7 +262,7 @@ def range_tensor(
         Datastream(
             num_blocks=...,
             num_rows=1000,
-            schema={data: numpy.ndarray(shape=(2, 2), dtype=int64)}
+            schema={__value__: numpy.ndarray(shape=(2, 2), dtype=int64)}
         )
         >>> ds.map_batches(lambda arr: arr * 2).take(2) # doctest: +SKIP
         [array([[0, 0],
@@ -241,7 +272,7 @@ def range_tensor(
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
     type. The datastream elements take the form
-    {"data": array(N, shape=shape)}.
+    {"__value__": array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
@@ -252,11 +283,13 @@ def range_tensor(
     Returns:
         Datastream producing the integers as Arrow tensor records.
     """
+    ctx = ray.data.DatasetContext.get_current()
     return read_datasource(
         RangeDatasource(),
         parallelism=parallelism,
         n=n,
         block_format="tensor",
+        column_name="data" if ctx.strict_mode else "__value__",
         tensor_shape=tuple(shape),
     )
 
@@ -1272,6 +1305,7 @@ def read_binary_files(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
+    output_arrow_format: bool = False,
 ) -> Datastream[TableRow]:
     """Create a datastream from binary files of arbitrary contents.
 
@@ -1304,10 +1338,23 @@ def read_binary_files(
             that describes how paths are organized. Defaults to ``None``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        output_arrow_format: If True, returns data in Arrow format, instead of Python
+            list format. Defaults to False.
 
     Returns:
         Datastream producing records read from the specified paths.
     """
+    ctx = ray.data.DatasetContext.get_current()
+    if ctx.strict_mode:
+        output_arrow_format = True
+
+    if not output_arrow_format:
+        logger.warning(
+            "read_binary_files() returns Datastream in Python list format as of Ray "
+            "v2.4. Use read_binary_files(output_arrow_format=True) to return "
+            "Datastream in Arrow format.",
+        )
+
     return read_datasource(
         BinaryDatasource(),
         parallelism=parallelism,
@@ -1320,6 +1367,7 @@ def read_binary_files(
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
+        output_arrow_format=output_arrow_format,
     )
 
 
@@ -1617,9 +1665,13 @@ def from_numpy_refs(
             f"Expected Ray object ref or list of Ray object refs, got {type(ndarray)}"
         )
 
+    ctx = DataContext.get_current()
     ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
 
-    res = [ndarray_to_block_remote.remote(ndarray) for ndarray in ndarrays]
+    res = [
+        ndarray_to_block_remote.remote(ndarray, strict_mode=ctx.strict_mode)
+        for ndarray in ndarrays
+    ]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
 

@@ -443,11 +443,14 @@ def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
     )
 
 
-def ndarray_to_block(ndarray: np.ndarray) -> "Block[np.ndarray]":
+def ndarray_to_block(ndarray: np.ndarray, strict_mode: bool) -> "Block[np.ndarray]":
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()
-    block = BlockAccessor.batch_to_block({"data": ndarray})
+    if strict_mode:
+        block = BlockAccessor.batch_to_block({"data": ndarray})
+    else:
+        block = BlockAccessor.batch_to_block(ndarray)
     metadata = BlockAccessor.for_block(block).get_metadata(
         input_files=None, exec_stats=stats.build()
     )

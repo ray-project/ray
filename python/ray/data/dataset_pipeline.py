@@ -1081,7 +1081,7 @@ class DatasetPipeline(Generic[T]):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: Optional[str] = "pandas",
+        batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -1089,6 +1089,7 @@ class DatasetPipeline(Generic[T]):
         """Call
         :py:meth:`Datastream.iter_tf_batches <ray.data.Datastream.iter_tf_batches>`
         over the stream of output batches from the pipeline."""
+        batch_format = apply_strict_mode_batch_format(batch_format)
         return DataIterator.iter_tf_batches(
             self,
             prefetch_blocks=prefetch_blocks,

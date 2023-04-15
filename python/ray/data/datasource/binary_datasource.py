@@ -43,13 +43,20 @@ class BinaryDatasource(FileBasedDatasource):
         else:
             data = f.readall()
 
-        builder = ArrowBlockBuilder()
-        if include_paths:
-            item = {self._COLUMN_NAME: data, "path": path}
+        output_arrow_format = reader_args.pop("output_arrow_format", False)
+        if output_arrow_format:
+            builder = ArrowBlockBuilder()
+            if include_paths:
+                item = {self._COLUMN_NAME: data, "path": path}
+            else:
+                item = {self._COLUMN_NAME: data}
+            builder.add(item)
+            return builder.build()
         else:
-            item = {self._COLUMN_NAME: data}
-        builder.add(item)
-        return builder.build()
+            if include_paths:
+                return [(path, data)]
+            else:
+                return [data]
 
     def _convert_block_to_tabular_block(
         self,
