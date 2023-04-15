@@ -88,11 +88,19 @@ class ExperimentAnalysis:
         # Deprecate: Raise in 2.6, remove in 2.7
         sync_config: Optional[SyncConfig] = None,
     ):
+        self._local_experiment_path = None
+        self._remote_experiment_path = None
+
         # A temp directory to store downloaded checkpoint files if
         # they are pulled from a remote `experiment_checkpoint_path`.
         self._temp_local_experiment_path = tempfile.TemporaryDirectory(
             prefix="experiment_analysis_"
-        )
+        ).name
+
+        if not is_local_path(experiment_checkpoint_path):
+            self._remote_experiment_path = experiment_checkpoint_path
+            self._local_experiment_path = self._temp_local_experiment_path
+            os.makedirs(self._temp_local_experiment_path, exist_ok=True)
 
         # Load the experiment checkpoints and their parent paths.
         # This is important for when experiment folders have been
@@ -117,7 +125,18 @@ class ExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        self._local_experiment_path = self._checkpoints_and_paths[0][1]
+        # TODO(justinvyu): Clean this up
+        if not self._local_experiment_path:
+            self._local_experiment_path = self._checkpoints_and_paths[0][1]
+
+        if sync_config and sync_config.upload_dir:
+            remote_storage_path = sync_config.upload_dir
+
+        if not self._remote_experiment_path:
+            self._remote_experiment_path = str(
+                URI(remote_storage_path) / Path(self._local_experiment_path).name
+            )
+
         if not pd:
             logger.warning(
                 "pandas not installed. Run `pip install pandas` for "
@@ -126,18 +145,13 @@ class ExperimentAnalysis:
         else:
             self.fetch_trial_dataframes()
 
-        if sync_config and sync_config.upload_dir:
-            remote_storage_path = sync_config.upload_dir
-
-        self._remote_storage_path = remote_storage_path
-
     @property
     def _local_path(self) -> str:
         return str(self._local_experiment_path)
 
     @property
-    def _remote_path(self) -> Optional[str]:
-        return self._parse_cloud_path(self._local_path)
+    def _remote_path(self) -> str:
+        return str(self._remote_experiment_path)
 
     @property
     def experiment_path(self) -> str:
@@ -153,11 +167,11 @@ class ExperimentAnalysis:
 
     def _parse_cloud_path(self, local_path: str):
         """Convert local path into cloud storage path"""
-        if not self._remote_storage_path:
+        if not self._remote_experiment_path:
             return None
 
         return local_path.replace(
-            str(Path(self._local_experiment_path).parent), self._remote_storage_path
+            self._local_experiment_path, self._remote_experiment_path
         )
 
     def _load_checkpoints(self, experiment_checkpoint_path: str) -> List[str]:
@@ -212,7 +226,7 @@ class ExperimentAnalysis:
         #   -> bucket/exp_dir/nested/experiment_state.json
         checkpoint_path = Path(URI(experiment_checkpoint_path).path)
 
-        assert checkpoint_path.is_relative_to(experiment_path)
+        assert experiment_path in checkpoint_path.parents
         #   -> nested/experiment_state.json
         relative_path = checkpoint_path.relative_to(experiment_path)
 
@@ -266,29 +280,23 @@ class ExperimentAnalysis:
         """
         if is_directory(experiment_checkpoint_path):
             return self._get_latest_checkpoint_from_dir(experiment_checkpoint_path)
-        else:
-            local_experiment_checkpoint_path = (
-                self._maybe_download_experiment_checkpoint(experiment_checkpoint_path)
+
+        local_experiment_checkpoint_path = self._maybe_download_experiment_checkpoint(
+            experiment_checkpoint_path
+        )
+
+        if (
+            not local_experiment_checkpoint_path
+            or not Path(local_experiment_checkpoint_path).exists()
+        ):
+            raise ValueError(
+                f"The file `{experiment_checkpoint_path}` does not "
+                f"exist and cannot be loaded for experiment analysis."
             )
 
-            if (
-                not local_experiment_checkpoint_path
-                or not local_experiment_checkpoint_path.exists()
-            ):
-                raise ValueError(
-                    f"The file `{experiment_checkpoint_path}` does not "
-                    f"exist and cannot be loaded for experiment analysis."
-                )
+        assert Path(local_experiment_checkpoint_path).is_file()
 
-            assert local_experiment_checkpoint_path.is_file()
-
-            latest_checkpoint = str(local_experiment_checkpoint_path)
-
-        return (
-            latest_checkpoint
-            if isinstance(latest_checkpoint, list)
-            else [latest_checkpoint]
-        )
+        return [local_experiment_checkpoint_path]
 
     @property
     def best_trial(self) -> Trial:
