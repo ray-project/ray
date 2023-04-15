@@ -1744,6 +1744,7 @@ cdef class GcsPublisher:
         cdef:
             CErrorTableData error_info
             int64_t c_num_retries = num_retries if num_retries else -1
+            c_string c_key_id = key_id
 
         if job_id is None:
             job_id = ray.JobID.nil()
@@ -1753,11 +1754,13 @@ cdef class GcsPublisher:
         error_info.set_error_message(message)
         error_info.set_timestamp(time.time())
 
-        check_status(self.inner.get().PublishError(key_id, error_info, c_num_retries))
+        with nogil:
+            check_status(self.inner.get().PublishError(c_key_id, error_info, c_num_retries))
 
     def publish_logs(self, log_json):
         cdef:
             CLogBatch log_batch
+            c_string c_job_id
 
         job_id = log_json.get("job")
         log_batch.set_ip(log_json.get("ip", b""))
@@ -1771,8 +1774,9 @@ cdef class GcsPublisher:
         task_name = log_json.get("task_name")
         log_batch.set_task_name(task_name.encode() if task_name else b"")
 
-        check_status(self.inner.get().PublishLogs(
-            job_id.encode() if job_id else b"", log_batch))
+        c_job_id = job_id.encode() if job_id else b""
+        with nogil:
+            check_status(self.inner.get().PublishLogs(c_job_id, log_batch))
 
     def publish_function_key(self, key: bytes):
         cdef:
@@ -1780,7 +1784,8 @@ cdef class GcsPublisher:
 
         python_function.set_key(key)
 
-        check_status(self.inner.get().PublishFunctionKey(python_function))
+        with nogil:
+            check_status(self.inner.get().PublishFunctionKey(python_function))
 
 
 cdef class CoreWorker:
