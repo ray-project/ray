@@ -208,17 +208,17 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 
                 # Use uvicorn's lifespan handling code to properly deal with
                 # startup and shutdown event.
-                self._serve_asgi_lifespan = LifespanOn(
-                    Config(self._serve_app, lifespan="on")
-                )
+                #self._serve_asgi_lifespan = LifespanOn(
+                #    Config(self._serve_app, lifespan="on")
+                #)
                 # Replace uvicorn logger with our own.
-                self._serve_asgi_lifespan.logger = logger
+                #self._serve_asgi_lifespan.logger = logger
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
-                with LoggingContext(
-                    self._serve_asgi_lifespan.logger, level=logging.WARNING
-                ):
-                    await self._serve_asgi_lifespan.startup()
+                #with LoggingContext(
+                #    self._serve_asgi_lifespan.logger, level=logging.WARNING
+                #):
+                #    await self._serve_asgi_lifespan.startup()
 
             async def __call__(self, request: Request):
                 sender = ASGIHTTPSender()
@@ -234,10 +234,10 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
             async def __del__(self):
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
-                with LoggingContext(
-                    self._serve_asgi_lifespan.logger, level=logging.WARNING
-                ):
-                    await self._serve_asgi_lifespan.shutdown()
+                #with LoggingContext(
+                #    self._serve_asgi_lifespan.logger, level=logging.WARNING
+                #):
+                #    await self._serve_asgi_lifespan.shutdown()
 
                 # Make sure to call user's del method as well.
                 super_cls = super()
