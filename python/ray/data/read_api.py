@@ -222,7 +222,13 @@ def range(n: int, *, parallelism: int = -1) -> Datastream[TableRow]:
     """
     ctx = ray.data.DatasetContext.get_current()
     if ctx.strict_mode:
-        return range_table(n, parallelism=parallelism)
+        return read_datasource(
+            RangeDatasource(),
+            parallelism=parallelism,
+            n=n,
+            block_format="arrow",
+            column_name="id",
+        )
     return read_datasource(
         RangeDatasource(), parallelism=parallelism, n=n, block_format="list"
     )
@@ -252,12 +258,16 @@ def range_table(n: int, *, parallelism: int = -1):
         Datastream producing the integers as Arrow records.
     """
     ctx = ray.data.DatasetContext.get_current()
+    if ctx.strict_mode:
+        raise DeprecationWarning(
+            "In strict mode, use range() instead of range_table()."
+        )
     return read_datasource(
         RangeDatasource(),
         parallelism=parallelism,
         n=n,
         block_format="arrow",
-        column_name="id" if ctx.strict_mode else "value",
+        column_name="value",
     )
 
 
