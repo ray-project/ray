@@ -144,7 +144,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
                 "remaining."
             )
             backoff = True
-        if backoff:
+        if backoff and HTTP_REQUEST_MAX_RETRIES != 0:
             await asyncio.sleep(backoff_time_s)
             # Be careful about the expotential backoff scaling here.
             # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
@@ -511,6 +511,10 @@ Please make sure your http-host and http-port are specified correctly."""
             root_path=self.root_path,
             lifespan="off",
             access_log=False,
+            limit_concurrency=int(
+                os.environ.get("RAY_SERVE_HTTP_PROXY_LIMIT_CONCURRENCY", 0)
+            )
+            or None,
         )
         server = uvicorn.Server(config=config)
         # TODO(edoakes): we need to override install_signal_handlers here
