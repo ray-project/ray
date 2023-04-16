@@ -116,12 +116,12 @@ You probably want some type of Python virtual environment. For example, you can 
 
 .. _python-develop:
 
-Building Ray (Python Only)
+Building Python-Only Components
 --------------------------
 
 .. note:: Unless otherwise stated, directory and file paths are relative to the project root directory.
 
-RLlib, Tune, Autoscaler, and most Python files do not require you to build and compile Ray. Follow these instructions to develop Ray's Python files locally without building Ray.
+RLlib, Tune, Autoscaler, and most Python files do not require you to build and compile Ray. Follow these instructions to develop Ray's Python files locally without building Ray. If you are interested in building Ray as a whole, please refer to the next sessions for preparation and installation in Linux, MacOS or Windows.
 
 1. Make sure you have a clone of Ray's git repository as explained above.
 
@@ -178,10 +178,12 @@ To build Ray on Ubuntu, run the following commands:
   ci/env/install-bazel.sh
 
   # Install node version manager and node 14
-  $(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh)
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+  export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" # This loads nvm
   nvm install 14
   nvm use 14
-
+  # Please refer to https://github.com/nvm-sh/nvm#git-install for detailed instructions on NVM installation.
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 
