@@ -267,6 +267,10 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-sdk",
             "opentelemetry-exporter-otlp",
         ],
+        "bytedance": [
+            "pycryptodome >= 3.5, < 4.0",
+            "bytedance.servicediscovery >= 0.1.0, < 2.0.0",
+        ],
     }
 
     # Ray Serve depends on the Ray dashboard components.

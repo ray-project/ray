@@ -642,6 +642,34 @@ def get_address_for_submission_client(address: Optional[str]) -> str:
         address = os.environ["RAY_ADDRESS"]
 
     if address and "://" in address:
+        if address.startswith("sd://"):
+            psm_address = address[5:]
+            psm_address_parts = psm_address.split(".")
+            if len(psm_address_parts) != 3 and len(psm_address_parts) != 5:
+                raise RuntimeError(f"PSM {psm_address} have wrong format")
+
+            from bytedance import servicediscovery
+
+            available_ray_client = servicediscovery.lookup(
+                psm_address, address_family="v6"
+            )
+            if len(available_ray_client) != 1:
+                raise RuntimeError(
+                    f"PSM {psm_address}"
+                    " have no ray client or have more than on clients"
+                )
+
+            target_address = (
+                "http://["
+                + available_ray_client[0]["Host"]
+                + "]:"
+                + str(available_ray_client[0]["Port"])
+            )
+            logger.info(
+                f"replace ray address with {target_address} get from PSM {psm_address}"
+            )
+            address = target_address
+
         module_string, _ = split_address(address)
         if module_string == "ray":
             logger.debug(
