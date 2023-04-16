@@ -16,6 +16,8 @@ cartpole-appo-w-rl-modules-and-learner:
         enable_connectors: true
 
         _enable_learner_api: true
+        train_batch_size: 2000
+        lr: 0.002
         num_learner_workers: 4
         num_gpus_per_learner_worker: 0
         num_cpus_per_learner_worker: 1
