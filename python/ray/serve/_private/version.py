@@ -14,6 +14,7 @@ class DeploymentVersion:
         code_version: Optional[str],
         deployment_config: Union[DeploymentConfig, bytes],
         replica_config: Union[ReplicaConfig, bytes],
+        user_config=None,
     ):
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(f"code_version must be str, got {type(code_version)}.")
@@ -29,6 +30,9 @@ class DeploymentVersion:
             deployment_config = DeploymentConfig.from_proto(deployment_config)
         if isinstance(replica_config, bytes):
             replica_config = ReplicaConfig.from_proto(replica_config)
+
+        if user_config is not None:
+            deployment_config.user_config = user_config
 
         self.deployment_config: DeploymentConfig = deployment_config
         self.replica_config: ReplicaConfig = replica_config
@@ -59,11 +63,6 @@ class DeploymentVersion:
         if not isinstance(other, DeploymentVersion):
             return False
         return self._hash == other._hash
-
-    def update_user_config(self, user_config):
-        self.user_config = user_config
-        self.deployment_config.user_config = user_config
-        self.compute_hashes()
 
     def to_proto(self) -> bytes:
         # TODO(simon): enable cross language user config

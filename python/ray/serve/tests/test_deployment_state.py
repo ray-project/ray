@@ -124,7 +124,12 @@ class MockReplicaActorWrapper:
 
     def update_user_config(self, user_config: Any):
         self.started = True
-        self.version.update_user_config(user_config)
+        self.version = DeploymentVersion(
+            self.version.code_version,
+            self.version.deployment_config,
+            self.version.replica_config,
+            user_config,
+        )
 
     def recover(self):
         self.recovering = True
