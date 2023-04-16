@@ -52,6 +52,6 @@ if __name__ == "__main__":
         mode="max",
         config=space,
         stop={"training_iteration": 2},
-        local_dir=args.local_dir,
+        storage_path=args.local_dir,
         name="experiment",
     )

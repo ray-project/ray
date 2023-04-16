@@ -11,7 +11,7 @@ import ray
 from ray._private.internal_api import memory_summary
 from ray.data import Dataset
 from ray.data.block import BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.tests.conftest import *  # noqa
@@ -68,7 +68,7 @@ def test_memory_sanity(shutdown_only):
     info = ray.init(num_cpus=1, object_store_memory=500e6)
     ds = ray.data.range(10)
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
-    ds.cache()
+    ds.materialize()
     meminfo = memory_summary(info.address_info["address"], stats_only=True)
 
     # Sanity check spilling is happening as expected.
@@ -100,7 +100,7 @@ class OnesSource(Datasource):
 @pytest.mark.skip(reason="Flaky, see https://github.com/ray-project/ray/issues/24757")
 @pytest.mark.parametrize("lazy_input", [True, False])
 def test_memory_release_pipeline(shutdown_only, lazy_input):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     # Disable stage fusion so we can keep reads and maps from being fused together,
     # since we're trying to test multi-stage memory releasing here.
     context.optimize_fuse_stages = False
@@ -159,7 +159,7 @@ def test_memory_release_pipeline(shutdown_only, lazy_input):
 
 
 def test_memory_release_lazy(shutdown_only):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     # Ensure that stage fusion is enabled.
     context.optimize_fuse_stages = True
     info = ray.init(num_cpus=1, object_store_memory=1500e6)
@@ -170,7 +170,7 @@ def test_memory_release_lazy(shutdown_only):
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
-    ds.cache()
+    ds.materialize()
     meminfo = memory_summary(info.address_info["address"], stats_only=True)
     assert "Spilled" not in meminfo, meminfo
 
@@ -188,7 +188,7 @@ def test_memory_release_lazy_shuffle(shutdown_only):
             # Should get fused into single stage.
             ds = ds.lazy()
             ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
-            ds.random_shuffle().cache()
+            ds.random_shuffle().materialize()
             meminfo = memory_summary(info.address_info["address"], stats_only=True)
             assert "Spilled" not in meminfo, meminfo
             return
@@ -224,12 +224,12 @@ def test_lazy_fanout(shutdown_only, local_path):
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
     # Test content.
-    assert ds2.cache().take() == [
+    assert ds2.materialize().take() == [
         {"one": 3, "two": "a"},
         {"one": 4, "two": "b"},
         {"one": 5, "two": "c"},
     ]
-    assert ds3.cache().take() == [
+    assert ds3.materialize().take() == [
         {"one": 3, "two": "a"},
         {"one": 4, "two": "b"},
         {"one": 5, "two": "c"},
@@ -254,8 +254,8 @@ def test_lazy_fanout(shutdown_only, local_path):
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
     # Test content.
-    assert ds2.cache().take() == list(range(2, 12))
-    assert ds3.cache().take() == list(range(2, 12))
+    assert ds2.materialize().take() == list(range(2, 12))
+    assert ds3.materialize().take() == list(range(2, 12))
     # Test that first map is executed twice.
     assert ray.get(map_counter.get.remote()) == 2 * 10 + 10 + 10
 
@@ -268,10 +268,10 @@ def test_lazy_fanout(shutdown_only, local_path):
     ds1 = ds.map(inc)
     ds2 = ds.map(inc)
     # Test content.
-    assert ds1.cache().take() == list(range(2, 12))
-    assert ds2.cache().take() == list(range(2, 12))
-    # Test that first map is executed twice, because ds1.cache()
-    # clears up the previous snapshot blocks, and ds2.cache()
+    assert ds1.materialize().take() == list(range(2, 12))
+    assert ds2.materialize().take() == list(range(2, 12))
+    # Test that first map is executed twice, because ds1.materialize()
+    # clears up the previous snapshot blocks, and ds2.materialize()
     # has to re-execute ds.map(inc) again.
     assert ray.get(map_counter.get.remote()) == 2 * 10 + 10 + 10
 
@@ -305,19 +305,19 @@ def test_stage_linking(ray_start_regular_shared):
     assert len(ds._plan._stages_before_snapshot) == 0
     _assert_has_stages(ds._plan._stages_after_snapshot, ["Map"])
     assert ds._plan._last_optimized_stages is None
-    ds = ds.cache()
+    ds = ds.materialize()
     _assert_has_stages(ds._plan._stages_before_snapshot, ["Map"])
     assert len(ds._plan._stages_after_snapshot) == 0
     _assert_has_stages(ds._plan._last_optimized_stages, ["ReadRange->Map"])
 
 
 def test_optimize_reorder(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_reorder_stages = True
 
-    ds = ray.data.range(10).randomize_block_order().map_batches(dummy_map).cache()
+    ds = ray.data.range(10).randomize_block_order().map_batches(dummy_map).materialize()
     expect_stages(
         ds,
         2,
@@ -329,7 +329,7 @@ def test_optimize_reorder(ray_start_regular_shared):
         .randomize_block_order()
         .repartition(10)
         .map_batches(dummy_map)
-        .cache()
+        .materialize()
     )
     expect_stages(
         ds2,
@@ -339,7 +339,7 @@ def test_optimize_reorder(ray_start_regular_shared):
 
 
 def test_window_randomize_fusion(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_reorder_stages = True
@@ -351,7 +351,7 @@ def test_window_randomize_fusion(ray_start_regular_shared):
 
 
 def test_write_fusion(ray_start_regular_shared, tmp_path):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
@@ -389,7 +389,7 @@ def test_write_doesnt_reorder_randomize_block(ray_start_regular_shared, tmp_path
 
 
 def test_optimize_fuse(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
 
     def build_pipe():
         pipe = ray.data.range(3).window(blocks_per_window=1).repeat(2)
@@ -456,7 +456,7 @@ def test_optimize_fuse(ray_start_regular_shared):
 
 
 def test_optimize_equivalent_remote_args(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
@@ -506,7 +506,7 @@ def test_optimize_equivalent_remote_args(ray_start_regular_shared):
 def test_optimize_incompatible_stages(shutdown_only):
     ray.shutdown()
     ray.init(num_cpus=2)
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
@@ -548,14 +548,14 @@ def test_optimize_incompatible_stages(shutdown_only):
 def test_optimize_callable_classes(shutdown_only, tmp_path):
     ray.shutdown()
     ray.init(num_cpus=2)
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
 
     def put(x):
         # We only support automatic deref in the legacy backend.
-        if DatasetContext.get_current().new_execution_backend:
+        if DataContext.get_current().new_execution_backend:
             return x
         else:
             return ray.put(x)
@@ -649,7 +649,7 @@ def test_optimize_callable_classes(shutdown_only, tmp_path):
 
 
 def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
@@ -667,15 +667,6 @@ def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
     num_reads = ray.get(counter.get.remote())
     assert num_reads == N, num_reads
 
-    # Re-read off.
-    context.optimize_fuse_read_stages = False
-    ray.get(counter.reset.remote())
-    ds1 = ray.data.read_datasource(source, parallelism=1, paths=path1)
-    pipe = ds1.repeat(N)
-    pipe.take()
-    num_reads = ray.get(counter.get.remote())
-    assert num_reads == 1, num_reads
-
 
 @pytest.mark.skip(reason="reusing base data not enabled")
 @pytest.mark.parametrize("with_shuffle", [True, False])
@@ -683,7 +674,7 @@ def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
 def test_optimize_lazy_reuse_base_data(
     ray_start_regular_shared, local_path, enable_dynamic_splitting, with_shuffle
 ):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.block_splitting_enabled = enable_dynamic_splitting
 
     num_blocks = 4

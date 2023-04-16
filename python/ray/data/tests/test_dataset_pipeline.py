@@ -9,7 +9,7 @@ import numpy as np
 import ray
 from ray.data import dataset
 from ray.data._internal.arrow_block import ArrowRow
-from ray.data.context import DatasetContext, WARN_PREFIX, OK_PREFIX
+from ray.data.context import DataContext, WARN_PREFIX, OK_PREFIX
 from ray.data.dataset import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
 
@@ -46,7 +46,7 @@ def test_warnings(shutdown_only):
         "window to "
         "~1 concurrent tasks per window. To maximize "
         "performance, increase the blocks per window to at least 2. This "
-        "may require increasing the base dataset's parallelism and/or "
+        "may require increasing the base datastream's parallelism and/or "
         "adjusting the windowing parameters."
     ]
     assert dataset.logger.infos == [
@@ -92,7 +92,7 @@ def test_warnings(shutdown_only):
             "per window "
             "to ~1 concurrent tasks per window. To maximize performance, increase "
             "the blocks per window to at least 2. This may require increasing the "
-            "base dataset's parallelism and/or adjusting the windowing parameters.",
+            "base datastream's parallelism and/or adjusting the windowing parameters.",
             f"{WARN_PREFIX} This pipeline's windows are ~0.76MiB in size each and may "
             "not fit "
             "in object store memory without spilling. To improve performance, "
@@ -205,7 +205,7 @@ def test_window_by_bytes(ray_start_regular_shared):
     )
     assert str(pipe) == "DatasetPipeline(num_windows=8, num_stages=1)"
 
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     old = context.optimize_fuse_read_stages
     try:
         context.optimize_fuse_read_stages = False
@@ -272,7 +272,7 @@ def test_cannot_read_twice(ray_start_regular_shared):
 
 
 def test_basic_pipeline(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(10, parallelism=10)
 
@@ -310,7 +310,7 @@ def test_basic_pipeline(ray_start_regular_shared):
 
 
 def test_window(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(10, parallelism=10)
     pipe = ds.window(blocks_per_window=1)
@@ -338,7 +338,7 @@ def test_window(ray_start_regular_shared):
 
 
 def test_repeat(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(5, parallelism=5)
     pipe = ds.window(blocks_per_window=1)
@@ -366,7 +366,7 @@ def test_from_iterable(ray_start_regular_shared):
 
 
 def test_repeat_forever(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(10)
     pipe = ds.repeat()
@@ -391,6 +391,34 @@ def test_iter_batches_basic(ray_start_regular_shared):
     batches = list(pipe.iter_batches(batch_size=None))
     assert len(batches) == 10
     assert all(len(e) == 1 for e in batches)
+
+
+def test_to_torch(ray_start_regular_shared):
+    pipe = ray.data.range(10, parallelism=10).window(blocks_per_window=2).repeat(2)
+    batches = list(pipe.to_torch(batch_size=None))
+    assert len(batches) == 20
+
+
+def test_to_tf(ray_start_regular_shared):
+    ds = ray.data.range_tensor(10, shape=(1, 1, 1), parallelism=10)
+    ds = ds.add_column("label", lambda x: 1)
+    pipe = ds.window(blocks_per_window=2).repeat(2)
+    batches = list(
+        pipe.to_tf(feature_columns="__value__", label_columns="label", batch_size=None)
+    )
+    assert len(batches) == 20
+
+
+def test_iter_torch_batches(ray_start_regular_shared):
+    pipe = ray.data.range(10).repeat(2)
+    batches = list(pipe.iter_torch_batches(batch_size=1))
+    assert len(batches) == 20
+
+
+def test_iter_tf_batches(ray_start_regular_shared):
+    pipe = ray.data.range(10).repeat(2)
+    batches = list(pipe.iter_tf_batches(batch_size=1))
+    assert len(batches) == 20
 
 
 def test_iter_batches_batch_across_windows(ray_start_regular_shared):

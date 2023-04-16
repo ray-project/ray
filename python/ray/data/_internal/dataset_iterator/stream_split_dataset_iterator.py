@@ -14,9 +14,9 @@ from typing import (
 
 import ray
 
-from ray.data.dataset_iterator import DatasetIterator
+from ray.data.dataset_iterator import DataIterator
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.legacy_compat import (
     execute_to_legacy_bundle_iterator,
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 BLOCKED_CLIENT_WARN_TIMEOUT = 30
 
 
-class StreamSplitDatasetIterator(DatasetIterator):
+class StreamSplitDataIterator(DataIterator):
     """Implements a collection of iterators over a shared data stream."""
 
     @staticmethod
@@ -47,12 +47,12 @@ class StreamSplitDatasetIterator(DatasetIterator):
         n: int,
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
-    ) -> List["StreamSplitDatasetIterator"]:
+    ) -> List["StreamSplitDataIterator"]:
         """Create a split iterator from the given base Dataset and options.
 
         See also: `Dataset.streaming_split`.
         """
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
 
         # To avoid deadlock, the concurrency on this actor must be set to at least `n`.
         coord_actor = SplitCoordinator.options(
@@ -62,9 +62,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
             ),
         ).remote(ctx, base_dataset, n, equal, locality_hints)
 
-        return [
-            StreamSplitDatasetIterator(base_dataset, coord_actor, i) for i in range(n)
-        ]
+        return [StreamSplitDataIterator(base_dataset, coord_actor, i) for i in range(n)]
 
     def __init__(
         self,
@@ -79,7 +77,7 @@ class StreamSplitDatasetIterator(DatasetIterator):
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats], bool
     ]:
         def gen_blocks() -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
             cur_epoch = ray.get(
@@ -100,14 +98,14 @@ class StreamSplitDatasetIterator(DatasetIterator):
                     )
                     yield block_ref
 
-        return gen_blocks(), None
+        return gen_blocks(), None, False
 
     def stats(self) -> str:
-        """Implements DatasetIterator."""
+        """Implements DataIterator."""
         return self._base_dataset.stats()
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
-        """Implements DatasetIterator."""
+        """Implements DataIterator."""
         return self._base_dataset.schema()
 
 
@@ -121,7 +119,7 @@ class SplitCoordinator:
 
     def __init__(
         self,
-        ctx: DatasetContext,
+        ctx: DataContext,
         dataset: "Dataset",
         n: int,
         equal: bool,
@@ -132,7 +130,7 @@ class SplitCoordinator:
             ctx.execution_options.locality_with_output = locality_hints
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
 
-        DatasetContext._set_current(ctx)
+        DataContext._set_current(ctx)
         self._base_dataset = dataset
         self._n = n
         self._equal = equal
@@ -227,10 +225,10 @@ class SplitCoordinator:
             if time.time() - start_time > BLOCKED_CLIENT_WARN_TIMEOUT:
                 if log_once(f"stream_split_blocked_{split_idx}_{starting_epoch}"):
                     logger.warning(
-                        f"StreamSplitDatasetIterator(epoch={starting_epoch}, "
+                        f"StreamSplitDataIterator(epoch={starting_epoch}, "
                         f"split={split_idx}) blocked waiting on other clients "
                         f"for more than {BLOCKED_CLIENT_WARN_TIMEOUT}s. All "
-                        "clients must read from the DatasetIterator splits at "
+                        "clients must read from the DataIterator splits at "
                         "the same time. This warning will not be printed again "
                         "for this epoch."
                     )

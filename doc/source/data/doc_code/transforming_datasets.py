@@ -227,8 +227,10 @@ def normalize(arr: np.ndarray) -> np.ndarray:
 
 ds = ds.map_batches(normalize, batch_format="numpy")
 # -> MapBatches(normalize)
-#    +- Dataset(num_blocks=1, num_rows=3,
-#               schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=double>})
+#    +- Dataset(num_blocks=1,
+#               num_rows=3,
+#               schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)}
+#       )
 # __writing_numpy_udfs_end__
 # fmt: on
 
@@ -689,6 +691,6 @@ predicted = ds.map_batches(predict_iris)
 
 # Batch inference processing with Ray actors. Autoscale the actors between 3 and 10.
 predicted = ds.map_batches(
-    IrisInferModel, compute=ActorPoolStrategy(3, 10), batch_size=10)
+    IrisInferModel, compute=ActorPoolStrategy(min_size=3, max_size=10), batch_size=10)
 # __dataset_compute_strategy_end__
 # fmt: on

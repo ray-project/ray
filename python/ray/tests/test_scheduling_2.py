@@ -245,73 +245,10 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
         func.options(scheduling_strategy="XXX").remote()
 
 
-def test_soft_chooses_another_node_if_not_available(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=3)
-    cluster.add_node(num_cpus=3)
-    ray.init(address=cluster.address)
-    cluster.wait_for_nodes()
-
-    @ray.remote
-    def get_node_id_task(sleep_s=0):
-        time.sleep(sleep_s)
-        return ray.get_runtime_context().get_node_id()
-
-    target_node_id = ray.get(get_node_id_task.remote())
-
-    _ = [
-        get_node_id_task.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                target_node_id, soft=False
-            )
-        ).remote(1000)
-        for _ in range(3)
-    ]
-
-    soft_ref = get_node_id_task.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(target_node_id, soft=True)
-    ).remote()
-
-    soft_node_id = ray.get(soft_ref, timeout=3)
-    assert target_node_id != soft_node_id
-
-
-def test_not_soft_queues_if_not_available(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=3)
-    cluster.add_node(num_cpus=3)
-    ray.init(address=cluster.address)
-    cluster.wait_for_nodes()
-
-    @ray.remote
-    def get_node_id_task(sleep_s=0):
-        time.sleep(sleep_s)
-        return ray.get_runtime_context().get_node_id()
-
-    target_node_id = ray.get(get_node_id_task.remote())
-
-    _ = [
-        get_node_id_task.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                target_node_id, soft=False
-            )
-        ).remote(1000)
-        for _ in range(3)
-    ]
-
-    hard_ref = get_node_id_task.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(target_node_id, soft=False)
-    ).remote()
-
-    with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(hard_ref, timeout=3)
-
-
 @pytest.mark.parametrize("connect_to_client", [True, False])
 def test_node_affinity_scheduling_strategy(
     monkeypatch, ray_start_cluster, connect_to_client
 ):
-    monkeypatch.setenv("RAY_num_heartbeats_timeout", "4")
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=8, resources={"head": 1})
     ray.init(address=cluster.address)
@@ -496,6 +433,39 @@ def test_node_affinity_scheduling_strategy(
             ray.get(actor.get_node_id.remote())
 
 
+def test_node_affinity_scheduling_strategy_spill_on_unavailable(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=3)
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=3)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def get_node_id_task(sleep_s=0):
+        time.sleep(sleep_s)
+        return ray.get_runtime_context().get_node_id()
+
+    target_node_id = ray.get(get_node_id_task.remote())
+
+    _ = [
+        get_node_id_task.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                target_node_id, soft=False
+            )
+        ).remote(1000)
+        for _ in range(3)
+    ]
+
+    soft_ref = get_node_id_task.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            target_node_id, soft=True, _spill_on_unavailable=True
+        )
+    ).remote()
+
+    soft_node_id = ray.get(soft_ref, timeout=3)
+    assert target_node_id != soft_node_id
+
+
 @pytest.mark.parametrize("connect_to_client", [True, False])
 def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
@@ -575,7 +545,6 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
 def test_demand_report_for_node_affinity_scheduling_strategy(
     monkeypatch, shutdown_only
 ):
-    monkeypatch.setenv("RAY_num_heartbeats_timeout", "4")
     from ray.cluster_utils import AutoscalingCluster
 
     cluster = AutoscalingCluster(

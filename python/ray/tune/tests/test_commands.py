@@ -71,7 +71,7 @@ def test_ls(start_ray, tmpdir):
         name=experiment_name,
         stop={"training_iteration": 1},
         num_samples=num_samples,
-        local_dir=str(tmpdir),
+        storage_path=str(tmpdir),
     )
 
     columns = ["episode_reward_mean", "training_iteration", "trial_id"]
@@ -111,7 +111,7 @@ def test_ls_with_cfg(start_ray, tmpdir):
         name=experiment_name,
         stop={"training_iteration": 1},
         config={"test_variable": tune.grid_search(list(range(5)))},
-        local_dir=str(tmpdir),
+        storage_path=str(tmpdir),
     )
 
     columns = [CONFIG_PREFIX + "/test_variable", "trial_id"]
@@ -135,7 +135,7 @@ def test_lsx(start_ray, tmpdir):
             name=experiment_name,
             stop={"training_iteration": 1},
             num_samples=1,
-            local_dir=project_path,
+            storage_path=project_path,
         )
 
     limit = 2
