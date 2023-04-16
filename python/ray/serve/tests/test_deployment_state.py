@@ -72,6 +72,7 @@ class MockReplicaActorWrapper:
         self._is_cross_language = False
         self._scheduling_strategy = scheduling_strategy
         self._actor_handle = MockActorHandle()
+        self._tags = ()
 
     @property
     def is_cross_language(self) -> bool:
@@ -169,6 +170,9 @@ class MockReplicaActorWrapper:
     def check_health(self):
         self.health_check_called = True
         return self.healthy
+
+    def get_custom_tags(self):
+        return self._tags
 
 
 def deployment_info(

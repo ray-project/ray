@@ -503,7 +503,7 @@ class HTTPProxyActor:
         if SOCKET_REUSE_PORT_ENABLED:
             set_socket_reuse_port(sock)
         try:
-            sock.bind((self.host, self.port))
+            sock.bind(("127.0.0.1", self.port))
         except OSError:
             # The OS failed to bind a socket to the given host and port.
             raise ValueError(

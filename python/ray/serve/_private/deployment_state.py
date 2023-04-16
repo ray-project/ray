@@ -197,6 +197,8 @@ class ActorReplicaWrapper:
         # Populated in either self.start() or self.recover()
         self._allocated_obj_ref: ObjectRef = None
         self._ready_obj_ref: ObjectRef = None
+        self._tags_obj_ref: ObjectRef = None
+        self.tags = ()
 
         self._actor_resources: Dict[str, float] = None
         self._max_concurrent_queries: int = None
@@ -671,6 +673,15 @@ class ActorReplicaWrapper:
         except ValueError:
             pass
 
+    def get_custom_tags(self):
+        if self._tags_obj_ref is None:
+            self._tags_obj_ref = self._actor_handle.get_custom_tags.remote()
+        else:
+            if self._check_obj_ref_ready(self._tags_obj_ref):
+                self.tags = ray.get(self._tags_obj_ref)
+                self._tags_obj_ref = None
+        return self.tags
+
 
 class DeploymentReplica(VersionedReplica):
     """Manages state transitions for deployment replicas.
@@ -869,7 +880,7 @@ class DeploymentReplica(VersionedReplica):
 
     def update_custom_tags(self) -> bool:
         # return whether the tags updated or not
-        tags = ray.get(self._actor.actor_handle.get_custom_tags.remote())
+        tags = self._actor.get_custom_tags()
         updated = False
         if set(tags).difference(set(self._custom_tags)):
             updated = True
