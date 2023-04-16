@@ -14,11 +14,11 @@ pong-appo:
         framework: torch
         env_config:
             frameskip: 1  # no frameskip
-        vtrace: true
-        use_kl_loss: false
+        vtrace: True
+        use_kl_loss: False
         rollout_fragment_length: 50
         train_batch_size: 750
-        num_workers: 7
+        num_workers: 32
         broadcast_interval: 1
         max_sample_requests_in_flight_per_worker: 1
         num_multi_gpu_tower_stacks: 1
@@ -29,6 +29,5 @@ pong-appo:
         clip_param: 0.3
         num_gpus: 1
         grad_clip: 10
-        _enable_learner_api: true
-        _enable_rl_module_api: true
-        exploration_config: { }
+        model:
+          dim: 42

@@ -616,6 +616,8 @@ class RecurrentEncoderConfig(ModelConfig):
     their outputs as inputs to the respective next layer. The internal state is
     structued as (num_layers, B, hidden-size) for all hidden state components, e.g.
     h- and c-states of the LSTM layer(s) or h-state of the GRU layer(s).
+    For example, the hidden states of an LSTMEncoder with num_layers=2 and hidden_dim=8
+    would be: {"h": (2, B, 8), "c": (2, B, 8)}.
 
     Example:
     .. code-block:: python
@@ -689,10 +691,15 @@ class RecurrentEncoderConfig(ModelConfig):
 
     def _validate(self, framework: str = "torch"):
         """Makes sure that settings are valid."""
+        if self.recurrent_layer_type not in ["gru", "lstm"]:
+            raise ValueError(
+                f"`recurrent_layer_type` ({self.recurrent_layer_type}) of "
+                "RecurrentEncoderConfig must be 'gru' or 'lstm'!"
+            )
         if self.input_dims is not None and len(self.input_dims) != 1:
             raise ValueError(
-                f"`input_dims` ({self.input_dims}) of LSTMEncoderConfig must be 1D, "
-                "e.g. `[32]`!"
+                f"`input_dims` ({self.input_dims}) of RecurrentEncoderConfig must be "
+                "1D, e.g. `[32]`!"
             )
 
         # Call these already here to catch errors early on.

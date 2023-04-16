@@ -13,7 +13,6 @@ from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
     CNNEncoderConfig,
-    LSTMEncoderConfig,
     MLPEncoderConfig,
     RecurrentEncoderConfig,
 )
