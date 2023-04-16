@@ -11,7 +11,7 @@ from ray_release.config import Test
 from ray_release.logger import logger
 
 CRASH_PATTERN_MAX_LENGTH = 4000
-
+TRACEBACK_PATTERN = 'Traceback (most recent call last)'
 
 class DBReporter(Reporter):
     def __init__(self):
@@ -62,12 +62,12 @@ class DBReporter(Reporter):
             if "ERROR" in logs[i]:
                 stack.append(logs[i])
                 next = i + 1
-                if i + 1 < len(logs) and logs[i + 1].startswith("Traceback"):
+                if i + 1 < len(logs) and TRACEBACK_PATTERN in logs[i + 1]:
                     stack.append(logs[i + 1])
                     next = i + 2
             # Or if the line with ERROR does not exist, just search for the line with
             # Traceback (most recent call last):
-            elif logs[i].startswith("Traceback"):
+            elif TRACEBACK_PATTERN in logs[i]:
                 stack.append(logs[i])
                 trace = stacktrace
                 next = i + 1
