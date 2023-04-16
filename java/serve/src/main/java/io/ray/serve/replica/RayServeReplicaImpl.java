@@ -281,7 +281,10 @@ public class RayServeReplicaImpl implements RayServeReplica {
   @Override
   public DeploymentVersion reconfigure(Object userConfig) {
     DeploymentVersion deploymentVersion =
-        new DeploymentVersion(version.getCodeVersion(), userConfig);
+        new DeploymentVersion(
+            version.getCodeVersion(),
+            version.getDeploymentConfig().setUserConfig(userConfig),
+            version.getReplicaConfig());
     version = deploymentVersion;
     if (userConfig == null) {
       return deploymentVersion;

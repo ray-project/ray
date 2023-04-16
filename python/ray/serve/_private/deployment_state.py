@@ -769,11 +769,12 @@ class DeploymentReplica(VersionedReplica):
         DeploymentReplica instance.
         """
         self._actor.update_user_config(user_config)
+        deployment_config = copy(self._version.deployment_config)
+        deployment_config.user_config = user_config
         self._version = DeploymentVersion(
             self._version.code_version,
-            self._version.deployment_config,
+            deployment_config,
             self._version.replica_config,
-            user_config,
         )
 
     def recover(self):

@@ -1,5 +1,6 @@
 import aiorwlock
 import asyncio
+import copy
 from importlib import import_module
 import inspect
 import logging
@@ -485,14 +486,14 @@ class RayServeReplica:
         return result, success
 
     async def reconfigure(self, user_config: Any):
-        print("deployment replica reconfigure")
         async with self.rwlock.writer_lock:
             self.user_config = user_config
+            deployment_config = copy.copy(self.version.deployment_config)
+            deployment_config.user_config = user_config
             self.version = DeploymentVersion(
                 self.version.code_version,
-                self.version.deployment_config,
+                deployment_config,
                 self.version.replica_config,
-                user_config,
             )
             if self.is_function:
                 raise ValueError("deployment_def must be a class to use user_config")

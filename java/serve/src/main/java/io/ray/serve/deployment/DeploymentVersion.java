@@ -1,8 +1,8 @@
 package io.ray.serve.deployment;
 
-import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
-import io.ray.runtime.serializer.MessagePackSerializer;
+import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.config.ReplicaConfig;
 import io.ray.serve.exception.RayServeException;
 import java.io.Serializable;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -16,24 +16,31 @@ public class DeploymentVersion implements Serializable {
 
   private Object userConfig;
 
+  private DeploymentConfig deploymentConfig;
+
+  private ReplicaConfig replicaConfig;
+
   private boolean unversioned;
 
   public DeploymentVersion() {
-    this(null, null);
+    this(null, new DeploymentConfig(), null);
   }
 
   public DeploymentVersion(String codeVersion) {
-    this(codeVersion, null);
+    this(codeVersion, new DeploymentConfig(), null);
   }
 
-  public DeploymentVersion(String codeVersion, Object userConfig) {
+  public DeploymentVersion(
+      String codeVersion, DeploymentConfig deploymentConfig, ReplicaConfig replicaConfig) {
     if (StringUtils.isBlank(codeVersion)) {
       this.unversioned = true;
       this.codeVersion = RandomStringUtils.randomAlphabetic(6);
     } else {
       this.codeVersion = codeVersion;
     }
-    this.userConfig = userConfig;
+    this.deploymentConfig = deploymentConfig;
+    this.replicaConfig = replicaConfig;
+    this.userConfig = deploymentConfig.getUserConfig();
   }
 
   public String getCodeVersion() {
@@ -42,6 +49,14 @@ public class DeploymentVersion implements Serializable {
 
   public Object getUserConfig() {
     return userConfig;
+  }
+
+  public DeploymentConfig getDeploymentConfig() {
+    return deploymentConfig;
+  }
+
+  public ReplicaConfig getReplicaConfig() {
+    return replicaConfig;
   }
 
   public boolean isUnversioned() {
@@ -64,12 +79,8 @@ public class DeploymentVersion implements Serializable {
     }
     return new DeploymentVersion(
         proto.getCodeVersion(),
-        proto.getUserConfig() != null && proto.getUserConfig().size() != 0
-            ? new Object[] {
-              MessagePackSerializer.decode(
-                  proto.getUserConfig().toByteArray(), Object.class) // TODO-xlang
-            }
-            : null);
+        DeploymentConfig.fromProto(proto.getDeploymentConfig()),
+        ReplicaConfig.fromProto(proto.getReplicaConfig()));
   }
 
   public byte[] toProtoBytes() {
@@ -79,10 +90,8 @@ public class DeploymentVersion implements Serializable {
     if (StringUtils.isNotBlank(codeVersion)) {
       proto.setCodeVersion(codeVersion);
     }
-    if (userConfig != null) {
-      proto.setUserConfig(
-          ByteString.copyFrom(MessagePackSerializer.encode(userConfig).getLeft())); // TODO-xlang
-    }
+    proto.setDeploymentConfig(deploymentConfig.toProto());
+    proto.setReplicaConfig(replicaConfig.toProto());
     return proto.build().toByteArray();
   }
 }

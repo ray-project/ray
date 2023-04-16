@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import copy
 import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -124,11 +125,12 @@ class MockReplicaActorWrapper:
 
     def update_user_config(self, user_config: Any):
         self.started = True
+        deployment_config = copy.copy(self.version.deployment_config)
+        deployment_config.user_config = user_config
         self.version = DeploymentVersion(
             self.version.code_version,
-            self.version.deployment_config,
+            deployment_config,
             self.version.replica_config,
-            user_config,
         )
 
     def recover(self):

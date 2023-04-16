@@ -14,7 +14,6 @@ class DeploymentVersion:
         code_version: Optional[str],
         deployment_config: Union[DeploymentConfig, bytes],
         replica_config: Union[ReplicaConfig, bytes],
-        user_config=None,
     ):
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(f"code_version must be str, got {type(code_version)}.")
@@ -31,18 +30,18 @@ class DeploymentVersion:
         if isinstance(replica_config, bytes):
             replica_config = ReplicaConfig.from_proto(replica_config)
 
-        if user_config is not None:
-            deployment_config.user_config = user_config
-
         self.deployment_config: DeploymentConfig = deployment_config
         self.replica_config: ReplicaConfig = replica_config
         self.user_config = self.deployment_config.user_config
         self.compute_hashes()
 
     def compute_hashes(self):
-        serialized_user_config = str.encode(
-            json.dumps(self.user_config or {}, sort_keys=True)
-        )
+        if isinstance(self.user_config, bytes):
+            serialized_user_config = self.user_config
+        else:
+            serialized_user_config = str.encode(
+                json.dumps(self.user_config or {}, sort_keys=True)
+            )
         self.user_config_hash = crc32(serialized_user_config)
         self.hash_excluding_user_config = crc32(
             self.code_version.encode("utf-8")
@@ -68,8 +67,8 @@ class DeploymentVersion:
         # TODO(simon): enable cross language user config
         return DeploymentVersionProto(
             code_version=self.code_version,
-            deployment_config=self.deployment_config.to_proto_bytes(),
-            replica_config=self.replica_config.to_proto_bytes(),
+            deployment_config=self.deployment_config.to_proto(),
+            replica_config=self.replica_config.to_proto(),
         )
 
     def _get_serialized_deployment_config(
