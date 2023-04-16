@@ -94,7 +94,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     # We have received all the http request conent. The next `receive`
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
-    while retries < MAX_REPLICA_FAILURE_RETRIES:
+    while retries < HTTP_REQUEST_MAX_RETRIES:
         assignment_task: asyncio.Task = handle.remote(request, request_routing_tags=tag)
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task],
@@ -503,7 +503,7 @@ class HTTPProxyActor:
         if SOCKET_REUSE_PORT_ENABLED:
             set_socket_reuse_port(sock)
         try:
-            sock.bind(("127.0.0.1", self.port))
+            sock.bind((self.host, self.port))
         except OSError:
             # The OS failed to bind a socket to the given host and port.
             raise ValueError(
