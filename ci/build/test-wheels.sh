@@ -48,9 +48,8 @@ function retry {
 
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
-  PY_WHEEL_VERSIONS=("36" "37" "38" "39")
-  PY_MMS=("3.6.13"
-          "3.7.10"
+  PY_WHEEL_VERSIONS=("37" "38" "39")
+  PY_MMS=("3.7.10"
           "3.8.10"
           "3.9.5")
   wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
@@ -103,9 +102,8 @@ elif [[ "$platform" == "macosx" ]]; then
             "3.10"
             )
   else
-    PY_WHEEL_VERSIONS=("36" "37" "38" "39" "310")
-    PY_MMS=("3.6"
-            "3.7"
+    PY_WHEEL_VERSIONS=("37" "38" "39" "310")
+    PY_MMS=("3.7"
             "3.8"
             "3.9"
             "3.10"
@@ -122,11 +120,19 @@ elif [[ "$platform" == "macosx" ]]; then
     # single path when it's acceptable to move up our lower
     # Python + MacOS compatibility bound.
     if [ "$(uname -m)" = "arm64" ]; then
+      CONDA_ENV_NAME="test-wheels-p$PY_MM"
+
       [ -f "$HOME/.bash_profile" ] && conda init bash
+
       source ~/.bash_profile
+
+      conda create -y -n "$CONDA_ENV_NAME"
+      conda activate "$CONDA_ENV_NAME"
+      conda remove -y python || true
       conda install -y python="${PY_MM}"
-      PYTHON_EXE="/opt/homebrew/opt/miniconda/bin/python"
-      PIP_CMD="/opt/homebrew/opt/miniconda/bin/pip"
+
+      PYTHON_EXE="/opt/homebrew/opt/miniconda/envs/${CONDA_ENV_NAME}/bin/python"
+      PIP_CMD="/opt/homebrew/opt/miniconda/envs/${CONDA_ENV_NAME}/bin/pip"
     else
       PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
       PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"

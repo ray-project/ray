@@ -2,6 +2,7 @@ import itertools
 import math
 import os
 import signal
+import threading
 import time
 from typing import Iterator
 
@@ -13,7 +14,7 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data.block import BlockAccessor
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -144,6 +145,31 @@ def test_callable_classes(shutdown_only):
     assert len(actor_reuse) == 9, actor_reuse
 
 
+def test_concurrent_callable_classes(shutdown_only):
+    """Test that concurrenct actor pool runs user UDF in a separate thread."""
+    ray.init(num_cpus=2)
+    ds = ray.data.range(10, parallelism=10)
+
+    class StatefulFn:
+        def __call__(self, x):
+            thread_id = threading.get_ident()
+            assert threading.current_thread() is not threading.main_thread()
+            return [thread_id]
+
+    thread_ids = ds.map_batches(
+        StatefulFn, compute="actors", max_concurrency=2
+    ).take_all()
+    # Make sure user's UDF is not running concurrently.
+    assert len(set(thread_ids)) == 1
+
+    class ErrorFn:
+        def __call__(self, x):
+            raise ValueError
+
+    with pytest.raises(ValueError):
+        ds.map_batches(ErrorFn, compute="actors", max_concurrency=2).take_all()
+
+
 def test_transform_failure(shutdown_only):
     ray.init(num_cpus=2)
     ds = ray.data.from_items([0, 10], parallelism=2)
@@ -234,8 +260,8 @@ def test_select_columns(ray_start_regular_shared):
         ds3.select_columns(cols=[]).materialize()
 
 
-def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_dataset_context):
-    ctx = DatasetContext.get_current()
+def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_context):
+    ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
     # Test input validation
@@ -307,7 +333,7 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
 
     def put(x):
         # We only support automatic deref in the legacy backend.
-        if DatasetContext.get_current().new_execution_backend:
+        if DataContext.get_current().new_execution_backend:
             return x
         else:
             return ray.put(x)
@@ -588,9 +614,9 @@ def test_map_batches_actors_preserves_order(shutdown_only):
     ],
 )
 def test_map_batches_batch_mutation(
-    ray_start_regular_shared, num_rows, num_blocks, batch_size, restore_dataset_context
+    ray_start_regular_shared, num_rows, num_blocks, batch_size, restore_data_context
 ):
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
     # Test that batch mutation works without encountering a read-only error (e.g. if the
@@ -845,7 +871,7 @@ def test_actor_pool_strategy_apply_interrupt(shutdown_only):
                 return block
 
     # No need to test ActorPoolStrategy in new execution backend.
-    if not DatasetContext.get_current().new_execution_backend:
+    if not DataContext.get_current().new_execution_backend:
         with pytest.raises(ray.exceptions.RayTaskError):
             aps._apply(test_func, {}, blocks, False)
 
@@ -871,7 +897,7 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
     # the hood, so the expectation here applies only to the old backend.
     # TODO(https://github.com/ray-project/ray/issues/31723): we should check
     # the num of workers once we have autoscaling in new execution backend.
-    if not DatasetContext.get_current().new_execution_backend:
+    if not DataContext.get_current().new_execution_backend:
         expected_max_num_workers = math.ceil(
             num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
         )
@@ -897,7 +923,7 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
 
     # TODO(https://github.com/ray-project/ray/issues/31723): implement the feature
     # of capping bundle size by actor pool size, and then re-enable this test.
-    if not DatasetContext.get_current().new_execution_backend:
+    if not DataContext.get_current().new_execution_backend:
         assert f"{max_size}/{max_size} blocks" in ds.stats()
 
     # Check batch size is still respected.

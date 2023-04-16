@@ -13,6 +13,7 @@ from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
     CNNEncoderConfig,
+    LSTMEncoderConfig,
     MLPEncoderConfig,
     RecurrentEncoderConfig,
 )
@@ -28,7 +29,6 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
 
 _, tf, _ = try_import_tf()
-
 
 
 class TfActorCriticEncoder(TfModel, ActorCriticEncoder):
@@ -304,7 +304,7 @@ class TfLSTMEncoder(TfModel, Encoder):
 
         # States are batch-first when coming in. Make them layers-first.
         states_in = tree.map_structure(
-            lambda s: tf.transpose(s, perm=[1, 0] + list(range(2, len(s.shape)))),
+            lambda s: tf.transpose(s, perm=[1, 0, 2]),
             inputs[STATE_IN],
         )
 

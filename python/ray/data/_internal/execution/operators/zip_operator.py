@@ -121,7 +121,7 @@ class ZipOperator(PhysicalOperator):
         total_right_rows = sum(right_block_rows)
         if total_left_rows != total_right_rows:
             raise ValueError(
-                "Cannot zip datasets of different number of rows: "
+                "Cannot zip datastreams of different number of rows: "
                 f"{total_left_rows}, {total_right_rows}"
             )
 

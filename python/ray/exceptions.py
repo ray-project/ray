@@ -458,6 +458,18 @@ class ObjectFetchTimedOutError(ObjectLostError):
 
 
 @DeveloperAPI
+class RpcError(RayError):
+    """Indicates an error in the underlying RPC system."""
+
+    def __init__(self, message, rpc_code=None):
+        self.message = message
+        self.rpc_code = rpc_code
+
+    def __str__(self):
+        return self.message
+
+
+@DeveloperAPI
 class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
     """Indicates that an object has been deleted while there was still a
     reference to it.

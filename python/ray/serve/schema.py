@@ -271,12 +271,10 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
     codepath)
     """
 
-    return DeploymentSchema(
+    schema = DeploymentSchema(
         name=name,
-        num_replicas=info.deployment_config.num_replicas,
         max_concurrent_queries=info.deployment_config.max_concurrent_queries,
         user_config=info.deployment_config.user_config,
-        autoscaling_config=info.deployment_config.autoscaling_config,
         graceful_shutdown_wait_loop_s=(
             info.deployment_config.graceful_shutdown_wait_loop_s
         ),
@@ -286,6 +284,13 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         ray_actor_options=info.replica_config.ray_actor_options,
         is_driver_deployment=info.is_driver_deployment,
     )
+
+    if info.deployment_config.autoscaling_config is not None:
+        schema.autoscaling_config = info.deployment_config.autoscaling_config
+    else:
+        schema.num_replicas = info.deployment_config.num_replicas
+
+    return schema
 
 
 @PublicAPI(stability="beta")

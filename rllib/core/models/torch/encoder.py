@@ -13,6 +13,7 @@ from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
     CNNEncoderConfig,
+    LSTMEncoderConfig,
     MLPEncoderConfig,
     RecurrentEncoderConfig,
 )
@@ -22,7 +23,6 @@ from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.utils import get_activation_fn
-from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -256,13 +256,19 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         return SpecDict(
             {
                 # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TorchTensorSpec("b, t, d", d=self.config.input_dims[0]),
+                SampleBatch.OBS: TorchTensorSpec(
+                    "b, t, d", d=self.config.input_dims[0]
+                ),
                 STATE_IN: {
                     "h": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_lstm_layers,
                     ),
                     "c": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_lstm_layers,
                     ),
                 },
             }
@@ -275,10 +281,14 @@ class TorchLSTMEncoder(TorchModel, Encoder):
                 ENCODER_OUT: TorchTensorSpec("b, t, d", d=self.config.output_dims[0]),
                 STATE_OUT: {
                     "h": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_lstm_layers,
                     ),
                     "c": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_lstm_layers,
                     ),
                 },
             }

@@ -25,8 +25,9 @@ def same_padding(
     filter_size: Tuple[int, int],
     stride_size: Union[int, Tuple[int, int]],
 ) -> (Union[int, Tuple[int, int]], Tuple[int, int]):
-    """Note: Padding is added to match TF conv2d `same` padding. See
-    www.tensorflow.org/versions/r0.12/api_docs/python/nn/convolution
+    """Note: Padding is added to match TF conv2d `same` padding.
+
+    See www.tensorflow.org/versions/r0.12/api_docs/python/nn/convolution
 
     Args:
         in_size: Rows (Height), Column (Width) for input
@@ -68,22 +69,72 @@ def same_padding_transpose_after_stride(
     kernel: Tuple[int, int],
     stride: Union[int, Tuple[int, int]],
 ) -> (Union[int, Tuple[int, int]], Tuple[int, int]):
-    """Padding is added to match TF Conv2DTranspose `same` padding.
+    """Computes padding and output size such that TF Conv2DTranspose `same` is matched.
 
+    Note that when padding="same", TensorFlow's Conv2DTranspose makes sure that
+    0-padding is added to the already strided image in such a way that the output image
+    has the same size as the input image times the stride (and no matter the
+    kernel size).
 
+    For example: Input image is (4, 4, 24) (not yet strided), padding is "same",
+    stride=2, kernel=5.
+
+    First, the input image is strided (with stride=2):
+
+    Input image (4x4):
+    A B C D
+    E F G H
+    I J K L
+    M N O P
+
+    Stride with stride=2 -> (7x7)
+    A 0 B 0 C 0 D
+    0 0 0 0 0 0 0
+    E 0 F 0 G 0 H
+    0 0 0 0 0 0 0
+    I 0 J 0 K 0 L
+    0 0 0 0 0 0 0
+    M 0 N 0 O 0 P
+
+    Then this strided image (strided_size=7x7) is padded (exact padding values will be
+    output by this function):
+
+    padding -> (left=3, right=2, top=3, bottom=2)
+
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 A 0 B 0 C 0 D 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 E 0 F 0 G 0 H 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 I 0 J 0 K 0 L 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 M 0 N 0 O 0 P 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+
+    Then deconvolution with kernel=5 yields an output image of 8x8 (x num output
+    filters).
 
     Args:
-        strided_size: Rows (Height), Column (Width) for input (which is already strided).
-        kernel: Rows (Height), column (Width) for kernel. If int, height == width.
-        stride (Union[int,Tuple[int, int]]): Rows (Height), column (Width)
-            for stride. If int, height == width.
+        strided_size: The size (width x height) of the already strided image.
+        kernel: Either width x height (tuple of ints) or - if a square kernel is used -
+            a single int for both width and height.
+        stride: Either stride width x stride height (tuple of ints) or - if square
+            striding is used - a single int for both width- and height striding.
 
     Returns:
-        padding: For input into torch.nn.ZeroPad2d.
-        output: Output shape after padding and convolution.
+        Tuple consisting of 1) `padding`: A 4-tuple to pad the input after(!) striding.
+        The values are for left, right, top, and bottom padding, individually.
+        This 4-tuple can be used in a torch.nn.ZeroPad2d layer, and 2) the output shape
+        after striding, padding, and the conv transpose layer.
     """
-    s_w, s_h = (stride, stride) if isinstance(stride, int) else stride
+
+    # Solve single int (squared) inputs for kernel and/or stride.
     k_w, k_h = (kernel, kernel) if isinstance(kernel, int) else kernel
+    s_w, s_h = (stride, stride) if isinstance(stride, int) else stride
+
     # Compute the total size of the 0-padding on both axes. If results are odd numbers,
     # the padding on e.g. left and right (or top and bottom) side will have to differ
     # by 1.
@@ -93,17 +144,14 @@ def same_padding_transpose_after_stride(
     pad_bottom = pad_total_h // 2
     pad_top = pad_bottom + (1 if pad_total_h % 2 == 1 else 0)
 
-    # Compute the size of the strided input image.
-    #strided_size = in_size[0] * s_w - (s_w - 1), in_size[1] * s_h - (s_h - 1)
-
     # Compute the output size.
-    output_size = (
+    output_shape = (
         strided_size[0] + pad_total_w - k_w + 1,
         strided_size[1] + pad_total_h - k_h + 1,
     )
 
-    # Return padding and output sizes.
-    return (pad_left, pad_right, pad_top, pad_bottom), output_size
+    # Return padding and output shape.
+    return (pad_left, pad_right, pad_top, pad_bottom), output_shape
 
 
 @DeveloperAPI
