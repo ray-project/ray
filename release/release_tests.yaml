@@ -549,7 +549,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_16_aws.yaml
+    cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
     timeout: 10800
@@ -567,7 +567,7 @@
       frequency: manual
       cluster:
         cluster_env: app_config.yaml
-        cluster_compute: compute_gpu_16_gce.yaml
+        cluster_compute: compute_gpu_4x4_gce.yaml
 
 # Test tiny, medium, and huge input files.
 - name: ray-data-bulk-ingest-file-size-benchmark
