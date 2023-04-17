@@ -56,7 +56,8 @@ const ActorDetailPage = () => {
     <div className={classes.root}>
       <MainNavPageInfo
         pageInfo={{
-          title: `Actor: ${params.id}`,
+          title: `${params.id}`,
+          pageTitle: `${params.id} | Actor`,
           id: "actor-detail",
           path: `/actors/${params.id}`,
         }}

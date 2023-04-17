@@ -54,6 +54,7 @@ const NodeDetailPage = () => {
       <MainNavPageInfo
         pageInfo={{
           title: `Node: ${params.id}`,
+          pageTitle: `${params.id} | Node`,
           id: "node-detail",
           path: `/cluster/nodes/${params.id}`,
         }}
