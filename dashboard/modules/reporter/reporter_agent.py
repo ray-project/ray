@@ -869,7 +869,7 @@ class ReporterAgent(
         if shm_used:
             node_mem_shared = Record(
                 gauge=METRICS_GAUGES["node_mem_shared_bytes"],
-                value=shm_used,
+                value=mem_total,
                 tags={"ip": ip},
             )
             records_reported.append(node_mem_shared)
