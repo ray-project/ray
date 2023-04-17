@@ -23,8 +23,7 @@ import psutil
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.gcs_utils import GcsClient
-from ray._raylet import GcsClientOptions
+from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
 
 resource = None
@@ -608,9 +607,6 @@ def resolve_ip_for_localhost(address: str):
         raise ValueError(f"Malformed address: {address}")
     address_parts = address.split(":")
     if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
-        # Clusters are disabled by default for OSX and Windows.
-        if not ray_constants.ENABLE_RAY_CLUSTER:
-            return address
         # Make sure localhost isn't resolved to the loopback ip
         ip_address = get_node_ip_address()
         return ":".join([ip_address] + address_parts[1:])
@@ -1361,6 +1357,7 @@ def start_raylet(
     plasma_directory: str,
     object_store_memory: int,
     session_name: str,
+    is_head_node: bool,
     min_worker_port: Optional[int] = None,
     max_worker_port: Optional[int] = None,
     worker_port_list: Optional[List[int]] = None,
@@ -1377,7 +1374,6 @@ def start_raylet(
     huge_pages: bool = False,
     fate_share: Optional[bool] = None,
     socket_to_use: Optional[int] = None,
-    start_initial_python_workers_for_first_job: bool = False,
     max_bytes: int = 0,
     backup_count: int = 0,
     ray_debugger_external: bool = False,
@@ -1612,14 +1608,14 @@ def start_raylet(
         f"--session-name={session_name}",
     ]
 
+    if is_head_node:
+        command.append("--head")
+
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
-    if start_initial_python_workers_for_first_job:
-        command.append(
-            "--num_initial_python_workers_for_first_job={}".format(
-                resource_spec.num_cpus
-            )
-        )
+    command.append(
+        "--num_prestart_python_workers={}".format(int(resource_spec.num_cpus))
+    )
     command.append("--agent_command={}".format(subprocess.list2cmdline(agent_command)))
     if huge_pages:
         command.append("--huge_pages")

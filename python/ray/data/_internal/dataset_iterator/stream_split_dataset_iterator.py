@@ -14,23 +14,23 @@ from typing import (
 
 import ray
 
-from ray.data.dataset_iterator import DatasetIterator
+from ray.data.dataset_iterator import DataIterator
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.legacy_compat import (
     execute_to_legacy_bundle_iterator,
 )
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatastreamStats
 from ray.types import ObjectRef
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import pyarrow
-    from ray.data import Dataset
+    from ray.data import Datastream
 
 logger = logging.getLogger(__name__)
 
@@ -38,21 +38,21 @@ logger = logging.getLogger(__name__)
 BLOCKED_CLIENT_WARN_TIMEOUT = 30
 
 
-class StreamSplitDatasetIterator(DatasetIterator):
+class StreamSplitDataIterator(DataIterator):
     """Implements a collection of iterators over a shared data stream."""
 
     @staticmethod
     def create(
-        base_dataset: "Dataset",
+        base_datastream: "Datastream",
         n: int,
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
-    ) -> List["StreamSplitDatasetIterator"]:
-        """Create a split iterator from the given base Dataset and options.
+    ) -> List["StreamSplitDataIterator"]:
+        """Create a split iterator from the given base Datastream and options.
 
-        See also: `Dataset.streaming_split`.
+        See also: `Datastream.streaming_split`.
         """
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
 
         # To avoid deadlock, the concurrency on this actor must be set to at least `n`.
         coord_actor = SplitCoordinator.options(
@@ -60,26 +60,28 @@ class StreamSplitDatasetIterator(DatasetIterator):
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
-        ).remote(ctx, base_dataset, n, equal, locality_hints)
+        ).remote(ctx, base_datastream, n, equal, locality_hints)
 
         return [
-            StreamSplitDatasetIterator(base_dataset, coord_actor, i) for i in range(n)
+            StreamSplitDataIterator(base_datastream, coord_actor, i) for i in range(n)
         ]
 
     def __init__(
         self,
-        base_dataset: "Dataset",
+        base_datastream: "Datastream",
         coord_actor: ray.actor.ActorHandle,
         output_split_idx: int,
     ):
-        self._base_dataset = base_dataset
+        self._base_datastream = base_datastream
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
 
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats], bool
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+        Optional[DatastreamStats],
+        bool,
     ]:
         def gen_blocks() -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
             cur_epoch = ray.get(
@@ -103,12 +105,12 @@ class StreamSplitDatasetIterator(DatasetIterator):
         return gen_blocks(), None, False
 
     def stats(self) -> str:
-        """Implements DatasetIterator."""
-        return self._base_dataset.stats()
+        """Implements DataIterator."""
+        return self._base_datastream.stats()
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
-        """Implements DatasetIterator."""
-        return self._base_dataset.schema()
+        """Implements DataIterator."""
+        return self._base_datastream.schema()
 
 
 @ray.remote(num_cpus=0)
@@ -121,8 +123,8 @@ class SplitCoordinator:
 
     def __init__(
         self,
-        ctx: DatasetContext,
-        dataset: "Dataset",
+        ctx: DataContext,
+        datastream: "Datastream",
         n: int,
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
@@ -132,8 +134,8 @@ class SplitCoordinator:
             ctx.execution_options.locality_with_output = locality_hints
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
 
-        DatasetContext._set_current(ctx)
-        self._base_dataset = dataset
+        DataContext._set_current(ctx)
+        self._base_datastream = datastream
         self._n = n
         self._equal = equal
         self._locality_hints = locality_hints
@@ -153,9 +155,9 @@ class SplitCoordinator:
 
                 output_iterator = execute_to_legacy_bundle_iterator(
                     executor,
-                    dataset._plan,
+                    datastream._plan,
                     True,
-                    dataset._plan._dataset_uuid,
+                    datastream._plan._datastream_uuid,
                     dag_rewrite=add_split_op,
                 )
                 yield output_iterator
@@ -227,10 +229,10 @@ class SplitCoordinator:
             if time.time() - start_time > BLOCKED_CLIENT_WARN_TIMEOUT:
                 if log_once(f"stream_split_blocked_{split_idx}_{starting_epoch}"):
                     logger.warning(
-                        f"StreamSplitDatasetIterator(epoch={starting_epoch}, "
+                        f"StreamSplitDataIterator(epoch={starting_epoch}, "
                         f"split={split_idx}) blocked waiting on other clients "
                         f"for more than {BLOCKED_CLIENT_WARN_TIMEOUT}s. All "
-                        "clients must read from the DatasetIterator splits at "
+                        "clients must read from the DataIterator splits at "
                         "the same time. This warning will not be printed again "
                         "for this epoch."
                     )

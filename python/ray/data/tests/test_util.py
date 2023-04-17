@@ -3,6 +3,7 @@ import ray
 import numpy as np
 
 from ray.data._internal.util import _check_pyarrow_version, _split_list
+from ray.data._internal.usage import _recorded_block_formats
 from ray.data._internal.memory_tracing import (
     trace_allocation,
     trace_deallocation,
@@ -43,7 +44,7 @@ def test_check_pyarrow_version_supported():
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_memory_tracing(enabled):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.trace_allocations = enabled
     ref1 = ray.put(np.zeros(1024 * 1024))
     ref2 = ray.put(np.zeros(1024 * 1024))
@@ -85,6 +86,16 @@ def test_list_splits():
     assert _split_list(list(range(5)), 1) == [[0, 1, 2, 3, 4]]
     assert _split_list(["foo", 1, [0], None], 2) == [["foo", 1], [[0], None]]
     assert _split_list(["foo", 1, [0], None], 3) == [["foo", 1], [[0]], [None]]
+
+
+def test_block_format_usage():
+    assert not _recorded_block_formats
+    ray.data.range(10).show()
+    assert set(_recorded_block_formats.keys()) == {"simple"}
+    ray.data.range_table(10).show()
+    assert set(_recorded_block_formats.keys()) == {"simple", "arrow"}
+    ray.data.range_table(10).map_batches(lambda x: x).show()
+    assert set(_recorded_block_formats.keys()) == {"simple", "arrow", "pandas"}
 
 
 if __name__ == "__main__":
