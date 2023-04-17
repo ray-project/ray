@@ -86,6 +86,11 @@ class StreamingExecutor(Executor, threading.Thread):
         if not isinstance(dag, InputDataBuffer):
             logger.get_logger().info("Executing DAG %s", dag)
             logger.get_logger().info("Execution config: %s", self._options)
+            if not self._options.verbose_progress:
+                logger.get_logger().info(
+                    "Tip: To enable per-operator progress reporting, set "
+                    "RAY_DATA_VERBOSE_PROGRESS=1."
+                )
 
         # Setup the streaming DAG topology and start the runner thread.
         _validate_dag(dag, self._get_or_refresh_resource_limits())
