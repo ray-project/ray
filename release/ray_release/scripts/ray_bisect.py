@@ -32,11 +32,6 @@ def _bisect(test_name: str, commit_list: List[str]) -> str:
             f"{commit_list[0]} to {commit_list[-1]}"
         )
         middle_commit_idx = len(commit_list) // 2
-        logger.info(
-            f"Bisecting between {len(commit_list)} commits: "
-            f"{commit_list[0]} to {commit_list[-1]}"
-        )
-        middle_commit_idx = len(commit_list) // 2
         middle_commit = commit_list[middle_commit_idx]
         is_passing = _run_test(test, middle_commit)
         if is_passing:
@@ -89,12 +84,6 @@ def _obtain_test_result(buildkite_step_key: str) -> bool:
     logger.info(f"Final test outcome: {outcome}")
     return outcome == "passed"
 
-
-def _get_test(test_name: str) -> Test:
-    test_collection = read_and_validate_release_test_collection(
-        os.path.join(os.path.dirname(__file__), "..", "..", "release_tests.yaml")
-    )
-    return [test for test in test_collection if test["name"] == test_name][0]
 
 def _get_test(test_name: str) -> Test:
     test_collection = read_and_validate_release_test_collection(
