@@ -11,7 +11,6 @@ from ray import serve
 logger = logging.getLogger(__file__)
 
 
-
 @serve.deployment
 @serve.multiplex(num_models_per_replicas=3)
 class ModelTest:
@@ -25,11 +24,9 @@ class ModelTest:
 
 handle = serve.run(ModelTest.bind())
 headers = {"ray_serve_request_routing_tag": str(1)}
-resp = requests.get(
-    "http://127.0.0.1:8000/run", headers=headers
-)
-#import pdb; pdb.set_trace()
-#with request:
+resp = requests.get("http://127.0.0.1:8000/run", headers=headers)
+# import pdb; pdb.set_trace()
+# with request:
 #    handle.remote()
 
 
