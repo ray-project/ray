@@ -720,6 +720,61 @@ def test_aggregate_e2e(
     _check_usage_record(["ReadRange", "Aggregate"])
 
 
+def test_aggregate_validate_keys(
+    ray_start_regular_shared,
+    enable_optimizer,
+):
+    ds = ray.data.range(10)
+    # Test case with key=None, i.e. grouped into a single group.
+    assert ds.groupby(key=None).count().take_all() == [(10,)]
+
+    invalid_col_name = "invalid_column"
+    with pytest.raises(
+        ValueError,
+        match=f"String key '{invalid_col_name}' requires datastream format to be "
+        "'arrow' or 'pandas', was 'simple'",
+    ):
+        ds.groupby(invalid_col_name).count()
+
+    ds_named = ray.data.from_items(
+        [
+            {"col1": 1, "col2": "a"},
+            {"col1": 1, "col2": "b"},
+            {"col1": 2, "col2": "c"},
+            {"col1": 3, "col2": "c"},
+        ]
+    )
+
+    ds_groupby_col1 = ds_named.groupby("col1").count()
+    assert ds_groupby_col1.take_all() == [
+        {"col1": 1, "count()": 2},
+        {"col1": 2, "count()": 1},
+        {"col1": 3, "count()": 1},
+    ]
+    ds_groupby_col2 = ds_named.groupby("col2").count()
+    assert ds_groupby_col2.take_all() == [
+        {"col2": "a", "count()": 1},
+        {"col2": "b", "count()": 1},
+        {"col2": "c", "count()": 2},
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match=f"The column '{invalid_col_name}' does not exist in the schema",
+    ):
+        ds_named.groupby(invalid_col_name).count()
+
+    def dummy_sort_fn(x):
+        return x
+
+    with pytest.raises(
+        ValueError,
+        match=f"Callable key '{dummy_sort_fn}' requires datastream format to be "
+        "'simple'",
+    ):
+        ds_named.groupby(dummy_sort_fn).count()
+
+
 def test_zip_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
     read_op1 = Read(ParquetDatasource())
