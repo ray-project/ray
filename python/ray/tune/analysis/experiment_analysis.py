@@ -91,16 +91,18 @@ class ExperimentAnalysis:
         self._local_experiment_path = None
         self._remote_experiment_path = None
 
-        # A temp directory to store downloaded checkpoint files if
-        # they are pulled from a remote `experiment_checkpoint_path`.
-        self._temp_local_experiment_path = tempfile.TemporaryDirectory(
-            prefix="experiment_analysis_"
-        ).name
-
+        # If the user passes in a remote checkpoint path,
+        # Set the remote experiment path to this path, and set
+        # the local experiment path to a temp directory.
         if not is_local_path(experiment_checkpoint_path):
             self._remote_experiment_path = experiment_checkpoint_path
-            self._local_experiment_path = self._temp_local_experiment_path
-            os.makedirs(self._temp_local_experiment_path, exist_ok=True)
+
+            # Create a temp directory to store downloaded checkpoint files if
+            # they are pulled from a remote `experiment_checkpoint_path`.
+            self._local_experiment_path = tempfile.TemporaryDirectory(
+                prefix="experiment_analysis_"
+            ).name
+            os.makedirs(self._local_experiment_path, exist_ok=True)
 
         # Load the experiment checkpoints and their parent paths.
         # This is important for when experiment folders have been
@@ -125,14 +127,14 @@ class ExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        # TODO(justinvyu): Clean this up
-        if not self._local_experiment_path:
-            self._local_experiment_path = self._checkpoints_and_paths[0][1]
-
+        # TODO(ml-team): Remove in 2.7
         if sync_config and sync_config.upload_dir:
             remote_storage_path = sync_config.upload_dir
 
-        if not self._remote_experiment_path:
+        if not self._local_experiment_path:
+            self._local_experiment_path = self._checkpoints_and_paths[0][1]
+
+        if not self._remote_experiment_path and remote_storage_path:
             self._remote_experiment_path = str(
                 URI(remote_storage_path) / Path(self._local_experiment_path).name
             )
@@ -221,6 +223,8 @@ class ExperimentAnalysis:
         if is_local_path(experiment_checkpoint_path):
             return os.path.expanduser(experiment_checkpoint_path)
 
+        assert self._local_path and self._remote_path
+
         experiment_path = Path(URI(self._remote_path).path)
         # s3://bucket/exp_dir/nested/experiment_state.json
         #   -> bucket/exp_dir/nested/experiment_state.json
@@ -231,8 +235,8 @@ class ExperimentAnalysis:
         relative_path = checkpoint_path.relative_to(experiment_path)
 
         # Download to:
-        #   -> {self._temp_local_experiment_path}/nested/experiment_state.json
-        local_path = os.path.join(self._temp_local_experiment_path, relative_path)
+        #   -> {self._local_path}/nested/experiment_state.json
+        local_path = os.path.join(self._local_path, relative_path)
         try:
             download_from_uri(experiment_checkpoint_path, local_path)
         except FileNotFoundError:
