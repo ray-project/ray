@@ -1,29 +1,29 @@
 .. include:: /_includes/data/announcement.rst
 
-.. _datasets:
+.. _data:
 
-============================================
-Ray Datasets: Distributed Data Preprocessing
-============================================
+========================================
+Ray Data: Distributed Data Preprocessing
+========================================
 
-.. _datasets-intro:
+.. _data-intro:
 
-Ray Datasets are the standard way to load and exchange data in Ray libraries and applications.
-They provide basic distributed data transformations such as maps
-(:meth:`map_batches <ray.data.Dataset.map_batches>`),
-global and grouped aggregations (:class:`GroupedData <ray.data.grouped_dataset.GroupedData>`), and
+Ray Data is the standard way to load and exchange data in Ray libraries and applications.
+It provides basic distributed data transformations such as maps
+(:meth:`map_batches <ray.data.Datastream.map_batches>`),
+global and grouped aggregations (:class:`GroupedData <ray.data.grouped_data.GroupedData>`), and
 shuffling operations (:meth:`random_shuffle <ray.data.Dataset.random_shuffle>`,
 :meth:`sort <ray.data.Dataset.sort>`,
 :meth:`repartition <ray.data.Dataset.repartition>`),
 and are compatible with a variety of file formats, data sources, and distributed frameworks.
 
 Here's an overview of the integrations with other processing frameworks, file formats, and supported operations,
-as well as a glimpse at the Ray Datasets API.
+as well as a glimpse at the Ray Data API.
 
 Check the :ref:`Input/Output reference <input-output>` to see if your favorite format
 is already supported.
 
-.. image:: images/dataset.svg
+.. image:: images/datastream.svg
 
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
