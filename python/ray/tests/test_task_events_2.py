@@ -650,6 +650,9 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
                     raise ValueError("Killed by test")
                 else:
                     assert False, f"Test invalid kill options: {fail_kind}"
+            else:
+                # Sleep a bit to wait for death.
+                time.sleep(0.1)
 
     @ray.remote(max_task_retries=0, max_restarts=0)
     class Actor:
@@ -688,7 +691,9 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
         print("All tasks in execution graph are running")
         return True
 
-    wait_for_condition(tasks_in_execution_graph_all_running)
+    wait_for_condition(
+        tasks_in_execution_graph_all_running, timeout=20, retry_interval_ms=2000
+    )
 
     # Starts killing :O
     print("start killing")
