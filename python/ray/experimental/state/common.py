@@ -289,7 +289,8 @@ class GetLogOptions:
     # Should be used only when media_type == stream.
     interval: Optional[float] = None
     # The suffix of the log file if file resolution not through filename directly.
-    suffix: Optional[str] = None
+    # Default to "out".
+    suffix: str = "out"
 
     def __post_init__(self):
         if self.pid:
@@ -320,8 +321,11 @@ class GetLogOptions:
                 "None of actor_id, task_id, pid, or filename is provided. "
                 "At least one of them is required to fetch logs."
             )
-        if self.filename and self.suffix:
-            raise ValueError("suffix should not be provided together with filename.")
+
+        if self.suffix not in ["out", "err"]:
+            raise ValueError(
+                f"Invalid suffix: {self.suffix}. Must be one of 'out' or 'err'."
+            )
 
 
 # See the ActorTableData message in gcs.proto for all potential options that
