@@ -3,10 +3,10 @@ from dataclasses import dataclass
 from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
 
 import ray
-from ray.data.block import Block, BlockMetadata
-from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
+from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
+from ray.data.context import DataContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.dataset_logger import DatastreamLogger
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
@@ -24,7 +24,7 @@ from ray.data._internal.execution.operators.map_operator import (
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
 
-logger = DatasetLogger(__name__)
+logger = DatastreamLogger(__name__)
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
@@ -37,6 +37,7 @@ class ActorPoolMapOperator(MapOperator):
     def __init__(
         self,
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
+        init_fn: Callable[[], None],
         input_op: PhysicalOperator,
         autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
@@ -47,6 +48,7 @@ class ActorPoolMapOperator(MapOperator):
 
         Args:
             transform_fn: The function to apply to each ref bundle input.
+            init_fn: The callable class to instantiate on each actor.
             input_op: Operator generating input data for this op.
             autoscaling_policy: A policy controlling when the actor pool should be
                 scaled up and scaled down.
@@ -54,12 +56,13 @@ class ActorPoolMapOperator(MapOperator):
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
-                The actual rows passed may be less if the dataset is small.
+                The actual rows passed may be less if the datastream is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
             transform_fn, input_op, name, min_rows_per_bundle, ray_remote_args
         )
+        self._init_fn = init_fn
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
 
         # Create autoscaling policy from compute strategy.
@@ -104,8 +107,8 @@ class ActorPoolMapOperator(MapOperator):
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
-        ctx = DatasetContext.get_current()
-        actor = self._cls.remote(ctx, src_fn_name=self.name)
+        ctx = DataContext.get_current()
+        actor = self._cls.remote(ctx, src_fn_name=self.name, init_fn=self._init_fn)
         self._actor_pool.add_pending_actor(actor, actor.get_location.remote())
 
     def _add_bundled_input(self, bundle: RefBundle):
@@ -286,7 +289,7 @@ class ActorPoolMapOperator(MapOperator):
         """Apply defaults to the actor creation remote args."""
         ray_remote_args = ray_remote_args.copy()
         if "scheduling_strategy" not in ray_remote_args:
-            ctx = DatasetContext.get_current()
+            ctx = DataContext.get_current()
             if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
                 ray_remote_args["scheduling_strategy"] = "SPREAD"
             else:
@@ -307,9 +310,14 @@ class ActorPoolMapOperator(MapOperator):
 class _MapWorker:
     """An actor worker for MapOperator."""
 
-    def __init__(self, ctx: DatasetContext, src_fn_name: str):
-        DatasetContext._set_current(ctx)
+    def __init__(
+        self, ctx: DataContext, src_fn_name: str, init_fn: _CallableClassProtocol
+    ):
+        DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
+
+        # Initialize state for this actor.
+        init_fn()
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()

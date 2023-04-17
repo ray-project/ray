@@ -3,9 +3,13 @@ import numpy as np
 
 import ray
 import ray.rllib.algorithms.appo as appo
+from ray.rllib.algorithms.appo.tf.appo_tf_learner import (
+    LEARNER_RESULTS_CURR_KL_COEFF_KEY,
+)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator
 
@@ -36,7 +40,7 @@ FAKE_BATCH = {
 }
 
 
-class TestImpalaTfLearner(unittest.TestCase):
+class TestAPPOTfLearner(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -104,6 +108,44 @@ class TestImpalaTfLearner(unittest.TestCase):
             learner_group_loss = results[ALL_MODULES]["total_loss"]
 
             check(learner_group_loss, policy_loss)
+
+    def test_kl_coeff_changes(self):
+        initial_kl_coeff = 0.01
+        config = (
+            appo.APPOConfig()
+            .environment("CartPole-v1")
+            .rollouts(
+                num_rollout_workers=0,
+                rollout_fragment_length=frag_length,
+            )
+            .resources(num_gpus=0)
+            .training(
+                gamma=0.99,
+                model=dict(
+                    fcnet_hiddens=[10, 10],
+                    fcnet_activation="linear",
+                    vf_share_layers=False,
+                ),
+                _enable_learner_api=True,
+                kl_coeff=initial_kl_coeff,
+            )
+            .rl_module(
+                _enable_rl_module_api=True,
+            )
+            .exploration(exploration_config={})
+        )
+        for _ in framework_iterator(config, "tf2", with_eager_tracing=True):
+            algo = config.build()
+            # Call train while results aren't returned because this is
+            # a asynchronous trainer and results are returned asynchronously.
+            while 1:
+                results = algo.train()
+                if results and "info" in results and LEARNER_INFO in results["info"]:
+                    break
+            curr_kl_coeff = results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
+                LEARNER_STATS_KEY
+            ][LEARNER_RESULTS_CURR_KL_COEFF_KEY]
+            self.assertNotEqual(curr_kl_coeff, initial_kl_coeff)
 
 
 if __name__ == "__main__":

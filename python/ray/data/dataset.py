@@ -48,13 +48,13 @@ from ray.data._internal.planner.flat_map import generate_flat_map_fn
 from ray.data._internal.planner.map_batches import generate_map_batches_fn
 from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
-from ray.data.dataset_iterator import DatasetIterator
+from ray.data.dataset_iterator import DataIterator
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.dataset_iterator.dataset_iterator_impl import (
-    DatasetIteratorImpl,
+    DataIteratorImpl,
 )
 from ray.data._internal.dataset_iterator.stream_split_dataset_iterator import (
-    StreamSplitDatasetIterator,
+    StreamSplitDataIterator,
 )
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -85,7 +85,7 @@ from ray.data._internal.stage_impl import (
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_index, _split_at_indices, _get_num_rows
-from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
+from ray.data._internal.stats import DatastreamStats, DatastreamStatsSummary
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -103,7 +103,7 @@ from ray.data.block import (
     _validate_key_fn,
 )
 from ray.data.context import (
-    DatasetContext,
+    DataContext,
     WARN_PREFIX,
     OK_PREFIX,
     ESTIMATED_SAFE_MEMORY_FRACTION,
@@ -150,7 +150,7 @@ if TYPE_CHECKING:
     import torch.utils.data
 
     from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedDataset
+    from ray.data.grouped_dataset import GroupedData
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
     from tensorflow_metadata.proto.v0 import schema_pb2
@@ -440,8 +440,12 @@ class Datastream(Generic[T]):
             ...     "age": [4, 14, 9]
             ... })
             >>> ds = ray.data.from_pandas(df)
-            >>> ds
-            Datastream(num_blocks=1, num_rows=3, schema={name: object, age: int64})
+            >>> ds  # doctest: +SKIP
+            MaterializedDatastream(
+                num_blocks=1,
+                num_rows=3,
+                schema={name: object, age: int64}
+            )
 
             Call :meth:`.default_batch_format` to determine the default batch
             type.
@@ -1137,8 +1141,8 @@ class Datastream(Generic[T]):
         *,
         equal: bool = False,
         locality_hints: Optional[List["NodeIdStr"]] = None,
-    ) -> List[DatasetIterator]:
-        """Returns ``n`` :class:`DatasetIterators <ray.data.DatasetIterator>` that can
+    ) -> List[DataIterator]:
+        """Returns ``n`` :class:`DataIterators <ray.data.DataIterator>` that can
         be used to read disjoint subsets of the datastream in parallel.
 
         This method is the recommended way to consume Datastreams from multiple
@@ -1197,7 +1201,7 @@ class Datastream(Generic[T]):
             The output iterator splits. These iterators are Ray-serializable and can
             be freely passed to any Ray task or actor.
         """
-        return StreamSplitDatasetIterator.create(self, n, equal, locality_hints)
+        return StreamSplitDataIterator.create(self, n, equal, locality_hints)
 
     @ConsumptionAPI
     def split(
@@ -1450,7 +1454,7 @@ class Datastream(Generic[T]):
         parent_stats = self._plan.stats()
         splits = []
         for bs, ms in zip(blocks, metadata):
-            stats = DatasetStats(stages={"Split": ms}, parent=parent_stats)
+            stats = DatastreamStats(stages={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
             splits.append(
                 MaterializedDatastream(
@@ -1516,10 +1520,10 @@ class Datastream(Generic[T]):
         if any(p <= 0 for p in proportions):
             raise ValueError("proportions must be bigger than 0")
 
-        dataset_length = self.count()
+        datastream_length = self.count()
         cumulative_proportions = np.cumsum(proportions)
         split_indices = [
-            int(dataset_length * proportion) for proportion in cumulative_proportions
+            int(datastream_length * proportion) for proportion in cumulative_proportions
         ]
 
         # Ensure each split has at least one element
@@ -1673,7 +1677,7 @@ class Datastream(Generic[T]):
                     "number {} will be used. This warning will not "
                     "be shown again.".format(set(epochs), max_epoch)
                 )
-        stats = DatasetStats(
+        stats = DatastreamStats(
             stages={"Union": []},
             parent=[d._plan.stats() for d in datastreams],
         )
@@ -1684,7 +1688,7 @@ class Datastream(Generic[T]):
             self._lazy,
         )
 
-    def groupby(self, key: Optional[KeyFn]) -> "GroupedDataset[T]":
+    def groupby(self, key: Optional[KeyFn]) -> "GroupedData[T]":
         """Group the datastream by the key function or column name.
 
         Examples:
@@ -1707,16 +1711,16 @@ class Datastream(Generic[T]):
                 grouping is global.
 
         Returns:
-            A lazy GroupedDataset that can be aggregated later.
+            A lazy GroupedData that can be aggregated later.
         """
-        from ray.data.grouped_dataset import GroupedDataset
+        from ray.data.grouped_dataset import GroupedData
 
         # Always allow None since groupby interprets that as grouping all
         # records into a single global group.
         if key is not None:
-            _validate_key_fn(self, key)
+            _validate_key_fn(self.schema(fetch_if_missing=True), key)
 
-        return GroupedDataset(self, key)
+        return GroupedData(self, key)
 
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> U:
@@ -2206,11 +2210,11 @@ class Datastream(Generic[T]):
             )
             for m in metadata
         ]
-        dataset_stats = DatasetStats(
+        datastream_stats = DatastreamStats(
             stages={"Limit": meta_for_stats},
             parent=self._plan.stats(),
         )
-        dataset_stats.time_total_s = split_duration
+        datastream_stats.time_total_s = split_duration
         return Datastream(
             ExecutionPlan(
                 BlockList(
@@ -2218,12 +2222,54 @@ class Datastream(Generic[T]):
                     metadata,
                     owned_by_consumer=block_list._owned_by_consumer,
                 ),
-                dataset_stats,
+                datastream_stats,
                 run_by_consumer=block_list._owned_by_consumer,
             ),
             self._epoch,
             self._lazy,
         )
+
+    @ConsumptionAPI(pattern="Time complexity:")
+    def take_batch(
+        self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
+    ) -> DataBatch:
+        """Return up to ``batch_size`` records from the datastream in a batch.
+
+        Unlike take(), the records are returned in the same format as used for
+        `iter_batches` and `map_batches`.
+
+        This will move up to ``batch_size`` records to the caller's machine; if
+        ``batch_size`` is very large, this can result in an OutOfMemory crash on
+        the caller.
+
+        Time complexity: O(batch_size specified)
+
+        Args:
+            batch_size: The max number of records to return.
+            batch_format: Specify ``"default"`` to use the default block format
+                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
+                ``"numpy"`` to select ``numpy.ndarray`` for tensor datastreams and
+                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None
+                to return the underlying block exactly as is with no additional
+                formatting. The default is "default".
+
+        Returns:
+            A batch of up to ``batch_size`` records from the datastream.
+
+        Raises:
+            ValueError if the datastream is empty.
+        """
+        try:
+            res = next(
+                self.iter_batches(
+                    batch_size=batch_size, prefetch_batches=0, batch_format=batch_format
+                )
+            )
+        except StopIteration:
+            raise ValueError("The datastream is empty.")
+        self._synchronize_progress_bar()
+        return res
 
     @ConsumptionAPI(pattern="Time complexity:")
     def take(self, limit: int = 20) -> List[T]:
@@ -2444,7 +2490,7 @@ class Datastream(Generic[T]):
             ParquetDatasource(),
             ray_remote_args=ray_remote_args,
             path=path,
-            dataset_uuid=self._uuid,
+            datastream_uuid=self._uuid,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -2508,7 +2554,7 @@ class Datastream(Generic[T]):
             JSONDatasource(),
             ray_remote_args=ray_remote_args,
             path=path,
-            dataset_uuid=self._uuid,
+            datastream_uuid=self._uuid,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -2569,7 +2615,7 @@ class Datastream(Generic[T]):
             CSVDatasource(),
             ray_remote_args=ray_remote_args,
             path=path,
-            dataset_uuid=self._uuid,
+            datastream_uuid=self._uuid,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -2637,7 +2683,7 @@ class Datastream(Generic[T]):
             TFRecordDatasource(),
             ray_remote_args=ray_remote_args,
             path=path,
-            dataset_uuid=self._uuid,
+            datastream_uuid=self._uuid,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -2707,7 +2753,7 @@ class Datastream(Generic[T]):
             WebDatasetDatasource(),
             ray_remote_args=ray_remote_args,
             path=path,
-            dataset_uuid=self._uuid,
+            datastream_uuid=self._uuid,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -2763,7 +2809,7 @@ class Datastream(Generic[T]):
             NumpyDatasource(),
             ray_remote_args=ray_remote_args,
             path=path,
-            dataset_uuid=self._uuid,
+            datastream_uuid=self._uuid,
             column=column,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
@@ -2915,7 +2961,7 @@ class Datastream(Generic[T]):
                 "Datasource.write() instead."
             )
 
-            ctx = DatasetContext.get_current()
+            ctx = DataContext.get_current()
             blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
             # Prepare write in a remote task so that in Ray client mode, we
             # don't do metadata resolution from the client machine.
@@ -2943,11 +2989,11 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI(
         delegate=(
-            "Calling any of the consumption methods on the returned ``DatasetIterator``"
+            "Calling any of the consumption methods on the returned ``DataIterator``"
         )
     )
-    def iterator(self) -> DatasetIterator:
-        """Return a :class:`~ray.data.DatasetIterator` that
+    def iterator(self) -> DataIterator:
+        """Return a :class:`~ray.data.DataIterator` that
         can be used to repeatedly iterate over the datastream.
 
         Examples:
@@ -2958,10 +3004,10 @@ class Datastream(Generic[T]):
             ...     print(batch) # doctest: +SKIP
 
         .. note::
-            It is recommended to use ``DatasetIterator`` methods over directly
+            It is recommended to use ``DataIterator`` methods over directly
             calling methods such as ``iter_batches()``.
         """
-        return DatasetIteratorImpl(self)
+        return DataIteratorImpl(self)
 
     @ConsumptionAPI
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
@@ -3801,7 +3847,7 @@ class Datastream(Generic[T]):
         from ray.data._internal.plan import _rewrite_read_stage
         from ray.data.dataset_pipeline import DatasetPipeline
 
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
             blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
@@ -3812,7 +3858,7 @@ class Datastream(Generic[T]):
             outer_stats = self._plan.stats()
             read_stage = None
         uuid = self._get_uuid()
-        outer_stats.dataset_uuid = uuid
+        outer_stats.datastream_uuid = uuid
 
         if times is not None and times < 1:
             raise ValueError("`times` must be >= 1, got {}".format(times))
@@ -3832,7 +3878,10 @@ class Datastream(Generic[T]):
                 def gen():
                     ds = Datastream(
                         ExecutionPlan(
-                            blocks, outer_stats, dataset_uuid=uuid, run_by_consumer=True
+                            blocks,
+                            outer_stats,
+                            datastream_uuid=uuid,
+                            run_by_consumer=True,
                         ),
                         epoch,
                         lazy=False,
@@ -3923,7 +3972,7 @@ class Datastream(Generic[T]):
         if blocks_per_window is None:
             blocks_per_window = 10
 
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
             blocks, _, stages = self._plan._get_source_blocks_and_stages()
             blocks.clear()
@@ -4099,7 +4148,7 @@ class Datastream(Generic[T]):
         """
         return self._get_stats_summary().to_string()
 
-    def _get_stats_summary(self) -> DatasetStatsSummary:
+    def _get_stats_summary(self) -> DatastreamStatsSummary:
         return self._plan.stats_summary()
 
     @ConsumptionAPI(pattern="Time complexity:")
@@ -4274,14 +4323,14 @@ class Datastream(Generic[T]):
             >>> next(ds.iter_batches(batch_size=4))
             [0, 1, 2, 3]
 
-            If your datastream contains a single ``TensorDtype`` or ``ArrowTensorType``
+            If your datastream contains a single ``numpy.ndarray``
             column named ``__value__`` (as created by :func:`ray.data.from_numpy`), then
             the default batch format is ``np.ndarray``. For more information on tensor
             formats, read the :ref:`tensor support guide <datasets_tensor_support>`.
 
             >>> ds = ray.data.range_tensor(100)
             >>> ds  # doctest: +SKIP
-            Datastream(num_blocks=20, num_rows=100, schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})
+            Datastream(num_blocks=20, num_rows=100, schema={__value__: numpy.ndarray(shape=(1,), dtype=int64)})
             >>> ds.default_batch_format()
             <class 'numpy.ndarray'>
             >>> next(ds.iter_batches(batch_size=4))
@@ -4344,12 +4393,12 @@ class Datastream(Generic[T]):
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
         """
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         if context.use_streaming_executor:
             raise DeprecationWarning(
                 "`dataset_format` is deprecated for streaming execution. To use "
                 "`dataset_format`, you must explicitly enable bulk execution by "
-                "setting `use_streaming_executor` to False in the `DatasetContext`"
+                "setting `use_streaming_executor` to False in the `DataContext`"
             )
 
         # We need schema to properly validate, so synchronously
@@ -4450,8 +4499,8 @@ class Datastream(Generic[T]):
             "num_blocks": self._plan.initial_num_blocks(),
             "num_rows": self._meta_count(),
         }
-
-        schema = self.schema()
+        # Show metadata if available, but don't trigger execution.
+        schema = self.schema(fetch_if_missing=False)
         if schema is None:
             schema_repr = Template("rendered_html_common.html.j2").render(
                 content="<h5>Unknown schema</h5>"
@@ -4648,12 +4697,12 @@ def _sliding_window(iterable: Iterable, n: int):
 
 def _do_write(
     ds: Datasource,
-    ctx: DatasetContext,
+    ctx: DataContext,
     blocks: List[Block],
     meta: List[BlockMetadata],
     ray_remote_args: Dict[str, Any],
     write_args: Dict[str, Any],
 ) -> List[ObjectRef[WriteResult]]:
     write_args = _unwrap_arrow_serialization_workaround(write_args)
-    DatasetContext._set_current(ctx)
+    DataContext._set_current(ctx)
     return ds.do_write(blocks, meta, ray_remote_args=ray_remote_args, **write_args)

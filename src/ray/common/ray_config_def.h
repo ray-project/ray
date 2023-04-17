@@ -519,7 +519,11 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 60)
 
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
-RAY_CONFIG(bool, enable_worker_prestart, true)
+RAY_CONFIG(bool, enable_worker_prestart, false)
+
+/// Whether to enable worker prestarting on first driver
+/// TODO(clarng): reconcile with enable_worker_prestart
+RAY_CONFIG(bool, prestart_worker_first_driver, true)
 
 /// The interval of periodic idle worker killing. Value of 0 means worker capping is
 /// disabled.
@@ -789,6 +793,9 @@ RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
 // If left empty, no such attempt will be made.
 // Example: RAY_preload_python_modules=tensorflow,pytorch
 RAY_CONFIG(std::vector<std::string>, preload_python_modules, {})
+
+// By default, raylet send a self liveness check to GCS every 60s
+RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 60000)
 
 // Instruct the CoreWorker to kill its child processes while
 // it exits. This prevents certain classes of resource leaks

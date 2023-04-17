@@ -38,7 +38,7 @@ class TaskPoolMapOperator(MapOperator):
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
-                The actual rows passed may be less if the dataset is small.
+                The actual rows passed may be less if the datastream is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(

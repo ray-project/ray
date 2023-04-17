@@ -13,7 +13,7 @@ from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler impor
     PullBasedShuffleTaskScheduler,
 )
 from ray.data._internal.stats import StatsDict
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 
 
 def generate_repartition_fn(
@@ -30,7 +30,7 @@ def generate_repartition_fn(
     ) -> Tuple[List[RefBundle], StatsDict]:
         shuffle_spec = ShuffleTaskSpec(random_shuffle=False)
 
-        if DatasetContext.get_current().use_push_based_shuffle:
+        if DataContext.get_current().use_push_based_shuffle:
             scheduler = PushBasedShuffleTaskScheduler(shuffle_spec)
         else:
             scheduler = PullBasedShuffleTaskScheduler(shuffle_spec)

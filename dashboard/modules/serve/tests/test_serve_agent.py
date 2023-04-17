@@ -460,7 +460,21 @@ def test_get_status(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
-def test_get_serve_instance_details(ray_start_stop):
+@pytest.mark.parametrize(
+    "f_deployment_options",
+    [
+        {"name": "f", "ray_actor_options": {"num_cpus": 0.2}},
+        {
+            "name": "f",
+            "autoscaling_config": {
+                "min_replicas": 1,
+                "initial_replicas": 3,
+                "max_replicas": 10,
+            },
+        },
+    ],
+)
+def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
     config1 = {
@@ -474,12 +488,7 @@ def test_get_serve_instance_details(ray_start_stop):
                 "name": "app1",
                 "route_prefix": "/app1",
                 "import_path": world_import_path,
-                "deployments": [
-                    {
-                        "name": "f",
-                        "ray_actor_options": {"num_cpus": 0.2},
-                    },
-                ],
+                "deployments": [f_deployment_options],
             },
             {
                 "name": "app2",
@@ -553,7 +562,11 @@ def test_get_serve_instance_details(ray_start_stop):
             assert "route_prefix" not in deployment.deployment_config.dict(
                 exclude_unset=True
             )
-            assert len(deployment.replicas) == deployment.deployment_config.num_replicas
+            if isinstance(deployment.deployment_config.num_replicas, int):
+                assert (
+                    len(deployment.replicas)
+                    == deployment.deployment_config.num_replicas
+                )
 
             for replica in deployment.replicas:
                 assert replica.state == ReplicaState.RUNNING

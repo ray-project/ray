@@ -38,7 +38,7 @@ def check_num_computed(ds, expected, streaming_expected) -> None:
     # by the ds.schema() which will still partial read the blocks, but will
     # not affected by operations like take() as it's executed via streaming
     # executor.
-    if not ray.data.context.DatasetContext.get_current().use_streaming_executor:
+    if not ray.data.context.DataContext.get_current().use_streaming_executor:
         assert ds._plan.execute()._num_computed() == expected
     else:
         assert ds._plan.execute()._num_computed() == streaming_expected
@@ -53,7 +53,6 @@ def check_num_computed(ds, expected, streaming_expected) -> None:
 def test_parquet_deserialize_pieces_with_retry(
     ray_start_regular_shared, fs, data_path, monkeypatch
 ):
-
     setup_data_path = _unwrap_protocol(data_path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
@@ -500,6 +499,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     values = [[s["one"], s["two"]] for s in ds.take()]
     check_num_computed(ds, 1, 0)
     assert sorted(values) == [[1, "a"], [1, "a"]]
+    assert ds.count() == 2
 
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
 
@@ -510,6 +510,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     values = [[s["one"], s["two"]] for s in ds.take()]
     check_num_computed(ds, 2, 0)
     assert sorted(values) == [[1, "a"], [1, "a"]]
+    assert ds.count() == 2
 
 
 def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
@@ -645,7 +646,7 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
 
 
 def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     old_decoding_size_estimation = ctx.decoding_size_estimation
     ctx.decoding_size_estimation = True
     try:
