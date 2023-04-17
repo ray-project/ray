@@ -4,6 +4,7 @@ from typing import Callable, Iterator, Optional
 from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.util import _truncated_repr
 from ray.data.block import BatchUDF, Block, DataBatch
 from ray.data.context import DEFAULT_BATCH_SIZE, DataContext
 
@@ -45,8 +46,8 @@ def generate_map_batches_fn(
                 for key, value in batch.items():
                     if not isinstance(value, np.ndarray):
                         raise ValueError(
-                            f"Error validating {batch}: The `fn` you passed to "
-                            "`map_batches` returned a "
+                            f"Error validating {_truncated_repr(batch)}: "
+                            "The `fn` you passed to `map_batches` returned a "
                             f"`dict`. `map_batches` expects all `dict` values "
                             f"to be of type `numpy.ndarray`, but the value "
                             f"corresponding to key {key!r} is of type "

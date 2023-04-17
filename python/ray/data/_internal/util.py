@@ -251,6 +251,14 @@ def _is_tensor_schema(column_names: List[str]):
     return column_names == [TENSOR_COLUMN_NAME]
 
 
+def _truncated_repr(obj: Any) -> str:
+    """Utility to return a truncated object representation for error messages."""
+    msg = str(obj)
+    if len(msg) > 200:
+        msg = msg[:200] + "..."
+    return msg
+
+
 def _insert_doc_at_pattern(
     obj,
     *,

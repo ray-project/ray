@@ -20,7 +20,7 @@ import numpy as np
 
 import ray
 from ray import ObjectRefGenerator
-from ray.data._internal.util import _check_pyarrow_version
+from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.data._internal.usage import record_block_format_usage
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
@@ -394,7 +394,8 @@ class BlockAccessor(Generic[T]):
             ctx = ray.data.DatasetContext.get_current()
             if ctx.strict_mode:
                 raise ValueError(
-                    f"Error validating {batch}: Standalone numpy arrays are not "
+                    f"Error validating {_truncated_repr(batch)}: "
+                    "Standalone numpy arrays are not "
                     "allowed in strict mode. Return a dict of field -> array, "
                     "e.g., `{'data': array}` instead of `array`."
                 )
@@ -444,7 +445,8 @@ class BlockAccessor(Generic[T]):
             ctx = ray.data.DatasetContext.get_current()
             if ctx.strict_mode:
                 raise ValueError(
-                    f"Error validating {block}: Standalone Python objects are not "
+                    f"Error validating {_truncated_repr(block)}: "
+                    "Standalone Python objects are not "
                     "allowed in strict mode. To use Python objects in a datastream, "
                     "wrap them in a dict of numpy arrays, e.g., "
                     "return `{'item': np.array(batch)}` instead of just `batch`."
