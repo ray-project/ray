@@ -316,6 +316,9 @@ class AlgorithmConfig(_Config):
         # `self.training()`
         self.gamma = 0.99
         self.lr = 0.001
+        self.grad_clip_by_value = None
+        self.grad_clip_by_norm = None
+        self.grad_clip_by_global_norm = None
         self.train_batch_size = 32
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
@@ -1576,8 +1579,12 @@ class AlgorithmConfig(_Config):
 
     def training(
         self,
+        *,
         gamma: Optional[float] = NotProvided,
         lr: Optional[float] = NotProvided,
+        grad_clip_by_value: Optional[float] = NotProvided,
+        grad_clip_by_norm: Optional[float] = NotProvided,
+        grad_clip_by_global_norm: Optional[float] = NotProvided,
         train_batch_size: Optional[int] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
@@ -1590,6 +1597,24 @@ class AlgorithmConfig(_Config):
         Args:
             gamma: Float specifying the discount factor of the Markov Decision process.
             lr: The default learning rate.
+            grad_clip_by_value: If not None, will clip all computed gradients
+                individually inside the interval
+                [-grad_clip_by_value, grad_clip_by_value].
+            grad_clip_by_norm: If not None, will compute the L2-norm of each weight/bias
+                gradient tensor and then clip all gradients such that this L2-norm does
+                not exceed the given value. The L2-norm of a tensor is computed via:
+                `sqrt(SUM(w0^2, w1^2, ..., wn^2))` where w[i] are the elements of the
+                tensor (no matter what the shape of this tensor is).
+            grad_clip_by_global_norm: If not None, will compute the square of the
+                L2-norm of each weight/bias gradient tensor, sum up all these squared
+                L2-norms across all given gradient tensors (e.g. the entire module to
+                be updated), square root that overall sum, and then clip all gradients
+                such that this "global" L2-norm does not exceed the given value.
+                The global L2-norm over a list of tensors (e.g. W and V) is computed
+                via:
+                `sqrt[SUM(w0^2, w1^2, ..., wn^2) + SUM(v0^2, v1^2, ..., vm^2)]`, where
+                w[i] and v[j] are the elements of the tensors W and V (no matter what
+                the shapes of these tensors are).
             train_batch_size: Training batch size, if applicable.
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
@@ -1618,6 +1643,12 @@ class AlgorithmConfig(_Config):
             self.gamma = gamma
         if lr is not NotProvided:
             self.lr = lr
+        if grad_clip_by_value is not NotProvided:
+            self.grad_clip_by_value = grad_clip_by_value
+        if grad_clip_by_norm is not NotProvided:
+            self.grad_clip_by_norm = grad_clip_by_norm
+        if grad_clip_by_global_norm is not NotProvided:
+            self.grad_clip_by_global_norm = grad_clip_by_global_norm
         if train_batch_size is not NotProvided:
             self.train_batch_size = train_batch_size
         if model is not NotProvided:
@@ -3055,6 +3086,9 @@ class AlgorithmConfig(_Config):
                 # TODO (Kourosh): optimizer config can now be more complicated.
                 optimizer_config={
                     "lr": self.lr,
+                    "grad_clip_by_value": self.grad_clip_by_value,
+                    "grad_clip_by_norm": self.grad_clip_by_norm,
+                    "grad_clip_by_global_norm": self.grad_clip_by_global_norm,
                 },
                 learner_hps=self.get_learner_hyperparameters(),
             )

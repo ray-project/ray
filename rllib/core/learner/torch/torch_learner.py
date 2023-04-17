@@ -2,12 +2,15 @@ import logging
 import pathlib
 from typing import (
     Any,
-    Mapping,
-    Union,
-    Sequence,
+    Dict,
     Hashable,
+    Mapping,
     Optional,
+    Sequence,
+    Union,
 )
+
+import tree  # pip install dm_tree
 
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
@@ -89,6 +92,37 @@ class TorchLearner(Learner):
         grads = {pid: p.grad for pid, p in self._params.items()}
 
         return grads
+
+    @override(Learner)
+    def postprocess_gradients(self, gradients_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Applies grad clipping depending on the optimizer config."""
+
+        # Clip by value (each gradient individually).
+        grad_clip_by_value = self._optimizer_config.get("grad_clip_by_value", None)
+        if grad_clip_by_value is not None:
+            gradients_dict = tree.map_structure(
+                lambda v: torch.clip(
+                    v, -grad_clip_by_value, grad_clip_by_value
+                ),
+                gradients_dict,
+            )
+
+        # Clip by L2-norm (per gradient tensor).
+        grad_clip_by_norm = self._optimizer_config.get("grad_clip_by_norm", None)
+        if grad_clip_by_norm is not None:
+            gradients_dict = tree.map_structure(
+                lambda v: nn.utils.clip_grad_norm(v, grad_clip_by_norm), gradients_dict
+            )
+
+        # Clip by global L2-norm (across all gradient tensors).
+        grad_clip_by_global_norm = self._optimizer_config.get("grad_clip_by_global_norm", None)
+        if grad_clip_by_global_norm is not None:
+            clipped_grads = nn.utils.clip_grad_norm(
+                tree.flatten(gradients_dict), grad_clip_by_global_norm
+            )
+            gradients_dict = tree.unflatten_as(gradients_dict, clipped_grads)
+
+        return gradients_dict
 
     @override(Learner)
     def apply_gradients(self, gradients: ParamDictType) -> None:
