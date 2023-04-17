@@ -119,7 +119,7 @@ class NodeProviderAdapter(NodeProvider):
         else:
             instance.state = Instance.REQUESTED
         instance.interal_ip = self._provider.internal_ip(instance_id)
-        instance.external_ip = self._provider.internal_ip(instance_id)
+        instance.external_ip = self._provider.external_ip(instance_id)
         instance.instance_type = self._provider.node_tags(instance_id)[
             TAG_RAY_USER_NODE_TYPE
         ]

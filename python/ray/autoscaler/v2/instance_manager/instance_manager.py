@@ -61,6 +61,7 @@ class SimpleInstanceManager(InstanceManager):
             reply.version = version
             return reply
 
+        # handle teriminating instances
         for instance in to_terminate_instances.values():
             if not self._transition_state(instance, Instance.TERMINATING):
                 reply = UpdateInstanceManagerStateReply()
@@ -73,12 +74,14 @@ class SimpleInstanceManager(InstanceManager):
                 return reply
             mutations[instance.instance_id] = instance.SerializeToString()
 
+        # handle new instances to start
         for instance_type in request.new_nodes_to_start:
             instance = Instance()
             instance.instance_id = str(uuid.uuid4())
             instance.instance_type = instance_type.type_name
             instance.instance_state = Instance.QUEUED
             mutations[instance.instance_id] = instance.SerializeToString()
+
         expected_version = (
             request.expected_version if request.expected_version else None
         )
