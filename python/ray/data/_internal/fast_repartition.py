@@ -12,7 +12,7 @@ from ray.data._internal.stats import DatastreamStats
 
 
 def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
-    from ray.data.dataset import Datastream
+    from ray.data.datastream import Datastream
 
     wrapped_ds = Datastream(
         ExecutionPlan(

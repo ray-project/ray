@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
-    from ray.data.dataset import TensorFlowTensorBatchType
+    from ray.data.datastream import TensorFlowTensorBatchType
 
 
 def _is_tensor_datastream(schema) -> bool:
