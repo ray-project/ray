@@ -88,8 +88,8 @@ class ExperimentAnalysis:
         # Deprecate: Raise in 2.6, remove in 2.7
         sync_config: Optional[SyncConfig] = None,
     ):
-        self._local_experiment_path = None
-        self._remote_experiment_path = None
+        self._local_experiment_path: str = None
+        self._remote_experiment_path: Optional[str] = None
 
         # If the user passes in a remote checkpoint path,
         # Set the remote experiment path to this path, and set
@@ -149,11 +149,11 @@ class ExperimentAnalysis:
 
     @property
     def _local_path(self) -> str:
-        return str(self._local_experiment_path)
+        return self._local_experiment_path
 
     @property
     def _remote_path(self) -> str:
-        return str(self._remote_experiment_path)
+        return self._remote_experiment_path
 
     @property
     def experiment_path(self) -> str:
@@ -649,10 +649,11 @@ class ExperimentAnalysis:
                 their trial dir.
         """
         fail_count = 0
+        failed_paths = []
         for path in self._get_trial_paths():
             try:
                 param_file = os.path.join(path, EXPR_PARAM_FILE)
-                if not os.path.exists(param_file):
+                if not os.path.exists(param_file) and self._remote_path:
                     download_from_uri(
                         self._convert_local_to_cloud_path(param_file), param_file
                     )
@@ -664,10 +665,20 @@ class ExperimentAnalysis:
                 else:
                     self._configs[path] = config
             except Exception:
+                logger.debug(
+                    f"Exception occurred when loading trial configs. "
+                    f"See traceback:\n{traceback.format_exc()}"
+                )
                 fail_count += 1
+                failed_paths.append(path)
 
         if fail_count:
-            logger.warning("Couldn't read config from {} paths".format(fail_count))
+            failed_paths_str = "\n".join([f"- {path}" for path in failed_paths])
+            logger.warning(
+                f"Failed to read the config for {fail_count} trials:\n"
+                f"{failed_paths_str}"
+            )
+
         return self._configs
 
     def get_best_trial(
@@ -852,12 +863,13 @@ class ExperimentAnalysis:
             A dictionary containing "trial dir" to Dataframe.
         """
         fail_count = 0
+        failed_paths = []
         force_dtype = {"trial_id": str}  # Never convert trial_id to float.
         for path in self._get_trial_paths():
             try:
                 if self._file_type == "json":
                     json_file = os.path.join(path, EXPR_RESULT_FILE)
-                    if not os.path.exists(json_file):
+                    if not os.path.exists(json_file) and self._remote_path:
                         download_from_uri(
                             self._convert_local_to_cloud_path(json_file), json_file
                         )
@@ -867,19 +879,28 @@ class ExperimentAnalysis:
                     df = pd.json_normalize(json_list, sep="/")
                 elif self._file_type == "csv":
                     csv_file = os.path.join(path, EXPR_PROGRESS_FILE)
-                    if not os.path.exists(csv_file):
+                    if not os.path.exists(csv_file) and self._remote_path:
                         download_from_uri(
                             self._convert_local_to_cloud_path(csv_file), csv_file
                         )
 
                     df = pd.read_csv(csv_file, dtype=force_dtype)
                 self.trial_dataframes[path] = df
-            except Exception as e:
-                logger.error("Exception occurred when loading trial results:", e)
+            except Exception:
+                logger.debug(
+                    f"Exception occurred when loading trial results. See traceback:\n"
+                    f"{traceback.format_exc()}"
+                )
                 fail_count += 1
+                failed_paths.append(path)
 
         if fail_count:
-            logger.debug("Couldn't read results from {} paths".format(fail_count))
+            failed_paths_str = "\n".join([f"- {path}" for path in failed_paths])
+            logger.warning(
+                f"Failed to read the results for {fail_count} trials:\n"
+                f"{failed_paths_str}"
+            )
+
         return self.trial_dataframes
 
     def stats(self) -> Dict:
