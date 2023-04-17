@@ -387,11 +387,11 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
             )
         # Upstream code uses exceptions as part of its normal control flow and
         # will pass this method bogus class names.
-        regex = r"^TensorDtype\(shape=(\((?:(?:\d+|None),?\s?)*\)), dtype=(\w+)\)$"
+        regex = r"^numpy.ndarray\(shape=(\((?:(?:\d+|None),?\s?)*\)), dtype=(\w+)\)$"
         m = re.search(regex, string)
         err_msg = (
             f"Cannot construct a '{cls.__name__}' from '{string}'; expected a string "
-            "like 'TensorDtype(shape=(1, 2, 3), dtype=int64)'."
+            "like 'numpy.ndarray(shape=(1, 2, 3), dtype=int64)'."
         )
         if m is None:
             raise TypeError(err_msg)
@@ -439,7 +439,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         return TensorArray(values)
 
     def __str__(self) -> str:
-        return self.name
+        return self.name.replace("TensorDtype", "numpy.ndarray")
 
     def __repr__(self) -> str:
         return str(self)

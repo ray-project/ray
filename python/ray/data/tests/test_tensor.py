@@ -336,7 +336,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
         "MaterializedDatastream(\n"
         "   num_blocks=4,\n"
         "   num_rows=24,\n"
-        "   schema={a: TensorDtype(shape=(4, 4), dtype=float64)}\n"
+        "   schema={a: numpy.ndarray(shape=(4, 4), dtype=float64)}\n"
         ")"
     )
 
@@ -349,7 +349,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
         "MaterializedDatastream(\n"
         "   num_blocks=4,\n"
         "   num_rows=16,\n"
-        "   schema={a: TensorDtype(shape=(None, None), dtype=float64)}\n"
+        "   schema={a: numpy.ndarray(shape=(None, None), dtype=float64)}\n"
         ")"
     )
 
