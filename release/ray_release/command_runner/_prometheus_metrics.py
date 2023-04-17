@@ -89,13 +89,13 @@ async def _get_prometheus_metrics(start_time: float, end_time: float) -> dict:
             query="ray_node_network_send_speed", **kwargs
         ),
         "cluster_active_nodes": client.query_prometheus(
-            query="ray_cluster_active_nodes", **kwargs
+            query="ray_autoscaler_active_nodes", **kwargs
         ),
         "cluster_failed_nodes": client.query_prometheus(
-            query="ray_cluster_failed_nodes", **kwargs
+            query="ray_autoscaler_failed_nodes", **kwargs
         ),
         "cluster_pending_nodes": client.query_prometheus(
-            query="ray_cluster_pending_nodes", **kwargs
+            query="ray_autoscaler_pending_nodes", **kwargs
         ),
     }
     metrics = {k: await v for k, v in metrics.items()}

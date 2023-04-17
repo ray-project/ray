@@ -181,13 +181,13 @@ Ray exports a number of system metrics, which provide introspection into the sta
    * - `ray_node_network_send_speed`
      - `InstanceId`
      - The network send throughput per node, in bytes per second.
-   * - `ray_cluster_active_nodes`
+   * - `ray_autoscaler_active_nodes`
      - `node_type`
      - The number of healthy nodes in the cluster, broken down by autoscaler node type.
-   * - `ray_cluster_failed_nodes`
+   * - `ray_autoscaler_failed_nodes`
      - `node_type`
      - The number of failed nodes reported by the autoscaler, broken down by node type.
-   * - `ray_cluster_pending_nodes`
+   * - `ray_autoscaler_pending_nodes`
      - `node_type`
      - The number of pending nodes reported by the autoscaler, broken down by node type.
 

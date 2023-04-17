@@ -21,7 +21,7 @@ SERVE_GRAFANA_PANELS = [
             ),
             # GPU
             Target(
-                expr="sum(ray_node_gpus_utilization{{{global_filters}}}) / on() (sum(autoscaler_cluster_resources{{resource='GPU',{global_filters}}}) or vector(0))",
+                expr="sum(ray_node_gpus_utilization{{{global_filters}}}) / on() (sum(ray_autoscaler_cluster_resources{{resource='GPU',{global_filters}}}) or vector(0))",
                 legend="GPU (physical)",
             ),
             # Memory
@@ -251,15 +251,15 @@ SERVE_GRAFANA_PANELS = [
         targets=[
             # TODO(aguo): Update this to use autoscaler metrics instead
             Target(
-                expr="sum(ray_cluster_active_nodes{{{global_filters}}}) by (node_type)",
+                expr="sum(ray_autoscaler_active_nodes{{{global_filters}}}) by (node_type)",
                 legend="Active Nodes: {{node_type}}",
             ),
             Target(
-                expr="sum(ray_cluster_failed_nodes{{{global_filters}}}) by (node_type)",
+                expr="sum(ray_autoscaler_failed_nodes{{{global_filters}}}) by (node_type)",
                 legend="Failed Nodes: {{node_type}}",
             ),
             Target(
-                expr="sum(ray_cluster_pending_nodes{{{global_filters}}}) by (node_type)",
+                expr="sum(ray_autoscaler_pending_nodes{{{global_filters}}}) by (node_type)",
                 legend="Pending Nodes: {{node_type}}",
             ),
         ],

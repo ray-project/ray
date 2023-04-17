@@ -74,7 +74,7 @@ try:
                 "time of 3 minutes will be observed 8 times.",
                 labelnames=("SessionName",),
                 unit="seconds",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
                 buckets=histogram_buckets,
             ).labels(SessionName=session_name)
@@ -85,7 +85,7 @@ try:
                 "metric only observes times for successful updates.",
                 labelnames=("SessionName",),
                 unit="seconds",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
                 buckets=histogram_buckets,
             ).labels(SessionName=session_name)
@@ -95,7 +95,7 @@ try:
                 "update iteration to complete.",
                 labelnames=("SessionName",),
                 unit="seconds",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
                 buckets=update_time_buckets,
             ).labels(SessionName=session_name)
@@ -107,7 +107,7 @@ try:
                     "SessionName",
                 ),
                 unit="nodes",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             )
             self.active_nodes: Gauge = Gauge(
@@ -118,7 +118,7 @@ try:
                     "SessionName",
                 ),
                 unit="nodes",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             )
             self.recently_failed_nodes = Gauge(
@@ -130,7 +130,7 @@ try:
                     "SessionName",
                 ),
                 unit="nodes",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             )
             self.started_nodes: Counter = Counter(
@@ -138,7 +138,7 @@ try:
                 "Number of nodes started.",
                 labelnames=("SessionName",),
                 unit="nodes",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             self.stopped_nodes: Counter = Counter(
@@ -146,7 +146,7 @@ try:
                 "Number of nodes stopped.",
                 labelnames=("SessionName",),
                 unit="nodes",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             self.updating_nodes: Gauge = Gauge(
@@ -154,7 +154,7 @@ try:
                 "Number of nodes in the process of updating.",
                 labelnames=("SessionName",),
                 unit="nodes",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             self.recovering_nodes: Gauge = Gauge(
@@ -162,7 +162,7 @@ try:
                 "Number of nodes in the process of recovering.",
                 labelnames=("SessionName",),
                 unit="nodes",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             self.running_workers: Gauge = Gauge(
@@ -170,7 +170,7 @@ try:
                 "Number of worker nodes running.",
                 labelnames=("SessionName",),
                 unit="nodes",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             self.failed_create_nodes: Counter = Counter(
@@ -179,7 +179,7 @@ try:
                 "exception in the node provider's create_node method.",
                 labelnames=("SessionName",),
                 unit="nodes",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             self.failed_updates: Counter = Counter(
@@ -187,7 +187,7 @@ try:
                 "Number of failed worker node updates.",
                 labelnames=("SessionName",),
                 unit="updates",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             self.successful_updates: Counter = Counter(
@@ -195,7 +195,7 @@ try:
                 "Number of succesfful worker node updates.",
                 labelnames=("SessionName",),
                 unit="updates",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             self.failed_recoveries: Counter = Counter(
@@ -203,7 +203,7 @@ try:
                 "Number of failed node recoveries.",
                 labelnames=("SessionName",),
                 unit="recoveries",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             self.successful_recoveries: Counter = Counter(
@@ -211,7 +211,7 @@ try:
                 "Number of successful node recoveries.",
                 labelnames=("SessionName",),
                 unit="recoveries",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             self.update_loop_exceptions: Counter = Counter(
@@ -219,7 +219,7 @@ try:
                 "Number of exceptions raised in the update loop of the autoscaler.",
                 labelnames=("SessionName",),
                 unit="exceptions",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             self.node_launch_exceptions: Counter = Counter(
@@ -227,7 +227,7 @@ try:
                 "Number of exceptions raised while launching nodes.",
                 labelnames=("SessionName",),
                 unit="exceptions",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             self.reset_exceptions: Counter = Counter(
@@ -235,7 +235,7 @@ try:
                 "Number of exceptions raised while resetting the autoscaler.",
                 labelnames=("SessionName",),
                 unit="exceptions",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             self.config_validation_exceptions: Counter = Counter(
@@ -244,7 +244,7 @@ try:
                 "during a reset.",
                 labelnames=("SessionName",),
                 unit="exceptions",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             self.drain_node_exceptions: Counter = Counter(
@@ -253,7 +253,7 @@ try:
                 "prior to node termination.",
                 labelnames=("SessionName",),
                 unit="exceptions",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             ).labels(SessionName=session_name)
             # This represents the autoscaler's view of essentially
@@ -264,7 +264,7 @@ try:
                 "Total logical resources in the cluster.",
                 labelnames=("resource", "SessionName"),
                 unit="resources",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             )
             # This represents the pending launches + nodes being set up for the
@@ -274,7 +274,7 @@ try:
                 "Pending logical resources in the cluster.",
                 labelnames=("resource", "SessionName"),
                 unit="resources",
-                namespace="autoscaler",
+                namespace="ray_autoscaler",
                 registry=self.registry,
             )
 
