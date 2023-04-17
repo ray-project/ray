@@ -1,6 +1,8 @@
 import abc
 from copy import deepcopy
+import numpy as np
 from typing import Any, Optional, Dict, List, Tuple, Union, Type
+from ray.rllib.utils import try_import_jax, try_import_tf, try_import_torch
 
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.typing import TensorType
@@ -71,6 +73,8 @@ class TensorSpec(Spec):
         dtype: The dtype of the tensor. If None, the dtype is not checked during
             validation. Also during Sampling the dtype is set the default dtype of
             the backend.
+        framework: The framework of the tensor. If None, the framework is not
+            checked during validation.
         shape_vals: An optional dictionary mapping some dimension names to their
             values. For example, if shape is "B, C" and shape_vals is {"C": 3}, then
             the shape of the tensor is (B, 3). B is to be determined during
@@ -87,14 +91,8 @@ class TensorSpec(Spec):
         validate: Checks if the shape and dtype of the tensor matches the
             specification.
         fill: creates a tensor with the specified value that is an
-            example of a tensor that matches the specification.
-
-    Abstract Methods:
-        get_type: Returns the type of the tensor, e.g. tf.Tensor or torch.Tensor.
-        get_shape: Returns the shape of the tensor depending on the backend.
-        get_dtype: Returns the dtype of the tensor depending on the backend.
-        _full: Creates a tensor with the specified value that
-            has values of fill_value, shape of shape, and dtype of self.dtype.
+            example of a tensor that matches the specification. This can only be
+            called if `framework` is specified.
     """
 
     def __init__(
@@ -102,11 +100,56 @@ class TensorSpec(Spec):
         shape: str,
         *,
         dtype: Optional[Any] = None,
+        framework: Optional[str] = None,
         **shape_vals: int,
     ) -> None:
         self._expected_shape = self._parse_expected_shape(shape, shape_vals)
         self._full_shape = self._get_full_shape()
         self._dtype = dtype
+        self._framework = framework
+
+        # Import and prepare framework-specific properties.
+        if self._framework == "torch":
+            torch, _ = try_import_torch()
+            self._expected_type = torch.Tensor
+
+            def _full(cls, shape, fill_value=0):
+                return torch.full(shape, fill_value, dtype=cls.dtype)
+
+        elif self._framework == "tf2":
+            _, tf, _ = try_import_tf()
+            self._expected_type = tf.Tensor
+
+            def _full(cls, shape, fill_value=0):
+                if self.dtype:
+                    return tf.ones(shape, dtype=cls.dtype) * fill_value
+                return tf.fill(shape, fill_value)
+
+        elif self._framework == "np":
+            self._expected_type = np.ndarray
+
+            def _full(cls, shape, fill_value=0):
+                return np.full(shape, fill_value, dtype=cls.dtype)
+
+        elif self._framework == "jax":
+            jax, _ = try_import_jax()
+            self._expected_type = jax.numpy.ndarray
+
+            def _full(cls, shape, fill_value=0):
+                return jax.numpy.full(shape, fill_value, dtype=cls.dtype)
+
+        elif self._framework is None:
+            # Don't restrict the type of the tensor if no framework is specified.
+            self._expected_type = object
+
+            def _full(cls, shape, fill_value=0):
+                raise ValueError("Cannot fill tensor without framework. This "
+                                 "TensorSpec was instantiated without a framework.")
+
+        else:
+            raise ValueError(f"Unknown framework {self._framework}")
+
+        self._full = _full
 
     @property
     def shape(self) -> Tuple[Union[int, str]]:
@@ -170,11 +213,12 @@ class TensorSpec(Spec):
             ValueError: If the shape or dtype of the tensor does not match the
         """
 
-        expected_type = self.get_type()
-        if not isinstance(tensor, expected_type):
-            raise ValueError(_INVALID_TYPE.format(expected_type, type(tensor).__name__))
+        if not isinstance(tensor, self._expected_type):
+            raise ValueError(
+                _INVALID_TYPE.format(self._expected_type, type(tensor).__name__)
+            )
 
-        shape = self.get_shape(tensor)
+        shape = tuple(tensor.shape)
         if len(shape) != len(self._expected_shape):
             raise ValueError(_INVALID_SHAPE.format(self._expected_shape, shape))
 
@@ -182,41 +226,9 @@ class TensorSpec(Spec):
             if isinstance(expected_d, int) and expected_d != actual_d:
                 raise ValueError(_INVALID_SHAPE.format(self._expected_shape, shape))
 
-        dtype = self.get_dtype(tensor)
+        dtype = tensor.dtype
         if self.dtype and dtype != self.dtype:
             raise ValueError(_INVALID_TYPE.format(self.dtype, tensor.dtype))
-
-    @classmethod
-    @abc.abstractmethod
-    def get_type(cls) -> Union[Type, Tuple[Type]]:
-        """Returns the type of a tensor e.g. torch.Tensor or tf.Tensor.
-
-        Returns:
-            The type of a tensor. If the backend supports multiple tensor types, then a
-            tuple of types is returned.
-        """
-
-    @abc.abstractmethod
-    def get_shape(self, tensor: TensorType) -> Tuple[int]:
-        """Returns the shape of a tensor.
-
-        Args:
-            tensor: The tensor whose shape is to be returned.
-
-        Returns:
-            A `tuple` specifying the shape of the tensor.
-        """
-
-    @abc.abstractmethod
-    def get_dtype(self, tensor: TensorType) -> Any:
-        """Returns the data type of a tensor.
-
-        Args:
-            tensor: The tensor whose data type is to be returned.
-
-        Returns:
-            The data type of the tensor.
-        """
 
     @DeveloperAPI
     def fill(self, fill_value: Union[float, int] = 0) -> TensorType:
@@ -228,22 +240,7 @@ class TensorSpec(Spec):
         Returns:
             A tensor with the specified value that matches the specs.
         """
-        return self._full(self.full_shape, fill_value)
-
-    @abc.abstractmethod
-    def _full(self, shape: Tuple[int], fill_value: Union[float, int] = 0) -> TensorType:
-        """Creates a tensor with the given shape filled with `fill_value`.
-
-        The tensor dtype is inferred from `fill_value`. This is equivalent to
-        np.full(shape, val).
-
-        Args:
-            shape: The shape of the tensor to be sampled.
-            fill_value: The value to fill the tensor with.
-
-        Returns:
-            A tensor with the specified value that matches the specs.
-        """
+        return self._full(self, self.full_shape, fill_value)
 
     def _get_full_shape(self) -> Tuple[int]:
         """Converts the expected shape to a shape by replacing the unknown dimension
