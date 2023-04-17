@@ -4194,15 +4194,6 @@
     wait_for_nodes:
       num_nodes: 32
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
-        cluster_compute: dask_on_ray/1tb_sort_compute_gce.yaml
-
 
 - name: many_nodes_actor_test_on_v2
   group: core-daily-test
