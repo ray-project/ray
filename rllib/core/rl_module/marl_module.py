@@ -483,7 +483,7 @@ class MultiAgentRLModuleSpec:
             The MultiAgentRLModuleSpec.
         """
         module_specs = {
-            module_id: SingleAgentRLModuleSpec.from_module(rl_module)
+            module_id: SingleAgentRLModuleSpec.from_module(rl_module.unwrapped())
             for module_id, rl_module in module._rl_modules.items()
         }
         marl_module_class = module.__class__

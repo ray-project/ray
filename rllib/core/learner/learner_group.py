@@ -1,4 +1,6 @@
 from collections import deque
+import pathlib
+import socket
 from typing import Any, List, Mapping, Type, Optional, Callable, Set, TYPE_CHECKING
 
 import ray
@@ -464,46 +466,42 @@ class LearnerGroup:
         Args:
             path: The path to load the state from.
         """
+        path = pathlib.Path(path)
+        if not path.is_dir():
+            raise ValueError(
+                f"Path {path} is not a directory. "
+                "Please specify a directory containing the checkpoint files."
+            )
+        if not path.exists():
+            raise ValueError(f"Path {path} does not exist.")
+        path = str(path.absolute())
+        assert len(self._workers) == self._worker_manager.num_healthy_actors()
         if self.is_local:
             self._learner.load_state(path)
         else:
+            head_node_ip = socket.gethostbyname(socket.gethostname())
             workers = self._worker_manager.healthy_actor_ids()
-            for worker in workers:
-                worker_ip_addr = self._worker_manager.foreach_actor(
-                    self._get_ip_address, remote_actor_ids=[worker]
-                )
-                worker_ip_addr = self._get_results(worker_ip_addr)[0]
-                self_ip_addr = self._get_ip_address()
-                if worker_ip_addr == self_ip_addr:
-                    self._worker_manager.foreach_actor(
-                        lambda w: w.load_state(path), remote_actor_ids=[worker]
-                    )
+
+            def _load_state(w):
+                # doing imports here since they might not be imported on the worker
+                import socket
+                import tempfile
+
+                hostname = socket.gethostname()
+                worker_node_ip = socket.gethostbyname(hostname)
+                # if the worker is on the same node as the head, load the checkpoint
+                # directly from the path otherwise sync the checkpoint from the head
+                # to the worker and load it from there
+                if worker_node_ip == head_node_ip:
+                    w.load_state(path)
                 else:
-                    # move the checkpoint to a temporary location on the worker
-                    # and load the checkpoint from there
-                    worker_temp_dir = self._worker_manager.foreach_actor(
-                        self._create_temporary_dir, remote_actor_ids=[worker]
-                    )
-                    worker_temp_dir = self._get_results(worker_temp_dir)[0]
-                    sync_dir_between_nodes(
-                        self_ip_addr, path, worker_ip_addr, worker_temp_dir
-                    )
-                    self._worker_manager.foreach_actor(
-                        lambda w: w.load_state(worker_temp_dir),
-                        remote_actor_ids=[worker],
-                    )
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        sync_dir_between_nodes(
+                            head_node_ip, path, worker_node_ip, temp_dir
+                        )
+                        w.load_state(temp_dir)
 
-                    # creating this function here instead of making it a member funciton
-                    # becasue it uses the worker_temp_dir variable, and this can't
-                    # be passed in as an argument to foreach_actor
-                    def remove_dir(w):
-                        import shutil
-
-                        shutil.rmtree(worker_temp_dir)
-
-                    self._worker_manager.foreach_actor(
-                        remove_dir, remote_actor_ids=[worker]
-                    )
+            self._worker_manager.foreach_actor(_load_state, remote_actor_ids=workers)
 
     @staticmethod
     def _create_temporary_dir(_=None) -> str:

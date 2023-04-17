@@ -275,12 +275,11 @@ class TestLearnerGroup(unittest.TestCase):
             self.assertLess(min_loss, 0.57)
 
     def test_save_load_state(self):
-        fws = ["tf", "torch"]
+        fws = ["torch", "tf"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = REMOTE_SCALING_CONFIGS.keys()
 
         test_iterator = itertools.product(fws, scaling_modes)
-
         batch = SampleBatch(FAKE_BATCH)
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
