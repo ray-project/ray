@@ -30,13 +30,15 @@ RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-ray_release/scripts/run_release_test.py}
 RAY_TEST_REPO=${RAY_TEST_REPO-https://github.com/ray-project/ray.git}
 RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
+BUILDKITE_MAX_RETRIES=1
+BUILDKITE_RETRY_CODE=79
 
 # This is not a great idea if your OS is different to the one
 # used in the product clusters. However, we need this in CI as reloading
 # Ray within the python process does not work for protobuf changes.
 INSTALL_MATCHING_RAY=${BUILDKITE-false}
 
-export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
+export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE
 
 if [ -z "${NO_INSTALL}" ]; then
   pip install --use-deprecated=legacy-resolver -q -r requirements.txt
@@ -173,4 +175,8 @@ if [ -z "${NO_CLONE}" ]; then
   rm -rf "${TMPDIR}" || true
 fi
 
-exit $EXIT_CODE
+if [ "$REASON" == "infra error" ] || [ "$REASON" == "infra timeout" ]; then
+  exit $BUILDKITE_RETRY_CODE
+else
+  exit $EXIT_CODE
+fi
